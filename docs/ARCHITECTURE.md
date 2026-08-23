@@ -201,7 +201,13 @@ a folder's and an album's page say where their pictures are; a story's
 
 `/timeline` draws the library over the human moment
 (`context.HUMAN_MOMENT`: the wall clock where one is claimed, the
-instant otherwise) at a zoom the URL owns (`bin`, `start`, `end`):
+instant otherwise) over a WINDOW the URL owns (`start`, `end`; the
+zoom `bin` follows the window's width, minute to week, and rides the URL
+for readers). A first visit opens on the last month that holds pictures;
+the overview strip is the whole extent at week resolution under a brush
+(drag, resize, presets 1w 1m 3m 1y all; `lean=true` asks the density
+route for the shape alone). Thumbnails ride every bin up to
+`SAMPLED_BINS_MOST`, the busiest that many past it:
 pictures per bin split by clock domain and origin, claims too coarse
 for the bin as spans, thumbnails per bin while the bins are few, and
 the sessions touching the range (`db/pages.py TIMELINE_*`,

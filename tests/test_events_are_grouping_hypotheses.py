@@ -509,21 +509,21 @@ def test_the_timeline_is_a_view_with_a_door_into_the_gallery(grouped):
         before = resultset.currency(conn)
     finally:
         connect.close(conn)
-    body = grouped.get("/timeline", headers={"accept": "application/json"}).json()
-    assert sum(row["pictures"] for row in body["months"]) == 4
-    told = next(row for row in body["events"] if row["kind"] == "generation_session")
-    assert told["local_start"] is not None, "the interval names its domain: the generator claimed a wall clock"
-    assert told["instant_start"] is None, "and invents no instant nothing claimed"
-    day = body["days"][-1]
-    assert day["qs"] == f"f=context.local_day%3Aeq%3A{day['day']}&sort=moment", (
-        "the door is the Facet Interface's own spelling, ordered by the moment it opened on"
+    body = grouped.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
+    assert body["extent"]["pictures"] == 4
+    told = next(row for row in body["sessions"] if row["kind"] == "generation_session")
+    assert told["domain"] == "wall", "the interval names its domain: the generator claimed a wall clock"
+    bar = body["bins"][-1]
+    assert bar["qs"].startswith("f=context.granule%3Alte%3A86400&f=context.moment%3Agte%3A"), (
+        "the door is the Facet Interface's own spelling"
     )
-    walked = grouped.get(f"/g?{day['qs']}")
+    assert bar["qs"].endswith("&sort=moment"), "ordered by the moment it opened on"
+    walked = grouped.get(f"/g?{bar['qs']}")
     assert walked.status_code == 200
-    assert f'data-total="{day["pictures"]}"' in walked.text, "the day door answers exactly the day's media"
+    assert f'data-total="{bar["pictures"]}"' in walked.text, "the day door answers exactly the day's media"
     page = grouped.get("/timeline", headers={"accept": "text/html"})
     assert page.status_code == 200
-    assert "data-timeline-day=" in page.text
+    assert "data-bin-at=" in page.text
     conn = connect.connect(grouped.app.state.db_path)
     try:
         assert resultset.currency(conn) == before, "a GET interpreted something; only the jobs may"

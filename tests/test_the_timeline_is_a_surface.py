@@ -124,9 +124,9 @@ def test_density_counts_each_bin_from_the_one_interpretation_and_spans_the_coars
         headers={"accept": "application/json"},
     ).json()
     assert {b["at"]: b["pictures"] for b in hour["bins"]} == {JUNE_10 + 14 * HOUR: 3, JUNE_10 + 16 * HOUR: 2}
-    assert hour["spans"] == [{"start": JUNE_10, "end": JUNE_10 + DAY, "precision": "day", "pictures": 1}], (
-        "the scan claims the day: drawn across the whole day, counted in no hour"
-    )
+    assert [(s["start"], s["end"], s["precision"], s["pictures"]) for s in hour["spans"]] == [
+        (JUNE_10, JUNE_10 + DAY, "day", 1)
+    ], "the scan claims the day: drawn across the whole day, counted in no hour"
     quarter = client.get(
         "/timeline/density",
         params={"bin": "quarter", "start": JUNE_10 + 14 * HOUR, "end": JUNE_10 + 17 * HOUR},
@@ -234,12 +234,17 @@ def test_the_surface_queries_declare_their_costs(surfaced):
         connect.close(conn)
 
 
-def test_the_page_mounts_the_surface_beside_the_shelves(surfaced):
+def test_the_page_is_the_surface_and_nothing_beside_it(surfaced):
+    """One surface: the window, its overview and its sessions. No second
+    ladder of months and days renders beside it -- the overview's bars
+    and the window's bars are those doors."""
     page = surfaced.get("/timeline", headers={"accept": "text/html"})
     assert page.status_code == 200
     assert "data-surface" in page.text
     assert "/static/timeline.js" in page.text
-    assert "data-timeline-day" in page.text, "the day shelves stay: the coarse level, still doors"
+    assert "data-overview" in page.text
+    assert "data-timeline-day" not in page.text
+    assert "data-timeline-month" not in page.text
 
 
 def test_a_story_belongs_to_its_subject_never_to_a_membership_checksum(surfaced):
@@ -335,30 +340,42 @@ def test_a_bar_counts_a_fractional_moment_and_its_door_opens_it(tmp_path_factory
         assert _total_of(opened.text) == 1, "the bar of one opens that one"
 
 
-def test_the_days_and_events_lists_say_when_they_are_cut(surfaced, monkeypatch):
-    from sg_web import timeline_view
-
-    whole = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
-    assert whole["days_total"] == len(whole["days"]) >= 2
-    assert whole["events_total"] == len(whole["events"]) >= 1
-    monkeypatch.setattr(timeline_view, "DAYS_MOST", 1)
-    monkeypatch.setattr(timeline_view, "EVENTS_MOST", 1)
-    cut = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
-    assert (len(cut["days"]), cut["days_total"]) == (1, whole["days_total"])
-    assert (len(cut["events"]), cut["events_total"]) == (1, whole["events_total"])
+def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
+    """/timeline is one builder in three representations: JSON to a
+    machine, the surface fragment to htmx, the page to a browser -- the
+    same window, the same bars, the same doors."""
+    told = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    assert told["bin"] == "day", "June to November: the zoom follows the month-wide opening window"
+    assert told["end"] == told["extent"]["end"] + 1
+    assert told["start"] == max(told["extent"]["start"], told["end"] - 30 * DAY)
+    assert [p["name"] for p in told["presets"]] == ["1w", "1m", "3m", "1y", "all"]
+    assert told["overview"]["bars"], "the whole extent at week resolution rides every answer"
+    fragment = surfaced.get("/timeline", headers={"hx-request": "true"}).text
     page = surfaced.get("/timeline", headers={"accept": "text/html"}).text
-    assert f"data-timeline-days-cut>1 of {whole['days_total']}<" in page
-    assert f"data-timeline-events-cut>1 of {whole['events_total']}<" in page
+    assert fragment.startswith('<section class="surface"')
+    assert fragment in page, "the page is the shell around the very fragment a move fetches"
+    import html
+
+    for bar in told["bins"]:
+        assert f'data-bin-at="{bar["at"]}"' in fragment
+        assert html.escape(bar["href"], quote=False) in fragment
+    assert "too many" not in page
+    # a window the URL names is the window the page shows, at the zoom its width earns
+    day = surfaced.get(
+        "/timeline", params={"start": JUNE_10, "end": JUNE_10 + DAY}, headers={"accept": "application/json"}
+    ).json()
+    assert (day["bin"], day["start"], day["end"]) == ("quarter", JUNE_10, JUNE_10 + DAY)
+    assert any(b["samples"] for b in day["bins"]), "thumbnails at every window"
 
 
 def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surfaced):
     """A rebuild advances the interpretation's generation; session runs
     answer only at the generation they were computed over. The page
     says the sessions need the events job instead of listing none."""
-    before = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    before = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert before["coverage"]["events_current"] is True
-    assert before["events"]
-    door = before["events"][0]["qs"]
+    assert before["sessions"]
+    door = before["sessions"][0]["qs"]
     assert surfaced.get(f"/g?{door}").status_code == 200
     conn = connect.connect(surfaced.app.state.db_path, read_only=True)
     try:
@@ -369,10 +386,10 @@ def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surface
         connect.close(conn)
     told = surfaced.post(f"/i/{slug}/place", json={"name": "Lisbon", "kind": "city"})
     assert told.status_code < 300, told.text
-    after = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    after = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert after["coverage"]["events_current"] is False
-    assert after["events"] == []
-    assert after["events_total"] == 0
+    assert after["sessions"] == []
+    assert after["sessions_total"] == 0
     assert "data-timeline-events-stale" in surfaced.get("/timeline", headers={"accept": "text/html"}).text
     density = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert density["coverage"]["events_current"] is False
@@ -415,3 +432,33 @@ def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
         assert total == bar["pictures"], (
             f"{bin_name} bar at {bar['at']}: bar says {bar['pictures']}, door opens {total}"
         )
+
+
+def test_past_the_sampling_bound_the_busiest_bins_still_carry_thumbnails(surfaced, monkeypatch):
+    """A strip always: past SAMPLED_BINS_MOST bins the busiest that many
+    are sampled and `sampled` says the strip is partial -- never an
+    empty strip with an apology."""
+    monkeypatch.setattr(pages, "SAMPLED_BINS_MOST", 1)
+    view = surfaced.get(
+        "/timeline/density",
+        params={"bin": "hour", "start": JUNE_10, "end": JUNE_10 + DAY},
+        headers={"accept": "application/json"},
+    ).json()
+    assert view["sampled"] is False
+    by_count = sorted(view["bins"], key=lambda b: -b["pictures"])
+    assert by_count[0]["pictures"] == 3
+    assert len(by_count[0]["samples"]) >= 1, "the busiest hour carries thumbnails"
+    assert all(b["samples"] == [] for b in by_count[1:]), "only the busiest one past the bound"
+
+
+def test_a_lean_ask_is_the_shape_alone(surfaced):
+    """The overview asks for the whole extent at week resolution with
+    `lean`: bins and extent, no thumbnails, no session cards."""
+    view = surfaced.get(
+        "/timeline/density", params={"bin": "week", "lean": "true"}, headers={"accept": "application/json"}
+    ).json()
+    assert view["extent"]["pictures"] == 8
+    assert view["bins"]
+    assert all(b["samples"] == [] for b in view["bins"])
+    assert view["sessions"] == []
+    assert view["sessions_total"] == 0

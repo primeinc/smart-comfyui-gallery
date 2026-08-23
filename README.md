@@ -59,7 +59,8 @@ console's **again** button beside the sweep, redoes all of it.
 /t/<slug>           an album or a smart collection   /albums
 /f/<slug>           a folder           /folders
 /m/<slug> /l/<slug> /w/<slug>   a model, a LoRA, a workflow
-/timeline           the library on its human axis: every month, day, bin and session a door; stories told from sessions;
+/timeline           the library on its human axis: one window (?start=&end=, opening on the last month), an overview
+                    with a brush and presets, every bar and session a door; stories told from sessions;
                     any gallery question scopes it (?folder= ?person= ?f=place.id:eq:N ...)
 /stories            every story told, newest first
 /stories/renders/N  a story: frozen evidence, a plan, words the plan supports; /stories/plans/N/evolution beside it

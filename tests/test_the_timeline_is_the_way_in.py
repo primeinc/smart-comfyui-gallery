@@ -103,18 +103,20 @@ def test_the_gallery_shows_its_facets_as_chips_that_can_go(doors):
     assert "data-chips" not in doors.get("/g").text
 
 
-def test_months_and_events_are_doors_too(doors):
+def test_every_bar_and_session_on_the_page_is_a_door(doors):
+    """/timeline as a machine reads it is the surface: the bars of the
+    opening window and the sessions touching it, each a door that opens
+    exactly its pictures; the page renders those same doors."""
     body = doors.get("/timeline", headers={"accept": "application/json"}).json()
-    for month in body["months"]:
-        assert "context.local_day%3Agte%3A" in month["qs"]
-        assert "context.local_day%3Alte%3A" in month["qs"]
-        assert _total(doors, month["qs"]) == month["pictures"], month
-    for event in body["events"]:
-        assert _total(doors, event["qs"]) == event["pictures"]
-        assert event["domain"] in ("wall", "instant")
-        assert event["start"] is not None
+    assert body["bins"]
+    for bar in body["bins"]:
+        assert _total(doors, bar["qs"]) == bar["pictures"], bar
+    for session in body["sessions"]:
+        assert _total(doors, session["qs"]) == session["pictures"]
+        assert session["domain"] in ("wall", "instant")
+        assert session["start"] is not None
     page = doors.get("/timeline", headers={"accept": "text/html"}).text
-    for marker in ("data-timeline-month=", "data-timeline-event=", "data-samples"):
+    for marker in ("data-bin-at=", "data-session-open=", "data-samples", "data-overview", "data-preset="):
         assert marker in page, marker
     coverage = body["coverage"]
     assert (coverage["interpreted"], coverage["present"], coverage["complete"]) == (8, 8, True)
@@ -300,8 +302,9 @@ def test_the_surface_can_be_scoped_by_the_gallerys_facets(doors):
     page = doors.get("/timeline", params={"f": spelled}, headers={"accept": "text/html"}).text
     assert "data-timeline-scope" in page
     shelf = doors.get("/timeline", params={"f": spelled}, headers={"accept": "application/json"}).json()
-    assert sum(m["pictures"] for m in shelf["months"]) == 2
-    assert all("place.id%3Aeq%3A" in d["qs"] for d in shelf["days"])
+    assert shelf["extent"]["pictures"] == 2
+    assert all("place.id%3Aeq%3A" in b["qs"] for b in shelf["bins"])
+    assert all("place.id%3Aeq%3A" in p["href"] for p in shelf["presets"]), "a preset keeps the scope"
     assert doors.get("/timeline/density", params={"bin": "day", "f": "event.id:eq:1"}).status_code == 400
     assert doors.get("/timeline/density", params={"bin": "day", "f": "vibe:eq:1"}).status_code == 400
 

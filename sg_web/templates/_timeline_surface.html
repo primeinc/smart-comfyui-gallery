@@ -1,0 +1,67 @@
+<section class="surface" data-surface
+         data-window-start="{{ surface.start }}" data-window-end="{{ surface.end }}"
+         {% if surface.extent %}data-extent-start="{{ surface.overview.start }}" data-extent-end="{{ surface.overview.end }}"{% endif %}
+         data-scope-qs="{{ surface.scope.qs if surface.scope else '' }}">
+  {% if surface.extent %}
+  <div class="surface-head">
+    <h2>surface</h2>
+    <nav class="surface-zoom" data-zoom aria-label="window presets">
+      {% for held in surface.presets %}<a href="{{ held.href }}" data-preset="{{ held.name }}"{% if held.current %} data-current{% endif %}>{{ held.name }}</a>{% endfor %}
+    </nav>
+    <span class="surface-window" data-window>{{ surface.start_spelled }} – {{ surface.end_spelled }}</span>
+    <span class="surface-legend"><i class="wall"></i> wall clock <i class="instant"></i> instant only <i class="span"></i> coarser claim</span>
+  </div>
+  <svg class="surface-overview" data-overview viewBox="0 0 1000 40" preserveAspectRatio="none" tabindex="0" role="slider"
+       aria-valuemin="{{ surface.overview.start }}" aria-valuemax="{{ surface.overview.end }}" aria-valuenow="{{ surface.start }}"
+       aria-label="the window on the whole library: drag to move, drag an edge to widen, arrows to step, + and - to zoom">
+    {% for bar in surface.overview.bars %}<rect class="overview-bar" x="{{ bar.x }}" y="{{ 40 - bar.h }}" width="{{ bar.w }}" height="{{ bar.h }}"><title>{{ bar.spelled }} · {{ bar.pictures }} pictures</title></rect>{% endfor %}
+    <rect class="brush" data-brush x="{{ surface.overview.brush.x }}" y="0" width="{{ surface.overview.brush.w }}" height="40"></rect>
+    <rect class="brush-edge" data-brush-edge="start" x="{{ surface.overview.brush.x - 3 }}" y="0" width="6" height="40"></rect>
+    <rect class="brush-edge" data-brush-edge="end" x="{{ surface.overview.brush.x + surface.overview.brush.w - 3 }}" y="0" width="6" height="40"></rect>
+  </svg>
+  <svg class="surface-strip" data-strip viewBox="0 0 1000 140" preserveAspectRatio="none" role="list" aria-label="pictures per {{ surface.bin }}">
+    {% for held in surface.spans %}<rect class="span" x="{{ held.x }}" y="106" width="{{ held.w }}" height="10"><title>{{ held.pictures }} pictures claim a {{ held.precision }} from {{ held.spelled }}</title></rect>{% endfor %}
+    {% for b in surface.bins %}
+    <a class="bin" data-bin-at="{{ b.at }}" href="{{ b.href }}" role="listitem"{% if b.finest %} data-bin-gallery{% else %} data-bin-window{% endif %}>
+      <rect class="wall" x="{{ b.x }}" y="{{ 100 - b.h }}" width="{{ b.w }}" height="{{ b.wall_h }}"></rect>
+      <rect class="instant" x="{{ b.x }}" y="{{ 100 - b.h + b.wall_h }}" width="{{ b.w }}" height="{{ b.h - b.wall_h }}"></rect>
+      <title>{{ b.spelled }} · {{ b.pictures }} pictures ({{ b.wall }} wall clock, {{ b.instant }} instant) · {{ b.origin.captured }} captured, {{ b.origin.generated }} generated, {{ b.origin.mixed }} mixed, {{ b.origin.imported }} imported · open: {% if b.finest %}{{ b.pictures }} pictures in the gallery{% else %}this {{ surface.bin }}{% endif %}</title>
+    </a>
+    {% endfor %}
+    <text class="axis" x="0" y="136">{{ surface.start_spelled }} – {{ surface.end_spelled }} · one bar per {{ surface.bin }}</text>
+  </svg>
+  <div class="surface-samples" data-samples data-state="shown">
+    {% for b in surface.bins if b.samples %}
+    <a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · {{ b.pictures }} pictures" data-bin-at="{{ b.at }}">
+      {% for slug in b.samples %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}<span>{{ b.pictures }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <p class="surface-note" data-note>{{ surface.note }}</p>
+  <ol class="surface-sessions" data-sessions>
+    {% if surface.sessions_total > surface.sessions | length %}
+    <li class="session-more" data-sessions-more="{{ surface.sessions_total - surface.sessions | length }}">{{ surface.sessions_total }} sessions touch this window; the {{ surface.sessions | length }} most recent are listed — narrow the window for the rest</li>
+    {% endif %}
+    {% for s in surface.sessions %}
+    <li class="session" data-session-kind="{{ s.kind }}" data-session-domain="{{ s.domain }}" data-session-id="{{ s.id }}">
+      <a class="session-strip" href="/g?{{ s.qs }}">{% for slug in s.samples %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}</a>
+      <div class="session-body">
+        <div class="session-head">{{ s.kind.replace("_", " ") }} · {% if s.in_scope != s.pictures %}{{ s.in_scope }} of {{ s.pictures }} pictures in scope{% else %}{{ s.pictures }} pictures{% endif %} · {{ s.start_spelled }} – {{ s.end_spelled }}</div>
+        {% if s.place %}<div class="session-people" data-session-place="{{ s.place.id }}">in <a href="/g?{{ s.place.qs }}">{{ s.place.name }}</a></div>{% endif %}
+        {% if s.people %}
+        <div class="session-people" data-session-people="{{ s.people | length }}">with {% for p in s.people %}{% if not loop.first %}, {% endif %}<a href="{{ p.href }}" title="{{ p.pictures }} of these pictures">{{ p.name or p.slug }}</a>{% endfor %}{% if s.people_total > s.people | length %} and {{ s.people_total - s.people | length }} others{% endif %}</div>
+        {% endif %}
+        <div class="session-doors">
+          <a href="/g?{{ s.qs }}" data-session-open="{{ s.id }}">open in gallery</a>
+          {% if s.story %}<a href="{{ s.story }}" data-session-story="{{ s.id }}">read the story</a>
+          {% elif s.tellable %}<button type="button" data-session-tell="{{ s.id }}" data-session-planner="{{ s.planner }}">tell the story</button><span class="session-status" data-session-status="{{ s.id }}"></span>
+          {% else %}<span class="session-status">no planner tells a {{ s.kind.replace("_", " ") }} yet</span>{% endif %}
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="empty">no interpreted pictures {% if surface.scope %}in this scope{% else %}yet — <a href="/operations">interpret the library</a> (context, then events) to build a history{% endif %}.</p>
+  {% endif %}
+</section>

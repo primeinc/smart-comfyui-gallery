@@ -883,13 +883,6 @@ _TIMELINE_DAYS_HEAD = (
 )
 _TIMELINE_DAYS_TAIL = " GROUP BY day ORDER BY day DESC LIMIT ?"
 TIMELINE_DAYS = _TIMELINE_DAYS_HEAD + _TIMELINE_DAYS_TAIL
-#: How many days the list above would hold uncut: the same rows, counted.
-_TIMELINE_DAYS_TOTAL_HEAD = (
-    "SELECT count(DISTINCT strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch'))"
-    "  FROM derived_media_context mc"
-    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
-    " WHERE mc.policy_version = ?"
-)
 
 #: Event runs answer only while they can PROVE they were computed over
 #: the current interpretation: generation and policy both match, or the
@@ -904,13 +897,6 @@ _TIMELINE_EVENTS_HEAD = (
 )
 _TIMELINE_EVENTS_TAIL = " ORDER BY e.instant_start DESC LIMIT ?"
 TIMELINE_EVENTS = _TIMELINE_EVENTS_HEAD + _TIMELINE_EVENTS_TAIL
-#: The same sessions, counted: what the list above would hold uncut.
-_TIMELINE_EVENTS_TOTAL_HEAD = (
-    "SELECT count(*)"
-    "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
-    " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
-    "   AND r.context_policy_version = ?"
-)
 #: Whether any session run stands at the current interpretation: False
 #: the moment a rebuild advanced the generation, until the events job
 #: runs again.
@@ -1074,8 +1060,9 @@ BINS = {"week": 604_800, "day": 86_400, "hour": 3_600, "quarter": 900, "minute":
 #: Where each bin's grid starts: Monday for the week, the epoch otherwise.
 MONDAY = 345_600
 _ANCHOR = {"week": MONDAY}
-#: Bins few enough to carry a thumbnail strip.
-SAMPLED_BINS_MOST = 120
+#: Bins sampled for the thumbnail strip: every bin up to this many; past
+#: it, the busiest this many -- a strip always, never an apology.
+SAMPLED_BINS_MOST = 400
 SAMPLES_PER_BIN = 3
 SAMPLES_PER_SESSION = 6
 #: Which precisions are fine enough for each bin: a claim enters a bin
@@ -1127,16 +1114,14 @@ def timeline_density(conn, bin_name: str, lo: float, hi: float, scope: tuple[str
 
 
 def timeline_samples(
-    conn, bin_name: str, lo: float, hi: float, bins: int, scope: tuple[str, list] = ("", [])
+    conn, bin_name: str, lo: float, hi: float, only=None, scope: tuple[str, list] = ("", [])
 ) -> dict[int, list[str]]:
     """`{bin: [slug, ...]}` -- the first SAMPLES_PER_BIN pictures of each
-    bin, when the answer carries SAMPLED_BINS_MOST bins or fewer; an
-    empty map otherwise, and the page says so rather than drawing a
-    strip of 4,000 thumbnails."""
+    bin in [lo, hi); of the bins in `only` when the caller bounded the
+    strip (the busiest SAMPLED_BINS_MOST, sg_web/timeline_view.py)."""
     import json as _json
 
-    if bins > SAMPLED_BINS_MOST:
-        return {}
+    wanted = None if only is None else {int(at) for at in only}
     width = BINS[bin_name]
     anchor = _ANCHOR.get(bin_name, 0)
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
@@ -1145,7 +1130,8 @@ def timeline_samples(
         _TIMELINE_BIN_SAMPLES_HEAD + scope[0] + _TIMELINE_BIN_SAMPLES_TAIL,
         (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, *scope[1], SAMPLES_PER_BIN),
     ):
-        held.setdefault(int(at), []).append(slug)
+        if wanted is None or int(at) in wanted:
+            held.setdefault(int(at), []).append(slug)
     return held
 
 
@@ -1194,16 +1180,6 @@ def timeline_events(conn, limit: int = 200, scope: tuple[str, list] = ("", [])):
         _TIMELINE_EVENTS_HEAD + _members_in(scope) + _TIMELINE_EVENTS_TAIL,
         (context.POLICY_VERSION, *scope[1], limit),
     ).fetchall()
-
-
-def timeline_days_total(conn, scope: tuple[str, list] = ("", [])) -> int:
-    row = conn.execute(_TIMELINE_DAYS_TOTAL_HEAD + scope[0], (context.POLICY_VERSION, *scope[1])).fetchone()
-    return int(row[0] or 0)
-
-
-def timeline_events_total(conn, scope: tuple[str, list] = ("", [])) -> int:
-    row = conn.execute(_TIMELINE_EVENTS_TOTAL_HEAD + _members_in(scope), (context.POLICY_VERSION, *scope[1])).fetchone()
-    return int(row[0] or 0)
 
 
 def timeline_events_current(conn) -> bool:

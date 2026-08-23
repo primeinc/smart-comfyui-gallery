@@ -15,8 +15,8 @@ instead of pretending an unindexed library has no past.
 
 from __future__ import annotations
 
-import calendar
 import dataclasses
+import datetime
 import pathlib
 import time
 from typing import Annotated
@@ -30,7 +30,7 @@ from litestar.response import Response, Template
 from db import connect, context, facets, pages, planning, resultset, settings
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
-from sg_web.presenting import VARIES, presented_page
+from sg_web.presenting import VARIES, presented
 
 #: The surface's scope is a gallery question (db/resultset.py scope_of):
 #: its scopes and facets in the live spelling, unsorted, unpaged. The
@@ -44,20 +44,6 @@ def _door(question: resultset.GalleryQuery, *held: facets.Facet) -> str:
         question, facets=tuple(sorted({*question.facets, *held}, key=facets.spell)), sort="moment", text=None
     )
     return resultset.canonical(asked)
-
-
-def _day_door(day: str, question: resultset.GalleryQuery = WHOLE) -> str:
-    return _door(question, facets.facet("context.local_day", "eq", day))
-
-
-def _month_door(month: str, question: resultset.GalleryQuery = WHOLE) -> str:
-    year, mo = (int(part) for part in month.split("-"))
-    last = calendar.monthrange(year, mo)[1]
-    return _door(
-        question,
-        facets.facet("context.local_day", "gte", f"{month}-01"),
-        facets.facet("context.local_day", "lte", f"{month}-{last:02d}"),
-    )
 
 
 def _bin_door(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -> str:
@@ -150,16 +136,22 @@ PLANNER_FOR = {
 
 _SPAN = {"day": 86_400, "hour": 3_600, "minute": 60}
 
-#: Sessions one answer lists, and how many of those carry thumbnails --
-#: a whole library's extent at the day zoom can touch thousands of
-#: sessions; the page lists a bounded head, says how many more there
-#: are, and the person zooms in. Never a silent cut.
+#: Sessions one answer lists -- a whole library's extent can touch
+#: thousands; the page lists the most recent this many, says how many
+#: more there are, and the person narrows the window. Never a silent
+#: cut. Every listed session carries its thumbnails.
 SESSIONS_MOST = 200
-SESSIONS_SAMPLED_MOST = 60
-#: Days and events the page lists, newest first; the totals ride beside
-#: the lists so a cut is said, never silent.
-DAYS_MOST = 400
-EVENTS_MOST = 200
+SESSIONS_SAMPLED_MOST = SESSIONS_MOST
+#: How much time a first visit shows: the last month that holds pictures,
+#: clipped to the library -- never the whole library at once.
+OPENING = 30 * 86_400
+#: The presets beside the window, each ending at the newest picture.
+PRESETS = (("1w", 7 * 86_400), ("1m", 30 * 86_400), ("3m", 91 * 86_400), ("1y", 365 * 86_400), ("all", None))
+#: The zoom follows the window's width: enough bars to see the shape,
+#: never more than the strip samples thumbnails for.
+_ZOOM = (("minute", 6 * 3_600), ("quarter", 2 * 86_400), ("hour", 14 * 86_400), ("day", 183 * 86_400))
+#: The drawing's width in its own units (the SVG viewBox).
+_W = 1000
 
 
 def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.GalleryQuery = WHOLE) -> dict:
@@ -231,10 +223,199 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
     }
 
 
+def _bin_for(width: float) -> str:
+    for name, most in _ZOOM:
+        if width <= most:
+            return name
+    return "week"
+
+
+def _spell(epoch: float, bin_name: str, domain: str | None = None) -> str:
+    """The moment as the page says it: the UTC day, and the clock past
+    the day zoom; `Z` for an instant, `wall` for a wall clock."""
+    d = datetime.datetime.fromtimestamp(epoch, datetime.UTC)
+    suffix = "Z" if domain == "instant" else " wall" if domain == "wall" else ""
+    if bin_name in ("day", "week"):
+        return d.strftime("%Y-%m-%d") + suffix
+    return d.strftime("%Y-%m-%d %H:%M") + suffix
+
+
+def _window_url(question: resultset.GalleryQuery, start: float, end: float) -> str:
+    qs = resultset.canonical(question)
+    return f"/timeline?{qs + '&' if qs else ''}start={int(start)}&end={int(end)}"
+
+
+def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, bin_name=None, lean=False) -> dict:
+    """The surface at one window: pictures per bin of the human moment
+    over [start, end) -- the last month that holds pictures when no
+    window is asked -- split by clock domain and by origin, with a
+    thumbnail sample per bin (the busiest past SAMPLED_BINS_MOST); the
+    claims too coarse for the bin as spans; the sessions touching the
+    window in their own domain, each a door to its pictures and to its
+    story; the whole extent at week resolution as the overview the
+    brush rides. The zoom follows the window's width unless `bin_name`
+    asks for one. Every bin is a door into the gallery, carrying the
+    scope. `lean` is the shape alone: no thumbnails, no session cards.
+    A window wider than the page can draw is refused with the remedy."""
+    scope, held = _scope(conn, state, asked)
+    coverage = _coverage(conn, scope, held)
+    extent = pages.timeline_extent(conn, scope)
+    scope_told = _scope_told(held)
+    if extent is None or extent[0] is None:
+        return {
+            "bin": bin_name or "day",
+            "bin_seconds": pages.BINS.get(bin_name or "day"),
+            "start": None,
+            "end": None,
+            "start_spelled": "",
+            "end_spelled": "",
+            "scope": scope_told,
+            "extent": None,
+            "overview": None,
+            "presets": [],
+            "coverage": coverage,
+            "sampled": True,
+            "bins": [],
+            "spans": [],
+            "note": "",
+            "sessions": [],
+            "sessions_total": 0,
+            "sessions_sampled": True,
+        }
+    whole_lo, whole_hi = float(extent[0]), float(extent[1]) + 1.0
+    lo = float(start) if start is not None else max(whole_lo, whole_hi - OPENING)
+    hi = float(end) if end is not None else whole_hi
+    if start is not None and end is None:
+        hi = whole_hi
+    bin_name = bin_name or _bin_for(hi - lo)
+    try:
+        width, bins, spans = pages.timeline_density(conn, bin_name, lo, hi, scope)
+        overview_width, overview_bins, _ = pages.timeline_density(conn, "week", whole_lo, whole_hi, scope)
+    except ValueError as refused:
+        raise ClientException(str(refused)) from refused
+    every = len(bins) <= pages.SAMPLED_BINS_MOST
+    busiest = (
+        None if every else [at for at, pictures, *_ in sorted(bins, key=lambda b: -b[1])[: pages.SAMPLED_BINS_MOST]]
+    )
+    samples = {} if lean else pages.timeline_samples(conn, bin_name, lo, hi, busiest, scope)
+    rows = [] if lean else pages.timeline_sessions(conn, lo, hi, scope)
+    listed = rows[:SESSIONS_MOST]
+    sessions = [_session(conn, row, samples=len(listed) <= SESSIONS_SAMPLED_MOST, scope=held) for row in listed]
+    for one in sessions:
+        one["start_spelled"] = _spell(one["start"], "hour", one["domain"])
+        one["end_spelled"] = _spell(one["end"], "hour", one["domain"])
+
+    span = max(1.0, hi - lo)
+    most = max([1, *(pictures for _, pictures, *_ in bins)])
+    bar_w = max(1.0, (width / span) * _W - 0.5)
+    finest = bin_name == "minute"
+    told_bins = []
+    for at, pictures, wall, instant, captured, generated, mixed, imported in bins:
+        h = (pictures / most) * 100
+        told_bins.append(
+            {
+                "at": at,
+                "pictures": pictures,
+                "wall": wall,
+                "instant": instant,
+                "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
+                "samples": samples.get(int(at), []),
+                "qs": _bin_door(at, width, held),
+                "spelled": _spell(at, bin_name),
+                "finest": finest,
+                "href": f"/g?{_bin_door(at, width, held)}" if finest else _window_url(held, at, at + width),
+                "x": round(((at - lo) / span) * _W, 2),
+                "w": round(bar_w, 2),
+                "h": round(h, 2),
+                "wall_h": round((wall / pictures) * h, 2) if pictures else 0,
+            }
+        )
+    whole_span = max(1.0, whole_hi - whole_lo)
+    overview_most = max([1, *(pictures for _, pictures, *_ in overview_bins)])
+    overview = {
+        "start": whole_lo,
+        "end": whole_hi,
+        "bin_seconds": overview_width,
+        "bars": [
+            {
+                "at": at,
+                "pictures": pictures,
+                "spelled": _spell(at, "week"),
+                "x": round(((at - whole_lo) / whole_span) * _W, 2),
+                "w": round(max(1.0, (overview_width / whole_span) * _W), 2),
+                "h": round(max(1.0, (pictures / overview_most) * 36), 2),
+            }
+            for at, pictures, *_ in overview_bins
+        ],
+        "brush": {
+            "x": round(((lo - whole_lo) / whole_span) * _W, 2),
+            "w": round(max(2.0, ((hi - lo) / whole_span) * _W), 2),
+        },
+    }
+    presets = []
+    for name, wide in PRESETS:
+        p_start = whole_lo if wide is None else max(whole_lo, whole_hi - wide)
+        current = (
+            (lo <= whole_lo and hi >= whole_hi) if wide is None else (abs((hi - lo) - wide) < 1 and hi == whole_hi)
+        )
+        presets.append(
+            {
+                "name": name,
+                "start": p_start,
+                "end": whole_hi,
+                "href": _window_url(held, p_start, whole_hi),
+                "current": current,
+            }
+        )
+    fine = sum(b["pictures"] for b in told_bins)
+    coarse = sum(pictures for _, _, pictures in spans)
+    note = f"{fine} pictures in this window, one bar per {bin_name}"
+    if coarse:
+        note += f"; {coarse} claim only a coarser window, drawn as spans"
+    if not every:
+        note += f" · thumbnails for the {sum(1 for b in told_bins if b['samples'])} busiest {bin_name}s"
+    if not coverage["complete"]:
+        note += f" · {coverage['present'] - coverage['interpreted']} files not yet interpreted"
+    if coverage["present"] and not coverage["events_current"]:
+        note += " · sessions need the events job: the interpretation moved since they were grouped"
+    return {
+        "bin": bin_name,
+        "bin_seconds": width,
+        "start": lo,
+        "end": hi,
+        "start_spelled": _spell(lo, "hour"),
+        "end_spelled": _spell(hi, "hour"),
+        "scope": scope_told,
+        "extent": {"start": extent[0], "end": extent[1], "pictures": extent[2]},
+        "overview": overview,
+        "presets": presets,
+        "coverage": coverage,
+        #: every bin carries thumbnails; False when only the busiest do
+        "sampled": every,
+        "bins": told_bins,
+        "spans": [
+            {
+                "start": s,
+                "end": s + _SPAN[precision],
+                "precision": precision,
+                "pictures": pictures,
+                "spelled": _spell(s, "hour"),
+                "x": round(((s - lo) / span) * _W, 2),
+                "w": round(max(1.0, (_SPAN[precision] / span) * _W), 2),
+            }
+            for s, precision, pictures in spans
+        ],
+        "note": note,
+        "sessions": sessions,
+        "sessions_total": len(rows),
+        "sessions_sampled": len(listed) <= SESSIONS_SAMPLED_MOST,
+    }
+
+
 @get("/timeline/density", sync_to_thread=True)
 def density(
     state: State,
-    bin_name: Annotated[str, QueryParameter(name="bin")] = "day",
+    bin_name: Annotated[str | None, QueryParameter(name="bin")] = None,
     start: FromQuery[float | None] = None,
     end: FromQuery[float | None] = None,
     folder: FromQuery[str | None] = None,
@@ -245,92 +426,33 @@ def density(
     favorite: FromQuery[str | None] = None,
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
+    lean: FromQuery[bool] = False,
 ) -> Response:
-    """The surface at one zoom: pictures per bin of the human moment
-    over [start, end) -- the whole interpreted extent when no range is
-    asked -- split by clock domain and by origin, with a thumbnail
-    sample per bin when the bins are few; the claims too coarse for
-    the bin as spans; the sessions touching the range in their own
-    domain, each a door to its pictures and to its story. Every bin is
-    a door into the gallery. `f` scopes the surface by the gallery's
-    own facets -- a place, an origin, a day -- and every door carries
-    the scope. A range wider than the page can draw is refused with the
-    remedy."""
+    """The surface as JSON (`_surface`): the same answer `/timeline`
+    gives a machine, with `bin` as an explicit zoom when asked and the
+    whole extent when no window is -- the machine's spelling."""
     asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
+    if bin_name is not None and bin_name not in pages.BINS:
+        raise ClientException(f"no bin named {bin_name!r}; one of {', '.join(pages.BINS)}")
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        scope, held = _scope(conn, state, asked)
-        coverage = _coverage(conn, scope, held)
-        extent = pages.timeline_extent(conn, scope)
-        if extent is None or extent[0] is None:
-            return Response(
-                {
-                    "bin": bin_name,
-                    "bin_seconds": pages.BINS.get(bin_name),
-                    "start": None,
-                    "end": None,
-                    "scope": _scope_told(held),
-                    "extent": None,
-                    "coverage": coverage,
-                    "sampled": True,
-                    "bins": [],
-                    "spans": [],
-                    "sessions": [],
-                    "sessions_total": 0,
-                    "sessions_sampled": True,
-                },
-                headers=VARIES,
-            )
-        lo = float(start) if start is not None else float(extent[0])
-        hi = float(end) if end is not None else float(extent[1]) + 1.0
-        try:
-            width, bins, spans = pages.timeline_density(conn, bin_name, lo, hi, scope)
-        except ValueError as refused:
-            raise ClientException(str(refused)) from refused
-        samples = pages.timeline_samples(conn, bin_name, lo, hi, len(bins), scope)
-        rows = pages.timeline_sessions(conn, lo, hi, scope)
-        listed = rows[:SESSIONS_MOST]
-        sessions = [_session(conn, row, samples=len(listed) <= SESSIONS_SAMPLED_MOST, scope=held) for row in listed]
+        if start is None and end is None:
+            extent = pages.timeline_extent(conn, _scope(conn, state, asked)[0])
+            if extent is not None and extent[0] is not None:
+                start, end = float(extent[0]), float(extent[1]) + 1.0
+        told = _surface(conn, state, asked, start, end, bin_name=bin_name, lean=lean)
     finally:
         connect.close(conn)
-    return Response(
-        {
-            "bin": bin_name,
-            "bin_seconds": width,
-            "start": lo,
-            "end": hi,
-            "scope": _scope_told(held),
-            "extent": {"start": extent[0], "end": extent[1], "pictures": extent[2]},
-            "coverage": coverage,
-            "sampled": bool(samples) or not bins,
-            "bins": [
-                {
-                    "at": at,
-                    "pictures": pictures,
-                    "wall": wall,
-                    "instant": instant,
-                    "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
-                    "samples": samples.get(int(at), []),
-                    "qs": _bin_door(at, width, held),
-                }
-                for at, pictures, wall, instant, captured, generated, mixed, imported in bins
-            ],
-            "spans": [
-                {"start": s, "end": s + _SPAN[precision], "precision": precision, "pictures": pictures}
-                for s, precision, pictures in spans
-            ],
-            "sessions": sessions,
-            "sessions_total": len(rows),
-            "sessions_sampled": len(listed) <= SESSIONS_SAMPLED_MOST,
-        },
-        headers=VARIES,
-    )
+    return Response(told, headers=VARIES)
 
 
 @get("/timeline", sync_to_thread=True)
 def timeline(
     state: State,
     request: Request,
+    start: FromQuery[float | None] = None,
+    end: FromQuery[float | None] = None,
+    bin_name: Annotated[str | None, QueryParameter(name="bin")] = None,
     folder: FromQuery[str | None] = None,
     album: FromQuery[str | None] = None,
     person: FromQuery[str | None] = None,
@@ -340,59 +462,14 @@ def timeline(
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
 ) -> Template | Response:
+    """The timeline at one window: JSON to a machine, the surface fragment
+    to htmx (what a brush move fetches), the page to a browser -- one
+    builder, one renderer. `bin` is accepted from older doors and
+    ignored: the zoom follows the window."""
     asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        scope, held = _scope(conn, state, asked)
-        coverage = _coverage(conn, scope, held)
-        months = [
-            {"month": month, "pictures": pictures, "qs": _month_door(month, held)}
-            for month, pictures in pages.timeline_months(conn, scope)
-        ]
-        days = [
-            {"day": day, "pictures": pictures, "qs": _day_door(day, held)}
-            for day, pictures in pages.timeline_days(conn, DAYS_MOST, scope=scope)
-        ]
-        days_total = pages.timeline_days_total(conn, scope)
-        happenings = [
-            {
-                "id": event_id,
-                "grouper": grouper,
-                "kind": kind,
-                "local_start": local_start,
-                "local_end": local_end,
-                "instant_start": instant_start,
-                "instant_end": instant_end,
-                "start": local_start if local_start is not None else instant_start,
-                "domain": "wall" if local_start is not None else "instant",
-                "confidence": confidence,
-                "member_hash": member_hash,
-                "pictures": pictures,
-                "qs": _event_door(event_id, held),
-            }
-            for (
-                event_id,
-                grouper,
-                kind,
-                local_start,
-                local_end,
-                instant_start,
-                instant_end,
-                confidence,
-                member_hash,
-                pictures,
-            ) in pages.timeline_events(conn, EVENTS_MOST, scope=scope)
-        ]
-        events_total = pages.timeline_events_total(conn, scope)
+        told = _surface(conn, state, asked, start, end)
     finally:
         connect.close(conn)
-    told = {
-        "months": months,
-        "days": days,
-        "days_total": days_total,
-        "events": happenings,
-        "events_total": events_total,
-        "coverage": coverage,
-        "scope": _scope_told(held),
-    }
-    return presented_page(request, told, page="timeline.html")
+    return presented(request, told, page="timeline.html", fragment="_timeline_surface.html", name="surface")

@@ -5,72 +5,21 @@
   <header class="bar">
     <nav class="crumbs">
       <span class="crumbs-here">Timeline</span>
-      <span class="crumbs-where" data-coverage data-complete="{{ 'yes' if coverage.complete else 'no' }}">
-        {{ "{:,}".format(coverage.interpreted) }} of {{ "{:,}".format(coverage.present) }} files interpreted
-        · policy v{{ coverage.policy_version }}
-        {% if coverage.contested %}· <a href="/g?{{ coverage.contested_qs }}" data-timeline-contested title="pictures whose sources disagree about when">{{ "{:,}".format(coverage.contested) }} contested</a>{% endif %}
-        {% if not coverage.complete %}· <a href="/operations">interpret the rest</a>{% endif %}
-        {% if coverage.present and not coverage.events_current %}· <a href="/operations" data-timeline-events-stale title="the interpretation moved since sessions were last grouped">sessions need the events job</a>{% endif %}
+      <span class="crumbs-where" data-coverage data-complete="{{ 'yes' if surface.coverage.complete else 'no' }}">
+        {{ "{:,}".format(surface.coverage.interpreted) }} of {{ "{:,}".format(surface.coverage.present) }} files interpreted
+        · policy v{{ surface.coverage.policy_version }}
+        {% if surface.coverage.contested %}· <a href="/g?{{ surface.coverage.contested_qs }}" data-timeline-contested title="pictures whose sources disagree about when">{{ "{:,}".format(surface.coverage.contested) }} contested</a>{% endif %}
+        {% if not surface.coverage.complete %}· <a href="/operations">interpret the rest</a>{% endif %}
+        {% if surface.coverage.present and not surface.coverage.events_current %}· <a href="/operations" data-timeline-events-stale title="the interpretation moved since sessions were last grouped">sessions need the events job</a>{% endif %}
       </span>
     </nav>
   </header>
   <main class="stage">
-    {% if scope %}
-    <p class="places-line" data-timeline-scope="{{ scope.qs }}">scoped to {% for one in scope.parts %}<code>{{ one.spelled if one.spelled is defined else one.key ~ "=" ~ one.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/g?{{ scope.qs }}">open in the gallery</a> &middot; <a href="/timeline">the whole library</a></p>
+    {% if surface.scope %}
+    <p class="places-line" data-timeline-scope="{{ surface.scope.qs }}">scoped to {% for one in surface.scope.parts %}<code>{{ one.spelled if one.spelled is defined else one.key ~ "=" ~ one.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/g?{{ surface.scope.qs }}">open in the gallery</a> &middot; <a href="/timeline">the whole library</a></p>
     {% endif %}
-    {% if months %}
-    <section class="surface" data-surface>
-      <div class="surface-head">
-        <h2>surface</h2>
-        <nav class="surface-zoom" data-zoom></nav>
-        <span class="surface-legend"><i class="wall"></i> wall clock <i class="instant"></i> instant only <i class="span"></i> coarser claim</span>
-      </div>
-      <svg class="surface-strip" data-strip viewBox="0 0 1000 140" preserveAspectRatio="none" role="list" aria-label="pictures per bin"></svg>
-      <div class="surface-samples" data-samples></div>
-      <p class="surface-note" data-note></p>
-      <ol class="surface-sessions" data-sessions></ol>
-    </section>
-    <section class="detail-facts">
-      <h2>months</h2>
-      <ul class="album-tree">
-        {% for held in months %}
-        <li>
-          <a href="/g?{{ held.qs }}" data-timeline-month="{{ held.month }}">{{ held.month }}</a>
-          <span class="album-count">{{ held.pictures }} pictures</span>
-        </li>
-        {% endfor %}
-      </ul>
-    </section>
-    {% if days %}
-    <section class="detail-facts">
-      <h2>days{% if days_total > days | length %} <span class="album-count" data-timeline-days-cut>{{ days | length }} of {{ "{:,}".format(days_total) }}</span>{% endif %}</h2>
-      <ul>
-        {% for held in days %}
-        <li>
-          <a href="/g?{{ held.qs }}" data-timeline-day="{{ held.day }}">{{ held.day }}</a>
-          <span class="album-count">{{ held.pictures }} pictures</span>
-        </li>
-        {% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-    {% if events %}
-    <section class="detail-facts">
-      <h2>events{% if events_total > events | length %} <span class="album-count" data-timeline-events-cut>{{ events | length }} of {{ "{:,}".format(events_total) }}</span>{% endif %}</h2>
-      <ul>
-        {% for held in events %}
-        <li data-event-kind="{{ held.kind }}">
-          <a href="/g?{{ held.qs }}" data-timeline-event="{{ held.id }}">{{ held.kind.replace("_", " ") }}</a>
-          <span class="album-count">{{ held.pictures }} pictures · <time data-epoch="{{ held.start }}" data-domain="{{ held.domain }}">{{ held.start }}</time></span>
-        </li>
-        {% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-    {% else %}
-    <p class="empty">
-      no interpreted history yet — <a href="/operations">interpret the library</a> (context, then events) to build one.
-    </p>
-    {% endif %}
+    <div id="timeline-swap">
+      {% include "_timeline_surface.html" %}
+    </div>
   </main>
 {% endblock %}
