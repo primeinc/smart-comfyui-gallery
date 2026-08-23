@@ -163,6 +163,9 @@ def _drain(client) -> None:
 
 
 def _library(client, root) -> None:
+    # about whens, never thumbnails: the scan's precache job would decode
+    # every file of the real swarm library for previews nothing here reads
+    client.post("/settings/thumbnail_precache", json={"value": "off"})
     client.post("/roots", json={"path": str(root)})
     client.post("/roots/1/scan")
     conn = connect.connect(client.app.state.db_path)
