@@ -264,6 +264,14 @@ def test_operations_is_one_router_over_the_runtime(served):
     assert str(root) in page.text
     for kind in ("ingest", "verify", "phash", "faces", "cluster", "annotate", "context", "events"):
         assert f'hx-post="/operations/jobs/{kind}"' in page.text, kind
+    for kind in ("phash", "faces", "embed", "annotate", "context"):
+        assert f'hx-post="/operations/jobs/{kind}?everything=true"' in page.text, f"{kind} has an 'again'"
+    for kind in ("ingest", "verify", "cluster", "events"):
+        assert f'data-launch-again="{kind}"' not in page.text, f"{kind} already does all of it"
+    again = client.post("/operations/jobs/phash", params={"everything": "true"})
+    assert again.status_code == 200, again.text
+    assert "all of it again: queued #" in again.text
+    assert client.post("/operations/jobs/verify", params={"everything": "true"}).status_code == 404
     assert 'data-setting="worker"' in page.text
 
     started = client.post("/operations/jobs/verify")

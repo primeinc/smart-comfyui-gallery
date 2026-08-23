@@ -105,8 +105,12 @@
       <p class="operations-hint">every sweep is a job row the worker drains; it appears in the matrix and on the ledger the moment it is queued.</p>
       <div class="operations-launchers">
         {% for one in launchers %}
+        <span class="operations-launch">
         <button type="button" data-launch="{{ one.kind }}"
                 hx-post="/operations/jobs/{{ one.kind }}" hx-target="#shell-notice" hx-swap="innerHTML">{{ one.label }}</button>
+        {%- if one.again %}<button type="button" class="operations-again" data-launch-again="{{ one.kind }}" title="all of it again, not only what is missing"
+                hx-post="/operations/jobs/{{ one.kind }}?everything=true" hx-target="#shell-notice" hx-swap="innerHTML">again</button>{% endif %}
+        </span>
         {% endfor %}
       </div>
     </section>

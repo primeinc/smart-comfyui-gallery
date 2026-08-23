@@ -124,6 +124,38 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
 }
 
 
+def _phash_again(state: State, conn) -> list[int]:
+    return [runner.submit_phash(conn, time.time(), everything=True)]
+
+
+def _faces_again(state: State, conn) -> list[int]:
+    cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
+    return [runner.submit_faces(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache, everything=True)]
+
+
+def _embed_again(state: State, conn) -> list[int]:
+    return runner.submit_embed(conn, time.time(), models_dir=_weights(state, conn), everything=True)
+
+
+def _annotate_again(state: State, conn) -> list[int]:
+    return [runner.submit_annotate(conn, time.time(), models_dir=_weights(state, conn), everything=True)]
+
+
+def _context_again(state: State, conn) -> list[int]:
+    return [runner.submit_context(conn, time.time(), everything=True)]
+
+
+#: The sweeps that are for what is missing, each with its "all of it
+#: again" -- the second button beside the first, never a hidden flag.
+AGAIN: dict[str, Launcher] = {
+    "phash": _phash_again,
+    "faces": _faces_again,
+    "embed": _embed_again,
+    "annotate": _annotate_again,
+    "context": _context_again,
+}
+
+
 def _roots(conn) -> list[dict]:
     """Every root with its live reachability -- the probe only, no write
     (db/library.py probe_roots); the JSON /roots route is what records."""
@@ -143,7 +175,9 @@ def _page_context(state: State) -> dict:
             "roots": _roots(conn),
             "settings": settings.snapshot(conn),
             "clusterings": pages.clusterings(conn),
-            "launchers": [{"kind": kind, "label": label} for kind, (label, _) in LAUNCHERS.items()],
+            "launchers": [
+                {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
+            ],
             "notice": None,
             "overview": inspecting.overview(conn, now),
             "matrix": inspecting.matrix(conn, now),
@@ -293,14 +327,21 @@ def events_before(state: State, before: int = 0, job: int | None = None, limit: 
 
 
 @post("/jobs/{kind:str}", sync_to_thread=True)
-def launch(state: State, kind: FromPath[str]) -> Template:
-    """Start one sweep from its button. The answer is the notice fragment;
-    the job itself arrives on the activity surface through the feed, as
-    every job does, so the page never grows a second list of jobs."""
+def launch(state: State, kind: FromPath[str], everything: bool = False) -> Template:
+    """Start one sweep from its button -- `?everything=true` from the
+    "again" button of a sweep that is otherwise for what is missing. The
+    answer is the notice fragment; the job itself arrives on the
+    activity surface through the feed, as every job does, so the page
+    never grows a second list of jobs."""
     found = LAUNCHERS.get(kind)
     if found is None:
         raise NotFoundException(f"/operations/jobs/{kind}: nothing to start by that name")
     label, launcher = found
+    if everything:
+        again = AGAIN.get(kind)
+        if again is None:
+            raise NotFoundException(f"/operations/jobs/{kind}: this sweep has no 'again'; it already does all of it")
+        label, launcher = f"{label}, all of it again", again
     conn = connect.connect(state.db_path)
     try:
         try:

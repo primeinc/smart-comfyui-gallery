@@ -183,3 +183,6 @@
 .tape-text { overflow: hidden; text-overflow: ellipsis; }
 .tape-raw { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
 .tape-raw pre { margin: 0; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 46vh; overflow: auto; color: var(--ink); }
+
+.operations-launch { display: inline-flex; }
+.operations-launch .operations-again { margin-left: 2px; padding-left: 6px; padding-right: 6px; opacity: .8; }
