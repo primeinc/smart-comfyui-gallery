@@ -175,30 +175,6 @@ CONDITIONS: dict[str, str] = {
 #: any other kind settles the item, and the live report with it.
 INSIDE_ITEM = frozenset({"phase.started", "phase.progress", "phase.finished", "item.observed"})
 
-#: What a ledger event can be, per db/schema.sql job_event.type.
-EventType = Literal[
-    "job.submitted",
-    "job.claimed",
-    "job.reclaimed",
-    "job.paused",
-    "job.cancel_requested",
-    "job.cancelled",
-    "job.done",
-    "job.failed",
-    "item.started",
-    "item.done",
-    "item.failed",
-    "item.observed",
-    "phase.started",
-    "phase.progress",
-    "phase.finished",
-    "checkpoint.changed",
-    "worker.turn_failed",
-]
-
-#: How loudly, per db/schema.sql job_event.severity.
-Severity = Literal["info", "warning", "error"]
-
 
 class Reported(Wire):
     """What a handler said, whether or not it became a row.
@@ -214,10 +190,11 @@ class Reported(Wire):
 
     job_id: int
     at: float
-    type: EventType
+    #: the schema's vocabulary, imported rather than restated
+    type: ledger.EventType
     item_id: int | None
     phase: str | None
-    severity: Severity
+    severity: ledger.Severity
     message: str | None
     #: whatever the event carried, with every secret-named key replaced
     #: (db/ledger.py redacted)
@@ -326,7 +303,7 @@ class BacklogFrame(Wire):
 #: single event or an id off a pending report.
 #:
 #: Not an OpenAPI path -- a socket has none -- so this is carried into the
-#: contract by sg_web/wire.py socket_frames(), which puts the union in the
+#: contract by socket_frames() below, which puts the union in the
 #: document's components. The browser's type is generated from that, never
 #: written twice.
 Frame = EventFrame | PendingFrame | BacklogFrame
@@ -342,6 +319,17 @@ def socket_frames() -> Frame:
     this contract exists to remove. Declaring the union as one route's
     answer puts all three arms in components, and openapi-typescript
     generates the browser's union from them.
+
+    A route, and not `OpenAPIConfig(components=...)`, because that field
+    cannot carry a schema: the document is assembled with
+    `openapi.components.schemas = context.schema_registry
+    .generate_components_schemas()`
+    (litestar-org/litestar@v2.24.0 litestar/_openapi/plugin.py:90) -- an
+    assignment, so whatever the config supplied is replaced by exactly
+    what the routes generated. Measured: a Components(schemas={...})
+    passed to the config leaves an empty `components.schemas` in the
+    served document. A route is therefore the only seam that reaches the
+    generator without restating the three models by hand.
 
     It answers the empty backlog rather than raising: a route that exists
     only to be read by a generator is still a route somebody can request,

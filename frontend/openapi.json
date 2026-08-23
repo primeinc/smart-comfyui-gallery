@@ -8013,11 +8013,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "One job, whole: its row, its numbers, its turns and the newest of its events",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "$ref": "#/components/schemas/JobDetail"
+                                }
                             }
                         }
                     },
@@ -8122,11 +8123,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "A page of one job's units, in unit order, with the cursor for the next page",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "$ref": "#/components/schemas/ItemPage"
+                                }
                             }
                         }
                     },
@@ -8730,6 +8732,54 @@
                 ],
                 "title": "AnswerAfter"
             },
+            "Attempt": {
+                "properties": {
+                    "at": {
+                        "type": "number"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "job.submitted",
+                            "job.claimed",
+                            "job.reclaimed",
+                            "job.paused",
+                            "job.cancel_requested",
+                            "job.cancelled",
+                            "job.done",
+                            "job.failed",
+                            "item.started",
+                            "item.done",
+                            "item.failed",
+                            "item.observed",
+                            "phase.started",
+                            "phase.progress",
+                            "phase.finished",
+                            "checkpoint.changed",
+                            "worker.turn_failed"
+                        ]
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "data",
+                    "type"
+                ],
+                "title": "Attempt"
+            },
             "AuthoredAnswer": {
                 "properties": {
                     "slug": {
@@ -9269,6 +9319,99 @@
                 ],
                 "title": "Curated"
             },
+            "CurrentWork": {
+                "properties": {
+                    "item": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/NamedItem"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "since": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/LivePhase"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last_settled_phase": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/SettledPhase"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "item",
+                    "last_settled_phase",
+                    "phase",
+                    "since"
+                ],
+                "title": "CurrentWork"
+            },
+            "Defect": {
+                "properties": {
+                    "at": {
+                        "type": "number"
+                    },
+                    "id": {
+                        "type": "integer"
+                    },
+                    "item": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/NamedItem"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "data",
+                    "id",
+                    "item"
+                ],
+                "title": "Defect"
+            },
             "DesiredFlag": {
                 "properties": {
                     "value": {
@@ -9717,6 +9860,52 @@
                 "required": [],
                 "title": "Everything"
             },
+            "FailedItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "href": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "error": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "error",
+                    "href",
+                    "id",
+                    "name"
+                ],
+                "title": "FailedItem"
+            },
             "FiledPicture": {
                 "properties": {
                     "slug": {
@@ -9774,6 +9963,335 @@
                     "total"
                 ],
                 "title": "GalleryPage"
+            },
+            "InspectedItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "href": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "done",
+                            "failed"
+                        ]
+                    },
+                    "error": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "error",
+                    "href",
+                    "id",
+                    "name",
+                    "state"
+                ],
+                "title": "InspectedItem"
+            },
+            "ItemPage": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/InspectedItem"
+                        },
+                        "type": "array"
+                    },
+                    "next_after": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "items",
+                    "next_after"
+                ],
+                "title": "ItemPage"
+            },
+            "JobDetail": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "scan",
+                            "hash",
+                            "embed",
+                            "detect_faces",
+                            "cluster_faces",
+                            "sample_frames",
+                            "annotate",
+                            "remix",
+                            "zip",
+                            "context",
+                            "events",
+                            "story_plan",
+                            "embed_prompts"
+                        ]
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "queued",
+                            "running",
+                            "done",
+                            "failed",
+                            "cancelled"
+                        ]
+                    },
+                    "cancel_requested": {
+                        "type": "boolean"
+                    },
+                    "payload": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "checkpoint": {
+                        "oneOf": [
+                            {},
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "total": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "done_count": {
+                        "type": "integer"
+                    },
+                    "attempt": {
+                        "type": "integer"
+                    },
+                    "owner": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "fence": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "lease_until": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "heartbeat_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "error": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "created_at": {
+                        "type": "number"
+                    },
+                    "started_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "finished_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "target": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/JobTarget"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "failed_count": {
+                        "type": "integer"
+                    },
+                    "pending_count": {
+                        "type": "integer"
+                    },
+                    "succeeded_count": {
+                        "type": "integer"
+                    },
+                    "item_count": {
+                        "type": "integer"
+                    },
+                    "derived": {
+                        "$ref": "#/components/schemas/Lifecycle"
+                    },
+                    "settled": {
+                        "type": "boolean"
+                    },
+                    "failures": {
+                        "items": {
+                            "$ref": "#/components/schemas/FailedItem"
+                        },
+                        "type": "array"
+                    },
+                    "event_count": {
+                        "type": "integer"
+                    },
+                    "last_event_id": {
+                        "type": "integer"
+                    },
+                    "attempts": {
+                        "items": {
+                            "$ref": "#/components/schemas/Attempt"
+                        },
+                        "type": "array"
+                    },
+                    "defects": {
+                        "items": {
+                            "$ref": "#/components/schemas/Defect"
+                        },
+                        "type": "array"
+                    },
+                    "current": {
+                        "$ref": "#/components/schemas/CurrentWork"
+                    },
+                    "recent_events": {
+                        "items": {
+                            "$ref": "#/components/schemas/Event"
+                        },
+                        "type": "array"
+                    },
+                    "what": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "attempt",
+                    "attempts",
+                    "cancel_requested",
+                    "checkpoint",
+                    "created_at",
+                    "current",
+                    "defects",
+                    "derived",
+                    "done_count",
+                    "error",
+                    "event_count",
+                    "failed_count",
+                    "failures",
+                    "fence",
+                    "finished_at",
+                    "heartbeat_at",
+                    "id",
+                    "item_count",
+                    "kind",
+                    "last_event_id",
+                    "lease_until",
+                    "owner",
+                    "payload",
+                    "pending_count",
+                    "recent_events",
+                    "settled",
+                    "started_at",
+                    "state",
+                    "succeeded_count",
+                    "target",
+                    "total",
+                    "what"
+                ],
+                "title": "JobDetail"
             },
             "JobListed": {
                 "properties": {
@@ -9980,6 +10498,41 @@
                     "total"
                 ],
                 "title": "JobSnapshot"
+            },
+            "JobTarget": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "slug": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "slug"
+                ],
+                "title": "JobTarget"
             },
             "LedgerHealth": {
                 "properties": {
@@ -10241,6 +10794,85 @@
                 ],
                 "title": "ListedCollection"
             },
+            "LivePhase": {
+                "properties": {
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "job.submitted",
+                            "job.claimed",
+                            "job.reclaimed",
+                            "job.paused",
+                            "job.cancel_requested",
+                            "job.cancelled",
+                            "job.done",
+                            "job.failed",
+                            "item.started",
+                            "item.done",
+                            "item.failed",
+                            "item.observed",
+                            "phase.started",
+                            "phase.progress",
+                            "phase.finished",
+                            "checkpoint.changed",
+                            "worker.turn_failed"
+                        ]
+                    },
+                    "message": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "at": {
+                        "type": "number"
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "live": {
+                        "type": "boolean",
+                        "const": true
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "data",
+                    "live",
+                    "message",
+                    "phase",
+                    "text",
+                    "type"
+                ],
+                "title": "LivePhase"
+            },
             "LiveReport": {
                 "properties": {
                     "phase": {
@@ -10395,7 +11027,7 @@
                         ]
                     },
                     "cancel_requested": {
-                        "type": "integer"
+                        "type": "boolean"
                     },
                     "total": {
                         "oneOf": [
@@ -10545,6 +11177,41 @@
                     "what"
                 ],
                 "title": "MatrixRow"
+            },
+            "NamedItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "href": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "href",
+                    "id",
+                    "name"
+                ],
+                "title": "NamedItem"
             },
             "NamedPerson": {
                 "properties": {
@@ -11453,6 +12120,76 @@
                     "value"
                 ],
                 "title": "SettingForm"
+            },
+            "SettledPhase": {
+                "properties": {
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "job.submitted",
+                            "job.claimed",
+                            "job.reclaimed",
+                            "job.paused",
+                            "job.cancel_requested",
+                            "job.cancelled",
+                            "job.done",
+                            "job.failed",
+                            "item.started",
+                            "item.done",
+                            "item.failed",
+                            "item.observed",
+                            "phase.started",
+                            "phase.progress",
+                            "phase.finished",
+                            "checkpoint.changed",
+                            "worker.turn_failed"
+                        ]
+                    },
+                    "message": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "at": {
+                        "type": "number"
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "data",
+                    "message",
+                    "phase",
+                    "type"
+                ],
+                "title": "SettledPhase"
             },
             "SmartBroken": {
                 "properties": {

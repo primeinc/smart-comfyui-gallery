@@ -446,6 +446,17 @@ def test_the_response_contract_rule_can_fail():
     the return type: a handler that answers a page to a person and JSON to
     a machine cannot say the JSON half in its signature, and OpenAPI reads
     the declaration instead.
+
+    `redirecting` is here as the case that used to pass and should not.
+    Litestar builds one response schema from the whole annotation, so a
+    union that mixes a JSON arm with a page or a redirect reaches the
+    document as `application/json: {schema: {}}` -- measured on v2.24.0
+    for `Template | Response[X]` and `Response[X] | Redirect` alike, where
+    `Response[X]` on its own reaches it as a $ref. A precisely written arm
+    inside such a union is a contract nobody is ever given.
+
+    `picture` is the other side of it: bytes are not JSON, so a union that
+    only ever answers a byte stream has nothing to declare.
     """
     module = rules.from_text(
         "sg_web/routes.py",
@@ -463,9 +474,12 @@ def test_the_response_contract_rule_can_fail():
         "@get('/j')\ndef unparameterized() -> Response: ...\n"
         "@get('/k')\ndef negotiating() -> Template | Response: ...\n"
         "@get('/l', responses={200: ResponseSpec(data_container=list[dict])})\n"
-        "def declared_vague() -> Template: ...\n",
+        "def declared_vague() -> Template: ...\n"
+        "@get('/m')\ndef picture() -> Response[bytes] | Redirect: ...\n"
+        "@get('/n', responses={200: ResponseSpec(data_container=Named)})\n"
+        "def declared_negotiating() -> Template | Response[Named]: ...\n",
     )
-    broken = {"unnamed", "unnamed_list", "unparameterized", "negotiating", "declared_vague"}
+    broken = {"unnamed", "unnamed_list", "unparameterized", "negotiating", "declared_vague", "redirecting"}
 
     assert _flagged(rules.rule_response_contracts([module], frozenset())) == broken
 

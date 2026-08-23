@@ -9,11 +9,10 @@
       <span class="crumbs-where">the runtime: what the worker is doing, and why</span>
     </nav>
   </header>
+  {# data-last-event-id is the dividing line: the console reads ids at or
+     below it over HTTP and asks the socket to resume above it. Nothing is
+     serialized into this page for the browser to parse back out. #}
   <main class="stage operations" data-operations data-console data-last-event-id="{{ last_event_id }}" data-now="{{ now }}">
-    {# The console reads these once, then the feed. Rows, never a replay. #}
-    <script type="application/json" data-console-state>{{ {"overview": overview, "matrix": matrix} | tojson }}</script>
-    <script type="application/json" data-console-tape>{{ tape | tojson }}</script>
-
     <section class="console-health" data-health aria-label="system health">
       <div class="health-cell" data-health-transport data-transport="cold">
         <span class="k">transport</span>
@@ -81,7 +80,7 @@
         </select>
         <input type="number" min="1" placeholder="job #" data-tape-filter-job aria-label="job id">
         <button type="button" class="tape-btn" data-tape-earlier>earlier</button>
-        <span class="console-hint" data-tape-count>{{ tape | length }} shown</span>
+        <span class="console-hint" data-tape-count>reading the ledger…</span>
         <span class="console-hint" data-tape-held hidden></span>
       </div>
       <div class="tape-body">

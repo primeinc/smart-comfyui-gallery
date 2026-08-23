@@ -1569,6 +1569,15 @@ export interface components {
             currency: string;
             total: number;
         };
+        /** Attempt */
+        Attempt: {
+            at: number;
+            /** @enum {string} */
+            type: "job.submitted" | "job.claimed" | "job.reclaimed" | "job.paused" | "job.cancel_requested" | "job.cancelled" | "job.done" | "job.failed" | "item.started" | "item.done" | "item.failed" | "item.observed" | "phase.started" | "phase.progress" | "phase.finished" | "checkpoint.changed" | "worker.turn_failed";
+            data: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** AuthoredAnswer */
         AuthoredAnswer: {
             slug: string | null;
@@ -1690,6 +1699,22 @@ export interface components {
             targets: number;
             after: components["schemas"]["AnswerAfter"];
         };
+        /** CurrentWork */
+        CurrentWork: {
+            item: components["schemas"]["NamedItem"] | null;
+            since: number | null;
+            phase: components["schemas"]["LivePhase"] | null;
+            last_settled_phase: components["schemas"]["SettledPhase"] | null;
+        };
+        /** Defect */
+        Defect: {
+            at: number;
+            id: number;
+            item: components["schemas"]["NamedItem"] | null;
+            data: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** DesiredFlag */
         DesiredFlag: {
             value: boolean;
@@ -1777,6 +1802,13 @@ export interface components {
             /** @default false */
             everything: boolean;
         };
+        /** FailedItem */
+        FailedItem: {
+            id: number;
+            name: string | null;
+            href: string | null;
+            error: string | null;
+        };
         /** FiledPicture */
         FiledPicture: {
             slug: string;
@@ -1792,6 +1824,59 @@ export interface components {
             total: number;
             pages: number;
             qs: string;
+        };
+        /** InspectedItem */
+        InspectedItem: {
+            id: number;
+            name: string | null;
+            href: string | null;
+            /** @enum {string} */
+            state: "pending" | "done" | "failed";
+            error: string | null;
+        };
+        /** ItemPage */
+        ItemPage: {
+            items: components["schemas"]["InspectedItem"][];
+            next_after: number | null;
+        };
+        /** JobDetail */
+        JobDetail: {
+            id: number;
+            /** @enum {string} */
+            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            /** @enum {string} */
+            state: "queued" | "running" | "done" | "failed" | "cancelled";
+            cancel_requested: boolean;
+            payload: {
+                [key: string]: unknown;
+            } | null;
+            checkpoint: unknown | null;
+            total: number | null;
+            done_count: number;
+            attempt: number;
+            owner: string | null;
+            fence: number | null;
+            lease_until: number | null;
+            heartbeat_at: number | null;
+            error: string | null;
+            created_at: number;
+            started_at: number | null;
+            finished_at: number | null;
+            target: components["schemas"]["JobTarget"] | null;
+            failed_count: number;
+            pending_count: number;
+            succeeded_count: number;
+            item_count: number;
+            derived: components["schemas"]["Lifecycle"];
+            settled: boolean;
+            failures: components["schemas"]["FailedItem"][];
+            event_count: number;
+            last_event_id: number;
+            attempts: components["schemas"]["Attempt"][];
+            defects: components["schemas"]["Defect"][];
+            current: components["schemas"]["CurrentWork"];
+            recent_events: components["schemas"]["Event"][];
+            what: string;
         };
         /** JobListed */
         JobListed: {
@@ -1824,6 +1909,12 @@ export interface components {
             error: string | null;
             started_at: number | null;
             failed_count: number;
+        };
+        /** JobTarget */
+        JobTarget: {
+            id: number;
+            kind: string | null;
+            slug: string | null;
         };
         /** LedgerHealth */
         LedgerHealth: {
@@ -1867,6 +1958,20 @@ export interface components {
             /** @enum {string} */
             kind: "album" | "flag";
         };
+        /** LivePhase */
+        LivePhase: {
+            phase: string | null;
+            /** @enum {string} */
+            type: "job.submitted" | "job.claimed" | "job.reclaimed" | "job.paused" | "job.cancel_requested" | "job.cancelled" | "job.done" | "job.failed" | "item.started" | "item.done" | "item.failed" | "item.observed" | "phase.started" | "phase.progress" | "phase.finished" | "checkpoint.changed" | "worker.turn_failed";
+            message: string | null;
+            text: string;
+            at: number;
+            data: {
+                [key: string]: unknown;
+            } | null;
+            /** @constant */
+            live: true;
+        };
         /** LiveReport */
         LiveReport: {
             phase: string | null;
@@ -1900,7 +2005,7 @@ export interface components {
             kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
             /** @enum {string} */
             state: "queued" | "running" | "done" | "failed" | "cancelled";
-            cancel_requested: number;
+            cancel_requested: boolean;
             total: number | null;
             done_count: number;
             failed_count: number;
@@ -1918,6 +2023,12 @@ export interface components {
             settled: boolean;
             what: string;
             live: components["schemas"]["LiveReport"] | null;
+        };
+        /** NamedItem */
+        NamedItem: {
+            id: number;
+            name: string | null;
+            href: string | null;
         };
         /** NamedPerson */
         NamedPerson: {
@@ -2107,6 +2218,17 @@ export interface components {
         /** SettingForm */
         SettingForm: {
             value: string;
+        };
+        /** SettledPhase */
+        SettledPhase: {
+            phase: string | null;
+            /** @enum {string} */
+            type: "job.submitted" | "job.claimed" | "job.reclaimed" | "job.paused" | "job.cancel_requested" | "job.cancelled" | "job.done" | "job.failed" | "item.started" | "item.done" | "item.failed" | "item.observed" | "phase.started" | "phase.progress" | "phase.finished" | "checkpoint.changed" | "worker.turn_failed";
+            message: string | null;
+            at: number;
+            data: {
+                [key: string]: unknown;
+            } | null;
         };
         /** SmartBroken */
         SmartBroken: {
@@ -5262,13 +5384,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description One job, whole: its row, its numbers, its turns and the newest of its events */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobDetail"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -5303,13 +5425,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description A page of one job's units, in unit order, with the cursor for the next page */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ItemPage"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

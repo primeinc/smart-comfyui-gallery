@@ -30,9 +30,10 @@ import time
 import typing
 from collections.abc import Callable
 
-from litestar import Request, Router, get, post
+from litestar import MediaType, Request, Router, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath, FromQuery, URLEncodedBody
 from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
@@ -177,15 +178,21 @@ def _roots(conn) -> list[dict]:
     return [{"id": root_id, "path": path, "online": online} for root_id, path, online in library.probe_roots(conn)]
 
 
-#: How many of the newest ledger rows the cold page carries; the tape
-#: pages earlier ones on demand and the feed appends the rest.
-TAPE_COLD = 500
-
-
 def _page_context(state: State) -> dict:
+    """What the page renders from cold.
+
+    The ledger is NOT serialized in here. The page states one number --
+    `last_event_id`, the head it read -- and the browser reads ids at or
+    below it from /operations/events/before and asks the socket to resume
+    above it, so the two halves meet exactly once and no event can fall
+    between them. The head is taken from the overview already assembled
+    rather than read again, so the number the page hands the browser and
+    the number the health strip shows are the same read.
+    """
     now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
+        console_state = _state_of(state, conn, now)
         return {
             "roots": _roots(conn),
             "settings": settings.snapshot(conn),
@@ -194,9 +201,8 @@ def _page_context(state: State) -> dict:
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
             "notice": None,
-            **_state_of(state, conn, now).model_dump(mode="json"),
-            "tape": [console.envelope(event).model_dump(mode="json") for event in ledger.latest(conn, limit=TAPE_COLD)],
-            "last_event_id": ledger.last_id(conn),
+            **console_state.model_dump(mode="json"),
+            "last_event_id": console_state.overview.ledger.last_id,
             "now": now,
         }
     finally:
@@ -247,6 +253,11 @@ def _state_of(state: State, conn, now: float) -> OperationsState:
     )
 
 
+#: Columns whose stored form is not the fact the wire states, so they are
+#: named beside the row's straight copy rather than swept in with it.
+_TRANSLATED = frozenset({"cancel_requested"})
+
+
 def _matrix_row(state: State, row: dict) -> MatrixRow:
     """One job row as the console is told it.
 
@@ -258,81 +269,12 @@ def _matrix_row(state: State, row: dict) -> MatrixRow:
     live = getattr(state, "live_reports", {})
     held = live.get(row["id"]) if row["state"] == "running" else None
     return MatrixRow(
-        **{one: row[one] for one in MatrixRow.model_fields if one in row},
+        **{one: row[one] for one in MatrixRow.model_fields if one in row and one not in _TRANSLATED},
+        cancel_requested=bool(row["cancel_requested"]),
         what=console.describe_kind(row["kind"], row.get("derive")),
         live=None
         if not held
         else LiveReport(phase=held.get("phase"), type=held["type"], text=held["text"], item_id=held.get("item_id")),
-    )
-
-
-@get("/job/{job_id:int}", sync_to_thread=True)
-def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Template | Response:
-    """One job, whole (db/inspecting.py job_detail): JSON to a machine,
-    the inspector fragment to the console. Every column of the row is in
-    it; the payload is redacted at this seam."""
-    conn = connect.connect(state.db_path, read_only=True)
-    try:
-        try:
-            told = inspecting.job_detail(conn, job_id, time.time())
-        except LookupError as missing:
-            raise NotFoundException(str(missing)) from missing
-    finally:
-        connect.close(conn)
-    told["recent_events"] = [console.envelope(event) for event in told["recent_events"]]
-    told["what"] = console.describe_kind(told["kind"], (told.get("payload") or {}).get("derive"))
-    # the phase inside the running item lives in process memory until the
-    # item settles (sg_web/app.py live_reports); the row cannot hold it yet
-    live = getattr(state, "live_reports", {}).get(job_id)
-    if live is not None and told["state"] == "running":
-        told["current"]["phase"] = {
-            "phase": live.get("phase"),
-            "type": live["type"],
-            "message": live.get("message"),
-            "text": live["text"],
-            "at": live["at"],
-            "data": live.get("data"),
-            "live": True,
-        }
-    if wants_json(request):
-        return Response(told, headers=VARIES)
-    return Template(template_name="_operations_job.html", context={"job": told}, headers=VARIES)
-
-
-@get("/job/{job_id:int}/items", sync_to_thread=True)
-def job_items(
-    state: State,
-    request: Request,
-    job_id: FromPath[int],
-    state_filter: FromQuery[str | None] = None,
-    after: FromQuery[int] = 0,
-    limit: FromQuery[int] = 200,
-) -> Response | Template:
-    """A page of one job's items by state: `?state_filter=failed&after=N`
-    -- JSON to a machine, a fragment the inspector swaps in otherwise.
-    Paged, never folded into the detail: a 22,000-item job is read a
-    page at a time."""
-    conn = connect.connect(state.db_path, read_only=True)
-    try:
-        try:
-            told = inspecting.items(conn, job_id, state=state_filter, after=after, limit=limit)
-        except LookupError as missing:
-            raise NotFoundException(str(missing)) from missing
-        except ValueError as refused:
-            raise ClientException(str(refused)) from refused
-    finally:
-        connect.close(conn)
-    if wants_json(request):
-        return Response(told, headers=VARIES)
-    return Template(
-        template_name="_operations_items.html",
-        context={
-            "items": told["items"],
-            "next_after": told["next_after"],
-            "job_id": job_id,
-            "state_filter": state_filter,
-        },
-        headers=VARIES,
     )
 
 
@@ -436,7 +378,10 @@ class MatrixRow(Wire):
     id: int
     kind: jobs.JobKind
     state: jobs.JobState
-    cancel_requested: int
+    #: has somebody asked this job to stop. SQLite stores the answer as
+    #: 0 or 1 because it has no boolean; that is storage, not the fact,
+    #: and the wire says the fact (_matrix_row does the translating).
+    cancel_requested: bool
     total: int | None
     done_count: int
     failed_count: int
@@ -465,6 +410,356 @@ class OperationsState(Wire):
 
     overview: Overview
     matrix: list[MatrixRow]
+
+
+class NamedItem(Wire):
+    """One unit of a job, named and addressed when the kind's units are
+    files and the row still exists (db/inspecting.py _named_item); the
+    bare id otherwise."""
+
+    id: int
+    name: str | None
+    href: str | None
+
+
+class InspectedItem(NamedItem):
+    """A unit of a job with where it stands."""
+
+    state: jobs.ItemState
+    error: str | None
+
+
+class ItemPage(Wire):
+    """A page of one job's units, in unit order.
+
+    `next_after` is the cursor for the page after this one and null when
+    this page reached the end, so a reader knows whether it has them all
+    without asking again. Never folded into the detail: a 22,000-item job
+    is read a page at a time.
+    """
+
+    items: list[InspectedItem]
+    next_after: int | None
+
+
+class FailedItem(NamedItem):
+    """A unit the job could not do. The job continued past it -- an item
+    failure and a defect in the worker are different conditions."""
+
+    error: str | None
+
+
+class JobTarget(Wire):
+    """The entity a job is about, when it is about one rather than the
+    whole library. `kind` and `slug` are null when the row it named is
+    gone."""
+
+    id: int
+    kind: str | None
+    slug: str | None
+
+
+class Attempt(Wire):
+    """One claim, reclaim or pause, as the ledger recorded it.
+
+    `data` is the event's own payload, nested rather than spread up to
+    this level. What the runner records about a turn is historical and
+    open by design -- owner, attempt, fence, lease_until and resumed for a
+    claim; did, failed and why for a pause -- and a row written before a
+    key existed does not carry it. Naming those as fields here would put
+    an old job's inspector one missing key away from a 500, and adding a
+    fact about a turn would be a contract change.
+    """
+
+    at: float
+    type: ledger.EventType
+    data: dict[str, object] | None
+
+
+class Defect(Wire):
+    """A worker turn that crashed on a unit.
+
+    The same open `data` as Attempt, carrying the exception, its
+    traceback, and the attempt and fence the turn lost.
+    """
+
+    at: float
+    id: int
+    item: NamedItem | None
+    data: dict[str, object] | None
+
+
+class SettledPhase(Wire):
+    """The last phase the last SETTLED unit reached, from the rows."""
+
+    phase: str | None
+    type: ledger.EventType
+    message: str | None
+    at: float
+    data: dict[str, object] | None
+
+
+class LivePhase(Wire):
+    """What the running process is doing inside the unit it is on.
+
+    Not from the rows: it lives in process memory until the unit settles
+    (sg_web/app.py live_reports), so it is null for a job running under
+    another process, and `live` says which of the two this is.
+    """
+
+    phase: str | None
+    type: ledger.EventType
+    message: str | None
+    text: str
+    at: float
+    data: dict[str, object] | None
+    live: typing.Literal[True]
+
+
+class CurrentWork(Wire):
+    """What the job is on right now, and how far inside it."""
+
+    item: NamedItem | None
+    since: float | None
+    phase: LivePhase | None
+    last_settled_phase: SettledPhase | None
+
+
+class JobDetail(Wire):
+    """One job, whole (db/inspecting.py job_detail).
+
+    Every column of the row is here -- `payload` redacted -- because an
+    operator asking why a job sits under an expiring lease needs `fence`,
+    `attempt`, `lease_until` and the traceback, not a progress bar. The
+    one deliberate omission is the unit list, which is paged through
+    /operations/job/{id}/items.
+    """
+
+    id: int
+    kind: jobs.JobKind
+    state: jobs.JobState
+    #: SQLite stores this as 0 or 1 because it has no boolean; the fact is
+    #: yes or no, and _job_detail does the translating
+    cancel_requested: bool
+    #: what the launcher asked for, with every secret-named key replaced
+    payload: dict[str, object] | None
+    #: where to resume work with no enumerable units: whatever the handler
+    #: passed to db/jobs.py checkpoint, so any JSON value
+    checkpoint: object | None
+    total: int | None
+    done_count: int
+    attempt: int
+    owner: str | None
+    fence: int | None
+    lease_until: float | None
+    heartbeat_at: float | None
+    error: str | None
+    created_at: float
+    started_at: float | None
+    finished_at: float | None
+    target: JobTarget | None
+    failed_count: int
+    pending_count: int
+    succeeded_count: int
+    item_count: int
+    derived: Lifecycle
+    settled: bool
+    #: at most the first 200; the rest are paged from the items route
+    failures: list[FailedItem]
+    event_count: int
+    last_event_id: int
+    attempts: list[Attempt]
+    defects: list[Defect]
+    current: CurrentWork
+    #: the newest few, whole; the tape holds the rest
+    recent_events: list[console.Event]
+    #: the sweep said in words
+    what: str
+
+
+def _named(held: dict | None) -> NamedItem | None:
+    return None if held is None else NamedItem(id=held["id"], name=held.get("name"), href=held.get("href"))
+
+
+def _live_phase(state: State, told: dict) -> LivePhase | None:
+    """What the running process is doing inside the unit it is on, when
+    that process is this one and the job is still running."""
+    live = getattr(state, "live_reports", {}).get(told["id"])
+    if live is None or told["state"] != "running":
+        return None
+    return LivePhase(
+        phase=live.get("phase"),
+        type=live["type"],
+        message=live.get("message"),
+        text=live["text"],
+        at=live["at"],
+        data=live.get("data"),
+        live=True,
+    )
+
+
+def _job_detail(state: State, told: dict) -> JobDetail:
+    """The read model as the contract states it."""
+    payload = told["payload"]
+    settled_phase = told["current"]["last_settled_phase"]
+    return JobDetail(
+        id=told["id"],
+        kind=told["kind"],
+        state=told["state"],
+        cancel_requested=bool(told["cancel_requested"]),
+        payload=payload,
+        checkpoint=told["checkpoint"],
+        total=told["total"],
+        done_count=told["done_count"],
+        attempt=told["attempt"],
+        owner=told["owner"],
+        fence=told["fence"],
+        lease_until=told["lease_until"],
+        heartbeat_at=told["heartbeat_at"],
+        error=told["error"],
+        created_at=told["created_at"],
+        started_at=told["started_at"],
+        finished_at=told["finished_at"],
+        target=None
+        if told["target"] is None
+        else JobTarget(id=told["target"]["id"], kind=told["target"]["kind"], slug=told["target"]["slug"]),
+        failed_count=told["failed_count"],
+        pending_count=told["pending_count"],
+        succeeded_count=told["succeeded_count"],
+        item_count=told["item_count"],
+        derived=Lifecycle(**told["derived"]),
+        settled=told["settled"],
+        failures=[
+            FailedItem(id=one["id"], name=one.get("name"), href=one.get("href"), error=one["error"])
+            for one in told["failures"]
+        ],
+        event_count=told["event_count"],
+        last_event_id=told["last_event_id"],
+        attempts=[
+            Attempt(at=one["at"], type=one["type"], data={k: v for k, v in one.items() if k not in ("at", "type")})
+            for one in told["attempts"]
+        ],
+        defects=[
+            Defect(
+                at=one["at"],
+                id=one["id"],
+                item=_named(one["item"]),
+                data={k: v for k, v in one.items() if k not in ("at", "id", "item")},
+            )
+            for one in told["defects"]
+        ],
+        current=CurrentWork(
+            item=_named(told["current"]["item"]),
+            since=told["current"]["since"],
+            phase=_live_phase(state, told),
+            last_settled_phase=None
+            if settled_phase is None
+            else SettledPhase(
+                phase=settled_phase["phase"],
+                type=settled_phase["type"],
+                message=settled_phase["message"],
+                at=settled_phase["at"],
+                data=settled_phase["data"],
+            ),
+        ),
+        recent_events=[console.envelope(event) for event in told["recent_events"]],
+        what=console.describe_kind(told["kind"], (payload or {}).get("derive")),
+    )
+
+
+@get(
+    "/job/{job_id:int}",
+    # The route negotiates, and a union that mixes a fragment with a JSON
+    # answer reaches OpenAPI as the empty schema however precisely the
+    # arms are written (measured on litestar v2.24.0). The JSON answer is
+    # declared here, where the document reads it.
+    responses={
+        200: ResponseSpec(
+            data_container=JobDetail,
+            description="One job, whole: its row, its numbers, its turns and the newest of its events",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+    sync_to_thread=True,
+)
+def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Template | Response[JobDetail]:
+    """One job, whole (db/inspecting.py job_detail): JSON to a machine,
+    the inspector fragment to the console. Every column of the row is in
+    it; the payload is redacted at this seam."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        try:
+            told = inspecting.job_detail(conn, job_id, time.time())
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+    finally:
+        connect.close(conn)
+    detail = _job_detail(state, told)
+    if wants_json(request):
+        return Response(detail, headers=VARIES)
+    return Template(
+        template_name="_operations_job.html",
+        context={"job": detail.model_dump(mode="json")},
+        headers=VARIES,
+    )
+
+
+@get(
+    "/job/{job_id:int}/items",
+    responses={
+        200: ResponseSpec(
+            data_container=ItemPage,
+            description="A page of one job's units, in unit order, with the cursor for the next page",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+    sync_to_thread=True,
+)
+def job_items(
+    state: State,
+    request: Request,
+    job_id: FromPath[int],
+    state_filter: FromQuery[str | None] = None,
+    after: FromQuery[int] = 0,
+    limit: FromQuery[int] = 200,
+) -> Response[ItemPage] | Template:
+    """A page of one job's items by state: `?state_filter=failed&after=N`
+    -- JSON to a machine, a fragment the inspector swaps in otherwise.
+    Paged, never folded into the detail: a 22,000-item job is read a
+    page at a time."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        try:
+            told = inspecting.items(conn, job_id, state=state_filter, after=after, limit=limit)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+    finally:
+        connect.close(conn)
+    page = ItemPage(
+        items=[
+            InspectedItem(
+                id=one["id"], name=one.get("name"), href=one.get("href"), state=one["state"], error=one["error"]
+            )
+            for one in told["items"]
+        ],
+        next_after=told["next_after"],
+    )
+    if wants_json(request):
+        return Response(page, headers=VARIES)
+    return Template(
+        template_name="_operations_items.html",
+        context={
+            "items": page.model_dump(mode="json")["items"],
+            "next_after": page.next_after,
+            "job_id": job_id,
+            "state_filter": state_filter,
+        },
+        headers=VARIES,
+    )
 
 
 class EventPage(Wire):

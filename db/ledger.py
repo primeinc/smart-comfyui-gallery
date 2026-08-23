@@ -12,19 +12,22 @@ Nothing here samples, compacts or ages out. A 22,000-file sweep leaves
 44,000 rows; a reader pages them (`since`, `for_job`). Rendering may
 virtualize; storage may paginate; neither may drop an event.
 
-The vocabulary is closed in two places on purpose -- `TYPES` here and
-the CHECK on `job_event.type` in db/schema.sql -- and a contract test
-holds them equal, so an event nobody can render cannot be written and an
-event the schema allows cannot lack a renderer (sg_web/console.py).
+The vocabulary is spelled once, here, as a `Literal` beside the table
+that stores it: the wire restates it by importing it, never by copying
+it, and sglint SG709 holds it equal to the CHECK on `job_event.type` in
+db/schema.sql. So an event the schema refuses cannot be typed, and a
+test holds the other end -- an event the schema allows cannot lack a
+renderer (sg_web/console.py).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import typing
 
-#: Every event type the ledger accepts. Mirrored by the schema's CHECK.
-TYPES: tuple[str, ...] = (
+#: What a ledger event can be. Equal to the CHECK on job_event.type.
+EventType = typing.Literal[
     "job.submitted",
     "job.claimed",
     "job.reclaimed",
@@ -42,9 +45,15 @@ TYPES: tuple[str, ...] = (
     "phase.finished",
     "checkpoint.changed",
     "worker.turn_failed",
-)
+]
 
-SEVERITIES: tuple[str, ...] = ("info", "warning", "error")
+#: How loudly. Equal to the CHECK on job_event.severity.
+Severity = typing.Literal["info", "warning", "error"]
+
+#: The same two vocabularies as values, for the runtime refusals below.
+#: Derived, never restated: a member can only be added in one place.
+TYPES: tuple[EventType, ...] = typing.get_args(EventType)
+SEVERITIES: tuple[Severity, ...] = typing.get_args(Severity)
 
 #: Most rows one read returns. A caller wanting more pages.
 PAGE_MOST = 2_000

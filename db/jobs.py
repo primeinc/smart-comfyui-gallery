@@ -57,6 +57,9 @@ JobKind = typing.Literal[
     "embed_prompts",
 ]
 
+#: Where one unit of a job stands, per db/schema.sql job_item.state.
+ItemState = typing.Literal["pending", "done", "failed"]
+
 #: A job whose lease has expired by this much is reclaimable. Generous: a
 #: worker paused by a slow disk must not lose its job to a false positive.
 LEASE_SECONDS = 60.0

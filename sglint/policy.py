@@ -254,7 +254,12 @@ LITERAL_STATEMENTS_ONLY: tuple[str, ...] = ("db/collection_rules.py",)
 #: database is built and no application is served to learn that two lists
 #: disagree.
 WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
-    "db/jobs.py": {"JobKind": ("job", "kind"), "JobState": ("job", "state")},
+    "db/jobs.py": {
+        "JobKind": ("job", "kind"),
+        "JobState": ("job", "state"),
+        "ItemState": ("job_item", "state"),
+    },
+    "db/ledger.py": {"EventType": ("job_event", "type"), "Severity": ("job_event", "severity")},
     "sg_web/media_view.py": {"PlaceKind": ("place", "kind")},
 }
 
@@ -320,8 +325,6 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/folder_view.py:folder_page",
         "sg_web/folder_view.py:folders_index",
         "sg_web/media_view.py:media_page",
-        "sg_web/operations.py:job_inspector",
-        "sg_web/operations.py:job_items",
         "sg_web/person_view.py:people_index",
         "sg_web/person_view.py:person_page",
         "sg_web/place_view.py:places_index",

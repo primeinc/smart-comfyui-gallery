@@ -4,128 +4,168 @@
 // renders only the rows in view. Pausing pauses the painting; filtering
 // hides rows; neither touches what is held. Ids are the order: a skipped
 // id is a named gap, fetched from /operations/events, never papered over.
+//
+// Cold boot is a single dividing line. The page states the ledger head it
+// read (`data-last-event-id`); everything at or below it is read over HTTP
+// from the typed routes, and everything above it arrives on the socket,
+// which is asked to resume from that same head. Nothing is serialized into
+// the page for the browser to parse back out, so there is no window in
+// which the embedded tape and the embedded head disagree.
+import { api } from "./api";
+import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
+import { type Event, type Frame, type PendingFrame, decodeFrame } from "./frames";
+import type { components } from "./generated/api";
+
+declare global {
+  interface Window {
+    // htmx ships no types and arrives as a <script> tag rather than an
+    // import, so nothing else declares it. Optional: a page without htmx is
+    // a check the caller makes, not a crash.
+    htmx?: { process(root: Element): void };
+  }
+}
+
+type Overview = components["schemas"]["Overview"];
+type MatrixRow = components["schemas"]["MatrixRow"];
+type LiveReport = components["schemas"]["LiveReport"];
+
 (() => {
-  const root = document.querySelector("[data-console]");
-  if (!root) return;
+  const root = requireElement(document, "[data-console]", HTMLElement);
   const ROW_H = 24;
   const OVERSCAN = 12;
-  const q = (sel, el) => (el || root).querySelector(sel);
+  //: how many of the newest rows the cold read asks for
+  const TAPE_COLD = 500;
 
   // --- state ----------------------------------------------------------------
-  const held = []; // every event, ascending by id
-  const ids = new Set();
-  let lastId = Number(root.dataset.lastEventId || 0);
-  let firstId = Infinity;
-  const pendingByJob = new Map(); // job_id -> latest pending report
+  const held: Event[] = []; // every event, ascending by id
+  const ids = new Set<number>();
+  const head = Number(requireData(root, "lastEventId"));
+  let lastId = head;
+  let firstId = Number.POSITIVE_INFINITY;
+  const pendingByJob = new Map<number, PendingFrame>();
   let paused = false;
   let heldWhilePaused = 0;
-  let selectedJob = null;
-  let selectedEvent = null;
-  let socket = null;
+  let selectedJob: number | null = null;
+  let selectedEvent: number | null = null;
+  let socket: WebSocket | null = null;
   let retry = 0;
-  let lastFrameAt = null;
+  let lastFrameAt: number | null = null;
   const filter = { type: "", severity: "", job: "" };
-  let view = []; // indexes into `held` after filtering
+  let view: Event[] = []; // the events that pass the filter, ascending
 
   // --- elements -------------------------------------------------------------
-  const transport = q("[data-health-transport]");
-  const transportState = q("[data-transport-state]");
-  const transportLast = q("[data-transport-last]");
-  const transportAge = q("[data-transport-age]");
-  const matrixRows = q("[data-matrix-rows]");
-  const inspectorBody = q("[data-inspector-body]");
-  const inspectorHint = q("[data-inspector-hint]");
-  const scroller = q("[data-tape-scroll]");
-  const spacer = q("[data-tape-spacer]");
-  const rows = q("[data-tape-rows]");
-  const rawBody = q("[data-tape-raw-body]");
-  const countEl = q("[data-tape-count]");
-  const heldEl = q("[data-tape-held]");
-  const pauseBtn = q("[data-tape-pause]");
-  const follow = q("[data-tape-autoscroll]");
+  const transport = requireElement(root, "[data-health-transport]", HTMLElement);
+  const transportState = requireElement(root, "[data-transport-state]", HTMLElement);
+  const transportLast = requireElement(root, "[data-transport-last]", HTMLElement);
+  const transportAge = requireElement(root, "[data-transport-age]", HTMLElement);
+  const matrixRows = requireElement(root, "[data-matrix-rows]", HTMLOListElement);
+  const inspectorBody = requireElement(root, "[data-inspector-body]", HTMLElement);
+  const inspectorHint = requireElement(root, "[data-inspector-hint]", HTMLElement);
+  const scroller = requireElement(root, "[data-tape-scroll]", HTMLElement);
+  const spacer = requireElement(root, "[data-tape-spacer]", HTMLElement);
+  const rows = requireElement(root, "[data-tape-rows]", HTMLOListElement);
+  const rawBody = requireElement(root, "[data-tape-raw-body]", HTMLPreElement);
+  const countEl = requireElement(root, "[data-tape-count]", HTMLElement);
+  const heldEl = requireElement(root, "[data-tape-held]", HTMLElement);
+  const pauseBtn = requireElement(root, "[data-tape-pause]", HTMLButtonElement);
+  const follow = requireElement(root, "[data-tape-autoscroll]", HTMLInputElement);
+  const jobFilter = requireElement(root, "[data-tape-filter-job]", HTMLInputElement);
 
   // --- helpers --------------------------------------------------------------
-  const pad = (n, w) => String(n).padStart(w || 2, "0");
-  function clock(epoch) {
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  function clock(epoch: number): string {
     const d = new Date(epoch * 1000);
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
   }
-  function seconds(v) {
+  function seconds(v: number | null): string {
     if (v == null) return "—";
     if (v < 60) return `${v.toFixed(1)}s`;
     if (v < 3600) return `${Math.floor(v / 60)}m ${pad(Math.floor(v % 60))}s`;
     return `${Math.floor(v / 3600)}h ${pad(Math.floor((v % 3600) / 60))}m`;
   }
-  function el(tag, attrs, text) {
+
+  type Attrs = Readonly<Record<string, string | number | boolean | null | undefined>>;
+
+  /** An element of the tag named, so the caller keeps the concrete type. */
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Attrs, text?: string): HTMLElementTagNameMap[K] {
     const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
+    for (const [k, v] of Object.entries(attrs ?? {})) {
       if (v === false || v == null) continue;
-      node.setAttribute(k, v === true ? "" : v);
+      node.setAttribute(k, v === true ? "" : String(v));
     }
     if (text != null) node.textContent = text;
     return node;
   }
 
   // --- ingestion (never drops) --------------------------------------------
-  function ingest(event) {
-    if (event.id == null || ids.has(event.id)) return false;
+  function ingest(event: Event): boolean {
+    if (ids.has(event.id)) return false;
     ids.add(event.id);
-    if (held.length && event.id < held[held.length - 1].id) {
+    const newest = held.at(-1);
+    if (newest !== undefined && event.id < newest.id) {
       // an earlier page, or a gap fill: keep ascending order
       let i = held.length;
-      while (i > 0 && held[i - 1].id > event.id) i--;
+      while (i > 0) {
+        const before = held[i - 1];
+        if (before === undefined || before.id <= event.id) break;
+        i--;
+      }
       held.splice(i, 0, event);
     } else {
       held.push(event);
     }
     if (event.id > lastId) lastId = event.id;
     if (event.id < firstId) firstId = event.id;
-    if (event.job_id != null && event.type && !event.type.startsWith("phase.") && event.type !== "item.observed") {
-      pendingByJob.delete(event.job_id);
-    }
+    if (settles(event.type)) pendingByJob.delete(event.job_id);
     return true;
   }
 
-  function passes(e) {
+  /** Whether an event of this type ends whatever the handler was reporting. */
+  function settles(type: string): boolean {
+    return !type.startsWith("phase.") && type !== "item.observed";
+  }
+
+  function passes(e: Event): boolean {
     if (filter.type && !e.type.startsWith(filter.type)) return false;
     if (filter.severity === "warning" && e.severity === "info") return false;
     if (filter.severity === "error" && e.severity !== "error") return false;
-    if (filter.job && String(e.job_id) !== String(filter.job)) return false;
+    if (filter.job && String(e.job_id) !== filter.job) return false;
     return true;
   }
 
-  function gaps() {
-    // [afterId, beforeId] pairs where ids skip -- only meaningful inside
-    // the range this page has read contiguously, so we report skips
-    // between consecutive held events.
-    const found = [];
-    for (let i = 1; i < held.length; i++) {
-      if (held[i].id !== held[i - 1].id + 1) found.push([held[i - 1].id, held[i].id]);
+  /** How many places the held ids skip -- only inside what has been read. */
+  function gaps(): number {
+    let found = 0;
+    let previous: number | null = null;
+    for (const e of held) {
+      if (previous !== null && e.id !== previous + 1) found++;
+      previous = e.id;
     }
     return found;
   }
 
+  const unfiltered = () => !filter.type && !filter.severity && !filter.job;
+
   // --- the tape ---------------------------------------------------------------
-  function rebuildView() {
-    view = [];
-    for (let i = 0; i < held.length; i++) if (passes(held[i])) view.push(i);
+  function rebuildView(): void {
+    view = held.filter(passes);
     const skipped = gaps();
-    heldEl.hidden = skipped.length === 0;
-    if (skipped.length) heldEl.textContent = `${skipped.length} gap(s) in the held ids — click a dashed row to fetch`;
+    heldEl.hidden = skipped === 0;
+    if (skipped) heldEl.textContent = `${skipped} gap(s) in the held ids — click a dashed row to fetch`;
     countEl.textContent = `${view.length} of ${held.length} shown${paused ? ` · paused, ${heldWhilePaused} new held` : ""}`;
     root.dataset.held = String(held.length);
     root.dataset.lastEventId = String(lastId);
-    root.dataset.gaps = String(skipped.length);
+    root.dataset.gaps = String(skipped);
   }
 
-  function rowFor(e, isHead) {
+  function rowFor(e: Event, isHead: boolean): HTMLLIElement {
     const li = el("li", {
       class: "tape-row",
       "data-event": e.id,
       "data-type": e.type,
       "data-severity": e.severity,
       "data-job": e.job_id,
-      "data-condition": e.condition || null,
+      "data-condition": e.condition,
       "data-head": isHead || null,
       "aria-selected": selectedEvent === e.id ? "true" : "false",
       role: "option",
@@ -139,7 +179,7 @@
     return li;
   }
 
-  function paint() {
+  function paint(): void {
     if (paused) return;
     const total = view.length;
     spacer.style.height = `${total * ROW_H}px`;
@@ -148,35 +188,37 @@
     const last = Math.min(total, Math.ceil((top + scroller.clientHeight) / ROW_H) + OVERSCAN);
     rows.style.transform = `translateY(${first * ROW_H}px)`;
     rows.textContent = "";
-    const headId = held.length ? held[held.length - 1].id : null;
-    for (let i = first; i < last; i++) {
-      const e = held[view[i]];
-      const previous = i > 0 ? held[view[i - 1]] : null;
-      if (previous && !filter.type && !filter.severity && !filter.job && e.id !== previous.id + 1) {
+    const headId = held.at(-1)?.id;
+    let previous = first > 0 ? view[first - 1] : undefined;
+    for (const e of view.slice(first, last)) {
+      if (previous !== undefined && unfiltered() && e.id !== previous.id + 1) {
+        const after = previous;
         const gap = el(
           "li",
           { class: "tape-gap", role: "button", tabindex: "0" },
-          `── ${e.id - previous.id - 1} event(s) not held between #${previous.id} and #${e.id} — fetch ──`,
+          `── ${e.id - after.id - 1} event(s) not held between #${after.id} and #${e.id} — fetch ──`,
         );
-        gap.addEventListener("click", () => fill(previous.id, e.id));
+        gap.addEventListener("click", () => void fill(after.id, e.id));
         rows.appendChild(gap);
       }
       rows.appendChild(rowFor(e, e.id === headId));
+      previous = e;
     }
   }
 
-  function repaint(scrollToEnd) {
+  function repaint(scrollToEnd: boolean): void {
     rebuildView();
     if (paused) return;
     paint();
     if (scrollToEnd && follow.checked) scroller.scrollTop = scroller.scrollHeight;
   }
 
-  function select(e) {
+  function select(e: Event): void {
     selectedEvent = e.id;
     rawBody.textContent = JSON.stringify(e, null, 2);
-    for (const li of rows.children)
+    for (const li of everyElement(rows, "[data-event]", HTMLLIElement)) {
       li.setAttribute("aria-selected", li.dataset.event === String(e.id) ? "true" : "false");
+    }
   }
 
   scroller.addEventListener("scroll", () => {
@@ -190,39 +232,36 @@
     paused = !paused;
     pauseBtn.setAttribute("aria-pressed", String(paused));
     pauseBtn.textContent = paused ? "resume" : "pause";
-    if (!paused) {
+    if (paused) {
+      rebuildView();
+    } else {
       heldWhilePaused = 0;
       repaint(true);
-    } else {
-      rebuildView();
     }
   });
-  q("[data-tape-filter-type]").addEventListener("change", (ev) => {
-    filter.type = ev.target.value;
+  requireElement(root, "[data-tape-filter-type]", HTMLSelectElement).addEventListener("change", (ev) => {
+    if (ev.currentTarget instanceof HTMLSelectElement) filter.type = ev.currentTarget.value;
     repaint(true);
   });
-  q("[data-tape-filter-severity]").addEventListener("change", (ev) => {
-    filter.severity = ev.target.value;
+  requireElement(root, "[data-tape-filter-severity]", HTMLSelectElement).addEventListener("change", (ev) => {
+    if (ev.currentTarget instanceof HTMLSelectElement) filter.severity = ev.currentTarget.value;
     repaint(true);
   });
-  q("[data-tape-filter-job]").addEventListener("input", (ev) => {
-    filter.job = ev.target.value.trim();
+  jobFilter.addEventListener("input", () => {
+    filter.job = jobFilter.value.trim();
     repaint(true);
   });
-  q("[data-tape-earlier]").addEventListener("click", earlier);
+  requireElement(root, "[data-tape-earlier]", HTMLButtonElement).addEventListener("click", () => void earlier());
 
   // --- fetching what the rows hold ----------------------------------------
-  async function fill(after, before) {
+  async function fill(after: number, before: number): Promise<void> {
     // every id in (after, before): pages until caught up, never samples
     let cursor = after;
     while (cursor < before - 1) {
-      const r = await fetch(`/operations/events?after=${cursor}&limit=2000`, {
-        headers: { accept: "application/json" },
-      });
-      if (!r.ok) return;
-      const told = await r.json();
+      const { data } = await api.GET("/operations/events", { params: { query: { after: cursor, limit: 2000 } } });
+      if (!data) return;
       let advanced = false;
-      for (const e of told.events) {
+      for (const e of data.events) {
         if (e.id >= before) break;
         ingest(e);
         cursor = e.id;
@@ -233,54 +272,62 @@
     repaint(false);
   }
 
-  async function earlier() {
+  async function earlier(): Promise<void> {
     if (!Number.isFinite(firstId)) return;
-    const r = await fetch(`/operations/events/before?before=${firstId}&limit=500`, {
-      headers: { accept: "application/json" },
+    const { data } = await api.GET("/operations/events/before", {
+      params: { query: { before: firstId, limit: TAPE_COLD } },
     });
-    if (!r.ok) return;
-    const told = await r.json();
+    if (!data) return;
     const keep = scroller.scrollHeight - scroller.scrollTop;
-    for (const e of told.events) ingest(e);
+    for (const e of data.events) ingest(e);
     repaint(false);
     scroller.scrollTop = scroller.scrollHeight - keep;
   }
 
   // --- matrix + inspector ---------------------------------------------------
-  let overviewTimer = null;
-  function refreshOverviewSoon() {
-    if (overviewTimer) return;
-    overviewTimer = setTimeout(async () => {
+  let overviewTimer: number | null = null;
+  function refreshOverviewSoon(): void {
+    if (overviewTimer !== null) return;
+    overviewTimer = window.setTimeout(() => {
       overviewTimer = null;
-      const r = await fetch("/operations/overview", { headers: { accept: "application/json" } });
-      if (!r.ok) return;
-      const told = await r.json();
-      paintHealth(told.overview);
-      paintMatrix(told.matrix);
+      void loadOverview();
     }, 400);
   }
 
-  function paintHealth(o) {
-    q("[data-worker-state]").textContent =
-      `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`;
-    q("[data-worker-raw]").textContent =
-      `${o.worker.thread || "no thread"} · ${o.worker.owners.length ? o.worker.owners.join(", ") : "no owner"} · heartbeat ${o.worker.heartbeat_age != null ? `${o.worker.heartbeat_age.toFixed(1)}s ago` : "none"}`;
-    q("[data-queue-state]").textContent = `${o.queue.queued} queued · ${o.queue.running} running`;
-    q("[data-queue-raw]").textContent =
-      `oldest queued ${o.queue.oldest_queued_age != null ? `${Math.round(o.queue.oldest_queued_age)}s` : "—"} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`;
-    q("[data-ledger-state]").textContent = `${o.ledger.events.toLocaleString()} events`;
-    q("[data-ledger-raw]").textContent = `head #${o.ledger.last_id} · job_event · never sampled`;
-    if (o.coverage) {
-      const files = q("[data-coverage-files]");
-      if (files) files.textContent = String(o.coverage.files);
-      for (const node of document.querySelectorAll("[data-missing]")) {
-        const n = o.coverage.missing[node.dataset.missing];
-        if (n != null) node.textContent = `${n} missing`;
-      }
+  async function loadOverview(): Promise<void> {
+    const { data } = await api.GET("/operations/overview");
+    if (!data) return;
+    paintHealth(data.overview);
+    paintMatrix(data.matrix);
+  }
+
+  function paintHealth(o: Overview): void {
+    const say = (selector: string, text: string) => {
+      const node = findElement(root, selector, HTMLElement);
+      if (node) node.textContent = text;
+    };
+    const heartbeat = o.worker.heartbeat_age != null ? `${o.worker.heartbeat_age.toFixed(1)}s ago` : "none";
+    say(
+      "[data-worker-state]",
+      `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`,
+    );
+    say(
+      "[data-worker-raw]",
+      `${o.worker.thread || "no thread"} · ${o.worker.owners.length ? o.worker.owners.join(", ") : "no owner"} · heartbeat ${heartbeat}`,
+    );
+    say("[data-queue-state]", `${o.queue.queued} queued · ${o.queue.running} running`);
+    const oldest = o.queue.oldest_queued_age != null ? `${Math.round(o.queue.oldest_queued_age)}s` : "—";
+    say("[data-queue-raw]", `oldest queued ${oldest} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`);
+    say("[data-ledger-state]", `${o.ledger.events.toLocaleString()} events`);
+    say("[data-ledger-raw]", `head #${o.ledger.last_id} · job_event · never sampled`);
+    say("[data-coverage-files]", String(o.coverage.files));
+    for (const node of everyElement(document, "[data-missing]", HTMLElement)) {
+      const n = o.coverage.missing[requireData(node, "missing")];
+      if (n != null) node.textContent = `${n} missing`;
     }
   }
 
-  function paintMatrix(jobs) {
+  function paintMatrix(jobs: MatrixRow[]): void {
     matrixRows.textContent = "";
     for (const j of jobs) {
       const cancelling = j.derived.cancellation === "requested";
@@ -315,103 +362,110 @@
       li.appendChild(
         el("code", { class: "matrix-exec" }, `a${j.attempt} f${j.fence ?? ""}${j.owner ? ` · ${j.owner}` : ""}`),
       );
-      const live = pendingByJob.get(j.id) || j.live;
+      const live: PendingFrame | LiveReport | null = pendingByJob.get(j.id) ?? j.live;
       if (live && j.state === "running") {
-        li.appendChild(
-          el(
-            "span",
-            { class: "matrix-live", "data-matrix-live": "" },
-            `${live.phase || live.type}${live.item_id != null ? ` · item ${live.item_id}` : ""}`,
-          ),
-        );
+        li.appendChild(el("span", { class: "matrix-live", "data-matrix-live": "" }, liveWords(live)));
       }
       matrixRows.appendChild(li);
     }
     wireMatrix();
   }
 
-  function wireMatrix() {
-    for (const li of matrixRows.querySelectorAll("[data-matrix-job]")) {
-      li.onclick = () => choose(Number(li.dataset.matrixJob));
+  function liveWords(live: PendingFrame | LiveReport): string {
+    return `${live.phase || live.type}${live.item_id != null ? ` · item ${live.item_id}` : ""}`;
+  }
+
+  function wireMatrix(): void {
+    for (const li of everyElement(matrixRows, "[data-matrix-job]", HTMLLIElement)) {
+      const jobId = Number(requireData(li, "matrixJob"));
+      li.onclick = () => choose(jobId);
       li.onkeydown = (ev) => {
         if (ev.key === "Enter" || ev.key === " ") {
           ev.preventDefault();
-          choose(Number(li.dataset.matrixJob));
+          choose(jobId);
         }
       };
     }
   }
 
   // the inspector's own links: item pages load into the items slot; the
-  // "every one" link filters the tape to the job instead of leaving the page
-  inspectorBody.addEventListener("click", async (ev) => {
-    const load = ev.target.closest("[data-items-load], [data-items-more]");
+  // "every one" link filters the tape to the job instead of leaving the page.
+  // These answer HTML fragments, not JSON, so they are `fetch` and not the
+  // typed client -- the contract they honour is the template's, not the
+  // document's.
+  inspectorBody.addEventListener("click", (ev) => {
+    const load = closestFrom(ev.target, "[data-items-load], [data-items-more]", HTMLAnchorElement);
     if (load) {
       ev.preventDefault();
-      const slot = q("[data-items-slot]", inspectorBody);
-      if (!slot) return;
-      const r = await fetch(load.getAttribute("href"), { headers: { accept: "text/html" } });
-      if (!r.ok) {
-        slot.textContent = `${r.status}`;
-        return;
-      }
-      if (load.hasAttribute("data-items-more")) {
-        load.remove();
-        slot.insertAdjacentHTML("beforeend", await r.text());
-      } else {
-        slot.innerHTML = await r.text();
-      }
+      void loadItems(load);
       return;
     }
-    const tapeFilter = ev.target.closest("[data-tape-job-filter]");
+    const tapeFilter = closestFrom(ev.target, "[data-tape-job-filter]", HTMLElement);
     if (tapeFilter) {
       ev.preventDefault();
-      const input = q("[data-tape-filter-job]");
-      input.value = tapeFilter.dataset.tapeJobFilter;
-      filter.job = input.value;
+      jobFilter.value = requireData(tapeFilter, "tapeJobFilter");
+      filter.job = jobFilter.value;
       repaint(true);
       scroller.scrollIntoView({ block: "start" });
     }
   });
 
-  let inspectorTimer = null;
-  async function loadInspector() {
-    if (selectedJob == null) return;
-    const r = await fetch(`/operations/job/${selectedJob}`, { headers: { accept: "text/html" } });
+  async function loadItems(link: HTMLAnchorElement): Promise<void> {
+    const slot = findElement(inspectorBody, "[data-items-slot]", HTMLElement);
+    if (!slot) return;
+    const r = await fetch(link.href, { headers: { accept: "text/html" } });
     if (!r.ok) {
-      inspectorBody.innerHTML = "";
-      inspectorBody.appendChild(el("p", { class: "empty" }, `job ${selectedJob}: ${r.status}`));
+      slot.textContent = `${r.status}`;
+      return;
+    }
+    const fragment = await r.text();
+    if (link.hasAttribute("data-items-more")) {
+      link.remove();
+      slot.insertAdjacentHTML("beforeend", fragment);
+    } else {
+      slot.innerHTML = fragment;
+    }
+  }
+
+  let inspectorTimer: number | null = null;
+  async function loadInspector(): Promise<void> {
+    const job = selectedJob;
+    if (job == null) return;
+    const r = await fetch(`/operations/job/${job}`, { headers: { accept: "text/html" } });
+    if (!r.ok) {
+      inspectorBody.textContent = "";
+      inspectorBody.appendChild(el("p", { class: "empty" }, `job ${job}: ${r.status}`));
       return;
     }
     inspectorBody.innerHTML = await r.text();
-    if (window.htmx) window.htmx.process(inspectorBody);
-    for (const node of inspectorBody.querySelectorAll("time[data-epoch]")) {
-      const epoch = Number(node.dataset.epoch);
+    window.htmx?.process(inspectorBody);
+    for (const node of everyElement(inspectorBody, "time[data-epoch]", HTMLTimeElement)) {
+      const epoch = Number(requireData(node, "epoch"));
       const d = new Date(epoch * 1000);
       node.textContent = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock(epoch)}`;
       node.title = `epoch ${epoch}`;
     }
-    inspectorHint.textContent = `job #${selectedJob} · refreshed ${clock(Date.now() / 1000)}`;
+    inspectorHint.textContent = `job #${job} · refreshed ${clock(Date.now() / 1000)}`;
     paintPending();
   }
-  function refreshInspectorSoon() {
-    if (inspectorTimer) return;
-    inspectorTimer = setTimeout(() => {
+  function refreshInspectorSoon(): void {
+    if (inspectorTimer !== null) return;
+    inspectorTimer = window.setTimeout(() => {
       inspectorTimer = null;
-      loadInspector();
+      void loadInspector();
     }, 350);
   }
-  function choose(jobId) {
+  function choose(jobId: number): void {
     selectedJob = jobId;
-    for (const li of matrixRows.querySelectorAll("[data-matrix-job]")) {
+    for (const li of everyElement(matrixRows, "[data-matrix-job]", HTMLLIElement)) {
       li.setAttribute("aria-current", Number(li.dataset.matrixJob) === jobId ? "true" : "false");
     }
-    loadInspector();
+    void loadInspector();
   }
-  function paintPending() {
-    const slot = q("[data-current-phase]", inspectorBody);
+  function paintPending(): void {
+    const slot = findElement(inspectorBody, "[data-current-phase]", HTMLElement);
     if (!slot) return;
-    const p = selectedJob != null ? pendingByJob.get(selectedJob) : null;
+    const p = selectedJob != null ? pendingByJob.get(selectedJob) : undefined;
     // the server already filled the slot from its live memory on a cold
     // load or a reconnect; only a fresher report replaces it
     if (!p) return;
@@ -422,94 +476,116 @@
   }
 
   // --- the feed -----------------------------------------------------------
-  function setTransport(state, text) {
+  function setTransport(state: string, text: string): void {
     transport.dataset.transport = state;
     transportState.textContent = text;
   }
-  function connect() {
+
+  function connect(after: number): void {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    socket = new WebSocket(`${proto}://${location.host}/ws/events?after=${lastId}`);
+    const live = new WebSocket(`${proto}://${location.host}/ws/events?after=${after}`);
+    socket = live;
     setTransport(retry ? "reconnecting" : "connecting", retry ? `reconnecting (${retry})` : "connecting");
-    socket.onopen = () => {
+    live.onopen = () => {
       retry = 0;
       setTransport("connected", "connected");
       refreshOverviewSoon();
     };
-    socket.onmessage = (msg) => {
-      const frame = JSON.parse(msg.data);
+    live.onmessage = (msg: MessageEvent<unknown>) => {
+      const frame = decodeFrame(msg.data);
+      // a payload this build cannot read is not a frame: dropping one row is
+      // better than an exception that takes the socket down with it
+      if (frame === null) return;
       lastFrameAt = Date.now();
-      if (frame.frame === "backlog") {
-        let added = 0;
-        for (const e of frame.events) if (ingest(e)) added++;
-        if (paused) heldWhilePaused += added;
-        repaint(true);
-        return;
-      }
-      if (frame.frame === "pending") {
-        pendingByJob.set(frame.job_id, frame);
-        if (frame.job_id === selectedJob) paintPending();
-        const row = matrixRows.querySelector(`[data-matrix-job="${frame.job_id}"]`);
-        if (row) {
-          let slot = row.querySelector("[data-matrix-live]");
-          if (!slot) {
-            slot = el("span", { class: "matrix-live", "data-matrix-live": "" });
-            row.appendChild(slot);
-          }
-          slot.textContent = `${frame.phase || frame.type}${frame.item_id != null ? ` · item ${frame.item_id}` : ""}`;
-        }
-        return;
-      }
-      if (frame.frame === "event") {
-        const before = held.length ? held[held.length - 1].id : lastId;
-        if (ingest(frame)) {
-          if (paused) heldWhilePaused++;
-          if (frame.id > before + 1 && before > 0) fill(before, frame.id);
-          repaint(true);
-          transportLast.textContent = String(lastId);
-          if (frame.job_id === selectedJob) refreshInspectorSoon();
-          if (!frame.type.startsWith("phase.") && frame.type !== "item.observed") refreshOverviewSoon();
-        }
-      }
+      receive(frame);
     };
-    socket.onclose = () => {
+    live.onclose = () => {
       setTransport("disconnected", "disconnected");
       retry += 1;
-      setTimeout(connect, Math.min(4000, 250 * 2 ** Math.min(retry, 4)));
+      // resume from the newest id held, so nothing repeats and nothing is lost
+      window.setTimeout(() => connect(lastId), Math.min(4000, 250 * 2 ** Math.min(retry, 4)));
     };
-    socket.onerror = () => socket.close();
+    live.onerror = () => live.close();
+  }
+
+  function receive(frame: Frame): void {
+    if (frame.frame === "backlog") {
+      let added = 0;
+      for (const e of frame.events) if (ingest(e)) added++;
+      if (paused) heldWhilePaused += added;
+      repaint(true);
+      return;
+    }
+    if (frame.frame === "pending") {
+      pendingByJob.set(frame.job_id, frame);
+      if (frame.job_id === selectedJob) paintPending();
+      const row = findElement(matrixRows, `[data-matrix-job="${frame.job_id}"]`, HTMLLIElement);
+      if (row) {
+        let slot = findElement(row, "[data-matrix-live]", HTMLElement);
+        if (!slot) {
+          slot = el("span", { class: "matrix-live", "data-matrix-live": "" });
+          row.appendChild(slot);
+        }
+        slot.textContent = liveWords(frame);
+      }
+      return;
+    }
+    const before = held.at(-1)?.id ?? lastId;
+    if (!ingest(frame)) return;
+    if (paused) heldWhilePaused++;
+    if (frame.id > before + 1 && before > 0) void fill(before, frame.id);
+    repaint(true);
+    transportLast.textContent = String(lastId);
+    if (frame.job_id === selectedJob) refreshInspectorSoon();
+    if (settles(frame.type)) refreshOverviewSoon();
   }
 
   // An operator's reconnect: close the socket; the close handler resumes
   // from the last id held, so nothing is repeated and nothing is lost.
-  q("[data-transport-reconnect]").addEventListener("click", () => {
+  requireElement(root, "[data-transport-reconnect]", HTMLButtonElement).addEventListener("click", () => {
     if (socket && socket.readyState <= 1) socket.close();
   });
 
-  setInterval(() => {
+  window.setInterval(() => {
     transportLast.textContent = String(lastId);
     transportAge.textContent = lastFrameAt
       ? `${((Date.now() - lastFrameAt) / 1000).toFixed(1)}s since last frame`
       : "no frame yet";
-    for (const node of inspectorBody.querySelectorAll("[data-age-of]")) {
-      node.textContent = `${(Date.now() / 1000 - Number(node.dataset.ageOf)).toFixed(1)}s ago`;
+    for (const node of everyElement(inspectorBody, "[data-age-of]", HTMLElement)) {
+      node.textContent = `${(Date.now() / 1000 - Number(requireData(node, "ageOf"))).toFixed(1)}s ago`;
     }
-    for (const node of inspectorBody.querySelectorAll("[data-lease-until]")) {
-      const left = Number(node.dataset.leaseUntil) - Date.now() / 1000;
+    for (const node of everyElement(inspectorBody, "[data-lease-until]", HTMLElement)) {
+      const left = Number(requireData(node, "leaseUntil")) - Date.now() / 1000;
       node.textContent = left >= 0 ? `expires in ${seconds(left)}` : `expired ${seconds(-left)} ago · reclaimable`;
       node.classList.toggle("warn", left < 0);
     }
-    for (const node of inspectorBody.querySelectorAll("[data-elapsed-from]")) {
-      const from = Number(node.dataset.elapsedFrom);
+    for (const node of everyElement(inspectorBody, "[data-elapsed-from]", HTMLElement)) {
+      const from = Number(requireData(node, "elapsedFrom"));
       if (!from || node.dataset.elapsedTo) continue;
       node.textContent = seconds(Date.now() / 1000 - from);
     }
   }, 1000);
 
   // --- boot: the rows first, then the feed ---------------------------------
-  const state = JSON.parse(q("[data-console-state]").textContent);
-  const cold = JSON.parse(q("[data-console-tape]").textContent);
-  for (const e of cold) ingest(e);
+  //
+  // `head` is the dividing line the page read. The HTTP reads below carry
+  // ids <= head; the socket is asked for ids > head, and anything committed
+  // while those reads were in flight arrives in its backlog. The server
+  // rendered the matrix and the strip already, so the page is usable before
+  // any of this resolves -- these replace what it drew, they do not reveal it.
+  async function cold(): Promise<void> {
+    if (head <= 0) return;
+    const { data } = await api.GET("/operations/events/before", {
+      params: { query: { before: head + 1, limit: TAPE_COLD } },
+    });
+    if (!data) return;
+    for (const e of data.events) ingest(e);
+    repaint(true);
+  }
+
+  wireMatrix();
   repaint(true);
-  paintMatrix(state.matrix);
-  connect();
+  // the feed starts whether or not the cold reads landed: a console with no
+  // tape still has to show what happens next
+  Promise.allSettled([loadOverview(), cold()]).then(() => connect(head), console.error);
 })();

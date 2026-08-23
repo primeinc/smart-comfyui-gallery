@@ -11,9 +11,9 @@ narrowest seam that proves it; the browser proof lives beside this file.
 from __future__ import annotations
 
 import json
-import pathlib
 import re
 import time
+import typing
 
 import pytest
 from litestar.testing import TestClient
@@ -24,7 +24,6 @@ from sg_web import console
 from sg_web.app import build_app
 from tests.staging import fresh_schema
 
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
 
 
@@ -80,16 +79,10 @@ def _types(db, job_id):
 # --- the vocabulary is closed, and every word has a rendering ----------------
 
 
-def test_the_vocabulary_is_one_list_in_three_places():
-    """db/ledger.py TYPES, the schema's CHECK, and the console's
-    renderings name exactly the same set: a type the ledger can write
-    without words, or words for a type that cannot be written, fails."""
-    ddl = SCHEMA.read_text(encoding="utf-8")
-    found = re.search(r"CREATE TABLE job_event \((.*?)\) STRICT;", ddl, re.DOTALL)
-    assert found is not None, "job_event left the schema"
-    block = found.group(1)
-    checked = set(re.findall(r"'([a-z_]+\.[a-z_]+)'", block.split("type ", 1)[1].split("item_id", 1)[0]))
-    assert checked == set(ledger.TYPES), "the schema CHECK and ledger.TYPES disagree"
+def test_every_word_the_ledger_accepts_has_a_rendering():
+    """A type the ledger can write without words, or words for a type it
+    cannot write, fails here. That the vocabulary equals the schema's
+    CHECK is text against text -- sglint SG709 -- not a test."""
     assert set(console.RENDERINGS) == set(ledger.TYPES), "an event type has no console rendering"
 
 
@@ -557,19 +550,13 @@ def test_the_shell_counts_what_is_running(served):
     assert _turn(client, job_id)["state"] == "done"
 
 
-def _schema_job_kinds() -> set[str]:
-    table = SCHEMA.read_text(encoding="utf-8").split("CREATE TABLE job (", 1)[1]
-    check = re.search(r"kind\s+TEXT NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", table)
-    assert check is not None
-    return set(re.findall(r"'([a-z_]+)'", check.group(1)))
-
-
 def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
     """The console shows what a job does AND the schema's name for it.
     A kind the schema admits but the console cannot word is a row that
-    reads as its identifier -- the contract holds the two vocabularies
-    equal, and the hash kind's modes are told apart by the payload."""
-    assert set(console.KINDS) == _schema_job_kinds()
+    reads as its identifier. The vocabulary is read from db/jobs.py, the
+    one place it is spelled -- sglint SG709 holds that equal to the
+    schema's CHECK, so this file never parses the DDL to learn it."""
+    assert set(console.KINDS) == set(typing.get_args(jobs.JobKind))
     assert console.describe_kind("hash") == "verify every file's bytes"
     assert console.describe_kind("hash", "groups") == "group perceptual copies"
     assert console.describe_kind("annotate") == "caption every picture"

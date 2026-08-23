@@ -831,14 +831,54 @@ _NOT_JSON = frozenset({"Template", "Redirect", "Stream", "File", "ASGIResponse"}
 _PRIMITIVE = frozenset({"str", "int", "float", "bool", "bytes", "None"})
 
 
+def _carries_json(node: ast.expr) -> bool:
+    """Whether one alternative of a return annotation carries JSON at all.
+
+    Bytes are not: `Response[bytes]` is a picture or a download, and the
+    browser addresses it with a URL rather than a generated type.
+    """
+    named = _annotation_name(node)
+    if named in _NOT_JSON:
+        return False
+    if isinstance(node, ast.Subscript) and named == "Response":
+        return _annotation_name(node.slice) != "bytes"
+    return named != "bytes"
+
+
 def _json_parts(node: ast.expr | None) -> list[ast.expr]:
     """The alternatives of a return annotation that carry JSON."""
     if node is None:
         return []
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return _json_parts(node.left) + _json_parts(node.right)
-    named = _annotation_name(node)
-    return [] if named in _NOT_JSON else [node]
+    return [node] if _carries_json(node) else []
+
+
+def _muddled(node: ast.expr | None) -> bool:
+    """Whether a union puts a JSON answer beside one that is not JSON.
+
+    Litestar builds the response schema from the whole annotation, and a
+    union it cannot render as one media type collapses to the empty
+    schema: measured on v2.24.0, `Template | Response[Held]` AND
+    `Response[Held] | Redirect` both reach the document as
+    `application/json: {schema: {}}`, while `Response[Held]` alone reaches
+    it as a $ref. So a route that negotiates cannot state its contract in
+    the return type however precisely it writes it -- it has to say it in
+    `responses=`, which is where OpenAPI reads it.
+    """
+    if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.BitOr):
+        return False
+    arms: list[ast.expr] = []
+
+    def walk(one: ast.expr) -> None:
+        if isinstance(one, ast.BinOp) and isinstance(one.op, ast.BitOr):
+            walk(one.left)
+            walk(one.right)
+        else:
+            arms.append(one)
+
+    walk(node)
+    return any(_annotation_name(one) in _NOT_JSON for one in arms) and any(_carries_json(one) for one in arms)
 
 
 def _precise(node: ast.expr, contracts: set[str]) -> bool:
@@ -892,7 +932,9 @@ def rule_response_contracts(
     of that JSON is back to guessing which keys are there. A route that
     negotiates -- a page to a person, JSON to a machine -- cannot say it in
     the return type, and says it in `responses=` instead; that is the same
-    contract, written where OpenAPI reads it.
+    contract, written where OpenAPI reads it -- and it has to, because a
+    union that mixes a page with a JSON answer reaches the document as the
+    empty schema however precisely each arm is written (_muddled).
     """
     held = list(web_sources() if sources is None else sources)
     contracts = _wire_contracts(held)
@@ -909,7 +951,10 @@ def rule_response_contracts(
                 continue
             declared = _declared_containers(node)
             carried = _json_parts(node.returns) if declared is None else declared
-            vague = [one for one in carried if not _precise(one, contracts)]
+            # a negotiating union states nothing whatever its arms say, so
+            # every JSON arm of one is vague until `responses=` names it
+            muddled = declared is None and _muddled(node.returns)
+            vague = carried if muddled else [one for one in carried if not _precise(one, contracts)]
             if f"{source.relative}:{node.name}" in excused:
                 if not vague:
                     found.append(
@@ -924,17 +969,16 @@ def rule_response_contracts(
                 continue
             if not vague:
                 continue
-            where = "responses=" if declared is not None else "returns"
             spelled = ", ".join(sorted({ast.unparse(one) for one in vague})) or "nothing"
-            found.append(
-                Finding(
-                    source.path,
-                    node.lineno,
-                    node.col_offset,
-                    "SG413",
-                    f"{node.name} {where} {spelled}, which describes no shape the browser can be typed against",
+            if muddled:
+                said = (
+                    f"{node.name} returns {spelled} beside a page or a redirect, and OpenAPI writes the whole"
+                    " union down as the empty schema; declare the JSON answer in responses="
                 )
-            )
+            else:
+                where = "responses=" if declared is not None else "returns"
+                said = f"{node.name} {where} {spelled}, which describes no shape the browser can be typed against"
+            found.append(Finding(source.path, node.lineno, node.col_offset, "SG413", said))
     return found
 
 
