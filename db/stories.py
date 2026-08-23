@@ -53,6 +53,11 @@ from . import prompts as prompts_module
 #: that reads a document checks this before trusting any key.
 FORMAT_VERSION = 1
 
+#: The session kinds a snapshot may be of -- the schema's own CHECK
+#: (story_snapshot.event_kind), spelled once for every caller that
+#: filters by it.
+EVENT_KINDS = ("generation_session", "capture_session", "file_session")
+
 _CANONICAL = {"sort_keys": True, "separators": (",", ":"), "ensure_ascii": False}
 
 

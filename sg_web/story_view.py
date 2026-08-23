@@ -66,15 +66,19 @@ def _heroes(conn, words: dict, frozen: dict) -> list[dict]:
 
 
 @get("/stories", sync_to_thread=True)
-def stories_index(state: State, request: Request) -> Template | Response:
+def stories_index(state: State, request: Request, kind: str | None = None) -> Template | Response:
     """Every story told, newest first -- the shelf the timeline's
-    buttons fill. Each entry is its title and dek as rendered, its
-    heroes, its subject kind, its profile, and doors to the render and
-    the plan's evolution."""
+    buttons fill -- or, with `?kind=`, those of one session kind. Each
+    entry is its title and dek as rendered, its heroes, its subject
+    kind, its profile, and doors to the render and the plan's
+    evolution."""
+    if kind is not None and kind not in stories.EVENT_KINDS:
+        raise ClientException(f"kind is one of {', '.join(stories.EVENT_KINDS)}, not {kind!r}")
     conn = connect.connect(state.db_path, read_only=True)
     try:
+        kinds = pages.story_kinds(conn)
         told = []
-        for row in pages.stories(conn):
+        for row in pages.stories(conn, kind=kind):
             render_id, plan_id, profile, created_at, document, planner, event_kind, snapshot_id, frozen = row
             words = json.loads(document)
             told.append(
@@ -96,7 +100,7 @@ def stories_index(state: State, request: Request) -> Template | Response:
             )
     finally:
         connect.close(conn)
-    return presented_page(request, told, page="stories.html", context={"stories": told})
+    return presented_page(request, told, page="stories.html", context={"stories": told, "kind": kind, "kinds": kinds})
 
 
 @dataclasses.dataclass

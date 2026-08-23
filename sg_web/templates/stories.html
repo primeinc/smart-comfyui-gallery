@@ -5,8 +5,14 @@
   <header class="bar">
     <nav class="crumbs">
       <span class="crumbs-here">Stories</span>
-      <span class="crumbs-where">{{ stories | length }} told</span>
+      <span class="crumbs-where">{{ stories | length }} told{% if kind %} of {{ kind.replace("_", " ") }}s{% endif %}</span>
     </nav>
+    {% if kinds %}
+    <nav class="stories-kinds" data-stories-kinds aria-label="session kinds">
+      <a href="/stories"{% if not kind %} aria-current="page"{% endif %}>all</a>
+      {% for k, n in kinds %}<a href="/stories?kind={{ k }}" data-stories-kind="{{ k }}"{% if k == kind %} aria-current="page"{% endif %}>{{ k.replace("_", " ") }} &middot; {{ n }}</a>{% endfor %}
+    </nav>
+    {% endif %}
   </header>
   <main class="stage">
     {% if stories %}

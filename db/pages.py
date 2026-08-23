@@ -1112,12 +1112,25 @@ STORIES = (
     " sp.planner, s.event_kind, s.id, s.document_json"
     "  FROM story_render sr JOIN story_plan sp ON sp.id = sr.plan_id"
     "  JOIN story_snapshot s ON s.id = sp.snapshot_id"
-    " ORDER BY sr.id DESC LIMIT ?"
+)
+_STORIES_OF_KIND = " WHERE s.event_kind = ?"
+_STORIES_NEWEST = " ORDER BY sr.id DESC LIMIT ?"
+
+#: How many stories each session kind has, for the shelf's filter.
+STORY_KINDS = (
+    "SELECT s.event_kind, count(*) FROM story_render sr JOIN story_plan sp ON sp.id = sr.plan_id"
+    "  JOIN story_snapshot s ON s.id = sp.snapshot_id GROUP BY s.event_kind ORDER BY s.event_kind"
 )
 
 
-def stories(conn, limit: int = 60):
-    return conn.execute(STORIES, (limit,)).fetchall()
+def stories(conn, limit: int = 60, kind: str | None = None):
+    if kind is None:
+        return conn.execute(STORIES + _STORIES_NEWEST, (limit,)).fetchall()
+    return conn.execute(STORIES + _STORIES_OF_KIND + _STORIES_NEWEST, (kind, limit)).fetchall()
+
+
+def story_kinds(conn) -> list[tuple[str, int]]:
+    return [(kind, int(n)) for kind, n in conn.execute(STORY_KINDS)]
 
 
 # --- lineage ---------------------------------------------------------------

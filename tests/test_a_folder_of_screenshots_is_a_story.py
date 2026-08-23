@@ -156,6 +156,15 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert all(h["thumbnail"].startswith("/thumb/") for h in shelf[0]["heroes"])
     page = client.get("/stories", headers={"accept": "text/html"}).text
     assert f'data-story="{made.json()["id"]}"' in page
+    # the shelf filters by session kind, and says how many of each
+    assert 'data-stories-kind="file_session"' in page
+    assert (
+        client.get("/stories", params={"kind": "file_session"}, headers={"accept": "application/json"}).json() == shelf
+    )
+    assert (
+        client.get("/stories", params={"kind": "capture_session"}, headers={"accept": "application/json"}).json() == []
+    )
+    assert client.get("/stories", params={"kind": "vibe_session"}).status_code == 400
     assert f'data-story-heroes="{len(shelf[0]["heroes"])}"' in page
     # a hero's caption, once a model has said one, is shown beside the
     # frozen name -- live, by address, labelled as today's
