@@ -2458,6 +2458,85 @@ def _one_place_per_name(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE UNIQUE INDEX place_identity ON place(kind, name COLLATE NOCASE, IFNULL(parent_id, 0))")
 
 
+@step(29)
+def _portrait_raw_thumbnails_turned_once(conn: sqlite3.Connection) -> None:
+    """v29 -> v30: everything ever derived from the pixels of a RAW file
+    stored a quarter turn off is retired, so the sweeps derive it again
+    from the frame the right way up.
+
+    The RAW door now hands the frame back AS STORED (vision/decode.py
+    open_still, `user_flip=0`); until it did, LibRaw turned such a frame
+    and the orientation tag turned it again, and every reader of
+    `oriented.for_model` -- the thumbnailer, the face detector, the
+    embedders, the annotators, the file hasher -- saw a sideways
+    picture. A RAW stored upright was never turned twice and keeps
+    everything. The file's own bytes and their sha are untouched: what
+    was wrong is the rendering, and the derived rows are what the
+    rendering produced.
+
+    Retired the way the sweeps expect: the face instances and their
+    scan row go (the boxes nothing else owns with them, db/derived.py
+    _reclaim_regions), so the faces job detects again and the cluster
+    job regroups; an embedding row gone is an item for the embed job;
+    the resident indexes drop the gone rows as strangers on their next
+    `align` (db/similarity.py) -- the live `note_gone` path is the
+    runner's, applied after ITS commit, not a migration's. A person's
+    own assertions on those pictures are theirs and stay. Hashes and
+    annotations are rows. Cached thumbnails live beside the database
+    (`<home>/thumbs`, vision/thumbs.py DIRNAME), reached through the
+    connection's own file path, and their render is queued. File
+    removal is idempotent and survives a rollback harmlessly.
+    """
+    import time
+
+    from vision import decode, thumbs
+
+    from . import capture, derived, runner
+
+    suffixes = tuple(decode.RAW_SUFFIXES)
+    turned = tuple(sorted(capture.TRANSPOSED))
+    affected = conn.execute(
+        "SELECT f.id, f.content_sha256 FROM file f JOIN capture c ON c.file_id = f.id"
+        " WHERE f.kind = 'image' AND c.orientation IN (" + ", ".join("?" for _ in turned) + ")"
+        " AND (" + " OR ".join("lower(f.name) LIKE ?" for _ in suffixes) + ")",
+        (*turned, *(f"%{suffix}" for suffix in suffixes)),
+    ).fetchall()
+    if not affected:
+        return
+    for file_id, _ in affected:
+        regions = [
+            row[0]
+            for row in conn.execute(
+                "SELECT region_id FROM derived_face_instance WHERE file_id = ?"
+                " UNION SELECT region_id FROM derived_annotation WHERE file_id = ?",
+                (file_id, file_id),
+            )
+        ]
+        conn.execute("DELETE FROM derived_face_instance WHERE file_id = ?", (file_id,))
+        conn.execute("DELETE FROM derived_face_scan WHERE file_id = ?", (file_id,))
+        conn.execute("DELETE FROM derived_embedding WHERE file_id = ?", (file_id,))
+        conn.execute("DELETE FROM derived_file_hash WHERE file_id = ?", (file_id,))
+        conn.execute("DELETE FROM derived_annotation WHERE file_id = ?", (file_id,))
+        derived._reclaim_regions(conn, regions)
+    db_file = next((str(row[2]) for row in conn.execute("PRAGMA database_list") if row[1] == "main"), "")
+    if not db_file or db_file == ":memory:":
+        return
+    cache = pathlib.Path(db_file).parent / thumbs.DIRNAME
+    if not cache.is_dir():
+        return
+    removed = 0
+    for _, sha in affected:
+        if sha is None:
+            continue
+        for kind in thumbs.EDGES:
+            target = thumbs.path_for(cache, sha, kind)
+            if target.exists():
+                target.unlink()
+                removed += 1
+    if removed:
+        runner.submit_thumbs(conn, time.time(), thumbs_dir=str(cache))
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

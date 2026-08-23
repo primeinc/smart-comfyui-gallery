@@ -957,7 +957,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == list(range(4, 30))
+    assert migrate.migrate(path) == list(range(4, 31))
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -1054,7 +1054,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27, 28, 29]
+    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
@@ -1098,13 +1098,78 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     conn.execute("PRAGMA user_version = 25")
     conn.close()
 
-    assert migrate.migrate(path) == [26, 27, 28, 29]
+    assert migrate.migrate(path) == [26, 27, 28, 29, 30]
     assert build.drift(path) == []
     ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
         assert ro.execute(
             "SELECT file_id, model_id, model_version, source_sha256, faces FROM derived_face_scan"
         ).fetchall() == [(file_id, "m", "1", "a" * 64, 2)]
+    finally:
+        ro.close()
+
+
+def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
+    """A v29 library's portrait RAW -- orientation 8 -- was rendered
+    sideways for every reader: its thumbnails, face scan, embedding,
+    file hash and annotation all came from that frame. v30 retires all
+    of it and queues the thumbnails' render; a landscape RAW and the
+    JPEG sibling keep everything, and no file's sha moves."""
+    import numpy as np
+    from PIL import Image
+
+    from db import derived
+    from vision import thumbs
+
+    path = tmp_path / "gallery.db"
+    _built(path)
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        portrait = a_file_row(conn)
+        conn.execute("UPDATE file SET name = '666A0273.CR2', content_sha256 = ? WHERE id = ?", ("b" * 64, portrait))
+        folder = conn.execute("SELECT folder_id FROM file WHERE id = ?", (portrait,)).fetchone()[0]
+        others = {}
+        for slug, name, sha in (("wide", "666A0111.CR2", "d" * 64), ("sibling", "666A0273.JPG", "c" * 64)):
+            others[name] = scan.mint(conn, "file", slug)
+            conn.execute(
+                "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+                " VALUES(?, ?, ?, 'image', 10, 0, ?, ?, ?)",
+                (others[name], folder, name, sha, NOW, NOW),
+            )
+        for file_id, orientation in ((portrait, 8), (others["666A0111.CR2"], 1), (others["666A0273.JPG"], 8)):
+            conn.execute("INSERT INTO capture(file_id, orientation, parsed_at) VALUES(?, ?, 0)", (file_id, orientation))
+            sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+            faces = [
+                {"region": derived.region(conn, 0.1, 0.1, 0.2, 0.2), "embedding": np.ones(4, np.float32).tobytes()}
+            ]
+            derived.record_faces(conn, file_id, "m", "1", sha, NOW, faces)
+            derived.record_face_scan(conn, file_id, "m", "1", sha, NOW, 1)
+            derived.record_hash(conn, file_id, sha, NOW, phash64=1)
+        conn.execute("PRAGMA user_version = 29")
+    finally:
+        conn.close()
+    cache = tmp_path / thumbs.DIRNAME
+    for sha in ("b" * 64, "c" * 64, "d" * 64):
+        thumbs.put_all(cache, sha, Image.new("RGB", (40, 30), (9, 9, 9)))
+
+    assert migrate.migrate(path) == [30]
+    assert not any(thumbs.path_for(cache, "b" * 64, kind).exists() for kind in thumbs.EDGES), "the portrait RAW's go"
+    for sha in ("c" * 64, "d" * 64):
+        assert all(thumbs.path_for(cache, sha, kind).exists() for kind in thumbs.EDGES), "the others keep theirs"
+    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        shas = dict(ro.execute("SELECT id, content_sha256 FROM file"))
+        assert shas[portrait] == "b" * 64, "the bytes' own sha never moves"
+        for table in ("derived_face_scan", "derived_face_instance", "derived_file_hash"):
+            held = {row[0] for row in ro.execute(f"SELECT file_id FROM {table}")}
+            assert portrait not in held, f"{table} still derives the portrait RAW from a sideways frame"
+            assert set(others.values()) <= held, f"{table} lost a file it should not have"
+        queued = ro.execute("SELECT kind, payload FROM job ORDER BY id DESC LIMIT 1").fetchone()
+        assert queued is not None
+        assert queued[0] == "hash"
+        assert '"derive": "thumbs"' in queued[1]
+        assert ro.execute("SELECT count(*) FROM job_item WHERE job_id = (SELECT max(id) FROM job)").fetchone()[0] == 1
     finally:
         ro.close()
 

@@ -39,7 +39,9 @@ def db_path(base: pathlib.Path) -> pathlib.Path:
 
 def thumbs_dir(base: pathlib.Path) -> pathlib.Path:
     """The thumbnail cache, keyed on content -- safe to delete whole."""
-    where = base / "thumbs"
+    from vision import thumbs
+
+    where = base / thumbs.DIRNAME
     where.mkdir(parents=True, exist_ok=True)
     return where
 

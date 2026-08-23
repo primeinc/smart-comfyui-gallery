@@ -49,6 +49,11 @@ from PIL import Image, ImageOps
 #: lightbox on ordinary displays without shipping originals.
 EDGES = {"thumb": 512, "preview": 1440}
 
+#: The cache's directory under a run's home (sg_web/home.py thumbs_dir);
+#: named here so a migration that must reach the cache finds it by the
+#: same word.
+DIRNAME = "thumbs"
+
 #: Avatar square side. A face crop this size stays sharp in a 96px circle.
 AVATAR = 256
 
