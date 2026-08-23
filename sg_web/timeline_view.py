@@ -394,7 +394,8 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
                 "pictures": pictures,
                 "spelled": _spell(at, "week"),
                 "x": round(((at - whole_lo) / whole_span) * _W, 2),
-                "w": round(max(1.0, (overview_width / whole_span) * _W), 2),
+                # a week of a decade-long library is a sliver; a burst must still read as a mark
+                "w": round(max(3.0, (overview_width / whole_span) * _W), 2),
                 "h": round(max(1.0, _height(pictures, overview_most, 36)), 2),
             }
             for at, pictures, *_ in overview_bins
