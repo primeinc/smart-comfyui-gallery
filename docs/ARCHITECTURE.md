@@ -199,10 +199,14 @@ instant otherwise) at a zoom the URL owns (`bin`, `start`, `end`):
 pictures per bin split by clock domain and origin, claims too coarse
 for the bin as spans, thumbnails per bin while the bins are few, and
 the sessions touching the range (`db/pages.py TIMELINE_*`,
-`SESSION_*`). `?f=` scopes the whole surface by the gallery's facets --
-every statement is HEAD + the facet conjunction + TAIL, and every door
-carries the scope, so what is drawn is what opens; a session is a
-door, never a scope. Every bin, span and session is a door into the gallery
+`SESSION_*`). Any gallery question scopes the whole surface --
+`?folder=`, `?album=`, `?person=`, `?kind=`, `?f=` -- through
+`resultset.scope_of`: the same membership predicates the gallery walks,
+appended to every timeline statement (HEAD + conjunct + TAIL), and
+every door is that question plus a moment, so what is drawn is what
+opens. A session is a door, never a scope; a rule-defined collection
+is refused (its membership is a projection, not a predicate). A
+person's, a folder's and an album's page open their own timeline. Every bin, span and session is a door into the gallery
 through the facets (`context.local_day`, `context.moment`,
 `context.origin`, `context.disputed`, `event.id`) ordered by `moment`.
 A session card names who is in it (primary clustering), carries a
