@@ -29,14 +29,14 @@ from __future__ import annotations
 
 import typing
 
+from litestar.openapi.spec import Schema
 from litestar.plugins.pydantic import PydanticDIPlugin, PydanticInitPlugin, PydanticSchemaPlugin
-from pydantic import BaseModel, ConfigDict
+from litestar.typing import FieldDefinition
+from pydantic import BaseModel, ConfigDict, RootModel
 
 if typing.TYPE_CHECKING:
     from litestar._openapi.schema_generation.schema import SchemaCreator
-    from litestar.openapi.spec import Schema
     from litestar.plugins import PluginProtocol
-    from litestar.typing import FieldDefinition
 
 
 class Wire(BaseModel):
@@ -57,8 +57,17 @@ class _WireSchema(PydanticSchemaPlugin):
 
     @classmethod
     def for_pydantic_model(cls, field_definition: FieldDefinition, schema_creator: SchemaCreator) -> Schema:
-        schema = super().for_pydantic_model(field_definition=field_definition, schema_creator=schema_creator)
         model = field_definition.annotation
+        if isinstance(model, type) and issubclass(model, RootModel):
+            # A RootModel's JSON is its root, not `{"root": ...}`. Litestar
+            # builds a component from a model's FIELDS, and a RootModel has
+            # exactly one called `root`, so the document described a wrapper
+            # object the server does not accept -- and the browser would
+            # have been generated against it.
+            held = model.model_fields["root"]
+            inner = schema_creator.for_field_definition(FieldDefinition.from_annotation(held.annotation))
+            return inner if isinstance(inner, Schema) else Schema(one_of=[inner])
+        schema = super().for_pydantic_model(field_definition=field_definition, schema_creator=schema_creator)
         if isinstance(model, type) and issubclass(model, BaseModel) and model.model_config.get("extra") == "forbid":
             schema.additional_properties = False
         return schema

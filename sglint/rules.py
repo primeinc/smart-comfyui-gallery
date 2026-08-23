@@ -709,7 +709,15 @@ def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
     for source in sources:
         for node in ast.walk(source.tree):
             if isinstance(node, ast.ClassDef):
-                bases[node.name] = {base.id for base in node.bases if isinstance(base, ast.Name)}
+                held = {base.id for base in node.bases if isinstance(base, ast.Name)}
+                # `class X(RootModel[Annotated[A | B, ...]])` is how a
+                # discriminated body is spelled: litestar takes a body only
+                # when the annotation is a model CLASS, so the union travels
+                # inside one. It is a contract when its arms are.
+                for base in node.bases:
+                    if isinstance(base, ast.Subscript) and _annotation_name(base.value) == "RootModel":
+                        held |= {one.id for one in ast.walk(base.slice) if isinstance(one, ast.Name)}
+                bases[node.name] = held
             elif isinstance(node, ast.Assign) and isinstance(node.value, ast.BinOp):
                 joined = _union_members(node.value)
                 if joined:

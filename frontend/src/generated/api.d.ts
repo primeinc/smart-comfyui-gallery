@@ -1626,8 +1626,16 @@ export interface components {
             slug: string;
             definition_rev: number;
         };
-        /** ConvertCollection */
-        ConvertCollection: {
+        /** ConvertToListed */
+        ConvertToListed: {
+            /** @enum {string} */
+            kind: "album" | "flag";
+            expected_rev: number;
+            /** @default false */
+            discard_rule: boolean;
+        };
+        /** ConvertToSmart */
+        ConvertToSmart: {
             take?: number | null;
             folder?: string | null;
             person?: string | null;
@@ -1637,11 +1645,9 @@ export interface components {
             favorite?: string | null;
             rating_min?: number | null;
             f?: string | string[] | null;
+            /** @constant */
+            kind: "smart";
             expected_rev: number;
-            /** @enum {string} */
-            kind: "album" | "flag" | "smart";
-            /** @default false */
-            discard_rule: boolean;
             media_kind?: string | null;
         };
         /** Curated */
@@ -2785,7 +2791,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ConvertCollection"];
+                "application/json": components["schemas"]["ConvertToListed"] | components["schemas"]["ConvertToSmart"];
             };
         };
         responses: {

@@ -508,6 +508,26 @@ def test_leaving_smart_without_saying_discard_is_refused(curated, starred):
     assert _view(curated, starred)["kind"] == "smart"
 
 
+def test_a_conversion_refuses_fields_its_target_kind_cannot_mean(curated, keepers, starred):
+    """The body is a union discriminated on `kind`, so a field belonging to
+    the other transition is refused by name rather than accepted and
+    ignored -- which is what one model holding both sets of fields did.
+
+    Runtime, because it is the framework routing a body to the right arm of
+    a discriminated union; no linter or type checker sees a request.
+    """
+    rule_shaped = curated.post(f"/t/{keepers}/convert", json={"kind": "album", "expected_rev": 1, "q": "cat"})
+    assert rule_shaped.status_code == 400, rule_shaped.text
+    assert "q" in rule_shaped.text, "the refusal names the field that does not belong"
+
+    discarding = curated.post(f"/t/{starred}/convert", json={"kind": "smart", "expected_rev": 1, "discard_rule": True})
+    assert discarding.status_code == 400, discarding.text
+    assert "discard_rule" in discarding.text, "becoming smart has no rule to discard"
+
+    assert _view(curated, keepers)["kind"] == "album", "neither refusal converted anything"
+    assert _view(curated, starred)["kind"] == "smart"
+
+
 def test_leaving_smart_with_discard_drops_the_rule(curated, starred):
     told = _wrote(curated, "post", f"/t/{starred}/convert", kind="album", discard_rule=True, expected_rev=1)
 

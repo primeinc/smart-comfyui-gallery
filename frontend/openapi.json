@@ -1526,7 +1526,14 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/ConvertCollection"
+                                "oneOf": [
+                                    {
+                                        "$ref": "#/components/schemas/ConvertToListed"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/ConvertToSmart"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -9004,7 +9011,32 @@
                 ],
                 "title": "CollectionWriteAnswer"
             },
-            "ConvertCollection": {
+            "ConvertToListed": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "album",
+                            "flag"
+                        ]
+                    },
+                    "expected_rev": {
+                        "type": "integer"
+                    },
+                    "discard_rule": {
+                        "type": "boolean",
+                        "default": false
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "expected_rev",
+                    "kind"
+                ],
+                "title": "ConvertToListed"
+            },
+            "ConvertToSmart": {
                 "properties": {
                     "take": {
                         "oneOf": [
@@ -9102,20 +9134,12 @@
                             }
                         ]
                     },
-                    "expected_rev": {
-                        "type": "integer"
-                    },
                     "kind": {
                         "type": "string",
-                        "enum": [
-                            "album",
-                            "flag",
-                            "smart"
-                        ]
+                        "const": "smart"
                     },
-                    "discard_rule": {
-                        "type": "boolean",
-                        "default": false
+                    "expected_rev": {
+                        "type": "integer"
                     },
                     "media_kind": {
                         "oneOf": [
@@ -9134,7 +9158,7 @@
                     "expected_rev",
                     "kind"
                 ],
-                "title": "ConvertCollection"
+                "title": "ConvertToSmart"
             },
             "Curated": {
                 "properties": {

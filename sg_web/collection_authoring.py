@@ -19,12 +19,14 @@ decides again.
 from __future__ import annotations
 
 import time
+from typing import Annotated, Literal
 
 from litestar import patch, post, put
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.params import FromPath
 from litestar.response import Response
+from pydantic import Field, RootModel
 
 from db import collection_rules, collections, connect, naming
 from db.resultset import canonical
@@ -281,29 +283,47 @@ def replace_rule(
     return _written(state, work)
 
 
-class ConvertCollection(_Question):
-    """The body of POST /t/{slug}/convert: the kind to become.
+class ConvertToListed(Wire):
+    """Become an album or a flag.
 
-    One model, not a union of ConvertToListed | ConvertToSmart, which
-    would have made a field the target kind forbids impossible to send.
-    Litestar cannot take a union body: measured, a handler annotated
-    `data: A | B` answers 500 to every request including the valid ones,
-    because a body reaches pydantic only when the annotation IS a
-    BaseModel subclass (litestar/plugins/pydantic/plugins/init.py
-    is_pydantic_v2_model_class) and a union is not a class.
+    `discard_rule` is the rule's destruction said out loud, and it is only
+    meaningful leaving smart; album <-> flag ignores it because there is
+    no rule to lose.
+    """
 
-    So the combinations a kind forbids are refused one layer down, where
-    they were always decided: becoming smart needs an empty membership,
-    and leaving smart needs the rule's discard said out loud.
+    kind: collections.ListedKind
+    expected_rev: int
+    discard_rule: bool = False
 
-    `media_kind`, not `kind`, carries the rule's media kind here, because
+
+class ConvertToSmart(_Question):
+    """Become smart, with the rule that makes it so in the same act.
+
+    `media_kind`, not `kind`, carries the rule's media kind, because
     `kind` already names the collection kind being asked for.
     """
 
+    kind: Literal["smart"]
     expected_rev: int
-    kind: collections.CollectionKind
-    discard_rule: bool = False
     media_kind: str | None = None
+
+
+class ConvertCollection(RootModel[Annotated[ConvertToListed | ConvertToSmart, Field(discriminator="kind")]]):
+    """The body of POST /t/{slug}/convert: which transition, and its terms.
+
+    A discriminated union rather than one model holding both sets of
+    fields, so a field the target kind cannot mean is refused by name
+    instead of accepted and ignored -- `{"kind": "album", "q": "cat"}`
+    answers 400 saying `album.q`, and a smart conversion carrying
+    `discard_rule` says `smart.discard_rule`.
+
+    A RootModel because litestar cannot take a bare union body: measured,
+    a handler annotated `data: A | B` answers 500 to every request,
+    including valid ones, since a body reaches pydantic only when the
+    annotation IS a BaseModel subclass
+    (litestar/plugins/pydantic/plugins/init.py is_pydantic_v2_model_class).
+    A RootModel is one, so the union travels inside a class.
+    """
 
 
 @post("/t/{slug:str}/convert", sync_to_thread=True)
@@ -317,39 +337,40 @@ def convert_collection(
 
     def work(conn):
         collection_id = _collection_at(conn, slug)
-        if data.kind == "smart":
+        wanted = data.root
+        if isinstance(wanted, ConvertToSmart):
             query = _asked(
-                data.folder,
+                wanted.folder,
                 None,
-                data.media_kind,
-                data.q,
-                data.sort,
+                wanted.media_kind,
+                wanted.q,
+                wanted.sort,
                 None,
-                person=data.person,
-                artifact=data.artifact,
-                favorite=data.favorite,
-                rating_min=data.rating_min,
-                facets=data.f,
+                person=wanted.person,
+                artifact=wanted.artifact,
+                favorite=wanted.favorite,
+                rating_min=wanted.rating_min,
+                facets=wanted.f,
             )
-            rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.take)
+            rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=wanted.take)
             collections.convert_to_smart(
                 conn,
                 collection_id,
                 rule,
                 canonical(query) or "the whole library",
                 state.actor_id,
-                data.expected_rev,
+                wanted.expected_rev,
                 time.time(),
             )
         else:
             collections.convert_to_listed(
                 conn,
                 collection_id,
-                data.kind,
+                wanted.kind,
                 state.actor_id,
-                data.expected_rev,
+                wanted.expected_rev,
                 time.time(),
-                discard_rule=data.discard_rule,
+                discard_rule=wanted.discard_rule,
             )
         return collection_id
 
