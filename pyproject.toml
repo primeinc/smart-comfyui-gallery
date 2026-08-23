@@ -555,3 +555,18 @@ include = ["db", "metaparse", "sg_web", "sglint", "story_renderers", "vision", "
 exclude = ["**/node_modules", "**/__pycache__", "**/.*", "vendor"]
 enableTypeIgnoreComments = false
 reportUnnecessaryCast = "error"
+
+# The same tree, for ty. Python version and interpreter are inferred:
+# requires-python above, then the .venv in the project root
+# (ty configuration.md:347-365, 433-451).
+[tool.ty.src]
+# `exclude` takes precedence over `include`, and ty already skips .venv,
+# node_modules and the rest of the usual list (configuration.md:989-1010),
+# so only the prebuilt faiss GPU build has to be named.
+include = ["db", "metaparse", "sg_web", "sglint", "story_renderers", "vision", "tests", "benchmarks"]
+exclude = ["vendor"]
+
+[tool.ty.analysis]
+# The same decision pyright's enableTypeIgnoreComments = false makes: a
+# comment does not get to turn a type error off.
+respect-type-ignore-comments = false

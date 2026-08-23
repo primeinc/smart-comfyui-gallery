@@ -240,9 +240,24 @@ WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
 }
 
 SURFACE_FORBIDDEN_WORDS: tuple[str, ...] = ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search")
-#: Each half of the sweep counts on its own. One shared minimum could not see
-#: every script leaving `sg_web/static` for `frontend/src`, because the
-#: templates alone cleared it.
+
+#: The functions that open a connection meant to outlive the call, and why.
+#: SG103 takes returning or yielding as a transfer; it does not take storing
+#: one, because that would let any leak be hidden inside an object. These two
+#: are the real thing, and each says what it is for.
+CONNECTION_KEPT: frozenset[str] = frozenset(
+    {
+        # One read-only monitor per database file, shared by every
+        # projection currency read. It is the connection that SEES other
+        # writers' commits, so outliving a request is its whole purpose.
+        "db/resultset.py:currency",
+        # The schema master a backup is taken from, one per DDL text.
+        # Building it costs 11ms and ~250 tests start from a 0.5ms copy of
+        # it; closing it would make every one of them pay again.
+        "tests/staging.py:fresh_schema",
+    }
+)
+
 #: Route handlers whose JSON answer SG413 does not yet hold to a wire
 #: model. This is the migration's remaining surface, written down: a
 #: handler leaves the list by naming its answer, never by being excused,
@@ -338,6 +353,9 @@ REQUEST_CONTRACT_RESERVED: frozenset[str] = frozenset(
     }
 )
 
+#: Each half of the sweep counts on its own. One shared minimum could not see
+#: every script leaving `sg_web/static` for `frontend/src`, because the
+#: templates alone cleared it.
 TEMPLATE_MINIMUM: int = 30
 SCRIPT_MINIMUM: int = 11
 

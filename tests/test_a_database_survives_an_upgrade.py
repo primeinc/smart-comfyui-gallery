@@ -10,9 +10,11 @@ requires for a change ALTER TABLE cannot express -- because that is the case
 where a migration runner either holds or loses the data.
 """
 
+import gc
 import pathlib
 import shutil
 import sqlite3
+import sys
 
 import pytest
 
@@ -1209,3 +1211,33 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     conn.close()
     with pytest.raises(SystemExit, match="Restore the backup"):
         build_app(str(burrow), worker=False)
+
+
+def test_a_connection_that_cannot_be_prepared_closes_its_handle(monkeypatch):
+    """The one connection-lifetime fact no linter can see.
+
+    Between sqlite3.connect returning and _prepared finishing, the handle
+    is open and unnamed: sglint SG103 cannot reach it, because db/connect.py
+    is the one file where raw sqlite3.connect is allowed. A pragma that
+    raises in there -- WAL conversion timing out against another process,
+    a read-only open refused a write pragma -- used to drop the handle,
+    and it leaked exactly like a connection a caller forgot.
+
+    The unraisable hook is the assertion: a ResourceWarning from a
+    finalizer is not raised at the leak, so `pytest.warns` would not see
+    it and `filterwarnings = error` would blame a later test.
+    """
+    caught: list = []
+    monkeypatch.setattr(sys, "unraisablehook", caught.append)
+
+    def refuses(conn, *, journal):
+        raise RuntimeError("a pragma refused")
+
+    monkeypatch.setattr(connect, "_prepared", refuses)
+
+    for open_one in (connect.memory, lambda: connect.connect(":memory:")):
+        caught.clear()
+        with pytest.raises(RuntimeError):
+            open_one()
+        gc.collect()
+        assert caught == [], [str(one.exc_value) for one in caught]

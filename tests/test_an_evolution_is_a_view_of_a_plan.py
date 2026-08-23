@@ -468,9 +468,16 @@ def test_no_space_yields_reasons_not_numbers(planned):
     assert view["transitions"][1]["changes"]["loras_added"] == ["detail"], "facts need no vectors"
 
 
+@pytest.mark.slow
 def test_a_thousand_members_are_o_n_work():
     """No matrix: the transition count is n-1 and the module asks the
-    database a bounded number of statements however large the session."""
+    database a bounded number of statements however large the session.
+
+    Slow by construction and marked as such: a thousand synthetic members
+    are built, stored and read back. What it proves is a bound, so it is
+    worth a second in `just test-slow`; it is not worth a second on every
+    `just test`, and the marker's own definition is a call phase over one
+    second."""
 
     from db import build
 

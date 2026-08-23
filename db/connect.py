@@ -104,10 +104,31 @@ class Connection(sqlite3.Connection):
         self.pending: list = []
 
 
+def _prepare_or_close(conn: Connection, *, journal: bool) -> Connection:
+    """Hand back a prepared connection, or close the raw handle and raise.
+
+    Between sqlite3.connect returning and _prepared finishing, the handle
+    is open and nobody owns it: the caller has no name for it yet. A
+    pragma that raises there -- _ensure_wal timing out against another
+    process holding the file, a read-only open refusing a write pragma --
+    dropped it, and it then leaked exactly like a connection a caller
+    forgot, surfacing as a ResourceWarning at some later collection.
+
+    Raw `conn.close()`, not this module's `close()`: that one discards
+    index notes and asks for PRAGMA optimize, which is bookkeeping for a
+    connection that was used. This one was never handed over.
+    """
+    try:
+        return _prepared(conn, journal=journal)
+    except BaseException:
+        conn.close()
+        raise
+
+
 def memory() -> Connection:
     """An in-memory database: the same connection class, foreign keys on.
     Fixtures and the schema reference are built on this."""
-    return _prepared(sqlite3.connect(":memory:", factory=Connection), journal=False)
+    return _prepare_or_close(sqlite3.connect(":memory:", factory=Connection), journal=False)
 
 
 def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_thread: bool = False) -> Connection:
@@ -139,14 +160,14 @@ def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_th
     """
     if read_only:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=not cross_thread, factory=Connection)
-        return _prepared(conn, journal=False)
+        return _prepare_or_close(conn, journal=False)
     if cross_thread:
         # A shared writer would need every consumer to serialise every
         # statement; nothing in this application wants that, and a
         # silently ignored flag would look honoured.
         raise ValueError("cross_thread connections are read-only")
     conn = sqlite3.connect(str(path), isolation_level=None if autocommit else "IMMEDIATE", factory=Connection)
-    return _prepared(conn, journal=True)
+    return _prepare_or_close(conn, journal=True)
 
 
 def _prepared(conn: Connection, *, journal: bool) -> Connection:

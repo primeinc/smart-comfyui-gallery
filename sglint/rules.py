@@ -63,6 +63,40 @@ def parsed(source: pathlib.Path) -> ast.Module:
     return _parsed_as_of(source, (held.st_mtime_ns, held.st_size))
 
 
+@dataclasses.dataclass(frozen=True)
+class Source:
+    """One module a rule reads: what to call it, and its tree.
+
+    A rule is text in, findings out. Taking paths made that untrue: a
+    control had to write a file to ask a question, which on Windows costs
+    more than the rule does, and `parsed` caches on (mtime, size) -- so
+    two rewrites inside one clock tick at the same length hand back the
+    FIRST tree and the control silently checks source it did not write.
+    """
+
+    relative: str
+    tree: ast.Module
+
+    @property
+    def path(self) -> pathlib.Path:
+        return REPO_ROOT / self.relative
+
+
+def on_disk(path: pathlib.Path, root: pathlib.Path = REPO_ROOT) -> Source:
+    relative = path.relative_to(root).as_posix() if path.is_relative_to(root) else path.name
+    return Source(relative, parsed(path))
+
+
+def from_text(relative: str, text: str) -> Source:
+    """A module written as a string. What the controls use."""
+    return Source(relative, ast.parse(text))
+
+
+def web_sources() -> list[Source]:
+    """Every module that carries the HTTP seam."""
+    return [on_disk(one) for one in sorted((REPO_ROOT / "sg_web").glob("*.py"))]
+
+
 @functools.cache
 def every_source() -> tuple[pathlib.Path, ...]:
     """Every .py file this repository owns, discovered rather than listed."""
@@ -247,30 +281,46 @@ def _opened_here(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str |
 
 
 def _handed_onward(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str | None) -> bool:
-    """Whether the connection outlives the function on purpose.
+    """Whether the function structurally gives the connection away.
 
-    Two shapes, both of which move the closing to somebody else. It is
-    returned or yielded -- and a fixture usually returns it inside a tuple
-    or a dict beside the ids it minted, so the whole returned expression is
-    searched rather than only a bare `return conn`. Or it is put in a
-    container the module keeps (db/resultset.py's monitor per file,
-    tests/staging.py's schema master), where the connection is meant to
-    live as long as the process and closing it would be the defect.
+    Returned or yielded, and nothing else. A fixture usually returns it
+    inside the tuple or dict it hands back beside the ids it minted, so the
+    whole returned expression is searched rather than only a bare
+    `return conn`.
+
+    Storing it -- `self.conn = conn`, `registry[key] = conn` -- is NOT a
+    transfer. It shows the connection left this function; it shows nothing
+    about anyone closing it, and accepting it would let any leak be
+    silenced by putting it in an object. The two places this repository
+    really does keep one for the life of the process are named in
+    policy.CONNECTION_KEPT, each with its reason.
     """
     if name is None:
-        return True
-
-    def mentions(held: ast.expr) -> bool:
-        return any(isinstance(one, ast.Name) and one.id == name for one in ast.walk(held))
-
+        # Bound to an attribute or a subscript and to no name at all:
+        # stored, which is the shape this rule refuses to read as a
+        # transfer.
+        return False
     for node in ast.walk(fn):
-        if isinstance(node, ast.Return | ast.Yield):
-            if node.value is not None and mentions(node.value):
-                return True
-        elif isinstance(node, ast.Assign):
-            kept = any(isinstance(one, ast.Subscript | ast.Attribute) for one in node.targets)
-            if kept and mentions(node.value):
-                return True
+        if isinstance(node, ast.Return | ast.Yield) and node.value is not None and _carries(node.value, name):
+            return True
+    return False
+
+
+def _carries(held: ast.expr, name: str) -> bool:
+    """Whether this returned expression hands over the object itself.
+
+    Structurally, not by mention. `return conn` and the collection
+    literals a fixture builds around it hand it over; `return f"v{conn...}"`
+    returns a string that merely READ the connection, and db/resultset.py's
+    monitor is exactly that -- taking it as a transfer excused the one
+    connection in this repository that most needed declaring.
+    """
+    if isinstance(held, ast.Name):
+        return held.id == name
+    if isinstance(held, ast.Tuple | ast.List | ast.Set):
+        return any(_carries(one, name) for one in held.elts)
+    if isinstance(held, ast.Dict):
+        return any(one is not None and _carries(one, name) for one in held.values)
     return False
 
 
@@ -291,37 +341,63 @@ def _closed_here(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
-def rule_connection_lifetime(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
-    """SG103: a connection is opened and never closed or handed on.
+def rule_connection_lifetime(
+    sources: typing.Iterable[Source] | None = None, kept: frozenset[str] | None = None
+) -> list[Finding]:
+    """SG103: a connection is acquired and neither closed here nor given away.
 
-    An unclosed Connection is not a leak the process notices. It sits in a
-    reference cycle until some later collection sweeps it, and CPython's
+    The invariant, exactly: a function that opens a canonical connection
+    closes it locally or returns it. That is narrower than "every
+    connection is closed" and the difference matters. Once one is handed
+    to a caller, the caller's own body is what this rule reads; one stored
+    in an object leaves its sight entirely. What it proves is that nobody
+    drops a connection on the floor of the function that made it.
+
+    The floor is where the damage was. An unclosed Connection sits in a
+    reference cycle until a later collection sweeps it, and CPython's
     sqlite3 raises ResourceWarning from the finalizer -- an unraisable,
     attributed to whatever happened to be running at that moment. Under
-    `filterwarnings = error` that fails an unrelated test, at an unrelated
-    time. The defect is static and belongs here, where it costs
-    milliseconds and names the line that opened it.
+    `filterwarnings = error` that fails an unrelated test at an unrelated
+    time, which reads as a flake and gets carried as one.
+
+    db/connect.py is outside this rule by construction: it is the one file
+    where raw sqlite3.connect is allowed, so the handle between
+    sqlite3.connect and _prepared is never bound to a name this rule can
+    follow. That path is held by connect._prepare_or_close and by
+    test_a_connection_that_cannot_be_prepared_closes_its_handle.
     """
+    excused = policy.CONNECTION_KEPT if kept is None else kept
+    held = [on_disk(one) for one in every_source()] if sources is None else list(sources)
     found: list[Finding] = []
-    for source in sources if sources is not None else every_source():
-        for fn in ast.walk(parsed(source)):
+    for source in held:
+        for fn in ast.walk(source.tree):
             if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            if _closed_here(fn):
-                continue
-            for named, call in _opened_here(fn):
-                if _handed_onward(fn, named):
-                    continue
-                found.append(
-                    Finding(
-                        source,
-                        call.lineno,
-                        call.col_offset,
-                        "SG103",
-                        f"{fn.name} opens a database and neither closes it nor hands it on;"
-                        " wrap it in try/finally: connect.close(...)",
+            dropped = [] if _closed_here(fn) else [c for n, c in _opened_here(fn) if not _handed_onward(fn, n)]
+            if f"{source.relative}:{fn.name}" in excused:
+                if not dropped:
+                    found.append(
+                        Finding(
+                            source.path,
+                            fn.lineno,
+                            fn.col_offset,
+                            "SG103",
+                            f"{fn.name} keeps no connection now; remove its CONNECTION_KEPT line",
+                        )
                     )
+                continue
+            found.extend(
+                Finding(
+                    source.path,
+                    call.lineno,
+                    call.col_offset,
+                    "SG103",
+                    f"{fn.name} opens a database and neither closes it nor hands it on; close it in"
+                    " try/finally, return it, or name it in sglint/policy.py CONNECTION_KEPT with"
+                    " the reason it outlives the call",
                 )
+                for call in dropped
+            )
     return found
 
 
@@ -618,7 +694,7 @@ _BODY_ROUTES = frozenset({"post", "put", "patch", "delete", "route"})
 _ROUTES = _BODY_ROUTES | {"get"}
 
 
-def _wire_contracts(root: pathlib.Path) -> set[str]:
+def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
     """Every class in sg_web that inherits Wire, by name.
 
     Closed over inheritance rather than read one base deep: a contract that
@@ -627,8 +703,8 @@ def _wire_contracts(root: pathlib.Path) -> set[str]:
     as the broken half.
     """
     bases: dict[str, set[str]] = {}
-    for source in sorted((root / "sg_web").glob("*.py")):
-        for node in ast.walk(parsed(source)):
+    for source in sources:
+        for node in ast.walk(source.tree):
             if isinstance(node, ast.ClassDef):
                 bases[node.name] = {base.id for base in node.bases if isinstance(base, ast.Name)}
     named = {"Wire"}
@@ -654,7 +730,9 @@ def _annotation_name(node: ast.expr | None) -> str | None:
     return None
 
 
-def rule_request_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[str] | None = None) -> list[Finding]:
+def rule_request_contracts(
+    sources: typing.Iterable[Source] | None = None, reserved: frozenset[str] | None = None
+) -> list[Finding]:
     """SG412: a route's JSON body is not a Wire contract.
 
     sg_web/wire.py states one policy for every JSON shape crossing the
@@ -666,11 +744,12 @@ def rule_request_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[s
     Forms are exempt by shape, not by name: URLEncodedBody carries a form,
     which is a different contract with different rules.
     """
-    contracts = _wire_contracts(root)
+    held = list(web_sources() if sources is None else sources)
+    contracts = _wire_contracts(held)
     excused = policy.REQUEST_CONTRACT_RESERVED if reserved is None else reserved
     found: list[Finding] = []
-    for source in sorted((root / "sg_web").glob("*.py")):
-        for node in ast.walk(parsed(source)):
+    for source in held:
+        for node in ast.walk(source.tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             routed = any(
@@ -685,13 +764,12 @@ def rule_request_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[s
                 named = _annotation_name(argument.annotation)
                 if named == "URLEncodedBody":
                     continue
-                relative = source.relative_to(root).as_posix()
-                if f"{relative}:{node.name}" in excused:
+                if f"{source.relative}:{node.name}" in excused:
                     continue
                 if named not in contracts:
                     found.append(
                         Finding(
-                            source,
+                            source.path,
                             argument.lineno,
                             argument.col_offset,
                             "SG412",
@@ -757,7 +835,9 @@ def _declared_containers(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[a
     return None
 
 
-def rule_response_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[str] | None = None) -> list[Finding]:
+def rule_response_contracts(
+    sources: typing.Iterable[Source] | None = None, reserved: frozenset[str] | None = None
+) -> list[Finding]:
     """SG413: a route answers JSON the contract does not describe.
 
     `dict`, `list[dict]` and a bare `Response` all reach OpenAPI as "an
@@ -767,11 +847,12 @@ def rule_response_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[
     the return type, and says it in `responses=` instead; that is the same
     contract, written where OpenAPI reads it.
     """
-    contracts = _wire_contracts(root)
+    held = list(web_sources() if sources is None else sources)
+    contracts = _wire_contracts(held)
     excused = policy.RESPONSE_CONTRACT_RESERVED if reserved is None else reserved
     found: list[Finding] = []
-    for source in sorted((root / "sg_web").glob("*.py")):
-        for node in ast.walk(parsed(source)):
+    for source in held:
+        for node in ast.walk(source.tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             if not any(
@@ -779,16 +860,14 @@ def rule_response_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[
                 for one in node.decorator_list
             ):
                 continue
-            relative = source.relative_to(root).as_posix()
             declared = _declared_containers(node)
             carried = _json_parts(node.returns) if declared is None else declared
             vague = [one for one in carried if not _precise(one, contracts)]
-            named = f"{relative}:{node.name}"
-            if named in excused:
+            if f"{source.relative}:{node.name}" in excused:
                 if not vague:
                     found.append(
                         Finding(
-                            source,
+                            source.path,
                             node.lineno,
                             node.col_offset,
                             "SG413",
@@ -802,7 +881,7 @@ def rule_response_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[
             spelled = ", ".join(sorted({ast.unparse(one) for one in vague})) or "nothing"
             found.append(
                 Finding(
-                    source,
+                    source.path,
                     node.lineno,
                     node.col_offset,
                     "SG413",

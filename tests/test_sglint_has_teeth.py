@@ -376,141 +376,144 @@ def test_the_wire_vocabulary_rule_can_fail(tmp_path):
     )
 
 
-def test_the_request_contract_rule_can_fail(tmp_path):
+#: The contracts and the near-miss the route controls below are written
+#: against. A dataclass is the near-miss on purpose: it names its fields,
+#: which is most of what a body needs and none of what the policy says.
+_CONTRACTS = (
+    "import dataclasses\n"
+    "from sg_web.wire import Wire\n"
+    "\n"
+    "class Named(Wire):\n"
+    "    name: str\n"
+    "\n"
+    "class Narrower(Named):\n"
+    "    more: str\n"
+    "\n"
+    "@dataclasses.dataclass\n"
+    "class Loose:\n"
+    "    name: str\n"
+)
+
+
+def _flagged(found) -> set[str]:
+    """The handlers a rule reported, by name. Every control below lives in
+    ONE module read in ONE pass, so a clean case is proved clean while the
+    broken ones are present -- which is what the repository actually looks
+    like, and stronger than asking about each alone."""
+    return {one.message.split()[0] for one in found}
+
+
+def test_the_request_contract_rule_can_fail():
     """SG412 holds every route's JSON body to a Wire contract.
 
-    Six controls, because the rule has to tell apart a body that obeys the
-    policy, three that do not, a form (which is a different contract, not a
-    broken one), and a handler the policy excuses on purpose.
+    A body that obeys the policy, one that narrows another contract, three
+    that do not obey it, a form (a different contract, not a broken one), a
+    GET that carries no body, and a handler the ledger excuses.
     """
-    root = tmp_path / "repo"
-    (root / "sg_web").mkdir(parents=True)
-    where = root / "sg_web" / "routes.py"
-    (root / "sg_web" / "wire.py").write_text("class Wire:\n    pass\n", encoding="utf-8")
-
-    def check(body: str, reserved: frozenset[str] = frozenset()):
-        where.write_text(
-            "import dataclasses\n"
-            "from sg_web.wire import Wire\n"
-            "\n"
-            "class Named(Wire):\n"
-            "    name: str\n"
-            "\n"
-            "@dataclasses.dataclass\n"
-            "class Loose:\n"
-            "    name: str\n"
-            "\n"
-            f"{body}",
-            encoding="utf-8",
-        )
-        return [f.code for f in rules.rule_request_contracts(root, reserved)]
-
-    assert check("@post('/x')\ndef write(data: Named) -> None: ...\n") == [], "a Wire contract is the whole point"
-    assert check("@post('/x')\ndef write(data: Named | None = None) -> None: ...\n") == [], (
-        "an optional body is still that body"
-    )
-    assert check("@post('/x')\ndef write(data: URLEncodedBody[Loose]) -> None: ...\n") == [], (
-        "a form is a different contract, not a broken one"
+    module = rules.from_text(
+        "sg_web/routes.py",
+        _CONTRACTS + "\n"
+        "@post('/a')\ndef contracted(data: Named) -> None: ...\n"
+        "@post('/b')\ndef narrowed(data: Narrower) -> None: ...\n"
+        "@post('/c')\ndef optional(data: Named | None = None) -> None: ...\n"
+        "@post('/d')\ndef formed(data: URLEncodedBody[Loose]) -> None: ...\n"
+        "@get('/e')\ndef reading(data: dict) -> None: ...\n"
+        "@post('/f')\ndef unnamed(data: dict) -> None: ...\n"
+        "@post('/g')\ndef dataclassed(data: Loose) -> None: ...\n"
+        "@patch('/h')\ndef patched(data: dict) -> None: ...\n",
     )
 
-    assert check("@post('/x')\ndef write(data: dict) -> None: ...\n") == ["SG412"], "an unnamed body names nothing"
-    assert check("@post('/x')\ndef write(data: Loose) -> None: ...\n") == ["SG412"], (
-        "a dataclass takes the body without the policy"
-    )
-    assert check("@patch('/x')\ndef write(data: dict) -> None: ...\n") == ["SG412"], "every writing verb, not just post"
+    assert _flagged(rules.rule_request_contracts([module], frozenset())) == {"unnamed", "dataclassed", "patched"}
 
-    assert check("@get('/x')\ndef read(data: dict) -> None: ...\n") == [], "a GET carries no body to hold"
-
-    excused = frozenset({"sg_web/routes.py:write"})
-    assert check("@post('/x')\ndef write(data: dict) -> None: ...\n", excused) == [], (
-        "the reserved list is what excuses a body, and it is read"
+    excused = frozenset({"sg_web/routes.py:unnamed", "sg_web/routes.py:dataclassed"})
+    assert _flagged(rules.rule_request_contracts([module], excused)) == {"patched"}, (
+        "the ledger is what excuses a body, and it is read"
     )
 
 
-def test_the_response_contract_rule_can_fail(tmp_path):
+def test_the_response_contract_rule_can_fail():
     """SG413 holds every route's JSON answer to a wire model.
 
     The negotiated routes are why this rule reads `responses=` as well as
     the return type: a handler that answers a page to a person and JSON to
     a machine cannot say the JSON half in its signature, and OpenAPI reads
-    the declaration instead. The last two controls are the ledger itself --
-    it excuses what is still vague, and it reports its own stale lines, so
-    the migration's remaining surface can only shrink.
+    the declaration instead.
     """
-    root = tmp_path / "repo"
-    (root / "sg_web").mkdir(parents=True)
-    where = root / "sg_web" / "routes.py"
+    module = rules.from_text(
+        "sg_web/routes.py",
+        _CONTRACTS + "\n"
+        "@get('/a')\ndef contracted() -> Named: ...\n"
+        "@get('/b')\ndef narrowed() -> Narrower: ...\n"
+        "@get('/c')\ndef listed() -> list[Named]: ...\n"
+        "@get('/d')\ndef redirecting() -> Response[Named] | Redirect: ...\n"
+        "@get('/e')\ndef rendered() -> Template: ...\n"
+        "@get('/f')\ndef bytes_out() -> Response[bytes]: ...\n"
+        "@get('/g', responses={200: ResponseSpec(data_container=list[Named])})\n"
+        "def declared() -> Template | Response: ...\n"
+        "@get('/h')\ndef unnamed() -> dict: ...\n"
+        "@get('/i')\ndef unnamed_list() -> list[dict]: ...\n"
+        "@get('/j')\ndef unparameterized() -> Response: ...\n"
+        "@get('/k')\ndef negotiating() -> Template | Response: ...\n"
+        "@get('/l', responses={200: ResponseSpec(data_container=list[dict])})\n"
+        "def declared_vague() -> Template: ...\n",
+    )
+    broken = {"unnamed", "unnamed_list", "unparameterized", "negotiating", "declared_vague"}
 
-    def check(handler: str, reserved: frozenset[str] = frozenset()):
-        where.write_text(
-            "class Wire:\n    pass\n\nclass Named(Wire):\n    name: str\n\nclass Narrower(Named):\n    more: str\n\n"
-            f"{handler}",
-            encoding="utf-8",
-        )
-        return [f.code for f in rules.rule_response_contracts(root, reserved)]
+    assert _flagged(rules.rule_response_contracts([module], frozenset())) == broken
 
-    assert check("@get('/x')\ndef read() -> Named: ...\n") == [], "a contract is a shape"
-    assert check("@get('/x')\ndef read() -> Narrower: ...\n") == [], "so is one that narrows a contract"
-    assert check("@get('/x')\ndef read() -> list[Named]: ...\n") == [], "so is a list of them"
-    assert check("@get('/x')\ndef read() -> Response[Named] | Redirect: ...\n") == [], "a redirect carries no JSON"
-    assert check("@get('/x')\ndef read() -> Template: ...\n") == [], "a page is not a JSON answer"
-    assert check("@get('/x')\ndef read() -> Response[bytes]: ...\n") == [], "bytes are a shape, and it says so"
-
-    assert check("@get('/x')\ndef read() -> dict: ...\n") == ["SG413"], "an object with no keys named"
-    assert check("@get('/x')\ndef read() -> list[dict]: ...\n") == ["SG413"], "a list of them is no better"
-    assert check("@get('/x')\ndef read() -> Response: ...\n") == ["SG413"], "an unparameterized Response"
-    assert check("@get('/x')\ndef read() -> Template | Response: ...\n") == ["SG413"], (
-        "negotiating does not excuse the JSON half"
+    held = frozenset({f"sg_web/routes.py:{one}" for one in broken})
+    assert _flagged(rules.rule_response_contracts([module], held)) == set(), (
+        "the ledger excuses what is not converted yet"
     )
 
-    spec = (
-        "@get('/x', responses={200: ResponseSpec(data_container=list[Named])})\ndef read() -> Template | Response: ..."
-    )
-    assert check(f"{spec}\n") == [], "a negotiated route states its JSON where OpenAPI reads it"
-    vague = "@get('/x', responses={200: ResponseSpec(data_container=list[dict])})\ndef read() -> Template: ..."
-    assert check(f"{vague}\n") == ["SG413"], "and a declaration that names nothing is still nothing"
-
-    held = frozenset({"sg_web/routes.py:read"})
-    assert check("@get('/x')\ndef read() -> dict: ...\n", held) == [], "the ledger excuses what is not converted yet"
-    assert check("@get('/x')\ndef read() -> Named: ...\n", held) == ["SG413"], (
-        "and reports its own stale line, so the ledger can only shrink"
+    stale = held | {"sg_web/routes.py:contracted"}
+    assert _flagged(rules.rule_response_contracts([module], stale)) == {"contracted"}, (
+        "and it reports its own stale line, so the ledger can only shrink"
     )
 
 
-def test_the_connection_lifetime_rule_can_fail(tmp_path):
+def test_the_connection_lifetime_rule_can_fail():
     """SG103 catches a database opened and then dropped.
 
-    The escapes are the point. A connection that is returned -- alone, in
-    the tuple a fixture hands back beside the ids it minted, or in a dict --
-    belongs to the caller now. One put in a container the module keeps is
-    meant to outlive the call, and closing it would be the defect. Only a
-    connection nobody can reach again is the leak, and it is invisible at
-    runtime until a collection sweep blames an unrelated test.
+    The escapes are the point, and their narrowness is the rest of it.
+    Returning transfers ownership structurally -- alone, in the tuple a
+    fixture hands back beside the ids it minted, or in a dict. STORING one
+    does not: it shows the connection left the function and nothing about
+    anyone closing it, so a leak cannot be silenced by putting it in an
+    object. A connection that really is kept for the life of the process is
+    named in the ledger, and the ledger reports its own stale lines.
     """
-    source = tmp_path / "opener.py"
+    module = rules.from_text(
+        "tests/opener.py",
+        "from db import connect\n\n"
+        "_KEPT = {}\n\n"
+        "def closes():\n    conn = connect.memory()\n    try:\n        pass\n"
+        "    finally:\n        connect.close(conn)\n\n"
+        "def returns():\n    conn = connect.memory()\n    return conn\n\n"
+        "def returns_a_tuple():\n    conn = connect.memory()\n    return conn, 1\n\n"
+        "def returns_a_dict():\n    conn = connect.memory()\n    return {'conn': conn}\n\n"
+        "def yields():\n    conn = connect.memory()\n    yield conn\n\n"
+        "def drops():\n    conn = connect.memory()\n    conn.execute('SELECT 1')\n\n"
+        "def drops_a_file(p):\n    conn = connect.connect(p)\n    conn.execute('SELECT 1')\n\n"
+        "def stores(k):\n    conn = connect.connect(k)\n    _KEPT[k] = conn\n\n"
+        "def returns_what_it_read(k):\n    conn = connect.connect(k)\n"
+        "    return f\"v{conn.execute('PRAGMA data_version').fetchone()[0]}\"\n\n"
+        "class A:\n    def hangs_it_off_self(self):\n        self.conn = connect.memory()\n",
+    )
+    dropped = {"drops", "drops_a_file", "stores", "returns_what_it_read", "hangs_it_off_self"}
 
-    def check(body: str):
-        source.write_text(f"from db import connect\n\n{body}", encoding="utf-8")
-        return [f.code for f in rules.rule_connection_lifetime([source])]
-
-    closed = "def held():\n    conn = connect.memory()\n    try:\n        pass\n"
-    closed += "    finally:\n        connect.close(conn)\n"
-    assert check(closed) == []
-    assert check("def held():\n    conn = connect.memory()\n    return conn\n") == []
-    assert check("def held():\n    conn = connect.memory()\n    return conn, 1\n") == [], "a fixture's tuple"
-    assert check("def held():\n    conn = connect.memory()\n    return {'conn': conn}\n") == [], "a fixture's dict"
-    assert check("def held():\n    conn = connect.memory()\n    yield conn\n") == [], "a fixture that yields"
-    assert check("_KEPT = {}\n\n\ndef held(k):\n    conn = connect.connect(k)\n    _KEPT[k] = conn\n") == [], (
-        "a connection the module keeps on purpose"
+    assert _flagged(rules.rule_connection_lifetime([module], frozenset())) == dropped, (
+        "storing a connection is not a transfer -- not in a module dict, not on self -- because it shows"
+        " only that the connection left, never that anyone closes it; and neither is RETURNING what it"
+        " read, which is db/resultset.py's monitor exactly and the shape that first escaped this rule"
     )
 
-    assert check("def held():\n    conn = connect.memory()\n    conn.execute('SELECT 1')\n") == ["SG103"], (
-        "opened, used, dropped"
+    ledger = frozenset({"tests/opener.py:stores"})
+    assert _flagged(rules.rule_connection_lifetime([module], ledger)) == dropped - {"stores"}, (
+        "a declared long-lived owner is excused, by name"
     )
-    assert check("def held(p):\n    conn = connect.connect(p)\n    conn.execute('SELECT 1')\n") == ["SG103"], (
-        "a file database leaks the same way"
+
+    stale = ledger | {"tests/opener.py:closes"}
+    assert _flagged(rules.rule_connection_lifetime([module], stale)) == (dropped - {"stores"}) | {"closes"}, (
+        "and a declaration that no longer describes the function is reported, so the ledger can only shrink"
     )
-    assert check(
-        "def held():\n    conn = connect.memory()\n    conn.execute('SELECT 1')\n\n\ndef also():\n"
-        "    other = connect.memory()\n    other.execute('SELECT 1')\n"
-    ) == ["SG103", "SG103"], "one finding per function, not one per file"
