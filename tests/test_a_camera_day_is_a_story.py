@@ -206,6 +206,11 @@ def _drain(client) -> None:
 
 
 def _library(client, root) -> None:
+    # This proof is about acts, sessions and a story, never thumbnails: the
+    # scan's precache job would otherwise decode every 22-megapixel CR2 of
+    # the real day (~1.1s each, 515s of a 527s run, measured) for previews
+    # nothing here looks at.
+    client.post("/settings/thumbnail_precache", json={"value": "off"})
     client.post("/roots", json={"path": str(root)})
     client.post("/roots/1/scan")
     conn = connect.connect(client.app.state.db_path)
