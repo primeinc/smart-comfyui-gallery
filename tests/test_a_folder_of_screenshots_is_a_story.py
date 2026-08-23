@@ -262,3 +262,47 @@ def test_default_settings_spell_like_given_ones():
         planning.validated_settings({"pause_minutes": 30, "burst_seconds": 5}, defaults)
     )
     assert all(isinstance(v, float) for v in planning.validated_settings(None, defaults).values())
+
+
+def test_a_caption_frozen_after_the_first_story_makes_a_new_story_say_it(told):
+    """The whole chain on the routes: caption a member, tell again. The
+    snapshot is new (its evidence changed), the v6 plan carries `seen`
+    citing the frozen annotation, and the render quotes the sentence."""
+    client = told
+    whole = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
+    session = next(s for s in whole["sessions"] if s["domain"] == "wall")
+    first = client.post("/stories/snapshots", json={"event_id": session["id"]}).json()["id"]
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        member = conn.execute(
+            "SELECT file_id FROM derived_event_file WHERE event_id = ? ORDER BY file_id LIMIT 1", (session["id"],)
+        ).fetchone()[0]
+        sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (member,)).fetchone()[0]
+        derived.annotate(conn, member, "caption", "a desktop with many windows open", "m", "1", sha, NOW)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    frozen = client.post("/stories/snapshots", json={"event_id": session["id"]}).json()
+    assert frozen["id"] != first, "new evidence is a new snapshot, never a rewritten one"
+    asked = client.post("/stories/plans", json={"snapshot_id": frozen["id"], "planner": "file_history"})
+    assert asked.status_code == 202, asked.text
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        plan_id, document = conn.execute(
+            "SELECT id, document_json FROM story_plan WHERE snapshot_id = ?", (frozen["id"],)
+        ).fetchone()
+    finally:
+        connect.close(conn)
+    import json
+
+    plan = json.loads(document)
+    assert plan["v"] == 6
+    seen = [claim for claim in plan["claims"] if claim["kind"] == "seen"]
+    assert len(seen) == 1
+    assert seen[0]["facts"] == {"members": 1, "models": ["m"]}
+    made = client.post("/stories/renders", json={"plan_id": plan_id})
+    assert made.status_code == 201, made.text
+    story = client.get(f"/stories/renders/{made.json()['id']}", headers={"accept": "application/json"}).json()
+    words = " ".join(block["text"] for section in story["sections"] for block in section["blocks"])
+    assert 'of one it said "a desktop with many windows open"' in words
