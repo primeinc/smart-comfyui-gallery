@@ -171,6 +171,17 @@ def schema_sql() -> str:
     return SCHEMA.read_text(encoding="utf-8")
 
 
+def create(path) -> None:
+    """A database where none exists, from the DDL; the DDL stamps its own
+    version. The first-run seam -- `db.build` is the rebuild with a guard."""
+    conn = connect(path)
+    try:
+        conn.executescript(schema_sql())
+        conn.commit()
+    finally:
+        close(conn)
+
+
 def check_version(conn: sqlite3.Connection) -> None:
     """Refuse a database this build does not recognise.
 

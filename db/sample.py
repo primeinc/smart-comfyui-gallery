@@ -124,6 +124,13 @@ def refine(conn, file_id: int, path, looked: list[int], *, budget: int, floor_ms
     return fresh
 
 
+def offset_of(conn, sample_id: int) -> int | None:
+    """The moment one sample points at, in milliseconds; None for a page
+    sample or no such row."""
+    row = conn.execute("SELECT offset_ms FROM derived_media_sample WHERE id = ?", (sample_id,)).fetchone()
+    return None if row is None else row[0]
+
+
 def taken(conn, file_id: int, policy: str | None = None):
     """The moments already chosen for this file, oldest first."""
     if policy is None:

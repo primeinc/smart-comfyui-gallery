@@ -111,6 +111,10 @@ NEIGHBOUR = (
 #: SQL of their own.
 FILE_PRESENT = "SELECT missing_since IS NULL FROM file WHERE id = ?"
 
+#: What a thumbnail is made from: the kind says whether there is a
+#: picture to take, the sha names the cache slot.
+FILE_BYTES = "SELECT kind, content_sha256 FROM file WHERE id = ?"
+
 
 def picture(conn, file_id: int):
     return conn.execute(ONE_PICTURE, (file_id,)).fetchone()
@@ -120,6 +124,27 @@ def file_present(conn, file_id: int) -> bool | None:
     """True = present, False = marked missing, None = no such row."""
     row = conn.execute(FILE_PRESENT, (file_id,)).fetchone()
     return None if row is None else bool(row[0])
+
+
+def file_bytes(conn, file_id: int) -> tuple[str, str | None] | None:
+    """`(kind, content_sha256)` for one file; None when no such row."""
+    row = conn.execute(FILE_BYTES, (file_id,)).fetchone()
+    return None if row is None else (row[0], row[1])
+
+
+def files_named(conn, ids) -> dict[int, tuple[str, str]]:
+    """`id -> (slug, name)` for an id set the caller already ranked --
+    the search answer's addresses. A retired or unknown id is absent."""
+    if not ids:
+        return {}
+    marks = ",".join("?" for _ in ids)
+    return {
+        row[0]: (row[1], row[2])
+        for row in conn.execute(
+            f"SELECT f.id, e.slug, f.name FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
+            list(ids),
+        )
+    }
 
 
 def fields_of(conn, file_id: int):

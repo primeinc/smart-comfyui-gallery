@@ -97,6 +97,28 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/operations.py": frozenset(
         {"connect", "derived", "inspecting", "ledger", "library", "pages", "prompts", "runner", "scan", "settings"}
     ),
+    # the composition root: it wires every seam and runs none of them
+    "sg_web/app.py": frozenset(
+        {
+            "authored",
+            "collections",
+            "connect",
+            "derived",
+            "detect",
+            "jobs",
+            "ledger",
+            "library",
+            "naming",
+            "oriented",
+            "pages",
+            "prompts",
+            "retrieval",
+            "runner",
+            "sample",
+            "scan",
+            "settings",
+        }
+    ),
 }
 
 #: Calls an adapter must still make -- the delegation it exists for.

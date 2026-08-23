@@ -54,6 +54,7 @@ from db import (
     pages,
     prompts,
     runner,
+    sample,
     scan,
     settings,
 )
@@ -468,19 +469,11 @@ def search(state: State, q: str, k: int = 60) -> dict:
         conn.commit()  # align may have minted registry rows on the way
         results = found["results"]
         told = []
-        if results:
-            marks = ",".join("?" for _ in results)
-            named = dict(
-                conn.execute(
-                    f"SELECT f.id, e.slug || '|' || f.name FROM file f"
-                    f" JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
-                    [row["file_id"] for row in results],
-                )
-            )
-            for row in results:
-                if row["file_id"] in named:
-                    slug, _, name = named[row["file_id"]].partition("|")
-                    told.append({"slug": slug, "name": name, "score": row["score"], "sources": row["sources"]})
+        named = pages.files_named(conn, [row["file_id"] for row in results])
+        for row in results:
+            if row["file_id"] in named:
+                slug, name = named[row["file_id"]]
+                told.append({"slug": slug, "name": name, "score": row["score"], "sources": row["sources"]})
         return {
             "results": told,
             "participants": found["participants"],
@@ -688,7 +681,7 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         if isinstance(resolved, str):
             return Redirect(path=f"{where}/{resolved}", status_code=301)
         file_id, path = resolved
-        kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+        kind, sha = pages.file_bytes(conn, file_id)
         if kind not in ("image", "animated_image", "video"):
             raise NotFoundException(f"a {kind} has no {variant}")
         if sha is None:
@@ -745,9 +738,7 @@ def avatar_bytes(state: State, slug: str) -> Response | Redirect:
             if not os.path.isfile(path):
                 raise NotFoundException(f"/avatar/{slug}: the picture behind the face is offline")
             if sample_id is not None:
-                offset = conn.execute(
-                    "SELECT offset_ms FROM derived_media_sample WHERE id = ?", (sample_id,)
-                ).fetchone()[0]
+                offset = sample.offset_of(conn, sample_id)
                 frame = next((image for _, image in decode.frames_at(path, [offset])), None)
             else:
                 frame = oriented.for_model(conn, file_id, path)
@@ -1037,10 +1028,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     base = home.home(home_dir)
     where = home.db_path(base)
     if not where.exists():
-        fresh = connect.connect(where)
-        fresh.executescript(connect.schema_sql())
-        fresh.commit()
-        connect.close(fresh)
+        connect.create(where)
 
     # The one local authored identity, resolved ONCE into application
     # state: every rating and favorite is per-user by schema, and this is
