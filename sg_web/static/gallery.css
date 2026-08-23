@@ -561,6 +561,8 @@ body {
 .session-people a { color: var(--accent); }
 .album-seen { color: var(--ink-muted); font-size: .85rem; }
 .places-line { color: var(--ink-muted); font-size: .85rem; margin: 0; padding: 0 16px 8px; }
+.place-card { display: grid; gap: 2px; }
+.place-timeline { color: var(--accent); font-size: .8rem; padding-left: 4px; }
 .places-line a { color: var(--accent); }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 16px 0; }
 .chip { display: inline-flex; gap: 6px; align-items: center; padding: 2px 10px; border: 1px solid var(--accent); border-radius: 999px; color: var(--ink); font-size: .85rem; }

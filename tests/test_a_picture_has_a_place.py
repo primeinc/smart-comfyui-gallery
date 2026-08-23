@@ -91,6 +91,19 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         assert shelf[0]["qs"] == where["qs"]
         page = client.get("/places", headers={"accept": "text/html"}).text
         assert f'data-place="{shelf[0]["slug"]}"' in page
+        assert shelf[0]["timeline"] == f"/timeline?f=place.id%3Aeq%3A{where['id']}"
+        assert f'data-place-timeline="{shelf[0]["slug"]}"' in page
+        assert told["where"]["timeline"] == shelf[0]["timeline"]
+        assert "data-where-timeline" in client.get(f"/i/{a}", headers={"accept": "text/html"}).text
+        assert (
+            sum(
+                b["pictures"]
+                for b in client.get(
+                    "/timeline/density", params={"bin": "day", "f": f"place.id:eq:{where['id']}"}, headers=AS_MACHINE
+                ).json()["bins"]
+            )
+            == 2
+        )
 
         # the folder's and an album's page say where and when their pictures are
         folder = client.get("/f/lib", headers=AS_MACHINE).json()

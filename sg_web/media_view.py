@@ -158,6 +158,8 @@ def where_of(conn, file_id: int) -> dict | None:
         "kind": kind,
         "basis": basis,
         "qs": urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
+        "timeline": "/timeline?"
+        + urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
     }
 
 
