@@ -133,3 +133,18 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
         _drain(client)
         sessions = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
         assert sessions[0]["place"] is None, "two places: the session is not in one"
+
+
+def test_the_lightbox_says_where_too(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        [slug] = _slugs(client)
+        assert "data-lightbox-where" not in client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
+        client.post(f"/i/{slug}/place", json={"name": "Porto", "kind": "city"})
+        part = client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
+        assert "data-lightbox-where" in part
+        assert ">in Porto</a>" in part

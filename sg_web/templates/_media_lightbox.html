@@ -26,6 +26,7 @@
       {{ item.name }}{% if item.context.in_answer %} &middot; {{ item.context.ordinal }} of {{ item.context.total }}{% endif %}
       &middot; <a data-full href="/i/{{ item.slug }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">open page</a>
       {% if item.when %}&middot; <a data-lightbox-day href="/g?{{ item.when.day_qs }}" title="every picture from this day, in time order">{{ item.when.local_day }}</a>{% endif %}
+      {% if item.where %}&middot; <a class="lightbox-where" data-lightbox-where href="/g?{{ item.where.qs }}" title="everything {{ 'in' if item.where.kind != 'poi' else 'at' }} {{ item.where.name }}">in {{ item.where.name }}</a>{% endif %}
       {% if item.faces.people %}&middot; <span class="lightbox-people" data-lightbox-people>with {% for who in item.faces.people %}<a href="{{ who.href }}">{{ who.name or who.slug }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
       {% if item.said %}&middot; <span class="lightbox-said" data-lightbox-said title="{{ item.said[0].model_id }}">&ldquo;{{ item.said[0].text }}&rdquo;</span>{% endif %}
     </span>
