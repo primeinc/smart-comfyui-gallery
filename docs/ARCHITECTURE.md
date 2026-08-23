@@ -205,8 +205,10 @@ the sessions touching the range (`db/pages.py TIMELINE_*`,
 appended to every timeline statement (HEAD + conjunct + TAIL), and
 every door is that question plus a moment, so what is drawn is what
 opens. A session is a door, never a scope; a rule-defined collection
-is refused (its membership is a projection, not a predicate). A
-person's, a folder's and an album's page open their own timeline. Every bin, span and session is a door into the gallery
+scopes through its materialized membership (`f.id IN (...)`, the one
+engine) and refuses with why when its rule cannot be answered. A
+person's, a folder's and an album's page open their own timeline, and
+the gallery opens its question on the timeline. Every bin, span and session is a door into the gallery
 through the facets (`context.local_day`, `context.moment`,
 `context.origin`, `context.disputed`, `event.id`) ordered by `moment`.
 A session card names who is in it (primary clustering), carries a

@@ -220,10 +220,17 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         assert client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()[
             "scope"
         ]["parts"] == [{"key": "kind", "value": "image"}]
-        smart = client.post("/albums/smart", json={"name": "All", "kind": "image"})
+        smart = client.post("/albums/smart", json={"name": "Deep Ones", "folder": "deep"})
         assert smart.status_code == 201, smart.text
-        refused = client.get("/timeline/density", params={"bin": "day", "album": smart.json()["slug"]})
-        assert refused.status_code == 400
-        assert "rule-defined" in refused.json()["detail"]
+        ruled = client.get(
+            "/timeline/density", params={"bin": "day", "album": smart.json()["slug"]}, headers=AS_MACHINE
+        ).json()
+        assert sum(b["pictures"] for b in ruled["bins"]) == 1, "a rule-defined album scopes through the one engine"
+        assert ruled["scope"]["qs"] == f"album={smart.json()['slug']}"
+        assert (
+            client.get(f"/t/{smart.json()['slug']}", headers=AS_MACHINE)
+            .json()["timeline"]
+            .endswith(smart.json()["slug"])
+        )
         assert client.get("/f/deep", headers=AS_MACHINE).json()["timeline"] == "/timeline?folder=deep"
         assert "data-folder-timeline" in client.get("/f/deep", headers={"accept": "text/html"}).text

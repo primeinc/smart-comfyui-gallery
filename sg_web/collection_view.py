@@ -111,8 +111,7 @@ def view(
         else:
             told["count"] = grid["total"]
             told["first_seen"], told["last_seen"] = pages.collection_spans(conn).get(slug, (None, None))
-            if kind != "smart":
-                told["timeline"] = "/timeline?" + urllib.parse.urlencode([("album", slug)])
+            told["timeline"] = "/timeline?" + urllib.parse.urlencode([("album", slug)])
             told["places"] = [
                 {
                     "id": place_id,

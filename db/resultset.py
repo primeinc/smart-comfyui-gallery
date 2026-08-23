@@ -498,18 +498,30 @@ def _bound_fingerprint(bound: _Bound) -> str:
     return hashlib.sha256(told.encode()).hexdigest()[:16]
 
 
-def scope_of(conn, query: GalleryQuery, actor_id: int | None = None) -> tuple[str, list, GalleryQuery]:
+def scope_of(
+    conn, query: GalleryQuery, actor_id: int | None = None, *, models_dir: str | None = None, now: float | None = None
+) -> tuple[str, list, GalleryQuery]:
     """A gallery question as a scope another surface appends to its own
     statements: the membership conjunct over the file alias `f` (the
     same predicates the gallery walks), its bound values, and the
     question in its LIVE spelling for the doors that surface offers.
-    A rule-defined collection is refused: its membership is a
-    materialized projection, not a predicate."""
+    A rule-defined collection's membership is a materialized set
+    (`_rule_members`, the one engine), appended as `f.id IN (...)`; it
+    needs the models directory, because a semantic rule ranks through
+    its encoder, and a rule that cannot be answered right now refuses
+    (UnavailableCollectionRule) rather than scoping to nothing."""
+    import json
+
     bound = bind(conn, query, actor_id)
-    if bound.rule is not None:
-        raise ValueError("a rule-defined collection is not a scope another surface can append; open it in the gallery")
     where, args, _ = _eligibility(bound)
-    return ("".join(" AND " + part for part in where[1:]), args, bound.query)  # where[0] is presence
+    conjunct = "".join(" AND " + part for part in where[1:])  # where[0] is presence
+    if bound.rule is not None:
+        if models_dir is None or now is None:
+            raise ValueError("a rule-defined collection scopes only with a models directory and a clock to evaluate it")
+        members = _rule_members(conn, models_dir, bound, now)
+        conjunct += " AND f.id IN (SELECT value FROM json_each(?))"
+        args = [*args, json.dumps(sorted(members))]
+    return (conjunct, args, bound.query)
 
 
 def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:

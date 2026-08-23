@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import calendar
 import dataclasses
+import pathlib
+import time
 
 from litestar import Request, get
 from litestar.datastructures import State
@@ -24,7 +26,8 @@ from litestar.exceptions import ClientException, NotFoundException
 from litestar.params import Parameter
 from litestar.response import Response, Template
 
-from db import connect, context, facets, pages, planning, resultset
+from db import connect, context, facets, pages, planning, resultset, settings
+from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, presented_page
 
@@ -95,9 +98,15 @@ def _question(folder, album, person, artifact, kind, favorite, rating_min, f) ->
 def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str, list], resultset.GalleryQuery]:
     """The question bound: (the conjunct and its values, the question in
     its live spelling). A slug nothing lives at is a 404; a rule-defined
-    collection is refused as a scope."""
+    collection that cannot be answered right now is refused with why."""
     try:
-        sql, values, live = resultset.scope_of(conn, asked, state.actor_id)
+        sql, values, live = resultset.scope_of(
+            conn,
+            asked,
+            state.actor_id,
+            models_dir=str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))),
+            now=time.time(),
+        )
     except LookupError as missing:
         raise NotFoundException(str(missing)) from missing
     except ValueError as refused:
