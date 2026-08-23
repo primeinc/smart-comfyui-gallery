@@ -129,6 +129,7 @@ _KEYS = {
     "event.id": "session",
     "context.origin": "origin",
     "context.disputed": "disputed",
+    "context.granule": "claimed within",
     "place.id": "place",
 }
 

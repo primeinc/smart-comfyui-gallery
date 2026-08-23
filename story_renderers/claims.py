@@ -370,7 +370,10 @@ def _located(claim: dict, phase: dict, ctx: Context) -> str:
         chain = [one["name"] for one in ((member.get("place") or {}).get("chain") or [])]
         if chain:
             above.setdefault(chain[0], chain[1:])
-    spelled = [name + (f" ({', '.join(above[name])})" if above.get(name) else "") for name in claim["facts"]["places"]]
+    spelled = [
+        name + (f" ({', '.join(above[name])})" if above.get(name) and " (" not in name else "")
+        for name in claim["facts"]["places"]
+    ]
     n = claim["facts"]["members"]
     if len(spelled) == 1:
         return f"In {spelled[0]}, by a person's word, for {formatting.count(n, 'file')} here."

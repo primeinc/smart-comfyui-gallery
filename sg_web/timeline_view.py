@@ -60,9 +60,13 @@ def _month_door(month: str, question: resultset.GalleryQuery = WHOLE) -> str:
 
 
 def _bin_door(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -> str:
+    """The bar's pictures, exactly: the window, and the precision the
+    count applied -- a day-precision claim sitting at midnight inside an
+    hour's window was not counted in that bar and must not open from it."""
     low = facets.facet("context.moment", "gte", str(int(at)))
     high = facets.facet("context.moment", "lte", str(int(at) + width - 1))
-    return _door(question, low, high)
+    fine = facets.facet("context.granule", "lte", str(int(width)))
+    return _door(question, low, high, fine)
 
 
 def _event_door(event_id: int, question: resultset.GalleryQuery = WHOLE) -> str:

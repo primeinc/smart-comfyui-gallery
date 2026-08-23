@@ -630,6 +630,18 @@ def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset
     inner, take = bound.rule or (None, None)
     if inner is None:
         return frozenset()
+    if any(one.key.startswith("context.") or one.key == "place.id" for one in inner.query.facets):
+        # A facet over the interpretation answers only for interpreted
+        # files: after a policy bump, or before the context job ran, the
+        # rule would evaluate to a smaller set that looks like an answer.
+        from . import pages
+
+        have, present, _ = pages.timeline_coverage(conn)
+        if have < present:
+            raise UnavailableCollectionRule(
+                f"the collection's rule reads the interpretation and {present - have} of {present} files have none"
+                " under the running policy; run the context job"
+            )
     if inner.query.text:
         try:
             ids, _ = _fused_ids(conn, models_dir, inner, now)

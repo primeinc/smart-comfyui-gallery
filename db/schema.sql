@@ -1679,6 +1679,9 @@ CREATE TABLE place (
     created_at   REAL NOT NULL
 ) STRICT;
 CREATE INDEX place_parent ON place(parent_id);
+-- One place per (kind, name, parent): "never two Lisbons" is the
+-- database's word, not only the minter's.
+CREATE UNIQUE INDEX place_identity ON place(kind, name COLLATE NOCASE, IFNULL(parent_id, 0));
 
 CREATE TRIGGER place_kind_agrees BEFORE INSERT ON place BEGIN
   SELECT RAISE(ABORT,'entity kind does not match place')
@@ -2012,7 +2015,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 28;
+PRAGMA user_version   = 29;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

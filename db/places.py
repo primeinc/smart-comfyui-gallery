@@ -37,12 +37,20 @@ def named(conn, name: str, kind: str, now: float, *, within: int | None = None) 
     spelled = (name or "").strip()
     if not spelled:
         raise ValueError("a place's name is a non-empty string")
-    for place_id, parent_id in conn.execute(
+    # Find-or-mint under the writer lane: two people naming Lisbon at once
+    # must not mint two (the `place_identity` index refuses the second
+    # outright; the lane makes the first win cleanly).
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    rows = conn.execute(
         "SELECT id, parent_id FROM place WHERE name = ? COLLATE NOCASE AND kind = ? ORDER BY id", (spelled, kind)
-    ).fetchall():
+    ).fetchall()
+    for place_id, parent_id in rows:
         if within is None or parent_id == within:
             return int(place_id)
+    for place_id, parent_id in rows:
         if parent_id is None:
+            # a bare one, and nobody of that name is within `within` yet
             conn.execute("UPDATE place SET parent_id = ? WHERE id = ?", (within, place_id))
             return int(place_id)
     return place(conn, spelled, kind, now, parent_id=within)

@@ -1757,3 +1757,34 @@ def test_a_placed_member_makes_the_story_say_where():
     words = " ".join(block["text"] for section in told["sections"] for block in section["blocks"])
     assert "In Lisbon (Portugal), by a person's word, for 2 files here." in words, "the frozen chain is spelled"
     assert planning.validate_story_plan({**plan, "v": 6}), "v6 does not know `located`"
+
+
+def test_two_places_of_one_name_are_two_places_in_a_story():
+    """Springfield, Illinois and Springfield, Oregon are two entities: the
+    claim counts two places and spells them apart by what they are
+    within."""
+    from db import rendering
+
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2])]
+    members[0]["place"] = {
+        "uuid": "a" * 32,
+        "chain": [
+            {"uuid": "a" * 32, "kind": "city", "name": "Springfield"},
+            {"uuid": "c" * 32, "kind": "region", "name": "Illinois"},
+        ],
+    }
+    members[1]["place"] = {
+        "uuid": "b" * 32,
+        "chain": [
+            {"uuid": "b" * 32, "kind": "city", "name": "Springfield"},
+            {"uuid": "d" * 32, "kind": "region", "name": "Oregon"},
+        ],
+    }
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    located = [claim for claim in plan["claims"] if claim["kind"] == "located"]
+    assert located[0]["facts"] == {"members": 2, "places": ["Springfield (Illinois)", "Springfield (Oregon)"]}
+    told = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
+    words = " ".join(block["text"] for section in told["sections"] for block in section["blocks"])
+    assert "Springfield (Illinois) and Springfield (Oregon)" in words
+    assert "(Illinois) (Illinois)" not in words

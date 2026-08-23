@@ -1151,8 +1151,23 @@ def _placed(member: dict) -> bool:
 
 
 def _place_names(members: list[dict]) -> list[str]:
-    """The leaf place names the claim rests on, sorted, once each."""
-    return sorted({member["place"]["chain"][0]["name"] for member in members})
+    """The leaf places the claim rests on, one entry per ENTITY, sorted:
+    two Springfields are two places, spelled apart by what they are
+    within when their names collide."""
+    leaves: dict[str, list[dict]] = {}
+    for member in members:
+        chain = member["place"]["chain"]
+        leaves.setdefault(chain[0]["uuid"], chain)
+    names: dict[str, int] = {}
+    for chain in leaves.values():
+        names[chain[0]["name"]] = names.get(chain[0]["name"], 0) + 1
+    spelled = []
+    for chain in leaves.values():
+        name = chain[0]["name"]
+        if names[name] > 1 and len(chain) > 1:
+            name = f"{name} ({chain[1]['name']})"
+        spelled.append(name)
+    return sorted(spelled)
 
 
 def _caption_models(members: list[dict]) -> list[str]:

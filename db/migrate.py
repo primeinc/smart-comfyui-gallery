@@ -2442,6 +2442,22 @@ def _authored_places(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX file_place_user  ON file_place(user_id)")
 
 
+@step(28)
+def _one_place_per_name(conn: sqlite3.Connection) -> None:
+    """v28 -> v29: `place_identity`, one place per (kind, name, parent)
+    (db/places.py named). DDL is schema.sql's text VERBATIM. A library
+    that already holds two of a name cannot take the index: the step
+    refuses with both ids, and the operator merges by hand.
+    """
+    twins = conn.execute(
+        "SELECT kind, name, IFNULL(parent_id, 0), group_concat(id) FROM place"
+        " GROUP BY kind, name COLLATE NOCASE, IFNULL(parent_id, 0) HAVING count(*) > 1"
+    ).fetchall()
+    if twins:
+        raise RuntimeError(f"place rows sharing a (kind, name, parent) must be merged before v29: {twins}")
+    conn.execute("CREATE UNIQUE INDEX place_identity ON place(kind, name COLLATE NOCASE, IFNULL(parent_id, 0))")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

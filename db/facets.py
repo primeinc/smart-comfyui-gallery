@@ -106,6 +106,19 @@ REGISTRY: dict[str, _Spec] = {
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND (mc.time_conflicts IS NOT NULL) {op} ?)",
     ),
+    #: How fine a claim is, in seconds of granule: a day-precision claim
+    #: is 86400, a subsecond one 0. `lte:<bin width>` is exactly "fine
+    #: enough for this bin" (db/pages.py _FINE_ENOUGH), so a bar's door
+    #: opens the pictures the bar counted and no coarser claim that
+    #: happens to sit inside its window.
+    "context.granule": _Spec(
+        "int",
+        ("lte",),
+        "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
+        " AND mc.policy_version = {policy} AND CASE mc.time_precision"
+        " WHEN 'subsecond' THEN 0 WHEN 'second' THEN 1 WHEN 'minute' THEN 60 WHEN 'hour' THEN 3600"
+        " WHEN 'day' THEN 86400 ELSE 2147483647 END {op} ?)",
+    ),
     #: Where it happened, by place entity id: the door a place name opens.
     "place.id": _Spec(
         "int",

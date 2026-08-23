@@ -10,6 +10,7 @@ opens a gallery door through the `place.id` facet.
 
 from __future__ import annotations
 
+import pytest
 from litestar.testing import TestClient
 from PIL import Image
 
@@ -295,3 +296,66 @@ def test_a_place_can_be_within_another(tmp_path):
         ).json()["where"]
         assert other["id"] != bare["id"]
         assert other["chain"] == ["Lisbon", "Iowa"]
+
+
+def test_two_lisbons_cannot_be_minted(tmp_path):
+    """The index is the word: a second place of the same kind, name and
+    parent is refused by the database itself, whatever the minter
+    believed; and `named` finds the parented one before adopting a bare
+    one."""
+    import sqlite3
+
+    from db import places
+    from tests.staging import fresh_schema
+
+    conn = fresh_schema()
+    lisbon = places.named(conn, "Lisbon", "city", 1.0)
+    with pytest.raises(sqlite3.IntegrityError):
+        places.place(conn, "lisbon", "city", 1.0)
+    portugal = places.named(conn, "Portugal", "country", 1.0)
+    assert places.named(conn, "Lisbon", "city", 1.0, within=portugal) == lisbon, "the bare one gained its parent"
+    with pytest.raises(sqlite3.IntegrityError):
+        places.place(conn, "Lisbon", "city", 1.0, parent_id=portugal)
+    bare_again = places.named(conn, "Lisbon", "city", 1.0)
+    assert bare_again == lisbon, "a bare ask finds the one Lisbon, parented or not"
+    assert conn.execute("SELECT count(*) FROM place WHERE name = 'Lisbon'").fetchone()[0] == 1
+
+
+def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
+    """The bulk write re-interprets every selected file in ONE pass -- one
+    read of the folder tree -- not one rebuild per file inside the
+    writer lane."""
+    from db import context
+
+    calls: list = []
+    real = context._folder_names
+
+    def counted(conn):
+        calls.append(1)
+        return real(conn)
+
+    monkeypatch.setattr(context, "_folder_names", counted)
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(4):
+        Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        page = client.get("/g", params={"folder": "lib"}).text
+        import re
+
+        answer = re.search(r'data-answer="([^"]+)"', page).group(1)
+        keys = re.findall(r'data-selection-key="([0-9a-f]{32})"', page)
+        assert len(keys) == 4
+        calls.clear()
+        told = client.post(
+            "/g/selection/place",
+            params={"folder": "lib"},
+            json={"answer": answer, "items": keys, "name": "Porto", "kind": "city"},
+        )
+        assert told.status_code < 300, told.text
+        assert told.json()["targets"] == 4
+        assert len(calls) == 1, f"the folder tree was read {len(calls)} times for 4 files"
+        for slug in _slugs(client):
+            assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["where"]["name"] == "Porto"

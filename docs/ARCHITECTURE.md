@@ -179,7 +179,9 @@ A place is an entity (`place`, nested by kind: country .. poi). Nothing
 resolves coordinates to one -- no gazetteer ships, and GPS alone names
 no place -- so `derived_media_context.place_id` comes from a person's
 word: `POST /i/{slug}/place {"name", "kind"}` finds or mints the place
-by name and kind (`places.named`), records the claim as authored
+by name, kind and parent (`places.named`, under the writer lane; the
+`place_identity` index is the database's own word that there is one
+Lisbon), records the claim as authored
 desired state (`file_place`, one per file, `authored.set_place`) and
 re-interprets the file at once, so the context reads
 `location_basis = 'authored'`. The claim survives every rebuild. A
@@ -203,8 +205,8 @@ the sessions touching the range (`db/pages.py TIMELINE_*`,
 `?folder=`, `?album=`, `?person=`, `?kind=`, `?f=` -- through
 `resultset.scope_of`: the same membership predicates the gallery walks,
 appended to every timeline statement (HEAD + conjunct + TAIL), and
-every door is that question plus a moment, so what is drawn is what
-opens. A session is a door, never a scope; a rule-defined collection
+every door is that question plus a moment and the precision the bar
+counted (`context.granule`), so what is drawn is what opens. A session is a door, never a scope; a rule-defined collection
 scopes through its materialized membership (`f.id IN (...)`, the one
 engine) and refuses with why when its rule cannot be answered. A
 person's, a folder's and an album's page open their own timeline, and

@@ -186,7 +186,7 @@ def _folder_names(conn) -> dict[int, list[str]]:
     return held
 
 
-def _interpret(conn, now: float, file_id: int | None = None) -> int:
+def _interpret(conn, now: float, file_id: int | None = None, *, file_ids: list[int] | None = None) -> int:
     """The primary interpretation and the occurrences for every file (or
     one): the camera's act as the judge settles it from DateTimeOriginal,
     its subsecond, the zone the camera knew, mtime and btime; the
@@ -195,10 +195,17 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
     generation time -- supports and conflicts named beside the value;
     only a claimless file falls to the filesystem, an instant with no
     local story. Returns the number of contexts written."""
+    import json
+
     from . import when
 
-    where = " WHERE f.id = ?" if file_id is not None else ""
-    rows = conn.execute(_SOURCES + where, (file_id,) if file_id is not None else ()).fetchall()
+    if file_ids is not None:
+        where, args = " WHERE f.id IN (SELECT value FROM json_each(?))", (json.dumps(list(file_ids)),)
+    elif file_id is not None:
+        where, args = " WHERE f.id = ?", (file_id,)
+    else:
+        where, args = "", ()
+    rows = conn.execute(_SOURCES + where, args).fetchall()
     folders = _folder_names(conn)
     made = 0
     for (
@@ -422,6 +429,23 @@ def rebuild_one(conn, file_id: int, now: float) -> None:
     conn.execute("DELETE FROM derived_media_context WHERE file_id = ?", (file_id,))
     conn.execute("DELETE FROM derived_media_occurrence WHERE file_id = ?", (file_id,))
     _interpret(conn, now, file_id)
+    _advance(conn)
+
+
+def rebuild_many(conn, file_ids, now: float) -> None:
+    """Many files' interpretations, refreshed in ONE pass: one read of
+    the folder tree, one statement over the files, one generation
+    advance -- what a bulk write calls inside the writer lane, where a
+    per-file rebuild would read the folder table once per file."""
+    import json
+
+    ids = sorted({int(one) for one in file_ids})
+    if not ids:
+        return
+    held = json.dumps(ids)
+    conn.execute("DELETE FROM derived_media_context WHERE file_id IN (SELECT value FROM json_each(?))", (held,))
+    conn.execute("DELETE FROM derived_media_occurrence WHERE file_id IN (SELECT value FROM json_each(?))", (held,))
+    _interpret(conn, now, file_ids=ids)
     _advance(conn)
 
 

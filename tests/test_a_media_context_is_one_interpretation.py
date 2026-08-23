@@ -453,3 +453,26 @@ def test_take_is_an_exact_integer_before_any_coercion(interpreted):
                 )
     finally:
         connect.close(conn)
+
+
+def test_a_rule_over_the_interpretation_refuses_while_files_are_uninterpreted(interpreted, monkeypatch):
+    """After a policy bump every context facet answers for nobody until
+    the context job runs: a smart rule over one would evaluate to an
+    empty set wearing an answer's clothes, so it refuses with the count
+    and the remedy instead."""
+    from db import collection_rules, resultset
+
+    client, _ = interpreted
+    saved = client.post("/albums/smart", json={"name": "Captured", "f": "context.origin:eq:captured"})
+    assert saved.status_code == 201, saved.text
+    # the bump comes with a deploy, i.e. a fresh process: no projection of
+    # this question is cached when the rule is first evaluated under it
+    monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
+    conn = _raw(client)
+    try:
+        with pytest.raises(collection_rules.UnavailableCollectionRule, match="run the context job"):
+            resultset.page(conn, "", resultset.parse(album=saved.json()["slug"]), 1, NOW)
+    finally:
+        connect.close(conn)
+    monkeypatch.undo()
+    assert client.get("/g", params={"album": saved.json()["slug"]}).status_code == 200, "interpreted: it answers"

@@ -299,3 +299,21 @@ def test_the_surface_can_be_scoped_by_the_gallerys_facets(doors):
     assert all("place.id%3Aeq%3A" in d["qs"] for d in shelf["days"])
     assert doors.get("/timeline/density", params={"bin": "day", "f": "event.id:eq:1"}).status_code == 400
     assert doors.get("/timeline/density", params={"bin": "day", "f": "vibe:eq:1"}).status_code == 400
+
+
+def test_every_bars_door_opens_exactly_what_the_bar_counted(doors):
+    """The finest zoom over a day that holds a day-precision claim: the
+    scan's folder-day file sits at midnight inside the first hour's
+    window but was never counted in that bar, and its door must not
+    open it either -- the door carries the precision the count applied
+    (`context.granule`)."""
+    whole = _density(doors, bin="day")
+    day = next(b for b in whole["bins"] if b["pictures"] >= 5)
+    hours = _density(doors, bin="hour", start=day["at"], end=day["at"] + 86_400)
+    assert hours["spans"], "the day-precision claim is drawn as a span, not counted in an hour"
+    assert any(b["pictures"] for b in hours["bins"])
+    for b in hours["bins"]:
+        assert "context.granule%3Alte%3A3600" in b["qs"]
+        assert _total(doors, b["qs"]) == b["pictures"], f"the bar says {b['pictures']}, the door opens more"
+    for b in whole["bins"]:
+        assert _total(doors, b["qs"]) == b["pictures"]
