@@ -263,7 +263,7 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
         # What a model says about a hero TODAY -- live, by address, never
         # part of the frozen story: the evidence the snapshot froze is the
         # story's; this is a courtesy line the page labels as its own.
-        said = derived.said_first(conn, ids.values())
+        said = derived.said_first(conn, ids.values(), prefer=settings.value(conn, "caption_model"))
         for ref, file_id in ids.items():
             addressed[ref]["said"] = said.get(file_id)
     finally:

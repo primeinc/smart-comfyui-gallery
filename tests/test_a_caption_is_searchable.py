@@ -133,3 +133,16 @@ def test_ranking_by_annotation_is_one_row_per_present_file_best_first(tmp_path, 
     assert derived.rank_by_annotation(conn, "   ", 10) == []
     quoted = derived.rank_by_annotation(conn, 'dog "quoted', 10)
     assert [file_id for file_id, _ in quoted] == [ids["a"]], "quotes in a phrase do not break the match"
+
+
+def test_the_configured_models_caption_is_the_one_a_cell_says(tmp_path, asks):
+    """Two models captioned the same picture: the grid's one line is the
+    configured model's, whatever its name sorts to; with no setting match
+    the first by name stands."""
+    conn, ids, _ = _shelf(tmp_path, {"a": 0.9})
+    sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (ids["a"],)).fetchone()[0]
+    derived.annotate(conn, ids["a"], "caption", "first by name", "aaa/early", "1", sha, NOW)
+    derived.annotate(conn, ids["a"], "caption", "the configured one", "zzz/blip", "1", sha, NOW)
+    assert derived.said_first(conn, [ids["a"]]) == {ids["a"]: "first by name"}
+    assert derived.said_first(conn, [ids["a"]], prefer="zzz/blip") == {ids["a"]: "the configured one"}
+    assert derived.said_first(conn, [ids["a"]], prefer="nobody/spoke") == {ids["a"]: "first by name"}

@@ -1418,9 +1418,10 @@ def rank_by_annotation(conn, phrase: str, limit: int, allowed=None) -> list[tupl
     return list(best.items())
 
 
-def said_first(conn, file_ids) -> dict[int, str]:
-    """One caption per file for a page of them -- the first model's, by
-    name -- or no entry. What a grid cell can say on hover."""
+def said_first(conn, file_ids, *, prefer: str | None = None) -> dict[int, str]:
+    """One caption per file for a page of them -- the configured model's
+    (`prefer`, the `caption_model` setting) when it has spoken, else the
+    first by name -- or no entry. What a grid cell can say on hover."""
     ids = list(file_ids)
     if not ids:
         return {}
@@ -1428,8 +1429,8 @@ def said_first(conn, file_ids) -> dict[int, str]:
     for file_id, text in conn.execute(
         "SELECT file_id, text FROM derived_annotation WHERE kind = 'caption' AND file_id IN ("
         + ",".join("?" for _ in ids)
-        + ") ORDER BY file_id, model_id, model_version",
-        ids,
+        + ") ORDER BY file_id, (model_id = ?) DESC, model_id, model_version",
+        [*ids, prefer or ""],
     ):
         told.setdefault(file_id, text)
     return told

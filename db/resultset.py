@@ -946,13 +946,13 @@ def _named(conn, ids, start: int) -> list[dict]:
     if not ids:
         return []
     marks = ",".join("?" for _ in ids)
-    from . import derived
+    from . import derived, settings
 
     held = {
         row[0]: {"id": row[0], "slug": row[1], "name": row[2], "kind": row[3], "uuid": row[4].hex(), "said": None}
         for row in conn.execute(NAMED.format(marks=marks), list(ids))
     }
-    for file_id, text in derived.said_first(conn, held).items():
+    for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():
         held[file_id]["said"] = text
     told = []
     for offset, file_id in enumerate(ids):
