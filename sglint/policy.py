@@ -92,7 +92,7 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
         {"connect", "derived", "evolution", "facets", "naming", "pages", "planning", "rendering", "settings", "stories"}
     ),
     "sg_web/timeline_view.py": frozenset(
-        {"connect", "context", "facets", "pages", "planning", "resultset", "settings"}
+        {"connect", "context", "facets", "pages", "planning", "rendering", "resultset", "settings"}
     ),
     "sg_web/operations.py": frozenset(
         {"connect", "derived", "inspecting", "ledger", "library", "pages", "prompts", "runner", "scan", "settings"}

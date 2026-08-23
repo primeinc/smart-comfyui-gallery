@@ -146,7 +146,9 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert "5 files from June 10, 2023" in page.text
     again = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     held = next(s for s in again["sessions"] if s["id"] == session["id"])
-    assert held["story"] == f"/stories/renders/{made.json()['id']}"
+    assert held["story"]["href"] == f"/stories/renders/{made.json()['id']}", "the story rides its session's card"
+    assert held["story"]["title"]
+    assert held["story"]["heroes"], "with its heroes"
     # the shelf lists it, newest first, with its words and doors
     shelf = client.get("/stories", headers={"accept": "application/json"}).json()
     assert [s["id"] for s in shelf] == [made.json()["id"]]

@@ -536,7 +536,7 @@ body {
 .surface-head h2 { margin: 0; font-size: 1rem; }
 .surface-zoom a { color: var(--ink-muted); margin-right: 8px; text-decoration: none; }
 .surface-zoom a[data-current] { color: var(--accent); }
-.surface-window { font-size: .8rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.surface-window { font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }
 /* the overview: the whole extent at week resolution under a brush */
 .surface-overview { width: 100%; height: 40px; margin-bottom: 4px; background: #1a1a1a; border: 1px solid var(--line); border-radius: 6px; cursor: crosshair; touch-action: none; }
 .surface-overview:focus-visible { outline: 2px solid var(--accent); }
@@ -544,11 +544,16 @@ body {
 .surface-overview .brush { fill: var(--accent); opacity: .25; cursor: grab; }
 .surface-overview[data-dragging="move"] .brush { cursor: grabbing; }
 .surface-overview .brush-edge { fill: var(--accent); cursor: ew-resize; }
-.surface-legend { margin-left: auto; font-size: .8rem; color: var(--muted, #888); }
-.surface-legend i { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 8px; vertical-align: middle; }
-.surface-legend .wall, .surface-strip .wall { background: #6cf; fill: #6cf; }
-.surface-legend .instant, .surface-strip .instant { background: #fc6; fill: #fc6; }
-.surface-legend .span, .surface-strip .span { background: #8a8; fill: #8a8; opacity: .6; }
+.surface-strip .bar { fill: var(--accent); transform-origin: center bottom; transform-box: fill-box; transition: transform .18s ease-out; }
+.surface-strip[data-settling] .bar { transform: scaleY(.92); }
+.session-story { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0; padding: 8px; background: var(--ground); border-radius: var(--radius); }
+.session-story-hero { width: 56px; height: 56px; object-fit: cover; border-radius: 3px; flex: 0 0 auto; }
+.session-story-words { min-width: 0; }
+.session-story-title { display: block; color: var(--ink); font-weight: 600; text-decoration: none; }
+.session-story-title:hover { color: var(--accent); }
+.session-story-dek { margin: 2px 0 0; color: var(--ink-muted); font-size: .9rem; }
+@media (prefers-reduced-motion: reduce) { .surface-strip .bar { transition: none; } }
+.surface-strip .band { fill: var(--ink-muted); opacity: .5; }
 .surface-strip { width: 100%; height: 140px; background: #1a1a1a; border: 1px solid var(--line); border-radius: 6px; }
 .surface-strip .bin { cursor: pointer; }
 .surface-strip .bin:hover rect { opacity: .8; }

@@ -127,7 +127,7 @@ def test_every_browser_page_carries_the_same_navigation(served):
         assert page.status_code == 200, f"{where}: {page.status_code} {page.text[:300]}"
         shells = page.text.count('<nav class="shell"')
         assert shells == 1, f"{where} mounts the shell {shells} times"
-        for door in ("/g", "/people", "/places", "/albums", "/folders", "/timeline", "/stories", "/operations"):
+        for door in ("/g", "/people", "/places", "/albums", "/folders", "/timeline", "/operations"):
             assert f'href="{door}"' in page.text, f"{where} does not reach {door}"
         assert page.text.count('id="shell-notice"') == 1, where
         assert page.text.count('id="activity-jobs"') == 1, where
@@ -372,7 +372,7 @@ SURFACES = {
     "artifact_view.lora_page": ("sg_web/artifact_view.py", "media facts", None),
     "artifact_view.workflow_page": ("sg_web/artifact_view.py", "story heroes", None),
     "timeline_view.timeline": ("sg_web/timeline_view.py", "shell nav", ("GET", "/timeline", None)),
-    "story_view.stories_index": ("sg_web/story_view.py", "shell nav", ("GET", "/stories", None)),
+    "story_view.stories_index": ("sg_web/story_view.py", "timeline session card", ("GET", "/stories", None)),
     "story_view.render_document": ("sg_web/story_view.py", "timeline session; stories shelf", None),
     "story_view.plan_evolution": ("sg_web/story_view.py", "story", None),
     "operations.operations_page": ("sg_web/operations.py", "shell nav", ("GET", "/operations", None)),

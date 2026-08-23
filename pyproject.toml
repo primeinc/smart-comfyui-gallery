@@ -235,6 +235,8 @@ indent-width = 4
 preview = false
 
 [tool.ruff.lint]
+# The en dash is the range mark the pages speak ("22 Jul – 21 Aug"); not a confusable here.
+allowed-confusables = ["–"]
 # ON: families that report a defect, or a simplification a reviewer could
 # apply without calling a project-wide style vote.
 # OFF: families that need such a vote -- how to quote, how much to

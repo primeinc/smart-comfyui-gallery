@@ -27,7 +27,7 @@ from litestar.exceptions import ClientException, NotFoundException
 from litestar.params import FromQuery, QueryParameter
 from litestar.response import Response, Template
 
-from db import connect, context, facets, pages, planning, resultset, settings
+from db import connect, context, facets, pages, planning, rendering, resultset, settings
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, presented
@@ -219,7 +219,8 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
         #: of those, how many the surface's scope holds (all, unscoped)
         "in_scope": int(here),
         "snapshot_id": snapshot_id,
-        "story": f"/stories/renders/{render_id}" if render_id is not None else None,
+        #: the story told of this session, on its card: title, dek, heroes
+        "story": rendering.story_card(conn, render_id) if render_id is not None else None,
         "qs": _event_door(event_id, scope),
         "planner": planner,
         "tellable": planner in planning.PLANNERS,
@@ -239,14 +240,42 @@ def _bin_for(width: float) -> str:
     return "week"
 
 
-def _spell(epoch: float, bin_name: str, domain: str | None = None) -> str:
-    """The moment as the page says it: the UTC day, and the clock past
-    the day zoom; `Z` for an instant, `wall` for a wall clock."""
+def _day(d: datetime.datetime) -> str:
+    return f"{d.day} {d.strftime('%b %Y')}"
+
+
+def _spell(epoch: float, bin_name: str) -> str:
+    """A moment as a person reads it: the day at the day and week zooms
+    ("10 Jun 2023", "week of 5 Jun 2023"), the day and the clock below."""
     d = datetime.datetime.fromtimestamp(epoch, datetime.UTC)
-    suffix = "Z" if domain == "instant" else " wall" if domain == "wall" else ""
-    if bin_name in ("day", "week"):
-        return d.strftime("%Y-%m-%d") + suffix
-    return d.strftime("%Y-%m-%d %H:%M") + suffix
+    if bin_name == "week":
+        return f"week of {_day(d)}"
+    if bin_name == "day":
+        return _day(d)
+    return f"{_day(d)}, {d.strftime('%H:%M')}"
+
+
+def _span(lo: float, hi: float) -> str:
+    """A range as a person reads it: "22 Jul – 21 Aug 2026" across days,
+    "21 Aug 2026, 01:33 – 01:39" within one."""
+    a = datetime.datetime.fromtimestamp(lo, datetime.UTC)
+    b = datetime.datetime.fromtimestamp(max(lo, hi - 1), datetime.UTC)
+    if a.date() == b.date():
+        return f"{_day(a)}, {a.strftime('%H:%M')} – {b.strftime('%H:%M')}"
+    if a.year == b.year:
+        return f"{a.day} {a.strftime('%b')} – {_day(b)}"
+    return f"{_day(a)} – {_day(b)}"
+
+
+#: What a session is, said from the person's side: what happened to the
+#: pictures, not which grouper found them.
+HAPPENED = {
+    "capture_session": "photos taken",
+    "generation_session": "pictures generated",
+    "file_session": "files added",
+}
+#: A bar's unit, as a person says it.
+UNIT = {"week": "week", "day": "day", "hour": "hour", "quarter": "quarter hour", "minute": "minute"}
 
 
 def _window_url(question: resultset.GalleryQuery, start: float, end: float) -> str:
@@ -278,6 +307,8 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
             "end": None,
             "start_spelled": "",
             "end_spelled": "",
+            "window_spelled": "",
+            "unit": "day",
             "scope": scope_told,
             "extent": None,
             "overview": None,
@@ -320,8 +351,11 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
     listed = rows[:SESSIONS_MOST]
     sessions = [_session(conn, row, samples=len(listed) <= SESSIONS_SAMPLED_MOST, scope=held) for row in listed]
     for one in sessions:
-        one["start_spelled"] = _spell(one["start"], "hour", one["domain"])
-        one["end_spelled"] = _spell(one["end"], "hour", one["domain"])
+        one["when"] = _span(one["start"], one["end"] + 1)
+        one["happened"] = HAPPENED.get(one["kind"], one["kind"].replace("_", " "))
+        named = [p for p in one["people"] if p["name"]]
+        others = one["people_total"] - len(named)
+        one["with"] = {"named": named, "others": others}
 
     span = max(1.0, hi - lo)
     most = max([1, *(pictures for _, pictures, *_ in bins)])
@@ -387,15 +421,16 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
         )
     fine = sum(b["pictures"] for b in told_bins)
     coarse = sum(pictures for _, _, pictures in spans)
-    note = f"{fine} pictures in this window, one bar per {bin_name}"
+    unit = UNIT[bin_name]
+    note = f"{fine:,} pictures · each bar is a {unit}"
     if coarse:
-        note += f"; {coarse} claim only a coarser window, drawn as spans"
+        note += f" · {coarse:,} are dated only to the day, shown as bands"
     if not every:
-        note += f" · thumbnails for the {sum(1 for b in told_bins if b['samples'])} busiest {bin_name}s"
+        note += f" · previews for the busiest {sum(1 for b in told_bins if b['samples'])} {unit}s"
     if not coverage["complete"]:
-        note += f" · {coverage['present'] - coverage['interpreted']} files not yet interpreted"
+        note += f" · {coverage['present'] - coverage['interpreted']:,} pictures not dated yet"
     if coverage["present"] and not coverage["events_current"]:
-        note += " · sessions need the events job: the interpretation moved since they were grouped"
+        note += " · the groups are out of date"
     return {
         "bin": bin_name,
         "bin_seconds": width,
@@ -403,6 +438,8 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
         "end": hi,
         "start_spelled": _spell(lo, "hour"),
         "end_spelled": _spell(hi, "hour"),
+        "window_spelled": _span(lo, hi),
+        "unit": unit,
         "scope": scope_told,
         "extent": {"start": extent[0], "end": extent[1], "pictures": extent[2]},
         "overview": overview,
@@ -417,7 +454,7 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
                 "end": s + _SPAN[precision],
                 "precision": precision,
                 "pictures": pictures,
-                "spelled": _spell(s, "hour"),
+                "spelled": _spell(s, "day" if precision == "day" else "hour"),
                 "x": round(((s - lo) / span) * _W, 2),
                 "w": round(max(1.0, (_SPAN[precision] / span) * _W), 2),
             }

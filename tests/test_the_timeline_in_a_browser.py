@@ -141,6 +141,10 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(served):
         page.wait_for_selector("[data-evolution-story]", timeout=10_000)
         page.goto(base + "/timeline")
         page.wait_for_selector("[data-sessions] .session [data-session-story]", timeout=10_000)
+        # the story rides its card: title, heroes, the door to the whole
+        assert page.inner_text("[data-sessions] .session [data-session-story-title]").strip()
+        assert page.locator("[data-sessions] .session .session-story-hero").count() >= 1
+        assert page.locator("[data-sessions] .session [data-session-story-read]").count() == 1
         browser.close()
 
 
@@ -190,12 +194,16 @@ def served_wide(tmp_path_factory):
     root = tmp / "lib"
     root.mkdir()
     base_at = 1_686_355_200.0 + 14 * 3600
+    moments: list[float] = []
     for i in range(WIDE_FILES):
-        at = base_at + i * 5 * 86400
-        day = time.strftime("%Y-%m-%d", time.gmtime(at))
-        path = root / f"Screenshot {day} at 14.00.0{i}.png"
-        Image.new("RGB", (8, 8), (20 * i, 90, 140)).save(path)
-        os.utime(path, (at, at))
+        for j in range(2):  # a pair a minute apart: enough for a group to form on each day
+            # the name carries the clock (14:0j:0i) and the file's mtime says the same moment
+            at = base_at + i * 5 * 86400 + j * 60 + i
+            moments.append(at)
+            day = time.strftime("%Y-%m-%d", time.gmtime(at))
+            path = root / f"Screenshot {day} at 14.0{j}.0{i}.png"
+            Image.new("RGB", (8, 8), (20 * i, 90 + 40 * j, 140)).save(path)
+            os.utime(path, (at, at))
     port = _free_port()
     server = uvicorn.Server(
         uvicorn.Config(
@@ -225,7 +233,7 @@ def served_wide(tmp_path_factory):
             _settled(api, swept["precache"])
         assert _settled(api, api.post("/jobs/ingest").json()["id"]) == "done"
         assert _settled(api, api.post("/jobs/context").json()["id"]) == "done"
-        yield base, api
+        yield base, api, moments
     server.should_exit = True
     thread.join(timeout=10)
 
@@ -237,9 +245,11 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(served_wide):
     bar is ever "too many"."""
     from playwright.sync_api import sync_playwright
 
-    base, api = served_wide
+    base, api, moments = served_wide
     extent = api.get("/timeline/density", params={"bin": "week", "lean": "true"}).json()["extent"]
     whole_end = extent["end"] + 1
+    assert extent["end"] == max(moments), "the newest picture is the one the fixture wrote last"
+    in_the_last_month = [at for at in moments if at >= whole_end - 30 * 86400]
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 1200, "height": 800})
@@ -248,8 +258,7 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(served_wide):
         start = float(page.get_attribute("[data-surface]", "data-window-start") or "nan")
         end = float(page.get_attribute("[data-surface]", "data-window-end") or "nan")
         assert end == whole_end, "the window ends at the newest picture"
-        # the last month holds the last six of nine pictures, five days apart
-        assert abs(start - (whole_end - 1 - 25 * 86400)) <= 10, "and opens on the span those pictures occupy"
+        assert start == min(in_the_last_month), "and opens on the earliest picture of the last month, exactly"
         assert start > extent["start"], "which is not the whole forty-day library"
         page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
         assert "too many" not in page.inner_text("[data-surface]")
@@ -284,4 +293,45 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(served_wide):
         page.wait_for_selector("[data-strip] .bin", timeout=10_000)
         assert page.locator('[data-zoom] a[data-preset="all"][data-current]').count() == 1
         assert page.locator("[data-samples] .surface-sample img").count() >= 1, "thumbnails at every window"
+        browser.close()
+
+
+def test_the_surface_moves_while_the_hand_moves_and_refreshes_itself(served_wide):
+    """Dynamic, in both senses: the stage re-renders WHILE the brush is
+    dragged, not only on release; and when a job that groups pictures
+    settles, the surface fetches itself again -- the session cards appear
+    with no reload."""
+    from playwright.sync_api import sync_playwright
+
+    base, api, _moments = served_wide
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": 1200, "height": 800})
+        page.goto(base + "/timeline")
+        page.wait_for_selector("[data-strip] .bin", timeout=10_000)
+        was = page.get_attribute("[data-surface]", "data-window-start")
+        box = page.locator("[data-overview]").bounding_box()
+        assert box is not None
+        y = box["y"] + box["height"] / 2
+        page.mouse.move(box["x"] + 2, y)
+        page.mouse.down()
+        page.mouse.move(box["x"] + box["width"] * 0.3, y, steps=12)
+        page.wait_for_function(
+            "(was) => document.querySelector('[data-surface]').dataset.windowStart !== was", arg=was, timeout=10_000
+        )
+        still_dragging = page.get_attribute("[data-surface]", "data-window-start")
+        assert still_dragging != was, "the surface moved before the button was released"
+        page.mouse.up()
+        page.wait_for_function("() => new URLSearchParams(location.search).has('start')", timeout=10_000)
+
+        # no groups yet: the job that makes them lands on the page by itself
+        page.click('[data-zoom] a[data-preset="all"]')
+        page.wait_for_function(
+            "() => document.querySelector('[data-zoom] a[data-preset=\"all\"][data-current]') !== null", timeout=10_000
+        )
+        assert page.locator("[data-sessions] .session").count() == 0
+        assert _settled(api, api.post("/jobs/events").json()["id"]) == "done"
+        page.wait_for_selector("[data-sessions] .session", timeout=15_000)
+        assert page.url.endswith(page.evaluate("() => location.pathname + location.search")), "no reload, no redirect"
+        assert "too many" not in page.inner_text("[data-surface]")
         browser.close()

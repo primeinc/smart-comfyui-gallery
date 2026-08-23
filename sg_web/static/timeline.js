@@ -39,17 +39,52 @@
   async function move(url, push) {
     const mine = ++generation;
     const answer = await fetch(url, { headers: { "hx-request": "true", accept: "text/html" } });
-    if (mine !== generation) return;
+    if (mine !== generation) return; // a newer move superseded this one
     if (!answer.ok) {
       const why = await answer.json().catch(() => ({}));
       const note = swap.querySelector("[data-note]");
       if (note) note.textContent = why.detail || answer.statusText;
       return;
     }
+    const held = swap.querySelector("[data-strip]");
+    if (held) held.dataset.settling = "";
     swap.innerHTML = await answer.text();
-    if (push) history.pushState({ url }, "", url);
-    else history.replaceState({ url }, "", url);
+    if (push === true) history.pushState({ url }, "", url);
+    else if (push === false) history.replaceState({ url }, "", url);
+    // push === null: a refresh of the same window; the URL already says it
   }
+
+  // While the hand moves, the surface moves: at most one fetch in flight
+  // per LIVE_MS, the newest window always the one that lands.
+  const LIVE_MS = 120;
+  let liveAt = 0;
+  let liveTimer = 0;
+  const live = (start, end) => {
+    const now = performance.now();
+    clearTimeout(liveTimer);
+    const run = () => { liveAt = performance.now(); move(urlFor(Math.round(start), Math.round(end)), false); };
+    if (now - liveAt >= LIVE_MS) run();
+    else liveTimer = setTimeout(run, LIVE_MS - (now - liveAt));
+  };
+
+  // Time refreshes itself: when a job that dates or groups pictures
+  // settles, the window is fetched again -- nobody reloads a timeline.
+  (() => {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    let socket;
+    const open = () => {
+      socket = new WebSocket(`${proto}://${location.host}/ws/jobs`);
+      socket.onmessage = (msg) => {
+        const frame = JSON.parse(msg.data);
+        if (frame.type === "snapshot") return;
+        if (["done", "failed", "cancelled"].includes(frame.state) && ["context", "events", "ingest", "scan", "faces", "cluster"].includes(frame.kind)) {
+          move(location.pathname + location.search, null);
+        }
+      };
+      socket.onclose = () => setTimeout(open, 2000);
+    };
+    open();
+  })();
 
   window.addEventListener("popstate", (e) => {
     const url = (e.state && e.state.url) || location.pathname + location.search;
@@ -127,14 +162,50 @@
     if (!drag) return;
     const { start, end } = dragged(event);
     placeBrush(drag.overview, drag.held, start, end);
+    live(start, end);
   });
   const release = (event) => {
     if (!drag) return;
     const { start, end } = dragged(event);
     delete drag.overview.dataset.dragging;
     drag = null;
+    clearTimeout(liveTimer);
     move(urlFor(Math.round(start), Math.round(end)), true);
   };
+  // the brush swaps the surface under the pointer: keep dragging the new one
+  swap.addEventListener("pointermove", (event) => {
+    if (drag && !drag.overview.isConnected) {
+      const overview = swap.querySelector("[data-overview]");
+      if (overview) { drag.overview = overview; overview.setPointerCapture(event.pointerId); }
+    }
+  }, true);
+
+  // the wheel over the stage zooms around the cursor; with shift it pans
+  swap.addEventListener("wheel", (e) => {
+    const stage = e.target.closest("[data-strip], [data-overview]");
+    const held = read();
+    if (!stage || !held) return;
+    e.preventDefault();
+    const width = held.end - held.start;
+    const box = stage.getBoundingClientRect();
+    const at = held.start + ((e.clientX - box.left) / box.width) * width;
+    let start;
+    let end;
+    if (e.shiftKey) {
+      const step = (e.deltaY > 0 ? 1 : -1) * width / 5;
+      start = held.start + step;
+      end = held.end + step;
+    } else {
+      const factor = e.deltaY > 0 ? 1.25 : 0.8;
+      start = at - (at - held.start) * factor;
+      end = at + (held.end - at) * factor;
+    }
+    const narrowest = Math.min(NARROWEST, held.extentEnd - held.extentStart);
+    if (end - start < narrowest) { start = at - narrowest / 2; end = at + narrowest / 2; }
+    start = Math.max(held.extentStart, start);
+    end = Math.min(held.extentEnd, Math.max(end, start + narrowest));
+    live(start, end);
+  }, { passive: false });
   swap.addEventListener("pointerup", release);
   swap.addEventListener("pointercancel", release);
 

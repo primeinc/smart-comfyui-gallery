@@ -124,7 +124,7 @@ def test_every_bar_and_session_on_the_page_is_a_door(doors):
     # the downloads' btime disputes nothing on a copy but may on a fresh
     # write: the count is the filesystem's, so only its shape is pinned
     assert isinstance(coverage["contested"], int)
-    assert "8 of 8 files interpreted" in page
+    assert "8 pictures dated" in page
 
 
 def test_the_surface_carries_pictures_origins_and_its_coverage(doors):

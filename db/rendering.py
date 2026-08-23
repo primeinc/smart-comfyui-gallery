@@ -670,6 +670,52 @@ def load_render_with_members(conn, render_id: int) -> tuple[dict, dict, int, dic
     return render, members, plan_id, snapshot["subject"]
 
 
+#: Hero pictures a card shows for one story, in section order.
+CARD_HEROES = 3
+
+
+def heroes(conn, words: dict, frozen: dict, most: int = CARD_HEROES) -> list[dict]:
+    """The first few heroes a render names, addressed the way the story
+    page addresses them: the FROZEN name, and a thumbnail only while the
+    file is still in the library."""
+    from . import naming
+
+    members = {planning._member_ref(one["ordinal"]): one for one in frozen.get("members") or []}
+    refs: list[str] = []
+    for section in words.get("sections") or []:
+        for ref in section.get("hero_refs") or []:
+            if ref not in refs:
+                refs.append(ref)
+    told = []
+    for ref in refs[:most]:
+        member = members.get(ref)
+        if member is None:
+            continue
+        held = naming.by_uuid(conn, member["file_uuid"])
+        slug = held[1] if held and held[0] == "file" else None
+        told.append({"name": member["name"], "thumbnail": f"/thumb/{slug}" if slug else None})
+    return told
+
+
+def story_card(conn, render_id: int) -> dict | None:
+    """What a card says of one story: its title and dek as rendered, its
+    heroes, and the doors to the whole and to its evolution. None when
+    the render no longer verifies -- a card shows nothing it cannot
+    prove."""
+    try:
+        render, snapshot, plan_id = _load(conn, render_id)
+    except (LookupError, stories.Corrupt):
+        return None
+    return {
+        "id": render_id,
+        "href": f"/stories/renders/{render_id}",
+        "evolution": f"/stories/plans/{plan_id}/evolution",
+        "title": render.get("title", ""),
+        "dek": render.get("dek", ""),
+        "heroes": heroes(conn, render, snapshot),
+    }
+
+
 def latest_render_id(conn, plan_id: int) -> int | None:
     """The newest render told of one plan, or None while none has been."""
     row = conn.execute("SELECT id FROM story_render WHERE plan_id = ? ORDER BY id DESC LIMIT 1", (plan_id,)).fetchone()

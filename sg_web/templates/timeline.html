@@ -6,11 +6,10 @@
     <nav class="crumbs">
       <span class="crumbs-here">Timeline</span>
       <span class="crumbs-where" data-coverage data-complete="{{ 'yes' if surface.coverage.complete else 'no' }}">
-        {{ "{:,}".format(surface.coverage.interpreted) }} of {{ "{:,}".format(surface.coverage.present) }} files interpreted
-        · policy v{{ surface.coverage.policy_version }}
-        {% if surface.coverage.contested %}· <a href="/g?{{ surface.coverage.contested_qs }}" data-timeline-contested title="pictures whose sources disagree about when">{{ "{:,}".format(surface.coverage.contested) }} contested</a>{% endif %}
-        {% if not surface.coverage.complete %}· <a href="/operations">interpret the rest</a>{% endif %}
-        {% if surface.coverage.present and not surface.coverage.events_current %}· <a href="/operations" data-timeline-events-stale title="the interpretation moved since sessions were last grouped">sessions need the events job</a>{% endif %}
+        {{ "{:,}".format(surface.coverage.interpreted) }} pictures dated
+        {% if not surface.coverage.complete %}· <a href="/operations">{{ "{:,}".format(surface.coverage.present - surface.coverage.interpreted) }} not dated yet</a>{% endif %}
+        {% if surface.coverage.contested %}· <a href="/g?{{ surface.coverage.contested_qs }}" data-timeline-contested title="pictures whose files disagree about when they were made">{{ "{:,}".format(surface.coverage.contested) }} with conflicting dates</a>{% endif %}
+        {% if surface.coverage.present and not surface.coverage.events_current %}· <a href="/operations" data-timeline-events-stale title="pictures were re-dated since they were last grouped">groups are out of date</a>{% endif %}
       </span>
     </nav>
   </header>
