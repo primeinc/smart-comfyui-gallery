@@ -157,6 +157,8 @@ def where_of(conn, file_id: int) -> dict | None:
         "name": name,
         "kind": kind,
         "basis": basis,
+        #: the place and every ancestor, leaf first: "Lisbon, Portugal"
+        "chain": [one["name"] for one in places.chain(conn, place_id)],
         "qs": urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
         "timeline": "/timeline?"
         + urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),

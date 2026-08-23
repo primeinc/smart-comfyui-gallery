@@ -1182,7 +1182,8 @@ def person_places(conn, person_id: int):
 #: interpretation puts there, most first.
 PLACES_SHELF = (
     "SELECT p.id, e.slug, p.name, p.kind, count(f.id) AS pictures,"
-    " min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"
+    " min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + "),"
+    " (SELECT pp.name FROM place pp WHERE pp.id = p.parent_id) AS within"
     "  FROM place p JOIN entity e ON e.id = p.id"
     "  LEFT JOIN derived_media_context mc ON mc.place_id = p.id AND mc.policy_version = ?"
     "  LEFT JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"

@@ -40,7 +40,13 @@
       event.preventDefault();
       const name = placeForm.querySelector('[name="name"]').value.trim();
       if (!name) return;
-      say({ name, kind: placeForm.querySelector('[name="kind"]').value });
+      const within = placeForm.querySelector('[name="within"]').value.trim();
+      say({
+        name,
+        kind: placeForm.querySelector('[name="kind"]').value,
+        within: within || null,
+        within_kind: placeForm.querySelector('[name="within_kind"]').value,
+      });
     });
     placeForm.querySelector("[data-place-clear]")?.addEventListener("click", () => say({ name: null }));
   }

@@ -7,6 +7,7 @@
       <h2>{{ person.name or "(unnamed)" }}</h2>
       <p class="person-count">{{ person.count }} pictures</p>
       <a data-full href="/p/{{ person.slug }}">open full profile</a>
+      &middot; <a href="{{ person.timeline }}" data-drawer-timeline>their timeline</a>
     </div>
   </div>
   <form class="person-rename" data-rename action="/p/{{ person.slug }}/name" method="post">

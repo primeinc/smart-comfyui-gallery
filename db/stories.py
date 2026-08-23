@@ -296,19 +296,12 @@ def hierarchy(conn, place_id: int | None) -> dict | None:
     """One place and every ancestor, leaf first, by uuid and label."""
     if place_id is None:
         return None
+    from . import places
+
     chain = []
-    seen: set[int] = set()
-    cursor = place_id
-    while cursor is not None and cursor not in seen:
-        seen.add(cursor)
-        row = conn.execute(
-            "SELECT p.parent_id, p.kind, p.name, e.uuid FROM place p JOIN entity e ON e.id = p.id WHERE p.id = ?",
-            (cursor,),
-        ).fetchone()
-        if row is None:
-            break
-        chain.append({"uuid": row[3].hex(), "kind": row[1], "name": row[2]})
-        cursor = row[0]
+    for one in places.chain(conn, place_id):
+        uuid = conn.execute("SELECT uuid FROM entity WHERE id = ?", (one["id"],)).fetchone()[0]
+        chain.append({"uuid": uuid.hex(), "kind": one["kind"], "name": one["name"]})
     return {"uuid": chain[0]["uuid"], "chain": chain} if chain else None
 
 

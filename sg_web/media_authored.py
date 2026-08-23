@@ -82,6 +82,9 @@ class DesiredPlace:
 
     name: str | None = None
     kind: str = "locality"
+    #: the place this one is within, named the same way; optional
+    within: str | None = None
+    within_kind: str = "country"
 
 
 @post("/i/{slug:str}/place", sync_to_thread=True)
@@ -94,7 +97,8 @@ def set_place(state: State, slug: str, data: DesiredPlace) -> Response:
         file_id = _resolved(conn, "file", slug, "/i")
         now = time.time()
         try:
-            place_id = places.named(conn, data.name, data.kind, now) if data.name is not None else None
+            parent = places.named(conn, data.within, data.within_kind, now) if data.within else None
+            place_id = places.named(conn, data.name, data.kind, now, within=parent) if data.name is not None else None
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         authored.set_place(conn, file_id, state.actor_id, place_id, now)

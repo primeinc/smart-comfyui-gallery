@@ -73,7 +73,7 @@
       {% endif %}
       <h2>where</h2>
       {% if item.where %}
-      <p data-where="{{ item.where.id }}"><a href="/g?{{ item.where.qs }}" data-where-door>{{ item.where.name }}</a> <span class="when-evidence">{{ item.where.kind }} &middot; {{ "said by a person" if item.where.basis == "authored" else item.where.basis }}</span> &middot; <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></p>
+      <p data-where="{{ item.where.id }}"><a href="/g?{{ item.where.qs }}" data-where-door>{{ item.where.name }}</a>{% if item.where.chain | length > 1 %}, {{ item.where.chain[1:] | join(", ") }}{% endif %} <span class="when-evidence">{{ item.where.kind }} &middot; {{ "said by a person" if item.where.basis == "authored" else item.where.basis }}</span> &middot; <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></p>
       {% else %}
       <p class="detail-note" data-where-missing>nowhere said{% if item.when and item.when.origin == "captured" %} — the camera's coordinates alone name no place{% endif %}.</p>
       {% endif %}
@@ -81,6 +81,10 @@
         <input name="name" list="places-named" placeholder="where did this happen?" aria-label="place name" value="{{ item.where.name if item.where and item.where.basis == "authored" else "" }}">
         <select name="kind" aria-label="kind of place">
           {% for k in item.place_kinds %}<option value="{{ k }}"{% if item.where and item.where.kind == k %} selected{% elif not item.where and k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+        </select>
+        <input name="within" list="places-named" placeholder="within (optional)" aria-label="within" value="{{ item.where.chain[1] if item.where and item.where.chain | length > 1 else "" }}">
+        <select name="within_kind" aria-label="kind of the place it is within">
+          {% for k in item.place_kinds %}<option value="{{ k }}"{% if k == "country" %} selected{% endif %}>{{ k }}</option>{% endfor %}
         </select>
         <button type="submit">say where</button>
         {% if item.where and item.where.basis == "authored" %}<button type="button" data-place-clear>withdraw</button>{% endif %}

@@ -234,3 +234,38 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         )
         assert client.get("/f/deep", headers=AS_MACHINE).json()["timeline"] == "/timeline?folder=deep"
         assert "data-folder-timeline" in client.get("/f/deep", headers={"accept": "text/html"}).text
+
+
+def test_a_place_can_be_within_another(tmp_path):
+    """ "Lisbon within Portugal": the parent is found or minted the same
+    way, a bare Lisbon said later to be within Portugal gains the parent
+    rather than a twin, the page spells the chain, the shelf says
+    "in Portugal", and a story freezes the whole chain."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(2):
+        Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        a, b = _slugs(client)
+        bare = client.post(f"/i/{a}/place", json={"name": "Lisbon", "kind": "city"}).json()["where"]
+        assert bare["chain"] == ["Lisbon"]
+        nested = client.post(
+            f"/i/{b}/place", json={"name": "lisbon", "kind": "city", "within": "Portugal", "within_kind": "country"}
+        ).json()["where"]
+        assert nested["id"] == bare["id"], "the bare Lisbon gained its parent; no twin"
+        assert nested["chain"] == ["Lisbon", "Portugal"]
+        assert client.get(f"/i/{a}", headers=AS_MACHINE).json()["where"]["chain"] == ["Lisbon", "Portugal"]
+        page = client.get(f"/i/{a}", headers={"accept": "text/html"}).text
+        assert "Lisbon</a>, Portugal" in page
+        shelf = {p["name"]: p for p in client.get("/places", headers=AS_MACHINE).json()}
+        assert shelf["Lisbon"]["within"] == "Portugal"
+        assert shelf["Portugal"]["within"] is None
+        assert "in Portugal" in client.get("/places", headers={"accept": "text/html"}).text
+        # a Lisbon already within somewhere else is another Lisbon
+        other = client.post(
+            f"/i/{b}/place", json={"name": "Lisbon", "kind": "city", "within": "Iowa", "within_kind": "region"}
+        ).json()["where"]
+        assert other["id"] != bare["id"]
+        assert other["chain"] == ["Lisbon", "Iowa"]

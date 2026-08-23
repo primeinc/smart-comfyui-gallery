@@ -15,7 +15,7 @@
       <div class="place-card">
         <a class="album-card" href="/g?{{ one.qs }}" data-place="{{ one.slug }}">
           <span class="album-name">{{ one.name }}</span>
-          <span class="album-count">{{ one.kind }} &middot; {{ one.pictures }} picture{{ "" if one.pictures == 1 else "s" }}</span>
+          <span class="album-count">{{ one.kind }}{% if one.within %} in {{ one.within }}{% endif %} &middot; {{ one.pictures }} picture{{ "" if one.pictures == 1 else "s" }}</span>
           {% if one.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ one.first_seen }}" data-domain="day">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}" data-domain="day">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
         </a>
         <a class="place-timeline" href="{{ one.timeline }}" data-place-timeline="{{ one.slug }}">on the timeline</a>
