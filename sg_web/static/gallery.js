@@ -215,14 +215,28 @@ ${smarts.map((held) => held.slug).join(", ")}`,
         return img;
       }),
     );
+    placePop(); // the grid changed the box's height
+  };
+
+  // Beside the pointer, clamped to the viewport below the header: a
+  // preview at the top of the rail sits fully on screen, not half under
+  // the bar; one at the bottom does not run off the page.
+  const MARGIN = 8;
+  let pointerY = 0;
+  const placePop = () => {
+    const top = bar ? bar.getBoundingClientRect().bottom + MARGIN : MARGIN;
+    const height = pop.offsetHeight;
+    const floor = Math.max(top, window.innerHeight - height - MARGIN);
+    pop.style.top = `${Math.min(Math.max(pointerY - height / 2, top), floor)}px`;
   };
 
   rail.addEventListener("pointermove", (event) => {
     const s = shape();
     if (!s) return;
     const page = pageAt(event.clientY, s);
-    pop.style.top = `${event.clientY - rail.getBoundingClientRect().top}px`;
+    pointerY = event.clientY;
     pop.hidden = false;
+    placePop();
     if (page === hoverPage) return;
     hoverPage = page;
     clearTimeout(resting);

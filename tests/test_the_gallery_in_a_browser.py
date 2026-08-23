@@ -92,9 +92,12 @@ def test_a_picture_can_be_clicked_walked_and_closed(served):
         page.wait_for_selector("[data-grid] a.cell img", timeout=10_000)
         assert page.locator("[data-grid] a.cell").count() == FILES
         # every thumbnail really loaded: natural size, not a broken image
+        page.wait_for_function(
+            "() => Array.from(document.querySelectorAll('[data-grid] a.cell img')).every(i => i.complete)",
+            timeout=10_000,
+        )
         loaded = page.evaluate(
-            "() => Array.from(document.querySelectorAll('[data-grid] a.cell img'))"
-            ".map(i => i.complete && i.naturalWidth > 0)"
+            "() => Array.from(document.querySelectorAll('[data-grid] a.cell img')).map(i => i.naturalWidth > 0)"
         )
         assert loaded == [True] * FILES, loaded
 
@@ -131,4 +134,48 @@ def test_a_picture_can_be_clicked_walked_and_closed(served):
             "() => Array.from(document.images).some(i => i.complete && i.naturalWidth > 0)", timeout=10_000
         )
         assert broken == [], broken
+        browser.close()
+
+
+INSIDE = (
+    "() => { const p = document.querySelector('[data-rail-pop]'); const r = p.getBoundingClientRect();"
+    " const bar = document.querySelector('header.bar').getBoundingClientRect();"
+    " p.style.pointerEvents = 'auto';"  # the preview is pointer-events:none by design; elementFromPoint skips such boxes
+    " const mid = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
+    " p.style.pointerEvents = '';"
+    " return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height,"
+    " header: bar.bottom, vh: innerHeight, vw: innerWidth, onTop: p.contains(mid) }; }"
+)
+
+
+def test_the_rail_preview_stays_on_screen_and_on_top(served):
+    """Hover the rail at its very top and its very bottom: the preview is
+    whole inside the viewport, below the sticky header, and the element
+    under its centre is the preview itself -- nothing covers it."""
+    from playwright.sync_api import sync_playwright
+
+    base = served
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": 900, "height": 500})
+        page.goto(base + "/g?size=2")  # three pages: the rail has somewhere to go
+        page.wait_for_selector("[data-grid] a.cell img", timeout=10_000)
+        rail = page.locator("[data-rail]").bounding_box()
+        assert rail is not None
+        x = rail["x"] + rail["width"] / 2
+        for y in (rail["y"] + 1, rail["y"] + rail["height"] - 1, rail["y"] + rail["height"] / 2):
+            page.mouse.move(x, y)
+            page.wait_for_selector("[data-rail-pop]:not([hidden]) [data-rail-pop-grid] img", timeout=10_000)
+            page.wait_for_function(
+                "() => Array.from(document.querySelectorAll('[data-rail-pop-grid] img')).every(i => i.complete)",
+                timeout=10_000,
+            )
+            told = page.evaluate(INSIDE)
+            assert told["top"] >= told["header"], told
+            assert told["bottom"] <= told["vh"], told
+            assert told["left"] >= 0, told
+            assert told["right"] <= told["vw"], told
+            assert told["onTop"] is True, told
+            page.mouse.move(10, 10)
+            page.wait_for_selector("[data-rail-pop][hidden]", state="attached", timeout=10_000)
         browser.close()

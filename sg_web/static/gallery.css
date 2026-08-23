@@ -142,11 +142,16 @@ body {
   pointer-events: none;
 }
 
+/* Fixed and above every bar: the JS places it beside the pointer and
+   clamps it inside the viewport, so it never hides under the sticky
+   header or the selection bar and never needs a scroll the page cannot
+   give (a fixed box cannot be scrolled to). */
 .rail-pop {
-  position: absolute;
-  right: calc(100% + 10px);
-  transform: translateY(-50%);
+  position: fixed;
+  z-index: 30;
+  right: calc(var(--rail-width) + 16px);
   width: 240px;
+  max-width: calc(100vw - var(--rail-width) - 32px);
   padding: 10px;
   background: var(--panel);
   border: 1px solid var(--line);
