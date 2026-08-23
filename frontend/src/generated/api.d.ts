@@ -1713,6 +1713,17 @@ export interface components {
             /** @constant */
             in_answer: false;
         };
+        /** PeekView */
+        PeekView: {
+            page: number;
+            pages: number;
+            total: number;
+            first_ordinal: number;
+            last_ordinal: number;
+            currency: string;
+            answer: string;
+            items: components["schemas"]["ResultItem"][];
+        };
         /** PlaceAnswer */
         PlaceAnswer: {
             slug: string | null;
@@ -1734,6 +1745,16 @@ export interface components {
             profile: string;
             /** @default en */
             locale: string;
+        };
+        /** ResultItem */
+        ResultItem: {
+            id: number;
+            slug: string;
+            name: string;
+            kind: string;
+            uuid: string;
+            said: string | null;
+            ordinal: number;
         };
         /** RootForm */
         RootForm: {
@@ -4451,7 +4472,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["PeekView"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

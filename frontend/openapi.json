@@ -6485,7 +6485,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/PeekView"
                                 }
                             }
                         }
@@ -9475,6 +9475,49 @@
                 ],
                 "title": "NotLocated"
             },
+            "PeekView": {
+                "properties": {
+                    "page": {
+                        "type": "integer"
+                    },
+                    "pages": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "first_ordinal": {
+                        "type": "integer"
+                    },
+                    "last_ordinal": {
+                        "type": "integer"
+                    },
+                    "currency": {
+                        "type": "string"
+                    },
+                    "answer": {
+                        "type": "string"
+                    },
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/ResultItem"
+                        },
+                        "type": "array"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "answer",
+                    "currency",
+                    "first_ordinal",
+                    "items",
+                    "last_ordinal",
+                    "page",
+                    "pages",
+                    "total"
+                ],
+                "title": "PeekView"
+            },
             "PlaceAnswer": {
                 "properties": {
                     "slug": {
@@ -9554,6 +9597,49 @@
                     "plan_id"
                 ],
                 "title": "RenderRequest"
+            },
+            "ResultItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "uuid": {
+                        "type": "string"
+                    },
+                    "said": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "ordinal": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "ordinal",
+                    "said",
+                    "slug",
+                    "uuid"
+                ],
+                "title": "ResultItem"
             },
             "RootForm": {
                 "properties": {

@@ -227,7 +227,7 @@ def rail_peek(
     size: FromQuery[int | None] = None,
     count: FromQuery[int] = resultset.PEEK_MOST,
     expect: FromQuery[str | None] = None,
-) -> dict:
+) -> PeekView:
     """The rail popover: real members of exactly the page a jump would
     land on, never a guess from scroll height.
 
@@ -261,9 +261,70 @@ def rail_peek(
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        return told
+        return PeekView(
+            page=told["page"],
+            pages=told["pages"],
+            total=told["total"],
+            first_ordinal=told["first_ordinal"],
+            last_ordinal=told["last_ordinal"],
+            currency=told["currency"],
+            answer=told["answer"],
+            items=_result_items(told["items"]),
+        )
     finally:
         connect.close(conn)
+
+
+class ResultItem(Wire):
+    """One picture as an ordered answer names it.
+
+    The ResultSet's own vocabulary, stated here because this module owns
+    that Implementation's HTTP presentation: db/resultset.py builds rows,
+    and the conversion to a contract happens at this seam rather than in
+    the module that reads the database.
+    """
+
+    id: int
+    slug: str
+    name: str
+    kind: str
+    #: the entity's uuid, hex-spelled
+    uuid: str
+    #: the caption the configured model gave it, when it has one
+    said: str | None
+    #: position in the whole answer, 1-based -- not within the page
+    ordinal: int
+
+
+def _result_items(rows: list[dict]) -> list[ResultItem]:
+    return [
+        ResultItem(
+            id=row["id"],
+            slug=row["slug"],
+            name=row["name"],
+            kind=row["kind"],
+            uuid=row["uuid"],
+            said=row["said"],
+            ordinal=row["ordinal"],
+        )
+        for row in rows
+    ]
+
+
+class PeekView(Wire):
+    """The rail popover's preview: real members of exactly the page a jump
+    would land on, with the ordinals to say which part of the answer they
+    are, and the generation evidence to prove they belong beside the grid
+    they float over."""
+
+    page: int
+    pages: int
+    total: int
+    first_ordinal: int
+    last_ordinal: int
+    currency: str
+    answer: str
+    items: list[ResultItem]
 
 
 class NotLocated(Wire):
