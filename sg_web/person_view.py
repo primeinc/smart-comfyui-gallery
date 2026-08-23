@@ -92,6 +92,7 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                 }
                 for event_id, kind, start, end, theirs, pictures, render_id in pages.person_sessions(conn, person_id)
             ],
+            "timeline": "/timeline?" + urllib.parse.urlencode([("person", slug)]),
             "places": [
                 {
                     "id": place_id,

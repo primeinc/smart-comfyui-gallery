@@ -15,7 +15,7 @@
   </header>
   <main class="stage">
     {% if scope %}
-    <p class="places-line" data-timeline-scope="{{ scope_qs }}">scoped to {% for one in scope %}<code>{{ one.spelled }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/timeline">the whole library</a></p>
+    <p class="places-line" data-timeline-scope="{{ scope.qs }}">scoped to {% for one in scope.parts %}<code>{{ one.spelled if one.spelled is defined else one.key ~ "=" ~ one.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/g?{{ scope.qs }}">open in the gallery</a> &middot; <a href="/timeline">the whole library</a></p>
     {% endif %}
     {% if months %}
     <section class="surface" data-surface>

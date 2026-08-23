@@ -498,6 +498,20 @@ def _bound_fingerprint(bound: _Bound) -> str:
     return hashlib.sha256(told.encode()).hexdigest()[:16]
 
 
+def scope_of(conn, query: GalleryQuery, actor_id: int | None = None) -> tuple[str, list, GalleryQuery]:
+    """A gallery question as a scope another surface appends to its own
+    statements: the membership conjunct over the file alias `f` (the
+    same predicates the gallery walks), its bound values, and the
+    question in its LIVE spelling for the doors that surface offers.
+    A rule-defined collection is refused: its membership is a
+    materialized projection, not a predicate."""
+    bound = bind(conn, query, actor_id)
+    if bound.rule is not None:
+        raise ValueError("a rule-defined collection is not a scope another surface can append; open it in the gallery")
+    where, args, _ = _eligibility(bound)
+    return ("".join(" AND " + part for part in where[1:]), args, bound.query)  # where[0] is presence
+
+
 def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
     """The membership predicates of a bound question, constructed ONCE
     -- eligibility is an INTERSECTION of predicates, not a choice

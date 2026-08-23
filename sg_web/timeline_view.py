@@ -16,65 +16,114 @@ instead of pretending an unindexed library has no past.
 from __future__ import annotations
 
 import calendar
-import urllib.parse
+import dataclasses
 
 from litestar import Request, get
 from litestar.datastructures import State
-from litestar.exceptions import ClientException
+from litestar.exceptions import ClientException, NotFoundException
 from litestar.params import Parameter
 from litestar.response import Response, Template
 
-from db import connect, context, facets, pages, planning
+from db import connect, context, facets, pages, planning, resultset
+from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, presented_page
 
-
-def _door(*held: facets.Facet) -> str:
-    """A gallery question, spelled by the Facet Interface -- the timeline
-    never invents its own spelling. Every door carries the surface's own
-    scope, so what it opens is exactly what it counted."""
-    return urllib.parse.urlencode([("f", facets.spell(one)) for one in held] + [("sort", "moment")])
-
-
-def _day_door(day: str, scope: tuple = ()) -> str:
-    return _door(facets.facet("context.local_day", "eq", day), *scope)
+#: The surface's scope is a gallery question (db/resultset.py scope_of):
+#: its scopes and facets in the live spelling, unsorted, unpaged. The
+#: timeline never invents its own spelling of a door -- every door is
+#: that question plus the facets the door adds, ordered by moment.
+WHOLE = resultset.GalleryQuery()
 
 
-def _month_door(month: str, scope: tuple = ()) -> str:
+def _door(question: resultset.GalleryQuery, *held: facets.Facet) -> str:
+    asked = dataclasses.replace(
+        question, facets=tuple(sorted({*question.facets, *held}, key=facets.spell)), sort="moment", text=None
+    )
+    return resultset.canonical(asked)
+
+
+def _day_door(day: str, question: resultset.GalleryQuery = WHOLE) -> str:
+    return _door(question, facets.facet("context.local_day", "eq", day))
+
+
+def _month_door(month: str, question: resultset.GalleryQuery = WHOLE) -> str:
     year, mo = (int(part) for part in month.split("-"))
     last = calendar.monthrange(year, mo)[1]
     return _door(
+        question,
         facets.facet("context.local_day", "gte", f"{month}-01"),
         facets.facet("context.local_day", "lte", f"{month}-{last:02d}"),
-        *scope,
     )
 
 
-def _bin_door(at: float, width: int, scope: tuple = ()) -> str:
+def _bin_door(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -> str:
     low = facets.facet("context.moment", "gte", str(int(at)))
     high = facets.facet("context.moment", "lte", str(int(at) + width - 1))
-    return _door(low, high, *scope)
+    return _door(question, low, high)
 
 
-def _event_door(event_id: int, scope: tuple = ()) -> str:
-    return _door(facets.facet("event.id", "eq", str(event_id)), *scope)
+def _event_door(event_id: int, question: resultset.GalleryQuery = WHOLE) -> str:
+    return _door(question, facets.facet("event.id", "eq", str(event_id)))
 
 
-def _scoped(f) -> tuple:
-    """The surface's scope: the gallery's facet spellings, normalized by
-    the Facet Interface; a bad one is refused with the vocabulary. A
-    session's door inside a scope is refused too -- `event.id` names
-    one session, and a scope of one session is the gallery's job."""
+def _question(folder, album, person, artifact, kind, favorite, rating_min, f) -> resultset.GalleryQuery:
+    """The surface's scope as the gallery's own question, parsed by the
+    one seam that owns query semantics; a bad spelling is refused with
+    the vocabulary. A session is a door, not a scope: `event.id` names
+    one session, and a timeline of one session is the gallery's job."""
     try:
-        held = facets.normalized(f)
+        asked = _asked(
+            folder,
+            album,
+            kind,
+            None,
+            None,
+            None,
+            person=person,
+            artifact=artifact,
+            favorite=favorite,
+            rating_min=rating_min,
+            facets=f,
+        )
     except ValueError as refused:
         raise ClientException(str(refused)) from refused
-    if any(one.key == "event.id" for one in held):
+    if any(one.key == "event.id" for one in asked.facets):
         raise ClientException("a session is a door, not a scope; open it in the gallery")
-    return held
+    return asked
 
 
-def _scope_told(held: tuple) -> list[dict]:
-    return [{"spelled": facets.spell(one), "key": one.key, "value": one.value} for one in held]
+def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str, list], resultset.GalleryQuery]:
+    """The question bound: (the conjunct and its values, the question in
+    its live spelling). A slug nothing lives at is a 404; a rule-defined
+    collection is refused as a scope."""
+    try:
+        sql, values, live = resultset.scope_of(conn, asked, state.actor_id)
+    except LookupError as missing:
+        raise NotFoundException(str(missing)) from missing
+    except ValueError as refused:
+        raise ClientException(str(refused)) from refused
+    return (sql, values), live
+
+
+def _scope_told(question: resultset.GalleryQuery) -> dict | None:
+    """What the page says it is scoped to, or None for the whole library:
+    the canonical spelling and its parts, one per scope and facet."""
+    parts = [
+        {"key": key, "value": value}
+        for key, value in (
+            ("folder", question.folder),
+            ("album", question.album),
+            ("person", question.person),
+            ("artifact", question.artifact),
+            ("kind", question.kind),
+            ("favorite", question.favorite),
+            ("rating_min", question.rating_min),
+        )
+        if value is not None
+    ] + [{"key": one.key, "value": one.value, "spelled": facets.spell(one)} for one in question.facets]
+    if not parts:
+        return None
+    return {"qs": resultset.canonical(question), "parts": parts}
 
 
 #: Which planner tells which kind of session's story; a kind with none
@@ -101,13 +150,13 @@ def _coverage(conn) -> dict:
         "interpreted": have,
         "present": present,
         "contested": contested,
-        "contested_qs": _door(facets.facet("context.disputed", "eq", "1")),
+        "contested_qs": _door(WHOLE, facets.facet("context.disputed", "eq", "1")),
         "policy_version": context.POLICY_VERSION,
         "complete": have == present,
     }
 
 
-def _session(conn, row, *, samples: bool, scope: tuple = ()) -> dict:
+def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE) -> dict:
     (
         event_id,
         kind,
@@ -131,7 +180,7 @@ def _session(conn, row, *, samples: bool, scope: tuple = ()) -> dict:
                 "id": place_id,
                 "name": place_name,
                 "slug": place_slug,
-                "qs": _door(facets.facet("place.id", "eq", str(place_id))),
+                "qs": _door(WHOLE, facets.facet("place.id", "eq", str(place_id))),
             }
             if place_id is not None
             else None
@@ -161,6 +210,13 @@ def density(
     bin_name: str = Parameter(query="bin", default="day"),
     start: float | None = None,
     end: float | None = None,
+    folder: str | None = None,
+    album: str | None = None,
+    person: str | None = None,
+    artifact: str | None = None,
+    kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
     f: list[str] | None = None,
 ) -> Response:
     """The surface at one zoom: pictures per bin of the human moment
@@ -173,10 +229,10 @@ def density(
     own facets -- a place, an origin, a day -- and every door carries
     the scope. A range wider than the page can draw is refused with the
     remedy."""
-    held = _scoped(f)
-    scope = facets.conjunction(held)
+    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     conn = connect.connect(state.db_path, read_only=True)
     try:
+        scope, held = _scope(conn, state, asked)
         coverage = _coverage(conn)
         extent = pages.timeline_extent(conn, scope)
         if extent is None or extent[0] is None:
@@ -240,11 +296,22 @@ def density(
 
 
 @get("/timeline", sync_to_thread=True)
-def timeline(state: State, request: Request, f: list[str] | None = None) -> Template | Response:
-    held = _scoped(f)
-    scope = facets.conjunction(held)
+def timeline(
+    state: State,
+    request: Request,
+    folder: str | None = None,
+    album: str | None = None,
+    person: str | None = None,
+    artifact: str | None = None,
+    kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
+    f: list[str] | None = None,
+) -> Template | Response:
+    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     conn = connect.connect(state.db_path, read_only=True)
     try:
+        scope, held = _scope(conn, state, asked)
         coverage = _coverage(conn)
         months = [
             {"month": month, "pictures": pictures, "qs": _month_door(month, held)}
@@ -291,6 +358,5 @@ def timeline(state: State, request: Request, f: list[str] | None = None) -> Temp
         "events": happenings,
         "coverage": coverage,
         "scope": _scope_told(held),
-        "scope_qs": urllib.parse.urlencode([("f", facets.spell(one)) for one in held]),
     }
     return presented_page(request, told, page="timeline.html")

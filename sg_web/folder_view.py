@@ -110,6 +110,7 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
                 for s, n, p, b in pages.folder_children(conn, folder_id)
             ],
             "count": grid["total"],
+            "timeline": "/timeline?" + urllib.parse.urlencode([("folder", slug)]),
             "first_seen": pages.folder_span(conn, folder_id)[0],
             "last_seen": pages.folder_span(conn, folder_id)[1],
             "places": [

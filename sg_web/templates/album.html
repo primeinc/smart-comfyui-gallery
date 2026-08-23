@@ -15,6 +15,7 @@
         {% if album.last_seen is defined and album.last_seen is not none %}&middot; <span class="album-seen" data-seen><time data-epoch="{{ album.first_seen }}" data-domain="day">{{ album.first_seen }}</time>{% if album.last_seen != album.first_seen %} – <time data-epoch="{{ album.last_seen }}" data-domain="day">{{ album.last_seen }}</time>{% endif %}</span>{% endif %}
       </span>
     </nav>
+    {% if album.timeline is defined %}<p class="places-line"><a href="{{ album.timeline }}" data-album-timeline>this album on the timeline</a></p>{% endif %}
     {% if album.places is defined and album.places %}
     <p class="places-line" data-places-line>in {% for where in album.places %}<a href="/g?{{ where.qs }}">{{ where.name }}</a> &middot; {{ where.pictures }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
     {% endif %}

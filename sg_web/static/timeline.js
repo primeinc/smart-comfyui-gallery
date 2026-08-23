@@ -38,11 +38,12 @@
   const note = surface.querySelector("[data-note]");
   let current = null;
 
-  // the surface's scope -- the gallery's facets in the URL -- rides every
-  // ask and every zoom, so what is drawn is what the doors open
-  const scope = new URLSearchParams(location.search).getAll("f");
+  // the surface's scope -- the gallery question in the URL, every
+  // parameter but the zoom's own -- rides every ask and every zoom, so
+  // what is drawn is what the doors open
+  const scope = [...new URLSearchParams(location.search).entries()].filter(([k]) => !["bin", "start", "end"].includes(k));
   const withScope = (qs) => {
-    for (const one of scope) qs.append("f", one);
+    for (const [k, v] of scope) qs.append(k, v);
     return qs;
   };
 

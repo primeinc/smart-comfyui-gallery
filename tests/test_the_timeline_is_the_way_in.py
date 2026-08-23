@@ -283,7 +283,8 @@ def test_the_surface_can_be_scoped_by_the_gallerys_facets(doors):
     spelled = f"place.id:eq:{lisbon}"
     scoped = _density(doors, bin="day", f=spelled)
     assert sum(b["pictures"] for b in scoped["bins"]) == 2 < all_pictures
-    assert scoped["scope"] == [{"spelled": spelled, "key": "place.id", "value": lisbon}]
+    assert scoped["scope"]["parts"] == [{"key": "place.id", "value": lisbon, "spelled": spelled}]
+    assert scoped["scope"]["qs"] == f"f=place.id%3Aeq%3A{lisbon}"
     assert all("place.id%3Aeq%3A" in b["qs"] for b in scoped["bins"]), "every door carries the scope"
     assert all("place.id%3Aeq%3A" in s["qs"] for s in scoped["sessions"])
     for s in scoped["sessions"]:

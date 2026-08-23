@@ -190,3 +190,40 @@ def test_the_lightbox_says_where_too(tmp_path):
         part = client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
         assert "data-lightbox-where" in part
         assert ">in Porto</a>" in part
+
+
+def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
+    """`/timeline?folder=lib`, `?kind=image`, `?person=...`: the same
+    question the gallery answers, as the surface's scope; its doors are
+    that question plus a moment; a rule-defined album is refused and a
+    slug nothing lives at is a 404."""
+    root = tmp_path / "lib"
+    (root / "deep").mkdir(parents=True)
+    for i in range(3):
+        Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / (f"p{i}.png" if i < 2 else "deep/p2.png"))
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/jobs/ingest")
+        client.post("/jobs/context")
+        _drain(client)
+        whole = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()
+        assert sum(b["pictures"] for b in whole["bins"]) == 3
+        assert whole["scope"] is None
+        deep = client.get("/timeline/density", params={"bin": "day", "folder": "deep"}, headers=AS_MACHINE).json()
+        assert sum(b["pictures"] for b in deep["bins"]) == 1
+        assert deep["scope"]["qs"].startswith("folder=deep")
+        assert all(b["qs"].startswith("folder=deep&") for b in deep["bins"]), "every door is the question plus a moment"
+        page = client.get("/timeline", params={"folder": "deep"}, headers={"accept": "text/html"}).text
+        assert 'data-timeline-scope="folder=deep"' in page
+        assert client.get("/timeline/density", params={"bin": "day", "folder": "nowhere"}).status_code == 404
+        assert client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()[
+            "scope"
+        ]["parts"] == [{"key": "kind", "value": "image"}]
+        smart = client.post("/albums/smart", json={"name": "All", "kind": "image"})
+        assert smart.status_code == 201, smart.text
+        refused = client.get("/timeline/density", params={"bin": "day", "album": smart.json()["slug"]})
+        assert refused.status_code == 400
+        assert "rule-defined" in refused.json()["detail"]
+        assert client.get("/f/deep", headers=AS_MACHINE).json()["timeline"] == "/timeline?folder=deep"
+        assert "data-folder-timeline" in client.get("/f/deep", headers={"accept": "text/html"}).text
