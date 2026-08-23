@@ -92,6 +92,30 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         page = client.get("/places", headers={"accept": "text/html"}).text
         assert f'data-place="{shelf[0]["slug"]}"' in page
 
+        # the folder's and an album's page say where and when their pictures are
+        folder = client.get("/f/lib", headers=AS_MACHINE).json()
+        assert [(p["name"], p["pictures"]) for p in folder["places"]] == [("Lisbon", 2)]
+        assert folder["first_seen"] is not None
+        assert "folder=lib" in folder["places"][0]["qs"]
+        assert "data-places-line" in client.get("/f/lib", headers={"accept": "text/html"}).text
+        made = client.post("/albums", json={"name": "Trip", "kind": "album"})
+        assert made.status_code == 201, made.text
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            from db import collections, naming
+
+            collection_id = naming.resolve(conn, "collection", made.json()["slug"])[0]
+            for name in ("p0.png", "p1.png"):
+                fid = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()[0]
+                collections.set_membership(conn, collection_id, fid, True, 5.0)
+            conn.commit()
+        finally:
+            connect.close(conn)
+        album = client.get(f"/t/{made.json()['slug']}", headers=AS_MACHINE).json()
+        assert [(p["name"], p["pictures"]) for p in album["places"]] == [("Lisbon", 2)]
+        assert album["first_seen"] is not None
+        assert "data-places-line" in client.get(f"/t/{made.json()['slug']}", headers={"accept": "text/html"}).text
+
         # a rebuild keeps a person's word: the claim is authored state
         assert client.post("/jobs/context", params={"everything": "true"}).status_code == 201
         _drain(client)

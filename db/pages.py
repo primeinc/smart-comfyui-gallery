@@ -243,6 +243,49 @@ FOLDER_TOP_SPANS = (
     " GROUP BY sub.top"
 )
 
+#: One folder's subtree: when its pictures are from, and where they
+#: happened (the places its interpreted members were said to be in,
+#: most first, bounded).
+_SUBTREE = (
+    "WITH RECURSIVE sub(id) AS (SELECT ? UNION ALL SELECT c.id FROM folder c JOIN sub ON c.parent_id = sub.id"
+    "  WHERE c.missing_since IS NULL)"
+)
+FOLDER_SPAN = (
+    _SUBTREE + " SELECT min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"
+    "  FROM sub JOIN file fi ON fi.folder_id = sub.id AND fi.missing_since IS NULL"
+    "  JOIN derived_media_context mc ON mc.file_id = fi.id AND mc.policy_version = ?"
+)
+FOLDER_PLACES = (
+    _SUBTREE + " SELECT p.id, e.slug, p.name, p.kind, count(*) AS pictures"
+    "  FROM sub JOIN file fi ON fi.folder_id = sub.id AND fi.missing_since IS NULL"
+    "  JOIN derived_media_context mc ON mc.file_id = fi.id AND mc.policy_version = ?"
+    "  JOIN place p ON p.id = mc.place_id JOIN entity e ON e.id = p.id"
+    " GROUP BY p.id ORDER BY pictures DESC, p.name COLLATE NOCASE LIMIT ?"
+)
+#: The same for one collection over its present members.
+COLLECTION_PLACES = (
+    "SELECT p.id, e.slug, p.name, p.kind, count(*) AS pictures"
+    "  FROM collection_file cf JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    "  JOIN derived_media_context mc ON mc.file_id = f.id AND mc.policy_version = ?"
+    "  JOIN place p ON p.id = mc.place_id JOIN entity e ON e.id = p.id"
+    " WHERE cf.collection_id = ? GROUP BY p.id ORDER BY pictures DESC, p.name COLLATE NOCASE LIMIT ?"
+)
+PLACES_ON_A_PAGE = 8
+
+
+def folder_span(conn, folder_id: int) -> tuple:
+    row = conn.execute(FOLDER_SPAN, (folder_id, context.POLICY_VERSION)).fetchone()
+    return (row[0], row[1]) if row else (None, None)
+
+
+def folder_places(conn, folder_id: int, limit: int = PLACES_ON_A_PAGE):
+    return conn.execute(FOLDER_PLACES, (folder_id, context.POLICY_VERSION, limit)).fetchall()
+
+
+def collection_places(conn, collection_id: int, limit: int = PLACES_ON_A_PAGE):
+    return conn.execute(COLLECTION_PLACES, (context.POLICY_VERSION, collection_id, limit)).fetchall()
+
+
 #: The same for every active collection over its present members.
 COLLECTION_SPANS = (
     "SELECT e.slug, min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"

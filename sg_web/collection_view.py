@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import pathlib
 import time
+import urllib.parse
 
 from litestar import Request, get
 from litestar.datastructures import State
@@ -109,6 +110,18 @@ def view(
             told["gallery"] = None
         else:
             told["count"] = grid["total"]
+            told["first_seen"], told["last_seen"] = pages.collection_spans(conn).get(slug, (None, None))
+            told["places"] = [
+                {
+                    "id": place_id,
+                    "slug": place_slug,
+                    "name": name,
+                    "kind": kind,
+                    "pictures": int(pictures),
+                    "qs": urllib.parse.urlencode([("album", slug), ("f", f"place.id:eq:{place_id}")]),
+                }
+                for place_id, place_slug, name, kind, pictures in pages.collection_places(conn, collection_id)
+            ]
             told["gallery"] = {
                 "items": grid["items"],
                 "total": grid["total"],

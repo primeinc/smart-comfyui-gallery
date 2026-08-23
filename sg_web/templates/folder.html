@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ folder.name }}{% endblock %}
+{% block scripts %}<script src="/static/timeline.js" defer></script>{% endblock %}
 {% block head %}<link rel="canonical" href="/f/{{ folder.slug }}">{% endblock %}
 {% block body %}
   <header class="bar">
@@ -13,8 +14,11 @@
         <span>{{ crumb.name }}</span>
         {% endif %}
       {% endfor %}
-      <span class="crumbs-where">{{ folder.count }} pictures</span>
+      <span class="crumbs-where">{{ folder.count }} pictures{% if folder.last_seen is not none %} &middot; <span class="album-seen" data-seen><time data-epoch="{{ folder.first_seen }}" data-domain="day">{{ folder.first_seen }}</time>{% if folder.last_seen != folder.first_seen %} – <time data-epoch="{{ folder.last_seen }}" data-domain="day">{{ folder.last_seen }}</time>{% endif %}</span>{% endif %}</span>
     </nav>
+    {% if folder.places %}
+    <p class="places-line" data-places-line>in {% for where in folder.places %}<a href="/g?{{ where.qs }}">{{ where.name }}</a> &middot; {{ where.pictures }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
   </header>
   <main class="detail">
     {% if folder.state != "present" %}

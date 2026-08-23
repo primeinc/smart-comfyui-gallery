@@ -25,6 +25,7 @@ from __future__ import annotations
 import os.path
 import pathlib
 import time
+import urllib.parse
 
 from litestar import Request, get
 from litestar.datastructures import State
@@ -109,6 +110,19 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
                 for s, n, p, b in pages.folder_children(conn, folder_id)
             ],
             "count": grid["total"],
+            "first_seen": pages.folder_span(conn, folder_id)[0],
+            "last_seen": pages.folder_span(conn, folder_id)[1],
+            "places": [
+                {
+                    "id": place_id,
+                    "slug": place_slug,
+                    "name": name,
+                    "kind": kind,
+                    "pictures": int(pictures),
+                    "qs": urllib.parse.urlencode([("folder", slug), ("f", f"place.id:eq:{place_id}")]),
+                }
+                for place_id, place_slug, name, kind, pictures in pages.folder_places(conn, folder_id)
+            ],
             "gallery": {
                 "items": grid["items"],
                 "total": grid["total"],
