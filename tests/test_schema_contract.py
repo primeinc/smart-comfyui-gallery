@@ -1940,7 +1940,7 @@ def _checked_members(table_sql: str, column: str) -> frozenset[str]:
     matching would make every comparison below trivially true, which is the
     one way a vocabulary test can pass forever while proving nothing.
     """
-    found = re.search(rf"CHECK \({column} IN\s*\(([^)]*)\)\)", table_sql, re.S)
+    found = re.search(rf"CHECK \({column} IN\s*\(([^)]*)\)\)", table_sql, re.DOTALL)
     assert found is not None, f"no CHECK (... IN ...) found for {column}: the parse changed, not the vocabulary"
     members = frozenset(re.findall(r"'([^']*)'", found.group(1)))
     assert members, f"the CHECK for {column} parsed to no members"

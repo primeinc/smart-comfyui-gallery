@@ -1099,3 +1099,111 @@ def test_deleting_the_rule_first_is_the_deliberate_transition(curated):
         assert conn.execute("SELECT kind FROM collection WHERE id = ?", (committed,)).fetchone()[0] == "album"
     finally:
         connect.close(conn)
+
+
+#: The exact top-level keys `/t/{slug}` serves a machine, per representation.
+#: ABSENCE IS PART OF THE CONTRACT: a broken smart collection carries no
+#: `timeline` at all, and a listed one carries no `state` -- which is why this
+#: pins the whole key set rather than asserting a few members are present.
+#: Captured from the shape as served today, so any change to how the view is
+#: assembled has to be a deliberate edit here rather than a silent difference.
+_LISTED_KEYS = frozenset(
+    {
+        "slug",
+        "name",
+        "kind",
+        "color",
+        "description",
+        "parent",
+        "archived",
+        "definition_rev",
+        "updated_at",
+        "updated_by",
+        "collections",
+        "count",
+        "first_seen",
+        "last_seen",
+        "timeline",
+        "places",
+        "gallery",
+        "files",
+    }
+)
+#: A smart collection adds the rule and the rule's condition.
+_SMART_EXTRA = frozenset({"rule", "state"})
+#: The two conditions that explain themselves add a reason.
+_REASONED = frozenset({"reason"})
+#: A rule that produced no answer has no gallery-shaped facts at all.
+_UNGALLERIED = frozenset({"first_seen", "last_seen", "timeline", "places"})
+
+
+def test_a_listed_collection_says_which_keys_it_carries(curated):
+    """An album and a flag are the same representation: no rule, no state,
+    and every gallery-shaped fact present because the membership evaluated."""
+    for slug in (
+        _made(curated, "/albums", name="Plain")["slug"],
+        _made(curated, "/albums", name="Flagged", kind="flag")["slug"],
+    ):
+        assert set(_view(curated, slug)) == _LISTED_KEYS, slug
+
+
+def test_an_evaluated_smart_collection_adds_its_rule_and_state(curated):
+    """A rule that ran is a listed collection plus the rule and its
+    condition -- and no reason, because nothing needs explaining."""
+    told = _view(curated, _made(curated, "/albums/smart", name="Everything")["slug"])
+    assert told["state"] == "evaluated"
+    assert set(told) == _LISTED_KEYS | _SMART_EXTRA
+
+
+def test_an_unevaluated_smart_collection_carries_no_gallery_facts(curated):
+    """Preserved prose was never run, so there is no answer to describe:
+    the span, the timeline link and the places are absent, not null."""
+    conn = _raw(curated)
+    prose = collections.collection(conn, "Prose", 1.0, kind="smart")
+    collection_rules.keep_prose(conn, prose, sql="SELECT 1", now=1.0)
+    conn.commit()
+    connect.close(conn)
+
+    told = _view(curated, "prose")
+
+    assert told["state"] == "unevaluated"
+    assert set(told) == (_LISTED_KEYS | _SMART_EXTRA) - _UNGALLERIED
+
+
+def test_a_broken_smart_collection_carries_a_reason(curated):
+    """A rule naming an entity that is gone explains itself and describes
+    no answer."""
+    slug = _made(curated, "/albums/smart", name="Gone", folder="lib")["slug"]
+    conn = _raw(curated)
+    found = naming.resolve(conn, "folder", "lib")
+    assert found is not None
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("DELETE FROM file WHERE folder_id = ?", (found[0],))
+    conn.execute("DELETE FROM folder WHERE id = ?", (found[0],))
+    conn.commit()
+    connect.close(conn)
+
+    told = _view(curated, slug)
+
+    assert told["state"] == "broken"
+    assert set(told) == (_LISTED_KEYS | _SMART_EXTRA | _REASONED) - _UNGALLERIED
+
+
+def test_an_unavailable_smart_collection_carries_a_reason(curated, ranked_retrieval, monkeypatch):
+    """A semantic rule nothing can answer right now says so, and describes
+    no answer either."""
+    from db import retrieval
+
+    slug = _made(curated, "/albums/smart", name="Sunsets", q="sunset", take=2)["slug"]
+
+    def refuses(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        raise LookupError("no space can answer")
+
+    monkeypatch.setattr(retrieval, "query", refuses)
+    # move the currency past the cached answer, so the rule is asked again
+    assert curated.post("/i/pic-0/favorite", json={"value": True}).status_code == 201
+
+    told = _view(curated, slug)
+
+    assert told["state"] == "unavailable"
+    assert set(told) == (_LISTED_KEYS | _SMART_EXTRA | _REASONED) - _UNGALLERIED
