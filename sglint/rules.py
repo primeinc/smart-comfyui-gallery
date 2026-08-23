@@ -216,6 +216,115 @@ def rule_sql_structure(sources: typing.Iterable[pathlib.Path] | None = None) -> 
     return found
 
 
+# --- SG1xx: a connection is closed by whoever opened it ----------------------------------------
+
+#: How this application opens a database. sqlite3.connect is banned
+#: everywhere else (pyproject.toml TID251), so these two are all of them.
+_OPENS = frozenset({"connect", "memory"})
+
+
+def _opened_here(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str | None, ast.Call]]:
+    """[(name bound, call)] for every connection this function opens."""
+    held: list[tuple[str | None, ast.Call]] = []
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign):
+            call, targets = node.value, node.targets
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            call, targets = node.value, [node.target]
+        else:
+            continue
+        if not (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "connect"
+            and call.func.attr in _OPENS
+        ):
+            continue
+        named = next((one.id for one in targets if isinstance(one, ast.Name)), None)
+        held.append((named, call))
+    return held
+
+
+def _handed_onward(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str | None) -> bool:
+    """Whether the connection outlives the function on purpose.
+
+    Two shapes, both of which move the closing to somebody else. It is
+    returned or yielded -- and a fixture usually returns it inside a tuple
+    or a dict beside the ids it minted, so the whole returned expression is
+    searched rather than only a bare `return conn`. Or it is put in a
+    container the module keeps (db/resultset.py's monitor per file,
+    tests/staging.py's schema master), where the connection is meant to
+    live as long as the process and closing it would be the defect.
+    """
+    if name is None:
+        return True
+
+    def mentions(held: ast.expr) -> bool:
+        return any(isinstance(one, ast.Name) and one.id == name for one in ast.walk(held))
+
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Return | ast.Yield):
+            if node.value is not None and mentions(node.value):
+                return True
+        elif isinstance(node, ast.Assign):
+            kept = any(isinstance(one, ast.Subscript | ast.Attribute) for one in node.targets)
+            if kept and mentions(node.value):
+                return True
+    return False
+
+
+def _closed_here(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether the function closes a connection at all -- by connect.close,
+    by contextlib.closing, or by a with-block over the open itself."""
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("close", "closing")
+        ):
+            return True
+        if isinstance(node, ast.With | ast.AsyncWith) and any(
+            isinstance(item.context_expr, ast.Call) for item in node.items
+        ):
+            return True
+    return False
+
+
+def rule_connection_lifetime(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
+    """SG103: a connection is opened and never closed or handed on.
+
+    An unclosed Connection is not a leak the process notices. It sits in a
+    reference cycle until some later collection sweeps it, and CPython's
+    sqlite3 raises ResourceWarning from the finalizer -- an unraisable,
+    attributed to whatever happened to be running at that moment. Under
+    `filterwarnings = error` that fails an unrelated test, at an unrelated
+    time. The defect is static and belongs here, where it costs
+    milliseconds and names the line that opened it.
+    """
+    found: list[Finding] = []
+    for source in sources if sources is not None else every_source():
+        for fn in ast.walk(parsed(source)):
+            if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if _closed_here(fn):
+                continue
+            for named, call in _opened_here(fn):
+                if _handed_onward(fn, named):
+                    continue
+                found.append(
+                    Finding(
+                        source,
+                        call.lineno,
+                        call.col_offset,
+                        "SG103",
+                        f"{fn.name} opens a database and neither closes it nor hands it on;"
+                        " wrap it in try/finally: connect.close(...)",
+                    )
+                )
+    return found
+
+
 # --- SG4xx: the web adapters own no semantics ------------------------------------------------
 
 
@@ -505,17 +614,30 @@ def rule_producers(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
 #: The decorators that make a function a route with a request body.
 _BODY_ROUTES = frozenset({"post", "put", "patch", "delete", "route"})
 
+#: Every decorator that makes a function a route.
+_ROUTES = _BODY_ROUTES | {"get"}
+
 
 def _wire_contracts(root: pathlib.Path) -> set[str]:
-    """Every class in sg_web that inherits Wire, by name."""
-    named: set[str] = set()
+    """Every class in sg_web that inherits Wire, by name.
+
+    Closed over inheritance rather than read one base deep: a contract that
+    narrows another (JobSnapshot over JobListed) obeys the same policy, and
+    a rule that could not see that would report the honest half of the tree
+    as the broken half.
+    """
+    bases: dict[str, set[str]] = {}
     for source in sorted((root / "sg_web").glob("*.py")):
         for node in ast.walk(parsed(source)):
-            if isinstance(node, ast.ClassDef) and any(
-                isinstance(base, ast.Name) and base.id == "Wire" for base in node.bases
-            ):
-                named.add(node.name)
-    return named
+            if isinstance(node, ast.ClassDef):
+                bases[node.name] = {base.id for base in node.bases if isinstance(base, ast.Name)}
+    named = {"Wire"}
+    growing = True
+    while growing:
+        found = {name for name, held in bases.items() if held & named}
+        growing = not found <= named
+        named |= found
+    return named - {"Wire"}
 
 
 def _annotation_name(node: ast.expr | None) -> str | None:
@@ -579,15 +701,128 @@ def rule_request_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[s
     return found
 
 
+#: Return types that carry no JSON: a rendered page, a redirect, a byte
+#: stream. A handler that only ever answers with one of these has no wire
+#: contract to state.
+_NOT_JSON = frozenset({"Template", "Redirect", "Stream", "File", "ASGIResponse"})
+
+#: JSON values that are genuinely a primitive and need no model.
+_PRIMITIVE = frozenset({"str", "int", "float", "bool", "bytes", "None"})
+
+
+def _json_parts(node: ast.expr | None) -> list[ast.expr]:
+    """The alternatives of a return annotation that carry JSON."""
+    if node is None:
+        return []
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _json_parts(node.left) + _json_parts(node.right)
+    named = _annotation_name(node)
+    return [] if named in _NOT_JSON else [node]
+
+
+def _precise(node: ast.expr, contracts: set[str]) -> bool:
+    """Whether this alternative names a shape the browser can be given.
+
+    A Wire contract, a list of one, a primitive -- or `Response[X]` where X
+    is any of those. A bare `Response`, a `dict`, a `list[dict]` and an
+    `Any` all describe nothing, and OpenAPI writes down exactly that.
+    """
+    if isinstance(node, ast.Constant) and node.value is None:
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in contracts or node.id in _PRIMITIVE
+    if isinstance(node, ast.Subscript):
+        held = _annotation_name(node.value)
+        if held in ("Response", "list", "Sequence"):
+            return _precise(node.slice, contracts)
+        return held in contracts
+    return False
+
+
+def _declared_containers(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.expr] | None:
+    """The data_container of every ResponseSpec in the route's `responses=`,
+    or None when the route declares none."""
+    for decorator in node.decorator_list:
+        if not isinstance(decorator, ast.Call):
+            continue
+        for word in decorator.keywords:
+            if word.arg != "responses" or not isinstance(word.value, ast.Dict):
+                continue
+            held: list[ast.expr] = []
+            for spec in word.value.values:
+                if not isinstance(spec, ast.Call):
+                    return []
+                held.extend(k.value for k in spec.keywords if k.arg == "data_container")
+            return held
+    return None
+
+
+def rule_response_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[str] | None = None) -> list[Finding]:
+    """SG413: a route answers JSON the contract does not describe.
+
+    `dict`, `list[dict]` and a bare `Response` all reach OpenAPI as "an
+    object", so the browser's generated types say nothing and every reader
+    of that JSON is back to guessing which keys are there. A route that
+    negotiates -- a page to a person, JSON to a machine -- cannot say it in
+    the return type, and says it in `responses=` instead; that is the same
+    contract, written where OpenAPI reads it.
+    """
+    contracts = _wire_contracts(root)
+    excused = policy.RESPONSE_CONTRACT_RESERVED if reserved is None else reserved
+    found: list[Finding] = []
+    for source in sorted((root / "sg_web").glob("*.py")):
+        for node in ast.walk(parsed(source)):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if not any(
+                isinstance(one, ast.Call) and isinstance(one.func, ast.Name) and one.func.id in _ROUTES
+                for one in node.decorator_list
+            ):
+                continue
+            relative = source.relative_to(root).as_posix()
+            declared = _declared_containers(node)
+            carried = _json_parts(node.returns) if declared is None else declared
+            vague = [one for one in carried if not _precise(one, contracts)]
+            named = f"{relative}:{node.name}"
+            if named in excused:
+                if not vague:
+                    found.append(
+                        Finding(
+                            source,
+                            node.lineno,
+                            node.col_offset,
+                            "SG413",
+                            f"{node.name} names its answer now; remove its RESPONSE_CONTRACT_RESERVED line",
+                        )
+                    )
+                continue
+            if not vague:
+                continue
+            where = "responses=" if declared is not None else "returns"
+            spelled = ", ".join(sorted({ast.unparse(one) for one in vague})) or "nothing"
+            found.append(
+                Finding(
+                    source,
+                    node.lineno,
+                    node.col_offset,
+                    "SG413",
+                    f"{node.name} {where} {spelled}, which describes no shape the browser can be typed against",
+                )
+            )
+    return found
+
+
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
     rule_spawns,
     rule_sql_structure,
+    rule_connection_lifetime,
     rule_adapters,
     rule_surfaces,
     rule_producers,
     rule_request_contracts,
+    rule_response_contracts,
 )
 
 

@@ -477,17 +477,20 @@ def test_a_thousand_members_are_o_n_work():
     n = 1000
     document, sha = _synthetic(n, "second")
     conn = connect.memory()
-    conn.executescript(build.schema_sql())
-    plan_id = _store(conn, document, sha)
-    statements: list[str] = []
-    conn.set_trace_callback(statements.append)
-    view = evolution.load(conn, plan_id, models_dir="unused")
-    conn.set_trace_callback(None)
-    assert len(view["members"]) == n
-    assert len(view["transitions"]) == n - 1
-    assert len(view["phases"]) == len(planning.load_plan(conn, plan_id)["phases"])
-    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
-    assert len(selects) < 40, f"{len(selects)} statements for {n} members: not bounded"
+    try:
+        conn.executescript(build.schema_sql())
+        plan_id = _store(conn, document, sha)
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+        view = evolution.load(conn, plan_id, models_dir="unused")
+        conn.set_trace_callback(None)
+        assert len(view["members"]) == n
+        assert len(view["transitions"]) == n - 1
+        assert len(view["phases"]) == len(planning.load_plan(conn, plan_id)["phases"])
+        selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+        assert len(selects) < 40, f"{len(selects)} statements for {n} members: not bounded"
+    finally:
+        connect.close(conn)
 
 
 def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
@@ -507,26 +510,29 @@ def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
         held["parser"] = prompt_sections.VERSION
     sha = stories._identity(document)[1]
     conn = connect.memory()
-    conn.executescript(build.schema_sql())
-    plan_id = _store(conn, document, sha)
-    before = evolution.load(conn, plan_id, models_dir="unused")
-    assert [m["prompt"]["effective"]["main"] for m in before["members"]] == [f"frozen main {i}" for i in range(4)]
-
-    def never(*_a, **_k):
-        raise AssertionError("the running parser was consulted for a frozen main")
-
-    original_version = prompt_sections.VERSION
-    original_main = prompt_sections.main
     try:
-        prompt_sections.VERSION = original_version + 1
-        prompt_sections.main = never
-        after = evolution.load(conn, plan_id, models_dir="unused")
+        conn.executescript(build.schema_sql())
+        plan_id = _store(conn, document, sha)
+        before = evolution.load(conn, plan_id, models_dir="unused")
+        assert [m["prompt"]["effective"]["main"] for m in before["members"]] == [f"frozen main {i}" for i in range(4)]
+
+        def never(*_a, **_k):
+            raise AssertionError("the running parser was consulted for a frozen main")
+
+        original_version = prompt_sections.VERSION
+        original_main = prompt_sections.main
+        try:
+            prompt_sections.VERSION = original_version + 1
+            prompt_sections.main = never
+            after = evolution.load(conn, plan_id, models_dir="unused")
+        finally:
+            prompt_sections.VERSION = original_version
+            prompt_sections.main = original_main
+        assert [m["prompt"] for m in after["members"]] == [m["prompt"] for m in before["members"]]
+        assert [t["changes"] for t in after["transitions"]] == [t["changes"] for t in before["transitions"]]
+        assert [m["metrics"] for m in after["members"]] == [m["metrics"] for m in before["members"]]
     finally:
-        prompt_sections.VERSION = original_version
-        prompt_sections.main = original_main
-    assert [m["prompt"] for m in after["members"]] == [m["prompt"] for m in before["members"]]
-    assert [t["changes"] for t in after["transitions"]] == [t["changes"] for t in before["transitions"]]
-    assert [m["metrics"] for m in after["members"]] == [m["metrics"] for m in before["members"]]
+        connect.close(conn)
 
 
 def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
@@ -545,15 +551,18 @@ def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
         member["generation"]["artifacts"] = [lora]
     sha = stories._identity(document)[1]
     conn = connect.memory()
-    conn.executescript(build.schema_sql())
-    plan_id = _store(conn, document, sha)
-    view = evolution.load(conn, plan_id, models_dir="unused")
-    first, second = (t["changes"] for t in view["transitions"])
-    assert (first["lora_uuids_added"], first["lora_uuids_removed"]) == (["b" * 32], ["a" * 32])
-    assert (first["loras_added"], first["loras_removed"]) == (["detail"], ["detail"]), "same name, different file"
-    assert (second["lora_uuids_added"], second["lora_uuids_removed"], second["loras_added"]) == ([], [], []), (
-        "a rename is not a change"
-    )
+    try:
+        conn.executescript(build.schema_sql())
+        plan_id = _store(conn, document, sha)
+        view = evolution.load(conn, plan_id, models_dir="unused")
+        first, second = (t["changes"] for t in view["transitions"])
+        assert (first["lora_uuids_added"], first["lora_uuids_removed"]) == (["b" * 32], ["a" * 32])
+        assert (first["loras_added"], first["loras_removed"]) == (["detail"], ["detail"]), "same name, different file"
+        assert (second["lora_uuids_added"], second["lora_uuids_removed"], second["loras_added"]) == ([], [], []), (
+            "a rename is not a change"
+        )
+    finally:
+        connect.close(conn)
 
 
 def test_the_module_returns_identities_and_the_route_addresses_them(planned):

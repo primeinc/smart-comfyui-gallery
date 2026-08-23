@@ -425,3 +425,92 @@ def test_the_request_contract_rule_can_fail(tmp_path):
     assert check("@post('/x')\ndef write(data: dict) -> None: ...\n", excused) == [], (
         "the reserved list is what excuses a body, and it is read"
     )
+
+
+def test_the_response_contract_rule_can_fail(tmp_path):
+    """SG413 holds every route's JSON answer to a wire model.
+
+    The negotiated routes are why this rule reads `responses=` as well as
+    the return type: a handler that answers a page to a person and JSON to
+    a machine cannot say the JSON half in its signature, and OpenAPI reads
+    the declaration instead. The last two controls are the ledger itself --
+    it excuses what is still vague, and it reports its own stale lines, so
+    the migration's remaining surface can only shrink.
+    """
+    root = tmp_path / "repo"
+    (root / "sg_web").mkdir(parents=True)
+    where = root / "sg_web" / "routes.py"
+
+    def check(handler: str, reserved: frozenset[str] = frozenset()):
+        where.write_text(
+            "class Wire:\n    pass\n\nclass Named(Wire):\n    name: str\n\nclass Narrower(Named):\n    more: str\n\n"
+            f"{handler}",
+            encoding="utf-8",
+        )
+        return [f.code for f in rules.rule_response_contracts(root, reserved)]
+
+    assert check("@get('/x')\ndef read() -> Named: ...\n") == [], "a contract is a shape"
+    assert check("@get('/x')\ndef read() -> Narrower: ...\n") == [], "so is one that narrows a contract"
+    assert check("@get('/x')\ndef read() -> list[Named]: ...\n") == [], "so is a list of them"
+    assert check("@get('/x')\ndef read() -> Response[Named] | Redirect: ...\n") == [], "a redirect carries no JSON"
+    assert check("@get('/x')\ndef read() -> Template: ...\n") == [], "a page is not a JSON answer"
+    assert check("@get('/x')\ndef read() -> Response[bytes]: ...\n") == [], "bytes are a shape, and it says so"
+
+    assert check("@get('/x')\ndef read() -> dict: ...\n") == ["SG413"], "an object with no keys named"
+    assert check("@get('/x')\ndef read() -> list[dict]: ...\n") == ["SG413"], "a list of them is no better"
+    assert check("@get('/x')\ndef read() -> Response: ...\n") == ["SG413"], "an unparameterized Response"
+    assert check("@get('/x')\ndef read() -> Template | Response: ...\n") == ["SG413"], (
+        "negotiating does not excuse the JSON half"
+    )
+
+    spec = (
+        "@get('/x', responses={200: ResponseSpec(data_container=list[Named])})\ndef read() -> Template | Response: ..."
+    )
+    assert check(f"{spec}\n") == [], "a negotiated route states its JSON where OpenAPI reads it"
+    vague = "@get('/x', responses={200: ResponseSpec(data_container=list[dict])})\ndef read() -> Template: ..."
+    assert check(f"{vague}\n") == ["SG413"], "and a declaration that names nothing is still nothing"
+
+    held = frozenset({"sg_web/routes.py:read"})
+    assert check("@get('/x')\ndef read() -> dict: ...\n", held) == [], "the ledger excuses what is not converted yet"
+    assert check("@get('/x')\ndef read() -> Named: ...\n", held) == ["SG413"], (
+        "and reports its own stale line, so the ledger can only shrink"
+    )
+
+
+def test_the_connection_lifetime_rule_can_fail(tmp_path):
+    """SG103 catches a database opened and then dropped.
+
+    The escapes are the point. A connection that is returned -- alone, in
+    the tuple a fixture hands back beside the ids it minted, or in a dict --
+    belongs to the caller now. One put in a container the module keeps is
+    meant to outlive the call, and closing it would be the defect. Only a
+    connection nobody can reach again is the leak, and it is invisible at
+    runtime until a collection sweep blames an unrelated test.
+    """
+    source = tmp_path / "opener.py"
+
+    def check(body: str):
+        source.write_text(f"from db import connect\n\n{body}", encoding="utf-8")
+        return [f.code for f in rules.rule_connection_lifetime([source])]
+
+    closed = "def held():\n    conn = connect.memory()\n    try:\n        pass\n"
+    closed += "    finally:\n        connect.close(conn)\n"
+    assert check(closed) == []
+    assert check("def held():\n    conn = connect.memory()\n    return conn\n") == []
+    assert check("def held():\n    conn = connect.memory()\n    return conn, 1\n") == [], "a fixture's tuple"
+    assert check("def held():\n    conn = connect.memory()\n    return {'conn': conn}\n") == [], "a fixture's dict"
+    assert check("def held():\n    conn = connect.memory()\n    yield conn\n") == [], "a fixture that yields"
+    assert check("_KEPT = {}\n\n\ndef held(k):\n    conn = connect.connect(k)\n    _KEPT[k] = conn\n") == [], (
+        "a connection the module keeps on purpose"
+    )
+
+    assert check("def held():\n    conn = connect.memory()\n    conn.execute('SELECT 1')\n") == ["SG103"], (
+        "opened, used, dropped"
+    )
+    assert check("def held(p):\n    conn = connect.connect(p)\n    conn.execute('SELECT 1')\n") == ["SG103"], (
+        "a file database leaks the same way"
+    )
+    assert check(
+        "def held():\n    conn = connect.memory()\n    conn.execute('SELECT 1')\n\n\ndef also():\n"
+        "    other = connect.memory()\n    other.execute('SELECT 1')\n"
+    ) == ["SG103", "SG103"], "one finding per function, not one per file"

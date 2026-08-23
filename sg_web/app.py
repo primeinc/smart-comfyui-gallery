@@ -658,7 +658,7 @@ def _file_at(conn, slug: str, where: str) -> tuple[int, str] | str:
 
 
 @route("/media/{slug:str}", http_method=["GET", "HEAD"], sync_to_thread=True)
-def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream | Redirect | Response:
+def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream | Redirect | Response[bytes]:
     """The original bytes, typed by what they are and seekable by range.
 
     Content-Type comes from the sniff, never the suffix -- the route
@@ -723,7 +723,7 @@ def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream |
     )
 
 
-def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Response | Redirect:
+def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Response[bytes] | Redirect:
     """Serve one cached raster variant, rendering it on first request.
 
     The byproduct path (detection jobs) usually got here first; this is
@@ -759,19 +759,19 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
 
 
 @get("/thumb/{slug:str}", sync_to_thread=True)
-def thumb_bytes(state: State, slug: FromPath[str]) -> Response | Redirect:
+def thumb_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirect:
     """The grid cell: longest side 512, upright, aspect kept."""
     return _variant_bytes(state, slug, "thumb", "/thumb")
 
 
 @get("/preview/{slug:str}", sync_to_thread=True)
-def preview_bytes(state: State, slug: FromPath[str]) -> Response | Redirect:
+def preview_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirect:
     """The lightbox image: longest side 1440, upright, aspect kept."""
     return _variant_bytes(state, slug, "preview", "/preview")
 
 
 @get("/avatar/{slug:str}", sync_to_thread=True)
-def avatar_bytes(state: State, slug: FromPath[str]) -> Response | Redirect:
+def avatar_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirect:
     """A person's face, squared: their highest-confidence detection in the
     primary run, cropped with context (vision/thumbs.py). A video face is
     cropped from the sampled frame the detection actually looked at."""
