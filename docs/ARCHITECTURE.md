@@ -211,8 +211,10 @@ timeline offers the whole chain behind one button per session.
 
 The `annotate` job (`db/runner.py submit_annotate`, `POST /jobs/annotate`)
 runs the BLIP checkpoint the `caption_model` setting names
-(`vision/captions.py`) over every present picture and video's poster
-frame and writes `derived_annotation` rows through `derived.annotate`:
+(`vision/captions.py`) over every present picture, and over every
+video's poster frame and each of its sampled moments (`db/sample.py`,
+the rows detection looks at), and writes `derived_annotation` rows
+through `derived.annotate`:
 one caption per model per file, the same model replacing its own, two
 models kept side by side. `annotation_fts` indexes the text; retrieval
 fuses a bm25 ranking named `captions` with the semantic spaces once any

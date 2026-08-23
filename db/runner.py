@@ -907,7 +907,33 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
     derived.annotate(
         conn, file_id, payload.get("kind", "caption"), text, captioner.model_id, captioner.model_version, sha, now
     )
-    told.observe("caption", words=len(text.split()))
+    moments = 0
+    if kind == "video":
+        # a clip is also captioned at its sampled moments -- the same
+        # persisted rows detection looks at (db/sample.py), so a caption
+        # says which second it describes and a re-run finds its own work
+        from . import sample
+
+        sample.frames(conn, file_id, path)
+        by_offset = {offset: sample_id for sample_id, offset, _ in sample.taken(conn, file_id)}
+        told.phase("captioning-moments", model=captioner.model_id, moments=len(by_offset))
+        for offset_ms, image in decode.frames_at(path, sorted(by_offset)):
+            said = captioner.describe(image).strip()
+            if not said:
+                continue
+            derived.annotate(
+                conn,
+                file_id,
+                payload.get("kind", "caption"),
+                said,
+                captioner.model_id,
+                captioner.model_version,
+                sha,
+                now,
+                sample_id=by_offset[offset_ms],
+            )
+            moments += 1
+    told.observe("caption", words=len(text.split()), moments=moments)
 
 
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:

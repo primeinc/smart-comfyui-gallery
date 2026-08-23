@@ -88,7 +88,7 @@
       {% if item.said %}
       <ul class="detail-said" data-said>
         {% for a in item.said %}
-        <li data-said-kind="{{ a.kind }}">{{ a.text }} <span class="when-evidence">{{ a.kind }} &middot; {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} &middot; confidence {{ a.confidence }}{% endif %}</span></li>
+        <li data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}>{% if a.offset_ms is not none %}<span class="when-evidence">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</span> {% endif %}{{ a.text }} <span class="when-evidence">{{ a.kind }} &middot; {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} &middot; confidence {{ a.confidence }}{% endif %}</span></li>
         {% endfor %}
       </ul>
       {% else %}

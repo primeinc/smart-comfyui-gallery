@@ -234,3 +234,58 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
             assert derived.said_first(conn, []) == {}
         finally:
             connect.close(conn)
+
+
+def _clip(path: pathlib.Path, seconds: int = 5, rate: int = 5) -> None:
+    import av
+    import numpy as np
+
+    with av.open(str(path), "w") as container:
+        stream = container.add_stream("h264", rate=rate)
+        stream.width, stream.height = 64, 48
+        stream.pix_fmt = "yuv420p"
+        for n in range(seconds * rate):
+            frame = av.VideoFrame.from_ndarray(np.full((48, 64, 3), (n * 9) % 256, dtype=np.uint8), format="rgb24")
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+
+
+def test_a_clip_is_captioned_whole_and_at_its_sampled_moments(tmp_path, monkeypatch):
+    """A video gets the poster's caption on the file and one caption per
+    sampled moment (db/sample.py), each saying which second it describes;
+    the grid's one line is the file's, the page lists the moments."""
+    from db import library, scan
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    _clip(root / "walk.mp4")
+    conn = fresh_schema()
+    root_id = library.add_root(conn, str(root), "library", 0.0)
+    scan.scan(conn, root_id, str(root), 0.0)
+    file_id = conn.execute("SELECT id FROM file WHERE kind = 'video'").fetchone()[0]
+
+    class Moments(FakeCaptioner):
+        def describe(self, image):
+            self.seen.append(image.size)
+            return f"frame {len(self.seen)}"
+
+    fake = Moments()
+    monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: fake)
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    runner._annotate_item(conn, file_id, {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}, 1.0)
+
+    said = derived.said_about(conn, file_id)
+    whole = [one for one in said if one["sample_id"] is None]
+    moments = [one for one in said if one["sample_id"] is not None]
+    assert len(whole) == 1, "the poster's caption is the file's"
+    assert len(moments) >= 2, f"a five-second clip is sampled at more than one moment: {moments}"
+    assert [one["offset_ms"] for one in moments] == sorted(one["offset_ms"] for one in moments)
+    assert len({one["text"] for one in moments}) == len(moments), "every moment is its own caption"
+    assert derived.said_first(conn, [file_id]) == {file_id: whole[0]["text"]}, (
+        "the grid says the file's, not a moment's"
+    )
+    # the same item again replaces its own moments, never doubles them
+    runner._annotate_item(conn, file_id, {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}, 2.0)
+    assert len(derived.said_about(conn, file_id)) == 1 + len(moments)
