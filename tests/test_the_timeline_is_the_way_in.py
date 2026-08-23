@@ -57,10 +57,11 @@ def test_a_session_is_a_door_that_opens_exactly_its_members(doors):
         facets.facet("event.id", "gte", "1")
 
 
-def test_a_stale_event_opens_nothing(doors):
+def test_a_stale_event_refuses_with_the_remedy(doors):
     """The facet answers only for runs proven over the current
     interpretation: after the contexts move on, yesterday's session id
-    is a door onto an empty room, never onto whatever the id now means."""
+    is refused with the job that regroups it -- never an empty room, and
+    never whatever the id now means."""
     whole = _density(doors, bin="day")
     held = next(s for s in whole["sessions"] if s["domain"] == "wall")
     assert _total(doors, held["qs"]) == held["pictures"]
@@ -68,7 +69,10 @@ def test_a_stale_event_opens_nothing(doors):
     from tests.test_the_timeline_is_a_surface import _drain
 
     _drain(doors)
-    assert _total(doors, held["qs"]) == 0
+    refused = doors.get(f"/g?{held['qs']}")
+    assert refused.status_code == 400, refused.text
+    assert "events job" in refused.json()["detail"]
+    assert doors.get("/g?f=event.id:eq:999999").status_code == 404, "no such session is not found, not stale"
 
 
 def test_a_door_orders_by_the_moment_it_opened_on(doors):

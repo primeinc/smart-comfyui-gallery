@@ -351,6 +351,8 @@ def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surface
     before = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
     assert before["coverage"]["events_current"] is True
     assert before["events"]
+    door = before["events"][0]["qs"]
+    assert surfaced.get(f"/g?{door}").status_code == 200
     conn = connect.connect(surfaced.app.state.db_path, read_only=True)
     try:
         slug = conn.execute("SELECT e.slug FROM entity e JOIN file f ON f.id = e.id ORDER BY f.id LIMIT 1").fetchone()[
@@ -367,6 +369,11 @@ def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surface
     assert "data-timeline-events-stale" in surfaced.get("/timeline", headers={"accept": "text/html"}).text
     density = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert density["coverage"]["events_current"] is False
+    # the bookmarked door refuses with the remedy, never an empty grid
+    refused = surfaced.get(f"/g?{door}")
+    assert refused.status_code == 400, refused.text
+    assert "events job" in refused.json()["detail"]
+    assert surfaced.get("/g?f=event.id:eq:999999").status_code == 404
 
 
 def test_an_empty_scope_answers_the_same_shape_as_a_full_one(surfaced):

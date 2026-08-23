@@ -70,6 +70,13 @@ DEFAULT_PAGE_SIZE = 60
 MAX_PAGE_SIZE = 400
 
 
+class StaleSession(ValueError):
+    """A session door (`event.id`) names a run grouped over an older
+    interpretation: its members are a hypothesis nobody has re-proved,
+    so the question is refused with the remedy -- never an empty grid
+    wearing the bookmark's URL."""
+
+
 class UnevaluatedCollection(ValueError):
     """A rule-defined collection was asked for members no evaluator has
     produced: unevaluated is not empty, so the question is refused. A
@@ -398,6 +405,24 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
                 )
             rule = (_bind_rule(conn, told, spelled), told.take)
             held["album"] = None  # membership comes from the rule set, not collection_file
+    for one in query.facets:
+        if one.key != "event.id":
+            continue
+        # the facet's own predicate answers nothing for a stale run; say why
+        from .context import POLICY_VERSION
+
+        row = conn.execute(
+            "SELECT r.context_generation = (SELECT generation FROM derived_context_state)"
+            "   AND r.context_policy_version = ?"
+            "  FROM derived_event ev JOIN derived_event_run r ON r.id = ev.run_id WHERE ev.id = ?",
+            (int(POLICY_VERSION), int(one.value)),
+        ).fetchone()
+        if row is None:
+            raise LookupError(f"no session {one.value}")
+        if not row[0]:
+            raise StaleSession(
+                f"session {one.value} was grouped over an older interpretation; run the events job to group again"
+            )
     run = None
     if held["person"] is not None:
         row = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()
