@@ -991,9 +991,19 @@ def _template_engine() -> JinjaTemplateEngine:
         undefined=StrictUndefined,
         autoescape=True,
     )
+    # every stylesheet and script URL carries the newest mtime under
+    # static/: a browser that cached yesterday's timeline.js fetches
+    # today's, and a deploy that changed nothing keeps every cache warm
+    environment.globals["static_v"] = _static_version()
     engine = JinjaTemplateEngine.from_environment(environment)
     activity.register(engine)
     return engine
+
+
+def _static_version() -> str:
+    static = pathlib.Path(__file__).resolve().parent / "static"
+    newest = max((p.stat().st_mtime_ns for p in static.iterdir() if p.is_file()), default=0)
+    return str(newest // 1_000_000)
 
 
 def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
@@ -1165,6 +1175,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             timeline_view.timeline,
             timeline_view.density,
             timeline_view.pictures,
+            timeline_view.spread,
+            timeline_view.at,
+            timeline_view.nth,
             story_view.stories_index,
             story_view.freeze_snapshot,
             story_view.snapshot_document,

@@ -10,10 +10,10 @@
      where the person is looking instead of vanishing into the console. #}
   <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true,"target":"#shell-notice"},{"code":"...","swap":true}]}'>
   {% block head %}{% endblock %}
-  <link rel="stylesheet" href="/static/gallery.css">
+  <link rel="stylesheet" href="/static/gallery.css?v={{ static_v }}">
   {% block styles %}{% endblock %}
-  <script src="/static/htmx-2.0.7.min.js" defer></script>
-  <script src="/static/htmx-ext-ws-2.0.3.js" defer></script>
+  <script src="/static/htmx-2.0.7.min.js?v={{ static_v }}" defer></script>
+  <script src="/static/htmx-ext-ws-2.0.3.js?v={{ static_v }}" defer></script>
   {% block scripts %}{% endblock %}
 </head>
 <body hx-ext="ws">

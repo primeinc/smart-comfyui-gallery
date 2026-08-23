@@ -385,13 +385,14 @@ def _ticks(lo: float, hi: float) -> list[dict]:
 
 
 def _picture(row, qs: str) -> dict:
-    slug, name, kind, width, height, moment, precision, origin, wall, sessions = row
+    slug, name, kind, width, height, moment, precision, origin, wall, faces, sessions = row
     return {
         "slug": slug,
         "name": name,
         "kind": kind,
         "width": width,
         "height": height,
+        "faces": int(faces or 0),
         "ratio": round(width / height, 4) if width and height else 1.0,
         "moment": moment,
         "precision": precision,
@@ -437,7 +438,15 @@ def _grouped(pictures: list[dict], sessions: list[dict], bins: list[dict], width
         g["pictures"].reverse()
         g["clock"] = f"{_utc(g['t']).strftime('%H:%M')}–{_utc(g['end']).strftime('%H:%M')}"
         g["lasted"] = _lasted(g["end"] - g["t"])
+        g["lead"] = _lead(g["pictures"])
     return groups
+
+
+def _lead(pictures: list[dict]) -> dict:
+    """The picture a group is shown by: the one with the most faces, the
+    largest among equals -- never simply the first, which in a burst is
+    the frame before anyone was ready."""
+    return max(pictures, key=lambda p: (p["faces"], (p["width"] or 0) * (p["height"] or 0)))
 
 
 def _lasted(seconds: float) -> str:
@@ -491,81 +500,110 @@ def _silence(days: int) -> int:
     return 0 if days < 1 else int(min(320, 28 + 52 * math.log2(days + 1)))
 
 
-#: Past this many months the scrubber's segments are years: a segment
-#: per month of five centuries is six thousand slivers nobody can touch.
-SEGMENTS_MOST = 240
-#: The scrubber's height in its own units, and the least a segment takes
-#: of it -- an empty month is a hairline, never nothing.
+#: The most segments with pictures a scrubber carries: the unit is the
+#: finest that keeps to this (_scrubber_unit).
+SEGMENTS_MOST = 40
+#: The scrubber's height in its own units; the least a segment with
+#: pictures takes of it (a thumb can land on 2.5% of a screen); what a
+#: run of empty bins takes, however long. A segment's pictures are not
+#: counted here: the page asks /timeline/spread for as many as the
+#: segment's own pixels can show, and /timeline/at for the one under
+#: the pointer.
 _H = 1000
-_SEGMENT_LEAST = 3.0
+SEGMENT_LEAST = 25.0
+GAP_H = 10.0
+#: The most pictures one spread answers.
+SPREAD_MOST = 400
 
 
-def _scrubber(month_rows, leads: dict, whole_lo: float, whole_hi: float, lo: float, hi: float, question) -> dict:
-    """The library top to bottom, newest first: a segment per calendar
-    month (per year past SEGMENTS_MOST months) whose height is its share
-    of the pictures and whose face is its first picture; the year named
-    where it changes, far enough from the last name; the window marked
+def _scrubber_unit(conn, scope, whole_lo: float, whole_hi: float) -> tuple[str, int, list]:
+    """The unit the library's own spread earns: the finest bin at which
+    the extent holds at most SEGMENTS_MOST bins with pictures and can be
+    drawn at all (db/pages.py MAX_BINS). Five minutes of pictures scrub
+    by the minute, five centuries by the year, and nothing here presumes
+    which. (name, width, bins)."""
+    chosen = None
+    for name in ("minute", "quarter", "hour", "day", "week", "month", "year"):
+        try:
+            width, bins, _ = pages.timeline_density(conn, name, whole_lo, whole_hi, scope)
+        except ValueError:
+            continue
+        chosen = (name, width, bins)
+        if sum(1 for b in bins if b[1]) <= SEGMENTS_MOST:
+            break
+    if chosen is None:
+        raise ClientException("the library spans more than the page can draw")
+    return chosen
+
+
+def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float, hi: float, *, lean: bool) -> dict:
+    """The library top to bottom, newest first, in the unit its spread
+    earns (_scrubber_unit). A segment per bin that holds pictures, its
+    height its share of the pictures and never less than a thumb can
+    grab, carrying a strip of its pictures -- as many as that height
+    shows -- and its count; a run of empty bins is ONE short segment
+    saying how long it was, not a hairline each. The year is named where
+    it changes, far enough from the last name; the window is marked
     across the segments it touches. Every segment is a door to its own
-    window. Counts are the calendar's (db/pages.py TIMELINE_MONTHS), so
-    any span draws, minutes or centuries."""
-    counts = {key: int(n) for key, n in month_rows}
-    faces: dict[str, str] = {}
-    for at, slugs in sorted(leads.items()):
-        key = _utc(at).strftime("%Y-%m")
-        if slugs and key not in faces:
-            faces[key] = slugs[0]
-    first = _utc(whole_lo)
-    first = datetime.datetime(first.year, first.month, 1, tzinfo=datetime.UTC)
-    months_spanned = (_utc(whole_hi).year - first.year) * 12 + _utc(whole_hi).month - first.month + 1
-    by_year = months_spanned > SEGMENTS_MOST
-    units: list[tuple[datetime.datetime, datetime.datetime]] = []
-    d = first if not by_year else datetime.datetime(first.year, 1, 1, tzinfo=datetime.UTC)
-    while d.timestamp() < whole_hi:
-        nxt = datetime.datetime(d.year + 1, 1, 1, tzinfo=datetime.UTC) if by_year else _next_month(d)
-        units.append((d, nxt))
-        d = nxt
-    units.reverse()
-
-    def count(start: datetime.datetime) -> int:
-        if not by_year:
-            return counts.get(start.strftime("%Y-%m"), 0)
-        return sum(n for key, n in counts.items() if key.startswith(f"{start.year:04d}-"))
-
-    def face(start: datetime.datetime) -> str | None:
-        if not by_year:
-            return faces.get(start.strftime("%Y-%m"))
-        return next((slug for key, slug in sorted(faces.items()) if key.startswith(f"{start.year:04d}-")), None)
-
-    told = [(start, end, count(start)) for start, end in units]
-    total = max(1, sum(n for _, _, n in told))
-    least = min(_SEGMENT_LEAST, _H / max(1, len(told)))
-    room = max(0.0, _H - least * len(told))
+    window. Strips come from the same bins the counts do."""
+    name, width, bins = _scrubber_unit(conn, scope, whole_lo, whole_hi)
+    faces = {} if lean else pages.timeline_samples(conn, name, whole_lo, whole_hi, None, scope)
+    counts = {int(at): int(n) for at, n, *_ in bins}
+    anchor = pages._ANCHOR.get(name, 0)
+    first = int((whole_lo - anchor) // width) * width + anchor
+    told: list[dict] = []
+    at = first
+    while at < whole_hi:
+        told.append({"at": at, "end": at + width, "pictures": counts.get(int(at), 0), "units": 1})
+        at += width
+    told.reverse()
+    # bins with pictures stand alone; empty bins run together
+    runs: list[dict] = []
+    for u in told:
+        if u["pictures"] or not runs or runs[-1]["pictures"]:
+            runs.append(dict(u))
+        else:
+            runs[-1]["at"] = u["at"]
+            runs[-1]["units"] += 1
+    total = max(1, sum(u["pictures"] for u in runs))
+    gaps = sum(1 for u in runs if not u["pictures"])
+    held = len(runs) - gaps
+    least = min(SEGMENT_LEAST, _H / max(1, len(runs)))
+    gap_h = min(GAP_H, least)
+    room = max(0.0, _H - least * held - gap_h * gaps)
     y = 0.0
     segments = []
     last_year = None
     labelled_at = -1e9
-    for start, end, n in told:
-        h = least + (n / total) * room
-        named = start.year != last_year and (y + h) - labelled_at >= 18
+    unit = UNIT[name]
+    for u in runs:
+        at, end, n = u["at"], u["end"], u["pictures"]
+        h = gap_h if not n else least + (n / total) * room
+        year = _utc(at).year
+        named = n > 0 and year != last_year and (y + h) - labelled_at >= 18
         if named:
             labelled_at = y + h
+        strip = faces.get(int(at)) or []
+        label = _spell(at, name) if n else f"{u['units']} {unit}{'s' if u['units'] > 1 else ''} without pictures"
         segments.append(
             {
-                "at": start.timestamp(),
-                "end": end.timestamp(),
+                "at": at,
+                "end": end,
                 #: the door's window, clipped to the library, spelled as the URL spells it
-                "window_start": int(max(whole_lo, start.timestamp())),
-                "year": start.year,
-                "label": str(start.year) if by_year else start.strftime("%b %Y"),
+                "window_start": int(max(whole_lo, at)),
+                "year": year,
+                "label": label,
                 "pictures": n,
-                "face": face(start),
+                "face": strip[0] if strip else None,
+                "strip": strip,
                 "y": round(y, 2),
                 "h": round(h, 2),
                 "year_label": named,
-                "href": _window_url(question, max(whole_lo, start.timestamp()), min(whole_hi, end.timestamp())),
+                "href": _window_url(question, max(whole_lo, at), min(whole_hi, end)),
             }
         )
-        last_year = start.year
+        if n:
+            last_year = year
         y += h
 
     def y_of(t: float, at_end: bool) -> float:
@@ -578,6 +616,8 @@ def _scrubber(month_rows, leads: dict, whole_lo: float, whole_hi: float, lo: flo
     top = y_of(min(hi, whole_hi - 1), True)
     bottom = y_of(max(lo, whole_lo), False)
     return {
+        "unit": name,
+        "bin_seconds": width,
         "segments": segments,
         "brush": {"y": round(min(top, bottom), 2), "h": round(max(4.0, abs(bottom - top)), 2)},
     }
@@ -868,6 +908,7 @@ def _surface(
         # the members the window holds; a session touching the window
         # whose members all sit outside it (or past the cap) shows its samples
         one["drawn_pictures"] = drawn.get(one["id"], [])
+        one["drawn_lead"] = _lead(one["drawn_pictures"]) if one["drawn_pictures"] else None
     overview["years"] = [
         {
             "year": y,
@@ -888,15 +929,7 @@ def _surface(
         #: the cards the body lists on its own: every session under the
         #: sheets; in the river only those no day of it placed
         "listed": sessions if composition != "river" else [one for one in sessions if not one["drawn_pictures"]],
-        "scrubber": _scrubber(
-            pages.timeline_months(conn, scope),
-            {} if lean else pages.timeline_samples(conn, overview_bin, whole_lo, whole_hi, None, scope),
-            whole_lo,
-            whole_hi,
-            lo,
-            hi,
-            held,
-        ),
+        "scrubber": _scrubber(conn, scope, held, whole_lo, whole_hi, lo, hi, lean=lean),
         "bin": bin_name,
         "bin_seconds": width,
         "start": lo,
@@ -1007,6 +1040,101 @@ def pictures(
         },
         headers=VARIES,
     )
+
+
+@get("/timeline/spread", sync_to_thread=True)
+def spread(
+    state: State,
+    start: FromQuery[float],
+    end: FromQuery[float],
+    n: FromQuery[int],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
+) -> Response:
+    """Up to `n` pictures of [start, end) spread evenly through it: what
+    a surface that can show n pictures of a range asks for, whatever
+    the range holds."""
+    if end <= start:
+        raise ClientException("the range is empty")
+    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        scope, _ = _scope(conn, state, asked)
+        rows = pages.timeline_spread(conn, start, end, max(1, min(n, SPREAD_MOST)), scope)
+    finally:
+        connect.close(conn)
+    return Response({"pictures": [{"slug": slug, "moment": moment} for slug, moment in rows]}, headers=VARIES)
+
+
+@get("/timeline/nth", sync_to_thread=True)
+def nth(
+    state: State,
+    start: FromQuery[float],
+    end: FromQuery[float],
+    k: FromQuery[int],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
+) -> Response:
+    """The k-th picture of [start, end) in moment order, of the n it
+    holds -- what a hand k/n of the way along a segment points at. By
+    rank, so a burst spreads across the segment's whole height. 404
+    when the range holds none."""
+    if end <= start:
+        raise ClientException("the range is empty")
+    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        scope, _ = _scope(conn, state, asked)
+        found, n = pages.timeline_nth(conn, start, end, k, scope)
+    finally:
+        connect.close(conn)
+    if found is None:
+        raise NotFoundException("no picture in this range")
+    slug, moment = found
+    return Response(
+        {"slug": slug, "moment": moment, "k": min(max(0, k), n - 1), "of": n, "spelled": _spell(moment, "minute")},
+        headers=VARIES,
+    )
+
+
+@get("/timeline/at", sync_to_thread=True)
+def at(
+    state: State,
+    t: FromQuery[float],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
+) -> Response:
+    """The picture a hand over moment `t` is pointing at: the nearest in
+    time, either side; 404 when the scope holds none."""
+    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        scope, _ = _scope(conn, state, asked)
+        found = pages.timeline_at(conn, t, scope)
+    finally:
+        connect.close(conn)
+    if found is None:
+        raise NotFoundException("no picture in this scope")
+    slug, moment = found
+    return Response({"slug": slug, "moment": moment, "spelled": _spell(moment, "minute")}, headers=VARIES)
 
 
 @get("/timeline", sync_to_thread=True)

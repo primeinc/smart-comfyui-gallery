@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Albums{% endblock %}
-{% block scripts %}<script src="/static/collection.js" defer></script><script src="/static/timeline.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/collection.js?v={{ static_v }}" defer></script><script src="/static/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">

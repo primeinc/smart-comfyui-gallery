@@ -39,6 +39,7 @@ import json
 import math
 import os
 import pathlib
+import re
 import sqlite3
 import typing
 
@@ -1354,7 +1355,7 @@ def test_the_page_lays_out_the_verified_render_and_escapes_evidence(planned):
     for other in rendering.PROFILES:
         if other != story["renderer"]["profile"]:
             assert f'data-story-profile-ask="{other}"' in html, "and offers the others"
-    assert 'src="/static/story.js"' in html
+    assert re.search(r'src="/static/story\.js\?v=\d+"', html), "the script carries the static version stamp"
     assert client.get("/stories/renders/424242").status_code == 404
     conn = connect.connect(client.app.state.db_path)
     try:

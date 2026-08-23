@@ -2,8 +2,8 @@
 {% block title %}{{ item.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/i/{{ item.slug }}">{% endblock %}
 {% block scripts %}
-  <script src="/static/media.js" defer></script>
-  <script src="/static/authored.js" defer></script>
+  <script src="/static/media.js?v={{ static_v }}" defer></script>
+  <script src="/static/authored.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   <header class="bar">

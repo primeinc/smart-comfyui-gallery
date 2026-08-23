@@ -11,6 +11,7 @@ with the moments the interpretation holds, whatever produced them."""
 
 from __future__ import annotations
 
+import itertools
 import os
 import pathlib
 import re
@@ -133,9 +134,34 @@ def test_every_span_draws_its_opening_window_and_its_whole_extent(spanned):
         assert 0 <= brush["y"] <= 1000
         assert brush["h"] >= 4
         assert brush["y"] + brush["h"] <= 1001
+    segments = whole["scrubber"]["segments"]
+    held = [s for s in segments if s["pictures"]]
+    gaps = [s for s in segments if not s["pictures"]]
+    assert all(s["h"] >= 24 for s in held), "a month with pictures is never thinner than a thumb"
+    assert all(s["h"] <= 10.01 for s in gaps), "a run of empty months is one short band, however long"
+    assert all("without pictures" in s["label"] for s in gaps)
+    assert not any(a["pictures"] == 0 and b["pictures"] == 0 for a, b in itertools.pairwise(segments)), (
+        "empty bins run together"
+    )
+    assert all(s["strip"] and s["face"] == s["strip"][0] for s in held), "a segment carries a strip of its pictures"
+    assert len(held) <= 40, "the unit is the finest that keeps the segments few"
+    # the unit is the data's: the finest bin whose filled count keeps to 40
+    # (a bin with nine pictures a minute apart scrubs by the minute), and
+    # nothing coarser than the data needs
+    names = ["minute", "quarter", "hour", "day", "week", "month", "year"]
+    unit = whole["scrubber"]["unit"]
+    finer = names[: names.index(unit)]
+    if finer:
+        asked = {"bin": finer[-1], "start": extent["start"], "end": extent["end"] + 1, "lean": "true"}
+        answer = client.get("/timeline/density", params=asked, headers={"accept": "application/json"})
+        assert answer.status_code == 400 or sum(1 for b in answer.json()["bins"] if b["pictures"]) > 40, (
+            f"{finer[-1]} would have done and {unit} was chosen"
+        )
+    if span == 300:
+        assert unit == "minute"
     if span >= 555 * YEAR:
-        assert all(len(s["label"]) == 4 for s in whole["scrubber"]["segments"]), "centuries scrub by year"
-        assert len(whole["scrubber"]["segments"]) < 600
+        assert unit == "year", "centuries scrub by year"
+        assert len(segments) < 600
     page = client.get(
         "/timeline", params={"start": extent["start"], "end": extent["end"] + 1}, headers={"accept": "text/html"}
     ).text

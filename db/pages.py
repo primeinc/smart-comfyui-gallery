@@ -1210,6 +1210,97 @@ def timeline_samples(
     return held
 
 
+#: `n` pictures of a range SPREAD across it -- every k-th in moment
+#: order, k the range's count over n -- so whatever holds a million
+#: pictures is shown by pictures from its whole length, as many as the
+#: asker can show, never a fixed few from its first minute.
+_TIMELINE_SPREAD_HEAD = (
+    "SELECT slug, moment FROM ("
+    "  SELECT e.slug, " + HUMAN_MOMENT + " AS moment,"
+    "   row_number() OVER (ORDER BY " + HUMAN_MOMENT + ", mc.file_id) AS rn,"
+    "   count(*) OVER () AS cnt"
+    "    FROM derived_media_context mc"
+    "    JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    "    JOIN entity e ON e.id = mc.file_id"
+    "   WHERE mc.policy_version = ?"
+    "     AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+)
+_TIMELINE_SPREAD_TAIL = ") WHERE (rn - 1) % max(1, (cnt + ? - 1) / ?) = 0 ORDER BY rn LIMIT ?"
+
+
+def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] = ("", [])) -> list[tuple[str, float]]:
+    """Up to `n` (slug, moment) of [lo, hi), spread evenly through it."""
+    return conn.execute(
+        _TIMELINE_SPREAD_HEAD + scope[0] + _TIMELINE_SPREAD_TAIL,
+        (context.POLICY_VERSION, lo, hi, *scope[1], n, n, n),
+    ).fetchall()
+
+
+#: The k-th picture of a range in moment order, and how many there are:
+#: what a hand a fraction of the way along a segment points at. By RANK,
+#: never by time: three thousand pictures in one minute of a week-long
+#: segment would map every position to the burst's first or last.
+_TIMELINE_NTH_HEAD = (
+    "SELECT e.slug, " + HUMAN_MOMENT + " AS moment"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = mc.file_id"
+    " WHERE mc.policy_version = ?"
+    "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+)
+_TIMELINE_NTH_TAIL = " ORDER BY moment, mc.file_id LIMIT 1 OFFSET ?"
+_TIMELINE_RANGE_COUNT_HEAD = (
+    "SELECT count(*) FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ?"
+    "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+)
+
+
+def timeline_nth(conn, lo: float, hi: float, k: int, scope: tuple[str, list] = ("", [])):
+    """((slug, moment), n): the k-th of the n pictures in [lo, hi) in
+    moment order, k clamped into range; (None, 0) when it holds none."""
+    n = int(
+        conn.execute(_TIMELINE_RANGE_COUNT_HEAD + scope[0], (context.POLICY_VERSION, lo, hi, *scope[1])).fetchone()[0]
+        or 0
+    )
+    if not n:
+        return None, 0
+    k = min(max(0, int(k)), n - 1)
+    row = conn.execute(
+        _TIMELINE_NTH_HEAD + scope[0] + _TIMELINE_NTH_TAIL, (context.POLICY_VERSION, lo, hi, *scope[1], k)
+    ).fetchone()
+    return (None, n) if row is None else ((str(row[0]), float(row[1])), n)
+
+
+#: The picture at a moment: the NEAREST in time, either side -- what a
+#: hand over a point in time is pointing at. "The newest before" would
+#: reach back years across a gap to a picture the hand is nowhere near.
+_TIMELINE_AT_HEAD = (
+    "SELECT e.slug, " + HUMAN_MOMENT + " AS moment"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = mc.file_id"
+    " WHERE mc.policy_version = ? AND " + HUMAN_MOMENT
+)
+
+
+def timeline_at(conn, t: float, scope: tuple[str, list] = ("", [])) -> tuple[str, float] | None:
+    before = conn.execute(
+        _TIMELINE_AT_HEAD + " <= ?" + scope[0] + " ORDER BY moment DESC, mc.file_id DESC LIMIT 1",
+        (context.POLICY_VERSION, t, *scope[1]),
+    ).fetchone()
+    after = conn.execute(
+        _TIMELINE_AT_HEAD + " > ?" + scope[0] + " ORDER BY moment, mc.file_id LIMIT 1",
+        (context.POLICY_VERSION, t, *scope[1]),
+    ).fetchone()
+    found = [row for row in (before, after) if row is not None]
+    if not found:
+        return None
+    row = min(found, key=lambda r: abs(float(r[1]) - t))
+    return (str(row[0]), float(row[1]))
+
+
 def session_samples(conn, event_id: int) -> list[str]:
     return [row[1] for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))]
 
@@ -1245,6 +1336,7 @@ def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("",
 _TIMELINE_PICTURES_HEAD = (
     "SELECT e.slug, f.name, f.kind, f.width, f.height, " + HUMAN_MOMENT + " AS moment,"
     " mc.time_precision, mc.origin, mc.local_at IS NOT NULL AS wall,"
+    " (SELECT count(*) FROM derived_face_instance fi WHERE fi.file_id = mc.file_id) AS faces,"
     " (SELECT group_concat(ef.event_id) FROM derived_event_file ef"
     "   JOIN derived_event ev ON ev.id = ef.event_id JOIN derived_event_run r ON r.id = ev.run_id"
     "  WHERE ef.file_id = mc.file_id AND r.context_generation = (SELECT generation FROM derived_context_state)"

@@ -203,6 +203,41 @@ def test_opening_a_session_is_telling_its_story(doors):
     assert doors.get("/stories/sessions/999999", follow_redirects=False).status_code == 404
 
 
+def test_a_range_spreads_to_what_the_asker_can_show_and_a_moment_names_its_picture(doors):
+    """/timeline/spread answers n pictures of a range spread through it
+    -- every k-th in moment order, never the first n -- and never more
+    than the asker asked; /timeline/at answers the picture a moment
+    points at: the nearest in time, either side."""
+    whole = doors.get("/timeline/pictures", params={"start": JUNE_10, "end": JUNE_10 + DAY}).json()["pictures"]
+    moments = [p["moment"] for p in whole]
+    asked = {"start": JUNE_10, "end": JUNE_10 + DAY}
+    three = doors.get("/timeline/spread", params={**asked, "n": 3}).json()["pictures"]
+    assert len(three) == 3
+    got = [p["moment"] for p in three]
+    assert got == sorted(got)
+    assert got[0] == moments[0], "the spread starts at the range's first picture"
+    assert got != moments[:3], "and is not simply the first three"
+    assert {p["slug"] for p in three} <= {p["slug"] for p in whole}
+    everything = doors.get("/timeline/spread", params={**asked, "n": 1_000}).json()["pictures"]
+    assert [p["moment"] for p in everything] == moments, "asking for more than there is answers all of it, once"
+    assert doors.get("/timeline/spread", params={**asked, "n": 0}).json()["pictures"], "n is at least one"
+    assert doors.get("/timeline/spread", params={"start": JUNE_10, "end": JUNE_10, "n": 3}).status_code == 400
+    at = doors.get("/timeline/at", params={"t": moments[2] + 1}).json()
+    assert at["slug"] == whole[2]["slug"], "a second after a picture: that picture"
+    just_before = doors.get("/timeline/at", params={"t": moments[2] - 1}).json()
+    assert just_before["slug"] == whole[2]["slug"], (
+        "a second before it: still that picture, not the one an hour earlier"
+    )
+    before_all = doors.get("/timeline/at", params={"t": moments[0] - 10 * 365 * DAY}).json()
+    assert before_all["moment"] == moments[0], "before everything: the oldest"
+    # by rank: the k-th of n, so a burst spreads over a segment's whole height
+    for k, want in ((0, whole[0]), (2, whole[2]), (len(whole) - 1, whole[-1]), (10_000, whole[-1]), (-3, whole[0])):
+        told = doors.get("/timeline/nth", params={**asked, "k": k}).json()
+        assert (told["slug"], told["of"]) == (want["slug"], len(whole)), k
+    assert doors.get("/timeline/nth", params={"start": 0, "end": 1, "k": 0}).status_code == 404
+    assert doors.get("/timeline/at", params={"t": JUNE_10, "f": "place.id:eq:999999"}).status_code in (400, 404)
+
+
 def test_a_week_starts_on_a_monday(doors):
     week = _density(doors, bin="week", start=JUNE_10 - 3 * DAY, end=JUNE_10 + 4 * DAY)
     assert week["bins"], "the June pictures fall in a week"

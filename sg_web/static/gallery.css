@@ -614,11 +614,13 @@ body {
 .caption .meta a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 /* a session is a title card: the lead picture with the headline set on it;
    the words are the door (to the story, or to telling it), the picture opens itself */
-.session-lead { position: relative; display: block; overflow: hidden; border-radius: 3px; background: var(--panel); max-height: 420px; }
-.session-lead > a:first-child { display: block; }
-.session-lead img { display: block; width: 100%; max-height: 420px; object-fit: cover; aspect-ratio: var(--r, 16 / 9); }
-/* a small picture is not blown up into a hero: it sits at a sane height, whole */
-.session-lead.small img { height: 300px; object-fit: contain; aspect-ratio: auto; background: var(--panel); }
+/* the lead is shown WHOLE at its own ratio, never cropped to a band of
+   nothing: the preview (1440px) sits centred at up to 420px tall, and the
+   same picture, blurred, fills the card behind it */
+.session-lead { position: relative; display: grid; place-items: center; overflow: hidden; border-radius: 3px; background: var(--panel); height: clamp(220px, 42vh, 420px); }
+.session-backdrop { position: absolute; inset: -24px; width: calc(100% + 48px); height: calc(100% + 48px); object-fit: cover; filter: blur(24px) saturate(.8) brightness(.55); }
+.session-lead-picture { position: relative; display: block; height: 100%; max-width: 100%; }
+.session-lead-picture img { display: block; height: 100%; width: auto; max-width: 100%; object-fit: contain; }
 .session-words { position: absolute; inset: auto 0 0 0; padding: 56px 18px 14px; background: linear-gradient(transparent, rgba(0, 0, 0, .78)); color: #fff; display: grid; gap: 2px; }
 .session-words:hover .session-title { text-decoration: underline; text-underline-offset: 4px; }
 .session-title { font-size: 22px; font-weight: 600; line-height: 1.15; letter-spacing: -.01em; text-shadow: 0 1px 12px rgba(0, 0, 0, .6); }
@@ -640,11 +642,17 @@ body {
 .scrubber { position: fixed; top: 64px; right: 0; bottom: 0; width: var(--scrubber); z-index: 3; user-select: none; touch-action: none; cursor: row-resize; outline: none; }
 .scrubber-track { position: absolute; inset: 12px 0 12px 0; background: var(--panel); }
 .segment { position: absolute; left: 0; right: 0; display: block; overflow: hidden; }
-.segment img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; opacity: .6; }
-.segment:hover img { opacity: 1; }
+/* a month with pictures is a strip of them, as many as its height shows,
+   its count at the foot; a run of empty months is one short dark band */
+.segment-strip { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols, 2), 1fr); grid-auto-rows: var(--tile, 30px); gap: 1px; align-content: start; }
+.segment-strip img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: .7; }
+.segment.held:hover .segment-strip img { opacity: 1; }
+.segment-strip img.under { opacity: 1; outline: 2px solid var(--imprint); outline-offset: -2px; z-index: 1; }
+.segment-count { position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 4px; font-size: 10px; font-family: ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(20, 21, 26, .8); text-align: right; }
+.segment.gap { background: repeating-linear-gradient(180deg, transparent 0 3px, color-mix(in srgb, var(--line) 70%, transparent) 3px 4px); }
 .segment:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
 .segment:focus-visible { outline: 1px solid var(--imprint); }
-.segment-year { position: absolute; right: 4px; padding: 0 3px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(20, 21, 26, .8); line-height: 1.3; transform: translateY(-50%); pointer-events: none; }
+.segment-year { position: absolute; left: 0; right: 0; padding: 1px 4px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; color: var(--imprint); background: rgba(20, 21, 26, .85); line-height: 1.3; pointer-events: none; }
 .scrubber-window { position: absolute; left: 0; right: 0; min-height: 4px; box-shadow: inset 0 0 0 2px var(--imprint); background: color-mix(in srgb, var(--imprint) 22%, transparent); pointer-events: none; }
 .scrubber-peek { position: absolute; right: calc(var(--scrubber) + 8px); width: 200px; transform: translateY(-50%); background: var(--panel); border-radius: 6px; overflow: hidden; box-shadow: 0 6px 24px rgba(0, 0, 0, .55); pointer-events: none; display: grid; }
 .scrubber-peek[hidden] { display: none; }
@@ -655,7 +663,7 @@ body {
 @media (pointer: coarse), (max-width: 760px) {
   .stage:has(> #timeline-swap) { --scrubber: 20px; }
   .segment-year { display: none; }
-  .segment img { display: none; }
+  .segment-strip, .segment-count { display: none; }
   .scrubber-peek { width: 150px; }
   .session-title { font-size: 18px; }
 }

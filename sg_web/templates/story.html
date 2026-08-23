@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block lang %}{{ story.renderer.locale }}{% endblock %}
 {% block title %}{{ story.title }}{% endblock %}
-{% block scripts %}<script src="/static/story.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/story.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">

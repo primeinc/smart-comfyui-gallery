@@ -341,13 +341,6 @@
     }
     return null;
   };
-  const timeAt = (seg, y) => {
-    const box = seg.getBoundingClientRect();
-    const f = Math.min(1, Math.max(0, (y - box.top) / (box.height || 1)));
-    const at = Number(seg.dataset.at);
-    const end = Number(seg.dataset.end);
-    return end - f * (end - at);
-  };
   const nearestWithPictures = (seg, y) => {
     if (Number(seg.dataset.pictures) > 0) return seg;
     let best = seg;
@@ -360,18 +353,90 @@
     }
     return best;
   };
+  // Each segment holds as many of its pictures as ITS pixels can show --
+  // a mosaic of tiles, filled from /timeline/spread with exactly that
+  // many, spread through the segment's whole span. Nothing presumes a
+  // count: a segment an inch tall shows a dozen, a screen tall a hundred.
+  const TILE = 30;
+  const scopeOf = () => new URLSearchParams(read()?.scope || "");
+  const fillSegments = () => {
+    for (const seg of swap.querySelectorAll(".segment.held")) {
+      const strip = seg.querySelector("[data-segment-strip]");
+      if (!strip || strip.dataset.filled) continue;
+      const box = seg.getBoundingClientRect();
+      const cols = Math.max(1, Math.floor(box.width / TILE));
+      const rows = Math.max(1, Math.floor(box.height / (TILE + 1)));
+      strip.style.setProperty("--cols", String(cols));
+      strip.style.setProperty("--tile", `${TILE}px`);
+      const n = Math.min(400, cols * rows);
+      strip.dataset.filled = String(n);
+      const qs = scopeOf();
+      qs.set("start", seg.dataset.at); qs.set("end", seg.dataset.end); qs.set("n", String(n));
+      fetch(`/timeline/spread?${qs}`, { headers: { accept: "application/json" } })
+        .then((r) => (r.ok ? r.json() : { pictures: [] }))
+        .then((told) => {
+          if (!strip.isConnected) return;
+          strip.replaceChildren(...told.pictures.map((p) => {
+            const img = document.createElement("img");
+            img.src = `/thumb/${p.slug}`; img.alt = ""; img.loading = "lazy"; img.draggable = false; img.dataset.moment = String(p.moment);
+            return img;
+          }));
+        });
+    }
+  };
+  fillSegments();
+  new MutationObserver(fillSegments).observe(swap, { childList: true });
+  window.addEventListener("resize", () => { for (const s of swap.querySelectorAll("[data-segment-strip]")) delete s.dataset.filled; fillSegments(); });
+
+  // The hand a fraction of the way down a segment points at a picture by
+  // RANK -- the k-th of its n in moment order, newest at the top -- never
+  // by time: a burst of thousands in one minute would otherwise map every
+  // position to its first or last. /timeline/nth answers it; one ask in
+  // flight at a time, the newest always the one that lands.
+  const rankAt = (seg, y) => {
+    const box = seg.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (y - box.top) / (box.height || 1)));
+    const n = Number(seg.dataset.pictures);
+    return Math.min(n - 1, Math.max(0, Math.round((1 - f) * (n - 1))));
+  };
+  let asking = 0;
+  const nth = (seg, y) => {
+    const mine = ++asking;
+    const qs = scopeOf();
+    qs.set("start", seg.dataset.at); qs.set("end", seg.dataset.end); qs.set("k", String(rankAt(seg, y)));
+    return fetch(`/timeline/nth?${qs}`, { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((told) => (mine === asking ? told : null));
+  };
   const peek = (seg, y) => {
     const card = swap.querySelector("[data-scrubber-peek]");
     if (!card) return;
+    for (const was of swap.querySelectorAll(".segment-strip img.under")) was.classList.remove("under");
     if (!seg) { card.hidden = true; return; }
     const rail = swap.querySelector("[data-scrubber]").getBoundingClientRect();
     card.hidden = false;
     card.style.top = `${Math.min(rail.height - 60, Math.max(40, y - rail.top))}px`;
-    const img = card.querySelector("img");
-    if (seg.dataset.face) { img.src = seg.dataset.face; img.hidden = false; } else { img.removeAttribute("src"); img.hidden = true; }
-    card.querySelector(".scrubber-peek-label").textContent = seg.dataset.label;
     const n = Number(seg.dataset.pictures);
-    card.querySelector(".scrubber-peek-count").textContent = n ? `${n.toLocaleString()} pictures` : "nothing";
+    const img = card.querySelector("img");
+    if (!n) {
+      img.removeAttribute("src"); img.hidden = true;
+      card.querySelector(".scrubber-peek-label").textContent = seg.dataset.label;
+      card.querySelector(".scrubber-peek-count").textContent = "nothing";
+      return;
+    }
+    nth(seg, y).then((told) => {
+      if (!told) return;
+      img.src = `/thumb/${told.slug}`; img.hidden = false;
+      card.querySelector(".scrubber-peek-label").textContent = told.spelled;
+      card.querySelector(".scrubber-peek-count").textContent = `${(told.k + 1).toLocaleString()} of ${told.of.toLocaleString()}`;
+      // the mosaic tile nearest that moment lights up
+      let best = null, nearest = Infinity;
+      for (const tile of seg.querySelectorAll(".segment-strip img[data-moment]")) {
+        const d = Math.abs(Number(tile.dataset.moment) - told.moment);
+        if (d < nearest) { nearest = d; best = tile; }
+      }
+      if (best) best.classList.add("under");
+    });
   };
 
   let scrub = null; // {held, rail, pointer, x, y, moved}
@@ -403,9 +468,15 @@
     if (!seg) return;
     const width = scrub.held.end - scrub.held.start;
     const target = nearestWithPictures(seg, event.clientY);
-    const t = target === seg ? timeAt(seg, event.clientY) : Number(target.dataset.end) - 1;
-    const end = Math.min(scrub.held.extentEnd, Math.max(scrub.held.extentStart + width, pull(scrub.held, t)));
-    live(end - width, end, true);
+    const held = scrub.held;
+    const land = (t) => {
+      const end = Math.min(held.extentEnd, Math.max(held.extentStart + width, t));
+      live(end - width, end, true);
+    };
+    // the window's newest edge lands on the picture the hand points at,
+    // by rank within the segment; an empty segment hands on to the nearest
+    if (target !== seg) { land(Number(target.dataset.end) - 1); return; }
+    nth(seg, event.clientY).then((told) => { if (told && scrub) land(told.moment + 1); });
   });
   const unscrub = () => {
     if (!scrub) return;
