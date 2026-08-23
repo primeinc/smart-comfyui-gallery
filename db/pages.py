@@ -1082,6 +1082,21 @@ MEDIA_PLACE = (
     " WHERE mc.file_id = ? AND mc.policy_version = ?"
 )
 
+#: Where one person was seen, by the primary clustering: each place and
+#: how many of their pictures are there, most first.
+PERSON_PLACES = (
+    "SELECT p.id, e.slug, p.name, p.kind, count(DISTINCT fp.file_id) AS pictures"
+    "  FROM derived_file_person fp JOIN derived_face_run r ON r.id = fp.run_id AND r.is_primary = 1"
+    "  JOIN derived_media_context mc ON mc.file_id = fp.file_id AND mc.policy_version = ?"
+    "  JOIN place p ON p.id = mc.place_id JOIN entity e ON e.id = p.id"
+    " WHERE fp.person_id = ? GROUP BY p.id ORDER BY pictures DESC, p.name COLLATE NOCASE"
+)
+
+
+def person_places(conn, person_id: int):
+    return conn.execute(PERSON_PLACES, (context.POLICY_VERSION, person_id)).fetchall()
+
+
 #: Every place named, with how many present pictures the current
 #: interpretation puts there, most first.
 PLACES_SHELF = (

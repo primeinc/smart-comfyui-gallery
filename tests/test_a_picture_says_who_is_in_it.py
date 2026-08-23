@@ -103,3 +103,27 @@ def test_the_page_says_whether_its_metadata_was_read_from_these_bytes(client):
         connect.close(conn)
     assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["read"] == "stale"
     assert "read from older bytes" in client.get(f"/i/{slug}", headers=AS_BROWSER).text
+
+
+def test_a_person_page_says_where_they_were_seen(client):
+    """Ana's pictures placed in Lisbon: her page lists Lisbon with how
+    many of her pictures are there and a door to exactly those."""
+    from db import authored, context, places
+
+    ids = [_slug(client, name)[0] for name in ("ana_1.png", "ana_2.png")]
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        lisbon = places.named(conn, "Lisbon", "city", 1.0)
+        for file_id in ids:
+            authored.set_place(conn, file_id, client.app.state.actor_id, lisbon, 1.0)
+            context.rebuild_one(conn, file_id, 1.0)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    told = client.get("/p/ana", headers=AS_MACHINE).json()
+    assert [(p["name"], p["kind"], p["pictures"]) for p in told["places"]] == [("Lisbon", "city", 2)]
+    assert "person=ana" in told["places"][0]["qs"]
+    assert "place.id%3Aeq%3A" in told["places"][0]["qs"]
+    page = client.get("/p/ana", headers=AS_BROWSER).text
+    assert "data-person-places" in page
+    assert "where they were seen" in page

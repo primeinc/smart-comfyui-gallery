@@ -25,6 +25,16 @@
         </form>
       </div>
     </section>
+    {% if person.places %}
+    <section class="detail-facts" data-person-places>
+      <h2>where they were seen</h2>
+      <ul>
+        {% for where in person.places %}
+        <li data-person-place="{{ where.slug }}"><a href="/g?{{ where.qs }}">{{ where.name }}</a> &middot; {{ where.kind }} &middot; {{ where.pictures }} of their pictures</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
     {% if person.sessions %}
     <section class="detail-facts" data-person-sessions>
       <h2>when they were seen</h2>

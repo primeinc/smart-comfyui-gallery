@@ -92,6 +92,17 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                 }
                 for event_id, kind, start, end, theirs, pictures, render_id in pages.person_sessions(conn, person_id)
             ],
+            "places": [
+                {
+                    "id": place_id,
+                    "slug": place_slug,
+                    "name": name,
+                    "kind": kind,
+                    "pictures": int(pictures),
+                    "qs": resultset.canonical(resultset.parse(person=slug, facets=[f"place.id:eq:{place_id}"])),
+                }
+                for place_id, place_slug, name, kind, pictures in pages.person_places(conn, person_id)
+            ],
             "across_folders": [
                 {"folder": f, "folder_slug": fs, "pictures": p}
                 for f, fs, p in pages.person_across_folders(conn, person_id)

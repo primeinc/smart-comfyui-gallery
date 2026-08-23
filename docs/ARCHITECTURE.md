@@ -214,11 +214,13 @@ derived_event  --freeze-->  story_snapshot  --plan-->  story_plan  --render-->  
 
 One planner per session kind -- `generation_history`, `capture_history`,
 `file_history` -- each reading only the evidence its kind carries; the
-plan grammar is versioned and frozen (`STORY_PLAN_V1..V6`), a stored
+plan grammar is versioned and frozen (`STORY_PLAN_V1..V7`), a stored
 document is judged by its own version forever. v6 added `seen`: what a
 captioning model said about a phase's members, read from the captions
 the snapshot froze -- every planner emits it, the renderer quotes one
-sentence and names the models under the technical profile. `story_renderers` words
+sentence and names the models under the technical profile. v7 added
+`located`: where a phase's members happened, from the place each
+member froze (a person's word), named in the render. `story_renderers` words
 every claim kind through a closed registry; a render cites what
 supports it and `violations()` proves the chain on every read. The
 timeline offers the whole chain behind one button per session.
