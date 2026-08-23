@@ -10,8 +10,10 @@
       <span class="crumbs-here">evolution</span>
     </nav>
   </header>
+  {# The shell is rendered from the document as HTML; the document itself is
+     never serialized in here for the browser to parse back out. The explorer
+     asks this same route for it, by Accept, and is given the one contract. #}
   <main class="stage evolution" data-evolution data-plan="{{ plan_id }}" data-sequenced="{{ 'yes' if view.plan.sequenced else 'no' }}">
-    <script type="application/json" data-evolution-view>{{ view | tojson }}</script>
     <h1>{{ view.plan.label }}</h1>
     <p class="evolution-provenance">
       <span>{{ view.snapshot.members }} {{ {"capture_session": "photographs", "file_session": "files"}.get(view.snapshot.subject, "images") }}</span>

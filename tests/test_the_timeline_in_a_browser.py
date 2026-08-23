@@ -116,6 +116,11 @@ def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page:
     page.click("[data-story-evolution]")
     page.wait_for_url("**/evolution", timeout=10_000)
     page.wait_for_selector("[data-evolution-story]", timeout=10_000)
+    # The crumb above is server-rendered and proves only that the shell
+    # arrived. The members are not in the HTML at all: they exist once the
+    # explorer has asked the same route for its document and drawn it, so
+    # this is the clause that holds the fetch.
+    page.wait_for_selector("[data-main] [data-ref]", timeout=10_000)
     page.goto("/timeline")
     page.wait_for_selector("[data-sessions] .session[data-session-story]", timeout=10_000)
     assert page.inner_text("[data-sessions] .session [data-session-story-title]").strip()

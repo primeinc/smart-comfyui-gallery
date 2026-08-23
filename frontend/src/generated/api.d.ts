@@ -1802,6 +1802,180 @@ export interface components {
             /** @default false */
             everything: boolean;
         };
+        /** EvolutionChanges */
+        EvolutionChanges: {
+            parameters: components["schemas"]["EvolutionParameterChange"][];
+            loras_added: string[];
+            loras_removed: string[];
+            lora_uuids_added: string[];
+            lora_uuids_removed: string[];
+        };
+        /** EvolutionClaim */
+        EvolutionClaim: {
+            id: string;
+            kind: string;
+            facts: {
+                [key: string]: unknown;
+            };
+        };
+        /** EvolutionEdge */
+        EvolutionEdge: {
+            parent: string;
+            child: string;
+            kind: string;
+        };
+        /** EvolutionGeneration */
+        EvolutionGeneration: {
+            seed: number | null;
+            steps: number | null;
+            cfg: number | null;
+            denoise: number | null;
+            clip_skip: number | null;
+            sampler: string | null;
+            scheduler: string | null;
+            width: number | null;
+            height: number | null;
+            tool: string | null;
+            model: string | null;
+            loras: string[];
+            lora_uuids: string[];
+        };
+        /** EvolutionLinks */
+        EvolutionLinks: {
+            story: string | null;
+            gallery_day: string | null;
+            search: string;
+            neighbours: string;
+        };
+        /** EvolutionMedia */
+        EvolutionMedia: {
+            uuid: string;
+            name: string;
+            kind: string;
+            content_sha256: string;
+            slug: string | null;
+            thumbnail: string | null;
+            page: string | null;
+        };
+        /** EvolutionMember */
+        EvolutionMember: {
+            ref: string;
+            phase_ref: string | null;
+            media: components["schemas"]["EvolutionMedia"];
+            occurrence: components["schemas"]["EvolutionOccurrence"] | null;
+            prompt: components["schemas"]["EvolutionPrompts"];
+            generation: components["schemas"]["EvolutionGeneration"];
+            metrics: components["schemas"]["EvolutionMetrics"];
+        };
+        /** EvolutionMetrics */
+        EvolutionMetrics: {
+            original_effective_cosine: number | null;
+            original_effective_cosine_unavailable?: string | null;
+            text_image_cosine: number | null;
+            text_image_cosine_unavailable?: string | null;
+        };
+        /** EvolutionOccurrence */
+        EvolutionOccurrence: {
+            kind: string;
+            basis: string;
+            certainty: number | null;
+            precision: string;
+            local_at: number | null;
+            instant_at: number | null;
+            tz_offset_min: number | null;
+            supports: string[];
+            conflicts: string[];
+            finished_at: number | null;
+            estimated_at: number | null;
+            source_order: number | null;
+            act_key: string | null;
+        };
+        /** EvolutionParameterChange */
+        EvolutionParameterChange: {
+            /** @enum {string} */
+            name: "seed" | "steps" | "cfg" | "denoise" | "clip_skip" | "sampler" | "scheduler" | "width" | "height" | "model";
+            before: number | string | null;
+            after: number | string | null;
+        };
+        /** EvolutionPhase */
+        EvolutionPhase: {
+            id: string;
+            label: string;
+            member_refs: string[];
+            representative_refs: string[];
+            claims: components["schemas"]["EvolutionClaim"][];
+        };
+        /** EvolutionPlan */
+        EvolutionPlan: {
+            id: number;
+            sha256: string;
+            format: number;
+            sequenced: boolean;
+            unsupported: components["schemas"]["EvolutionUnsupported"][];
+            label: string;
+        };
+        /** EvolutionPrompt */
+        EvolutionPrompt: {
+            text: string;
+            hash: string;
+            main: string;
+            main_hash: string;
+            prompt_id: number | null;
+        };
+        /** EvolutionPrompts */
+        EvolutionPrompts: {
+            effective: components["schemas"]["EvolutionPrompt"] | null;
+            original: components["schemas"]["EvolutionPrompt"] | null;
+        };
+        /** EvolutionSemantic */
+        EvolutionSemantic: {
+            provider: string | null;
+            space_id: number | null;
+            space: string | null;
+            prompt_policy_hash: string | null;
+            unavailable: string | null;
+        };
+        /** EvolutionSnapshot */
+        EvolutionSnapshot: {
+            sha256: string;
+            time: components["schemas"]["EvolutionTime"];
+            members: number;
+            subject: string;
+        };
+        /** EvolutionTime */
+        EvolutionTime: {
+            local: number[] | null;
+            instant: number[] | null;
+        };
+        /** EvolutionTransition */
+        EvolutionTransition: {
+            before: string;
+            after: string;
+            phase_boundary: boolean;
+            prompt_cosine: number | null;
+            prompt_cosine_unavailable?: string | null;
+            visual_cosine: number | null;
+            visual_cosine_unavailable?: string | null;
+            changes: components["schemas"]["EvolutionChanges"];
+        };
+        /** EvolutionUnsupported */
+        EvolutionUnsupported: {
+            kind: string;
+            reason: string;
+            member_refs?: string[] | null;
+        };
+        /** EvolutionView */
+        EvolutionView: {
+            v: number;
+            plan: components["schemas"]["EvolutionPlan"];
+            snapshot: components["schemas"]["EvolutionSnapshot"];
+            semantic: components["schemas"]["EvolutionSemantic"];
+            phases: components["schemas"]["EvolutionPhase"][];
+            members: components["schemas"]["EvolutionMember"][];
+            transitions: components["schemas"]["EvolutionTransition"][];
+            lineage: components["schemas"]["EvolutionEdge"][];
+            links: components["schemas"]["EvolutionLinks"];
+        };
         /** FailedItem */
         FailedItem: {
             id: number;
@@ -4174,13 +4348,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description One story plan measured over its frozen evidence, in one semantic space */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EvolutionView"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

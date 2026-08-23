@@ -1,296 +1,431 @@
 // The Generation Evolution Explorer page: several presentations of ONE
-// EvolutionView (embedded JSON from db/evolution.py). This file draws;
-// it decides nothing -- phases, families and chronology come from the
-// plan, every number from the view. No fetches, no writes.
+// EvolutionView. This file draws; it decides nothing -- phases, families and
+// chronology come from the plan, every number from the view. No writes, no
+// model work.
+//
+// The document arrives from the same route that rendered the shell
+// (/stories/plans/{id}/evolution, by Accept), typed from the application's
+// own contract. It is not serialized into the HTML for this file to parse
+// back out: there is one document and one description of it.
+import { api } from "./api";
+import { closestFrom, everyElement, requireData, requireElement } from "./dom";
+import type { components } from "./generated/api";
+
+type EvolutionView = components["schemas"]["EvolutionView"];
+type Member = components["schemas"]["EvolutionMember"];
+type Transition = components["schemas"]["EvolutionTransition"];
+type Generation = components["schemas"]["EvolutionGeneration"];
+
+/** The recipe facts the tables show, in the order they show them. */
+const SEQUENCE_FACTS = ["model", "loras", "sampler", "seed"] satisfies (keyof Generation)[];
+const COMPARE_FACTS = [
+  "model",
+  "loras",
+  "sampler",
+  "steps",
+  "cfg",
+  "seed",
+  "scheduler",
+  "width",
+  "height",
+] satisfies (keyof Generation)[];
+
+const NOUNS: Readonly<Record<string, string>> = { capture_session: "photographs", file_session: "files" };
+const ENTITIES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"']/g, (c) => ENTITIES[c] ?? c);
+const pct = (v: number | null): string => (v === null ? "—" : `${Math.round(v * 100)}%`);
+
+/** A generation fact as one cell: a list joined, a missing value a dash. */
+function spell(value: Generation[keyof Generation]): string {
+  if (Array.isArray(value)) return esc(value.join(", "));
+  return esc(value ?? "—");
+}
+
 (() => {
-  const root = document.querySelector("[data-evolution]");
-  if (!root) return;
-  const view = JSON.parse(root.querySelector("[data-evolution-view]").textContent);
-  const main = root.querySelector("[data-main]");
-  const selectedPane = root.querySelector("[data-selected]");
-  const inspector = root.querySelector("[data-inspector]");
-  const members = new Map(view.members.map((m) => [m.ref, m]));
-  const transitionTo = new Map(view.transitions.map((t) => [t.to, t]));
-  const state = { tab: view.plan.sequenced ? "sequence" : "families", selected: null, pair: null };
+  const root = requireElement(document, "[data-evolution]", HTMLElement);
+  const main = requireElement(root, "[data-main]", HTMLElement);
+  const selectedPane = requireElement(root, "[data-selected]", HTMLElement);
+  const inspector = requireElement(root, "[data-inspector]", HTMLElement);
 
-  const esc = (s) =>
-    String(s ?? "").replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
-  const pct = (v) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
-  const thumb = (m, cls = "member") =>
-    m.media.thumbnail
-      ? `<img class="${cls}" data-ref="${m.ref}" src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}" title="${esc(m.ref)} · ${esc(m.media.name)}">`
-      : `<span class="${cls}" data-ref="${m.ref}" title="${esc(m.media.name)} (file gone)"></span>`;
+  const planId = Number(requireData(root, "plan"));
+  // the page was rendered in one semantic space; the document is asked for
+  // in the same one, so the numbers on screen are all from one measurement
+  const space = new URLSearchParams(window.location.search).get("space");
 
-  // the claimed time, and the filesystem's estimate beside it -- marked
-  const clock = (wall) => new Date(wall * 1000).toISOString().slice(11, 19);
-  const when = (m) => {
-    const o = m.occurrence;
-    if (!o || o.local_at === null || o.local_at === undefined) return "";
-    let told = ` · ${esc(o.precision)} ${clock(o.local_at)} (${esc(o.basis)})`;
-    if (o.estimated_at !== null && o.estimated_at !== undefined)
-      told += ` <span class="chip chip-inferred" title="finish ${clock(new Date(o.finished_at * 1000).getTime() / 1000 + new Date().getTimezoneOffset() * -60)} minus generation time">≈ ${clock(o.estimated_at)} inferred</span>`;
-    if (o.conflicts?.length)
-      told += ` <span class="chip chip-conflict" title="${esc(o.conflicts.join("; "))}">contested</span>`;
-    return told;
-  };
-
-  // --- token diff: longest common subsequence over whitespace tokens ----
-  function diffTokens(a, b) {
-    const x = a ? a.split(/\s+/) : [],
-      y = b ? b.split(/\s+/) : [];
-    const n = x.length,
-      m = y.length;
-    const L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-    for (let i = n - 1; i >= 0; i--)
-      for (let j = m - 1; j >= 0; j--)
-        L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-    const out = [];
-    let i = 0,
-      j = 0;
-    while (i < n && j < m) {
-      if (x[i] === y[j]) {
-        out.push(esc(x[i]));
-        i++;
-        j++;
-      } else if (L[i + 1][j] >= L[i][j + 1]) {
-        out.push(`<del>${esc(x[i])}</del>`);
-        i++;
-      } else {
-        out.push(`<ins>${esc(y[j])}</ins>`);
-        j++;
+  api
+    .GET("/stories/plans/{plan_id}/evolution", {
+      params: { path: { plan_id: planId }, query: space === null ? {} : { space } },
+    })
+    .then(({ data }) => {
+      if (data === undefined) {
+        main.textContent = "the plan's measurements could not be read";
+        return;
       }
+      explore(data);
+    }, console.error);
+
+  function explore(view: EvolutionView): void {
+    const members = new Map<string, Member>(view.members.map((m) => [m.ref, m]));
+    const transitionTo = new Map<string, Transition>(view.transitions.map((t) => [t.after, t]));
+    const noun = NOUNS[view.snapshot.subject] ?? "images";
+    let selected: string | null = null;
+    let pair: readonly [string, string] | null = null;
+
+    const member = (ref: string | null): Member | undefined => (ref === null ? undefined : members.get(ref));
+
+    const thumb = (m: Member | undefined, cls = "member"): string => {
+      if (m === undefined) return "";
+      if (m.media.thumbnail === null) {
+        return `<span class="${cls}" data-ref="${esc(m.ref)}" title="${esc(m.media.name)} (file gone)"></span>`;
+      }
+      return `<img class="${cls}" data-ref="${esc(m.ref)}" src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}" title="${esc(m.ref)} · ${esc(m.media.name)}">`;
+    };
+
+    // the claimed time, and the filesystem's estimate beside it -- marked
+    const clock = (wall: number): string => new Date(wall * 1000).toISOString().slice(11, 19);
+    const when = (m: Member): string => {
+      const o = m.occurrence;
+      if (o === null || o.local_at === null) return "";
+      let told = ` · ${esc(o.precision)} ${clock(o.local_at)} (${esc(o.basis)})`;
+      if (o.estimated_at !== null) {
+        const finish = o.finished_at === null ? "" : `finish ${clock(o.finished_at)} minus generation time`;
+        told += ` <span class="chip chip-inferred" title="${esc(finish)}">≈ ${clock(o.estimated_at)} inferred</span>`;
+      }
+      if (o.conflicts.length) {
+        told += ` <span class="chip chip-conflict" title="${esc(o.conflicts.join("; "))}">contested</span>`;
+      }
+      return told;
+    };
+
+    const metric = (label: string, v: number | null, why: string | null): string =>
+      `<dt>${label}</dt><dd title="${esc(why)}">${pct(v)}${v === null ? ` <small>${esc(why)}</small>` : ""}</dd>`;
+
+    // --- presentations ---------------------------------------------------
+    function sequence(): void {
+      const strip = view.phases
+        .map(
+          (p) =>
+            `<div class="phase" data-phase="${esc(p.id)}"><h3>${esc(p.label)}</h3><div class="members">${p.member_refs
+              .map((r) => thumb(members.get(r)))
+              .join("")}</div></div>`,
+        )
+        .join("");
+      // a file or capture session carries no prompt and no generator
+      // parameters: only the rows its evidence can fill are drawn
+      const generated = view.snapshot.subject === "generation_session";
+      const rows: [string, (t: Transition) => number | null, (t: Transition) => string | null][] = [
+        ...(generated
+          ? ([["prompt vs previous", (t) => t.prompt_cosine, (t) => t.prompt_cosine_unavailable ?? null]] as [
+              string,
+              (t: Transition) => number | null,
+              (t: Transition) => string | null,
+            ][])
+          : []),
+        ["image vs previous", (t) => t.visual_cosine, (t) => t.visual_cosine_unavailable ?? null],
+      ];
+      const head = `<tr><th></th>${view.members.map((m) => `<th>${esc(m.ref.replace("member-", ""))}</th>`).join("")}</tr>`;
+      const body = rows
+        .map(([label, get, why]) => {
+          const cells = view.members.map((m, i) => {
+            const t = transitionTo.get(m.ref);
+            if (i === 0 || t === undefined) return "<td>·</td>";
+            const v = get(t);
+            const cls = (t.phase_boundary ? "boundary " : "") + (v === null ? "unavailable" : "");
+            return `<td class="${cls}" title="${esc(why(t))}">${pct(v)}</td>`;
+          });
+          return `<tr><th>${label}</th>${cells.join("")}</tr>`;
+        })
+        .join("");
+      const facts = (generated ? SEQUENCE_FACTS : [])
+        .map(
+          (key) =>
+            `<tr><th>${key}</th>${view.members
+              .map((m) => {
+                const boundary = transitionTo.get(m.ref)?.phase_boundary ?? false;
+                return `<td class="${boundary ? "boundary" : ""}">${spell(m.generation[key])}</td>`;
+              })
+              .join("")}</tr>`,
+        )
+        .join("");
+      main.innerHTML = `<div class="filmstrip">${strip}</div><div class="tracks"><table>${head}${body}${facts}</table></div>`;
     }
-    while (i < n) out.push(`<del>${esc(x[i++])}</del>`);
-    while (j < m) out.push(`<ins>${esc(y[j++])}</ins>`);
-    return out.join(" ");
-  }
 
-  const noun = { capture_session: "photographs", file_session: "files" }[view.snapshot.subject] || "images";
-
-  // --- presentations -----------------------------------------------------
-  function sequence() {
-    const strip = view.phases
-      .map(
-        (p) =>
-          `<div class="phase" data-phase="${p.id}"><h3>${esc(p.label)}</h3><div class="members">${p.member_refs.map((r) => thumb(members.get(r))).join("")}</div></div>`,
-      )
-      .join("");
-    // a file or capture session carries no prompt and no generator
-    // parameters: only the rows its evidence can fill are drawn
-    const generated = view.snapshot.subject === "generation_session";
-    const rows = [
-      ...(generated ? [["prompt vs previous", (t) => t.prompt_cosine, (t) => t.prompt_cosine_unavailable]] : []),
-      ["image vs previous", (t) => t.visual_cosine, (t) => t.visual_cosine_unavailable],
-    ];
-    const head = `<tr><th></th>${view.members.map((m) => `<th>${esc(m.ref.replace("member-", ""))}</th>`).join("")}</tr>`;
-    const body = rows
-      .map(([label, get, why]) => {
-        const cells = view.members.map((m, i) => {
-          if (i === 0) return "<td>·</td>";
-          const t = transitionTo.get(m.ref);
-          const v = get(t);
-          const cls = (t.phase_boundary ? "boundary " : "") + (v === null ? "unavailable" : "");
-          return `<td class="${cls}" title="${esc(why(t) || "")}">${pct(v)}</td>`;
-        });
-        return `<tr><th>${label}</th>${cells.join("")}</tr>`;
-      })
-      .join("");
-    const facts = (generated ? ["model", "loras", "sampler", "seed"] : [])
-      .map(
-        (key) =>
-          `<tr><th>${key}</th>${view.members
-            .map((m) => {
-              const v = m.generation[key];
-              const t = transitionTo.get(m.ref);
-              const cls = t?.phase_boundary ? "boundary" : "";
-              return `<td class="${cls}">${esc(Array.isArray(v) ? v.join(", ") : (v ?? "—"))}</td>`;
-            })
-            .join("")}</tr>`,
-      )
-      .join("");
-    main.innerHTML = `<div class="filmstrip">${strip}</div><div class="tracks"><table>${head}${body}${facts}</table></div>`;
-  }
-
-  function drift() {
-    const W = 420,
-      H = 320,
-      pad = 36;
-    const dots = view.transitions
-      .filter((t) => t.prompt_cosine !== null && t.visual_cosine !== null)
-      .map((t) => {
-        const x = pad + (1 - Math.max(0, t.prompt_cosine)) * (W - 2 * pad);
-        const y = H - pad - (1 - Math.max(0, t.visual_cosine)) * (H - 2 * pad);
-        return `<circle data-pair="${t.from}|${t.to}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${t.phase_boundary ? "#fc6" : "#6cf"}"><title>${t.from} → ${t.to}: prompt ${pct(t.prompt_cosine)}, image ${pct(t.visual_cosine)}</title></circle>`;
-      })
-      .join("");
-    const missing =
-      view.transitions.length -
-      view.transitions.filter((t) => t.prompt_cosine !== null && t.visual_cosine !== null).length;
-    main.innerHTML = `<div class="drift"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    function drift(): void {
+      const W = 420;
+      const H = 320;
+      const pad = 36;
+      const drawn = view.transitions.filter(
+        (t): t is Transition & { prompt_cosine: number; visual_cosine: number } =>
+          t.prompt_cosine !== null && t.visual_cosine !== null,
+      );
+      const dots = drawn
+        .map((t) => {
+          const x = pad + (1 - Math.max(0, t.prompt_cosine)) * (W - 2 * pad);
+          const y = H - pad - (1 - Math.max(0, t.visual_cosine)) * (H - 2 * pad);
+          return `<circle data-pair="${esc(t.before)}|${esc(t.after)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${t.phase_boundary ? "#fc6" : "#6cf"}"><title>${esc(t.before)} → ${esc(t.after)}: prompt ${pct(t.prompt_cosine)}, image ${pct(t.visual_cosine)}</title></circle>`;
+        })
+        .join("");
+      const missing = view.transitions.length - drawn.length;
+      main.innerHTML = `<div class="drift"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
       <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#555"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#555"/>
       <text x="${W / 2}" y="${H - 8}" fill="#aaa" font-size="11" text-anchor="middle">prompt change from previous →</text>
       <text x="12" y="${H / 2}" fill="#aaa" font-size="11" text-anchor="middle" transform="rotate(-90 12 ${H / 2})">image change from previous →</text>
       ${dots}</svg>
       <p class="evolution-provenance">each dot is one transition; yellow dots cross a plan phase boundary${missing ? `; ${missing} transition(s) lack a vector and are not drawn` : ""}</p></div>`;
-  }
-
-  function families() {
-    main.innerHTML = `<div class="families">${view.phases
-      .map(
-        (
-          p,
-        ) => `<div class="family" data-phase="${p.id}"><h3>${esc(p.label)} <small>· ${p.member_refs.length}</small></h3>
-        <p class="claims">${p.claims.map((c) => esc(c.kind)).join(" · ") || "no claims"}</p>
-        <div class="members">${p.member_refs.map((r) => thumb(members.get(r), p.representative_refs.includes(r) ? "member hero" : "member")).join("")}</div></div>`,
-      )
-      .join("")}</div>`;
-  }
-
-  function lineage() {
-    if (!view.lineage.length) {
-      main.innerHTML = `<p class="empty">no derivation edges among these ${noun}</p>`;
-      return;
     }
-    const children = new Map();
-    view.lineage.forEach((e) => {
-      if (!children.has(e.parent)) children.set(e.parent, []);
-      children.get(e.parent).push(e);
-    });
-    const isChild = new Set(view.lineage.map((e) => e.child));
-    const roots = [...new Set(view.lineage.map((e) => e.parent))].filter((p) => !isChild.has(p));
-    const node = (ref, kind) => {
-      const m = members.get(ref);
-      const label = m
-        ? `${thumb(m)} ${esc(ref)}`
-        : `<span class="kind">outside the session</span> ${esc(ref.slice(0, 8))}`;
-      const kids = (children.get(ref) || []).map((e) => node(e.child, e.kind)).join("");
-      return `<li>${label}${kind ? ` <span class="kind">${esc(kind)}</span>` : ""}${kids ? `<ul>${kids}</ul>` : ""}</li>`;
-    };
-    main.innerHTML = `<div class="lineage"><ul>${roots.map((r) => node(r, null)).join("")}</ul></div>`;
-  }
 
-  function compare() {
-    const [a, b] = state.pair || [];
-    if (!a || !b) {
-      main.innerHTML = `<p class="empty">select two images (click one, then shift-click another)</p>`;
-      return;
-    }
-    const A = members.get(a),
-      B = members.get(b);
-    const t = view.transitions.find((x) => (x.from === a && x.to === b) || (x.from === b && x.to === a));
-    const edge = view.lineage.find((e) => (e.parent === a && e.child === b) || (e.parent === b && e.child === a));
-    const rows = ["model", "loras", "sampler", "steps", "cfg", "seed", "scheduler", "width", "height"]
-      .map((k) => {
-        const va = A.generation[k],
-          vb = B.generation[k];
-        const same = JSON.stringify(va) === JSON.stringify(vb);
-        return `<tr><th>${k}</th><td>${same ? "same" : `${esc(Array.isArray(va) ? va.join(", ") : (va ?? "—"))} → ${esc(Array.isArray(vb) ? vb.join(", ") : (vb ?? "—"))}`}</td></tr>`;
-      })
-      .join("");
-    main.innerHTML = `<div class="compare"><div>${thumb(A, "big")}<p>${esc(A.ref)} · ${esc(A.media.name)}</p></div><div>${thumb(B, "big")}<p>${esc(B.ref)} · ${esc(B.media.name)}</p></div>
-      <div class="metrics" style="grid-column: 1 / -1"><dl>
-        <dt>prompt cosine (consecutive only)</dt><dd>${t ? pct(t.prompt_cosine) : "not consecutive"}</dd>
-        <dt>visual cosine (consecutive only)</dt><dd>${t ? pct(t.visual_cosine) : "not consecutive"}</dd>
-        <dt>lineage</dt><dd>${edge ? `${esc(edge.parent)} → ${esc(edge.child)} (${esc(edge.kind)})` : "no derivation edge"}</dd>
-        <dt>prompt diff</dt><dd class="evolution-diff">${diffTokens(A.prompt.effective?.main, B.prompt.effective?.main)}</dd>
-      </dl><table class="tracks">${rows}</table></div></div>`;
-  }
-
-  // --- panels ------------------------------------------------------------
-  function selected() {
-    const m = members.get(state.selected);
-    if (!m) {
-      selectedPane.innerHTML = `<p class="empty">select an image</p>`;
-      return;
-    }
-    const eff = m.prompt.effective,
-      org = m.prompt.original;
-    const links = [];
-    if (m.media.page) links.push(`<a href="${esc(m.media.page)}">open image</a>`);
-    if (eff && view.links.search)
-      links.push(`<a href="${esc(view.links.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
-    if (eff && eff.prompt_id !== null && view.semantic.provider)
-      links.push(
-        `<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`,
-      );
-    if (view.links.gallery_day) links.push(`<a href="${esc(view.links.gallery_day)}">this day in the gallery</a>`);
-    selectedPane.innerHTML = `${m.media.thumbnail ? `<img src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}">` : ""}
-      <h2>${esc(m.ref)} · ${esc(m.media.name)}</h2>
-      <p class="evolution-provenance">${esc(m.phase_ref || "")}${when(m)}</p>
-      <h3>effective prompt</h3><pre>${esc(eff ? eff.text : "— not frozen —")}</pre>
-      ${org ? `<h3>as written</h3><pre>${esc(org.text)}</pre><h3>written → ran</h3><p class="evolution-diff">${diffTokens(org.main, eff ? eff.main : "")}</p>` : `<p class="evolution-provenance">no original prompt was recorded by the generator</p>`}
-      <p class="links">${links.join("")}</p>`;
-  }
-
-  function inspect() {
-    const m = members.get(state.selected);
-    if (!m) {
-      inspector.innerHTML = "";
-      return;
-    }
-    const t = transitionTo.get(m.ref);
-    const metric = (label, v, why) =>
-      `<dt>${label}</dt><dd title="${esc(why || "")}">${pct(v)}${v === null ? ` <small>${esc(why || "")}</small>` : ""}</dd>`;
-    let html = `<dl class="metrics">${metric("written → ran", m.metrics.original_effective_cosine, m.metrics.original_effective_cosine_unavailable)}${metric("prompt ↔ image", m.metrics.text_image_cosine, m.metrics.text_image_cosine_unavailable)}</dl>`;
-    if (t) {
-      const changes = Object.entries(t.changes)
-        .filter(([, v]) => !(Array.isArray(v) && !v.length))
+    function families(): void {
+      main.innerHTML = `<div class="families">${view.phases
         .map(
-          ([k, v]) =>
-            `<tr><th>${k}</th><td>${Array.isArray(v) ? esc(v.join(", ")) : `${esc(v.from ?? "—")} → ${esc(v.to ?? "—")}`}</td></tr>`,
+          (
+            p,
+          ) => `<div class="family" data-phase="${esc(p.id)}"><h3>${esc(p.label)} <small>· ${p.member_refs.length}</small></h3>
+        <p class="claims">${p.claims.map((c) => esc(c.kind)).join(" · ") || "no claims"}</p>
+        <div class="members">${p.member_refs
+          .map((r) => thumb(members.get(r), p.representative_refs.includes(r) ? "member hero" : "member"))
+          .join("")}</div></div>`,
         )
-        .join("");
-      html += `<h3>from ${esc(t.from)}${t.phase_boundary ? " · phase boundary" : ""}</h3><dl class="metrics">${metric("prompt similarity", t.prompt_cosine, t.prompt_cosine_unavailable)}${metric("visual similarity", t.visual_cosine, t.visual_cosine_unavailable)}</dl><table class="tracks">${changes || "<tr><td>nothing else changed</td></tr>"}</table>`;
-    } else if (!view.plan.sequenced) {
-      html += `<p class="evolution-provenance">no transitions: the evidence does not establish an order</p>`;
+        .join("")}</div>`;
     }
-    const edges = view.lineage.filter((e) => e.parent === m.ref || e.child === m.ref);
-    if (edges.length)
-      html += `<h3>lineage</h3><ul class="lineage">${edges.map((e) => `<li>${esc(e.parent)} → ${esc(e.child)} <span class="kind">${esc(e.kind)}</span></li>`).join("")}</ul>`;
-    inspector.innerHTML = html;
-  }
 
-  function draw() {
-    ({ sequence, drift, families, lineage, compare })[state.tab]();
-    for (const b of root.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === state.tab);
-    for (const el of root.querySelectorAll("[data-ref]")) {
-      el.classList.toggle("on", el.dataset.ref === state.selected);
-      el.classList.toggle(
-        "pair",
-        !!state.pair && state.pair.includes(el.dataset.ref) && el.dataset.ref !== state.selected,
+    function lineage(): void {
+      if (!view.lineage.length) {
+        main.innerHTML = `<p class="empty">no derivation edges among these ${noun}</p>`;
+        return;
+      }
+      const children = new Map<string, string[]>();
+      for (const e of view.lineage) {
+        const held = children.get(e.parent);
+        if (held === undefined) children.set(e.parent, [e.child]);
+        else held.push(e.child);
+      }
+      const kindOf = new Map(view.lineage.map((e) => [`${e.parent}|${e.child}`, e.kind]));
+      const isChild = new Set(view.lineage.map((e) => e.child));
+      const roots = [...new Set(view.lineage.map((e) => e.parent))].filter((p) => !isChild.has(p));
+      const node = (ref: string, kind: string | null): string => {
+        const m = members.get(ref);
+        const label =
+          m === undefined
+            ? `<span class="kind">outside the session</span> ${esc(ref.slice(0, 8))}`
+            : `${thumb(m)} ${esc(ref)}`;
+        const kids = (children.get(ref) ?? [])
+          .map((child) => node(child, kindOf.get(`${ref}|${child}`) ?? null))
+          .join("");
+        return `<li>${label}${kind === null ? "" : ` <span class="kind">${esc(kind)}</span>`}${kids ? `<ul>${kids}</ul>` : ""}</li>`;
+      };
+      main.innerHTML = `<div class="lineage"><ul>${roots.map((r) => node(r, null)).join("")}</ul></div>`;
+    }
+
+    function compare(): void {
+      const A = pair === null ? undefined : members.get(pair[0]);
+      const B = pair === null ? undefined : members.get(pair[1]);
+      if (A === undefined || B === undefined) {
+        main.innerHTML = `<p class="empty">select two images (click one, then shift-click another)</p>`;
+        return;
+      }
+      const t = view.transitions.find(
+        (x) => (x.before === A.ref && x.after === B.ref) || (x.before === B.ref && x.after === A.ref),
       );
+      const edge = view.lineage.find(
+        (e) => (e.parent === A.ref && e.child === B.ref) || (e.parent === B.ref && e.child === A.ref),
+      );
+      const rows = COMPARE_FACTS.map((k) => {
+        const va = A.generation[k];
+        const vb = B.generation[k];
+        const same = JSON.stringify(va) === JSON.stringify(vb);
+        return `<tr><th>${k}</th><td>${same ? "same" : `${spell(va)} → ${spell(vb)}`}</td></tr>`;
+      }).join("");
+      main.innerHTML = `<div class="compare"><div>${thumb(A, "big")}<p>${esc(A.ref)} · ${esc(A.media.name)}</p></div><div>${thumb(B, "big")}<p>${esc(B.ref)} · ${esc(B.media.name)}</p></div>
+      <div class="metrics" style="grid-column: 1 / -1"><dl>
+        <dt>prompt cosine (consecutive only)</dt><dd>${t === undefined ? "not consecutive" : pct(t.prompt_cosine)}</dd>
+        <dt>visual cosine (consecutive only)</dt><dd>${t === undefined ? "not consecutive" : pct(t.visual_cosine)}</dd>
+        <dt>lineage</dt><dd>${edge === undefined ? "no derivation edge" : `${esc(edge.parent)} → ${esc(edge.child)} (${esc(edge.kind)})`}</dd>
+        <dt>prompt diff</dt><dd class="evolution-diff">${diffTokens(A.prompt.effective?.main ?? "", B.prompt.effective?.main ?? "")}</dd>
+      </dl><table class="tracks">${rows}</table></div></div>`;
     }
-    for (const el of root.querySelectorAll("[data-pair]")) {
-      el.classList.toggle("on", !!state.pair && el.dataset.pair === state.pair.join("|"));
-    }
-    selected();
-    inspect();
-  }
 
-  root.addEventListener("click", (event) => {
-    const tab = event.target.closest("[data-tab]");
-    if (tab) {
-      state.tab = tab.dataset.tab;
-      draw();
-      return;
+    // --- panels ----------------------------------------------------------
+    function panel(): void {
+      const m = member(selected);
+      if (m === undefined) {
+        selectedPane.innerHTML = `<p class="empty">select an image</p>`;
+        return;
+      }
+      const eff = m.prompt.effective;
+      const org = m.prompt.original;
+      const links: string[] = [];
+      if (m.media.page !== null) links.push(`<a href="${esc(m.media.page)}">open image</a>`);
+      if (eff !== null) {
+        links.push(`<a href="${esc(view.links.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
+      }
+      if (eff !== null && eff.prompt_id !== null && view.semantic.provider !== null) {
+        links.push(
+          `<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`,
+        );
+      }
+      if (view.links.gallery_day !== null) {
+        links.push(`<a href="${esc(view.links.gallery_day)}">this day in the gallery</a>`);
+      }
+      selectedPane.innerHTML = `${m.media.thumbnail === null ? "" : `<img src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}">`}
+      <h2>${esc(m.ref)} · ${esc(m.media.name)}</h2>
+      <p class="evolution-provenance">${esc(m.phase_ref)}${when(m)}</p>
+      <h3>effective prompt</h3><pre>${esc(eff === null ? "— not frozen —" : eff.text)}</pre>
+      ${
+        org === null
+          ? `<p class="evolution-provenance">no original prompt was recorded by the generator</p>`
+          : `<h3>as written</h3><pre>${esc(org.text)}</pre><h3>written → ran</h3><p class="evolution-diff">${diffTokens(org.main, eff?.main ?? "")}</p>`
+      }
+      <p class="links">${links.join("")}</p>`;
     }
-    const dot = event.target.closest("[data-pair]");
-    if (dot) {
-      state.pair = dot.dataset.pair.split("|");
-      state.selected = state.pair[1];
-      draw();
-      return;
+
+    function inspect(): void {
+      const m = member(selected);
+      if (m === undefined) {
+        inspector.innerHTML = "";
+        return;
+      }
+      const t = transitionTo.get(m.ref);
+      let html = `<dl class="metrics">${metric(
+        "written → ran",
+        m.metrics.original_effective_cosine,
+        m.metrics.original_effective_cosine_unavailable ?? null,
+      )}${metric("prompt ↔ image", m.metrics.text_image_cosine, m.metrics.text_image_cosine_unavailable ?? null)}</dl>`;
+      if (t !== undefined) {
+        const rows = [
+          ...t.changes.parameters.map(
+            (one) => `<tr><th>${esc(one.name)}</th><td>${spell(one.before)} → ${spell(one.after)}</td></tr>`,
+          ),
+          ...(t.changes.loras_added.length
+            ? [`<tr><th>loras_added</th><td>${esc(t.changes.loras_added.join(", "))}</td></tr>`]
+            : []),
+          ...(t.changes.loras_removed.length
+            ? [`<tr><th>loras_removed</th><td>${esc(t.changes.loras_removed.join(", "))}</td></tr>`]
+            : []),
+        ].join("");
+        html += `<h3>from ${esc(t.before)}${t.phase_boundary ? " · phase boundary" : ""}</h3><dl class="metrics">${metric(
+          "prompt similarity",
+          t.prompt_cosine,
+          t.prompt_cosine_unavailable ?? null,
+        )}${metric("visual similarity", t.visual_cosine, t.visual_cosine_unavailable ?? null)}</dl><table class="tracks">${rows || "<tr><td>nothing else changed</td></tr>"}</table>`;
+      } else if (!view.plan.sequenced) {
+        html += `<p class="evolution-provenance">no transitions: the evidence does not establish an order</p>`;
+      }
+      const edges = view.lineage.filter((e) => e.parent === m.ref || e.child === m.ref);
+      if (edges.length) {
+        html += `<h3>lineage</h3><ul class="lineage">${edges
+          .map((e) => `<li>${esc(e.parent)} → ${esc(e.child)} <span class="kind">${esc(e.kind)}</span></li>`)
+          .join("")}</ul>`;
+      }
+      inspector.innerHTML = html;
     }
-    const el = event.target.closest("[data-ref]");
-    if (!el) return;
-    if (event.shiftKey && state.selected && state.selected !== el.dataset.ref) {
-      state.pair = [state.selected, el.dataset.ref];
-      state.tab = "compare";
-    } else state.selected = el.dataset.ref;
+
+    const panels = { sequence, drift, families, lineage, compare };
+    type Tab = keyof typeof panels;
+    const isTab = (name: string): name is Tab => name in panels;
+    let tab: Tab = view.plan.sequenced ? "sequence" : "families";
+
+    function draw(): void {
+      panels[tab]();
+      for (const b of everyElement(root, "[data-tab]", HTMLElement)) {
+        b.classList.toggle("on", b.dataset.tab === tab);
+      }
+      for (const el of everyElement(root, "[data-ref]", HTMLElement)) {
+        const ref = el.dataset.ref;
+        el.classList.toggle("on", ref === selected);
+        el.classList.toggle("pair", pair !== null && ref !== undefined && pair.includes(ref) && ref !== selected);
+      }
+      for (const el of everyElement(root, "[data-pair]", HTMLElement)) {
+        el.classList.toggle("on", pair !== null && el.dataset.pair === pair.join("|"));
+      }
+      panel();
+      inspect();
+    }
+
+    root.addEventListener("click", (event) => {
+      const chosen = closestFrom(event.target, "[data-tab]", HTMLElement);
+      if (chosen !== null) {
+        const name = requireData(chosen, "tab");
+        if (isTab(name)) tab = name;
+        draw();
+        return;
+      }
+      const dot = closestFrom(event.target, "[data-pair]", Element);
+      if (dot !== null) {
+        const [before, after] = requireAttribute(dot, "data-pair").split("|");
+        if (before !== undefined && after !== undefined) {
+          pair = [before, after];
+          selected = after;
+        }
+        draw();
+        return;
+      }
+      const el = closestFrom(event.target, "[data-ref]", Element);
+      if (el === null) return;
+      const ref = requireAttribute(el, "data-ref");
+      if (event.shiftKey && selected !== null && selected !== ref) {
+        pair = [selected, ref];
+        tab = "compare";
+      } else {
+        selected = ref;
+      }
+      draw();
+    });
+
     draw();
-  });
-  draw();
+  }
 })();
+
+/**
+ * The attribute the markup must carry.
+ *
+ * `dataset` is only on HTMLElement, and the drift chart's dots are SVG
+ * circles -- Element, not HTMLElement -- so those are read by attribute.
+ */
+function requireAttribute(node: Element, name: string): string {
+  const held = node.getAttribute(name);
+  if (held === null) throw new Error(`expected a ${name} on ${node.tagName.toLowerCase()}`);
+  return held;
+}
+
+/** Longest common subsequence over whitespace tokens, as marked-up HTML. */
+function diffTokens(a: string, b: string): string {
+  const x = a ? a.split(/\s+/) : [];
+  const y = b ? b.split(/\s+/) : [];
+  const n = x.length;
+  const m = y.length;
+  const L: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  const at = (i: number, j: number): number => L[i]?.[j] ?? 0;
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      const row = L[i];
+      if (row === undefined) continue;
+      row[j] = x[i] === y[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+    }
+  }
+  const out: string[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (x[i] === y[j]) {
+      out.push(esc(x[i]));
+      i++;
+      j++;
+    } else if (at(i + 1, j) >= at(i, j + 1)) {
+      out.push(`<del>${esc(x[i])}</del>`);
+      i++;
+    } else {
+      out.push(`<ins>${esc(y[j])}</ins>`);
+      j++;
+    }
+  }
+  while (i < n) out.push(`<del>${esc(x[i++])}</del>`);
+  while (j < m) out.push(`<ins>${esc(y[j++])}</ins>`);
+  return out.join(" ");
+}

@@ -30,12 +30,23 @@ from __future__ import annotations
 
 import datetime
 import itertools
+import typing
 
 from . import planning, prompts, stories
 
 FORMAT_VERSION = 1
 
-_PARAMS = ("seed", "steps", "cfg", "denoise", "clip_skip", "sampler", "scheduler", "width", "height")
+#: The recipe facts a transition compares, one per column of db/schema.sql
+#: `generation`. Closed: a fact this list does not name is not compared,
+#: and one it names that the table does not hold reads as None everywhere.
+Parameter = typing.Literal["seed", "steps", "cfg", "denoise", "clip_skip", "sampler", "scheduler", "width", "height"]
+
+#: What a transition can report as changed: a recipe parameter, or the
+#: checkpoint. LoRAs are not here -- they are identities that come and go,
+#: reported as added and removed rather than as before and after.
+ChangedParameter = typing.Literal[Parameter, "model"]
+
+_PARAMS: tuple[Parameter, ...] = typing.get_args(Parameter)
 
 
 def _cosine(a, b) -> float:

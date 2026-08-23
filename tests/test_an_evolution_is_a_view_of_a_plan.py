@@ -248,23 +248,26 @@ def test_the_view_is_the_plans_structure_measured_without_writing_or_loading(pla
     assert third["metrics"]["original_effective_cosine_unavailable"] == "no frozen original prompt"
     assert third["generation"]["loras"] == ["detail"]
     # transitions: O(n) consecutive pairs, boundary from the plan, exact deltas
-    assert [(t["from"], t["to"], t["phase_boundary"]) for t in view["transitions"]] == [
+    assert [(t["before"], t["after"], t["phase_boundary"]) for t in view["transitions"]] == [
         ("member-001", "member-002", False),
         ("member-002", "member-003", True),
     ]
     assert view["transitions"][0]["prompt_cosine"] == pytest.approx(
         float(_unit(PROMPTS[0]) @ _unit(PROMPTS[1])), abs=1e-3
     )
+    # a parameter is in `parameters` because it changed; an unchanged fact
+    # is absent from the list rather than present and null
     assert view["transitions"][0]["changes"] == {
-        "seed": {"from": 1, "to": 2},
+        "parameters": [{"name": "seed", "before": 1, "after": 2}],
         "loras_added": [],
         "loras_removed": [],
         "lora_uuids_added": [],
         "lora_uuids_removed": [],
     }
     assert view["transitions"][1]["changes"]["loras_added"] == ["detail"]
-    assert view["transitions"][1]["changes"]["seed"] == {"from": 2, "to": 3}
-    assert "model" not in view["transitions"][1]["changes"], "an unchanged fact is not a change"
+    changed = {one["name"]: one for one in view["transitions"][1]["changes"]["parameters"]}
+    assert changed["seed"] == {"name": "seed", "before": 2, "after": 3}
+    assert "model" not in changed, "an unchanged fact is not a change"
     # zero writes, zero model work
     assert after == before, "a GET wrote something"
     assert _ENCODERS[("toy", "v1")].calls == [], "a GET loaded or ran a model"
@@ -279,11 +282,11 @@ def test_the_page_draws_the_view_and_only_the_view(planned):
     page = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "text/html"})
     assert page.status_code == 200
     html = page.text
-    assert "data-evolution-view" in html
     assert "/static/build/evolution.js" in html
     assert 'data-tab="sequence"' in html
     assert 'data-tab="drift"' in html
-    assert "<script" in html
+    assert f'data-plan="{made.id}"' in html, "the shell names the plan; the explorer asks the route for the document"
+    assert "application/json" not in html, "the document is not serialized into the page to be parsed back out"
 
 
 def _synthetic(n: int, precision: str) -> tuple[dict, str]:

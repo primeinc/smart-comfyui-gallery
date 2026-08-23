@@ -329,7 +329,6 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/person_view.py:person_page",
         "sg_web/place_view.py:places_index",
         "sg_web/story_view.py:plan_document",
-        "sg_web/story_view.py:plan_evolution",
         "sg_web/story_view.py:plan_snapshot",
         "sg_web/story_view.py:render_document",
         "sg_web/story_view.py:snapshot_document",

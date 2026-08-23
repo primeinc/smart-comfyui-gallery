@@ -14,12 +14,14 @@ from __future__ import annotations
 import json
 import pathlib
 import time
+import typing
 import urllib.parse
 from typing import Literal
 
-from litestar import Request, get, post
+from litestar import MediaType, Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath, FromQuery
 from litestar.response import Redirect, Response, Template
 
@@ -339,10 +341,480 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
     )
 
 
-@get("/stories/plans/{plan_id:int}/evolution", sync_to_thread=True)
+# --- the Evolution Explorer's contract ---------------------------------------
+#
+# db/evolution.py measures; these say what a reader is given. Two kinds of
+# thing share the document and are modelled differently on purpose.
+#
+# MEASURED HERE, NOW -- the cosines, the deltas, the space they were taken
+# in. One function produces them over a closed set of facts, so every field
+# is named exactly.
+#
+# FROZEN THEN -- a StoryPlan at ITS OWN format version (there have been
+# seven) and a StorySnapshot as it was written. A claim's `facts` have to
+# fit its kind under the plan's vocabulary version, and db/planning.py
+# validates that seven different ways; restating the union here would be an
+# eighth spelling free to disagree with all of them. So `facts` stays open,
+# and `plan.format` says which vocabulary wrote it.
+#
+# The same reasoning keeps the frozen strings as strings. `media.kind` came
+# out of the library at freeze time; holding it to today's CHECK would make
+# a historical document fail for having been true.
+
+
+class EvolutionUnsupported(Wire):
+    """Something the planner would not claim, and why it would not."""
+
+    kind: str
+    reason: str
+    member_refs: list[str] | None = None
+
+
+class EvolutionPlan(Wire):
+    """The plan this view is of, and its own format version."""
+
+    id: int
+    sha256: str
+    format: int
+    #: whether the evidence establishes an order; without one there are no
+    #: transitions to measure
+    sequenced: bool
+    unsupported: list[EvolutionUnsupported]
+    label: str
+
+
+class EvolutionTime(Wire):
+    """The session's interval, in each domain the evidence claims it in:
+    start and end, or null where the evidence has no such clock."""
+
+    local: list[float] | None
+    instant: list[float] | None
+
+
+class EvolutionSnapshot(Wire):
+    """The frozen evidence the plan was built over."""
+
+    sha256: str
+    time: EvolutionTime
+    members: int
+    subject: str
+
+
+class EvolutionSemantic(Wire):
+    """The one space and query policy every metric here was taken in.
+
+    `unavailable` is the reason there are no numbers rather than a zero
+    dressed as one: no provider configured, several configured and none
+    named, or nothing embedded under this space yet.
+    """
+
+    provider: str | None
+    space_id: int | None
+    space: str | None
+    prompt_policy_hash: str | None
+    unavailable: str | None
+
+
+class EvolutionClaim(Wire):
+    """One thing the plan asserts about a phase.
+
+    `facts` is open, and deliberately: what belongs in it is decided by
+    `kind` under the plan's own format version (db/planning.py
+    _facts_valid_v1..v7). A reader takes `kind` and `plan.format` first.
+    """
+
+    id: str
+    kind: str
+    facts: dict[str, object]
+
+
+class EvolutionPhase(Wire):
+    """A run of members the plan drew a boundary around."""
+
+    id: str
+    label: str
+    member_refs: list[str]
+    representative_refs: list[str]
+    claims: list[EvolutionClaim]
+
+
+class EvolutionMedia(Wire):
+    """The member's frozen file identity, and where it lives now.
+
+    `uuid` and `content_sha256` are what was frozen; `slug` is the address
+    that identity has today, null when the file is gone -- so `thumbnail`
+    and `page` are null with it. Everything below `slug` is this module's
+    doing: db/evolution.py returns identities and owns no URL.
+    """
+
+    uuid: str
+    name: str
+    kind: str
+    content_sha256: str
+    slug: str | None
+    thumbnail: str | None
+    page: str | None
+
+
+class EvolutionOccurrence(Wire):
+    """When the frozen evidence puts this member, and how sure it is.
+
+    `certainty` is an ordinal's fixed spelling, not a probability:
+    corroborated .9, claimed .6, contested .4 (db/when.py Verdict, whose
+    `supports` and `conflicts` name the readings that agreed and
+    disagreed) -- so a contested time says what contests it.
+
+    Every field is always here, and a frozen document that does not carry
+    one reads as null or empty -- which says the same thing: this document
+    does not name it. The projection defaults rather than demands, because
+    a snapshot written before a field existed is still a snapshot the
+    library must serve.
+    """
+
+    kind: str
+    basis: str
+    certainty: float | None
+    precision: str
+    local_at: float | None
+    instant_at: float | None
+    tz_offset_min: int | None
+    supports: list[str]
+    conflicts: list[str]
+    finished_at: float | None
+    estimated_at: float | None
+    source_order: int | None
+    act_key: str | None
+
+
+class EvolutionPrompt(Wire):
+    """One role's prompt as the snapshot froze it.
+
+    `main` is the section the planner reads, and `main_hash` identifies it;
+    `prompt_id` is the live row still holding that text, null when none
+    does -- an address for "prompts like this", never evidence.
+    """
+
+    text: str
+    hash: str
+    main: str
+    main_hash: str
+    prompt_id: int | None
+
+
+class EvolutionPrompts(Wire):
+    """The two roles this view measures: what was written, and what ran.
+    Either is null when the snapshot froze none."""
+
+    effective: EvolutionPrompt | None
+    original: EvolutionPrompt | None
+
+
+class EvolutionGeneration(Wire):
+    """The recipe, as frozen. Every field null for a member with no
+    generation evidence at all."""
+
+    seed: int | None
+    steps: int | None
+    cfg: float | None
+    denoise: float | None
+    clip_skip: int | None
+    sampler: str | None
+    scheduler: str | None
+    width: int | None
+    height: int | None
+    tool: str | None
+    #: the checkpoint's frozen name
+    model: str | None
+    loras: list[str]
+    #: the same LoRAs by frozen identity -- two files sharing a name are
+    #: two LoRAs, one file renamed is one
+    lora_uuids: list[str]
+
+
+class EvolutionMetrics(Wire):
+    """One member's own cosines. A null number carries the reason beside
+    it: an unavailable metric says why rather than reading as zero."""
+
+    original_effective_cosine: float | None
+    original_effective_cosine_unavailable: str | None = None
+    text_image_cosine: float | None
+    text_image_cosine_unavailable: str | None = None
+
+
+class EvolutionMember(Wire):
+    """One member of the frozen session, measured."""
+
+    ref: str
+    phase_ref: str | None
+    media: EvolutionMedia
+    occurrence: EvolutionOccurrence | None
+    prompt: EvolutionPrompts
+    generation: EvolutionGeneration
+    metrics: EvolutionMetrics
+
+
+class EvolutionParameterChange(Wire):
+    """One recipe fact that differed across a transition."""
+
+    name: evolution.ChangedParameter
+    before: int | float | str | None
+    after: int | float | str | None
+
+
+class EvolutionChanges(Wire):
+    """Exactly what differed between two consecutive members.
+
+    `parameters` is a LIST rather than an object with a field per
+    parameter: the module reports only what actually changed, and a field
+    per parameter would make the wire say "the seed did not change" where
+    the measurement says nothing at all. Membership carries the sparseness
+    that key-presence used to.
+    """
+
+    parameters: list[EvolutionParameterChange]
+    loras_added: list[str]
+    loras_removed: list[str]
+    lora_uuids_added: list[str]
+    lora_uuids_removed: list[str]
+
+
+class EvolutionTransition(Wire):
+    """One consecutive pair, measured. Sequenced plans only.
+
+    `phase_boundary` is where the PLAN put a boundary, never where a
+    cosine dipped.
+    """
+
+    before: str
+    after: str
+    phase_boundary: bool
+    prompt_cosine: float | None
+    prompt_cosine_unavailable: str | None = None
+    visual_cosine: float | None
+    visual_cosine_unavailable: str | None = None
+    changes: EvolutionChanges
+
+
+class EvolutionEdge(Wire):
+    """One frozen lineage edge. An end inside the session is a member ref;
+    an end outside it is that file's frozen uuid."""
+
+    parent: str
+    child: str
+    kind: str
+
+
+class EvolutionLinks(Wire):
+    """Addresses this module builds from the identities db/evolution.py
+    returned. `neighbours` is a template: a prompt id goes in `{id}`."""
+
+    story: str | None
+    gallery_day: str | None
+    search: str
+    neighbours: str
+
+
+class EvolutionView(Wire):
+    """The Generation Evolution Explorer's whole document."""
+
+    v: int
+    plan: EvolutionPlan
+    snapshot: EvolutionSnapshot
+    semantic: EvolutionSemantic
+    phases: list[EvolutionPhase]
+    members: list[EvolutionMember]
+    transitions: list[EvolutionTransition]
+    lineage: list[EvolutionEdge]
+    links: EvolutionLinks
+
+
+def _prompt_of(held: dict | None) -> EvolutionPrompt | None:
+    if held is None:
+        return None
+    return EvolutionPrompt(
+        text=held["text"],
+        hash=held["hash"],
+        main=held["main"],
+        main_hash=held["main_hash"],
+        prompt_id=held["prompt_id"],
+    )
+
+
+def _occurrence_of(held: dict | None) -> EvolutionOccurrence | None:
+    if held is None:
+        return None
+    return EvolutionOccurrence(
+        kind=held["kind"],
+        basis=held["basis"],
+        certainty=held.get("certainty"),
+        precision=held["precision"],
+        local_at=held.get("local_at"),
+        instant_at=held.get("instant_at"),
+        tz_offset_min=held.get("tz_offset_min"),
+        supports=list(held.get("supports") or []),
+        conflicts=list(held.get("conflicts") or []),
+        finished_at=held.get("finished_at"),
+        estimated_at=held.get("estimated_at"),
+        source_order=held.get("source_order"),
+        act_key=held.get("act_key"),
+    )
+
+
+def _changes_of(held: dict) -> EvolutionChanges:
+    """The module's sparse delta as the contract states it: a key present
+    only because it changed becomes a member of `parameters`."""
+    return EvolutionChanges(
+        parameters=[
+            EvolutionParameterChange(name=name, before=held[name]["from"], after=held[name]["to"])
+            for name in typing.get_args(evolution.ChangedParameter)
+            if name in held
+        ],
+        loras_added=list(held["loras_added"]),
+        loras_removed=list(held["loras_removed"]),
+        lora_uuids_added=list(held["lora_uuids_added"]),
+        lora_uuids_removed=list(held["lora_uuids_removed"]),
+    )
+
+
+def evolution_document(view: dict, *, render_id: int | None) -> EvolutionView:
+    """The measured view as the contract states it.
+
+    Identities into addresses happens HERE and nowhere else: a member's
+    slug becomes its thumbnail and its page, the session's local day the
+    gallery's day-facet link. db/evolution.py owns no URL, and building
+    this rather than mutating what it returned is what keeps that true.
+    """
+    day = view["identities"]["local_day"]
+    return EvolutionView(
+        v=view["v"],
+        plan=EvolutionPlan(
+            id=view["plan"]["id"],
+            sha256=view["plan"]["sha256"],
+            format=view["plan"]["format"],
+            sequenced=view["plan"]["sequenced"],
+            unsupported=[
+                EvolutionUnsupported(kind=one["kind"], reason=one["reason"], member_refs=one.get("member_refs"))
+                for one in view["plan"]["unsupported"]
+            ],
+            label=view["plan"]["label"],
+        ),
+        snapshot=EvolutionSnapshot(
+            sha256=view["snapshot"]["sha256"],
+            time=EvolutionTime(
+                local=view["snapshot"]["time"]["local"],
+                instant=view["snapshot"]["time"]["instant"],
+            ),
+            members=view["snapshot"]["members"],
+            subject=view["snapshot"]["subject"],
+        ),
+        semantic=EvolutionSemantic(
+            provider=view["semantic"]["provider"],
+            space_id=view["semantic"]["space_id"],
+            space=view["semantic"]["space"],
+            prompt_policy_hash=view["semantic"]["prompt_policy_hash"],
+            unavailable=view["semantic"]["unavailable"],
+        ),
+        phases=[
+            EvolutionPhase(
+                id=phase["id"],
+                label=phase["label"],
+                member_refs=list(phase["member_refs"]),
+                representative_refs=list(phase["representative_refs"]),
+                claims=[EvolutionClaim(id=one["id"], kind=one["kind"], facts=one["facts"]) for one in phase["claims"]],
+            )
+            for phase in view["phases"]
+        ],
+        members=[
+            EvolutionMember(
+                ref=member["ref"],
+                phase_ref=member["phase_ref"],
+                media=EvolutionMedia(
+                    uuid=member["media"]["uuid"],
+                    name=member["media"]["name"],
+                    kind=member["media"]["kind"],
+                    content_sha256=member["media"]["content_sha256"],
+                    slug=member["media"]["slug"],
+                    thumbnail=f"/thumb/{member['media']['slug']}" if member["media"]["slug"] else None,
+                    page=f"/i/{member['media']['slug']}" if member["media"]["slug"] else None,
+                ),
+                occurrence=_occurrence_of(member["occurrence"]),
+                prompt=EvolutionPrompts(
+                    effective=_prompt_of(member["prompt"]["effective"]),
+                    original=_prompt_of(member["prompt"]["original"]),
+                ),
+                generation=EvolutionGeneration(
+                    seed=member["generation"]["seed"],
+                    steps=member["generation"]["steps"],
+                    cfg=member["generation"]["cfg"],
+                    denoise=member["generation"]["denoise"],
+                    clip_skip=member["generation"]["clip_skip"],
+                    sampler=member["generation"]["sampler"],
+                    scheduler=member["generation"]["scheduler"],
+                    width=member["generation"]["width"],
+                    height=member["generation"]["height"],
+                    tool=member["generation"]["tool"],
+                    model=member["generation"]["model"],
+                    loras=list(member["generation"]["loras"]),
+                    lora_uuids=list(member["generation"]["lora_uuids"]),
+                ),
+                metrics=EvolutionMetrics(
+                    original_effective_cosine=member["metrics"]["original_effective_cosine"],
+                    original_effective_cosine_unavailable=member["metrics"].get(
+                        "original_effective_cosine_unavailable"
+                    ),
+                    text_image_cosine=member["metrics"]["text_image_cosine"],
+                    text_image_cosine_unavailable=member["metrics"].get("text_image_cosine_unavailable"),
+                ),
+            )
+            for member in view["members"]
+        ],
+        transitions=[
+            EvolutionTransition(
+                before=one["from"],
+                after=one["to"],
+                phase_boundary=one["phase_boundary"],
+                prompt_cosine=one["prompt_cosine"],
+                prompt_cosine_unavailable=one.get("prompt_cosine_unavailable"),
+                visual_cosine=one["visual_cosine"],
+                visual_cosine_unavailable=one.get("visual_cosine_unavailable"),
+                changes=_changes_of(one["changes"]),
+            )
+            for one in view["transitions"]
+        ],
+        lineage=[
+            EvolutionEdge(parent=edge["parent"], child=edge["child"], kind=edge["kind"]) for edge in view["lineage"]
+        ],
+        links=EvolutionLinks(
+            story=f"/stories/renders/{render_id}" if render_id is not None else None,
+            gallery_day=(
+                "/g?" + urllib.parse.urlencode([("f", facets.spell(facets.facet("context.local_day", "eq", day)))])
+                if day
+                else None
+            ),
+            search="/search?q=",
+            neighbours="/prompts/{id}/neighbours",
+        ),
+    )
+
+
+@get(
+    "/stories/plans/{plan_id:int}/evolution",
+    # The route negotiates, and a union that mixes a page with a JSON
+    # answer reaches OpenAPI as the empty schema however precisely the arms
+    # are written (litestar v2.24.0). The JSON answer is declared here.
+    responses={
+        200: ResponseSpec(
+            data_container=EvolutionView,
+            description="One story plan measured over its frozen evidence, in one semantic space",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+    sync_to_thread=True,
+)
 def plan_evolution(
     state: State, plan_id: FromPath[int], request: Request, space: FromQuery[str | None] = None
-) -> Response | Template:
+) -> Response[EvolutionView] | Template:
     """The Generation Evolution Explorer: a read-only view of one plan
     (db/evolution.py) -- JSON, or the page by Accept. `space` names
     the provider whose joint space and query policy every metric is
@@ -362,29 +834,15 @@ def plan_evolution(
         render_id = rendering.latest_render_id(conn, plan_id)
     finally:
         connect.close(conn)
-    _addressed(view)
-    view["links"]["story"] = f"/stories/renders/{render_id}" if render_id is not None else None
+    document = evolution_document(view, render_id=render_id)
     if wants_json(request):
-        return Response(view, headers=VARIES)
-    return Template(template_name="evolution.html", context={"view": view, "plan_id": plan_id}, headers=VARIES)
-
-
-def _addressed(view: dict) -> None:
-    """Identities into addresses -- the web adapter's job, never the
-    database module's: a member's slug becomes its thumbnail and page,
-    the session's day the gallery's day-facet link, a prompt row its
-    neighbours route."""
-    for member in view["members"]:
-        slug = member["media"].get("slug")
-        member["media"]["thumbnail"] = f"/thumb/{slug}" if slug else None
-        member["media"]["page"] = f"/i/{slug}" if slug else None
-    day = view["identities"].get("local_day")
-    view["links"] = {
-        "gallery_day": (
-            "/g?" + urllib.parse.urlencode([("f", facets.spell(facets.facet("context.local_day", "eq", day)))])
-            if day
-            else None
-        ),
-        "search": "/search?q=",
-        "neighbours": "/prompts/{id}/neighbours",
-    }
+        return Response(document, headers=VARIES)
+    # The page renders its shell from the same document, as HTML. What it
+    # does NOT do is serialize the document into the HTML for the browser
+    # to parse back out: the explorer asks this route for it, by Accept,
+    # and is given the one contract OpenAPI describes.
+    return Template(
+        template_name="evolution.html",
+        context={"view": document.model_dump(mode="json"), "plan_id": plan_id},
+        headers=VARIES,
+    )

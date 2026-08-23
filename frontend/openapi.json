@@ -4486,11 +4486,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "One story plan measured over its frozen evidence, in one semantic space",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "$ref": "#/components/schemas/EvolutionView"
+                                }
                             }
                         }
                     },
@@ -9859,6 +9860,1039 @@
                 "type": "object",
                 "required": [],
                 "title": "Everything"
+            },
+            "EvolutionChanges": {
+                "properties": {
+                    "parameters": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionParameterChange"
+                        },
+                        "type": "array"
+                    },
+                    "loras_added": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "loras_removed": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "lora_uuids_added": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "lora_uuids_removed": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "lora_uuids_added",
+                    "lora_uuids_removed",
+                    "loras_added",
+                    "loras_removed",
+                    "parameters"
+                ],
+                "title": "EvolutionChanges"
+            },
+            "EvolutionClaim": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "facts": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "facts",
+                    "id",
+                    "kind"
+                ],
+                "title": "EvolutionClaim"
+            },
+            "EvolutionEdge": {
+                "properties": {
+                    "parent": {
+                        "type": "string"
+                    },
+                    "child": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "child",
+                    "kind",
+                    "parent"
+                ],
+                "title": "EvolutionEdge"
+            },
+            "EvolutionGeneration": {
+                "properties": {
+                    "seed": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "steps": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "cfg": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "denoise": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "clip_skip": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "sampler": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "scheduler": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "width": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "height": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "tool": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "model": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "loras": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "lora_uuids": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "cfg",
+                    "clip_skip",
+                    "denoise",
+                    "height",
+                    "lora_uuids",
+                    "loras",
+                    "model",
+                    "sampler",
+                    "scheduler",
+                    "seed",
+                    "steps",
+                    "tool",
+                    "width"
+                ],
+                "title": "EvolutionGeneration"
+            },
+            "EvolutionLinks": {
+                "properties": {
+                    "story": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "gallery_day": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "search": {
+                        "type": "string"
+                    },
+                    "neighbours": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "gallery_day",
+                    "neighbours",
+                    "search",
+                    "story"
+                ],
+                "title": "EvolutionLinks"
+            },
+            "EvolutionMedia": {
+                "properties": {
+                    "uuid": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "content_sha256": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "thumbnail": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "page": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "content_sha256",
+                    "kind",
+                    "name",
+                    "page",
+                    "slug",
+                    "thumbnail",
+                    "uuid"
+                ],
+                "title": "EvolutionMedia"
+            },
+            "EvolutionMember": {
+                "properties": {
+                    "ref": {
+                        "type": "string"
+                    },
+                    "phase_ref": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "media": {
+                        "$ref": "#/components/schemas/EvolutionMedia"
+                    },
+                    "occurrence": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/EvolutionOccurrence"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "prompt": {
+                        "$ref": "#/components/schemas/EvolutionPrompts"
+                    },
+                    "generation": {
+                        "$ref": "#/components/schemas/EvolutionGeneration"
+                    },
+                    "metrics": {
+                        "$ref": "#/components/schemas/EvolutionMetrics"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "generation",
+                    "media",
+                    "metrics",
+                    "occurrence",
+                    "phase_ref",
+                    "prompt",
+                    "ref"
+                ],
+                "title": "EvolutionMember"
+            },
+            "EvolutionMetrics": {
+                "properties": {
+                    "original_effective_cosine": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "original_effective_cosine_unavailable": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "text_image_cosine": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "text_image_cosine_unavailable": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "original_effective_cosine",
+                    "text_image_cosine"
+                ],
+                "title": "EvolutionMetrics"
+            },
+            "EvolutionOccurrence": {
+                "properties": {
+                    "kind": {
+                        "type": "string"
+                    },
+                    "basis": {
+                        "type": "string"
+                    },
+                    "certainty": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "precision": {
+                        "type": "string"
+                    },
+                    "local_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "instant_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "tz_offset_min": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "supports": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "conflicts": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "finished_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "estimated_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "source_order": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "act_key": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "act_key",
+                    "basis",
+                    "certainty",
+                    "conflicts",
+                    "estimated_at",
+                    "finished_at",
+                    "instant_at",
+                    "kind",
+                    "local_at",
+                    "precision",
+                    "source_order",
+                    "supports",
+                    "tz_offset_min"
+                ],
+                "title": "EvolutionOccurrence"
+            },
+            "EvolutionParameterChange": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "enum": [
+                            "seed",
+                            "steps",
+                            "cfg",
+                            "denoise",
+                            "clip_skip",
+                            "sampler",
+                            "scheduler",
+                            "width",
+                            "height",
+                            "model"
+                        ]
+                    },
+                    "before": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "after": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "after",
+                    "before",
+                    "name"
+                ],
+                "title": "EvolutionParameterChange"
+            },
+            "EvolutionPhase": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "member_refs": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "representative_refs": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "claims": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionClaim"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "claims",
+                    "id",
+                    "label",
+                    "member_refs",
+                    "representative_refs"
+                ],
+                "title": "EvolutionPhase"
+            },
+            "EvolutionPlan": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "sha256": {
+                        "type": "string"
+                    },
+                    "format": {
+                        "type": "integer"
+                    },
+                    "sequenced": {
+                        "type": "boolean"
+                    },
+                    "unsupported": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionUnsupported"
+                        },
+                        "type": "array"
+                    },
+                    "label": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "format",
+                    "id",
+                    "label",
+                    "sequenced",
+                    "sha256",
+                    "unsupported"
+                ],
+                "title": "EvolutionPlan"
+            },
+            "EvolutionPrompt": {
+                "properties": {
+                    "text": {
+                        "type": "string"
+                    },
+                    "hash": {
+                        "type": "string"
+                    },
+                    "main": {
+                        "type": "string"
+                    },
+                    "main_hash": {
+                        "type": "string"
+                    },
+                    "prompt_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "hash",
+                    "main",
+                    "main_hash",
+                    "prompt_id",
+                    "text"
+                ],
+                "title": "EvolutionPrompt"
+            },
+            "EvolutionPrompts": {
+                "properties": {
+                    "effective": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/EvolutionPrompt"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "original": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/EvolutionPrompt"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "effective",
+                    "original"
+                ],
+                "title": "EvolutionPrompts"
+            },
+            "EvolutionSemantic": {
+                "properties": {
+                    "provider": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "space_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "space": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "prompt_policy_hash": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "unavailable": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "prompt_policy_hash",
+                    "provider",
+                    "space",
+                    "space_id",
+                    "unavailable"
+                ],
+                "title": "EvolutionSemantic"
+            },
+            "EvolutionSnapshot": {
+                "properties": {
+                    "sha256": {
+                        "type": "string"
+                    },
+                    "time": {
+                        "$ref": "#/components/schemas/EvolutionTime"
+                    },
+                    "members": {
+                        "type": "integer"
+                    },
+                    "subject": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "members",
+                    "sha256",
+                    "subject",
+                    "time"
+                ],
+                "title": "EvolutionSnapshot"
+            },
+            "EvolutionTime": {
+                "properties": {
+                    "local": {
+                        "oneOf": [
+                            {
+                                "items": {
+                                    "type": "number"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "instant": {
+                        "oneOf": [
+                            {
+                                "items": {
+                                    "type": "number"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "instant",
+                    "local"
+                ],
+                "title": "EvolutionTime"
+            },
+            "EvolutionTransition": {
+                "properties": {
+                    "before": {
+                        "type": "string"
+                    },
+                    "after": {
+                        "type": "string"
+                    },
+                    "phase_boundary": {
+                        "type": "boolean"
+                    },
+                    "prompt_cosine": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "prompt_cosine_unavailable": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "visual_cosine": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "visual_cosine_unavailable": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "changes": {
+                        "$ref": "#/components/schemas/EvolutionChanges"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "after",
+                    "before",
+                    "changes",
+                    "phase_boundary",
+                    "prompt_cosine",
+                    "visual_cosine"
+                ],
+                "title": "EvolutionTransition"
+            },
+            "EvolutionUnsupported": {
+                "properties": {
+                    "kind": {
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": "string"
+                    },
+                    "member_refs": {
+                        "oneOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "reason"
+                ],
+                "title": "EvolutionUnsupported"
+            },
+            "EvolutionView": {
+                "properties": {
+                    "v": {
+                        "type": "integer"
+                    },
+                    "plan": {
+                        "$ref": "#/components/schemas/EvolutionPlan"
+                    },
+                    "snapshot": {
+                        "$ref": "#/components/schemas/EvolutionSnapshot"
+                    },
+                    "semantic": {
+                        "$ref": "#/components/schemas/EvolutionSemantic"
+                    },
+                    "phases": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionPhase"
+                        },
+                        "type": "array"
+                    },
+                    "members": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionMember"
+                        },
+                        "type": "array"
+                    },
+                    "transitions": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionTransition"
+                        },
+                        "type": "array"
+                    },
+                    "lineage": {
+                        "items": {
+                            "$ref": "#/components/schemas/EvolutionEdge"
+                        },
+                        "type": "array"
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/EvolutionLinks"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "lineage",
+                    "links",
+                    "members",
+                    "phases",
+                    "plan",
+                    "semantic",
+                    "snapshot",
+                    "transitions",
+                    "v"
+                ],
+                "title": "EvolutionView"
             },
             "FailedItem": {
                 "properties": {
