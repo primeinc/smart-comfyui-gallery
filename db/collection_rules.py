@@ -29,13 +29,15 @@ import dataclasses
 import json
 import re
 
+from . import facets as facets_module
+
 #: What this build AUTHORS. Reading is wider: `_KNOWN_VERSIONS` -- a
 #: stored v1 rule keeps meaning exactly what it meant, and "versioned"
 #: means the reader dispatches on the version instead of quietly
 #: reinterpreting old rows under a new shape.
-RULE_VERSION = 2
+RULE_VERSION = 3
 
-_KNOWN_VERSIONS = (1, 2)
+_KNOWN_VERSIONS = (1, 2, 3)
 
 
 class BrokenCollectionRule(ValueError):
@@ -65,6 +67,13 @@ class CollectionRule:
     sort: str | None
     take: int | None
     actor_id: int | None
+    #: v3: registered metadata predicates (db/facets.py), the facets a
+    #: gallery question carries, saved as membership. Always empty in a
+    #: v1 or v2 rule. Never `event.id`: a session is a run's hypothesis
+    #: over one interpretation, and a rule holding one would answer
+    #: nothing the day the runs regroup -- an empty collection wearing a
+    #: saved view's clothes.
+    facets: tuple = ()
 
 
 #: The sort vocabulary a rule may carry -- the ResultSet's own words.
@@ -87,6 +96,16 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
         raise refuse(f"rule version {rule.version!r} is not one this build understands")
     if rule.version == 1 and rule.artifact_uuid is not None:
         raise refuse("a v1 rule has no artifact reference; that shape arrived in v2")
+    if rule.version < 3 and rule.facets:
+        raise refuse(f"a v{rule.version} rule carries no metadata facets; that shape arrived in v3")
+    if not isinstance(rule.facets, tuple) or any(not isinstance(one, facets_module.Facet) for one in rule.facets):
+        raise refuse("a rule's facets are a tuple of registered Facet predicates")
+    for one in rule.facets:
+        if one.key == "event.id":
+            raise refuse(
+                "a session is a hypothesis, not a durable membership; save its day (context.local_day)"
+                " or its moment window (context.moment) instead"
+            )
     for name, uuid in (
         ("folder", rule.folder_uuid),
         ("person", rule.person_uuid),
@@ -136,6 +155,7 @@ _TOP_KEYS = frozenset({"v", "where", "select"})
 _WHERE_KEYS = {
     1: frozenset({"folder", "person", "kind", "favorite", "rating_min"}),
     2: frozenset({"folder", "person", "artifact", "kind", "favorite", "rating_min"}),
+    3: frozenset({"folder", "person", "artifact", "kind", "favorite", "rating_min", "facets"}),
 }
 _SELECT_KEYS = frozenset({"sort", "text", "take"})
 
@@ -168,6 +188,18 @@ def _stored_uuid(value, field: str) -> bytes | None:
     return bytes.fromhex(value)
 
 
+def _stored_facets(spelled) -> tuple:
+    """A list of spellings, each re-validated against the CURRENT
+    registry: a key this build no longer knows is a rule this build
+    cannot evaluate -- refused, never quietly dropped."""
+    if not isinstance(spelled, list) or any(type(one) is not str for one in spelled):
+        raise ValueError("the rule's facets are a list of key:op:value spellings")
+    held = facets_module.normalized(spelled)
+    if len(held) != len(spelled):
+        raise ValueError("the rule's facets hold a duplicate or an empty spelling")
+    return held
+
+
 def _entity_uuid(conn, kind: str, slug: str) -> bytes:
     """Any spelling ResultSet recognizes is also legal when the question
     becomes durable meaning: retired slugs resolve to the same entity,
@@ -192,11 +224,6 @@ def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -
     """
     if query.album is not None:
         raise ValueError("a rule cannot reference a collection; smart-in-smart is not a v1 question")
-    if query.facets:
-        # Fail closed, exactly like an unknown stored field: silently
-        # dropping the facets would save a smart collection whose
-        # membership differs from the answer on screen.
-        raise ValueError("metadata facets require a later rule version; this view cannot be saved whole yet")
     if take is not None and type(take) is not int:
         # Exact-integer BEFORE any coercion: int(True) is 1, and a
         # boolean quietly becoming a one-item cutoff is the truthiness
@@ -218,6 +245,7 @@ def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -
         sort=sort,
         take=take,
         actor_id=actor_id if asks_authored else None,
+        facets=tuple(query.facets),
     )
     return validate(made, ValueError)
 
@@ -249,6 +277,7 @@ def save(conn, collection_id: int, rule: CollectionRule, *, source_text: str | N
                 "kind": rule.kind,
                 "favorite": rule.favorite,
                 "rating_min": rule.rating_min,
+                "facets": [facets_module.spell(one) for one in rule.facets],
             },
             "select": {"sort": rule.sort, "text": rule.text, "take": rule.take},
         },
@@ -283,6 +312,7 @@ def load(conn, collection_id: int) -> CollectionRule | None:
         # does not understand refuses instead of evaluating without it.
         where, select = _versioned_shape(int(version), held)
         artifact_stored = None if int(version) == 1 else _stored_uuid(where["artifact"], "artifact")
+        facets_stored = _stored_facets(where["facets"]) if int(version) >= 3 else ()
         made = CollectionRule(
             version=int(version),
             folder_uuid=_stored_uuid(where["folder"], "folder"),
@@ -295,6 +325,7 @@ def load(conn, collection_id: int) -> CollectionRule | None:
             sort=select["sort"],
             take=select["take"],
             actor_id=actor_id,
+            facets=facets_stored,
         )
     except (KeyError, TypeError, ValueError) as rotten:
         raise BrokenCollectionRule(f"collection {collection_id}'s stored rule cannot be read: {rotten}") from rotten

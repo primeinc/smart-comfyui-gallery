@@ -219,7 +219,7 @@ def test_an_unknown_artifact_refuses_loudly(recipes):
 # --- saved views ------------------------------------------------------------
 
 
-def test_a_saved_artifact_view_is_a_v2_rule_by_uuid(recipes):
+def test_a_saved_artifact_view_is_a_rule_by_uuid(recipes):
     made = recipes.post("/albums/smart", json={"name": "Grainy", "artifact": "lora-filmgrain"})
     assert made.status_code == 201, made.text
     assert [row["slug"] for row in made.json()["gallery"]["items"]] == ["pic-1", "pic-0"]
@@ -233,7 +233,7 @@ def test_a_saved_artifact_view_is_a_v2_rule_by_uuid(recipes):
         lora_uuid = conn.execute(
             "SELECT e.uuid FROM entity e JOIN artifact a ON a.id = e.id WHERE a.kind = 'lora'"
         ).fetchone()[0]
-        assert version == 2
+        assert version == 3, "this build authors v3 rules; the artifact reference arrived in v2 and stays"
         import json as json_module
 
         assert json_module.loads(told)["where"]["artifact"] == lora_uuid.hex(), "the rule holds the UUID, never a slug"

@@ -23,7 +23,7 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import collection_rules, connect, context, ingest, resultset
+from db import collection_rules, connect, context, facets, ingest, naming, resultset
 from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
@@ -385,24 +385,43 @@ def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpret
         connect.close(conn)
 
 
-def test_a_faceted_view_refuses_to_save_until_a_rule_can_carry_it(interpreted):
-    """The save-view landmine, defused the fail-closed way: silently
-    dropping the facets would save a smart collection whose membership
-    differs from the answer on screen."""
+def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
+    """The save-view landmine, closed: a v3 rule carries the facets, so
+    the smart collection's membership IS the answer on screen -- today
+    and after the library grows. A session's door is the one facet a
+    rule refuses: a hypothesis is not a durable membership."""
     client, _ = interpreted
     conn = _raw(client)
     try:
-        with pytest.raises(ValueError, match="later rule version"):
+        rule = collection_rules.from_gallery_query(
+            conn, resultset.parse(facets=["capture.iso:gte:800"]), actor_id=None, take=None
+        )
+        assert rule.version == 3
+        assert [facets.spell(one) for one in rule.facets] == ["capture.iso:gte:800"]
+        with pytest.raises(ValueError, match="hypothesis"):
             collection_rules.from_gallery_query(
-                conn, resultset.parse(facets=["capture.iso:gte:800"]), actor_id=None, take=None
+                conn, resultset.parse(facets=["event.id:eq:1"]), actor_id=None, take=None
             )
+        on_screen = resultset.page(conn, "", resultset.parse(facets=["capture.iso:gte:800"]), 1, NOW)
     finally:
         connect.close(conn)
-    landed = client.post("/albums/smart", json={"name": "Fast Film"})
-    assert landed.status_code == 201, "control: an unfaceted save still lands"
-    dropped = client.post("/albums/smart", json={"name": "Doomed", "f": "capture.iso:gte:800"})
-    assert dropped.status_code == 400, "the HTTP adapter must carry the facet INTO the refusal, never drop it"
-    assert "later rule version" in dropped.json()["detail"]
+    saved = client.post("/albums/smart", json={"name": "Fast Film", "f": "capture.iso:gte:800"})
+    assert saved.status_code == 201, saved.text
+    slug = saved.json()["slug"]
+    conn = _raw(client)
+    try:
+        stored = collection_rules.load(conn, naming.resolve(conn, "collection", slug)[0])
+        assert stored is not None
+        assert stored.version == 3
+        assert [facets.spell(one) for one in stored.facets] == ["capture.iso:gte:800"]
+        inside = resultset.page(conn, "", resultset.parse(album=slug), 1, NOW)
+        assert [row["id"] for row in inside["items"]] == [row["id"] for row in on_screen["items"]]
+        assert inside["total"] == on_screen["total"] > 0
+    finally:
+        connect.close(conn)
+    refused = client.post("/albums/smart", json={"name": "One Session", "f": "event.id:eq:1"})
+    assert refused.status_code == 400
+    assert "hypothesis" in refused.json()["detail"]
 
 
 def test_take_is_an_exact_integer_before_any_coercion(interpreted):

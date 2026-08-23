@@ -452,6 +452,7 @@ def _bind_rule(conn, rule, spelled: str) -> _Bound:
         rating_min=rule.rating_min,
         text=rule.text,
         sort=rule.sort or ("similarity" if rule.text else "newest"),
+        facets=tuple(rule.facets),
     )
     return _Bound(
         query=inner,
