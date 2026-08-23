@@ -22,7 +22,10 @@ itself is LibRaw's, whose camera coverage is its own tested claim
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
+from PIL import Image
 
 from db import ingest, library, oriented, scan
 from db import sample as sample_module
@@ -355,6 +358,34 @@ def test_a_dng_develops_through_the_libraw_door(tmp_path):
     with decode.open_still(path) as picture:
         assert picture.size == SIZE
         assert picture.mode == "RGB", "LibRaw demosaics a CFA into color"
+
+
+PORTRAIT_CR2 = pathlib.Path("C:/ComfyUI/output/sample-datasets/RAW/2013-02-10/666A0273.CR2")
+
+
+@pytest.mark.skipif(not PORTRAIT_CR2.exists(), reason="the 5D Mark III sample set is not on this machine")
+def test_a_portrait_raw_is_turned_once():
+    """666A0273.CR2 was shot on its side: the camera wrote orientation 8
+    and LibRaw reads the same as flip 5. The RAW door hands the frame
+    back AS STORED (wide), and db/oriented.py turns it once by the tag
+    (tall) -- the way every JPEG is handled. LibRaw's default flip plus
+    the tag turned every portrait RAW twice."""
+    import rawpy
+
+    with Image.open(PORTRAIT_CR2) as header:
+        tag = header.getexif().get(274)
+    with rawpy.imread(str(PORTRAIT_CR2)) as raw:
+        stored = (raw.sizes.width, raw.sizes.height)
+        flip = raw.sizes.flip
+    assert tag == 8
+    assert flip == 5
+    assert stored[0] > stored[1], "the sensor frame is wide"
+    with decode.open_still(PORTRAIT_CR2) as developed:
+        assert (developed.width > developed.height) == (stored[0] > stored[1]), "as stored, not flipped by LibRaw"
+        wide = developed.size
+    shown = oriented.open_upright(PORTRAIT_CR2, tag)
+    assert shown.size == (wide[1], wide[0]), "turned once: tall"
+    assert decode.dimensions(PORTRAIT_CR2, "image") == stored, "dimensions speak of the stored frame"
 
 
 def _library_of(root):

@@ -585,10 +585,10 @@ body {
 .frame-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px; background: linear-gradient(transparent, rgba(20, 21, 26, .92)); font-family: var(--stamp); font-size: 11px; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 /* a picture per bin at its moment; never wrapped -- crowded bins are thinned by the page */
 .axis-samples { position: absolute; left: 0; right: 0; bottom: 52px; height: 40px; }
-.surface-sample { position: absolute; top: 0; width: 40px; height: 40px; }
-.surface-sample[hidden] { display: none; }
-.surface-sample img { width: 100%; height: 100%; object-fit: cover; border-radius: 2px; background: var(--panel); }
-.surface-sample:hover img { outline: 1px solid var(--imprint); }
+.axis-samples .surface-sample { position: absolute; top: 0; width: 40px; height: 40px; }
+.axis-samples .surface-sample[hidden] { display: none; }
+.axis-samples .surface-sample img { width: 100%; height: 100%; object-fit: cover; border-radius: 2px; background: var(--panel); }
+.axis-samples .surface-sample:hover img { outline: 1px solid var(--imprint); }
 /* the rule: the whole library at week resolution under a brush */
 .surface-overview { display: block; width: 100%; height: 34px; margin-top: 6px; cursor: crosshair; touch-action: none; }
 .surface-overview:focus-visible { outline: 2px solid var(--imprint); }
@@ -601,8 +601,9 @@ body {
 @media (prefers-reduced-motion: reduce) { .axis-stage .bar { transition: none; } }
 /* justified rows: each picture's flex is its ratio, so a row's height is
    the one that makes its ratios fill the width (the Flickr shape) */
+.surface { --row: 200px; }
 .rows { display: flex; flex-wrap: wrap; gap: 4px; }
-.rows > * { flex: calc(var(--r) * 100) 1 calc(var(--r) * 180px); aspect-ratio: var(--r); max-height: 320px; overflow: hidden; border-radius: 2px; }
+.rows > * { flex: calc(var(--r) * 100) 1 calc(var(--r) * var(--row)); aspect-ratio: var(--r); max-height: calc(var(--row) * 1.6); overflow: hidden; border-radius: 2px; }
 .rows::after { content: ""; flex: 1e5 1 0; }
 .rows img { display: block; width: 100%; height: 100%; object-fit: cover; background: var(--panel); }
 .rows a:hover img { filter: brightness(1.08); }
@@ -611,14 +612,53 @@ body {
 .caption .title { font-size: 15px; font-weight: 600; }
 .caption .meta { color: var(--ink-muted); font-size: 13px; }
 .caption .meta a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
-.caption .doors { margin-left: auto; font-size: 13px; }
-.caption .doors a { color: var(--imprint); }
-.caption .doors button { background: none; color: var(--imprint); border: 1px solid var(--imprint); border-radius: var(--radius); padding: 1px 10px; cursor: pointer; font: inherit; font-size: 13px; }
-.session-status { color: var(--ink-muted); font-size: 13px; margin-left: 8px; }
-.session-story { display: flex; gap: 10px; align-items: center; margin: 0 0 8px; color: var(--ink-muted); font-size: 13px; }
-.session-story-hero { width: 40px; height: 40px; object-fit: cover; border-radius: 2px; }
-.session-story-dek { margin: 0; }
-.session-strip { display: block; }
+/* a session is a title card: the lead picture with the headline set on it;
+   the words are the door (to the story, or to telling it), the picture opens itself */
+.session-lead { position: relative; display: block; overflow: hidden; border-radius: 3px; background: var(--panel); max-height: 420px; }
+.session-lead > a:first-child { display: block; }
+.session-lead img { display: block; width: 100%; max-height: 420px; object-fit: cover; aspect-ratio: var(--r, 16 / 9); }
+/* a small picture is not blown up into a hero: it sits at a sane height, whole */
+.session-lead.small img { height: 300px; object-fit: contain; aspect-ratio: auto; background: var(--panel); }
+.session-words { position: absolute; inset: auto 0 0 0; padding: 56px 18px 14px; background: linear-gradient(transparent, rgba(0, 0, 0, .78)); color: #fff; display: grid; gap: 2px; }
+.session-words:hover .session-title { text-decoration: underline; text-underline-offset: 4px; }
+.session-title { font-size: 22px; font-weight: 600; line-height: 1.15; letter-spacing: -.01em; text-shadow: 0 1px 12px rgba(0, 0, 0, .6); }
+.session.told .session-title { font-size: 26px; }
+.session-dek { font-size: 14px; color: rgba(255, 255, 255, .85); max-width: 60ch; }
+.session-line { font-size: 12px; color: rgba(255, 255, 255, .7); font-variant-numeric: tabular-nums; }
+.session-lead:focus-within { outline: 2px solid var(--imprint); outline-offset: 2px; }
+.session-with { margin: 6px 0 0; font-size: 13px; color: var(--ink-muted); }
+.session-with a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.session-strip { display: block; margin-top: 2px; }
+/* silence: the days between two days of pictures are vertical distance --
+   a week is felt, a year is fallen through; the count sits in the dark */
+.silence { position: relative; margin: 0 0 12px; background: repeating-linear-gradient(180deg, transparent 0 6px, color-mix(in srgb, var(--line) 60%, transparent) 6px 7px); }
+.silence .eyebrow { position: absolute; left: 0; top: 50%; transform: translateY(-50%); padding: 2px 8px 2px 0; background: var(--ground); }
+/* the scrubber: fixed to the right edge, the library newest at the top, a
+   segment per month faced with its first picture; drag it and the month
+   under the thumb shows as a card, and the window lands on pictures */
+.stage:has(> #timeline-swap) { --scrubber: 60px; padding-right: calc(var(--scrubber) + 16px); }
+.scrubber { position: fixed; top: 64px; right: 0; bottom: 0; width: var(--scrubber); z-index: 3; user-select: none; touch-action: none; cursor: row-resize; outline: none; }
+.scrubber-track { position: absolute; inset: 12px 0 12px 0; background: var(--panel); }
+.segment { position: absolute; left: 0; right: 0; display: block; overflow: hidden; }
+.segment img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; opacity: .6; }
+.segment:hover img { opacity: 1; }
+.segment:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.segment:focus-visible { outline: 1px solid var(--imprint); }
+.segment-year { position: absolute; right: 4px; padding: 0 3px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; color: var(--ink); background: rgba(20, 21, 26, .8); line-height: 1.3; transform: translateY(-50%); pointer-events: none; }
+.scrubber-window { position: absolute; left: 0; right: 0; min-height: 4px; box-shadow: inset 0 0 0 2px var(--imprint); background: color-mix(in srgb, var(--imprint) 22%, transparent); pointer-events: none; }
+.scrubber-peek { position: absolute; right: calc(var(--scrubber) + 8px); width: 200px; transform: translateY(-50%); background: var(--panel); border-radius: 6px; overflow: hidden; box-shadow: 0 6px 24px rgba(0, 0, 0, .55); pointer-events: none; display: grid; }
+.scrubber-peek[hidden] { display: none; }
+.scrubber-peek img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--ground); }
+.scrubber-peek img[hidden] { display: none; }
+.scrubber-peek-label { padding: 6px 10px 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.scrubber-peek-count { padding: 0 10px 8px; font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+@media (pointer: coarse), (max-width: 760px) {
+  .stage:has(> #timeline-swap) { --scrubber: 20px; }
+  .segment-year { display: none; }
+  .segment img { display: none; }
+  .scrubber-peek { width: 150px; }
+  .session-title { font-size: 18px; }
+}
 /* the river: the rail is the axis, days stamped, empty days kept */
 .surface-sessions { list-style: none; padding: 0; margin: 0; }
 .session-more { color: var(--ink-muted); font-size: 13px; padding: 12px 0; }

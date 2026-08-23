@@ -149,7 +149,14 @@ OPENING = 30 * 86_400
 PRESETS = (("1w", 7 * 86_400), ("1m", 30 * 86_400), ("3m", 91 * 86_400), ("1y", 365 * 86_400), ("all", None))
 #: The zoom follows the window's width: enough bars to see the shape,
 #: never more than the strip samples thumbnails for.
-_ZOOM = (("minute", 6 * 3_600), ("quarter", 2 * 86_400), ("hour", 14 * 86_400), ("day", 183 * 86_400))
+_ZOOM = (
+    ("minute", 6 * 3_600),
+    ("quarter", 2 * 86_400),
+    ("hour", 14 * 86_400),
+    ("day", 183 * 86_400),
+    ("week", 12 * 31_557_600),
+    ("month", 120 * 31_557_600),
+)
 #: The narrowest window the surface opens on.
 NARROWEST = 3_600
 #: The drawing's width in its own units (the SVG viewBox).
@@ -237,7 +244,7 @@ def _bin_for(width: float) -> str:
     for name, most in _ZOOM:
         if width <= most:
             return name
-    return "week"
+    return "year"
 
 
 def _day(d: datetime.datetime) -> str:
@@ -247,7 +254,9 @@ def _day(d: datetime.datetime) -> str:
 def _spell(epoch: float, bin_name: str) -> str:
     """A moment as a person reads it: the day at the day and week zooms
     ("10 Jun 2023", "week of 5 Jun 2023"), the day and the clock below."""
-    d = datetime.datetime.fromtimestamp(epoch, datetime.UTC)
+    d = _utc(epoch)
+    if bin_name in ("year", "month"):
+        return f"{bin_name} from {_day(d)}"
     if bin_name == "week":
         return f"week of {_day(d)}"
     if bin_name == "day":
@@ -258,8 +267,8 @@ def _spell(epoch: float, bin_name: str) -> str:
 def _span(lo: float, hi: float) -> str:
     """A range as a person reads it: "22 Jul – 21 Aug 2026" across days,
     "21 Aug 2026, 01:33 – 01:39" within one."""
-    a = datetime.datetime.fromtimestamp(lo, datetime.UTC)
-    b = datetime.datetime.fromtimestamp(max(lo, hi - 1), datetime.UTC)
+    a = _utc(lo)
+    b = _utc(max(lo, hi - 1))
     if a.date() == b.date():
         return f"{_day(a)}, {a.strftime('%H:%M')} – {b.strftime('%H:%M')}"
     if a.year == b.year:
@@ -275,7 +284,15 @@ HAPPENED = {
     "file_session": "files added",
 }
 #: A bar's unit, as a person says it.
-UNIT = {"week": "week", "day": "day", "hour": "hour", "quarter": "quarter hour", "minute": "minute"}
+UNIT = {
+    "year": "year",
+    "month": "month",
+    "week": "week",
+    "day": "day",
+    "hour": "hour",
+    "quarter": "quarter hour",
+    "minute": "minute",
+}
 
 
 #: Pictures one surface draws in place. Past it the page says how many
@@ -307,8 +324,15 @@ _TICK_STEPS = (
 )
 
 
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
+
+
 def _utc(epoch: float) -> datetime.datetime:
-    return datetime.datetime.fromtimestamp(epoch, datetime.UTC)
+    """A moment as a UTC datetime for ANY year the calendar has: not
+    `fromtimestamp`, which is the platform's gmtime and on Windows
+    refuses everything before 1970 (Doc/library/datetime.rst) -- a
+    scanned 1965 photograph is a moment like any other."""
+    return _EPOCH + datetime.timedelta(seconds=epoch)
 
 
 def _month_start(d: datetime.datetime) -> float:
@@ -408,8 +432,9 @@ def _grouped(pictures: list[dict], sessions: list[dict], bins: list[dict], width
             }
         held["pictures"].append(p)
     groups = [g for g in (*by_session.values(), *loose.values()) if g["pictures"]]
-    groups.sort(key=lambda g: g["t"])
+    groups.sort(key=lambda g: -g["t"])
     for g in groups:
+        g["pictures"].reverse()
         g["clock"] = f"{_utc(g['t']).strftime('%H:%M')}–{_utc(g['end']).strftime('%H:%M')}"
         g["lasted"] = _lasted(g["end"] - g["t"])
     return groups
@@ -426,30 +451,136 @@ def _lasted(seconds: float) -> str:
 
 
 def _river(groups: list[dict]) -> list[dict]:
-    """Days, oldest first, each with its groups; a day carries the month
-    cap when it opens one, and the count of empty days before it."""
+    """Days, newest first, each with its groups; a day carries the month
+    cap when it opens one, and the silence above it -- the days of
+    nothing between it and the newer day -- as the height the page draws
+    them at."""
     days: list[dict] = []
     by_day: dict[str, list] = {}
     for g in groups:
         by_day.setdefault(_utc(g["t"]).strftime("%Y-%m-%d"), []).append(g)
-    prev_day, prev_month = None, None
-    for key in sorted(by_day):
+    newer, prev_month = None, None
+    for key in sorted(by_day, reverse=True):
         d = datetime.datetime.strptime(key, "%Y-%m-%d").replace(tzinfo=datetime.UTC)
         month = (d.year, d.month)
-        gap = 0 if prev_day is None or month != prev_month else (d - prev_day).days - 1
+        silent = 0 if newer is None else (newer - d).days - 1
         days.append(
             {
                 "key": key,
                 "day": d.day,
+                "title": f"{_WEEKDAYS[d.weekday()]}, {d.day} {d.strftime('%b %Y')}",
                 "weekday": _WEEKDAYS[d.weekday()],
                 "weekend": d.weekday() >= 5,
                 "month_cap": {"year": d.year, "month": _MONTHS[d.month - 1]} if month != prev_month else None,
-                "gap_before": max(0, gap),
+                "pictures": sum(len(g["pictures"]) for g in by_day[key]),
+                "silent_days": max(0, silent),
+                "silence": _silence(max(0, silent)),
                 "groups": by_day[key],
             }
         )
-        prev_day, prev_month = d, month
+        newer, prev_month = d, month
     return days
+
+
+def _silence(days: int) -> int:
+    """How tall a gap draws, in pixels: nothing for a day, then the log
+    of the days -- a week is felt, a year is fallen through, a decade
+    is not a wall."""
+    import math
+
+    return 0 if days < 1 else int(min(320, 28 + 52 * math.log2(days + 1)))
+
+
+#: Past this many months the scrubber's segments are years: a segment
+#: per month of five centuries is six thousand slivers nobody can touch.
+SEGMENTS_MOST = 240
+#: The scrubber's height in its own units, and the least a segment takes
+#: of it -- an empty month is a hairline, never nothing.
+_H = 1000
+_SEGMENT_LEAST = 3.0
+
+
+def _scrubber(month_rows, leads: dict, whole_lo: float, whole_hi: float, lo: float, hi: float, question) -> dict:
+    """The library top to bottom, newest first: a segment per calendar
+    month (per year past SEGMENTS_MOST months) whose height is its share
+    of the pictures and whose face is its first picture; the year named
+    where it changes, far enough from the last name; the window marked
+    across the segments it touches. Every segment is a door to its own
+    window. Counts are the calendar's (db/pages.py TIMELINE_MONTHS), so
+    any span draws, minutes or centuries."""
+    counts = {key: int(n) for key, n in month_rows}
+    faces: dict[str, str] = {}
+    for at, slugs in sorted(leads.items()):
+        key = _utc(at).strftime("%Y-%m")
+        if slugs and key not in faces:
+            faces[key] = slugs[0]
+    first = _utc(whole_lo)
+    first = datetime.datetime(first.year, first.month, 1, tzinfo=datetime.UTC)
+    months_spanned = (_utc(whole_hi).year - first.year) * 12 + _utc(whole_hi).month - first.month + 1
+    by_year = months_spanned > SEGMENTS_MOST
+    units: list[tuple[datetime.datetime, datetime.datetime]] = []
+    d = first if not by_year else datetime.datetime(first.year, 1, 1, tzinfo=datetime.UTC)
+    while d.timestamp() < whole_hi:
+        nxt = datetime.datetime(d.year + 1, 1, 1, tzinfo=datetime.UTC) if by_year else _next_month(d)
+        units.append((d, nxt))
+        d = nxt
+    units.reverse()
+
+    def count(start: datetime.datetime) -> int:
+        if not by_year:
+            return counts.get(start.strftime("%Y-%m"), 0)
+        return sum(n for key, n in counts.items() if key.startswith(f"{start.year:04d}-"))
+
+    def face(start: datetime.datetime) -> str | None:
+        if not by_year:
+            return faces.get(start.strftime("%Y-%m"))
+        return next((slug for key, slug in sorted(faces.items()) if key.startswith(f"{start.year:04d}-")), None)
+
+    told = [(start, end, count(start)) for start, end in units]
+    total = max(1, sum(n for _, _, n in told))
+    least = min(_SEGMENT_LEAST, _H / max(1, len(told)))
+    room = max(0.0, _H - least * len(told))
+    y = 0.0
+    segments = []
+    last_year = None
+    labelled_at = -1e9
+    for start, end, n in told:
+        h = least + (n / total) * room
+        named = start.year != last_year and (y + h) - labelled_at >= 18
+        if named:
+            labelled_at = y + h
+        segments.append(
+            {
+                "at": start.timestamp(),
+                "end": end.timestamp(),
+                #: the door's window, clipped to the library, spelled as the URL spells it
+                "window_start": int(max(whole_lo, start.timestamp())),
+                "year": start.year,
+                "label": str(start.year) if by_year else start.strftime("%b %Y"),
+                "pictures": n,
+                "face": face(start),
+                "y": round(y, 2),
+                "h": round(h, 2),
+                "year_label": named,
+                "href": _window_url(question, max(whole_lo, start.timestamp()), min(whole_hi, end.timestamp())),
+            }
+        )
+        last_year = start.year
+        y += h
+
+    def y_of(t: float, at_end: bool) -> float:
+        for seg in segments:
+            if seg["at"] <= t < seg["end"]:
+                f = (t - seg["at"]) / max(1.0, seg["end"] - seg["at"])
+                return seg["y"] + seg["h"] * (1.0 - f)
+        return 0.0 if at_end else float(_H)
+
+    top = y_of(min(hi, whole_hi - 1), True)
+    bottom = y_of(max(lo, whole_lo), False)
+    return {
+        "segments": segments,
+        "brush": {"y": round(min(top, bottom), 2), "h": round(max(4.0, abs(bottom - top)), 2)},
+    }
 
 
 def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuery) -> list[dict]:
@@ -536,7 +667,9 @@ def _window_url(question: resultset.GalleryQuery, start: float, end: float) -> s
     return f"/timeline?{qs + '&' if qs else ''}start={int(start)}&end={int(end)}"
 
 
-def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, bin_name=None, lean=False) -> dict:
+def _surface(
+    conn, state: State, asked: resultset.GalleryQuery, start, end, *, bin_name=None, lean=False, snap=False
+) -> dict:
     """The surface at one window: pictures per bin of the human moment
     over [start, end) -- the last month that holds pictures when no
     window is asked -- split by clock domain and by origin, with a
@@ -584,6 +717,7 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
             "calendar": [],
             "years": [],
             "listed": [],
+            "scrubber": None,
         }
     whole_lo, whole_hi = float(extent[0]), float(extent[1]) + 1.0
     if start is None and end is None:
@@ -599,12 +733,29 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
     else:
         lo = float(start) if start is not None else whole_lo
         hi = float(end) if end is not None else whole_hi
+        if snap:
+            # a hand on the scrubber lands in time, not on pictures: carry
+            # the window back to the newest picture at or before its end,
+            # keeping its width -- a window is never empty by a hair
+            last = pages.timeline_last_before(conn, hi, scope)
+            if last is not None and last + 1.0 < hi and pages.timeline_span(conn, lo, hi, scope)[0] is None:
+                width_asked = hi - lo
+                hi = min(whole_hi, last + 1.0)
+                lo = max(whole_lo, hi - width_asked)
     bin_name = bin_name or _bin_for(hi - lo)
     try:
         width, bins, spans = pages.timeline_density(conn, bin_name, lo, hi, scope)
-        overview_width, overview_bins, _ = pages.timeline_density(conn, "week", whole_lo, whole_hi, scope)
     except ValueError as refused:
         raise ClientException(str(refused)) from refused
+    # the overview at the finest bin the whole extent can be drawn at
+    for overview_bin in ("week", "month", "year"):
+        try:
+            overview_width, overview_bins, _ = pages.timeline_density(conn, overview_bin, whole_lo, whole_hi, scope)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ClientException("the library spans more than the page can draw")
     every = len(bins) <= pages.SAMPLED_BINS_MOST
     busiest = (
         None if every else [at for at, pictures, *_ in sorted(bins, key=lambda b: -b[1])[: pages.SAMPLED_BINS_MOST]]
@@ -737,6 +888,15 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
         #: the cards the body lists on its own: every session under the
         #: sheets; in the river only those no day of it placed
         "listed": sessions if composition != "river" else [one for one in sessions if not one["drawn_pictures"]],
+        "scrubber": _scrubber(
+            pages.timeline_months(conn, scope),
+            {} if lean else pages.timeline_samples(conn, overview_bin, whole_lo, whole_hi, None, scope),
+            whole_lo,
+            whole_hi,
+            lo,
+            hi,
+            held,
+        ),
         "bin": bin_name,
         "bin_seconds": width,
         "start": lo,
@@ -864,15 +1024,18 @@ def timeline(
     favorite: FromQuery[str | None] = None,
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
+    snap: FromQuery[bool] = False,
 ) -> Template | Response:
     """The timeline at one window: JSON to a machine, the surface fragment
-    to htmx (what a brush move fetches), the page to a browser -- one
-    builder, one renderer. `bin` is accepted from older doors and
-    ignored: the zoom follows the window."""
+    to htmx (what a brush or scrubber move fetches), the page to a
+    browser -- one builder, one renderer. `bin` is accepted from older
+    doors and ignored: the zoom follows the window. `snap` is the
+    scrubber's ask: a window landing in empty time is carried back onto
+    pictures."""
     asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        told = _surface(conn, state, asked, start, end)
+        told = _surface(conn, state, asked, start, end, snap=snap)
     finally:
         connect.close(conn)
     return presented(request, told, page="timeline.html", fragment="_timeline_surface.html", name="surface")

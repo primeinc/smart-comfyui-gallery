@@ -1093,7 +1093,18 @@ _TIMELINE_SESSIONS_TAIL = " ORDER BY COALESCE(e.local_start, e.instant_start)"
 TIMELINE_SESSIONS = _TIMELINE_SESSIONS_HEAD + _TIMELINE_SESSIONS_MIDDLE + _TIMELINE_SESSIONS_TAIL
 
 #: Bin widths a zoom may ask for, by name. Anything else is refused.
-BINS = {"week": 604_800, "day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
+#: `month` and `year` are fixed widths (the mean Gregorian month and
+#: year), anchored like the week: density bars over decades, not
+#: calendar months -- the calendar's months are TIMELINE_MONTHS.
+BINS = {
+    "year": 31_557_600,
+    "month": 2_629_800,
+    "week": 604_800,
+    "day": 86_400,
+    "hour": 3_600,
+    "quarter": 900,
+    "minute": 60,
+}
 #: Where each bin's grid starts: Monday for the week, the epoch otherwise.
 MONDAY = 345_600
 _ANCHOR = {"week": MONDAY}
@@ -1105,6 +1116,8 @@ SAMPLES_PER_SESSION = 6
 #: Which precisions are fine enough for each bin: a claim enters a bin
 #: only when its own granule fits inside it.
 _FINE_ENOUGH = {
+    "year": ["day", "hour", "minute", "second", "subsecond"],
+    "month": ["day", "hour", "minute", "second", "subsecond"],
     "week": ["day", "hour", "minute", "second", "subsecond"],
     "day": ["day", "hour", "minute", "second", "subsecond"],
     "hour": ["hour", "minute", "second", "subsecond"],
@@ -1134,6 +1147,21 @@ TIMELINE_SPAN = TIMELINE_EXTENT + " AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_
 def timeline_span(conn, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
     """(first moment, last moment, pictures) within [lo, hi), or Nones."""
     return conn.execute(TIMELINE_SPAN + scope[0], (context.POLICY_VERSION, lo, hi, *scope[1])).fetchone()
+
+
+#: The newest moment at or before a point: where a hand that lands in
+#: empty time is carried to.
+TIMELINE_LAST_BEFORE = (
+    "SELECT max(" + HUMAN_MOMENT + ")"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ? AND " + HUMAN_MOMENT + " < ?"
+)
+
+
+def timeline_last_before(conn, before: float, scope: tuple[str, list] = ("", [])) -> float | None:
+    row = conn.execute(TIMELINE_LAST_BEFORE + scope[0], (context.POLICY_VERSION, before, *scope[1])).fetchone()
+    return None if row is None or row[0] is None else float(row[0])
 
 
 def timeline_density(conn, bin_name: str, lo: float, hi: float, scope: tuple[str, list] = ("", [])):

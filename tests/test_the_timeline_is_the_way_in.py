@@ -174,6 +174,35 @@ def test_the_pictures_of_a_window_come_with_their_place_on_it(doors):
     assert doors.get("/timeline/pictures", params={"start": JUNE_10, "end": JUNE_10}).status_code == 400
 
 
+def test_opening_a_session_is_telling_its_story(doors):
+    """/stories/sessions/{id} is the session's door: it freezes the
+    session, asks for its plan and, once the plan exists, renders and
+    sends the person to the story; while the plan is durable work it
+    sends them back where they came from, on this site only."""
+    from tests.test_the_timeline_is_a_surface import _drain
+
+    whole = _density(doors, bin="day")
+    held = whole["sessions"][0]
+    first = doors.get(f"/stories/sessions/{held['id']}", params={"back": "/timeline?x=1"}, follow_redirects=False)
+    assert first.status_code == 303, first.text
+    where = first.headers["location"]
+    assert where.startswith("/stories/renders/") or where == f"/timeline?x=1#session-{held['id']}", where
+    if not where.startswith("/stories/renders/"):
+        _drain(doors)
+        again = doors.get(f"/stories/sessions/{held['id']}", follow_redirects=False)
+        assert again.status_code == 303, again.text
+        where = again.headers["location"]
+    assert where.startswith("/stories/renders/")
+    assert doors.get(where, headers={"accept": "application/json"}).status_code == 200
+    told = _density(doors, bin="day")
+    assert next(s for s in told["sessions"] if s["id"] == held["id"])["story"]["href"] == where, (
+        "the story rides the session"
+    )
+    elsewhere = doors.get(f"/stories/sessions/{held['id']}", params={"back": "//evil"}, follow_redirects=False)
+    assert elsewhere.headers["location"].startswith("/stories/renders/")
+    assert doors.get("/stories/sessions/999999", follow_redirects=False).status_code == 404
+
+
 def test_a_week_starts_on_a_monday(doors):
     week = _density(doors, bin="week", start=JUNE_10 - 3 * DAY, end=JUNE_10 + 4 * DAY)
     assert week["bins"], "the June pictures fall in a week"

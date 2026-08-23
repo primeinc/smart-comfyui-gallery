@@ -27,11 +27,13 @@
     };
   };
 
-  // the window's URL: the scope's own parameters ride every move
-  const urlFor = (start, end) => {
+  // the window's URL: the scope's own parameters ride every move; `snap`
+  // is the scrubber's ask, answered by the server with a window on pictures
+  const urlFor = (start, end, snap = false) => {
     const qs = new URLSearchParams(read()?.scope || "");
     qs.set("start", String(start));
     qs.set("end", String(end));
+    if (snap) qs.set("snap", "true");
     return `/timeline?${qs}`;
   };
 
@@ -77,10 +79,10 @@
   const LIVE_MS = 120;
   let liveAt = 0;
   let liveTimer = 0;
-  const live = (start, end) => {
+  const live = (start, end, snap = false) => {
     const now = performance.now();
     clearTimeout(liveTimer);
-    const run = () => { liveAt = performance.now(); move(urlFor(Math.round(start), Math.round(end)), false); };
+    const run = () => { liveAt = performance.now(); move(urlFor(Math.round(start), Math.round(end), snap), false); };
     if (now - liveAt >= LIVE_MS) run();
     else liveTimer = setTimeout(run, LIVE_MS - (now - liveAt));
   };
@@ -95,7 +97,7 @@
       socket.onmessage = (msg) => {
         const frame = JSON.parse(msg.data);
         if (frame.type === "snapshot") return;
-        if (["done", "failed", "cancelled"].includes(frame.state) && ["context", "events", "ingest", "scan", "faces", "cluster"].includes(frame.kind)) {
+        if (["done", "failed", "cancelled"].includes(frame.state) && ["context", "events", "ingest", "scan", "faces", "cluster", "story_plan"].includes(frame.kind)) {
           move(location.pathname + location.search, null);
         }
       };
@@ -117,13 +119,44 @@
     move(a.getAttribute("href"), true);
   });
 
+  // --- the pull ----------------------------------------------------------
+  // Pictures have mass. A hand-placed moment inside the reach of a bin
+  // that holds pictures is drawn toward it -- continuously, stronger the
+  // nearer and the heavier, nothing at all past the reach -- so a window
+  // settles on pictures instead of beside them. The masses are the
+  // overview's bars, read from the page each time: the swap replaces them.
+  const REACH = 0.025; // of the library's extent, either side
+  const masses = () => {
+    const out = [];
+    for (const bar of swap.querySelectorAll(".overview-bar[data-pictures]")) {
+      const n = Number(bar.dataset.pictures);
+      if (n > 0) out.push({ at: Number(bar.dataset.at), end: Number(bar.dataset.end), weight: Math.sqrt(n) });
+    }
+    return out;
+  };
+  const pull = (held, t, field = masses()) => {
+    const reach = REACH * (held.extentEnd - held.extentStart);
+    let force = 0;
+    let toward = 0;
+    for (const m of field) {
+      const d = t < m.at ? m.at - t : t > m.end ? t - m.end : 0; // inside a bin: no pull
+      if (d === 0 || d > reach) continue;
+      const w = m.weight * (1 - d / reach) ** 2;
+      force += w;
+      toward += w * (t < m.at ? m.at : m.end);
+    }
+    if (!force) return t;
+    const heaviest = Math.max(...field.map((m) => m.weight));
+    const grip = Math.min(1, force / heaviest); // how much of the way it is drawn
+    return t + (toward / force - t) * grip;
+  };
+
   // --- the brush ---------------------------------------------------------
   const ox = (held, t) => ((t - held.extentStart) / Math.max(1, held.extentEnd - held.extentStart)) * W;
   const ot = (held, x) => held.extentStart + (Math.min(W, Math.max(0, x)) / W) * (held.extentEnd - held.extentStart);
-  const overviewX = (overview, event) => {
-    const box = overview.getBoundingClientRect();
-    return ((event.clientX - box.left) / box.width) * W;
-  };
+  // the rule's box is read ONCE, at pointerdown: the live swap replaces
+  // the element under the hand, and a detached element's box is all zeros
+  const overviewX = (box, event) => ((event.clientX - box.left) / (box.width || 1)) * W;
   const placeBrush = (overview, held, start, end) => {
     const x0 = ox(held, start);
     const x1 = ox(held, end);
@@ -136,23 +169,25 @@
   let drag = null; // {overview, held, mode, at}
   const dragged = (event) => {
     const { held, mode, at } = drag;
-    const x = overviewX(drag.overview, event);
+    const x = overviewX(drag.box, event);
     const dt = ot(held, x) - ot(held, at);
     // a window is never narrower than an hour, or than the library itself
     const narrowest = Math.min(NARROWEST, held.extentEnd - held.extentStart);
     let start = held.start;
     let end = held.end;
+    const field = masses();
     if (mode === "move") {
       const width = end - start;
-      start = Math.min(Math.max(held.extentStart, start + dt), held.extentEnd - width);
-      end = start + width;
+      end = pull(held, Math.min(Math.max(held.extentStart + width, end + dt), held.extentEnd), field);
+      end = Math.min(held.extentEnd, Math.max(held.extentStart + width, end));
+      start = end - width;
     } else if (mode === "start") {
-      start = Math.max(held.extentStart, Math.min(start + dt, end - narrowest));
+      start = Math.max(held.extentStart, Math.min(pull(held, start + dt, field), end - narrowest));
     } else if (mode === "end") {
-      end = Math.min(held.extentEnd, Math.max(end + dt, start + narrowest));
+      end = Math.min(held.extentEnd, Math.max(pull(held, end + dt, field), start + narrowest));
     } else {
-      const a = ot(held, at);
-      const b = ot(held, x);
+      const a = pull(held, ot(held, at), field);
+      const b = pull(held, ot(held, x), field);
       start = Math.max(held.extentStart, Math.min(a, b));
       end = Math.min(held.extentEnd, Math.max(a, b, start + narrowest));
     }
@@ -163,7 +198,8 @@
     const overview = event.target.closest("[data-overview]");
     const held = read();
     if (!overview || !held) return;
-    const x = overviewX(overview, event);
+    const box = overview.getBoundingClientRect();
+    const x = overviewX(box, event);
     const x0 = ox(held, held.start);
     const x1 = ox(held, held.end);
     const grip = 8;
@@ -171,7 +207,7 @@
     if (Math.abs(x - x0) <= grip) mode = "start";
     else if (Math.abs(x - x1) <= grip) mode = "end";
     else if (x > x0 && x < x1) mode = "move";
-    drag = { overview, held, mode, at: x };
+    drag = { overview, box, held, mode, at: x };
     overview.setPointerCapture(event.pointerId);
     overview.dataset.dragging = mode;
     event.preventDefault();
@@ -179,8 +215,9 @@
   swap.addEventListener("pointermove", (event) => {
     if (!drag) return;
     const { start, end } = dragged(event);
-    placeBrush(drag.overview, drag.held, start, end);
-    live(start, end);
+    const shown = drag.overview.isConnected ? drag.overview : swap.querySelector("[data-overview]");
+    if (shown) placeBrush(shown, drag.held, start, end);
+    live(start, end, true);
   });
   const release = (event) => {
     if (!drag) return;
@@ -188,7 +225,12 @@
     delete drag.overview.dataset.dragging;
     drag = null;
     clearTimeout(liveTimer);
-    move(urlFor(Math.round(start), Math.round(end)), true);
+    // the hand's window, landed on pictures by the server (snap), then
+    // the URL says the window the page actually shows
+    move(urlFor(Math.round(start), Math.round(end), true), true).then(() => {
+      const held = read();
+      if (held) history.replaceState({ url: urlFor(Math.round(held.start), Math.round(held.end)) }, "", urlFor(Math.round(held.start), Math.round(held.end)));
+    });
   };
   // the brush swaps the surface under the pointer: keep dragging the new one
   swap.addEventListener("pointermove", (event) => {
@@ -215,9 +257,9 @@
     if (!pan.moved) { pan.moved = true; pan.axis.dataset.dragging = ""; pan.axis.setPointerCapture(event.pointerId); }
     const width = pan.end - pan.start;
     const dt = ((pan.x - event.clientX) / pan.px) * width;
-    let start = Math.max(pan.held.extentStart, pan.start + dt);
-    start = Math.min(start, pan.held.extentEnd - width);
-    live(start, start + width);
+    let end = pull(pan.held, pan.end + dt);
+    end = Math.min(pan.held.extentEnd, Math.max(pan.held.extentStart + width, end));
+    live(end - width, end, true);
   });
   let panned = false; // the click that ends a drag is not a click
   swap.addEventListener("click", (e) => {
@@ -235,8 +277,8 @@
     const held = read();
     if (held) move(urlFor(Math.round(held.start), Math.round(held.end)), true);
   };
-  swap.addEventListener("pointerup", unpan);
-  swap.addEventListener("pointercancel", unpan);
+  window.addEventListener("pointerup", unpan);
+  window.addEventListener("pointercancel", unpan);
 
   // ctrl+wheel over the axis or the rule zooms around the cursor; shift+wheel
   // pans; a plain wheel is the page's, so the river below stays reachable
@@ -265,8 +307,11 @@
     end = Math.min(held.extentEnd, Math.max(end, start + narrowest));
     live(start, end);
   }, { passive: false });
-  swap.addEventListener("pointerup", release);
-  swap.addEventListener("pointercancel", release);
+  // the release is heard on the window: the live swap may have detached
+  // the element holding the capture, and an event on a detached element
+  // never reaches the stage
+  window.addEventListener("pointerup", release);
+  window.addEventListener("pointercancel", release);
 
   swap.addEventListener("keydown", (e) => {
     if (!e.target.closest("[data-overview]")) return;
@@ -281,65 +326,132 @@
     if (e.key === "-") go(Math.max(held.extentStart, held.start - width / 2), Math.min(held.extentEnd, held.end + width / 2));
   });
 
-  // --- the story button ----------------------------------------------------
-  function settled(jobId) {
-    // the job feed: a snapshot, then every committed delta; resolve on
-    // the job's terminal state, or on a snapshot that already holds it
-    return new Promise((resolve, reject) => {
-      const proto = location.protocol === "https:" ? "wss" : "ws";
-      const socket = new WebSocket(`${proto}://${location.host}/ws/jobs`);
-      const terminal = new Set(["done", "failed", "cancelled"]);
-      const finish = (state) => { socket.close(); resolve(state); };
-      socket.onmessage = (msg) => {
-        const frame = JSON.parse(msg.data);
-        if (frame.type === "snapshot") {
-          const held = frame.jobs.find((j) => j.id === jobId);
-          if (held && terminal.has(held.state)) finish(held.state);
-          if (!held) fetch(`/jobs/${jobId}`, { headers: { accept: "application/json" } }).then((r) => r.json()).then((j) => { if (terminal.has(j.state)) finish(j.state); });
-          return;
-        }
-        if (frame.job === jobId && terminal.has(frame.state)) finish(frame.state);
-      };
-      socket.onerror = () => reject(new Error("the job feed closed"));
-    });
-  }
-
-  async function tell(eventId, planner, status) {
-    // freeze -> plan -> render, each a story route; a refusal is shown verbatim
-    const post = async (where, body) => {
-      const r = await fetch(where, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
-      const told = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(told.detail || r.statusText);
-      return { status: r.status, told };
-    };
-    try {
-      status.textContent = "freezing…";
-      const snap = await post("/stories/snapshots", { event_id: eventId });
-      status.textContent = "planning…";
-      let plan = await post("/stories/plans", { snapshot_id: snap.told.id, planner });
-      if (plan.status === 202) {
-        // durable work: the job feed says when it settles (no polling),
-        // then the same request answers 200 with the plan it made
-        status.textContent = `planning as job #${plan.told.job.id}…`;
-        const state = await settled(plan.told.job.id);
-        if (state !== "done") throw new Error(`the planning job ${state}; see /operations`);
-        plan = await post("/stories/plans", { snapshot_id: snap.told.id, planner });
-        if (plan.status !== 200) throw new Error("the plan job settled but no plan answers; see /operations");
-      }
-      status.textContent = "rendering…";
-      const made = await post("/stories/renders", { plan_id: plan.told.plan_id });
-      status.textContent = "";
-      window.location.href = `/stories/renders/${made.told.id}`;
-    } catch (why) {
-      status.textContent = why.message;
+  // --- the scrubber ----------------------------------------------------------
+  // The library top to bottom, newest first, a segment per month sized
+  // by its pictures. The hand's y lands in a segment; the fraction of
+  // the way down it is the fraction of the way back through the month;
+  // an empty month hands the ask to the nearest one with pictures, and
+  // the server lands the window on them (`snap`). Geometry is read from
+  // the elements under the pointer, never kept from an element the live
+  // swap may have replaced.
+  const segmentAt = (x, y) => {
+    for (const el of document.elementsFromPoint(x, y)) {
+      const seg = el.closest ? el.closest(".segment") : null;
+      if (seg) return seg;
     }
-  }
+    return null;
+  };
+  const timeAt = (seg, y) => {
+    const box = seg.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (y - box.top) / (box.height || 1)));
+    const at = Number(seg.dataset.at);
+    const end = Number(seg.dataset.end);
+    return end - f * (end - at);
+  };
+  const nearestWithPictures = (seg, y) => {
+    if (Number(seg.dataset.pictures) > 0) return seg;
+    let best = seg;
+    let nearest = Infinity;
+    for (const other of swap.querySelectorAll(".segment")) {
+      if (!(Number(other.dataset.pictures) > 0)) continue;
+      const box = other.getBoundingClientRect();
+      const d = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+      if (d < nearest) { nearest = d; best = other; }
+    }
+    return best;
+  };
+  const peek = (seg, y) => {
+    const card = swap.querySelector("[data-scrubber-peek]");
+    if (!card) return;
+    if (!seg) { card.hidden = true; return; }
+    const rail = swap.querySelector("[data-scrubber]").getBoundingClientRect();
+    card.hidden = false;
+    card.style.top = `${Math.min(rail.height - 60, Math.max(40, y - rail.top))}px`;
+    const img = card.querySelector("img");
+    if (seg.dataset.face) { img.src = seg.dataset.face; img.hidden = false; } else { img.removeAttribute("src"); img.hidden = true; }
+    card.querySelector(".scrubber-peek-label").textContent = seg.dataset.label;
+    const n = Number(seg.dataset.pictures);
+    card.querySelector(".scrubber-peek-count").textContent = n ? `${n.toLocaleString()} pictures` : "nothing";
+  };
 
+  let scrub = null; // {held, rail, pointer, x, y, moved}
+  let scrubbed = false; // the click that ends a drag is not a click
   swap.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-session-tell]");
-    if (!btn) return;
-    const id = Number(btn.dataset.sessionTell);
-    const status = swap.querySelector(`[data-session-status="${id}"]`);
-    tell(id, btn.dataset.sessionPlanner, status);
+    if (scrubbed && e.target.closest("[data-scrubber]")) { e.preventDefault(); e.stopImmediatePropagation(); }
+    scrubbed = false;
+  }, true);
+  swap.addEventListener("pointerdown", (event) => {
+    const rail = event.target.closest("[data-scrubber]");
+    const held = read();
+    if (!rail || !held || event.button !== 0) return;
+    // no capture yet: a click on a month must reach the month; the hand
+    // decides by moving, and only then is the pointer held
+    scrub = { held, rail, pointer: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+    event.preventDefault(); // a month is a link: no native link-drag, no text selection
   });
+  swap.addEventListener("pointermove", (event) => {
+    const rail = event.target.closest("[data-scrubber]");
+    const seg = segmentAt(event.clientX, event.clientY);
+    if (rail || scrub) peek(seg, event.clientY);
+    if (!scrub) return;
+    if (!scrub.moved && Math.abs(event.clientY - scrub.y) < 3) return;
+    if (!scrub.moved) {
+      scrub.moved = true;
+      const held = scrub.rail.isConnected ? scrub.rail : swap.querySelector("[data-scrubber]");
+      if (held) { held.setPointerCapture(scrub.pointer); held.dataset.dragging = ""; }
+    }
+    if (!seg) return;
+    const width = scrub.held.end - scrub.held.start;
+    const target = nearestWithPictures(seg, event.clientY);
+    const t = target === seg ? timeAt(seg, event.clientY) : Number(target.dataset.end) - 1;
+    const end = Math.min(scrub.held.extentEnd, Math.max(scrub.held.extentStart + width, pull(scrub.held, t)));
+    live(end - width, end, true);
+  });
+  const unscrub = () => {
+    if (!scrub) return;
+    const was = scrub;
+    scrub = null;
+    scrubbed = was.moved;
+    for (const rail of swap.querySelectorAll("[data-scrubber]")) delete rail.dataset.dragging;
+    if (!was.moved) return;
+    clearTimeout(liveTimer);
+    const held = read();
+    if (held) move(urlFor(Math.round(held.start), Math.round(held.end)), true);
+  };
+  window.addEventListener("pointerup", unscrub);
+  window.addEventListener("pointercancel", unscrub);
+  swap.addEventListener("pointerleave", (e) => { if (!scrub && e.target.closest && e.target.closest("[data-scrubber]")) peek(null); }, true);
+
+  // --- the size of the pictures ----------------------------------------------
+  // ctrl+wheel or a pinch over the days resizes the rows, and the size is
+  // the viewer's from then on; a plain wheel is the page's
+  const ROW = { least: 120, most: 520, fallback: 200, key: "timeline.row" };
+  const rowOf = () => {
+    try { return Number(localStorage.getItem(ROW.key)) || ROW.fallback; } catch { return ROW.fallback; }
+  };
+  const sizeRows = (px) => {
+    const row = Math.min(ROW.most, Math.max(ROW.least, Math.round(px)));
+    const s = surface();
+    if (s) s.style.setProperty("--row", `${row}px`);
+    try { localStorage.setItem(ROW.key, String(row)); } catch { /* a private window keeps no size */ }
+  };
+  const sized = () => { const s = surface(); if (s) s.style.setProperty("--row", `${rowOf()}px`); };
+  sized();
+  new MutationObserver(sized).observe(swap, { childList: true });
+  swap.addEventListener("wheel", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || !e.target.closest("[data-sessions]")) return;
+    e.preventDefault();
+    sizeRows(rowOf() * (e.deltaY > 0 ? 0.9 : 1.1));
+  }, { passive: false });
+  let pinch = null; // {distance, row}
+  const apart = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  swap.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2 && e.target.closest("[data-sessions]")) pinch = { distance: apart(e.touches), row: rowOf() };
+  }, { passive: true });
+  swap.addEventListener("touchmove", (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    sizeRows(pinch.row * (apart(e.touches) / pinch.distance));
+  }, { passive: false });
+  swap.addEventListener("touchend", () => { pinch = null; });
 })();

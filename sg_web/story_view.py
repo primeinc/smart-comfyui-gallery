@@ -211,6 +211,56 @@ def render_plan(state: State, data: RenderRequest) -> Response:
     )
 
 
+@get("/stories/sessions/{event_id:int}", sync_to_thread=True)
+def session_story(state: State, event_id: FromPath[int], back: FromQuery[str | None] = None) -> Redirect:
+    """Opening a session tells its story: the session is frozen, its plan
+    asked for, and the story rendered and shown -- the three story steps
+    as one door. When the plan is durable work still running, the person
+    is sent back where they came from (`back`, a path on this site) and
+    the timeline refreshes itself when the job settles; the next opening
+    lands on the story."""
+    conn = connect.connect(state.db_path)
+    try:
+        try:
+            # each step commits before the next: freezing, planning and
+            # rendering each own their transaction (db/planning.py
+            # request_plan begins its own), exactly as the three routes do
+            frozen = stories.snapshot_event(conn, event_id, time.time())
+            conn.commit()
+            weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+            engine = planning.engine_for(conn, "lexical", weights)
+            kind = str((stories.load_snapshot(conn, frozen.id).get("subject") or {}).get("event_kind") or "")
+            planner = _PLANNER_FOR_KIND.get(kind, "file_history")
+            asked = planning.request_plan(conn, frozen.id, planner, engine, None, time.time())
+            if asked.job_id is not None:
+                submitting.submitted(state, conn, asked.job_id)
+            conn.commit()
+            if asked.plan_id is None:
+                where = back if back and back.startswith("/") and not back.startswith("//") else "/timeline"
+                return Redirect(path=f"{where}#session-{event_id}", status_code=303)
+            made = rendering.render_plan(
+                conn, asked.plan_id, rendering.TemplateStoryRenderer("memory", "en"), time.time()
+            )
+            conn.commit()
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except stories.Corrupt as corrupt:
+            raise ClientException(str(corrupt), status_code=409) from corrupt
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+    finally:
+        connect.close(conn)
+    return Redirect(path=f"/stories/renders/{made.id}", status_code=303)
+
+
+#: Which planner tells which kind of session's story.
+_PLANNER_FOR_KIND = {
+    "generation_session": "generation_history",
+    "capture_session": "capture_history",
+    "file_session": "file_history",
+}
+
+
 @get("/stories/renders/{render_id:int}", sync_to_thread=True)
 def render_document(state: State, render_id: FromPath[int], request: Request) -> Response | Template:
     """The verified render, as JSON or laid out as HTML by Accept. The

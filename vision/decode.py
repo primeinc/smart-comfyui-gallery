@@ -104,7 +104,12 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
 
     RAW goes through LibRaw and comes back as a rendered image -- a RAW
     file is sensor data, and "the picture" is a development of it, which
-    is what postprocess() performs with its neutral defaults.
+    is what postprocess() performs with its neutral defaults -- except
+    the flip. Every still leaves this door AS STORED, its orientation
+    tag applied once, by db/oriented.py, from the tag ingest recorded.
+    LibRaw's default (`user_flip=-1`, letmaik/rawpy rawpy/_rawpy.pyx
+    :1282-1283, :1329) would apply the camera's flip here, and the tag
+    would turn the frame a second time: every portrait CR2 sideways.
     """
     ensure_decoders()
     if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
@@ -112,7 +117,7 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
         import rawpy
 
         with rawpy.imread(os.fspath(path)) as raw:
-            rendered = raw.postprocess()
+            rendered = raw.postprocess(user_flip=0)
         array = np.asarray(rendered)
         if array.ndim == 3 and array.shape[2] == 1:
             array = array[:, :, 0]

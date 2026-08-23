@@ -1172,6 +1172,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             story_view.plan_document,
             story_view.render_plan,
             story_view.render_document,
+            story_view.session_story,
             story_view.plan_evolution,
             person_view.people_index,
             place_view.places_index,

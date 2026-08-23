@@ -1,6 +1,8 @@
 """The timeline page, witnessed in a browser: the URL owns the window,
-a bar opens its hour and back returns, the strip carries thumbnails, a
-group card opens its pictures, tells its story, and carries it."""
+a month on the scrubber opens its window and back returns, the page
+carries the window's pictures, a session's words open its pictures;
+opening an untold session tells its story, and the story then rides
+the session as its title."""
 
 from __future__ import annotations
 
@@ -48,7 +50,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
 
 
 def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, live: Live):
-    # a day-wide window: one bar per hour; a bar opens its hour
+    # a day-wide window; the scrubber's month opens the month
     page.goto(f"/timeline?start={DAY}&end={DAY + 86400}")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
     assert page.get_attribute("[data-surface]", "data-window-start") == f"{DAY}.0"
@@ -73,7 +75,7 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, li
     page.reload()
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
     assert page.get_attribute("[data-surface]", "data-window-start") == f"{DAY}.0"
-    href = page.get_attribute("[data-sessions] .session [data-session-open]", "href")
+    href = page.get_attribute("[data-sessions] .session [data-session-open]", "data-session-pictures")
     assert href is not None
     assert "event.id%3Aeq%3A" in href
     page.goto(href)
@@ -83,14 +85,27 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, li
     assert int(total) == FILES
 
 
-def test_a_group_tells_its_story_and_carries_it(page: Page, live: Live):
-    """Tell the story from the card: freeze, plan (a job the real worker
-    drains), render, read; back on the timeline the story rides the card
-    -- title, heroes, the door to the whole -- and the evolution view is
-    a door away."""
+def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page: Page, live: Live):
+    """Opening an untold session IS telling it: the session's words are
+    the door; the route freezes, asks for the plan (a job the real worker
+    drains -- the page comes back to the timeline and refreshes itself
+    when it settles), renders, and shows the story; back on the
+    timeline the story is the session's title, and the evolution view
+    is a door away."""
     page.goto("/timeline")
-    page.wait_for_selector("[data-sessions] .session [data-session-tell]", timeout=10_000)
-    page.click("[data-sessions] .session [data-session-tell]")
+    page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
+    assert page.locator("[data-sessions] .session [data-session-story-title]").count() == 0, "untold"
+    page.click("[data-sessions] .session [data-session-open]")
+    page.wait_for_url(lambda url: "/stories/renders/" in url or "/timeline" in url, timeout=60_000)
+    if "/timeline" in page.url:
+        # the plan was durable work: the real worker drains it, the page
+        # refreshes itself, and the same door then opens the story
+        page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
+        deadline = time.monotonic() + 60
+        while any(job["kind"] == "story_plan" for job in live.api.get("/jobs").json()):
+            assert time.monotonic() < deadline, "the plan job never settled"
+            time.sleep(0.1)
+        page.click("[data-sessions] .session [data-session-open]")
     page.wait_for_url("**/stories/renders/*", timeout=60_000)
     page.wait_for_selector(".story-heroes img", timeout=10_000)
     assert page.locator(".story-members img").count() >= FILES
@@ -102,10 +117,11 @@ def test_a_group_tells_its_story_and_carries_it(page: Page, live: Live):
     page.wait_for_url("**/evolution", timeout=10_000)
     page.wait_for_selector("[data-evolution-story]", timeout=10_000)
     page.goto("/timeline")
-    page.wait_for_selector("[data-sessions] .session [data-session-story]", timeout=10_000)
+    page.wait_for_selector("[data-sessions] .session[data-session-story]", timeout=10_000)
     assert page.inner_text("[data-sessions] .session [data-session-story-title]").strip()
-    assert page.locator("[data-sessions] .session .session-story-hero").count() >= 1
-    assert page.locator("[data-sessions] .session [data-session-story-read]").count() == 1
+    href = page.get_attribute("[data-sessions] .session [data-session-open]", "href")
+    assert href is not None
+    assert "/stories/renders/" in href, "a told session's door is its story"
 
 
 def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
