@@ -1546,6 +1546,12 @@ export interface components {
         AlbumEntry: {
             file: string;
         };
+        /** AnswerAfter */
+        AnswerAfter: {
+            answer: string;
+            currency: string;
+            total: number;
+        };
         /** AuthoredAnswer */
         AuthoredAnswer: {
             slug: string | null;
@@ -1637,6 +1643,11 @@ export interface components {
             /** @default false */
             discard_rule: boolean;
             media_kind?: string | null;
+        };
+        /** Curated */
+        Curated: {
+            targets: number;
+            after: components["schemas"]["AnswerAfter"];
         };
         /** DesiredFlag */
         DesiredFlag: {
@@ -4796,7 +4807,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["Curated"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -4847,7 +4858,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["Curated"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -4898,7 +4909,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["Curated"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -4951,7 +4962,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["Curated"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

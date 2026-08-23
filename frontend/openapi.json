@@ -7050,7 +7050,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/Curated"
                                 }
                             }
                         }
@@ -7321,7 +7321,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/Curated"
                                 }
                             }
                         }
@@ -7592,7 +7592,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/Curated"
                                 }
                             }
                         }
@@ -7872,7 +7872,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/Curated"
                                 }
                             }
                         }
@@ -8672,6 +8672,27 @@
                 ],
                 "title": "AlbumEntry"
             },
+            "AnswerAfter": {
+                "properties": {
+                    "answer": {
+                        "type": "string"
+                    },
+                    "currency": {
+                        "type": "string"
+                    },
+                    "total": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "answer",
+                    "currency",
+                    "total"
+                ],
+                "title": "AnswerAfter"
+            },
             "AuthoredAnswer": {
                 "properties": {
                     "slug": {
@@ -9114,6 +9135,23 @@
                     "kind"
                 ],
                 "title": "ConvertCollection"
+            },
+            "Curated": {
+                "properties": {
+                    "targets": {
+                        "type": "integer"
+                    },
+                    "after": {
+                        "$ref": "#/components/schemas/AnswerAfter"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "after",
+                    "targets"
+                ],
+                "title": "Curated"
             },
             "DesiredFlag": {
                 "properties": {

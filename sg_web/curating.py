@@ -77,11 +77,36 @@ class BulkRating(Wire):
     value: int | None = None
 
 
+class AnswerAfter(Wire):
+    """The answer as it stands once the write has landed.
+
+    The browser compares `answer` with the one its selection was made
+    against: the same identity means the facts moved and the question did
+    not, so it adopts `currency` in place and keeps the selection mounted;
+    a different one means the selected pictures left (or joined) this
+    question, and the URL decides what renders.
+    """
+
+    answer: str
+    currency: str
+    total: int
+
+
+class Curated(Wire):
+    """What a bulk write answers."""
+
+    #: how many pictures the desired fact was stated FOR -- not how many
+    #: rows changed. Desired state means an idempotent retry touches
+    #: nothing, and a count that claimed otherwise would be lying politely.
+    targets: int
+    after: AnswerAfter
+
+
 def _still_racing() -> None:
     raise resultset.AnswerChanged("the library kept moving during the write; nothing was changed")
 
 
-def _applied(state: State, query, data, write) -> Response:
+def _applied(state: State, query, data, write) -> Response[Curated]:
     """Prove outside the lane, mutate inside a narrow one, commit once
     -- then describe the SAME question again so the client settles on
     the (currency, answer) pair."""
@@ -137,13 +162,10 @@ def _applied(state: State, query, data, write) -> Response:
             proof = proven()
         after = resultset.describe(conn, weights, query, time.time(), actor_id=state.actor_id)
         return Response(
-            {
-                # `targets`, not `changed`: desired state means an
-                # idempotent retry touches nothing, and a count that
-                # claimed otherwise would be lying politely.
-                "targets": len(proof.ids),
-                "after": {"answer": after["answer"], "currency": after["currency"], "total": after["total"]},
-            },
+            Curated(
+                targets=len(proof.ids),
+                after=AnswerAfter(answer=after["answer"], currency=after["currency"], total=after["total"]),
+            ),
             headers=VARIES,
         )
     except resultset.AnswerChanged as moved:
@@ -173,7 +195,7 @@ def bulk_favorite(
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[Curated]:
     query = _asked(
         folder,
         album,
@@ -210,7 +232,7 @@ def bulk_rating(
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[Curated]:
     query = _asked(
         folder,
         album,
@@ -247,7 +269,7 @@ def bulk_place(
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[Curated]:
     query = _asked(
         folder,
         album,
@@ -290,7 +312,7 @@ def bulk_membership(
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[Curated]:
     query = _asked(
         folder,
         album,
