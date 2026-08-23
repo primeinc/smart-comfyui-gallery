@@ -13,7 +13,7 @@
 // which the embedded tape and the embedded head disagree.
 import { api } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
-import { type Event, type Frame, type PendingFrame, decodeFrame } from "./frames";
+import { type Frame, type ReadableEvent, type ReadablePendingFrame, decodeFrame } from "./frames";
 import type { components } from "./generated/api";
 
 declare global {
@@ -37,12 +37,12 @@ type LiveReport = components["schemas"]["LiveReport"];
   const TAPE_COLD = 500;
 
   // --- state ----------------------------------------------------------------
-  const held: Event[] = []; // every event, ascending by id
+  const held: ReadableEvent[] = []; // every event, ascending by id
   const ids = new Set<number>();
   const head = Number(requireData(root, "lastEventId"));
   let lastId = head;
   let firstId = Number.POSITIVE_INFINITY;
-  const pendingByJob = new Map<number, PendingFrame>();
+  const pendingByJob = new Map<number, ReadablePendingFrame>();
   let paused = false;
   let heldWhilePaused = 0;
   let selectedJob: number | null = null;
@@ -51,7 +51,7 @@ type LiveReport = components["schemas"]["LiveReport"];
   let retry = 0;
   let lastFrameAt: number | null = null;
   const filter = { type: "", severity: "", job: "" };
-  let view: Event[] = []; // the events that pass the filter, ascending
+  let view: ReadableEvent[] = []; // the events that pass the filter, ascending
 
   // --- elements -------------------------------------------------------------
   const transport = requireElement(root, "[data-health-transport]", HTMLElement);
@@ -98,7 +98,7 @@ type LiveReport = components["schemas"]["LiveReport"];
   }
 
   // --- ingestion (never drops) --------------------------------------------
-  function ingest(event: Event): boolean {
+  function ingest(event: ReadableEvent): boolean {
     if (ids.has(event.id)) return false;
     ids.add(event.id);
     const newest = held.at(-1);
@@ -125,7 +125,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     return !type.startsWith("phase.") && type !== "item.observed";
   }
 
-  function passes(e: Event): boolean {
+  function passes(e: ReadableEvent): boolean {
     if (filter.type && !e.type.startsWith(filter.type)) return false;
     if (filter.severity === "warning" && e.severity === "info") return false;
     if (filter.severity === "error" && e.severity !== "error") return false;
@@ -158,7 +158,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     root.dataset.gaps = String(skipped);
   }
 
-  function rowFor(e: Event, isHead: boolean): HTMLLIElement {
+  function rowFor(e: ReadableEvent, isHead: boolean): HTMLLIElement {
     const li = el("li", {
       class: "tape-row",
       "data-event": e.id,
@@ -213,7 +213,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     if (scrollToEnd && follow.checked) scroller.scrollTop = scroller.scrollHeight;
   }
 
-  function select(e: Event): void {
+  function select(e: ReadableEvent): void {
     selectedEvent = e.id;
     rawBody.textContent = JSON.stringify(e, null, 2);
     for (const li of everyElement(rows, "[data-event]", HTMLLIElement)) {
@@ -362,7 +362,7 @@ type LiveReport = components["schemas"]["LiveReport"];
       li.appendChild(
         el("code", { class: "matrix-exec" }, `a${j.attempt} f${j.fence ?? ""}${j.owner ? ` · ${j.owner}` : ""}`),
       );
-      const live: PendingFrame | LiveReport | null = pendingByJob.get(j.id) ?? j.live;
+      const live: ReadablePendingFrame | LiveReport | null = pendingByJob.get(j.id) ?? j.live;
       if (live && j.state === "running") {
         li.appendChild(el("span", { class: "matrix-live", "data-matrix-live": "" }, liveWords(live)));
       }
@@ -371,7 +371,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     wireMatrix();
   }
 
-  function liveWords(live: PendingFrame | LiveReport): string {
+  function liveWords(live: ReadablePendingFrame | LiveReport): string {
     return `${live.phase || live.type}${live.item_id != null ? ` · item ${live.item_id}` : ""}`;
   }
 
@@ -485,6 +485,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const live = new WebSocket(`${proto}://${location.host}/ws/events?after=${after}`);
     socket = live;
+    let unreadable = false;
     setTransport(retry ? "reconnecting" : "connecting", retry ? `reconnecting (${retry})` : "connecting");
     live.onopen = () => {
       retry = 0;
@@ -493,14 +494,29 @@ type LiveReport = components["schemas"]["LiveReport"];
     };
     live.onmessage = (msg: MessageEvent<unknown>) => {
       const frame = decodeFrame(msg.data);
-      // a payload this build cannot read is not a frame: dropping one row is
-      // better than an exception that takes the socket down with it
-      if (frame === null) return;
+      if (frame === null) {
+        // An unreadable transport message is not evidence that a ledger row
+        // may be discarded, and skipping it can lose rows nothing will ever
+        // point at again: a malformed BACKLOG carries committed events whose
+        // absence leaves no id gap if the socket then goes quiet. So this is
+        // a transport failure. Close, and let the reconnect resume from the
+        // last durable id held -- every committed row arrives again in the
+        // next backlog. Live reports are ephemeral by design (they are not
+        // rows) and one may be lost across the reconnect, which is what
+        // "not yet in the ledger" means.
+        unreadable = true;
+        root.dataset.unreadableFrames = String(Number(root.dataset.unreadableFrames ?? 0) + 1);
+        live.close();
+        return;
+      }
       lastFrameAt = Date.now();
       receive(frame);
     };
     live.onclose = () => {
-      setTransport("disconnected", "disconnected");
+      setTransport(
+        unreadable ? "error" : "disconnected",
+        unreadable ? `unreadable frame; resuming from #${lastId}` : "disconnected",
+      );
       retry += 1;
       // resume from the newest id held, so nothing repeats and nothing is lost
       window.setTimeout(() => connect(lastId), Math.min(4000, 250 * 2 ** Math.min(retry, 4)));

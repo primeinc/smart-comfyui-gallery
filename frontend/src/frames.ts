@@ -3,21 +3,49 @@
 // `JSON.parse` returns `any`. A type annotation over it is a promise, not a
 // proof -- the compiler stops asking questions and the first malformed frame
 // becomes an `undefined` three functions away. Everything below exists so
-// that promise is cashed exactly once, here, and the console downstream of
-// `decodeFrame` only ever handles a value whose shape has been looked at.
+// that promise is cashed exactly once, here.
 //
-// The frame types themselves are generated from the application's own
-// contract (sg_web/console.py Frame, carried into the document by
-// socket_frames()); nothing in this file restates them.
+// The frame types are generated from the application's own contract
+// (sg_web/console.py Frame, carried into the document by socket_frames());
+// nothing here restates them. What this file DOES restate is the difference
+// between the contract and what a local decoder can prove about one message,
+// which is the whole reason `Readable` exists below.
 import type { components } from "./generated/api";
 
-export type Event = components["schemas"]["Event"];
-export type EventFrame = components["schemas"]["EventFrame"];
-export type PendingFrame = components["schemas"]["PendingFrame"];
-export type BacklogFrame = components["schemas"]["BacklogFrame"];
+type Event = components["schemas"]["Event"];
+type EventFrame = components["schemas"]["EventFrame"];
+type PendingFrame = components["schemas"]["PendingFrame"];
+type BacklogFrame = components["schemas"]["BacklogFrame"];
+
+/**
+ * A frame as this decoder can honestly hand it over.
+ *
+ * The contract closes `type` to seventeen members and `severity` to three.
+ * Proving that here would mean writing those twenty strings into authored
+ * TypeScript -- a second spelling of the vocabulary that db/ledger.py owns
+ * and sglint SG709 holds to the schema's CHECK, which is exactly the
+ * duplication this whole seam exists to remove. So the decoder proves what
+ * it can, `typeof === "string"`, and says so in the type: a caller gets
+ * every structural guarantee the contract makes and no claim about
+ * membership that was never checked.
+ *
+ * The consequence is deliberate. An exhaustive `switch` over event types
+ * will not compile against these, because this decoder cannot promise the
+ * set is closed. Something that needs that promise must get the vocabulary
+ * generated into runtime code from db/ledger.py, not copied by hand.
+ */
+type Readable<T extends { type: string; severity: string }> = Omit<T, "type" | "severity"> & {
+  type: string;
+  severity: string;
+};
+
+export type ReadableEvent = Readable<Event>;
+export type ReadableEventFrame = Readable<EventFrame>;
+export type ReadablePendingFrame = Readable<PendingFrame>;
+export type ReadableBacklogFrame = Omit<BacklogFrame, "events"> & { events: ReadableEvent[] };
 
 /** What arrives on /ws/events, discriminated on `frame`. */
-export type Frame = EventFrame | PendingFrame | BacklogFrame;
+export type Frame = ReadableEventFrame | ReadablePendingFrame | ReadableBacklogFrame;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -31,13 +59,7 @@ const dataOrNull = (value: unknown): value is Record<string, unknown> | null => 
 
 /**
  * Everything a committed row and a live report share (sg_web/console.py
- * Reported), each field checked against what the console reads it as.
- *
- * `type` and `severity` are proven to be strings and no further. The console
- * uses both as strings -- `startsWith("phase.")`, a comparison, an attribute
- * -- so nothing downstream depends on the member being one of the seventeen;
- * closing that set is the server's CHECK constraint, held to the generated
- * union by sglint SG709, and this function does not restate it.
+ * Reported), each field checked against what it is declared to be.
  */
 function reported(held: Record<string, unknown>): boolean {
   return (
@@ -54,19 +76,19 @@ function reported(held: Record<string, unknown>): boolean {
   );
 }
 
-function isEvent(value: unknown): value is Event {
+function isEvent(value: unknown): value is ReadableEvent {
   return isRecord(value) && reported(value) && num(value.id);
 }
 
-function isEventFrame(value: unknown): value is EventFrame {
+function isEventFrame(value: unknown): value is ReadableEventFrame {
   return isRecord(value) && value.frame === "event" && isEvent(value);
 }
 
-function isPendingFrame(value: unknown): value is PendingFrame {
+function isPendingFrame(value: unknown): value is ReadablePendingFrame {
   return isRecord(value) && value.frame === "pending" && reported(value);
 }
 
-function isBacklogFrame(value: unknown): value is BacklogFrame {
+function isBacklogFrame(value: unknown): value is ReadableBacklogFrame {
   return (
     isRecord(value) &&
     value.frame === "backlog" &&
@@ -80,9 +102,14 @@ function isBacklogFrame(value: unknown): value is BacklogFrame {
 /**
  * One socket message as a frame, or null when it is not one.
  *
- * Null is the honest answer for a payload that is not text, is not JSON, or
- * carries a `frame` this build does not know: the caller decides what to do
- * about it, where a throw here would kill the socket over one bad row.
+ * Null means the transport is not speaking this protocol, and the caller
+ * must treat it as a transport failure rather than as one skippable
+ * message: an unreadable message is not evidence that the ledger rows
+ * inside it may be discarded. A malformed `event` would eventually show up
+ * as an id gap, but a malformed BACKLOG can carry hundreds of committed
+ * rows and, if nothing newer is ever sent, leaves no gap to notice. The
+ * durable ledger is what makes the right answer cheap: reconnect from the
+ * last id held and every committed row arrives again.
  */
 export function decodeFrame(payload: unknown): Frame | null {
   if (typeof payload !== "string") return null;

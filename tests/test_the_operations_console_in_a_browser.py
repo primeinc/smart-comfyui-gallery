@@ -12,6 +12,7 @@ ledger produced. Status cards alone do not pass these.
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -235,3 +236,76 @@ def test_the_page_holds_every_event_the_ledger_produced(console: Page, live: Liv
     console.wait_for_selector(
         f'[data-tape-rows] [data-event][data-type="job.done"][data-job="{new_job}"]', timeout=10_000
     )
+
+
+def test_an_unreadable_backlog_reconnects_instead_of_dropping_its_rows(page: Page, live: Live):
+    """An unreadable transport message is not permission to forget a row.
+
+    The socket is intercepted. The console is first made deaf while a whole
+    job runs, so its next BACKLOG carries every one of those committed
+    rows; that backlog is then corrupted in a single field -- everything
+    else exactly as the server said it -- and the real message never
+    reaches the page.
+
+    A backlog is the case that cannot heal itself. A missing event
+    eventually shows up as a gap between two ids the page holds, and the
+    console fetches it; a missing backlog leaves nothing on either side to
+    notice, and if the socket then goes quiet -- as it does here, the job
+    being finished -- those rows are simply gone. So the only sound answer
+    is to treat an unreadable message as a transport failure and resume
+    from the last durable id held.
+    """
+    api = live.api
+    api.post("/settings/worker", json={"value": "off"})
+    sockets: dict = {"n": 0, "carried": None}
+
+    def route(ws) -> None:
+        sockets["n"] += 1
+        mine = sockets["n"]
+        server = ws.connect_to_server()
+
+        def from_server(message) -> None:
+            # 1: deaf, so the job's rows are still owed to the page.
+            # 2: the backlog that owes them, corrupted and swallowed.
+            # 3 and after: honest, so what the page ends up holding is what
+            #    the rows say.
+            if mine == 1:
+                return
+            if mine == 2 and isinstance(message, str):
+                held = json.loads(message)
+                if held.get("frame") == "backlog":
+                    sockets["carried"] = len(held["events"])
+                    ws.send(json.dumps({**held, "last_id": "the head"}))
+                    return
+            ws.send(message)
+
+        server.on_message(from_server)
+
+    page.route_web_socket("**/ws/events*", route)
+    page.goto("/operations")
+    page.wait_for_selector('[data-health-transport][data-transport="connected"]', timeout=10_000)
+    deaf_at = int(page.get_attribute("[data-console]", "data-last-event-id") or 0)
+
+    job_id = api.post("/jobs/verify").json()["id"]
+    api.post("/settings/worker", json={"value": "on"})
+    assert _settled(api, job_id) == "done"
+    head = api.get("/operations/events?after=0&limit=1").json()["last_id"]
+    assert head > deaf_at, "the job left no events for the backlog to owe"
+    assert int(page.get_attribute("[data-console]", "data-last-event-id") or 0) == deaf_at, "deaf, as intended"
+
+    # the operator's own reconnect: the second socket's backlog owes every
+    # row the job committed, and is the message that gets corrupted
+    page.click("[data-transport-reconnect]")
+    page.wait_for_function(
+        "() => Number(document.querySelector('[data-console]').dataset.unreadableFrames || 0) > 0", timeout=20_000
+    )
+    assert sockets["carried"], "no backlog was corrupted; the test proved nothing"
+
+    page.wait_for_selector('[data-health-transport][data-transport="connected"]', timeout=20_000)
+    page.wait_for_function(
+        "(head) => Number(document.querySelector('[data-console]').dataset.lastEventId) === head",
+        arg=head,
+        timeout=20_000,
+    )
+    page.wait_for_function(HAS_DONE, arg=job_id, timeout=20_000)
+    assert page.get_attribute("[data-console]", "data-gaps") == "0"
