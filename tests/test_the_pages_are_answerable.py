@@ -17,13 +17,12 @@ visible in the plan long before it is visible in the clock.
 
 import pathlib
 import re
-import sqlite3
 
 import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, collections, context, ingest, lineage, naming, pages, scan
+from db import authored, collections, connect, context, ingest, lineage, naming, pages, scan
 from tests import staging
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
@@ -96,7 +95,7 @@ def library(_master):
     if _listing(_master["root"]) != _master["listing"]:
         _master["conn"].close()
         _master["rebuild"]()
-    copy = sqlite3.connect(":memory:")
+    copy = connect.memory()
     _master["conn"].backup(copy)
     copy.execute("PRAGMA foreign_keys=ON")
     yield {**{k: v for k, v in _master.items() if k not in ("conn", "listing", "rebuild")}, "conn": copy}
@@ -116,7 +115,7 @@ def _build(tmp_path: pathlib.Path) -> dict:
             path = root / folder / f"{folder}_{i:02d}.png"
             Image.new("RGB", (16, 16), (20 + i * 7, 60, 90 + i)).save(path, pnginfo=info)
 
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
@@ -200,7 +199,7 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
     the query can ride.
 
     `counts=True` is for the one page whose meaning IS the library's
-    cardinalities -- the machine front door's summary. Every column is
+    cardinalities -- the machine front link's summary. Every column is
     a bare count(*), and no index can hold a count, so the b-tree walks
     are the answer's own cost. Declared per call like the others; the
     temp B-tree ban still applies.
@@ -250,7 +249,7 @@ def test_the_front_page_shows_the_newest_first(library):
 
 
 def test_the_library_summary_is_a_summary(library):
-    """The machine front door's counts -- the one page whose meaning IS
+    """The machine front link's counts -- the one page whose meaning IS
     the library's cardinalities, which is what the declared counts=True
     exemption exists for."""
     conn = library["conn"]
@@ -543,7 +542,7 @@ def test_the_ways_page_is_generated_from_the_library(library):
 
 def test_the_timeline_summaries_declare_their_costs(library):
     """Months and days are whole-library histograms -- the counts
-    exemption, like the front door's summary -- and the event overlay
+    exemption, like the front link's summary -- and the event overlay
     stops early on its own index."""
     conn = library["conn"]
     assert_no_growing_scan(conn, pages.TIMELINE_MONTHS, (context.POLICY_VERSION,), aggregate=True, counts=True)
@@ -680,7 +679,7 @@ def a_recipe_library(tmp_path):
         )
         Image.new("RGB", (16, 16), (9, 9, 9)).save(root / name, pnginfo=info)
 
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))

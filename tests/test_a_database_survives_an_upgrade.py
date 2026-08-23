@@ -86,7 +86,7 @@ def library(tmp_path):
 
 def authored_state(path):
     """Everything a person made, as one comparable value."""
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         return {
             "rating": conn.execute("SELECT rating FROM rating").fetchall(),
@@ -137,7 +137,7 @@ def _backup_of(library: pathlib.Path) -> pathlib.Path:
 
 
 def _user_version(path) -> int:
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         return conn.execute("PRAGMA user_version").fetchone()[0]
     finally:
@@ -145,7 +145,7 @@ def _user_version(path) -> int:
 
 
 def _columns_of(path, table: str) -> list[str]:
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         return [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
     finally:
@@ -194,7 +194,7 @@ def test_restoring_the_snapshot_undoes_the_upgrade(library, steps):
 @pytest.fixture
 def newer_library(library):
     """A file stamped five versions ahead of this build."""
-    conn = sqlite3.connect(str(library), isolation_level=None)
+    conn = connect.connect(library, autocommit=True)
     conn.execute(f"PRAGMA user_version = {connect.USER_VERSION + 5}")
     conn.close()
     return library
@@ -219,7 +219,7 @@ def test_a_missing_step_stops_before_touching_the_file(library, steps):
     with pytest.raises(migrate.StepMissing, match=f"v{connect.USER_VERSION}"):
         migrate.migrate(library, target=connect.USER_VERSION + 2)
     assert authored_state(library) == before
-    conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)
+    conn = connect.connect(library, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
     finally:
@@ -238,7 +238,7 @@ def test_a_step_that_fails_leaves_the_database_where_it_was(library, steps):
         migrate.migrate(library, target=connect.USER_VERSION + 1)
 
     assert authored_state(library) == before, "a failed step took the ratings with it"
-    conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)
+    conn = connect.connect(library, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
     finally:
@@ -259,7 +259,7 @@ def test_a_step_that_orphans_a_row_is_rolled_back(library, steps):
         migrate.migrate(library, target=connect.USER_VERSION + 1)
 
     assert authored_state(library) == before
-    conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)
+    conn = connect.connect(library, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
     finally:
@@ -279,7 +279,7 @@ def test_each_step_commits_on_its_own(library, steps):
     with pytest.raises(RuntimeError, match="second step"):
         migrate.migrate(library, target=connect.USER_VERSION + 2)
 
-    conn = sqlite3.connect(f"file:{library}?mode=ro", uri=True)
+    conn = connect.connect(library, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION + 1
         assert "pinned" in [r[1] for r in conn.execute("PRAGMA table_info(comment)")]
@@ -298,7 +298,7 @@ def test_migrating_a_current_database_does_nothing(library, steps):
 
 def test_something_that_is_not_ours_is_not_migrated(tmp_path, steps):
     other = tmp_path / "someone-elses.db"
-    conn = sqlite3.connect(str(other))
+    conn = connect.connect(other)
     conn.execute("CREATE TABLE t(x)")
     conn.commit()
     conn.close()
@@ -311,7 +311,7 @@ def test_pending_says_what_would_happen_without_doing_it(library, steps):
     same thing whatever USER_VERSION happens to be."""
     before = authored_state(library)
     behind = connect.USER_VERSION
-    conn = sqlite3.connect(str(library), isolation_level=None)
+    conn = connect.connect(library, autocommit=True)
     conn.execute(f"PRAGMA user_version = {behind}")
     conn.close()
     assert migrate.pending(library, target=behind + 2) == [behind + 1, behind + 2]
@@ -500,7 +500,7 @@ def v1_database(tmp_path):
     """Today's build, taken back to v1 by inverting the shipped steps."""
     path = tmp_path / "gallery.db"
     _built(path)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     _pre_v10_core(conn)  # v10's change, inverted
     conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
     conn.execute("DROP TABLE derived_face_scan")  # v26's addition
@@ -571,7 +571,7 @@ def test_a_legacy_smart_membership_stops_the_migration_by_name(tmp_path):
     schema's way. The step refuses, names the collection, and leaves the
     file at v1 with its rows intact."""
     path = v1_database(tmp_path)
-    conn = sqlite3.connect(str(path))
+    conn = connect.connect(path)
     conn.execute("PRAGMA foreign_keys=ON")
     file_id = a_file_row(conn)
     smart = a_v1_smart_collection(conn, "Big seeds", "SELECT 1")
@@ -582,7 +582,7 @@ def test_a_legacy_smart_membership_stops_the_migration_by_name(tmp_path):
     with pytest.raises(sqlite3.IntegrityError, match="Big seeds"):
         migrate.migrate(path)
 
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 1, "a refused step must leave the file at v1"
         assert conn.execute("SELECT count(*) FROM collection_file").fetchone()[0] == 1, "the rows are the human's"
@@ -598,7 +598,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     spellings, and leaves the file at v4 with its rows intact."""
     path = tmp_path / "gallery.db"
     _built(path)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys=ON")
     _pre_v10_core(conn)  # v10's change, inverted: a genuine v4 file
     _binary_sibling_indexes(conn)  # a genuine v4 file permits the twins
@@ -619,7 +619,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     with pytest.raises(sqlite3.IntegrityError, match="Vacation"):
         migrate.migrate(path)
 
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 4, "a refused step must leave the file at v4"
         assert conn.execute("SELECT count(*) FROM folder WHERE parent_id IS NOT NULL").fetchone()[0] == 2
@@ -750,7 +750,7 @@ def a_whole_library(path, root):
 
 def everything_in(path):
     """The whole library, as one comparable value."""
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         return {
             "files": conn.execute("SELECT id, folder_id, name, content_sha256 FROM file ORDER BY id").fetchall(),
@@ -797,7 +797,7 @@ def test_rebuilding_the_table_everything_points_at_keeps_the_library(tmp_path, s
 
     assert everything_in(path) == before, "the migration cost the library something"
 
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         # the rebuild really happened, so this is not passing by doing nothing
         assert "starred" in [r[1] for r in conn.execute("PRAGMA table_info(file)")]
@@ -838,7 +838,7 @@ def test_the_snapshot_of_a_whole_library_can_be_restored(tmp_path, steps):
 
     migrate.restore(backup, path)
     assert everything_in(path) == before
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == connect.USER_VERSION
         assert "starred" not in [r[1] for r in conn.execute("PRAGMA table_info(file)")]
@@ -948,7 +948,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
     from vision.faiss_index import IndexManager
 
     path, files, spec, sid = v3_database_with_embeddings(tmp_path)
-    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    ro = connect.connect(path, read_only=True)
     try:
         before = ro.execute(
             "SELECT file_id, space_id, vector, source_sha256 FROM derived_embedding ORDER BY file_id"
@@ -992,7 +992,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
     and leaves the file at v7 with the rule intact."""
     path = tmp_path / "gallery.db"
     _built(path)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     for trigger in (
         "collection_rule_only_on_smart",
         "collection_rule_stays_on_smart",
@@ -1010,7 +1010,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
     with pytest.raises(sqlite3.IntegrityError, match="Keepers"):
         migrate.migrate(path)
 
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect.connect(path, read_only=True)
     try:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 7, "a refused step must leave the file at v7"
         assert conn.execute("SELECT count(*) FROM collection_rule").fetchone()[0] == 1, "the rule is the human's"
@@ -1082,7 +1082,7 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
 
     path = tmp_path / "gallery.db"
     _built(path)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys = ON")
     file_id = a_file_row(conn)
     conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("a" * 64, file_id))
@@ -1100,7 +1100,7 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
 
     assert migrate.migrate(path) == [26, 27, 28, 29, 30]
     assert build.drift(path) == []
-    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    ro = connect.connect(path, read_only=True)
     try:
         assert ro.execute(
             "SELECT file_id, model_id, model_version, source_sha256, faces FROM derived_face_scan"
@@ -1123,7 +1123,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
 
     path = tmp_path / "gallery.db"
     _built(path)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         portrait = a_file_row(conn)
@@ -1157,7 +1157,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
     assert not any(thumbs.path_for(cache, "b" * 64, kind).exists() for kind in thumbs.EDGES), "the portrait RAW's go"
     for sha in ("c" * 64, "d" * 64):
         assert all(thumbs.path_for(cache, sha, kind).exists() for kind in thumbs.EDGES), "the others keep theirs"
-    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    ro = connect.connect(path, read_only=True)
     try:
         shas = dict(ro.execute("SELECT id, content_sha256 FROM file"))
         assert shas[portrait] == "b" * 64, "the bytes' own sha never moves"
@@ -1187,7 +1187,7 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     burrow.mkdir()
     path = db_path(burrow)
     _built(path)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
@@ -1197,14 +1197,14 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     with TestClient(app=build_app(str(burrow), worker=False)) as client:
         assert client.get("/g", headers={"accept": "application/json"}).status_code == 200
         assert client.get("/operations/overview").status_code == 200
-    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    ro = connect.connect(path, read_only=True)
     try:
         assert ro.execute("PRAGMA user_version").fetchone()[0] == migrate.USER_VERSION
     finally:
         ro.close()
     assert path.with_suffix(".v26.backup").exists(), "the snapshot sits beside the file it was taken from"
 
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = connect.connect(path, autocommit=True)
     conn.execute(f"PRAGMA user_version = {migrate.USER_VERSION + 1}")
     conn.close()
     with pytest.raises(SystemExit, match="Restore the backup"):

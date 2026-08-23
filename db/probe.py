@@ -29,6 +29,7 @@ header parse never could.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ from fractions import Fraction
 
 import pypdf
 import pypdf.errors
+
+_logger = logging.getLogger(__name__)
 
 #: Seconds to wait for bytes before an unreadable file is a finding.
 TIMEOUT = 30.0
@@ -88,7 +91,8 @@ def _first_frame(container, stream):
     try:
         for frame in container.decode(stream):
             return frame
-    except (FFmpegError, OSError, ValueError):
+    except (FFmpegError, OSError, ValueError) as why:
+        _logger.warning("%s: no decodable frame: %s: %s", container.name, type(why).__name__, why)
         return None
     return None
 
@@ -183,11 +187,12 @@ def document(path) -> Probed:
         try:
             box = reader.pages[0].mediabox
             out.width, out.height = int(float(box.width)), int(float(box.height))
-        except (pypdf.errors.PyPdfError, AttributeError, TypeError, ValueError):
-            pass
+        except (pypdf.errors.PyPdfError, AttributeError, TypeError, ValueError) as why:
+            _logger.warning("%s: first page has no size: %s: %s", path, type(why).__name__, why)
     try:
         meta = reader.metadata
-    except (pypdf.errors.PyPdfError, ValueError):
+    except (pypdf.errors.PyPdfError, ValueError) as why:
+        _logger.warning("%s: metadata unreadable: %s: %s", path, type(why).__name__, why)
         meta = None
     for key, value in (
         ("Title", getattr(meta, "title", None)),

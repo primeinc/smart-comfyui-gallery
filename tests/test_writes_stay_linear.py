@@ -24,10 +24,11 @@ gradually slower the way the real thing did.
 """
 
 import pathlib
-import sqlite3
 import time
 
 import pytest
+
+from db import connect
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
@@ -46,7 +47,7 @@ def ddl():
 
 def a_library(ddl, n):
     """`n` files in one folder, ready to be written to."""
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(ddl)
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'/l','library',0)")
     conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,x'00000000000000000000000000000001','folder','f')")

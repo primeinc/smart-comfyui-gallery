@@ -7,13 +7,12 @@ participant; one that has, says so even when no caption matches.
 from __future__ import annotations
 
 import pathlib
-import sqlite3
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from db import derived, retrieval, scan, settings
+from db import connect, derived, retrieval, scan, settings
 from vision import semantic
 
 NOW = 1_700_000_000.0
@@ -35,7 +34,7 @@ def _shelf(tmp_path, cosines: dict[str, float]):
     root.mkdir()
     for i, name in enumerate(cosines):
         Image.new("RGB", (8, 8), (20 * i, 40, 60)).save(root / f"{name}.png")
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))

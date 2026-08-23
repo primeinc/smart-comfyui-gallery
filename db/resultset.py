@@ -60,7 +60,7 @@ import threading
 #: The orders a query may ask for. "similarity" requires a phrase; the
 #: time sorts follow the file table's own indexes; the moment sorts
 #: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
-#: timeline door opened -- with uninterpreted files last, never dropped.
+#: timeline link opened -- with uninterpreted files last, never dropped.
 SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity")
 
 #: The file kinds a query may filter to -- the vocabulary of file.kind.
@@ -71,7 +71,7 @@ MAX_PAGE_SIZE = 400
 
 
 class StaleSession(ValueError):
-    """A session door (`event.id`) names a run grouped over an older
+    """A session link (`event.id`) names a run grouped over an older
     interpretation: its members are a hypothesis nobody has re-proved,
     so the question is refused with the remedy -- never an empty grid
     wearing the bookmark's URL."""
@@ -168,7 +168,7 @@ def parse(
         # beats silently ignoring the phrase.
         raise ValueError("a phrase orders by similarity; other sorts do not consume it")
     if folder is not None and album is not None:
-        raise ValueError("one scope at a time: folder or album, not both")
+        raise ValueError("choose a folder or an album, not both")
     # `person` deliberately COMPOSES with either -- and with kind and a
     # phrase: eligibility is an intersection of predicates, and a
     # person's beach pictures in one album is a real question.
@@ -529,7 +529,7 @@ def scope_of(
     """A gallery question as a scope another surface appends to its own
     statements: the membership conjunct over the file alias `f` (the
     same predicates the gallery walks), its bound values, and the
-    question in its LIVE spelling for the doors that surface offers.
+    question in its LIVE spelling for the links that surface offers.
     A rule-defined collection's membership is a materialized set
     (`_rule_members`, the one engine), appended as `f.id IN (...)`; it
     needs the models directory, because a semantic rule ranks through
@@ -625,7 +625,7 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     # silently changed real answer identities and ordinals.
     where, args, _ = _eligibility(bound)
     if bound.query.sort in ("moment", "moment-newest"):
-        # The human moment, not the filesystem's: what a timeline door
+        # The human moment, not the filesystem's: what a timeline link
         # means by "this day" is the order its pictures come back in.
         # LEFT JOIN keeps membership identical to the other sorts; a
         # file with no interpretation sorts last and says so by position.

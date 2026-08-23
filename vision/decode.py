@@ -1,4 +1,4 @@
-"""Every decoder this application ships, behind one door.
+"""Every decoder this application ships, behind one entry point.
 
 The rule this module enforces: a suffix the scanner claims is a suffix the
 install decodes -- "not installed" is a dependency-declaration failure, not
@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import functools
 import importlib
+import logging
 import os
 import pathlib
 
 from PIL import Image
+
+_logger = logging.getLogger(__name__)
 
 #: Seconds before an unreadable stream is a fact rather than a hang: a
 #: truncated file or network storage that stops answering costs the one
@@ -105,7 +108,7 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     RAW goes through LibRaw and comes back as a rendered image -- a RAW
     file is sensor data, and "the picture" is a development of it, which
     is what postprocess() performs with its neutral defaults -- except
-    the flip. Every still leaves this door AS STORED, its orientation
+    the flip. Every still leaves this function AS STORED, its orientation
     tag applied once, by db/oriented.py, from the tag ingest recorded.
     LibRaw's default (`user_flip=-1`, letmaik/rawpy rawpy/_rawpy.pyx
     :1282-1283, :1329) would apply the camera's flip here, and the tag
@@ -125,11 +128,28 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     return Image.open(path)
 
 
+def open_header(path: str | os.PathLike[str]) -> Image.Image:
+    """The file as its container presents it -- format, EXIF, size --
+    with no RAW development: a CR2 opens as the TIFF it is, so its
+    orientation tag is readable; the pixels of a RAW are open_still's."""
+    ensure_decoders()
+    return Image.open(path)
+
+
+def open_bytes(data: bytes) -> Image.Image:
+    """A still from bytes already in memory -- served thumbnails, a
+    buffer a test wrote -- through the same registered decoders."""
+    import io
+
+    ensure_decoders()
+    return Image.open(io.BytesIO(data))
+
+
 def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | None:
     """The media's geometry from its headers alone -- no frame decoded,
     no RAW developed. Video answers from the stream's declared size, RAW
     from LibRaw's size block, and every still from the registered Pillow
-    opener's header -- the same doors open_still and poster use, so a
+    opener's header -- the same readers open_still and poster use, so a
     HEIC or JXL answers on a cold process instead of only after some
     unrelated decode happened to register the plugins. None when the
     file cannot say, so an unreadable member ranks last wherever
@@ -146,7 +166,8 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
                 if not stream.width or not stream.height:
                     return None
                 return int(stream.width), int(stream.height)
-        except (FFmpegError, OSError, ValueError):
+        except (FFmpegError, OSError, ValueError) as why:
+            _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
             return None
     if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
         import rawpy
@@ -156,13 +177,15 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
             with rawpy.imread(os.fspath(path)) as raw:
                 held = raw.sizes
                 return int(held.width), int(held.height)
-        except (LibRawError, OSError, ValueError):  # the documented name (docs/api/exceptions.rst)
+        except (LibRawError, OSError, ValueError) as why:  # the documented name (docs/api/exceptions.rst)
+            _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
             return None
     ensure_decoders()
     try:
         with Image.open(path) as image:
             return int(image.size[0]), int(image.size[1])
-    except (OSError, ValueError, Image.DecompressionBombError):
+    except (OSError, ValueError, Image.DecompressionBombError) as why:
+        _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
         return None
 
 

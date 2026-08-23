@@ -18,6 +18,7 @@ from PIL import Image
 from db import connect, derived, ingest, library, naming, scan
 from sg_web.app import build_app
 from tests.staging import Stage, staged
+from vision import decode
 
 
 def _library(tmp_path, write_media):
@@ -239,38 +240,35 @@ def test_a_thumbnail_renders_once_and_serves_from_cache(served):
     first = client.get(f"/thumb/{slug}")
     assert first.status_code == 200
     assert first.headers["content-type"].startswith("image/webp")
-    import io
 
-    small = Image.open(io.BytesIO(first.content))
+    small = decode.open_bytes(first.content)
     assert small.size == (512, 228)
 
     # New bytes on disk, same recorded hash: a re-request must come from
     # the cache, not a re-decode of whatever sits at the path now.
     Image.new("RGB", (900, 400), (30, 200, 30)).save(root / "wide.png")
-    again = Image.open(io.BytesIO(client.get(f"/thumb/{slug}").content))
+    again = decode.open_bytes(client.get(f"/thumb/{slug}").content)
     r, g, _ = _rgb(again, (256, 114))
     assert r > g, "the cache was silently re-rendered"
 
 
 def test_a_sideways_phone_photo_is_thumbnailed_upright(served):
     client, slugs, _ = served
-    import io
 
     answer = client.get(f"/thumb/{slugs['turned.jpg']}")
-    small = Image.open(io.BytesIO(answer.content))
+    small = decode.open_bytes(answer.content)
     assert small.height > small.width, "the EXIF turn was dropped on the way to the grid"
 
 
 def test_a_video_thumbnail_is_a_frame_and_a_preview_is_bigger(served):
     client, slugs, _ = served
-    import io
 
     slug = slugs["clip.mp4"]
-    thumb = Image.open(io.BytesIO(client.get(f"/thumb/{slug}").content))
+    thumb = decode.open_bytes(client.get(f"/thumb/{slug}").content)
     assert thumb.size == (512, 288)
     centre = _rgb(thumb, (256, 144))
     assert centre[2] > centre[0], "the poster frame is not the clip's pixels"
-    preview = Image.open(io.BytesIO(client.get(f"/preview/{slug}").content))
+    preview = decode.open_bytes(client.get(f"/preview/{slug}").content)
     assert preview.size == (1440, 810)
 
 
@@ -316,12 +314,10 @@ def test_an_avatar_is_the_face_the_cluster_points_at(tmp_path):
     conn.commit()
     conn.close()
 
-    import io
-
     with TestClient(app=build_app(str(burrow))) as client:
         answer = client.get("/avatar/ana")
         assert answer.status_code == 200
-        avatar = Image.open(io.BytesIO(answer.content))
+        avatar = decode.open_bytes(answer.content)
         assert avatar.size == (256, 256)
         centre = _rgb(avatar, (128, 128))
         assert centre[0] > centre[2], "the avatar is not the asserted face"

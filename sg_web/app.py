@@ -34,7 +34,9 @@ from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.connection import WebSocket
 from litestar.datastructures import State
 from litestar.di import NamedDependency
-from litestar.exceptions import ClientException, NotFoundException
+from litestar.exceptions import ClientException, HTTPException, NotFoundException
+from litestar.exceptions.responses import create_debug_response, create_exception_response
+from litestar.logging import LoggingConfig
 from litestar.params import FromPath, FromQuery
 from litestar.plugins import InitPlugin
 from litestar.plugins.jinja import JinjaTemplateEngine
@@ -122,7 +124,7 @@ def _resolved(conn, kind: str, slug: str, where: str) -> tuple[int, str | None]:
 
 @get("/", sync_to_thread=True)
 def front(state: State, request: Request) -> Response | Redirect:
-    """The front door. A browser lands in the gallery -- /g owns the
+    """The front link. A browser lands in the gallery -- /g owns the
     canonical question state, and an entrance pointing at JSON was the
     one page of this application still shaped for its developers. A
     machine gets the compact library summary with a newest strip; the
@@ -969,6 +971,15 @@ def choose_primary(state: State) -> dict:
         connect.close(conn)
 
 
+def _told_whole(request: Request, exc: Exception) -> Response:
+    """What broke and where, to whoever asked. An HTTPException keeps its
+    own status and detail; anything else is a 500 that carries its
+    traceback -- a page for a browser, `details` for a machine."""
+    if isinstance(exc, HTTPException):
+        return create_exception_response(request, exc)
+    return create_debug_response(request, exc)
+
+
 def _template_engine() -> JinjaTemplateEngine:
     """The ONE Jinja environment every page renders with.
 
@@ -1236,6 +1247,12 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         ],
         plugins=[channels, _WorkerPlugin()],
         template_config=TemplateConfig(instance=_template_engine()),
+        # a 500 says what broke and where: the traceback page for a
+        # browser, {"details": <traceback>} for JSON (litestar-org/litestar
+        # litestar/exceptions/responses/_debug_response.py:175-195), and
+        # the same traceback in the log (litestar/logging/config.py:247)
+        exception_handlers={Exception: _told_whole},
+        logging_config=LoggingConfig(log_exceptions="always"),
     )
     app.state.home = str(base)
     app.state.db_path = str(where)

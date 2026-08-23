@@ -46,7 +46,7 @@ def stories_index(state: State, request: Request, kind: FromQuery[str | None] = 
     """Every story told, newest first -- the shelf the timeline's
     buttons fill -- or, with `?kind=`, those of one session kind. Each
     entry is its title and dek as rendered, its heroes, its subject
-    kind, its profile, and doors to the render and the plan's
+    kind, its profile, and links to the render and the plan's
     evolution."""
     if kind is not None and kind not in stories.EVENT_KINDS:
         raise ClientException(f"kind is one of {', '.join(stories.EVENT_KINDS)}, not {kind!r}")
@@ -215,7 +215,7 @@ def render_plan(state: State, data: RenderRequest) -> Response:
 def session_story(state: State, event_id: FromPath[int], back: FromQuery[str | None] = None) -> Redirect:
     """Opening a session tells its story: the session is frozen, its plan
     asked for, and the story rendered and shown -- the three story steps
-    as one door. When the plan is durable work still running, the person
+    as one link. When the plan is durable work still running, the person
     is sent back where they came from (`back`, a path on this site) and
     the timeline refreshes itself when the job settles; the next opening
     lands on the story."""
@@ -344,7 +344,7 @@ def plan_evolution(
     finally:
         connect.close(conn)
     _addressed(view)
-    view["doors"]["story"] = f"/stories/renders/{render_id}" if render_id is not None else None
+    view["links"]["story"] = f"/stories/renders/{render_id}" if render_id is not None else None
     if wants_json(request):
         return Response(view, headers=VARIES)
     return Template(template_name="evolution.html", context={"view": view, "plan_id": plan_id}, headers=VARIES)
@@ -353,14 +353,14 @@ def plan_evolution(
 def _addressed(view: dict) -> None:
     """Identities into addresses -- the web adapter's job, never the
     database module's: a member's slug becomes its thumbnail and page,
-    the session's day the gallery's day-facet door, a prompt row its
+    the session's day the gallery's day-facet link, a prompt row its
     neighbours route."""
     for member in view["members"]:
         slug = member["media"].get("slug")
         member["media"]["thumbnail"] = f"/thumb/{slug}" if slug else None
         member["media"]["page"] = f"/i/{slug}" if slug else None
     day = view["identities"].get("local_day")
-    view["doors"] = {
+    view["links"] = {
         "gallery_day": (
             "/g?" + urllib.parse.urlencode([("f", facets.spell(facets.facet("context.local_day", "eq", day)))])
             if day

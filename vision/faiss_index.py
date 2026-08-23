@@ -64,11 +64,14 @@ boundary that knows about them.
 from __future__ import annotations
 
 import json
+import logging
 import pathlib
 import re
 import threading
 from dataclasses import dataclass
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 #: Neighbours asked of the GPU before the CPU is consulted for a query
 #: that had more. Upstream's own default. A GPU index caps k at 2048 and
@@ -240,7 +243,8 @@ class IndexManager:
             return False
         try:
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError) as why:
+            _logger.warning("snapshot %s refused: sidecar unreadable: %s: %s", spec.key, type(why).__name__, why)
             return False
         fields = (
             "key",
@@ -253,6 +257,12 @@ class IndexManager:
             "preprocess_version",
         )
         if tuple(sidecar.get(field) for field in fields) != tuple(getattr(spec, field) for field in fields):
+            _logger.warning(
+                "snapshot %s refused: sidecar claims %r, this build wants %r",
+                spec.key,
+                {field: sidecar.get(field) for field in fields},
+                {field: getattr(spec, field) for field in fields},
+            )
             return False
         faiss = self._faiss()
         try:
@@ -260,7 +270,8 @@ class IndexManager:
                 index = faiss.read_index_binary(str(index_path))
             else:
                 index = faiss.read_index(str(index_path))
-        except (RuntimeError, OSError):
+        except (RuntimeError, OSError) as why:
+            _logger.warning("snapshot %s refused: %s unreadable: %s: %s", spec.key, index_path, type(why).__name__, why)
             return False
         # read_index hands back the concrete class (faiss's out-typemap
         # downcasts every Index*); this proxy OWNS the object, and a
@@ -269,8 +280,18 @@ class IndexManager:
         # that is not an id-mapped index is not this manager's snapshot,
         # whatever the sidecar says.
         if not isinstance(index, (faiss.IndexIDMap, faiss.IndexBinaryIDMap)):
+            _logger.warning(
+                "snapshot %s refused: %s holds a %s, not an id-mapped index", spec.key, index_path, type(index).__name__
+            )
             return False
         if int(index.ntotal) != sidecar.get("vectors"):
+            _logger.warning(
+                "snapshot %s refused: %s holds %d vectors, sidecar counts %r",
+                spec.key,
+                index_path,
+                int(index.ntotal),
+                sidecar.get("vectors"),
+            )
             return False
         space = _Space(spec, index, set(faiss.vector_to_array(index.id_map).tolist()))
         space.dirty = False
@@ -532,7 +553,10 @@ class IndexManager:
                     self._resources = resources
                 inner = space.index.index
                 space.gpu_clone = faiss.index_cpu_to_gpu(self._resources, 0, inner)
-        except FALLIBLE:
+        except FALLIBLE as why:
+            _logger.warning(
+                "space %s serves from the CPU: GPU clone failed: %s: %s", space.spec.key, type(why).__name__, why
+            )
             return None
         return space.gpu_clone
 

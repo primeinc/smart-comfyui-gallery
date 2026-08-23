@@ -332,15 +332,15 @@ def test_the_registry_is_the_one_vocabulary(interpreted):
         )
         assert seeded["total"] == 0, "facets are a conjunction"
         day = resultset.page(conn, "", resultset.parse(facets=["context.local_day:eq:2023-11-15"]), 1, NOW)
-        assert day["total"] >= 1, "the timeline's day door answers through the same machinery"
+        assert day["total"] >= 1, "the timeline's day link answers through the same machinery"
 
         for hostile, why in (
-            ("capture.moon:eq:1", "nothing is registered"),
+            ("capture.moon:eq:1", "no filter named"),
             ("capture.iso:like:800", "allows"),
             ("capture.iso:eq:eight", "integer"),
             ("context.origin:eq:imagined", "one of"),
             ("context.local_day:eq:yesterday", "YYYY-MM-DD"),
-            ("capture.iso", "spelled"),
+            ("capture.iso", "written"),
         ):
             with pytest.raises(ValueError, match=re.escape(why)):
                 resultset.parse(facets=[hostile])
@@ -388,7 +388,7 @@ def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpret
 def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
     """The save-view landmine, closed: a v3 rule carries the facets, so
     the smart collection's membership IS the answer on screen -- today
-    and after the library grows. A session's door is the one facet a
+    and after the library grows. A session's link is the one facet a
     rule refuses: a hypothesis is not a durable membership."""
     client, _ = interpreted
     conn = _raw(client)

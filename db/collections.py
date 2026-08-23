@@ -99,7 +99,7 @@ def _stored_color(value) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or _COLOR.fullmatch(value) is None:
-        raise ValueError(f"a color is spelled #rrggbb, not {value!r}")
+        raise ValueError(f"a color is written #rrggbb, not {value!r}")
     return value.lower()
 
 

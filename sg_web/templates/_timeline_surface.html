@@ -7,28 +7,29 @@
 {%- macro rows(pictures) -%}
 <div class="rows">{% for p in pictures %}<a class="surface-sample" href="{{ p.href }}" title="{{ p.name }} · {{ p.clock }}" style="--r:{{ p.ratio }}"><img src="/thumb/{{ p.slug }}" alt="" loading="lazy"></a>{% endfor %}</div>
 {%- endmacro -%}
-{%- macro session_card(s, pictures, lead_of) -%}
+{%- macro session_card(s, pictures, lead_of, leads_of) -%}
 {#- A session reads as a story whether one was told or not: the lead
     picture, the headline, one line of when, how long, where and who,
-    then its pictures. The words are the one door: to the story when
+    then its pictures. The words are the one link: to the story when
     there is one, to telling it otherwise (/stories/sessions/{id}). The
     lead picture opens itself. No controls. -#}
 <article class="session{% if s.story %} told{% endif %}" data-session-kind="{{ s.kind }}" data-session-domain="{{ s.domain }}" data-session-id="{{ s.id }}"{% if s.story %} data-session-story="{{ s.id }}"{% endif %}>
   {% set lead = (lead_of if lead_of else none) %}
-  {% set story_door = s.story.href if s.story else ("/stories/sessions/" ~ s.id if s.tellable else "/g?" ~ s.qs) %}
+  {% set story_link = s.story.href if s.story else ("/stories/sessions/" ~ s.id if s.tellable else "/g?" ~ s.qs) %}
   <div class="session-lead">
     {%- set hero = s.story.heroes[0].thumbnail if s.story and s.story.heroes and s.story.heroes[0].thumbnail else none -%}
     {%- set lead_slug = lead.slug if lead else (s.samples[0] if s.samples else none) -%}
     {% if hero or lead_slug %}<img class="session-backdrop" src="{{ hero if hero else '/thumb/' ~ lead_slug }}" alt="" loading="lazy" aria-hidden="true">{% endif %}
-    {% if hero %}<a class="session-lead-picture" href="{{ story_door }}"><img src="{{ hero }}" alt="" loading="lazy"></a>{% elif lead %}<a class="surface-sample session-lead-picture" href="{{ lead.href }}" title="{{ lead.name }} · {{ lead.clock }}"><img src="/preview/{{ lead.slug }}" alt="" loading="lazy" style="--r:{{ lead.ratio }}"></a>{% elif lead_slug %}<a class="session-lead-picture" href="/g?{{ s.qs }}"><img src="/preview/{{ lead_slug }}" alt="" loading="lazy"></a>{% endif %}
-    <a class="session-words" href="{{ story_door }}" data-session-open="{{ s.id }}" data-session-pictures="/g?{{ s.qs }}">
+    {% if hero %}<div class="session-lead-row"><a class="session-lead-picture" href="{{ story_link }}"><img src="{{ hero }}" alt="" loading="lazy"></a></div>{% elif leads_of %}<div class="session-lead-row">{% for p in leads_of %}<a class="surface-sample session-lead-picture" href="{{ p.href }}" title="{{ p.name }} · {{ p.clock }}" style="--r:{{ p.ratio }}"><img src="/preview/{{ p.slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% elif lead_slug %}<div class="session-lead-row"><a class="session-lead-picture" href="/g?{{ s.qs }}"><img src="/preview/{{ lead_slug }}" alt="" loading="lazy"></a></div>{% endif %}
+    <a class="session-words" href="{{ story_link }}" data-session-open="{{ s.id }}" data-session-pictures="/g?{{ s.qs }}">
       <span class="session-title"{% if s.story %} data-session-story-title{% endif %}>{{ s.title }}</span>
       {% if s.story and s.story.dek %}<span class="session-dek">{{ s.story.dek }}</span>{% endif %}
       <span class="session-line">{{ s.when }} · {{ s.lasted }}{% if s.story or s.in_scope != s.pictures %} · {% if s.in_scope != s.pictures %}{{ s.in_scope }} of {% endif %}{{ "{:,}".format(s.pictures) }} {{ s.happened }}{% endif %}</span>
     </a>
   </div>
   {% if s.place or s.people_total %}<p class="session-with">{% if s.place %}<a href="/g?{{ s.place.qs }}" data-session-place="{{ s.place.id }}">{{ s.place.name }}</a>{% endif %}{% if s.place and s.people_total %} · {% endif %}{% if s.people_total %}<span data-session-people="{{ s.people | length }}">{% for p in s.with.named %}{% if not loop.first %}, {% endif %}<a href="{{ p.href }}" title="in {{ p.pictures }} of these">{{ p.name }}</a>{% endfor %}{% if s.with.others %}{% if s.with.named %} and {% endif %}{{ s.with.others }} {% if s.with.named %}others{% else %}people{% endif %}{% endif %}</span>{% endif %}</p>{% endif %}
-  <div class="session-strip">{% if pictures | length > 1 %}{{ rows(pictures | rejectattr("slug", "equalto", lead.slug) | list) }}{% elif not pictures and s.samples | length > 1 %}<div class="rows">{% for slug in s.samples[1:] %}<a class="surface-sample" href="/g?{{ s.qs }}" style="--r:1"><img src="/thumb/{{ slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% endif %}</div>
+  {%- set shown = leads_of | map(attribute="slug") | list -%}
+  <div class="session-strip">{% if pictures | length > shown | length %}{{ rows(pictures | rejectattr("slug", "in", shown) | list) }}{% elif not pictures and s.samples | length > 1 %}<div class="rows">{% for slug in s.samples[1:] %}<a class="surface-sample" href="/g?{{ s.qs }}" style="--r:1"><img src="/thumb/{{ slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% endif %}</div>
 </article>
 {%- endmacro -%}
 <section class="surface" data-surface data-composition="{{ surface.composition }}"
@@ -115,14 +116,14 @@
       <div class="river-rail"><span class="stamp">{{ day.day }}</span><span class="eyebrow">{{ day.weekday }}</span></div>
       <div class="river-body">
         {% for g in day.groups %}
-        {% if g.session %}<div id="session-{{ g.session.id }}">{{ session_card(g.session, g.pictures, g.lead) }}</div>
+        {% if g.session %}<div id="session-{{ g.session.id }}">{{ session_card(g.session, g.pictures, g.lead, g.leads) }}</div>
         {% else %}<div class="loose"><header class="caption"><span class="meta">{{ g.clock }} · {{ g.pictures | length }} pictures, not in a group</span></header>{{ rows(g.pictures) }}</div>{% endif %}
         {% endfor %}
       </div>
     </li>
     {% endfor %}
     {% endif %}
-    {% for s in surface.listed %}<li id="session-{{ s.id }}" class="river-day unplaced"><div class="river-rail"><span class="eyebrow">{{ s.when }}</span></div><div class="river-body">{{ session_card(s, s.drawn_pictures, s.drawn_lead) }}</div></li>{% endfor %}
+    {% for s in surface.listed %}<li id="session-{{ s.id }}" class="river-day unplaced"><div class="river-rail"><span class="eyebrow">{{ s.when }}</span></div><div class="river-body">{{ session_card(s, s.drawn_pictures, s.drawn_lead, s.drawn_leads) }}</div></li>{% endfor %}
   </ol>
 
   {# the scrubber: the whole library at the right edge, newest at the top,

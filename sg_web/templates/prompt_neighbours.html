@@ -11,7 +11,7 @@
   <main class="stage">
     <section class="prompt-self" data-prompt="{{ told.prompt_id }}">
       <h1>{{ told.text }}</h1>
-      <div class="session-doors">
+      <div class="session-links">
         <a href="/g?q={{ told.text | urlencode }}">pictures like this prompt</a>
       </div>
     </section>
@@ -21,7 +21,7 @@
       <li class="prompt-neighbour" data-prompt-neighbour="{{ one.prompt_id }}">
         <span class="prompt-score" title="how alike, by {{ told.space }}">{{ "{:.0f}".format(one.score * 100) }}%</span>
         <p class="prompt-text">{{ one.text }}</p>
-        <div class="session-doors">
+        <div class="session-links">
           <a href="/g?q={{ one.text | urlencode }}">pictures like it</a>
           <a href="/prompts/{{ one.prompt_id }}/neighbours?space={{ told.space | urlencode }}">prompts like it</a>
         </div>

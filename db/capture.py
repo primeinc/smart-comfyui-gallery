@@ -53,7 +53,6 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import hashlib
-import io
 import math
 import struct
 from dataclasses import dataclass, field
@@ -62,6 +61,7 @@ from typing import NamedTuple
 from PIL import ExifTags, Image
 
 from metaparse.containers import decode_user_comment
+from vision import decode
 
 from .exif_labels import label_for
 
@@ -476,7 +476,7 @@ def canon_time_zone(tiff: bytes | None) -> int | None:
 
 
 def _read(path, out: Capture) -> Capture:
-    with Image.open(path) as image:
+    with decode.open_header(path) as image:
         return _read_image(image, path, out)
 
 
@@ -575,7 +575,7 @@ def read_video(path) -> Capture:
     atom = _canon_thumbnail(path)
     if atom is not None:
         try:
-            with Image.open(io.BytesIO(atom)) as image:
+            with decode.open_bytes(atom) as image:
                 _read_image(image, path, out)
         except (OSError, ValueError, Image.DecompressionBombError) as problem:
             out.unreadable = f"{type(problem).__name__}: {problem}"

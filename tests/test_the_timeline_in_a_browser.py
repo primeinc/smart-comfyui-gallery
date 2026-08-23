@@ -87,11 +87,11 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, li
 
 def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page: Page, live: Live):
     """Opening an untold session IS telling it: the session's words are
-    the door; the route freezes, asks for the plan (a job the real worker
+    the link; the route freezes, asks for the plan (a job the real worker
     drains -- the page comes back to the timeline and refreshes itself
     when it settles), renders, and shows the story; back on the
     timeline the story is the session's title, and the evolution view
-    is a door away."""
+    is a link away."""
     page.goto("/timeline")
     page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
     assert page.locator("[data-sessions] .session [data-session-story-title]").count() == 0, "untold"
@@ -99,7 +99,7 @@ def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page:
     page.wait_for_url(lambda url: "/stories/renders/" in url or "/timeline" in url, timeout=60_000)
     if "/timeline" in page.url:
         # the plan was durable work: the real worker drains it, the page
-        # refreshes itself, and the same door then opens the story
+        # refreshes itself, and the same link then opens the story
         page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
         deadline = time.monotonic() + 60
         while any(job["kind"] == "story_plan" for job in live.api.get("/jobs").json()):
@@ -121,11 +121,11 @@ def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page:
     assert page.inner_text("[data-sessions] .session [data-session-story-title]").strip()
     href = page.get_attribute("[data-sessions] .session [data-session-open]", "href")
     assert href is not None
-    assert "/stories/renders/" in href, "a told session's door is its story"
+    assert "/stories/renders/" in href, "a told session's link is its story"
 
 
 def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
-    """A two-facet door saved from the gallery is a two-facet rule: the
+    """A two-facet link saved from the gallery is a two-facet rule: the
     button sends every `f` the mounted answer carries, and the saved
     collection's words name both."""
     asked = "/g?f=context.local_day%3Aeq%3A2023-06-10&f=context.origin%3Aeq%3Aimported"

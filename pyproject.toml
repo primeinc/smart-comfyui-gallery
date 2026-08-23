@@ -470,40 +470,26 @@ banned-module-level-imports = [
 ]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-# The one door to the database: foreign keys, the IMMEDIATE writer lane,
+# The one entry point to the database: foreign keys, the IMMEDIATE writer lane,
 # busy_timeout, WAL and the cache are per-connection and silently absent
-# on a raw connect. Three files hold raw connects by decision (below).
+# on a raw connect.
 "sqlite3.connect".msg = "open the database through db.connect.connect(); a raw connect runs with the schema's foreign keys inert"
-# The decoder door, enforced: bare Image.open skips the HEIC/JXL plugin
+# The decoder entry point, enforced: bare Image.open skips the HEIC/JXL plugin
 # registration and cannot read RAW or video at all, so it answers only
 # for ordinary stills -- and only when some earlier call happened to
 # register the plugins, which makes the same file give different answers
 # depending on what code ran first. The per-file allowances below name
-# the door and the two sanctioned metadata readers.
+# the entry point itself.
 "PIL.Image.open".msg = "open pixels through vision/decode (open_still, poster, dimensions); bare Image.open skips plugin registration and the RAW/video readers"
 
 [tool.ruff.lint.per-file-ignores]
-# Scoping rules, not suppressions: each entry names a file where the
-# rule's premise does not hold. Everything else fixes the finding.
-#
 # S101: `assert` is stripped under `python -O`, so it must not carry a
 # security check -- but inside pytest, `assert` IS the assertion API.
-"tests/**" = ["S101", "TID251"]
-# TID251 (the Image.open ban): the door itself, and the readers whose
-# callers guarantee registration. tests/ and benchmarks/ construct their
-# own fixtures and open them back; they are not shipped decode paths.
-# TID251 (the sqlite3.connect ban): connect.py IS the one place;
-# migrate.py holds read-only probes and migration targets with deliberate
-# isolation choices the live settings would fight; build.py is an
-# in-memory scratch build for drift checking -- no gallery file is opened.
+"tests/**" = ["S101"]
+# TID251: the two entry points are the only callers of the APIs they
+# wrap. Nothing else is exempt; everything else goes through them.
 "db/connect.py" = ["TID251"]
-"db/migrate.py" = ["TID251"]
-"db/build.py" = ["TID251"]
-"sglint/schema_rules.py" = ["TID251"]  # the schema contract builds the DDL in memory, as build.py does
 "vision/decode.py" = ["TID251"]
-"db/capture.py" = ["TID251"]  # EXIF reader; ingest registers decoders first
-"metaparse/containers.py" = ["TID251"]  # container reader; same caller contract
-"benchmarks/**" = ["TID251"]
 
 [tool.ruff.format]
 # The half that was missing. `ruff format` is the other entrypoint of the

@@ -8,7 +8,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-from PIL import Image
+from vision import decode
 
 from .stealth import read_stealth_metadata
 
@@ -116,7 +116,7 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
     cheap enough for bulk indexing.
     """
     try:
-        with Image.open(filepath) as img:
+        with decode.open_header(filepath) as img:
             raw = RawMetadata(
                 path=filepath,
                 format=img.format or "",

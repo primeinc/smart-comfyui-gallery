@@ -193,10 +193,10 @@ def _stored_facets(spelled) -> tuple:
     registry: a key this build no longer knows is a rule this build
     cannot evaluate -- refused, never quietly dropped."""
     if not isinstance(spelled, list) or any(type(one) is not str for one in spelled):
-        raise ValueError("the rule's facets are a list of key:op:value spellings")
+        raise ValueError("the rule's filters are a list of key:op:value strings")
     held = facets_module.normalized(spelled)
     if len(held) != len(spelled):
-        raise ValueError("the rule's facets hold a duplicate or an empty spelling")
+        raise ValueError("the rule's filters hold a duplicate or an empty one")
     return held
 
 
@@ -223,7 +223,7 @@ def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -
     affect membership and is normalized out.
     """
     if query.album is not None:
-        raise ValueError("a rule cannot reference a collection; smart-in-smart is not a v1 question")
+        raise ValueError("a smart album cannot be built from another album")
     if take is not None and type(take) is not int:
         # Exact-integer BEFORE any coercion: int(True) is 1, and a
         # boolean quietly becoming a one-item cutoff is the truthiness

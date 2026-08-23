@@ -17,7 +17,6 @@ measure the wrong device.
 """
 
 import pathlib
-import sqlite3
 import sys
 import time
 
@@ -25,6 +24,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import numpy as np
 
+from db import connect as connect_module
 from vision.faiss_index import IndexManager, SpaceSpec
 
 DIM = 512
@@ -34,7 +34,7 @@ GPU = IndexManager(gpu=True)
 
 
 def connect(dll: str, path=":memory:"):
-    conn = sqlite3.connect(path)
+    conn = connect_module.memory() if path == ":memory:" else connect_module.connect(path)
     conn.enable_load_extension(True)
     conn.load_extension(dll)
     conn.enable_load_extension(False)

@@ -42,7 +42,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import numpy as np
 from PIL import Image
 
-from vision import dupes
+from vision import decode, dupes
 
 DATASETS = "C:/ComfyUI/output/sample-datasets"
 RESULTS = pathlib.Path(__file__).resolve().parent / "results" / "fingerprint_calibration.json"
@@ -72,7 +72,7 @@ def _reencoded(image: Image.Image, encoding: str, quality: int) -> Image.Image:
     buffer = io.BytesIO()
     image.save(buffer, format=encoding, quality=quality)
     buffer.seek(0)
-    return Image.open(buffer).convert("RGB")
+    return decode.open_bytes(buffer.getvalue()).convert("RGB")
 
 
 def variants(image: Image.Image, other: Image.Image, rng) -> list[tuple[str, str, Image.Image]]:
@@ -123,10 +123,10 @@ def measure(root: pathlib.Path, sample: int) -> dict:
 
     def hash_one(at, path):
         try:
-            with Image.open(path) as opened:
+            with decode.open_still(path) as opened:
                 image = opened.convert("RGB")
                 other_path = sources[(at + len(sources) // 2) % len(sources)]
-                with Image.open(other_path) as second:
+                with decode.open_still(other_path) as second:
                     other = second.convert("RGB")
                 base_p, base_d = dupes.perceptual(image)
                 hashes.append((path.relative_to(root).parts[0], base_p, base_d))

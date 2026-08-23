@@ -336,7 +336,7 @@ def test_a_clip_is_captioned_whole_and_at_its_sampled_moments(tmp_path, monkeypa
     assert len(derived.said_about(conn, file_id)) == 1 + len(moments)
 
 
-def test_a_moments_caption_is_a_door_into_the_clip(tmp_path, monkeypatch):
+def test_a_moments_caption_is_a_link_into_the_clip(tmp_path, monkeypatch):
     """On the page a moment's caption carries the second it describes,
     and the page's script plays the clip from there."""
     root = tmp_path / "lib"

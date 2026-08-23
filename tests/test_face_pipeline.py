@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import io
 import pathlib
-import sqlite3
 from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from db import derived, detect, grouping, oriented, scan, similarity
+from db import connect, derived, detect, grouping, oriented, scan, similarity
+from vision import decode
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
@@ -29,7 +29,7 @@ def ddl():
 
 @pytest.fixture
 def db(ddl):
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(ddl)
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -134,7 +134,7 @@ def test_upright_reads_the_exif_tag_out_of_the_file_itself():
     buffer = io.BytesIO()
     stored.save(buffer, format="PNG", exif=exif)
     buffer.seek(0)
-    turned = oriented.upright(Image.open(buffer))
+    turned = oriented.upright(decode.open_bytes(buffer.getvalue()))
     assert turned.size == frame.size
     assert turned.getpixel((0, 0)) == (255, 0, 0)
 

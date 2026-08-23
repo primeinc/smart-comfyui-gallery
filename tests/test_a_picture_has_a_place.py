@@ -5,7 +5,7 @@ ships. A person's word does -- POST /i/{slug}/place finds or mints the
 place by name and kind, records the claim as authored desired state
 (file_place), and the file's context is re-interpreted at once with
 `location_basis = 'authored'`. The claim survives every rebuild and
-opens a gallery door through the `place.id` facet.
+opens a gallery link through the `place.id` facet.
 """
 
 from __future__ import annotations
@@ -86,17 +86,17 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         # the same name is the same place, whatever the spelling's case
         again = client.post(f"/i/{b}/place", json={"name": "lisbon", "kind": "city"}).json()["where"]
         assert again["id"] == where["id"], "one Lisbon"
-        # and the door opens exactly the pictures there
-        door = client.get(f"/g?{where['qs']}", headers={"accept": "text/html"}).text
-        assert 'data-total="2"' in door
-        assert "place Lisbon" in door, "the chip says the place's name, never its id"
-        assert f"place #{where['id']}" not in door
+        # and the link opens exactly the pictures there
+        link = client.get(f"/g?{where['qs']}", headers={"accept": "text/html"}).text
+        assert 'data-total="2"' in link
+        assert "place Lisbon" in link, "the chip says the place's name, never its id"
+        assert f"place #{where['id']}" not in link
         shelf_with_span = client.get("/places", headers=AS_MACHINE).json()[0]
         assert shelf_with_span["first_seen"] is not None
         assert shelf_with_span["last_seen"] >= shelf_with_span["first_seen"]
         assert "data-seen" in client.get("/places", headers={"accept": "text/html"}).text
 
-        # the shelf lists the place with its count and door
+        # the shelf lists the place with its count and link
         shelf = client.get("/places", headers=AS_MACHINE).json()
         assert [(p["name"], p["kind"], p["pictures"]) for p in shelf] == [("Lisbon", "city", 2)]
         assert shelf[0]["qs"] == where["qs"]
@@ -188,7 +188,7 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
         assert sessions[0]["place"]["qs"].startswith("f=place.id%3Aeq%3A")
         lisbon = sessions[0]["place"]["id"]
         narrowed = client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()
-        assert "f=place.id%3Aeq%3A" in narrowed["sessions"][0]["place"]["qs"], "place door carries the scope"
+        assert "f=place.id%3Aeq%3A" in narrowed["sessions"][0]["place"]["qs"], "place link carries the scope"
         assert "kind=image" in narrowed["sessions"][0]["place"]["qs"]
         assert narrowed["coverage"]["present"] == 3, "coverage counts the scope"
         assert (
@@ -202,7 +202,7 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
         _drain(client)
         sessions = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
         assert sessions[0]["place"] is None, "two places: the session is not in one"
-        # a member gone missing leaves the card's count and its door agreeing
+        # a member gone missing leaves the card's count and its link agreeing
         conn = connect.connect(client.app.state.db_path)
         try:
             gone = conn.execute("SELECT id FROM file WHERE name LIKE 'Screenshot 2023-06-10 at 14.10%'").fetchone()[0]
@@ -212,8 +212,8 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
             connect.close(conn)
         [session] = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
         assert session["pictures"] == 2 == session["in_scope"]
-        door = client.get(f"/g?{session['qs']}", headers={"accept": "text/html"}).text
-        assert 'data-total="2"' in door
+        link = client.get(f"/g?{session['qs']}", headers={"accept": "text/html"}).text
+        assert 'data-total="2"' in link
 
 
 def test_the_lightbox_says_where_too(tmp_path):
@@ -233,7 +233,7 @@ def test_the_lightbox_says_where_too(tmp_path):
 
 def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
     """`/timeline?folder=lib`, `?kind=image`, `?person=...`: the same
-    question the gallery answers, as the surface's scope; its doors are
+    question the gallery answers, as the surface's scope; its links are
     that question plus a moment; a rule-defined album is refused and a
     slug nothing lives at is a 404."""
     root = tmp_path / "lib"
@@ -252,7 +252,7 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         deep = client.get("/timeline/density", params={"bin": "day", "folder": "deep"}, headers=AS_MACHINE).json()
         assert sum(b["pictures"] for b in deep["bins"]) == 1
         assert deep["scope"]["qs"].startswith("folder=deep")
-        assert all(b["qs"].startswith("folder=deep&") for b in deep["bins"]), "every door is the question plus a moment"
+        assert all(b["qs"].startswith("folder=deep&") for b in deep["bins"]), "every link is the question plus a moment"
         page = client.get("/timeline", params={"folder": "deep"}, headers={"accept": "text/html"}).text
         assert 'data-timeline-scope="folder=deep"' in page
         assert client.get("/timeline/density", params={"bin": "day", "folder": "nowhere"}).status_code == 404
@@ -374,9 +374,9 @@ def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
 
 
 def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
-    """The doors this product grew carry facets; the bulk writes and the
+    """The links this product grew carry facets; the bulk writes and the
     picture page must prove and walk THAT question, or a selection made
-    on a place's door 409s forever and a picture opened from it walks
+    on a place's link 409s forever and a picture opened from it walks
     the whole library."""
     import re
 
@@ -411,7 +411,7 @@ def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
         assert placed.status_code < 300, placed.text
         opened = client.get(f"/i/{c}", params={"f": spelled}, headers=AS_MACHINE).json()
         assert opened["context"]["in_answer"] is False, "c was never in Lisbon: not in the faceted answer"
-        # Porto now: a and b moved; open a under the Porto door and walk it
+        # Porto now: a and b moved; open a under the Porto link and walk it
         porto = client.get(f"/i/{a}", headers=AS_MACHINE).json()["where"]
         walked = client.get(f"/i/{a}", params={"f": f"place.id:eq:{porto['id']}"}, headers=AS_MACHINE).json()
         assert walked["context"]["total"] == 2, "the page walks the faceted question it was opened from"

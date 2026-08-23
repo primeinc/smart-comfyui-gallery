@@ -75,23 +75,23 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy} AND mc.origin {op} ?)",
         choices=ORIGINS,
     ),
-    #: The timeline's own door into the gallery: one LOCAL calendar day,
+    #: The timeline's own link into the gallery: one LOCAL calendar day,
     #: by the same coalesce the timeline aggregates -- the wall clock
     #: when one was claimed, the instant otherwise. /timeline links here
     #: instead of ever becoming a second media membership engine.
     "context.local_day": _Spec(
         "date",
         ("eq", "gte", "lte"),
-        # composed around context.HUMAN_MOMENT -- the door and the
+        # composed around context.HUMAN_MOMENT -- the link and the
         # timeline shelf share one definition of the human day
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy}"
         " AND strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') {op} ?)",
     ),
-    #: The surface's door: a bin of the human moment, as epoch seconds
+    #: The surface's link: a bin of the human moment, as epoch seconds
     #: on the SAME axis the density is counted on -- so a bar of 14
     #: pictures opens a gallery of exactly those 14. The axis is REAL
-    #: (a claimless file's moment is its fractional mtime), so a door is
+    #: (a claimless file's moment is its fractional mtime), so a link is
     #: the half-open [at, at+width) the count uses, never [at, at+width-1].
     "context.moment": _Spec(
         "int",
@@ -110,7 +110,7 @@ REGISTRY: dict[str, _Spec] = {
     ),
     #: How fine a claim is, in seconds of granule: a day-precision claim
     #: is 86400, a subsecond one 0. `lte:<bin width>` is exactly "fine
-    #: enough for this bin" (db/pages.py _FINE_ENOUGH), so a bar's door
+    #: enough for this bin" (db/pages.py _FINE_ENOUGH), so a bar's link
     #: opens the pictures the bar counted and no coarser claim that
     #: happens to sit inside its window.
     "context.granule": _Spec(
@@ -121,14 +121,14 @@ REGISTRY: dict[str, _Spec] = {
         " WHEN 'subsecond' THEN 0 WHEN 'second' THEN 1 WHEN 'minute' THEN 60 WHEN 'hour' THEN 3600"
         " WHEN 'day' THEN 86400 ELSE 2147483647 END {op} ?)",
     ),
-    #: Where it happened, by place entity id: the door a place name opens.
+    #: Where it happened, by place entity id: the link a place name opens.
     "place.id": _Spec(
         "int",
         ("eq",),
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND mc.place_id {op} ?)",
     ),
-    #: A session's door: the members of one CURRENT event -- a run proven
+    #: A session's link: the members of one CURRENT event -- a run proven
     #: over this interpretation, so a stale hypothesis answers nothing.
     #: The timeline links here instead of growing a membership engine.
     "event.id": _Spec(
@@ -152,18 +152,18 @@ def facet(key: str, op: str, raw: str) -> Facet:
     wearing an answer's clothes."""
     spec = REGISTRY.get(key)
     if spec is None:
-        raise ValueError(f"nothing is registered to filter by {key!r}; the vocabulary is {', '.join(sorted(REGISTRY))}")
+        raise ValueError(f"there is no filter named {key!r}; the filters are {', '.join(sorted(REGISTRY))}")
     if op not in spec.ops:
         raise ValueError(f"{key} allows {', '.join(spec.ops)}, not {op!r}")
     if type(raw) is not str:
-        raise ValueError(f"{key} takes a spelled value, not {raw!r}")
+        raise ValueError(f"{key} takes a text value, not {raw!r}")
     if spec.value_kind == "int":
         if _INT.fullmatch(raw) is None:
             raise ValueError(f"{key} takes an integer, not {raw!r}")
         return Facet(key, op, int(raw))
     if spec.value_kind == "date":
         if _DATE.fullmatch(raw) is None:
-            raise ValueError(f"{key} takes a day spelled YYYY-MM-DD, not {raw!r}")
+            raise ValueError(f"{key} takes a date written YYYY-MM-DD, not {raw!r}")
         return Facet(key, op, raw)
     value = raw.strip()
     if not value:
@@ -178,7 +178,7 @@ def parse_spelling(spelled: str) -> Facet:
     structure; the value keeps any colons of its own."""
     parts = spelled.split(":", 2)
     if len(parts) != 3:
-        raise ValueError(f"a facet is spelled key:op:value, not {spelled!r}")
+        raise ValueError(f"a filter is written key:op:value, not {spelled!r}")
     return facet(parts[0], parts[1], parts[2])
 
 
@@ -203,7 +203,7 @@ def conjunction(held) -> tuple[str, list]:
     """Every facet as one SQL conjunct over the ResultSet's file alias
     `f`, values bound: `(" AND p1 AND p2", [v1, v2])`, UNSCOPED when
     there are none. What the timeline appends to its own statements so
-    a scoped surface counts exactly what the gallery's door would open."""
+    a scoped surface counts exactly what the gallery's link would open."""
     parts: list[str] = []
     values: list = []
     for one in held:

@@ -9,12 +9,11 @@ table directly, because the semantics under test are the runner's.
 from __future__ import annotations
 
 import pathlib
-import sqlite3
 
 import numpy as np
 import pytest
 
-from db import jobs, runner, scan
+from db import connect, jobs, runner, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
@@ -26,7 +25,7 @@ def ddl():
 
 @pytest.fixture
 def db(ddl):
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(ddl)
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -675,7 +674,7 @@ def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch
     )
 
 
-def test_the_qwen_adapter_takes_the_native_door_for_video():
+def test_the_qwen_adapter_takes_the_native_link_for_video():
     """Video reaches the model as the FILE with sampling budgets -- the
     whole point of the media-aware seam. Calling the canonical poster
     frame instead would judge a clip by one picture and make the seam

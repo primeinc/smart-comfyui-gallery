@@ -662,7 +662,7 @@ def render_plan(conn, plan_id: int, renderer: TemplateStoryRenderer, now: float)
 def load_render_with_members(conn, render_id: int) -> tuple[dict, dict, int, dict]:
     """The verified render, its plan's snapshot members by ref -- what a
     page needs to spell a hero's FROZEN name -- the plan's id (the page's
-    door to the evolution view) and the frozen subject (its door back to
+    link to the evolution view) and the frozen subject (its link back to
     the session's window on the timeline). The page asks here; it never
     joins a table itself."""
     render, snapshot, plan_id = _load(conn, render_id)
@@ -699,7 +699,7 @@ def heroes(conn, words: dict, frozen: dict, most: int = CARD_HEROES) -> list[dic
 
 def story_card(conn, render_id: int) -> dict | None:
     """What a card says of one story: its title and dek as rendered, its
-    heroes, and the doors to the whole and to its evolution. None when
+    heroes, and the links to the whole and to its evolution. None when
     the render no longer verifies -- a card shows nothing it cannot
     prove."""
     try:

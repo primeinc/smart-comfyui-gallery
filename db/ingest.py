@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ from . import graph as graph_module
 from . import probe as probe_module
 from . import prompts as prompts_module
 from .scan import mint
+
+_logger = logging.getLogger(__name__)
 
 #: PNG text chunks that carry a whole workflow graph rather than a value.
 _GRAPH_SLOTS = ("workflow", "prompt")
@@ -512,7 +515,8 @@ def _really_animated(path) -> bool | None:
     try:
         with decode.open_still(path) as image:  # the handle closes with the image, not at GC
             return decode.is_animated(image)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as why:
+        _logger.warning("%s: cannot tell whether it animates: %s: %s", path, type(why).__name__, why)
         return None
 
 
@@ -654,9 +658,11 @@ def sidecar(conn, file_id: int, path, now: float) -> int:
     try:
         with open(path, encoding="utf-8") as handle:
             document = json.load(handle)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as why:
+        _logger.warning("%s: sidecar unreadable: %s: %s", path, type(why).__name__, why)
         return 0
     if not isinstance(document, dict):
+        _logger.warning("%s: sidecar is a %s, not an object", path, type(document).__name__)
         return 0
     retract(conn, file_id, "sidecar")
     _carrier(conn, file_id, "sidecar", os.path.basename(str(path)), json.dumps(document), now)

@@ -396,7 +396,7 @@ def test_one_vector_per_text_space_and_policy_in_the_joint_space(library):
             )
         conn.execute("UPDATE prompt SET text = text || '!', text_hash = 'moved' WHERE id = ?", (prompt_id,))
         assert prompts.current_vectors(conn, sid, "qA", [digest]) == {}, "the text moved; the vector no longer vouches"
-        keys = {key for key, _, _ in similarity._PENDING[id(conn)]}
+        keys = {key for key, _, _ in similarity.pending(conn)}
         assert keys == {
             f"semantic.fake.toy.v1@{sid}",
             f"semantic.fake.toy.v1@{sid}+prompts+qA",
@@ -750,7 +750,7 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
 
     path = tmp_path / "old.db"
     build.build(path)
-    conn = sqlite3.connect(path)
+    conn = connect.connect(path)
     conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute("DROP TABLE derived_prompt_embedding")
     conn.execute("DROP TABLE derived_prompt_section")
@@ -1035,7 +1035,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
 
     path = tmp_path / "old.db"
     build.build(path)
-    conn = sqlite3.connect(path)
+    conn = connect.connect(path)
     conn.execute("PRAGMA foreign_keys=OFF")
     for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
         conn.execute(f"DROP TABLE {table}")
@@ -1105,17 +1105,21 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
 
 
 def test_notes_die_with_their_connection(tmp_path):
-    """A producer's index notes are keyed by id(conn). A connection
-    closed without a commit's apply or a rollback's discard left its
-    notes behind, and the next connection the allocator gave the same
-    id inherited them -- a foreign space key in another test's pending
-    list. Closing through the one door discards them."""
+    """A producer's index notes live on the connection. A registry keyed
+    by id(conn) handed a connection that died without close (a leaked
+    handle, a raw conn.close()) the notes of the stranger the allocator
+    recycled the id from -- a foreign space key in another test's
+    pending list. Now a new connection starts with none, whatever
+    happened to the last one, and close() empties them."""
     from db import build, connect, similarity
 
     path = tmp_path / "gallery.db"
     build.build(path)
-    conn = connect.connect(path)
-    key = id(conn)
-    similarity._PENDING.setdefault(key, []).append(("semantic.fake.toy.v1@1", 1, None))
-    connect.close(conn)
-    assert key not in similarity._PENDING, "the note outlived its connection"
+    leaked = connect.connect(path)
+    similarity.pending(leaked).append(("semantic.fake.toy.v1@1", 1, None))
+    leaked.close()  # not connect.close: the handle died without a discard
+    fresh = connect.connect(path)
+    assert similarity.pending(fresh) == [], "a new connection inherits nothing"
+    similarity.pending(fresh).append(("semantic.fake.toy.v1@1", 1, None))
+    connect.close(fresh)
+    assert similarity.pending(fresh) == [], "close empties the notes"

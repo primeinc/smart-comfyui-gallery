@@ -527,7 +527,7 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
 
     def _pixels(conn, row, file_id: int) -> int:
         """The member's resolution, the primary fidelity axis. The file
-        row knows it once ingest has run; until then the decoder door
+        row knows it once ingest has run; until then the decoder
         answers from the media's own headers, whatever the kind -- byte
         size must NEVER stand in for it, because bytes measure
         compression: a 48px JPEG outweighs a lossless original of the

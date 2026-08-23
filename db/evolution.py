@@ -130,7 +130,7 @@ def _slugs(conn, members: list[dict]) -> dict[str, str | None]:
 
 def _prompt_ids(conn, hashes: set[str]) -> dict[str, int]:
     """Prompt rows by frozen text hash -- the one live lookup the page
-    needs for its "prompts like this" door; absent when no row holds
+    needs for its "prompts like this" link; absent when no row holds
     the text any more."""
     if not hashes:
         return {}

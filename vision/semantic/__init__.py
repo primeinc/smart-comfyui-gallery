@@ -51,7 +51,7 @@ from typing import Any
 class MediaRef:
     """One piece of media, described rather than pre-decoded.
 
-    `path` and `kind` are the two doors an adapter can take: read the
+    `path` and `kind` are the two links an adapter can take: read the
     file natively (a video model with its own frame sampling), or call
     `frame()` for the repo's canonical representative frame -- decoded,
     EXIF-oriented, a poster frame for video -- computed lazily so an

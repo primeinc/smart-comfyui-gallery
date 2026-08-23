@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import urllib.parse
 
 from litestar.testing import TestClient
 
@@ -55,19 +56,23 @@ def walk(home: str | None) -> list[str]:
     return told
 
 
-#: Doors a page emits that are bytes or a machine's by design: not landings.
+#: Links a page emits that are bytes or a machine's by design: not landings.
 BYTES = ("/media/", "/thumb/", "/preview/", "/avatar/", "/static/")
-#: How many doors of one SHAPE the crawl follows: a library has thousands
-#: of picture pages and they are one shape; the doors that matter are
+#: How many links of one SHAPE the crawl follows: a library has thousands
+#: of picture pages and they are one shape; the links that matter are
 #: the shapes, and every shape is walked.
 PER_SHAPE = 3
 
 
 def _shape(path: str) -> str:
-    """A door's shape: its route with the slug or id blanked and the
-    query dropped -- `/i/abc?f=..` and `/i/def` are one shape."""
-    parts = path.split("?", 1)[0].split("/")
-    return "/".join(
+    """A link's shape: its route with the slug or id blanked, and the
+    query reduced to its keys -- a facet by its key, never its value.
+    `/i/abc?f=context.moment:gte:1&sort=moment` and `/i/def` are two
+    shapes: the timeline's link onto a picture walks a different answer
+    than the gallery's, and a 500 in one is not in the other."""
+    route, _, query = path.partition("?")
+    parts = route.split("/")
+    blanked = "/".join(
         "*"
         if i > 1
         and (
@@ -77,18 +82,27 @@ def _shape(path: str) -> str:
         else seg
         for i, seg in enumerate(parts)
     )
+    keys = sorted(
+        {
+            f"{name}={urllib.parse.unquote(value).split(':', 1)[0]}" if name == "f" else name
+            for name, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+        }
+    )
+    return blanked + ("?" + "&".join(keys) if keys else "")
 
 
 def crawl(client) -> list[str]:
     """Every `href` every page emits, followed as a browser, a few of each
-    shape: a door that lands a person on JSON, a 4xx or a 5xx is a FAIL
-    line. Every shape of door is walked; no shape is sampled away."""
+    shape: a link that lands a person on JSON, a 4xx or a 5xx is a FAIL
+    line. Every shape of link is walked; no shape is sampled away."""
     told: list[str] = []
     seen: set[str] = set()
     walked: dict[str, int] = {}
-    queue: list[str] = ["/g", "/timeline", "/people", "/places", "/albums", "/folders", "/operations"]
+    queue: list[tuple[str, str]] = [
+        (p, "the front") for p in ("/g", "/timeline", "/people", "/places", "/albums", "/folders", "/operations")
+    ]
     while queue:
-        path = queue.pop(0)
+        path, emitter = queue.pop(0)
         shape = _shape(path)
         if path in seen or walked.get(shape, 0) >= PER_SHAPE:
             continue
@@ -98,14 +112,15 @@ def crawl(client) -> list[str]:
         kind = answer.headers.get("content-type", "")
         if answer.status_code >= 400 or not kind.startswith("text/html"):
             told.append(
-                f"FAIL {answer.status_code} {path} -> {kind.split(';')[0] or 'no content type'} (a door onto no page)"
+                f"FAIL {answer.status_code} {path} -> {kind.split(';')[0] or 'no content type'}"
+                f" (a link onto no page, emitted by {emitter})"
             )
             continue
         for found in re.findall(r'href="([^"#]+)"', answer.text):
-            door = found.replace("&amp;", "&")
-            if door.startswith("/") and not door.startswith(BYTES) and door not in seen:
-                queue.append(door)
-    told.append(f"ok   crawled {len(seen)} doors of {len(walked)} shapes")
+            link = found.replace("&amp;", "&")
+            if link.startswith("/") and not link.startswith(BYTES) and link not in seen:
+                queue.append((link, path))
+    told.append(f"ok   crawled {len(seen)} links of {len(walked)} shapes")
     return told
 
 

@@ -71,7 +71,7 @@ POLICY_VERSION = 8
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
-#: timeline shelves compose around this same fragment, so the door and
+#: timeline shelves compose around this same fragment, so the link and
 #: the shelf cannot drift apart.
 HUMAN_MOMENT = "COALESCE(mc.local_at, mc.instant_at)"
 

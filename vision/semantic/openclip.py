@@ -1,4 +1,4 @@
-"""The OpenCLIP adapter -- one joint model, two doors into one space.
+"""The OpenCLIP adapter -- one joint model, two links into one space.
 
 OpenCLIP trains an image encoder and a text encoder into the SAME vector
 space: embed every picture once, and a typed phrase becomes a query
@@ -176,7 +176,7 @@ class ClipBackend:
                 image_interpolation=tag.get("interpolation"),
                 image_resize_mode=tag.get("resize_mode"),
             )
-        # the factory returns nn.Module; the two encode_* doors live on
+        # the factory returns nn.Module; the two encode_* links live on
         # the contrastive classes, and only those are a space here
         if not isinstance(loaded, (open_clip.CLIP, open_clip.CustomTextCLIP, open_clip.CoCa)):
             raise TypeError(f"{model} built {type(loaded).__name__}, which has no image/text encoders")

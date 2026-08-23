@@ -14,7 +14,7 @@ import pytest
 from PIL import Image
 
 from db import connect, detect, library, sample, scan
-from vision import thumbs
+from vision import decode, thumbs
 from vision.faces import FaceDetection, StubFaceBackend
 
 SHA = "ab" * 32
@@ -29,7 +29,7 @@ def _rgb(image: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
 
 
 def _size(path) -> tuple[int, int]:
-    with Image.open(path) as image:  # the handle closes with the image, not at GC
+    with decode.open_still(path) as image:  # the handle closes with the image, not at GC
         return image.size
 
 
@@ -54,7 +54,7 @@ def test_an_unknown_variant_is_refused(tmp_path):
 def test_a_cache_hit_never_rerenders(tmp_path):
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (255, 0, 0)))
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (0, 0, 255)))
-    with Image.open(thumbs.path_for(tmp_path, SHA)) as kept:
+    with decode.open_still(thumbs.path_for(tmp_path, SHA)) as kept:
         r, _, b = _rgb(kept, (128, 128))
     assert r > b, "the second render overwrote a cache that was already warm"
 
@@ -63,7 +63,7 @@ def test_an_avatar_is_a_square_crop_centred_on_the_face(tmp_path):
     canvas = Image.new("RGB", (800, 600), (0, 0, 255))
     canvas.paste(Image.new("RGB", (200, 150), (255, 0, 0)), (200, 150))
     thumbs.put_avatar(tmp_path, 7, canvas, (0.25, 0.25, 0.25, 0.25))
-    with Image.open(thumbs.avatar_path(tmp_path, 7)) as avatar:
+    with decode.open_still(thumbs.avatar_path(tmp_path, 7)) as avatar:
         assert avatar.size == (thumbs.AVATAR, thumbs.AVATAR)
         centre = _rgb(avatar, (128, 128))
         corner = _rgb(avatar, (6, 6))
@@ -123,7 +123,7 @@ def _clip(path, colors, *, rate=5):
 
 def test_a_scanned_but_not_yet_ingested_photo_is_still_upright(tmp_path):
     """Between scan and first ingest there is no capture row, and unknown
-    is not upright: the oriented door must read the file's own EXIF then,
+    is not upright: the oriented link must read the file's own EXIF then,
     not assume 1. Found by a real browser showing a sideways thumbnail."""
     from db import oriented
 
@@ -198,7 +198,7 @@ def test_a_video_is_represented_by_the_frame_with_its_people(tmp_path):
         conn, StubFaceBackend(_face_when_green), file_id, media_path, 0.0, thumbs_dir=str(cache)
     )
     assert told["faces"] > 0
-    with Image.open(thumbs.path_for(cache, sha)) as poster:
+    with decode.open_still(thumbs.path_for(cache, sha)) as poster:
         centre = _rgb(poster, (poster.width // 2, poster.height // 2))
     assert centre[1] > centre[2], "the poster frame shows the set, not the person"
     conn.close()
@@ -224,7 +224,7 @@ def test_a_face_free_cadence_is_refined_until_the_face_is_found(tmp_path):
     assert told["faces"] > 0, "the cadence alone was allowed to conclude absence"
     policies = {policy for _, _, policy in sample.taken(conn, file_id)}
     assert "bisect" in policies, "the extra moments are not recorded as refinement"
-    with Image.open(thumbs.path_for(cache, sha)) as poster:
+    with decode.open_still(thumbs.path_for(cache, sha)) as poster:
         centre = _rgb(poster, (poster.width // 2, poster.height // 2))
     assert centre[1] > centre[2]
     conn.close()

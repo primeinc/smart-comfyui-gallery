@@ -1405,13 +1405,11 @@ def test_the_built_database_matches_the_ddl(tmp_path):
 @pytest.mark.slow
 def test_the_drift_check_can_actually_fail(tmp_path):
     """Control: a database built from a mutated DDL must be reported as drifted."""
-    import sqlite3 as _s
-
     from db.build import drift
-    from db.connect import schema_sql
+    from db.connect import connect, schema_sql
 
     path = tmp_path / "stale.db"
-    conn = _s.connect(str(path))
+    conn = connect(path)
     conn.executescript(schema_sql().replace("CREATE INDEX file_kind ON file(kind);", ""))
     conn.commit()
     conn.close()
@@ -1423,20 +1421,18 @@ def test_the_drift_check_sees_inside_string_literals(tmp_path):
     """Control for the comparator's literal-awareness: a trigger message
     whose spacing changed is a different message and must read as drift,
     while spacing between TOKENS stays fold-away noise."""
-    import sqlite3 as _s
-
     from db.build import drift
-    from db.connect import schema_sql
+    from db.connect import connect, schema_sql
 
     reworded = tmp_path / "reworded.db"
-    conn = _s.connect(str(reworded))
+    conn = connect(reworded)
     conn.executescript(schema_sql().replace("nothing is filed into it", "nothing  is filed into it"))
     conn.commit()
     conn.close()
     assert drift(reworded) != [], "a changed literal was folded into equality"
 
     respaced = tmp_path / "respaced.db"
-    conn = _s.connect(str(respaced))
+    conn = connect(respaced)
     conn.executescript(
         schema_sql().replace(
             "CREATE TRIGGER collection_file_not_into_smart", "CREATE  TRIGGER  collection_file_not_into_smart"
@@ -1477,13 +1473,11 @@ def test_the_drift_check_sees_a_wrong_stamp(tmp_path):
     """Control for the half it could not see. `objects()` reads sqlite_master
     only, so a file carrying the wrong version -- the case the stamps exist
     for -- was reported as in sync with the DDL that does not stamp it."""
-    import sqlite3 as _s
-
     from db.build import drift
-    from db.connect import schema_sql
+    from db.connect import connect, schema_sql
 
     path = tmp_path / "misstamped.db"
-    conn = _s.connect(str(path))
+    conn = connect(path)
     conn.executescript(schema_sql())
     conn.execute("PRAGMA user_version = 99")
     conn.execute("PRAGMA application_id = 0")

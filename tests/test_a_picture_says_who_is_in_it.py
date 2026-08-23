@@ -109,7 +109,7 @@ def test_the_page_says_whether_its_metadata_was_read_from_these_bytes(client):
 
 def test_a_person_page_says_where_they_were_seen(client):
     """Ana's pictures placed in Lisbon: her page lists Lisbon with how
-    many of her pictures are there and a door to exactly those."""
+    many of her pictures are there and a link to exactly those."""
     from db import authored, context, places
 
     ids = [_slug(client, name)[0] for name in ("ana_1.png", "ana_2.png")]

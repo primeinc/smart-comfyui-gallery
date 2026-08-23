@@ -13,11 +13,10 @@ still attached to the same picture.
 """
 
 import pathlib
-import sqlite3
 
 import pytest
 
-from db import scan
+from db import connect, scan
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -26,7 +25,7 @@ NOW = 1_700_000_000.0
 @pytest.fixture
 def library(tmp_path):
     """An empty database and an empty directory, wired to each other."""
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     root = tmp_path / "library"
@@ -422,7 +421,7 @@ def two_roots(tmp_path):
     """A library and a second drive, both scanned."""
     from db import library as library_module
 
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO user(id, username, password_hash, role, created_at) VALUES(1, 'will', 'x', 'ADMIN', 0)")

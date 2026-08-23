@@ -98,9 +98,9 @@ def _artifact_page(state: State, request: Request, slug: str, shelf: str) -> Tem
 #: The three shelves: what the index is called, what one row is, and
 #: where a row's page lives.
 _INDEXES = {
-    "checkpoint": {"title": "Models", "noun": "models", "one": "model", "door": "/m"},
-    "lora": {"title": "LoRAs", "noun": "LoRAs", "one": "LoRA", "door": "/l"},
-    "workflow": {"title": "Workflows", "noun": "workflows", "one": "workflow", "door": "/w"},
+    "checkpoint": {"title": "Models", "noun": "models", "one": "model", "link": "/m"},
+    "lora": {"title": "LoRAs", "noun": "LoRAs", "one": "LoRA", "link": "/l"},
+    "workflow": {"title": "Workflows", "noun": "workflows", "one": "workflow", "link": "/w"},
 }
 
 

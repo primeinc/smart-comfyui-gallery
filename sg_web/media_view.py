@@ -143,7 +143,7 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
 def where_of(conn, file_id: int) -> dict | None:
     """Where the picture happened, as the current interpretation holds
     it: the place by address, its kind, the basis (a person's word, or
-    nothing yet -- GPS alone names no place), and the gallery door to
+    nothing yet -- GPS alone names no place), and the gallery link to
     everything there."""
     import urllib.parse
 
@@ -186,7 +186,7 @@ def _faces(conn, file_id: int) -> dict:
 def _when(conn, file_id: int) -> dict | None:
     """The picture's place on the human timeline, with the evidence
     behind it (db/pages.py MEDIA_WHEN), and the current sessions it
-    belongs to -- each a door to the timeline, the day, the session's
+    belongs to -- each a link to the timeline, the day, the session's
     pictures and its story. None while the file is uninterpreted."""
     import json
     import urllib.parse
@@ -264,7 +264,7 @@ def media_page(
     `X-SG-Expect` header -- never in the URL, which stays the canonical
     context the browser may push, share or reload. The facets ride the
     URL like every other part of the question: a picture opened from a
-    place's door walks that place, not the library."""
+    place's link walks that place, not the library."""
     query = _asked(
         folder,
         album,

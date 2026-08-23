@@ -147,17 +147,17 @@
     const m = members.get(state.selected);
     if (!m) { selectedPane.innerHTML = `<p class="empty">select an image</p>`; return; }
     const eff = m.prompt.effective, org = m.prompt.original;
-    const doors = [];
-    if (m.media.page) doors.push(`<a href="${esc(m.media.page)}">open image</a>`);
-    if (eff && view.doors.search) doors.push(`<a href="${esc(view.doors.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
-    if (eff && eff.prompt_id !== null && view.semantic.provider) doors.push(`<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`);
-    if (view.doors.gallery_day) doors.push(`<a href="${esc(view.doors.gallery_day)}">this day in the gallery</a>`);
+    const links = [];
+    if (m.media.page) links.push(`<a href="${esc(m.media.page)}">open image</a>`);
+    if (eff && view.links.search) links.push(`<a href="${esc(view.links.search)}${encodeURIComponent(eff.main)}">images like this prompt</a>`);
+    if (eff && eff.prompt_id !== null && view.semantic.provider) links.push(`<a href="/prompts/${eff.prompt_id}/neighbours?space=${encodeURIComponent(view.semantic.provider)}">prompts like this</a>`);
+    if (view.links.gallery_day) links.push(`<a href="${esc(view.links.gallery_day)}">this day in the gallery</a>`);
     selectedPane.innerHTML = `${m.media.thumbnail ? `<img src="${esc(m.media.thumbnail)}" alt="${esc(m.media.name)}">` : ""}
       <h2>${esc(m.ref)} · ${esc(m.media.name)}</h2>
       <p class="evolution-provenance">${esc(m.phase_ref || "")}${when(m)}</p>
       <h3>effective prompt</h3><pre>${esc(eff ? eff.text : "— not frozen —")}</pre>
       ${org ? `<h3>as written</h3><pre>${esc(org.text)}</pre><h3>written → ran</h3><p class="evolution-diff">${diffTokens(org.main, eff ? eff.main : "")}</p>` : `<p class="evolution-provenance">no original prompt was recorded by the generator</p>`}
-      <p class="doors">${doors.join("")}</p>`;
+      <p class="links">${links.join("")}</p>`;
   }
 
   function inspect() {

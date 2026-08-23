@@ -59,7 +59,7 @@
         <dt>basis</dt><dd>{{ item.when.basis }} <span class="when-evidence">certainty {{ item.when.certainty }}{% if item.when.supports %} · supported by {{ item.when.supports | join(", ") }}{% endif %}</span></dd>
         {% if item.when.conflicts %}<dt>disputed</dt><dd class="warn" data-when-conflicts>{{ item.when.conflicts | join("; ") }}</dd>{% endif %}
         <dt>origin</dt><dd>{{ item.when.origin }}</dd>
-        <dt>doors</dt><dd><a href="/g?{{ item.when.day_qs }}" data-when-day>{{ item.when.local_day }}</a> · <a href="{{ item.when.timeline }}" data-when-timeline>on the timeline</a></dd>
+        <dt>see</dt><dd><a href="/g?{{ item.when.day_qs }}" data-when-day>{{ item.when.local_day }}</a> · <a href="{{ item.when.timeline }}" data-when-timeline>on the timeline</a></dd>
       </dl>
       {% if item.when.sessions %}
       <ul class="when-sessions" data-when-sessions>
@@ -73,7 +73,7 @@
       {% endif %}
       <h2>where</h2>
       {% if item.where %}
-      <p data-where="{{ item.where.id }}"><a href="/g?{{ item.where.qs }}" data-where-door>{{ item.where.name }}</a>{% if item.where.chain | length > 1 %}, {{ item.where.chain[1:] | join(", ") }}{% endif %} <span class="when-evidence">{{ item.where.kind }} &middot; {{ "said by a person" if item.where.basis == "authored" else item.where.basis }}</span> &middot; <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></p>
+      <p data-where="{{ item.where.id }}"><a href="/g?{{ item.where.qs }}" data-where-link>{{ item.where.name }}</a>{% if item.where.chain | length > 1 %}, {{ item.where.chain[1:] | join(", ") }}{% endif %} <span class="when-evidence">{{ item.where.kind }} &middot; {{ "said by a person" if item.where.basis == "authored" else item.where.basis }}</span> &middot; <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></p>
       {% else %}
       <p class="detail-note" data-where-missing>nowhere said{% if item.when and item.when.origin == "captured" %} — the camera's coordinates alone name no place{% endif %}.</p>
       {% endif %}

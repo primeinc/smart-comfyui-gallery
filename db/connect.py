@@ -90,35 +90,67 @@ def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
         time.sleep(0.05)
 
 
-def connect(path, *, read_only: bool = False, cross_thread: bool = False) -> sqlite3.Connection:
-    """Open the database with the settings the schema assumes.
+class Connection(sqlite3.Connection):
+    """This application's connection: the base class plus a place for the
+    post-commit index notes (db/similarity.py note/apply_pending). Held ON
+    the connection, they die with it -- a registry keyed by id(conn)
+    handed a stranger's notes to whichever connection the allocator gave
+    the same id next, after one closed without `close`."""
 
-    `cross_thread=True` lifts sqlite3's same-thread check for a connection
-    that outlives any one request thread -- the caller owns serialising
-    access with its own lock, because the check it turned off was the only
-    other guard (python/cpython Doc/library/sqlite3.rst check_same_thread:
-    "Writing operations may need to be serialized by the user").
+    __slots__ = ("pending",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pending: list = []
+
+
+def memory() -> Connection:
+    """An in-memory database: the same connection class, foreign keys on.
+    Fixtures and the schema reference are built on this."""
+    return _prepared(sqlite3.connect(":memory:", factory=Connection), journal=False)
+
+
+def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_thread: bool = False) -> Connection:
+    """Open the database with the settings the schema assumes. The ONLY
+    way this application opens a file: ruff bans sqlite3.connect
+    everywhere else (pyproject.toml TID251), so every per-connection
+    fact -- foreign keys, the write lock, the cache, WAL, the index
+    notes -- is decided here and nowhere.
+
+    `read_only` opens `mode=ro`; `cross_thread` (read-only only) lifts
+    sqlite3's same-thread check for a connection that outlives any one
+    request thread -- the caller serialises access with its own lock,
+    because the check it turned off was the only other guard
+    (python/cpython Doc/library/sqlite3.rst check_same_thread: "Writing
+    operations may need to be serialized by the user").
+
+    `autocommit` is explicit transaction control (isolation_level=None,
+    Doc/library/sqlite3.rst "Transaction control via the isolation_level
+    attribute"): no implicit BEGIN, so a migration step runs its own
+    BEGIN/COMMIT and the pragmas that refuse to run inside a transaction
+    apply. Everything else opens under IMMEDIATE: sqlite3 opens a
+    transaction before every INSERT, UPDATE, DELETE and REPLACE, and
+    `isolation_level` chooses which BEGIN (sqlite3.rst:2709-2720).
+    DEFERRED takes no lock until the first write, so two writers can
+    both start, both read, and one then fails halfway through, holding a
+    library whose files are parked under placeholder names; IMMEDIATE
+    takes the write lock at the start, so the second writer waits out
+    its busy_timeout at the entry instead of failing in the middle.
     """
     if read_only:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=not cross_thread)
-    else:
-        if cross_thread:
-            # A shared writer would need every consumer to serialise every
-            # statement; nothing in this application wants that, and a
-            # silently ignored flag would look honoured.
-            raise ValueError("cross_thread connections are read-only")
-        # IMMEDIATE, not the default DEFERRED. Under legacy transaction
-        # control sqlite3 opens a transaction before every INSERT, UPDATE,
-        # DELETE and REPLACE, and `isolation_level` chooses which BEGIN it
-        # issues (python/cpython@a646c99e Doc/library/sqlite3.rst:2709-2720).
-        #
-        # DEFERRED takes no lock until the first write inside the
-        # transaction, so two writers can both start, both read, and one
-        # then fails when it tries to upgrade -- halfway through, holding a
-        # library whose files are parked under placeholder names. IMMEDIATE
-        # takes the write lock at the start, so the second writer waits out
-        # its busy_timeout at the door instead of failing in the middle.
-        conn = sqlite3.connect(str(path), isolation_level="IMMEDIATE")
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=not cross_thread, factory=Connection)
+        return _prepared(conn, journal=False)
+    if cross_thread:
+        # A shared writer would need every consumer to serialise every
+        # statement; nothing in this application wants that, and a
+        # silently ignored flag would look honoured.
+        raise ValueError("cross_thread connections are read-only")
+    conn = sqlite3.connect(str(path), isolation_level=None if autocommit else "IMMEDIATE", factory=Connection)
+    return _prepared(conn, journal=True)
+
+
+def _prepared(conn: Connection, *, journal: bool) -> Connection:
+    """Every per-connection setting, applied once, to every connection."""
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     # Negative N means approximately abs(N*1024) BYTES rather than a page
@@ -137,7 +169,7 @@ def connect(path, *, read_only: bool = False, cross_thread: bool = False) -> sql
     # correct and which a 2 MiB cache cannot hold. Given room, statistics
     # make that page three times FASTER than no statistics.
     conn.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
-    if not read_only:
+    if journal:
         # journal_mode is a write: setting it on a read-only connection raises,
         # and the mode is a property of the file anyway, not of the connection.
         #
@@ -214,11 +246,8 @@ def close(conn: sqlite3.Connection) -> None:
     running on whatever statistics existed when the library was smaller.
     """
     # Notes a producer left for the post-commit index sync die with the
-    # connection: nothing can apply them once it is closed, and the
-    # registry keys on id(conn) -- an id the allocator hands the next
-    # connection, which would inherit a stranger's notes (db/similarity.py
-    # _PENDING). The runner discards or applies before it gets here; this
-    # is the door every other path leaves by.
+    # connection (Connection.pending): nothing can apply them once it is
+    # closed. The runner discards or applies before it gets here.
     from . import similarity
 
     similarity.discard_pending(conn)

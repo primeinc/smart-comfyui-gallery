@@ -445,7 +445,7 @@ def test_the_view_is_immune_to_the_live_library_moving_on(planned):
     )
     assert view["members"][0]["metrics"] == before["members"][0]["metrics"]
 
-    # the file is deleted: the member keeps its frozen identity, loses its door
+    # the file is deleted: the member keeps its frozen identity, loses its link
     (root / "gen_2.png").unlink()
     client.post("/roots/1/scan")
     view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
@@ -471,13 +471,12 @@ def test_no_space_yields_reasons_not_numbers(planned):
 def test_a_thousand_members_are_o_n_work():
     """No matrix: the transition count is n-1 and the module asks the
     database a bounded number of statements however large the session."""
-    import sqlite3
 
     from db import build
 
     n = 1000
     document, sha = _synthetic(n, "second")
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(build.schema_sql())
     plan_id = _store(conn, document, sha)
     statements: list[str] = []
@@ -496,7 +495,6 @@ def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
     inputs are the MAIN texts the snapshot froze, so the metrics do not
     move when `prompt_sections.VERSION` does. The running parser is
     never consulted for a member that carries a frozen main."""
-    import sqlite3
 
     from db import build, prompt_sections
 
@@ -508,7 +506,7 @@ def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
         held["grammar"] = "swarm"
         held["parser"] = prompt_sections.VERSION
     sha = stories._identity(document)[1]
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(build.schema_sql())
     plan_id = _store(conn, document, sha)
     before = evolution.load(conn, plan_id, models_dir="unused")
@@ -534,7 +532,6 @@ def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
 def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
     """Two different LoRA files that share a display name CHANGED; one
     file renamed between members did NOT."""
-    import sqlite3
 
     from db import build
 
@@ -547,7 +544,7 @@ def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
     for member, lora in zip(document["members"], loras, strict=True):
         member["generation"]["artifacts"] = [lora]
     sha = stories._identity(document)[1]
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(build.schema_sql())
     plan_id = _store(conn, document, sha)
     view = evolution.load(conn, plan_id, models_dir="unused")
@@ -562,7 +559,7 @@ def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
 def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     """`db/evolution.py` owns no URL: members carry slug and the session
     its local day; the web Adapter turns those into thumbnail, page
-    and doors."""
+    and links."""
     client, _root, _names, _snap, made = planned
     conn = connect.connect(client.app.state.db_path)
     try:
@@ -570,10 +567,10 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     finally:
         connect.close(conn)
     assert "thumbnail" not in raw["members"][0]["media"]
-    assert "doors" not in raw
+    assert "links" not in raw
     assert raw["identities"]["local_day"] is not None
     view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
     assert view["members"][0]["media"]["thumbnail"] == f"/thumb/{view['members'][0]['media']['slug']}"
     assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
-    assert view["doors"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
-    assert view["doors"]["search"].startswith("/search")
+    assert view["links"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
+    assert view["links"]["search"].startswith("/search")

@@ -23,7 +23,6 @@ import json
 import os
 import pathlib
 import shutil
-import sqlite3
 import sys
 import tempfile
 import time
@@ -44,16 +43,15 @@ MODELS = "C:/ComfyUI/output/.AImodels"
 
 def build(paths, models_dir):
     """Scan + ingest + harvest a flat folder of images, the production way."""
-    from db import detect, ingest, library, scan
+    from db import connect, detect, ingest, library, scan
     from vision.faces import OpenCVFaceBackend
 
     root = os.path.join(tempfile.mkdtemp(), "lib")
     os.makedirs(root)
     for src, name in paths:
         shutil.copy(src, os.path.join(root, name))
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript((REPO / "db" / "schema.sql").read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
     root_id = library.add_root(conn, root, "library", 0.0)
     scan.scan(conn, root_id, root, 0.0)
     for file_id, name in conn.execute("SELECT id,name FROM file ORDER BY id"):

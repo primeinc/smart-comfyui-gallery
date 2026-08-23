@@ -199,7 +199,7 @@ def test_the_albums_index_renders_for_a_browser_and_stays_json_for_machines(plac
 
 
 def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
-    """Physical navigation's front door: each registered root as a
+    """Physical navigation's front link: each registered root as a
     shelf -- kind, reachability, and its depth-0 folder ENTITIES. No
     root ids and no host paths anywhere in the browsing surface; the
     operational /roots route keeps the management shape."""

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import httpx
 import pytest
 
+from db import connect
 from tests import staging
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -36,15 +37,14 @@ def _close_memory_databases(monkeypatch):
     (`staging._MASTERS`) and what `staging.keep` marked outlive tests on
     purpose and are left alone."""
     opened: list[sqlite3.Connection] = []
-    real = sqlite3.connect
+    real = connect.memory
 
-    def recording(database, *args, **kwargs):
-        conn = real(database, *args, **kwargs)
-        if database == ":memory:":
-            opened.append(conn)
+    def recording():
+        conn = real()
+        opened.append(conn)
         return conn
 
-    monkeypatch.setattr(sqlite3, "connect", recording)
+    monkeypatch.setattr(connect, "memory", recording)
     yield
     kept = {id(conn) for conn in staging._MASTERS.values()} | staging.LONG_LIVED
     for conn in opened:

@@ -1,15 +1,15 @@
 """The timeline is a SURFACE: density at the zoom's bin, from the one
-interpretation, every bin a door.
+interpretation, every bin a link.
 
 `/timeline/density` answers pictures per bin (day, hour, quarter,
 minute) of the human moment over a range, in one GROUP BY; a picture
 enters a bin only when its own precision fits inside it, and the
 coarser claims come back as spans across the window they name -- the
 signal is shown at the width it has, never dropped and never narrowed.
-Each bin carries the wall-clock/instant split and a gallery door that
+Each bin carries the wall-clock/instant split and a gallery link that
 answers exactly its pictures (the `context.moment` facet on the same
 axis). Sessions touching the range ride under it in their own domain,
-each a door to the story told of that membership. A range wider than
+each a link to the story told of that membership. A range wider than
 the page can draw is refused with the remedy.
 """
 
@@ -144,7 +144,7 @@ def test_density_counts_each_bin_from_the_one_interpretation_and_spans_the_coars
     assert [b["at"] - JUNE_10 - 14 * HOUR for b in minute["bins"]] == [0, 5 * MIN, 12 * MIN]
 
 
-def test_a_bin_is_a_door_that_opens_exactly_its_pictures(surfaced):
+def test_a_bin_is_a_link_that_opens_exactly_its_pictures(surfaced):
     client = surfaced
     view = client.get(
         "/timeline/density",
@@ -153,7 +153,7 @@ def test_a_bin_is_a_door_that_opens_exactly_its_pictures(surfaced):
     ).json()
     two = next(b for b in view["bins"] if b["pictures"] == 2)
     assert "context.moment%3Agte%3A" in two["qs"]
-    assert "context.moment%3Alt%3A" in two["qs"], "the door is the half-open window the count uses"
+    assert "context.moment%3Alt%3A" in two["qs"], "the link is the half-open window the count uses"
     import re
 
     def total(qs: str) -> int:
@@ -168,7 +168,7 @@ def test_a_bin_is_a_door_that_opens_exactly_its_pictures(surfaced):
     assert total(three["qs"]) == 3
 
 
-def test_sessions_ride_under_the_surface_in_their_own_domain_with_a_story_door(surfaced):
+def test_sessions_ride_under_the_surface_in_their_own_domain_with_a_story_link(surfaced):
     client = surfaced
     view = client.get(
         "/timeline/density",
@@ -180,7 +180,7 @@ def test_sessions_ride_under_the_surface_in_their_own_domain_with_a_story_door(s
     ], "the five screenshots are one wall-clock session; the downloads' instant session is not on this day"
     whole = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert sorted((s["domain"], s["pictures"]) for s in whole["sessions"]) == [("instant", 2), ("wall", 5)]
-    # a story told of exactly this membership becomes the session's door
+    # a story told of exactly this membership becomes the session's link
     conn = connect.connect(client.app.state.db_path)
     try:
         event_id = next(s["id"] for s in whole["sessions"] if s["domain"] == "wall")
@@ -237,7 +237,7 @@ def test_the_surface_queries_declare_their_costs(surfaced):
 def test_the_page_is_the_surface_and_nothing_beside_it(surfaced):
     """One surface: the window, its overview and its sessions. No second
     ladder of months and days renders beside it -- the overview's bars
-    and the window's bars are those doors."""
+    and the window's bars are those links."""
     page = surfaced.get("/timeline", headers={"accept": "text/html"})
     assert page.status_code == 200
     assert "data-surface" in page.text
@@ -250,7 +250,7 @@ def test_the_page_is_the_surface_and_nothing_beside_it(surfaced):
 def test_a_story_belongs_to_its_subject_never_to_a_membership_checksum(surfaced):
     """Two snapshots with the same ordered membership but different
     subjects (a capture session and a generation session over the same
-    mixed files share a member_hash): the session's story door is the
+    mixed files share a member_hash): the session's story link is the
     one told of ITS kind and grouper, never the other's."""
     client = surfaced
     whole = client.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
@@ -319,9 +319,9 @@ def test_a_library_wider_than_the_day_cap_answers_at_the_week(surfaced):
 MINUTE_AT = 1_700_000_040.0
 
 
-def test_a_bar_counts_a_fractional_moment_and_its_door_opens_it(tmp_path_factory):
+def test_a_bar_counts_a_fractional_moment_and_its_link_opens_it(tmp_path_factory):
     """A claimless file's moment is its mtime, fractional; the bar counts
-    on [at, at+width) over that real axis and the door must spell the
+    on [at, at+width) over that real axis and the link must spell the
     same half-open window, or a bar of one opens a gallery of none."""
 
     def build(root: pathlib.Path) -> None:
@@ -343,7 +343,7 @@ def test_a_bar_counts_a_fractional_moment_and_its_door_opens_it(tmp_path_factory
 def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
     """/timeline is one builder in three representations: JSON to a
     machine, the surface fragment to htmx, the page to a browser -- the
-    same window, the same bars, the same doors."""
+    same window, the same bars, the same links."""
     told = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
     # the last month holds the two November downloads an hour apart: the
     # opening window tightens to that hour, and the zoom follows it
@@ -377,8 +377,8 @@ def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surface
     before = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert before["coverage"]["events_current"] is True
     assert before["sessions"]
-    door = before["sessions"][0]["qs"]
-    assert surfaced.get(f"/g?{door}").status_code == 200
+    link = before["sessions"][0]["qs"]
+    assert surfaced.get(f"/g?{link}").status_code == 200
     conn = connect.connect(surfaced.app.state.db_path, read_only=True)
     try:
         slug = conn.execute("SELECT e.slug FROM entity e JOIN file f ON f.id = e.id ORDER BY f.id LIMIT 1").fetchone()[
@@ -395,8 +395,8 @@ def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surface
     assert "data-timeline-events-stale" in surfaced.get("/timeline", headers={"accept": "text/html"}).text
     density = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert density["coverage"]["events_current"] is False
-    # the bookmarked door refuses with the remedy, never an empty grid
-    refused = surfaced.get(f"/g?{door}")
+    # the bookmarked link refuses with the remedy, never an empty grid
+    refused = surfaced.get(f"/g?{link}")
     assert refused.status_code == 400, refused.text
     assert "events job" in refused.json()["detail"]
     assert surfaced.get("/g?f=event.id:eq:999999").status_code == 404
@@ -432,7 +432,7 @@ def test_the_opening_window_is_where_the_last_months_pictures_are(surfaced):
 @pytest.mark.parametrize("bin_name", ["day", "hour", "quarter", "minute"])
 def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
     """The invariant the surface is built on, checked over the whole
-    extent at each zoom: a bar's door answers the bar's count."""
+    extent at each zoom: a bar's link answers the bar's count."""
 
     view = surfaced.get(
         "/timeline/density",
@@ -445,7 +445,7 @@ def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
         assert opened.status_code == 200, opened.text
         total = _total_of(opened.text)
         assert total == bar["pictures"], (
-            f"{bin_name} bar at {bar['at']}: bar says {bar['pictures']}, door opens {total}"
+            f"{bin_name} bar at {bar['at']}: bar says {bar['pictures']}, link opens {total}"
         )
 
 

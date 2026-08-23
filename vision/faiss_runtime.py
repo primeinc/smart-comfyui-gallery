@@ -75,8 +75,8 @@ def _register_cuda_dll_dirs() -> int:
         try:
             os.add_dll_directory(d)
             registered += 1
-        except OSError:
-            pass
+        except OSError as why:
+            _logger.warning("%s: not registered as a DLL directory: %s: %s", d, type(why).__name__, why)
         current = os.environ.get("PATH", "")
         if d not in current.split(os.pathsep):
             os.environ["PATH"] = d + os.pathsep + current

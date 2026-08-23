@@ -265,7 +265,7 @@ def test_events_refuse_a_stable_but_incomplete_interpretation(grouped):
 def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypatch):
     """The software upgrades its ladder; the database still holds
     yesterday's interpretation. EVERY reader -- timeline shelves, the
-    facet door, the groupers -- binds the RUNNING policy, so the old
+    facet link, the groupers -- binds the RUNNING policy, so the old
     rows are honestly invisible everywhere at once until the context
     job re-interprets. Serving them as current would be two definitions
     of 'current metadata' in one library."""
@@ -279,17 +279,17 @@ def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypat
         day = pages.timeline_days(conn)[0][0]
         assert pages.timeline_months(conn) != []
         assert len(pages.timeline_events(conn)) >= 1
-        door_sql, door_value = facets.predicate(facets.facet("context.local_day", "eq", day))
-        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {door_sql}", (door_value,)).fetchone()[0]
-        assert opened >= 1, "the door answers while the interpretation is current"
+        link_sql, link_value = facets.predicate(facets.facet("context.local_day", "eq", day))
+        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", (link_value,)).fetchone()[0]
+        assert opened >= 1, "the link answers while the interpretation is current"
 
         monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
         assert pages.timeline_months(conn) == [], "an upgraded build shows honest absence, not yesterday's ladder"
         assert pages.timeline_days(conn) == []
         assert pages.timeline_events(conn) == []
-        door_sql, door_value = facets.predicate(facets.facet("context.local_day", "eq", day))
-        assert conn.execute(f"SELECT count(*) FROM file f WHERE {door_sql}", (door_value,)).fetchone()[0] == 0, (
-            "the facet door and the timeline must agree on what 'current' means"
+        link_sql, link_value = facets.predicate(facets.facet("context.local_day", "eq", day))
+        assert conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", (link_value,)).fetchone()[0] == 0, (
+            "the facet link and the timeline must agree on what 'current' means"
         )
         assert context.occurrences(conn, "generation") == [], "the occurrence reader goes dark with every other reader"
         with pytest.raises(ValueError, match="older policy"):
@@ -493,7 +493,7 @@ def test_a_grouping_proof_cannot_race_a_context_mutation(grouped, monkeypatch):
         connect.close(conn)
 
 
-def test_the_timeline_is_a_view_with_a_door_into_the_gallery(grouped):
+def test_the_timeline_is_a_view_with_a_link_into_the_gallery(grouped):
     """GET /timeline writes nothing and renders whatever the jobs last
     produced; every day links into /g through the Facet Interface's own
     spelling, so the ResultSet answers the media and the timeline never
@@ -515,12 +515,12 @@ def test_the_timeline_is_a_view_with_a_door_into_the_gallery(grouped):
     assert told["domain"] == "wall", "the interval names its domain: the generator claimed a wall clock"
     bar = body["bins"][-1]
     assert bar["qs"].startswith("f=context.granule%3Alte%3A86400&f=context.moment%3Agte%3A"), (
-        "the door is the Facet Interface's own spelling"
+        "the link is the Facet Interface's own spelling"
     )
     assert bar["qs"].endswith("&sort=moment"), "ordered by the moment it opened on"
     walked = grouped.get(f"/g?{bar['qs']}")
     assert walked.status_code == 200
-    assert f'data-total="{bar["pictures"]}"' in walked.text, "the day door answers exactly the day's media"
+    assert f'data-total="{bar["pictures"]}"' in walked.text, "the day link answers exactly the day's media"
     page = grouped.get("/timeline", headers={"accept": "text/html"})
     assert page.status_code == 200
     assert "data-bin-at=" in page.text

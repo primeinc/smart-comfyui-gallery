@@ -1,5 +1,5 @@
 """One shell, every page; one activity surface, every page; one runtime
-door. WI-51's contract, pinned at the seams a browser can see.
+link. WI-51's contract, pinned at the seams a browser can see.
 
 The shell is Jinja inheritance on the application's one template engine
 (templates/base.html); a page that does not extend it is a page outside
@@ -73,7 +73,7 @@ def _state_of(frame: str) -> str:
 # --- the shell ---------------------------------------------------------------
 
 
-def test_the_front_door_is_the_gallery(served):
+def test_the_front_link_is_the_gallery(served):
     """A browser at `/` lands in the gallery; a machine gets the compact
     library summary with a newest strip. The building entrance stopped
     pointing at JSON."""
@@ -107,7 +107,7 @@ def test_every_page_template_extends_the_shell():
 
 def test_every_browser_page_carries_the_same_navigation(served):
     """The product areas are reachable from every rendered page, the
-    operational door is there too, and the shell's notice and activity
+    operational link is there too, and the shell's notice and activity
     surface are mounted once each."""
     client, _ = served
     for where in (
@@ -126,8 +126,8 @@ def test_every_browser_page_carries_the_same_navigation(served):
         assert page.status_code == 200, f"{where}: {page.status_code} {page.text[:300]}"
         shells = page.text.count('<nav class="shell"')
         assert shells == 1, f"{where} mounts the shell {shells} times"
-        for door in ("/g", "/people", "/places", "/albums", "/folders", "/timeline", "/operations"):
-            assert f'href="{door}"' in page.text, f"{where} does not reach {door}"
+        for link in ("/g", "/people", "/places", "/albums", "/folders", "/timeline", "/operations"):
+            assert f'href="{link}"' in page.text, f"{where} does not reach {link}"
         assert page.text.count('id="shell-notice"') == 1, where
         assert page.text.count('id="activity-jobs"') == 1, where
         assert 'ws-connect="/ws/jobs?as=html"' in page.text, f"{where} is not wired to the feed"
@@ -351,10 +351,10 @@ def test_the_gallery_header_offers_no_operations(served):
         assert forbidden not in header, f"the gallery header grew an operational control: {forbidden}"
 
 
-# --- every door leads to a page ----------------------------------------------
+# --- every link leads to a page ----------------------------------------------
 
 
-def _doors(page: str) -> list[str]:
+def _links(page: str) -> list[str]:
     """Every same-site href a page emits that is a landing, not bytes."""
     return [
         href.replace("&amp;", "&")
@@ -363,7 +363,7 @@ def _doors(page: str) -> list[str]:
     ]
 
 
-def test_every_door_every_page_emits_lands_on_a_page(served):
+def test_every_link_every_page_emits_lands_on_a_page(served):
     """Walk as a person would: from the navigation, follow every link
     every page renders, and every one of them answers an HTML page --
     never JSON, never a 4xx, never a 5xx. Nothing is written down in
@@ -381,7 +381,7 @@ def test_every_door_every_page_emits_lands_on_a_page(served):
         kind = answer.headers["content-type"]
         assert kind.startswith("text/html"), f"{where} lands a person on {kind}"
         assert '<nav class="shell"' in answer.text, f"{where} renders without the shell"
-        queue.extend(door for door in _doors(answer.text) if door not in seen)
+        queue.extend(link for link in _links(answer.text) if link not in seen)
     assert len(seen) >= 12, sorted(seen)
     _drained(client, [row["id"] for row in client.get("/jobs").json()])
 

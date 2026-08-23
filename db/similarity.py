@@ -303,12 +303,15 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float, 
 
 # -- the live path: producers note, the runner applies after commit ---------
 
-#: Pending index mutations per connection, applied only after the commit
-#: that made their rows durable. Keyed by id(conn): every runner turn
-#: ends in exactly one of apply_pending/discard_pending, and
-#: db/connect.py close() discards whatever is left, so an entry never
-#: outlives its connection -- and a recycled id never inherits one.
-_PENDING: dict[int, list] = {}
+#: Pending index mutations live ON the connection (db/connect.py
+#: Connection.pending), applied only after the commit that made their
+#: rows durable: every runner turn ends in exactly one of
+#: apply_pending/discard_pending, close() discards whatever is left, and
+#: a connection that dies any other way takes its notes with it.
+
+
+def pending(conn) -> list:
+    return conn.pending
 
 
 def note(conn, spec: SpaceSpec, subject_id: int, value, now: float, *, lane: str = "") -> None:
@@ -317,7 +320,7 @@ def note(conn, spec: SpaceSpec, subject_id: int, value, now: float, *, lane: str
     Nothing touches the resident index here -- the write may yet roll
     back. The runner applies the note after its commit succeeds."""
     named = keyed(spec, space_id(conn, spec, now), lane)
-    _PENDING.setdefault(id(conn), []).append((named.key, int(subject_id), value))
+    pending(conn).append((named.key, int(subject_id), value))
 
 
 def note_gone(conn, sid: int, subject_id: int, *, lane: str = "") -> None:
@@ -327,7 +330,7 @@ def note_gone(conn, sid: int, subject_id: int, *, lane: str = "") -> None:
     row = conn.execute("SELECT key FROM similarity_space WHERE id = ?", (sid,)).fetchone()
     if row is not None:
         key = f"{row[0]}@{sid}" + (f"+{lane}" if lane else "")
-        _PENDING.setdefault(id(conn), []).append((key, int(subject_id), None))
+        pending(conn).append((key, int(subject_id), None))
 
 
 def apply_pending(conn, manager: IndexManager | None = None) -> None:
@@ -349,7 +352,8 @@ def apply_pending(conn, manager: IndexManager | None = None) -> None:
 
     resolved = manager_for(conn) if manager is None else manager
     final: dict[str, dict[int, object]] = {}
-    for key, subject, value in _PENDING.pop(id(conn), []):
+    noted, conn.pending = conn.pending, []
+    for key, subject, value in noted:
         final.setdefault(key, {})[subject] = value
     for key, changes in final.items():
         if not resolved.has(key):
@@ -371,7 +375,7 @@ def apply_pending(conn, manager: IndexManager | None = None) -> None:
 def discard_pending(conn) -> None:
     """The rollback half: the rows never became durable, so their notes
     must never reach an index."""
-    _PENDING.pop(id(conn), None)
+    conn.pending = []
 
 
 def pair_graph(manager: IndexManager, key: str, threshold):

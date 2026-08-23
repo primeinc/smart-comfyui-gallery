@@ -7,7 +7,7 @@ qwen3_vl_embedding.py, ported below under its Apache-2.0 license).
 Unlike CLIP there is no separate text tower: every input -- a picture,
 a phrase, a video -- is a chat conversation the same decoder embeds,
 which is why the preprocessing IS the chat template and why this
-adapter takes MediaRef's native door for video: the model samples
+adapter takes MediaRef's native link for video: the model samples
 frames itself (refs/QwenLM/qwen_vl_utils src/qwen_vl_utils/
 vision_process.py fetch_video: fps and max_frames budgets, smart_resize
 pixel caps) instead of judging a whole clip by one poster.
@@ -329,7 +329,7 @@ class QwenBackend:
 
     def encode_media(self, media):
         """One MediaRef to one unit-length vector. Video takes the native
-        door -- the model samples its own frames under the fps and frame
+        link -- the model samples its own frames under the fps and frame
         budgets; everything else embeds the canonical frame."""
         if media.kind == "video":
             content = {"type": "video", "video": f"file://{media.path}", "fps": FPS, "max_frames": MAX_FRAMES}

@@ -255,7 +255,7 @@ def test_membership_writes_settle_by_answer_identity(chosen):
 
 
 def _second_writer_can_begin(db_path) -> bool:
-    other = sqlite3.connect(db_path)
+    other = connect.connect(db_path)
     other.execute("PRAGMA busy_timeout=100")
     try:
         other.execute("BEGIN IMMEDIATE")

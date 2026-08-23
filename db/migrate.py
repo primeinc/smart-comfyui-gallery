@@ -43,7 +43,7 @@ import shutil
 import sqlite3
 from collections.abc import Callable
 
-from .connect import APPLICATION_ID, USER_VERSION
+from .connect import APPLICATION_ID, USER_VERSION, connect
 
 #: from_version -> the step that takes a database to from_version + 1.
 STEPS: dict[int, Callable[[sqlite3.Connection], None]] = {}
@@ -86,7 +86,7 @@ def version_of(conn: sqlite3.Connection) -> int:
 
 def pending(path, *, target: int = USER_VERSION) -> list[int]:
     """The versions a migration would pass through, without touching anything."""
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn = connect(path, read_only=True)
     try:
         current = version_of(conn)
     finally:
@@ -111,8 +111,8 @@ def snapshot(path, version: int) -> pathlib.Path:
     target = path.with_suffix(f".v{version}.backup")
     if target.exists():
         target.unlink()
-    source = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    destination = sqlite3.connect(str(target))
+    source = connect(path, read_only=True)
+    destination = connect(target, autocommit=True)
     try:
         source.backup(destination)
     finally:
@@ -138,9 +138,9 @@ def migrate(path, *, target: int = USER_VERSION, take_snapshot: bool = True) -> 
     somewhere between two.
     """
     path = pathlib.Path(path)
-    # isolation_level=None: explicit transaction control, and pragmas that
-    # actually apply. See the module docstring.
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    # autocommit: explicit transaction control, and pragmas that actually
+    # apply. See the module docstring.
+    conn = connect(path, autocommit=True)
     try:
         current = version_of(conn)
         if current > target:
@@ -2464,7 +2464,7 @@ def _portrait_raw_thumbnails_turned_once(conn: sqlite3.Connection) -> None:
     stored a quarter turn off is retired, so the sweeps derive it again
     from the frame the right way up.
 
-    The RAW door now hands the frame back AS STORED (vision/decode.py
+    The RAW decoder now hands the frame back AS STORED (vision/decode.py
     open_still, `user_flip=0`); until it did, LibRaw turned such a frame
     and the orientation tag turned it again, and every reader of
     `oriented.for_model` -- the thumbnailer, the face detector, the

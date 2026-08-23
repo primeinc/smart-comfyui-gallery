@@ -1,4 +1,4 @@
-"""Faces out of a file, through one door.
+"""Faces out of a file, through one entry point.
 
 Every detector sees the picture through `oriented.for_model` here, and only
 here. Measured on a 105-photo set, 14 photos were stored sideways, and a
@@ -133,7 +133,7 @@ def harvest_video(
     The moments come from `db.sample` -- persisted `derived_media_sample`
     rows, so every face found here says which moment it was looking at and
     a re-run recognises its own work. Frames arrive upright through the
-    decoder door, display matrix applied, for the same reason stills go
+    decoder, display matrix applied, for the same reason stills go
     through `oriented`.
 
     **A face-free cadence is a hint, not a verdict.** A fixed interval can

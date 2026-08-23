@@ -65,10 +65,10 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     text = SCHEMA.read_text(encoding="utf-8") if ddl is None else ddl
     master = _MASTERS.get(text)
     if master is None:
-        master = sqlite3.connect(":memory:")
+        master = connect.memory()
         master.executescript(text)
         _MASTERS[text] = master
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     master.backup(conn)
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -116,7 +116,7 @@ class Stage:
         try:
             with contextlib.suppress(FileNotFoundError):
                 self.template.unlink()
-            dst = sqlite3.connect(str(self.template))
+            dst = connect.connect(self.template, autocommit=True)
             try:
                 src.backup(dst)
             finally:
@@ -145,7 +145,7 @@ class Stage:
         # leaked still holds the -wal open on Windows, and the backup
         # writes the destination through its own pager with such
         # connections present (sqlite3.rst: backup into a live database).
-        src = sqlite3.connect(str(self.template))
+        src = connect.connect(self.template, read_only=True)
         try:
             dst = connect.connect(self.db)
             try:

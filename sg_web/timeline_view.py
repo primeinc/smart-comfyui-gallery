@@ -4,7 +4,7 @@ database.
 Months and days come from derived_media_context (the local wall clock
 when one was claimed, the knowable instant otherwise) and the overlay
 comes from the latest event runs. Every month, day, bin and session is
-a DOOR into the gallery -- spelled by the Facet Interface, so the
+a LINK into the gallery -- spelled by the Facet Interface, so the
 ResultSet answers the media and the timeline never grows a second
 membership engine. Nothing here writes, groups, geocodes or interprets:
 POST /jobs/context and POST /jobs/events are where the interpretation
@@ -19,13 +19,14 @@ import dataclasses
 import datetime
 import pathlib
 import time
+import urllib.parse
 from typing import Annotated
 
 from litestar import Request, get
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.params import FromQuery, QueryParameter
-from litestar.response import Response, Template
+from litestar.response import Redirect, Response, Template
 
 from db import connect, context, facets, pages, planning, rendering, resultset, settings
 from sg_web import home
@@ -34,37 +35,38 @@ from sg_web.presenting import VARIES, presented
 
 #: The surface's scope is a gallery question (db/resultset.py scope_of):
 #: its scopes and facets in the live spelling, unsorted, unpaged. The
-#: timeline never invents its own spelling of a door -- every door is
-#: that question plus the facets the door adds, ordered by moment.
+#: timeline never invents its own spelling of a link -- every link is
+#: that question plus the facets the link adds, ordered by moment.
 WHOLE = resultset.GalleryQuery()
 
 
-def _door(question: resultset.GalleryQuery, *held: facets.Facet) -> str:
+def _link(question: resultset.GalleryQuery, *held: facets.Facet) -> str:
     asked = dataclasses.replace(
         question, facets=tuple(sorted({*question.facets, *held}, key=facets.spell)), sort="moment", text=None
     )
     return resultset.canonical(asked)
 
 
-def _bin_door(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -> str:
+def _bin_link(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -> str:
     """The bar's pictures, exactly: the window, and the precision the
     count applied -- a day-precision claim sitting at midnight inside an
     hour's window was not counted in that bar and must not open from it."""
     low = facets.facet("context.moment", "gte", str(int(at)))
     high = facets.facet("context.moment", "lt", str(int(at) + width))
     fine = facets.facet("context.granule", "lte", str(int(width)))
-    return _door(question, low, high, fine)
+    return _link(question, low, high, fine)
 
 
-def _event_door(event_id: int, question: resultset.GalleryQuery = WHOLE) -> str:
-    return _door(question, facets.facet("event.id", "eq", str(event_id)))
+def _event_link(event_id: int, question: resultset.GalleryQuery = WHOLE) -> str:
+    return _link(question, facets.facet("event.id", "eq", str(event_id)))
 
 
 def _question(folder, album, person, artifact, kind, favorite, rating_min, f) -> resultset.GalleryQuery:
-    """The surface's scope as the gallery's own question, parsed by the
-    one seam that owns query semantics; a bad spelling is refused with
-    the vocabulary. A session is a door, not a scope: `event.id` names
-    one session, and a timeline of one session is the gallery's job."""
+    """The surface's filters as the gallery's own query, parsed by the
+    one seam that owns query semantics; a bad filter is refused with
+    the vocabulary. A session filter is not a timeline filter (the
+    timeline shows every session of a range): `timeline` turns it into
+    the session's range before this runs; the other routes refuse it."""
     try:
         asked = _asked(
             folder,
@@ -82,8 +84,29 @@ def _question(folder, album, person, artifact, kind, favorite, rating_min, f) ->
     except ValueError as refused:
         raise ClientException(str(refused)) from refused
     if any(one.key == "event.id" for one in asked.facets):
-        raise ClientException("a session is a door, not a scope; open it in the gallery")
+        raise ClientException("the timeline cannot filter by session; open the session's range instead")
     return asked
+
+
+def _session_range(conn, f: list[str] | None) -> tuple[list[str], int, int] | None:
+    """The session a filter list names, as the filters without it and
+    the hour range that holds the session; None when no filter is a
+    session. A session nobody has is a 404."""
+    if not f:
+        return None
+    rest, named = [], None
+    for one in f:
+        held = facets.parse_spelling(one)
+        if held.key == "event.id":
+            named = int(held.value)
+        else:
+            rest.append(one)
+    if named is None:
+        return None
+    span = pages.session_span(conn, named)
+    if span is None:
+        raise NotFoundException(f"no session {named}")
+    return rest, int(span[0] // 3600) * 3600, int(span[1] // 3600) * 3600 + 3600
 
 
 def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str, list], resultset.GalleryQuery]:
@@ -178,10 +201,10 @@ def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.Gall
         "contested": contested,
         #: a session run answers only at the current interpretation
         #: (db/pages.py TIMELINE_EVENTS); one authored place moves the
-        #: generation and every session door goes dark until the events
+        #: generation and every session link goes dark until the events
         #: job runs again -- the page names that remedy, never an empty list
         "events_current": pages.timeline_events_current(conn),
-        "contested_qs": _door(question, facets.facet("context.disputed", "eq", "1")),
+        "contested_qs": _link(question, facets.facet("context.disputed", "eq", "1")),
         "policy_version": context.POLICY_VERSION,
         "complete": have == present,
     }
@@ -206,13 +229,13 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
     planner = PLANNER_FOR.get(kind)
     return {
         #: where the session happened: the one place its placed members
-        #: agree on (db/events.py _shared_place), with the gallery door
+        #: agree on (db/events.py _shared_place), with the gallery link
         "place": (
             {
                 "id": place_id,
                 "name": place_name,
                 "slug": place_slug,
-                "qs": _door(scope, facets.facet("place.id", "eq", str(place_id))),
+                "qs": _link(scope, facets.facet("place.id", "eq", str(place_id))),
             }
             if place_id is not None
             else None
@@ -228,7 +251,7 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
         "snapshot_id": snapshot_id,
         #: the story told of this session, on its card: title, dek, heroes
         "story": rendering.story_card(conn, render_id) if render_id is not None else None,
-        "qs": _event_door(event_id, scope),
+        "qs": _event_link(event_id, scope),
         "planner": planner,
         "tellable": planner in planning.PLANNERS,
         "samples": pages.session_samples(conn, event_id) if samples else [],
@@ -439,6 +462,7 @@ def _grouped(pictures: list[dict], sessions: list[dict], bins: list[dict], width
         g["clock"] = f"{_utc(g['t']).strftime('%H:%M')}–{_utc(g['end']).strftime('%H:%M')}"
         g["lasted"] = _lasted(g["end"] - g["t"])
         g["lead"] = _lead(g["pictures"])
+        g["leads"] = _leads(g["pictures"])
     return groups
 
 
@@ -447,6 +471,29 @@ def _lead(pictures: list[dict]) -> dict:
     largest among equals -- never simply the first, which in a burst is
     the frame before anyone was ready."""
     return max(pictures, key=lambda p: (p["faces"], (p["width"] or 0) * (p["height"] or 0)))
+
+
+#: The hero row's width in units of its height: a card 2.8 times wider
+#: than it is tall. One landscape fills it; portraits come two or three
+#: across, each whole at its own ratio.
+HERO_ROW = 2.8
+
+
+def _leads(pictures: list[dict]) -> list[dict]:
+    """The pictures a group's hero row is made of: the best first (faces,
+    then size), taken until their widths at one height fill the row."""
+    ranked = sorted(pictures, key=lambda p: (p["faces"], (p["width"] or 0) * (p["height"] or 0)), reverse=True)
+    chosen: list[dict] = []
+    filled = 0.0
+    for p in ranked:
+        if chosen and filled + p["ratio"] > HERO_ROW:
+            break
+        chosen.append(p)
+        filled += p["ratio"]
+        if filled >= HERO_ROW:
+            break
+    chosen.sort(key=lambda p: p["moment"])
+    return chosen
 
 
 def _lasted(seconds: float) -> str:
@@ -544,7 +591,7 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
     shows -- and its count; a run of empty bins is ONE short segment
     saying how long it was, not a hairline each. The year is named where
     it changes, far enough from the last name; the window is marked
-    across the segments it touches. Every segment is a door to its own
+    across the segments it touches. Every segment is a link to its own
     window. Strips come from the same bins the counts do."""
     name, width, bins = _scrubber_unit(conn, scope, whole_lo, whole_hi)
     faces = {} if lean else pages.timeline_samples(conn, name, whole_lo, whole_hi, None, scope)
@@ -553,7 +600,10 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
     first = int((whole_lo - anchor) // width) * width + anchor
     told: list[dict] = []
     at = first
-    while at < whole_hi:
+    # bins up to the one holding the last picture (whole_hi is that
+    # picture's moment + 1): a bin past it would be a gap after the
+    # library, its range clipped to nothing
+    while at <= whole_hi - 1.0:
         told.append({"at": at, "end": at + width, "pictures": counts.get(int(at), 0), "units": 1})
         at += width
     told.reverse()
@@ -589,7 +639,7 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
             {
                 "at": at,
                 "end": end,
-                #: the door's window, clipped to the library, spelled as the URL spells it
+                #: the link's window, clipped to the library, spelled as the URL spells it
                 "window_start": int(max(whole_lo, at)),
                 "year": year,
                 "label": label,
@@ -646,7 +696,7 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
                     "n": _utc(t).day,
                     "pictures": n,
                     "hero": (samples.get(int(t)) or [None])[0],
-                    "qs": _bin_door(t, 86_400, question) if n else None,
+                    "qs": _bin_link(t, 86_400, question) if n else None,
                     "spelled": _spell(t, "day"),
                     "today": _utc(t).strftime("%Y-%m-%d") == today,
                 }
@@ -682,7 +732,7 @@ def _years(told_bins: list[dict], lo: float, hi: float, question: resultset.Gall
             start = datetime.datetime(y, m, 1, tzinfo=datetime.UTC)
             end = _next_month(start)
             held = months.get((y, m), {"pictures": 0, "hero": None})
-            door = _door(
+            link = _link(
                 question,
                 facets.facet("context.moment", "gte", str(int(start.timestamp()))),
                 facets.facet("context.moment", "lt", str(int(end.timestamp()))),
@@ -692,7 +742,7 @@ def _years(told_bins: list[dict], lo: float, hi: float, question: resultset.Gall
                     "month": _MONTHS[m - 1][:3].upper(),
                     "pictures": held["pictures"],
                     "hero": held["hero"],
-                    "qs": door if held["pictures"] else None,
+                    "qs": link if held["pictures"] else None,
                     "href": _window_url(question, start.timestamp(), end.timestamp()),
                     "outside": end.timestamp() <= lo or start.timestamp() >= hi,
                 }
@@ -715,10 +765,10 @@ def _surface(
     window is asked -- split by clock domain and by origin, with a
     thumbnail sample per bin (the busiest past SAMPLED_BINS_MOST); the
     claims too coarse for the bin as spans; the sessions touching the
-    window in their own domain, each a door to its pictures and to its
+    window in their own domain, each a link to its pictures and to its
     story; the whole extent at week resolution as the overview the
     brush rides. The zoom follows the window's width unless `bin_name`
-    asks for one. Every bin is a door into the gallery, carrying the
+    asks for one. Every bin is a link into the gallery, carrying the
     scope. `lean` is the shape alone: no thumbnails, no session cards.
     A window wider than the page can draw is refused with the remedy."""
     scope, held = _scope(conn, state, asked)
@@ -818,7 +868,7 @@ def _surface(
         x0 = max(0.0, ((one["start"] - lo) / span) * _W)
         x1 = min(float(_W), ((one["end"] + 1 - lo) / span) * _W)
         one["x"], one["w"] = round(x0, 2), round(max(2.0, x1 - x0), 2)
-    window_qs = _door(
+    window_qs = _link(
         held, facets.facet("context.moment", "gte", str(int(lo))), facets.facet("context.moment", "lt", str(int(hi)))
     )
     picture_rows, pictures_total = ([], 0) if lean else pages.timeline_pictures(conn, lo, hi, PICTURES_MOST, scope)
@@ -837,10 +887,10 @@ def _surface(
                 "instant": instant,
                 "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
                 "samples": samples.get(int(at), []),
-                "qs": _bin_door(at, width, held),
+                "qs": _bin_link(at, width, held),
                 "spelled": _spell(at, bin_name),
                 "finest": finest,
-                "href": f"/g?{_bin_door(at, width, held)}" if finest else _window_url(held, at, at + width),
+                "href": f"/g?{_bin_link(at, width, held)}" if finest else _window_url(held, at, at + width),
                 "x": round(((at - lo) / span) * _W, 2),
                 "w": round(bar_w, 2),
                 "h": round(h, 2),
@@ -909,6 +959,7 @@ def _surface(
         # whose members all sit outside it (or past the cap) shows its samples
         one["drawn_pictures"] = drawn.get(one["id"], [])
         one["drawn_lead"] = _lead(one["drawn_pictures"]) if one["drawn_pictures"] else None
+        one["drawn_leads"] = _leads(one["drawn_pictures"]) if one["drawn_pictures"] else []
     overview["years"] = [
         {
             "year": y,
@@ -1132,7 +1183,7 @@ def at(
     finally:
         connect.close(conn)
     if found is None:
-        raise NotFoundException("no picture in this scope")
+        raise NotFoundException("no pictures match these filters in this range")
     slug, moment = found
     return Response({"slug": slug, "moment": moment, "spelled": _spell(moment, "minute")}, headers=VARIES)
 
@@ -1157,12 +1208,20 @@ def timeline(
     """The timeline at one window: JSON to a machine, the surface fragment
     to htmx (what a brush or scrubber move fetches), the page to a
     browser -- one builder, one renderer. `bin` is accepted from older
-    doors and ignored: the zoom follows the window. `snap` is the
+    links and ignored: the zoom follows the window. `snap` is the
     scrubber's ask: a window landing in empty time is carried back onto
     pictures."""
-    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     conn = connect.connect(state.db_path, read_only=True)
     try:
+        found = _session_range(conn, f)
+        if found is not None:
+            # a session filter from the gallery lands on the session's
+            # hour range, the other filters kept, the session dropped
+            rest, lo, hi = found
+            query = [(k, v) for k, v in request.query_params.items() if k not in ("f", "start", "end", "bin")]
+            query += [("f", one) for one in rest] + [("start", str(lo)), ("end", str(hi))]
+            return Redirect(path="/timeline?" + urllib.parse.urlencode(query), status_code=303)
+        asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
         told = _surface(conn, state, asked, start, end, snap=snap)
     finally:
         connect.close(conn)

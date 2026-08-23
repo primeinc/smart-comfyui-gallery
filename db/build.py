@@ -17,7 +17,7 @@ import pathlib
 import sqlite3
 import sys
 
-from db.connect import APPLICATION_ID, USER_VERSION, connect, schema_sql
+from db.connect import APPLICATION_ID, USER_VERSION, connect, memory, schema_sql
 
 DEFAULT = pathlib.Path(__file__).resolve().parent / "gallery.db"
 
@@ -92,7 +92,7 @@ def objects(conn: sqlite3.Connection) -> dict[str, str]:
 
 def reference() -> sqlite3.Connection:
     """A throwaway database built from the DDL, to compare against."""
-    conn = sqlite3.connect(":memory:")
+    conn = memory()
     conn.executescript(schema_sql())
     return conn
 

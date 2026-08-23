@@ -62,7 +62,7 @@ def upright(image: Image.Image, orientation: int | None = None) -> Image.Image:
 def open_upright(path, orientation: int | None = None) -> Image.Image:
     """Open a file and turn it the right way up.
 
-    Through the decoder door, so HEIC, JPEG XL and the RAW family arrive
+    Through the decoder, so HEIC, JPEG XL and the RAW family arrive
     here exactly as a JPEG does -- the suffix decides the decoder, never
     the caller."""
     from vision import decode

@@ -20,7 +20,10 @@ program and transport streams, MXF, FLAC, ASF and PDF.
 
 from __future__ import annotations
 
+import logging
 import os
+
+_logger = logging.getLogger(__name__)
 
 #: Bytes read for a sniff. The WebM scan looks at most 38 bytes in, the
 #: MP4 brand walk stays inside the first box, and an MPEG transport stream
@@ -158,11 +161,12 @@ def sniff(head: bytes) -> tuple[str, str] | None:
 
 
 def sniff_path(path: str | os.PathLike[str]) -> tuple[str, str] | None:
-    """Sniff a file on disk; an unreadable file is no opinion, not an error."""
+    """Sniff a file on disk; an unreadable file is no opinion, logged with why."""
     try:
         with open(path, "rb") as handle:
             return sniff(handle.read(HEAD))
-    except OSError:
+    except OSError as why:
+        _logger.warning("%s: unreadable: %s: %s", path, type(why).__name__, why)
         return None
 
 

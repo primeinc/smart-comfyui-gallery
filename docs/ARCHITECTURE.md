@@ -192,7 +192,7 @@ re-interprets the file at once, so the context reads
 picture's page says where, or "nowhere said", and offers the form; a
 selection can be placed at once (`POST /g/selection/place`); `/places`
 lists every place named with its count and span; the `place.id` facet
-is the door to everything there (its chip says the name); a session
+is the link to everything there (its chip says the name); a session
 whose placed members agree carries the place on its card; a person's,
 a folder's and an album's page say where their pictures are; a story's
 `located` claim says it in words.
@@ -215,12 +215,12 @@ the sessions touching the range (`db/pages.py TIMELINE_*`,
 `?folder=`, `?album=`, `?person=`, `?kind=`, `?f=` -- through
 `resultset.scope_of`: the same membership predicates the gallery walks,
 appended to every timeline statement (HEAD + conjunct + TAIL), and
-every door is that question plus a moment and the precision the bar
-counted (the `context.granule` facet, db/facets.py), so what is drawn is what opens. A session door over a run grouped before the interpretation last moved is refused with the events job (`resultset.StaleSession`); the surface says the same beside its coverage. A session is a door, never a scope; a rule-defined collection
+every link is that question plus a moment and the precision the bar
+counted (the `context.granule` facet, db/facets.py), so what is drawn is what opens. A session link over a run grouped before the interpretation last moved is refused with the events job (`resultset.StaleSession`); the surface says the same beside its coverage. A session is a link, never a scope; a rule-defined collection
 scopes through its materialized membership (`f.id IN (...)`, the one
 engine) and refuses with why when its rule cannot be answered. A
 person's, a folder's and an album's page open their own timeline, and
-the gallery opens its question on the timeline. Every bin, span and session is a door into the gallery
+the gallery opens its question on the timeline. Every bin, span and session is a link into the gallery
 through the facets (`context.local_day`, `context.moment`,
 `context.origin`, `context.disputed`, `event.id`) ordered by `moment`.
 A session card names who is in it (primary clustering), carries a
@@ -268,6 +268,6 @@ caption beside the frozen name, labelled as today's.
 ## Coverage
 
 `tests/test_the_shell_mounts_every_surface.py::SURFACES` names every
-HTML-rendering handler, its owning Module and its browser door;
+HTML-rendering handler, its owning Module and its browser link;
 `HEADLESS` names the rest with a reason. The sweep fails on a handler
 missing from both.

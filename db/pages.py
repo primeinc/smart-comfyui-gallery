@@ -47,7 +47,7 @@ NEWEST_FIRST = (
     " WHERE f.missing_since IS NULL ORDER BY f.mtime DESC LIMIT ?"
 )
 
-#: The machine front door: what the library HOLDS, in one statement --
+#: The machine front link: what the library HOLDS, in one statement --
 #: a summary, not a media answer (the gallery is the ResultSet's).
 LIBRARY_SUMMARY = (
     "SELECT"
@@ -890,7 +890,7 @@ def ways(conn):
 # --- the timeline ----------------------------------------------------------
 
 #: The human timeline's one axis: context.HUMAN_MOMENT, the same
-#: fragment the day facet filters by, so the shelf and the door into
+#: fragment the day facet filters by, so the shelf and the link into
 #: the gallery cannot disagree. Only rows of the RUNNING code's
 #: interpretation policy answer -- bound at call time, never the
 #: version the database happens to remember, so an upgraded build shows
@@ -898,7 +898,7 @@ def ways(conn):
 #: Every timeline statement is HEAD + scope + TAIL: the scope is the
 #: gallery's facet conjunction over the file alias `f` (db/facets.py
 #: conjunction), empty by default, so a scoped timeline counts exactly
-#: what the door it offers would open.
+#: what the link it offers would open.
 _TIMELINE_MONTHS_HEAD = (
     "SELECT strftime('%Y-%m', " + HUMAN_MOMENT + ", 'unixepoch') AS month,"
     " count(*) AS pictures"
@@ -959,7 +959,7 @@ _SESSION_MEMBER_IN_SCOPE = (
 #: returned as spans by TIMELINE_SPANS so the page draws them across
 #: the bins they cover -- shown at the width the signal has. Each bin also says
 #: how many of its pictures spoke on the wall clock and how many only
-#: as instants -- the two domains the axis coalesces for the door.
+#: as instants -- the two domains the axis coalesces for the link.
 #: Bins are anchored: `CAST((m - anchor) / w) * w + anchor`, so a week
 #: starts on a Monday (the epoch's day 0 is a Thursday; 345,600s later
 #: is Monday 1970-01-05) and every other bin starts where the epoch
@@ -1320,6 +1320,22 @@ def media_sessions(conn, file_id: int):
     return conn.execute(MEDIA_SESSIONS, (file_id, context.POLICY_VERSION)).fetchall()
 
 
+#: One session's span on the human axis: the wall clock when it was
+#: claimed, the knowable instant otherwise -- the same rule HUMAN_MOMENT
+#: applies to a picture.
+SESSION_SPAN = (
+    "SELECT COALESCE(ev.local_start, ev.instant_start), COALESCE(ev.local_end, ev.instant_end)"
+    "  FROM derived_event ev WHERE ev.id = ?"
+)
+
+
+def session_span(conn, event_id: int) -> tuple[float, float] | None:
+    row = conn.execute(SESSION_SPAN, (event_id,)).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return float(row[0]), float(row[1] if row[1] is not None else row[0])
+
+
 def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
     """Sessions touching [lo, hi) -- under a scope, those with a member
     in it, each saying how many of its members are."""
@@ -1330,7 +1346,7 @@ def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("",
 
 
 #: Every picture in a range, in moment order, with what a surface needs
-#: to draw it in place: its door, its shape, its moment and precision,
+#: to draw it in place: its link, its shape, its moment and precision,
 #: and the CURRENT sessions it belongs to. HEAD + scope + TAIL; bounded
 #: by LIMIT, the caller says how many more there were.
 _TIMELINE_PICTURES_HEAD = (

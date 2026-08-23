@@ -18,7 +18,7 @@
 </head>
 <body hx-ext="ws">
   {# The shell: every product area reachable from every page. Operations
-     is the one door into the runtime; media browsing never mixes with it. #}
+     is the one link into the runtime; media browsing never mixes with it. #}
   {% set here = request.url.path if request is defined else "" %}
   <nav class="shell" aria-label="primary">
     <a class="shell-brand" href="/g">SmartGallery</a>

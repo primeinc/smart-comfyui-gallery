@@ -16,7 +16,6 @@ pinned -- as tests, not prose:
 from __future__ import annotations
 
 import pathlib
-import sqlite3
 import time
 from typing import Any
 
@@ -45,7 +44,7 @@ def _shelves(tmp_path_factory):
         _paint(root, "portraits", f"p_{i:02d}.png", 10 + i)
     for i in range(14):
         _paint(root, "landscape", f"l_{i:02d}.png", 40 + i)
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
@@ -67,7 +66,7 @@ def _shelves(tmp_path_factory):
 
 @pytest.fixture
 def shelves(_shelves):
-    copy = sqlite3.connect(":memory:")
+    copy = connect.memory()
     _shelves["conn"].backup(copy)
     copy.execute("PRAGMA foreign_keys=ON")
     yield {"conn": copy, "root": _shelves["root"]}
@@ -155,7 +154,7 @@ def test_malformed_questions_are_refused():
         ({"sort": "best"}, "sort must be"),
         ({"sort": "similarity"}, "needs a phrase"),
         ({"text": "a banana", "sort": "newest"}, "orders by similarity"),
-        ({"folder": "a", "album": "b"}, "one scope at a time"),
+        ({"folder": "a", "album": "b"}, "a folder or an album, not both"),
         ({"size": 0}, "page size"),
         ({"size": resultset.MAX_PAGE_SIZE + 1}, "page size"),
         ({"kind": "picture"}, "kind must be"),
@@ -310,7 +309,7 @@ def test_a_scope_constrains_each_space_before_the_fusion_not_after(tmp_path, mon
     names = ("x1", "x2", "x3", "x4", "x5", "a", "b", "c")
     for i, name in enumerate(names):
         _paint(root, "all", f"{name}.png", 20 * i)
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
@@ -473,7 +472,7 @@ def _semantic_shelf(tmp_path, clip_cosines: dict, qwen_cosines: dict):
     names = ("x1", "x2", "x3", "x4", "x5", "a", "b", "c")
     for i, name in enumerate(names):
         _paint(root, "all", f"{name}.png", 20 * i)
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))

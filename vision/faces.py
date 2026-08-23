@@ -493,8 +493,9 @@ def _ort_providers(spec: str = "auto") -> list:
 
         if "CUDAExecutionProvider" in ort.get_available_providers():
             return ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    except Exception:
-        _logger.debug("ignored a failure in _ort_providers", exc_info=True)
+    except (ImportError, OSError, RuntimeError, AttributeError) as why:
+        # no onnxruntime, a DLL that will not load, a build without the call
+        _logger.warning("faces run on the CPU: onnxruntime named no providers: %s: %s", type(why).__name__, why)
     return ["CPUExecutionProvider"]
 
 

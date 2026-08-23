@@ -15,8 +15,11 @@ and deleted are different, and only one of them is recoverable.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
+
+_logger = logging.getLogger(__name__)
 
 #: Written inside a root so the directory can say which root it is. Dotted, so
 #: `observe_tree` skips it along with everything else the app leaves lying in
@@ -29,7 +32,10 @@ def _marker(path) -> bytes | None:
     try:
         with open(os.path.join(str(path), MARKER), encoding="ascii") as handle:
             return uuid.UUID(handle.read().strip()).bytes
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as why:
+        _logger.warning("%s: marker unreadable: %s: %s", path, type(why).__name__, why)
         return None
 
 
@@ -37,10 +43,10 @@ def _write_marker(path, identity: bytes) -> None:
     try:
         with open(os.path.join(str(path), MARKER), "w", encoding="ascii", newline="") as handle:
             handle.write(str(uuid.UUID(bytes=identity)))
-    except OSError:
+    except OSError as why:
         # A read-only mount can still be a root. It simply cannot prove which
         # one it is after a move, and falls back to matching on its path.
-        pass
+        _logger.warning("%s: marker not written, the root matches by path: %s: %s", path, type(why).__name__, why)
 
 
 def add_root(conn, path, kind: str, now: float) -> int:

@@ -39,7 +39,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="empty">nothing answers this question.</p>
+  <p class="empty">no pictures match these filters.</p>
   {% endif %}
   <nav class="pager" data-pager aria-label="pages">
     {% set qbase = qs + "&" if qs else "" %}

@@ -30,7 +30,6 @@ import json
 import pathlib
 import shutil
 import socket
-import sqlite3
 import subprocess
 import sys
 import time
@@ -126,7 +125,7 @@ def _ensure_copies(datasets: pathlib.Path) -> None:
     they are, missing bodies are added.
     """
     target = datasets / "copies-of-copies"
-    from PIL import Image
+    from vision import decode
 
     if target.exists():
         _ensure_crops(target)
@@ -140,14 +139,14 @@ def _ensure_copies(datasets: pathlib.Path) -> None:
     )[:3]
     target.mkdir(parents=True)
     for number, source in enumerate(i2i + kyc):
-        with Image.open(source) as opened:
+        with decode.open_still(source) as opened:
             image = opened.convert("RGB")
             image.save(target / f"pic{number}_original.png")
             w, h = image.size
             image.resize((max(8, w // 2), max(8, h // 2))).save(target / f"pic{number}_half.png")
             image.resize((max(8, w // 4), max(8, h // 4))).save(target / f"pic{number}_quarter.jpg", quality=80)
             image.save(target / f"pic{number}_gen1.jpg", quality=90)
-        with Image.open(target / f"pic{number}_gen1.jpg") as second:
+        with decode.open_still(target / f"pic{number}_gen1.jpg") as second:
             second.convert("RGB").save(target / f"pic{number}_gen2.jpg", quality=60)
         (target / f"pic{number}_gen1.jpg").unlink()
         image.save(target / f"pic{number}_web.webp", quality=75)
@@ -157,14 +156,14 @@ def _ensure_copies(datasets: pathlib.Path) -> None:
 
 def _ensure_crops(target: pathlib.Path) -> None:
     """A cropped body beside every original that lacks one."""
-    from PIL import Image
+    from vision import decode
 
     made = 0
     for original in sorted(target.glob("*_original.png")):
         cropped = target / original.name.replace("_original.png", "_crop.png")
         if cropped.exists():
             continue
-        with Image.open(original) as opened:
+        with decode.open_still(original) as opened:
             image = opened.convert("RGB")
             w, h = image.size
             image.crop((w // 12, h // 12, w - w // 12, h - h // 12)).save(cropped)
@@ -453,8 +452,9 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # photograph (there is no listing route yet); every pixel
                 # still arrives over HTTP. `closing`, because sqlite3's
                 # context manager manages transactions, not the connection.
-                library = f"file:{(home / 'gallery.db').as_posix()}?mode=ro"
-                with contextlib.closing(sqlite3.connect(library, uri=True)) as conn:
+                from db import connect
+
+                with contextlib.closing(connect.connect(home / "gallery.db", read_only=True)) as conn:
                     slug_rows = [
                         slug
                         for (slug,) in conn.execute(

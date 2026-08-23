@@ -15,7 +15,7 @@ shape tifffile's own example writes and Adobe's validator accepts
 (cgohlke/tifffile@ce19e3e examples/write_dng.py), which LibRaw then
 demosaics exactly as it would a camera's file. The other RAW suffixes
 cannot be synthesized -- they are camera-vendor sensor dumps -- so they
-are held to routing through the same door the DNG proves; the door
+are held to routing through the same link the DNG proves; the link
 itself is LibRaw's, whose camera coverage is its own tested claim
 (letmaik/rawpy@326494b README.md).
 """
@@ -41,7 +41,6 @@ def _still(fmt, **save):
     file (.jp2) at save time."""
 
     def write(path):
-        from PIL import Image
 
         decode.ensure_decoders()
         frame = Image.new("RGB", SIZE, (200, 40, 90))
@@ -52,7 +51,6 @@ def _still(fmt, **save):
 
 def _burst(fmt, **save):
     def write(path):
-        from PIL import Image
 
         decode.ensure_decoders()
         frames = [Image.new("RGB", SIZE, (n * 60, 20, 20)) for n in range(3)]
@@ -62,7 +60,6 @@ def _burst(fmt, **save):
 
 
 def _psd(path):
-    from PIL import Image
     from psd_tools import PSDImage
 
     PSDImage.frompil(Image.new("RGB", SIZE, (10, 200, 60))).save(str(path))
@@ -236,7 +233,7 @@ WRITERS = {
 #: One suffix per writer configuration -- the decoder families. These run
 #: in the fast lane; the aliases that share a writer (.jpeg/.jpe/.jfif
 #: for JPEG, .m2ts/.mts/.m2t for MPEG-TS, ...) are the same bytes through
-#: the same door and run in the slow lane, where the whole claim is proven.
+#: the same link and run in the slow lane, where the whole claim is proven.
 FAMILIES = {
     ".png", ".jpg", ".webp", ".bmp", ".tif", ".avif", ".jxl", ".heic", ".heics", ".jp2", ".j2k",
     ".mpo", ".psd", ".gif", ".apng", ".dng",
@@ -252,7 +249,7 @@ FAMILIES = {
 ELEMENTARY = {".m2v", ".mjpeg", ".mjpg"}
 
 #: RAW suffixes that cannot be synthesized: vendor sensor dumps. They route
-#: through the LibRaw door the .dng writer proves.
+#: through the LibRaw link the .dng writer proves.
 ROUTING_ONLY = decode.RAW_SUFFIXES - {".dng"}
 
 
@@ -350,8 +347,8 @@ def test_the_whole_pipeline_answers_for(suffix, tmp_path):
     conn.close()
 
 
-def test_a_dng_develops_through_the_libraw_door(tmp_path):
-    """The RAW door itself: a Bayer mosaic written with the DNG tags,
+def test_a_dng_develops_through_the_libraw_link(tmp_path):
+    """The RAW decoder itself: a Bayer mosaic written with the DNG tags,
     routed by suffix, demosaicked by LibRaw into a color picture."""
     path = tmp_path / "shot.dng"
     _dng(path)
@@ -366,13 +363,13 @@ PORTRAIT_CR2 = pathlib.Path("C:/ComfyUI/output/sample-datasets/RAW/2013-02-10/66
 @pytest.mark.skipif(not PORTRAIT_CR2.exists(), reason="the 5D Mark III sample set is not on this machine")
 def test_a_portrait_raw_is_turned_once():
     """666A0273.CR2 was shot on its side: the camera wrote orientation 8
-    and LibRaw reads the same as flip 5. The RAW door hands the frame
+    and LibRaw reads the same as flip 5. The RAW decoder hands the frame
     back AS STORED (wide), and db/oriented.py turns it once by the tag
     (tall) -- the way every JPEG is handled. LibRaw's default flip plus
     the tag turned every portrait RAW twice."""
     import rawpy
 
-    with Image.open(PORTRAIT_CR2) as header:
+    with decode.open_header(PORTRAIT_CR2) as header:
         tag = header.getexif().get(274)
     with rawpy.imread(str(PORTRAIT_CR2)) as raw:
         stored = (raw.sizes.width, raw.sizes.height)
@@ -464,13 +461,11 @@ def test_bytes_that_are_no_media_are_said_to_be_no_media(tmp_path):
 
 
 def _png_96x64(path):
-    from PIL import Image
 
     Image.new("RGB", (96, 64), (10, 120, 30)).save(path)
 
 
 def _webp_48x32(path):
-    from PIL import Image
 
     Image.new("RGB", (48, 32), (10, 120, 30)).save(path, quality=75)
 
@@ -512,7 +507,7 @@ _GEOMETRY = {
 
 @pytest.mark.parametrize(("name", "write", "kind", "geometry"), list(_GEOMETRY.values()), ids=list(_GEOMETRY))
 def test_dimensions_answers_from_headers(tmp_path, name, write, kind, geometry):
-    """The decoder door's geometry probe: stills through the registered
+    """The decoder's geometry probe: stills through the registered
     openers, video through the container's stream entry -- never a frame
     decoded, never bare Image.open, so the answer does not depend on
     which code ran first in the process. Unreadable bytes answer None,

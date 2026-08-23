@@ -613,13 +613,16 @@ body {
 .caption .meta { color: var(--ink-muted); font-size: 13px; }
 .caption .meta a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 /* a session is a title card: the lead picture with the headline set on it;
-   the words are the door (to the story, or to telling it), the picture opens itself */
+   the words are the link (to the story, or to telling it), the picture opens itself */
 /* the lead is shown WHOLE at its own ratio, never cropped to a band of
    nothing: the preview (1440px) sits centred at up to 420px tall, and the
    same picture, blurred, fills the card behind it */
 .session-lead { position: relative; display: grid; place-items: center; overflow: hidden; border-radius: 3px; background: var(--panel); height: clamp(220px, 42vh, 420px); }
 .session-backdrop { position: absolute; inset: -24px; width: calc(100% + 48px); height: calc(100% + 48px); object-fit: cover; filter: blur(24px) saturate(.8) brightness(.55); }
-.session-lead-picture { position: relative; display: block; height: 100%; max-width: 100%; }
+/* the hero row: the best pictures side by side at the card's full height,
+   each whole at its own ratio -- one landscape, or portraits across */
+.session-lead-row { position: relative; display: flex; justify-content: center; align-items: stretch; gap: 2px; width: 100%; height: 100%; }
+.session-lead-picture { display: block; height: 100%; flex: 0 1 auto; min-width: 0; }
 .session-lead-picture img { display: block; height: 100%; width: auto; max-width: 100%; object-fit: contain; }
 .session-words { position: absolute; inset: auto 0 0 0; padding: 56px 18px 14px; background: linear-gradient(transparent, rgba(0, 0, 0, .78)); color: #fff; display: grid; gap: 2px; }
 .session-words:hover .session-title { text-decoration: underline; text-underline-offset: 4px; }
@@ -697,7 +700,7 @@ body {
 .cell .c { position: absolute; right: 6px; bottom: 4px; font-family: var(--stamp); font-size: 12px; color: #fff; text-shadow: 0 0 6px rgba(0, 0, 0, .9); }
 .cell.today { outline: 1px dashed var(--imprint); outline-offset: -1px; }
 .cell.has:hover img { filter: brightness(1.1); }
-/* the years: a row per year, twelve month cells, a month a door to its window */
+/* the years: a row per year, twelve month cells, a month a link to its window */
 .years { display: grid; gap: 28px; margin-top: 24px; }
 .year-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
 .cell.month { aspect-ratio: 1; }

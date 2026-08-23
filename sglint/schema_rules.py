@@ -14,6 +14,8 @@ import pathlib
 import re
 import sqlite3
 
+from db import connect
+
 from . import policy
 from .rules import REPO_ROOT, Finding
 
@@ -21,7 +23,7 @@ SCHEMA = REPO_ROOT / "db" / "schema.sql"
 
 
 def built(ddl: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:")
+    conn = connect.memory()
     conn.executescript(ddl)
     return conn
 

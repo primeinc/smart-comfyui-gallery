@@ -15,9 +15,10 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import authored, collections, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
+from db import authored, collections, connect, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
 from db import similarity as similarity_module
 from tests.staging import fresh_schema
+from vision import decode
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -167,11 +168,11 @@ def test_perceptual_hashes_come_from_pixels_not_literals(db, a_library, tmp_path
     other = tmp_path / "meadow.png"
     Image.effect_noise((64, 64), 90).convert("RGB").save(other)
 
-    with Image.open(source) as img:
+    with decode.open_still(source) as img:
         p_source, d_source = dupes.perceptual(img)
-    with Image.open(copy) as img:
+    with decode.open_still(copy) as img:
         p_copy, _ = dupes.perceptual(img)
-    with Image.open(other) as img:
+    with decode.open_still(other) as img:
         p_other, _ = dupes.perceptual(img)
 
     signed64 = range(-(1 << 63), 1 << 63)
@@ -869,15 +870,15 @@ def test_two_workers_racing_for_one_job_cannot_both_get_it(tmp_path):
     both -- two workers running one job, each believing it held the lease.
     """
     path = tmp_path / "jobs.db"
-    setup = sqlite3.connect(str(path))
+    setup = connect.connect(path)
     setup.executescript(SCHEMA.read_text(encoding="utf-8"))
     setup.commit()
     job_id = jobs.submit(setup, "scan", NOW, items=[1, 2])
     setup.commit()
     setup.close()
 
-    a = sqlite3.connect(str(path), isolation_level=None)
-    b = sqlite3.connect(str(path), isolation_level=None)
+    a = connect.connect(path, autocommit=True)
+    b = connect.connect(path, autocommit=True)
     try:
         a.execute("PRAGMA busy_timeout=5000")
         b.execute("PRAGMA busy_timeout=5000")

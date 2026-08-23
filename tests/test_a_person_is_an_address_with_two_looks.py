@@ -342,7 +342,7 @@ def test_an_item_outside_the_person_answer_says_so(faces):
 
 
 def test_a_person_phrase_constrains_each_space_before_fusion(faces, monkeypatch):
-    """person + q composes through the SAME constrained-RRF door every
+    """person + q composes through the SAME constrained-RRF link every
     scope uses: the person's membership reaches retrieval as the
     allowed set, applied per space before the fusion."""
     from db import resultset, retrieval
@@ -991,7 +991,7 @@ def test_an_empty_people_page_says_where_every_run_stands(faces):
 
 def test_a_person_page_says_when_they_were_seen(faces):
     """The timeline's answer for one face: every current session holding
-    one of their pictures, newest first, each a door onto THEIR pictures
+    one of their pictures, newest first, each a link onto THEIR pictures
     in it (the person scope composed with the session facet), and the
     story told of it when one was."""
     from tests.staging import settled
@@ -1012,7 +1012,7 @@ def test_a_person_page_says_when_they_were_seen(faces):
     page = client.get(f"/g?{session['qs']}").text
     total = re.search(r'data-total="(\d+)"', page)
     assert total is not None
-    assert int(total.group(1)) == 2, "the door opens on Ana's pictures in that session"
+    assert int(total.group(1)) == 2, "the link opens on Ana's pictures in that session"
     html = client.get("/p/ana", headers={"accept": "text/html"}).text
     assert "data-person-sessions" in html
     assert f'data-person-session="{session["id"]}"' in html
