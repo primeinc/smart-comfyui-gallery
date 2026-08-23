@@ -335,21 +335,11 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
     }
 )
 
-#: Route handlers whose JSON body SG412 does not hold to a Wire
-#: contract, and why. Each entry is `<path>:<function>`.
-REQUEST_CONTRACT_RESERVED: frozenset[str] = frozenset(
-    {
-        # The three collection writes take a partial definition: absent,
-        # explicitly null and given are three different instructions, and
-        # the rule and convert bodies are unions over the kind being asked
-        # for. They become Wire models with the discriminated collection
-        # document, not before -- a half-named body would describe the
-        # browser's request less honestly than an unnamed one.
-        "sg_web/collection_authoring.py:edit_definition",
-        "sg_web/collection_authoring.py:replace_rule",
-        "sg_web/collection_authoring.py:convert_collection",
-    }
-)
+#: Route handlers whose JSON body SG412 does not hold to a Wire contract,
+#: and why. Empty, and meant to stay that way: every JSON body this
+#: application takes is a named contract. SG412 reports an entry here that
+#: no longer offends, so a line cannot outlive its reason.
+REQUEST_CONTRACT_RESERVED: frozenset[str] = frozenset()
 
 #: Each half of the sweep counts on its own. One shared minimum could not see
 #: every script leaving `sg_web/static` for `frontend/src`, because the

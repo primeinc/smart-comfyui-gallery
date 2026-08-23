@@ -1620,6 +1620,24 @@ export interface components {
             slug: string;
             definition_rev: number;
         };
+        /** ConvertCollection */
+        ConvertCollection: {
+            take?: number | null;
+            folder?: string | null;
+            person?: string | null;
+            artifact?: string | null;
+            q?: string | null;
+            sort?: string | null;
+            favorite?: string | null;
+            rating_min?: number | null;
+            f?: string | string[] | null;
+            expected_rev: number;
+            /** @enum {string} */
+            kind: "album" | "flag" | "smart";
+            /** @default false */
+            discard_rule: boolean;
+            media_kind?: string | null;
+        };
         /** DesiredFlag */
         DesiredFlag: {
             value: boolean;
@@ -1642,6 +1660,15 @@ export interface components {
         /** DesiredRating */
         DesiredRating: {
             value?: number | null;
+        };
+        /** EditCollection */
+        EditCollection: {
+            expected_rev: number;
+            name?: string | null;
+            color?: string | null;
+            description?: string | null;
+            parent?: string | null;
+            archived?: boolean | null;
         };
         /** Everything */
         Everything: {
@@ -1828,6 +1855,20 @@ export interface components {
             profile: "memory" | "technical" | "compact";
             /** @default en */
             locale: string;
+        };
+        /** ReplaceRule */
+        ReplaceRule: {
+            take?: number | null;
+            folder?: string | null;
+            person?: string | null;
+            artifact?: string | null;
+            q?: string | null;
+            sort?: string | null;
+            favorite?: string | null;
+            rating_min?: number | null;
+            f?: string | string[] | null;
+            expected_rev: number;
+            kind?: string | null;
         };
         /** ResultItem */
         ResultItem: {
@@ -2651,7 +2692,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["EditCollection"];
             };
         };
         responses: {
@@ -2692,7 +2733,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["ReplaceRule"];
             };
         };
         responses: {
@@ -2733,7 +2774,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["ConvertCollection"];
             };
         };
         responses: {

@@ -211,6 +211,11 @@ class CollectionWriteAnswer(Wire):
     definition_rev: int
 
 
+#: What a rule's evaluation came to. The same four words the documents
+#: above spell, named once so Facts cannot hold a fifth.
+RuleState = Literal["evaluated", "unevaluated", "broken", "unavailable"]
+
+
 @dataclasses.dataclass(frozen=True)
 class Answer:
     """The facts a membership that evaluated has.
@@ -240,7 +245,7 @@ class Facts:
 
     slug: str
     name: str
-    kind: str
+    kind: collections.CollectionKind
     color: str | None
     description: str | None
     parent: str | None
@@ -250,14 +255,30 @@ class Facts:
     updated_by: str | None
     children: list[ChildCollection]
     rule: RuleView | None
-    state: str
+    state: RuleState
+    #: why the rule could not answer, when that is a thing to say
     reason: str | None
     answer: Answer | None
     files: list[FiledPicture]
     parents: list[dict]
 
 
-def facts(conn, models_dir: str, collection_id: int, slug: str, now: float, *, files: bool, parents: bool) -> Facts:
+def document_at(conn, models_dir: str, collection_id: int, slug: str, now: float) -> CollectionDocument:
+    """The collection as a machine is told it, read and shaped.
+
+    A caller asks for the representation it wants and nothing else: which
+    statements that costs -- the filed members here, the parent picker for
+    the page -- is this module's business, not the route's.
+    """
+    return document(_facts(conn, models_dir, collection_id, slug, now, files=True, parents=False))
+
+
+def context_at(conn, models_dir: str, collection_id: int, slug: str, now: float) -> dict:
+    """The collection as album.html is given it."""
+    return context(_facts(conn, models_dir, collection_id, slug, now, files=False, parents=True))
+
+
+def _facts(conn, models_dir: str, collection_id: int, slug: str, now: float, *, files: bool, parents: bool) -> Facts:
     """Read one collection inside ONE database snapshot.
 
     The ResultSet page is the FIRST read inside it -- its currency read
@@ -368,8 +389,18 @@ def document(held: Facts) -> CollectionDocument:
     nor ty can follow a heterogeneous mapping into a typed signature, and
     this function's whole job is to be the place where the facts become a
     contract.
+
+    A state that cannot happen raises rather than picking something. The
+    first draft answered `reason or ""` for a broken rule that had not said
+    why, and called an unrecognised kind an album -- which would have shown
+    a person an empty explanation and filed a stranger under the wrong
+    kind, both silently. There is no honest default for either.
     """
     answer = held.answer
+    if answer is None and held.state == "evaluated":
+        raise AssertionError(f"/t/{held.slug} evaluated its rule and produced no answer")
+    if answer is not None and held.state != "evaluated":
+        raise AssertionError(f"/t/{held.slug} answered while its rule was {held.state}")
     if answer is not None and held.kind == "smart":
         return SmartEvaluated(
             kind="smart",
@@ -394,8 +425,10 @@ def document(held: Facts) -> CollectionDocument:
             gallery=answer.gallery,
         )
     if answer is not None:
+        if held.kind == "smart":  # unreachable: the branch above took it
+            raise AssertionError(f"/t/{held.slug} is smart and was not answered as one")
         return ListedCollection(
-            kind="flag" if held.kind == "flag" else "album",
+            kind=held.kind,
             slug=held.slug,
             name=held.name,
             color=held.color,
@@ -415,11 +448,14 @@ def document(held: Facts) -> CollectionDocument:
             gallery=answer.gallery,
         )
     if held.state == "broken":
+        reason = held.reason
+        if not reason:
+            raise AssertionError(f"/t/{held.slug} is broken and did not say why")
         return SmartBroken(
             kind="smart",
             state="broken",
             rule=held.rule,
-            reason=held.reason or "",
+            reason=reason,
             slug=held.slug,
             name=held.name,
             color=held.color,
@@ -433,11 +469,14 @@ def document(held: Facts) -> CollectionDocument:
             files=held.files,
         )
     if held.state == "unavailable":
+        reason = held.reason
+        if not reason:
+            raise AssertionError(f"/t/{held.slug} is unavailable and did not say why")
         return SmartUnavailable(
             kind="smart",
             state="unavailable",
             rule=held.rule,
-            reason=held.reason or "",
+            reason=reason,
             slug=held.slug,
             name=held.name,
             color=held.color,
@@ -656,19 +695,11 @@ def _album_page(state: State, request: Request, slug: str) -> Template | Respons
             if live is not None:
                 return Redirect(path=f"/t/{live[1]}", status_code=301)
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        # Each audience pays for what it reads and nothing else: the
-        # machine document carries the filed members, the page carries the
-        # moves the database would allow.
-        held = facts(
-            conn,
-            weights,
-            collection_id,
-            slug,
-            time.time(),
-            files=json_wanted,
-            parents=not json_wanted,
-        )
-        told = document(held) if json_wanted else context(held)
+        now = time.time()
+        if json_wanted:
+            told = document_at(conn, weights, collection_id, slug, now)
+        else:
+            told = context_at(conn, weights, collection_id, slug, now)
     finally:
         connect.close(conn)
     return presented_page(request, told, page="album.html", context={"album": told})

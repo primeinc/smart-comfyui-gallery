@@ -566,12 +566,11 @@ def test_both_album_lists_carry_the_same_keys(curated, archived_project):
     assert active, "the active list needs a row for this to prove anything"
     assert retired, "and so does the archived shelf"
 
-    listed = frozenset({"name", "slug", "kind", "pictures", "first_seen", "last_seen"})
-    for row in (*active, *retired):
-        assert set(row) == listed, row
-
     assert all(row["first_seen"] is None and row["last_seen"] is None for row in retired), (
         "the archived shelf computes no spans, and says so with null rather than by omitting the keys"
+    )
+    assert all(isinstance(row["first_seen"], float) for row in active if row["pictures"]), (
+        "the active list does compute them"
     )
 
 
@@ -1150,40 +1149,15 @@ def test_deleting_the_rule_first_is_the_deliberate_transition(curated):
         connect.close(conn)
 
 
-#: The exact top-level keys `/t/{slug}` serves a machine, per representation.
-#: ABSENCE IS PART OF THE CONTRACT: a broken smart collection carries no
-#: `timeline` at all, and a listed one carries no `state` -- which is why this
-#: pins the whole key set rather than asserting a few members are present.
-#: Captured from the shape as served today, so any change to how the view is
-#: assembled has to be a deliberate edit here rather than a silent difference.
-_LISTED_KEYS = frozenset(
-    {
-        "slug",
-        "name",
-        "kind",
-        "color",
-        "description",
-        "parent",
-        "archived",
-        "definition_rev",
-        "updated_at",
-        "updated_by",
-        "collections",
-        "count",
-        "first_seen",
-        "last_seen",
-        "timeline",
-        "places",
-        "gallery",
-        "files",
-    }
-)
-#: A smart collection adds the rule and the rule's condition.
-_SMART_EXTRA = frozenset({"rule", "state"})
-#: The two conditions that explain themselves add a reason.
-_REASONED = frozenset({"reason"})
-#: A rule that produced no answer has no gallery-shaped facts at all.
-_UNGALLERIED = frozenset({"first_seen", "last_seen", "timeline", "places"})
+# The key sets that used to live here are gone. They pinned the shape of a
+# conditional dict while it was being replaced; the shape is now
+# sg_web/collection_view.py's CollectionDocument, which OpenAPI renders as
+# a five-arm oneOf and openapi-typescript turns into the browser's union.
+# Restating those keys in Python would be a fourth copy of one contract,
+# and the first one to go stale.
+#
+# What is left below is what no model can state: which state a rule ends up
+# in when the world changes underneath it.
 
 
 def test_a_write_answers_where_to_go_and_nothing_else(curated):
@@ -1204,44 +1178,18 @@ def test_a_write_answers_where_to_go_and_nothing_else(curated):
     assert "files" in _view(curated, answer["slug"]), "the document is what carries the collection"
 
 
-def test_a_listed_collection_says_which_keys_it_carries(curated):
-    """An album and a flag are the same representation: no rule, no state,
-    and every gallery-shaped fact present because the membership evaluated."""
-    for slug in (
-        _made(curated, "/albums", name="Plain")["slug"],
-        _made(curated, "/albums", name="Flagged", kind="flag")["slug"],
-    ):
-        assert set(_view(curated, slug)) == _LISTED_KEYS, slug
-
-
-def _describes_no_answer(told: dict) -> None:
-    """What a state that produced no answer says in the keys it does carry.
-
-    Present-and-null is not the same as absent and not the same as empty:
-    `count` and `gallery` are null, while `files` is a LIST -- the legacy
-    adapter lists the filed members whether or not a rule ever ran. A model
-    that made all three null would keep every key set below passing.
-    """
-    assert told["count"] is None
-    assert told["gallery"] is None
-    assert isinstance(told["files"], list)
-
-
-def test_an_evaluated_smart_collection_adds_its_rule_and_state(curated):
-    """A rule that ran is a listed collection plus the rule and its
-    condition -- and no reason, because nothing needs explaining."""
+def test_a_rule_that_ran_is_evaluated(curated):
+    """A typed rule the ResultSet could answer counted its members."""
     told = _view(curated, _made(curated, "/albums/smart", name="Everything")["slug"])
+
     assert told["state"] == "evaluated"
-    assert set(told) == _LISTED_KEYS | _SMART_EXTRA
     assert isinstance(told["count"], int), "an evaluated rule counted its members"
-    assert isinstance(told["gallery"], dict)
-    assert set(told["gallery"]) == {"items", "total", "pages", "qs"}
-    assert set(told["rule"]) == {"sql", "nl"}
+    assert told["gallery"]["items"], "and there is an answer to show"
 
 
-def test_an_unevaluated_smart_collection_carries_no_gallery_facts(curated):
-    """Preserved prose was never run, so there is no answer to describe:
-    the span, the timeline link and the places are absent, not null."""
+def test_preserved_prose_is_unevaluated(curated):
+    """Prose kept from the old world was never a typed rule, so nothing
+    ran and the collection says so rather than showing an empty grid."""
     conn = _raw(curated)
     prose = collections.collection(conn, "Prose", 1.0, kind="smart")
     collection_rules.keep_prose(conn, prose, sql="SELECT 1", now=1.0)
@@ -1251,14 +1199,12 @@ def test_an_unevaluated_smart_collection_carries_no_gallery_facts(curated):
     told = _view(curated, "prose")
 
     assert told["state"] == "unevaluated"
-    assert set(told) == (_LISTED_KEYS | _SMART_EXTRA) - _UNGALLERIED
-    _describes_no_answer(told)
+    assert told["count"] is None, "no answer, so no number -- said out loud, not omitted"
     assert told["rule"] == {"sql": "SELECT 1", "nl": None}, "the preserved prose is shown, never run"
 
 
-def test_a_broken_smart_collection_carries_a_reason(curated):
-    """A rule naming an entity that is gone explains itself and describes
-    no answer."""
+def test_a_rule_naming_a_deleted_entity_is_broken(curated):
+    """The entity a rule points at goes away underneath it."""
     slug = _made(curated, "/albums/smart", name="Gone", folder="lib")["slug"]
     conn = _raw(curated)
     found = naming.resolve(conn, "folder", "lib")
@@ -1272,16 +1218,13 @@ def test_a_broken_smart_collection_carries_a_reason(curated):
     told = _view(curated, slug)
 
     assert told["state"] == "broken"
-    assert set(told) == (_LISTED_KEYS | _SMART_EXTRA | _REASONED) - _UNGALLERIED
-    _describes_no_answer(told)
-    assert isinstance(told["reason"], str)
+    assert told["count"] is None
     assert told["reason"], "a broken rule explains itself in words, never an empty string"
-    assert set(told["rule"]) == {"sql", "nl"}, "the rule that broke is still shown"
+    assert told["rule"], "the rule that broke is still shown"
 
 
-def test_an_unavailable_smart_collection_carries_a_reason(curated, ranked_retrieval, monkeypatch):
-    """A semantic rule nothing can answer right now says so, and describes
-    no answer either."""
+def test_a_rule_nothing_can_answer_is_unavailable(curated, ranked_retrieval, monkeypatch):
+    """The retrieval backend a semantic rule needs refuses right now."""
     from db import retrieval
 
     slug = _made(curated, "/albums/smart", name="Sunsets", q="sunset", take=2)["slug"]
@@ -1296,8 +1239,5 @@ def test_an_unavailable_smart_collection_carries_a_reason(curated, ranked_retrie
     told = _view(curated, slug)
 
     assert told["state"] == "unavailable"
-    assert set(told) == (_LISTED_KEYS | _SMART_EXTRA | _REASONED) - _UNGALLERIED
-    _describes_no_answer(told)
-    assert isinstance(told["reason"], str)
+    assert told["count"] is None
     assert told["reason"], "an unanswerable rule says why, never an empty string"
-    assert set(told["rule"]) == {"sql", "nl"}

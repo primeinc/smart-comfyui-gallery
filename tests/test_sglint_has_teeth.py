@@ -430,6 +430,11 @@ def test_the_request_contract_rule_can_fail():
         "the ledger is what excuses a body, and it is read"
     )
 
+    stale = excused | {"sg_web/routes.py:contracted"}
+    assert _flagged(rules.rule_request_contracts([module], stale)) == {"patched", "contracted"}, (
+        "and it reports its own stale line, so the ledger can only shrink"
+    )
+
 
 def test_the_response_contract_rule_can_fail():
     """SG413 holds every route's JSON answer to a wire model.

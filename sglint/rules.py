@@ -788,9 +788,20 @@ def rule_request_contracts(
                 named = _annotation_name(argument.annotation)
                 if named == "URLEncodedBody":
                     continue
+                vague = named not in contracts
                 if f"{source.relative}:{node.name}" in excused:
+                    if not vague:
+                        found.append(
+                            Finding(
+                                source.path,
+                                argument.lineno,
+                                argument.col_offset,
+                                "SG412",
+                                f"{node.name} names its body now; remove its REQUEST_CONTRACT_RESERVED line",
+                            )
+                        )
                     continue
-                if named not in contracts:
+                if vague:
                     found.append(
                         Finding(
                             source.path,
