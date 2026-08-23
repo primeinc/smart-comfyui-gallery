@@ -170,10 +170,10 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
 
-        def drained_ingest() -> dict:
+        def drained_ingest(*, everything: bool = False) -> dict:
             with client.websocket_connect("/ws/jobs") as feed:
                 assert feed.receive_json(timeout=10)["type"] == "snapshot"
-                job_id = client.post("/jobs/ingest").json()["id"]
+                job_id = client.post("/jobs/ingest", params={"everything": str(everything).lower()}).json()["id"]
                 settled(feed, job_id)
             return client.get(f"/jobs/{job_id}").json()
 
@@ -186,7 +186,10 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
         # The library rots behind the app's back: one corrupted, one deleted.
         (root / "good.png").write_bytes(b"\x89PNG-now-junk")
         (root / "gone.png").unlink()
-        second = drained_ingest()
+        # by the record only the junk file is unread: its read failed, and a
+        # failed read is not a read; no scan has seen the other one rot
+        assert drained_ingest()["total"] == 1
+        second = drained_ingest(everything=True)  # the rot detector: read all of it again
         assert second["failed_count"] == 2, "both rotten files must land on their items"
         after = client.get("/i/good").json()
         assert after["params"] == before["params"], "a failed re-read destroyed the recipe it could not replace"

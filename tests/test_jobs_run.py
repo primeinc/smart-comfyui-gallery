@@ -307,6 +307,25 @@ def _two_files(db, tmp_path) -> list[int]:
 
 
 @pytest.mark.slow
+def test_the_ingest_sweep_queues_only_files_not_read_for_their_current_bytes(db, tmp_path):
+    """A read is recorded against the bytes it was of: a second sweep has
+    nothing to do, new bytes put the file back, `everything` puts them
+    all back. A file with no metadata at all was still READ."""
+    files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 0})
+    job_id = runner.submit_ingest(db, 0.0)
+    assert job_id is not None
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 2, "failed": 0}
+    rows = db.execute("SELECT ingested_sha256 IS NOT NULL, ingested_sha256 = content_sha256 FROM file").fetchall()
+    assert rows == [(1, 1), (1, 1)], "plain pictures carry no recipe and were read all the same"
+
+    assert runner.submit_ingest(db, 2.0) is None, "every file is read"
+    db.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("e" * 64, files["b.png"]))
+    again = runner.submit_ingest(db, 3.0)
+    assert [r[0] for r in db.execute("SELECT item_id FROM job_item WHERE job_id = ?", (again,))] == [files["b.png"]]
+    whole = runner.submit_ingest(db, 4.0, everything=True)
+    assert db.execute("SELECT count(*) FROM job_item WHERE job_id = ?", (whole,)).fetchone()[0] == 2
+
+
 def test_the_phash_sweep_queues_only_pictures_without_a_current_fingerprint(db, tmp_path):
     """A second sweep has nothing to do; new bytes put a picture back;
     `everything` puts them all back. Detection's byproduct hashes count

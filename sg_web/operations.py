@@ -51,7 +51,8 @@ def _weights(state: State, conn) -> str:
 
 
 def _ingest(state: State, conn) -> list[int]:
-    return [runner.submit_ingest(conn, time.time())]
+    job_id = runner.submit_ingest(conn, time.time())
+    return [] if job_id is None else [job_id]
 
 
 def _verify(state: State, conn) -> list[int]:
@@ -109,7 +110,7 @@ def _events(state: State, conn) -> list[int]:
 #: cluster, interpret time, group events. Each launcher returns the job
 #: ids it queued -- the same db/runner.py entry points the JSON routes use.
 LAUNCHERS: dict[str, tuple[str, Launcher]] = {
-    "ingest": ("read every file's metadata", _ingest),
+    "ingest": ("read the metadata of every file not yet read", _ingest),
     "verify": ("verify every file's bytes", _verify),
     "phash": ("fingerprint every picture not yet fingerprinted", _phash),
     "thumbs": ("render every missing thumbnail", _thumbs),
@@ -147,7 +148,12 @@ def _context_again(state: State, conn) -> list[int]:
 
 #: The sweeps that are for what is missing, each with its "all of it
 #: again" -- the second button beside the first, never a hidden flag.
+def _ingest_again(state: State, conn) -> list[int]:
+    return [runner.submit_ingest(conn, time.time(), everything=True)]
+
+
 AGAIN: dict[str, Launcher] = {
+    "ingest": _ingest_again,
     "phash": _phash_again,
     "faces": _faces_again,
     "embed": _embed_again,

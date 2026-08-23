@@ -627,6 +627,17 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     from . import context as context_module
 
     context_module.stale(conn, file_id)
+    if out.unreadable is None:
+        # the record of the read: these bytes were read whole, metadata or
+        # none -- the caller raises on an unreadable file and the runner
+        # rolls this back with the rest
+        from . import scan as scan_module
+
+        sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+        if sha is None:
+            sha = scan_module.sha256_of(path)
+            conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
+        conn.execute("UPDATE file SET ingested_sha256 = ? WHERE id = ?", (sha, file_id))
     return out
 
 

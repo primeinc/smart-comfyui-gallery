@@ -224,7 +224,15 @@ CREATE TABLE file (
     -- when a content match was ambiguous. Deletion is then a deliberate act
     -- rather than a scan side effect: unreachable is not the same as deleted.
     missing_since  REAL
-) STRICT;
+, ingested_sha256 TEXT) STRICT;
+-- file.ingested_sha256: the bytes the last metadata read was taken from
+-- (db/ingest.py one). NULL until ingest reads the file; unequal to
+-- content_sha256 once a scan records new bytes. The ingest sweep queues
+-- only files where it is NULL or stale -- the record of the read, so
+-- "never read" and "read, found no metadata" are different rows. Spelled
+-- exactly as SQLite stores an ALTER TABLE ADD COLUMN on the v26 text --
+-- a newline, then `, ingested_sha256 TEXT)` -- so a migrated file's DDL
+-- reads equal to a fresh build's (db/build.py drift).
 -- NOCASE: the stated platform is Windows, where 'A.png' and 'a.png' are one
 -- file. Case-sensitive uniqueness let a case-only rename create a second row,
 -- one of which is permanently missing.
@@ -1991,7 +1999,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 26;
+PRAGMA user_version   = 27;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

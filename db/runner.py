@@ -651,15 +651,25 @@ def _hash_item(conn, file_id: int, payload: dict, now: float) -> None:
         raise ValueError(f"unknown derive {derive!r} -- refusing to guess which job this is")
 
 
-def submit_ingest(conn, now: float) -> int:
+def submit_ingest(conn, now: float, *, everything: bool = False) -> int | None:
     """Read every present file's own story, as one job.
 
     The walk (POST /roots/{id}/scan) finds files cheaply; this is the
     expensive half of scanning that turns each file's metadata into
     entities -- models, LoRAs, prompts, generation settings, capture
     facts, learned param keys. The schema's job kind for it is 'scan'.
+
+    For what is missing: a file whose last read was of its current bytes
+    (`file.ingested_sha256`) is not an item again; `everything` reads all
+    of them -- the way to catch bytes that rotted behind the scanner's
+    back. None when nothing is left.
     """
-    items = [row[0] for row in conn.execute("SELECT id FROM file WHERE missing_since IS NULL ORDER BY id")]
+    sql = "SELECT id FROM file WHERE missing_since IS NULL"
+    if not everything:
+        sql += " AND (ingested_sha256 IS NULL OR ingested_sha256 IS NOT content_sha256)"
+    items = [row[0] for row in conn.execute(sql + " ORDER BY id")]
+    if not items:
+        return None
     return jobs.submit(conn, "scan", now, items=items)
 
 

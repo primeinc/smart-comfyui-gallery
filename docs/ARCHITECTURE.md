@@ -96,6 +96,7 @@ it. Each reads its own record of
 having been done against the file's CURRENT bytes:
 
 ```
+ingest    file.ingested_sha256  the bytes the last metadata read was of
 phash     derived_file_hash     space = current PHASH space, source_sha256
 faces     derived_face_scan     any model's pass, source_sha256
 embed     derived_embedding     space = the checkpoint the cache pins, source_sha256
@@ -103,10 +104,12 @@ annotate  derived_annotation    kind caption, model = caption_model, source_sha2
 context   derived_media_context policy_version = context.POLICY_VERSION
 ```
 
-Ingest and verify read every present file by design: there is no
-record of a read that would make skipping honest. A scan or ingest that
-changes a source claim stales the interpretation (db/context.py
-`stale`), which is what puts a file back into the context sweep.
+Verify reads every present file by design: checking bytes against
+their recorded hash is the whole job. Bytes that rot behind the
+scanner's back are caught by a scan (which records the new hash) or by
+"again"; a scan or ingest that changes a source claim stales the
+interpretation (db/context.py `stale`), which is what puts a file back
+into the context sweep.
 
 ### The console
 

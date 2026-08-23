@@ -2413,6 +2413,17 @@ def _face_scans(conn: sqlite3.Connection) -> None:
     )
 
 
+@step(26)
+def _the_ingest_record(conn: sqlite3.Connection) -> None:
+    """v26 -> v27: `file.ingested_sha256`, the bytes the last metadata
+    read was taken from (db/ingest.py one). Added in place; SQLite
+    appends the column's text to the stored DDL, and schema.sql spells
+    it last so the two agree. Existing rows start NULL: the next ingest
+    sweep reads everything once and records it.
+    """
+    conn.execute("ALTER TABLE file ADD COLUMN ingested_sha256 TEXT")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 
