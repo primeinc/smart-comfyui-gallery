@@ -1,15 +1,11 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "target": "ES2023",
+    "lib": ["ES2023"],
 
     "module": "preserve",
     "moduleDetection": "force",
-    // The browser's types are the `lib` above and nothing else. Left unset,
-    // tsc includes every @types/* package in node_modules -- @types/node is
-    // installed for build.ts, and it silently redefined setTimeout to return
-    // NodeJS.Timeout in code that runs in a browser.
-    "types": [],
+    "types": ["node"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -24,9 +20,8 @@
     "erasableSyntaxOnly": true,
 
     "noEmit": true,
-
     "allowJs": false
   },
 
-  "include": ["src/**/*.ts"]
+  "include": ["build.ts"]
 }

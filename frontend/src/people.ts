@@ -4,6 +4,8 @@
 // Forward re-opens what the URL names -- but a person is an entity with
 // a collection, not a piece of media, so there are no arrows: the
 // drawer shows who they are and hands off to the full profile.
+import { addressableOverlay } from "./overlay";
+
 (() => {
   // days on the cards and in the drawer, spelled for the reader
   const pad = (n) => String(n).padStart(2, "0");
@@ -44,15 +46,18 @@
   });
 
   // The drawer is the person adapter over the AddressableOverlay: the
-  // shell (static/overlay.js) owns everything an overlay shares, a
-  // person is not media, so there is nothing left to add here -- no
-  // arrows, no generation evidence. Rename above is this page's own
-  // primary action, drawer or not.
-  if (window.sgAddressableOverlay) {
-    window.sgAddressableOverlay({
-      root: "[data-drawer-root]",
-      trigger: "[data-person]",
-      pathPrefix: "/p/",
-    });
-  }
+  // shell (overlay.ts) owns everything an overlay shares, a person is
+  // not media, so there is nothing left to add here -- no arrows, no
+  // generation evidence. Rename above is this page's own primary
+  // action, drawer or not.
+  //
+  // Asked for unconditionally. The full profile at /p/{slug} renders no
+  // drawer root, so this returns null there -- the absence is a fact
+  // about that page's DOM, where it used to be a fact about whether the
+  // template happened to list overlay.js beside this file.
+  addressableOverlay({
+    root: "[data-drawer-root]",
+    trigger: "[data-person]",
+    pathPrefix: "/p/",
+  });
 })();

@@ -20,9 +20,20 @@ set script-interpreter := ['bash', '-euo', 'pipefail']
 [parallel]
 check: types build
 
-# Type check only -- esbuild never will.
-types:
-    npm run --silent types-web
+# Type check only -- esbuild never will. Two projects, because the browser
+# source has the DOM and no node, and build.ts has node and no DOM. Chaining
+# them with `&&` would stop checking the build script the moment the browser
+# source had one error, which during a migration is always.
+[parallel]
+types: types-source types-build
+
+[private]
+types-source:
+    npm run --silent types-source
+
+[private]
+types-build:
+    npm run --silent types-build
 
 # Bundle every surface. The output directory is removed first because esbuild
 # does not clear it ("it will not be cleared if it already contains some

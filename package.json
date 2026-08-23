@@ -7,12 +7,14 @@
     "format": "biome format . --write",
     "check": "biome ci . --error-on-warnings",
     "fix": "biome check . --write",
-    "types-web": "tsc -p frontend",
-    "build-web": "esbuild gallery=frontend/src/entries/gallery.ts people=frontend/src/entries/people.ts person=frontend/src/entries/person.ts media=frontend/src/entries/media.ts collection=frontend/src/entries/collection.ts timeline=frontend/src/entries/timeline.ts evolution=frontend/src/entries/evolution.ts operations=frontend/src/entries/operations.ts story=frontend/src/entries/story.ts --bundle --outdir=sg_web/static/build --format=iife --target=es2022 --sourcemap --log-level=info",
-    "watch-web": "npm run --silent build-web -- --watch"
+    "types-source": "tsc -p frontend",
+    "types-build": "tsc -p frontend/tsconfig.node.json",
+    "build-web": "node frontend/build.ts",
+    "watch-web": "node frontend/build.ts --watch"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",
+    "@types/node": "24.10.1",
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   }

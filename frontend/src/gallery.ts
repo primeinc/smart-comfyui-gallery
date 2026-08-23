@@ -2,6 +2,8 @@
 // the server's ResultSet answers; this file maps pointer geometry onto
 // page numbers and renders what it is told. Hooks are semantic data
 // attributes, never style classes.
+import { addressableOverlay, isPlainClick } from "./overlay";
+
 (() => {
   // The form must ask a question the server can answer: a phrase orders
   // by similarity (the seam refuses the contradiction), and empty fields
@@ -258,11 +260,11 @@ ${smarts.map((held) => held.slug).join(", ")}`,
   document.body.addEventListener("htmx:afterSwap", placeThumb);
 
   // --- the lightbox: the media adapter over the AddressableOverlay ----
-  // The shell (static/overlay.js) owns open/mount, push-replace policy,
+  // The shell (overlay.ts) owns open/mount, push-replace policy,
   // Back-on-dismiss, popstate and the generation check. What is MEDIA'S
   // alone lives here: which currency the view is walking, and the
   // arrows -- each a REPLACE, so browsing fifty items is one Back out.
-  const lightbox = window.sgAddressableOverlay({
+  const lightbox = addressableOverlay({
     root: "[data-lightbox-root]",
     trigger: "a.cell",
     pathPrefix: "/i/",
@@ -300,7 +302,7 @@ ${smarts.map((held) => held.slug).join(", ")}`,
   if (lightbox) {
     document.addEventListener("click", (event) => {
       const nav = event.target.closest("[data-nav]");
-      if (nav && window.sgPlainClick(event, nav)) {
+      if (nav && isPlainClick(event, nav)) {
         event.preventDefault();
         lightbox.open(nav.getAttribute("href"), "replace");
       }
