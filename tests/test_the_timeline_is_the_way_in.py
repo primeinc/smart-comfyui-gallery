@@ -158,8 +158,9 @@ def test_a_picture_says_when_and_in_which_sessions(doors):
     fragment = doors.get(f"/i/{slugs[1]}", headers={"hx-request": "true"}).text
     assert 'data-lightbox-day href="/g?f=context.local_day%3Aeq%3A2023-06-10' in fragment, "the lightbox opens the day"
     html = doors.get(f"/i/{slugs[1]}", headers={"accept": "text/html"}).text
-    for marker in ('data-when data-domain="wall"', "data-when-sessions", "data-when-day"):
+    for marker in ('data-when data-domain="wall"', "data-when-sessions", "data-when-day", "data-when-session-tell"):
         assert marker in html, marker
+    assert when["sessions"][0]["timeline"].startswith("/timeline?bin=hour&start=")
 
 
 def test_the_contested_count_is_a_door_onto_exactly_the_disputed(doors):

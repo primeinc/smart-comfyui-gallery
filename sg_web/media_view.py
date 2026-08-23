@@ -194,6 +194,12 @@ def _when(conn, file_id: int) -> dict | None:
                     [("f", facets.spell(facets.facet("event.id", "eq", str(event_id)))), ("sort", "moment")]
                 ),
                 "story": f"/stories/renders/{render_id}" if render_id is not None else None,
+                # the session's hour window on the timeline: where its
+                # story is told (the timeline owns the tell button)
+                "timeline": "/timeline?"
+                + urllib.parse.urlencode(
+                    {"bin": "hour", "start": int(start // 3600) * 3600, "end": int(end // 3600) * 3600 + 3600}
+                ),
             }
             for event_id, kind, start, end, pictures, render_id in pages.media_sessions(conn, file_id)
         ],

@@ -63,7 +63,7 @@
       {% if item.when.sessions %}
       <ul class="when-sessions" data-when-sessions>
         {% for s in item.when.sessions %}
-        <li><a href="/g?{{ s.qs }}" data-when-session="{{ s.id }}">{{ s.kind.replace("_", " ") }}</a> · {{ s.pictures }} pictures{% if s.story %} · <a href="{{ s.story }}">story</a>{% endif %}</li>
+        <li><a href="/g?{{ s.qs }}" data-when-session="{{ s.id }}">{{ s.kind.replace("_", " ") }}</a> · {{ s.pictures }} pictures · {% if s.story %}<a href="{{ s.story }}" data-when-session-story>story</a>{% else %}<a href="{{ s.timeline }}" data-when-session-tell>tell its story on the timeline</a>{% endif %}</li>
         {% endfor %}
       </ul>
       {% endif %}
