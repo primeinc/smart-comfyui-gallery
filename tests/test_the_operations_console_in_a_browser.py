@@ -47,7 +47,7 @@ def served(tmp_path_factory):
         Image.new("RGB", (8, 8), (10 * i, 60, 120)).save(root / f"b_{i:02d}.png")
     port = _free_port()
     app = build_app(str(tmp / "run"), worker=True)
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", loop="tests.staging:selector_loop")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, name="sg-browser-test", daemon=True)
     thread.start()

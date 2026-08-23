@@ -51,7 +51,13 @@ def served(tmp_path_factory):
         os.utime(path, (base_at + i * 300, base_at + i * 300))
     port = _free_port()
     server = uvicorn.Server(
-        uvicorn.Config(build_app(str(tmp / "run"), worker=True), host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(
+            build_app(str(tmp / "run"), worker=True),
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+            loop="tests.staging:selector_loop",
+        )
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
