@@ -1587,6 +1587,15 @@ export interface components {
             kind: string;
             filed: boolean;
         };
+        /** CollectionListed */
+        CollectionListed: {
+            name: string;
+            slug: string;
+            kind: string;
+            pictures: number;
+            first_seen?: number | null;
+            last_seen?: number | null;
+        };
         /** CollectionSummary */
         CollectionSummary: {
             slug: string;
@@ -2286,13 +2295,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description Every active collection, or the archived shelf under ?state=archived */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CollectionListed"][];
                 };
             };
             /** @description Bad request syntax or unsupported method */

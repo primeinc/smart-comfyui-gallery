@@ -1079,11 +1079,15 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "Every active collection, or the archived shelf under ?state=archived",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/CollectionListed"
+                                    },
+                                    "type": "array"
+                                }
                             }
                         }
                     },
@@ -8825,6 +8829,50 @@
                     "slug"
                 ],
                 "title": "CollectionChoice"
+            },
+            "CollectionListed": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "first_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "pictures",
+                    "slug"
+                ],
+                "title": "CollectionListed"
             },
             "CollectionSummary": {
                 "properties": {

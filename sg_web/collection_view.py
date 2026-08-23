@@ -36,15 +36,17 @@ import time
 import urllib.parse
 from typing import Annotated
 
-from litestar import Request, get
+from litestar import MediaType, Request, get
 from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath, QueryParameter
 from litestar.response import Redirect, Response, Template
 
 from db import collection_rules, collections, connect, facets, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page, wants_json
+from sg_web.wire import Wire
 
 
 def view(
@@ -142,30 +144,45 @@ def view(
         return told
 
 
-def _albums_listed(db_path: str) -> list[dict]:
+class CollectionListed(Wire):
+    """One collection in the flat list `/albums` serves to machines.
+
+    `first_seen` and `last_seen` are the span of the pictures filed in it,
+    absent on the archived shelf because that list does not compute spans.
+    """
+
+    name: str
+    slug: str
+    kind: str
+    pictures: int
+    first_seen: float | None = None
+    last_seen: float | None = None
+
+
+def _albums_listed(db_path: str) -> list[CollectionListed]:
     conn = connect.connect(db_path)
     try:
         spans = pages.collection_spans(conn)
         return [
-            {
-                "name": name,
-                "slug": slug,
-                "kind": kind,
-                "pictures": pictures,
-                "first_seen": spans.get(slug, (None, None))[0],
-                "last_seen": spans.get(slug, (None, None))[1],
-            }
+            CollectionListed(
+                name=name,
+                slug=slug,
+                kind=kind,
+                pictures=pictures,
+                first_seen=spans.get(slug, (None, None))[0],
+                last_seen=spans.get(slug, (None, None))[1],
+            )
             for name, slug, kind, pictures in pages.albums(conn)
         ]
     finally:
         connect.close(conn)
 
 
-def _albums_archived(db_path: str) -> list[dict]:
+def _albums_archived(db_path: str) -> list[CollectionListed]:
     conn = connect.connect(db_path, read_only=True)
     try:
         return [
-            {"name": name, "slug": slug, "kind": kind, "pictures": pictures}
+            CollectionListed(name=name, slug=slug, kind=kind, pictures=pictures)
             for name, slug, kind, pictures in pages.archived_albums(conn)
         ]
     finally:
@@ -214,7 +231,26 @@ def _albums_nested(db_path: str) -> tuple[list[dict], int]:
     return top, retired
 
 
-@get("/albums")
+@get(
+    "/albums",
+    # The route negotiates: a browser gets a page, a machine gets this list.
+    # The return annotation can only say `Template | Response`, which tells
+    # OpenAPI nothing, so the JSON body is declared here instead -- otherwise
+    # the one shape a client actually parses would be the one shape the
+    # contract did not describe.
+    responses={
+        200: ResponseSpec(
+            data_container=list[CollectionListed],
+            description="Every active collection, or the archived shelf under ?state=archived",
+            media_type=MediaType.JSON,
+            # ResponseSpec invents examples by default. They are deterministic,
+            # so the drift gate does not flap, but they are made-up values in a
+            # committed contract -- a reader should not have to work out that
+            # `"kind": "VvHsoVSEeCtLViFvDEMp"` was never a kind.
+            generate_examples=False,
+        )
+    },
+)
 async def albums_index(
     state: State,
     request: Request,
