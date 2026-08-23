@@ -100,7 +100,7 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 ## Develop
 
 ```
-just check          ruff, sglint, format, pyright, repo hygiene -- no tests
+just check          ruff, sglint, format, pyright, repo hygiene, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
 just test           the fast tests, one module per worker (~20s)
 just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
 just check-all      the gate, both test lanes, and the real run walked

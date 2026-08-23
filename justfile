@@ -37,11 +37,21 @@ types:
 repo-check:
     {{ python }} -m sglint --repo
 
-# The gate: lint, format, repo hygiene. No tests -- `just test` is its own step
-check: lint fmt-check types repo-check
+# The gate: lint, format, types, repo hygiene, and the real database's
+# version held against this build -- a schema bump with no step from the
+# version in the home directory fails here, in under a second, before any
+# commit. No tests -- `just test` is its own step
+check: lint fmt-check types repo-check db-check
 
 # The gate, both test lanes, and the real run walked
 check-all: check test test-slow smoke
+
+# The home directory's database against this build: every version between
+# the file's and USER_VERSION must have a migration step; a newer file
+# is refused. Reads the version only -- nothing is migrated here.
+[doc('Refuse a build that cannot open ~/.smartgallery (no migration step from its version)')]
+db-check:
+    {{ python }} -c "from sg_web import home; from db import migrate; p = home.db_path(home.home(None)); print(p, 'pending', migrate.pending(p) if p.exists() else 'no database yet')"
 
 # Every surface and five real pictures over the database in the home
 # directory -- the check a lane over fresh databases cannot make.
