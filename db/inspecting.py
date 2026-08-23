@@ -69,8 +69,53 @@ def _target(conn, target_id: int | None) -> dict | None:
     return {"id": target_id, "kind": row[0], "slug": row[1]}
 
 
+#: What each missing-only sweep would still queue, counted the way the
+#: sweep counts (db/runner.py submit_*): present files with no record for
+#: their current bytes. Embed is per configured space and pinned
+#: checkpoint; it has no one number here -- /search provenance says who
+#: answered.
+_PRESENT = "SELECT count(*) FROM file f WHERE f.missing_since IS NULL"
+_PICTURE = " AND f.kind IN ('image', 'animated_image', 'video')"
+_MISSING = {
+    "ingest": _PRESENT + " AND (f.ingested_sha256 IS NULL OR f.ingested_sha256 IS NOT f.content_sha256)",
+    "faces": _PRESENT + _PICTURE + " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
+    "   AND s.source_sha256 = f.content_sha256)",
+    "annotate": _PRESENT
+    + _PICTURE
+    + " AND NOT EXISTS (SELECT 1 FROM derived_annotation a WHERE a.file_id = f.id AND a.kind = 'caption'"
+    "   AND a.model_id = ? AND a.source_sha256 = f.content_sha256)",
+    "context": _PRESENT
+    + " AND NOT EXISTS (SELECT 1 FROM derived_media_context c WHERE c.file_id = f.id AND c.policy_version = ?)",
+}
+_MISSING_PHASH = (
+    _PRESENT + _PICTURE + " AND NOT EXISTS (SELECT 1 FROM derived_file_hash h WHERE h.file_id = f.id AND h.space_id = ?"
+    "   AND h.source_sha256 = f.content_sha256)"
+)
+
+
+def coverage(conn) -> dict:
+    """Present files, and how many each missing-only sweep still has to
+    do -- the console's answer to "is the library done"."""
+    from . import context, similarity
+
+    held = {
+        "ingest": conn.execute(_MISSING["ingest"]).fetchone()[0],
+        "faces": conn.execute(_MISSING["faces"]).fetchone()[0],
+        "annotate": conn.execute(_MISSING["annotate"], (settings.value(conn, "caption_model"),)).fetchone()[0],
+        "context": conn.execute(_MISSING["context"], (context.POLICY_VERSION,)).fetchone()[0],
+    }
+    space = similarity._current_space_of(conn, similarity.PHASH)
+    held["phash"] = (
+        conn.execute(_MISSING_PHASH, (space[0],)).fetchone()[0]
+        if space is not None
+        else conn.execute(_PRESENT + _PICTURE).fetchone()[0]
+    )
+    return {"files": conn.execute(_PRESENT).fetchone()[0], "missing": {k: int(v) for k, v in sorted(held.items())}}
+
+
 def overview(conn, now: float) -> dict:
-    """The system health strip: worker, queue, ledger head."""
+    """The system health strip: worker, queue, ledger head, and what
+    each sweep still has to do."""
     running = conn.execute(
         "SELECT count(*), max(heartbeat_at), min(created_at) FROM job WHERE state = 'running'"
     ).fetchone()
@@ -84,6 +129,7 @@ def overview(conn, now: float) -> dict:
     ).fetchall()
     return {
         "now": now,
+        "coverage": coverage(conn),
         "worker": {
             "enabled": settings.flag(conn, "worker"),
             "owners": owners,

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import time
 
 import pytest
 from litestar.testing import TestClient
@@ -594,3 +595,45 @@ def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
         assert detail["what"] == "fingerprint every picture"
         inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
         assert "fingerprint every picture" in inspector
+
+
+def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
+    """Coverage beside the buttons: present files, and per missing-only
+    sweep how many it would still queue -- counted the way the sweep
+    counts, so the number beside the button and the job it queues agree.
+    A sweep that ran takes its count to zero."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(2):
+        Image.new("RGB", (8, 8), (1, 2, 3 + i)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            while runner.run_next(conn, "test-worker", time.time()) is not None:  # the scan's precache job
+                conn.commit()
+            conn.commit()
+        finally:
+            connect.close(conn)
+        told = client.get("/operations/overview").json()["overview"]["coverage"]
+        assert told["files"] == 2
+        assert told["missing"] == {"annotate": 2, "context": 2, "faces": 2, "ingest": 2, "phash": 2}
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert re.search(r'data-missing="phash"[^>]*>2 missing', page)
+        assert re.search(r'data-missing="ingest"[^>]*>2 missing', page)
+        assert 'data-missing="verify"' not in page, "verify reads everything by design; no count"
+
+        assert client.post("/jobs/phash").status_code == 201
+        assert client.post("/jobs/ingest").status_code == 201
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            while runner.run_next(conn, "test-worker", time.time()) is not None:
+                conn.commit()
+            conn.commit()
+        finally:
+            connect.close(conn)
+        after = client.get("/operations/overview").json()["overview"]["coverage"]["missing"]
+        assert (after["phash"], after["ingest"]) == (0, 0)
+        assert after["context"] == 2, "untouched sweeps keep their count"
+        assert client.post("/jobs/phash").status_code == 204, "the count beside the button and the job agree"

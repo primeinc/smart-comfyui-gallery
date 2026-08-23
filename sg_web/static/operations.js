@@ -240,6 +240,14 @@
     q("[data-queue-raw]").textContent = `oldest queued ${o.queue.oldest_queued_age != null ? Math.round(o.queue.oldest_queued_age) + "s" : "—"} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`;
     q("[data-ledger-state]").textContent = `${o.ledger.events.toLocaleString()} events`;
     q("[data-ledger-raw]").textContent = `head #${o.ledger.last_id} · job_event · never sampled`;
+    if (o.coverage) {
+      const files = q("[data-coverage-files]");
+      if (files) files.textContent = String(o.coverage.files);
+      for (const node of document.querySelectorAll("[data-missing]")) {
+        const n = o.coverage.missing[node.dataset.missing];
+        if (n != null) node.textContent = `${n} missing`;
+      }
+    }
   }
 
   function paintMatrix(jobs) {

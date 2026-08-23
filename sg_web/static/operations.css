@@ -186,3 +186,4 @@
 
 .operations-launch { display: inline-flex; }
 .operations-launch .operations-again { margin-left: 2px; padding-left: 6px; padding-right: 6px; opacity: .8; }
+.operations-launch .operations-missing { align-self: center; margin-left: 6px; }
