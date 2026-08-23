@@ -43,6 +43,10 @@ from sg_web.app import build_app
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 _MASTERS: dict[str, sqlite3.Connection] = {}
+#: Every connection `fresh_schema` handed out and nobody closed yet;
+#: conftest closes the leftovers after each test, so a test's in-memory
+#: database never reaches the garbage collector open (ResourceWarning).
+OPENED: list[sqlite3.Connection] = []
 
 
 def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
@@ -61,6 +65,7 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     master.backup(conn)
     conn.execute("PRAGMA foreign_keys=ON")
+    OPENED.append(conn)
     return conn
 
 

@@ -510,7 +510,8 @@ def _really_animated(path) -> bool | None:
     from vision import decode
 
     try:
-        return decode.is_animated(decode.open_still(path))
+        with decode.open_still(path) as image:  # the handle closes with the image, not at GC
+            return decode.is_animated(image)
     except (OSError, ValueError):
         return None
 

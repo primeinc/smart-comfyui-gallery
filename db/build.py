@@ -110,17 +110,21 @@ def drift(path: pathlib.Path) -> list[str]:
         return [f"{path.name} does not exist"]
     live = connect(path, read_only=True)
     fresh_conn = reference()
-    built, fresh = objects(live), objects(fresh_conn)
-    out = [f"only in the built file: {n}" for n in sorted(set(built) - set(fresh))]
-    out += [f"missing from the built file: {n}" for n in sorted(set(fresh) - set(built))]
-    out += [f"differs: {n}" for n in sorted(set(built) & set(fresh)) if built[n] != fresh[n]]
-    # The pragmas too, which this check existed to catch and could not see:
-    # it read `name, sql FROM sqlite_master` only, so a file stamped with the
-    # wrong version -- the exact thing the stamps were added for -- was
-    # reported as in sync.
-    if stamps(live) != stamps(fresh_conn):
-        out.append(f"stamped {stamps(live)}, the DDL stamps {stamps(fresh_conn)}")
-    return out
+    try:
+        built, fresh = objects(live), objects(fresh_conn)
+        out = [f"only in the built file: {n}" for n in sorted(set(built) - set(fresh))]
+        out += [f"missing from the built file: {n}" for n in sorted(set(fresh) - set(built))]
+        out += [f"differs: {n}" for n in sorted(set(built) & set(fresh)) if built[n] != fresh[n]]
+        # The pragmas too, which this check existed to catch and could not see:
+        # it read `name, sql FROM sqlite_master` only, so a file stamped with the
+        # wrong version -- the exact thing the stamps were added for -- was
+        # reported as in sync.
+        if stamps(live) != stamps(fresh_conn):
+            out.append(f"stamped {stamps(live)}, the DDL stamps {stamps(fresh_conn)}")
+        return out
+    finally:
+        fresh_conn.close()
+        live.close()
 
 
 def build(path: pathlib.Path, *, force: bool = False) -> None:
