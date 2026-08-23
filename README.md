@@ -74,8 +74,8 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 
 ```
 just check          ruff, sglint, format, repo hygiene -- no tests
-just test           the fast tests
-just test-slow      the tests marked slow (real libraries, real timeouts)
+just test           the fast tests, one module per worker (~20s)
+just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
 just check-all      the gate plus both test lanes
 just types          pyright, on request
 just serve          the app
