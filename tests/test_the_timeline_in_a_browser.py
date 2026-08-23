@@ -142,3 +142,26 @@ def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
     assert "context.origin" in told["rule"]["nl"], "the second facet was dropped on the way to the rule"
     inside = live.api.get(f"/g?album={slug}", headers={"accept": "text/html"}).text
     assert f'data-total="{FILES}"' in inside
+
+
+def test_a_page_of_dates_stays_alive_under_people_js(page: Page, live: Live):
+    """people.js spells every <time data-epoch> and watches the document
+    for new ones. Spelling is itself a mutation: a watcher that re-spelt
+    what it had just spelt looped the main thread forever, and every
+    person page -- the pages with dated sessions -- hung the tab. The
+    page must answer after load, with every date spelled once."""
+    page.goto("/people")
+    page.set_content(
+        '<body><time data-epoch="1686355200">1686355200</time><time data-epoch="1686441600">x</time>'
+        f'<script src="{live.url}/static/people.js"></script></body>'
+    )
+    page.wait_for_timeout(500)
+    assert page.evaluate("[...document.querySelectorAll('time')].map(t => t.textContent)") == [
+        "2023-06-10",
+        "2023-06-11",
+    ]
+    page.evaluate(
+        "const t = document.createElement('time'); t.dataset.epoch = '1686528000'; document.body.appendChild(t)"
+    )
+    page.wait_for_timeout(200)
+    assert page.evaluate("document.body.lastChild.textContent") == "2023-06-12", "a later date is spelled too"
