@@ -388,3 +388,24 @@ def test_an_empty_scope_answers_the_same_shape_as_a_full_one(surfaced):
     assert empty.json()["bins"] == []
     assert empty.json()["extent"] is None
     assert empty.headers.get("vary") == full.headers.get("vary")
+
+
+@pytest.mark.parametrize("bin_name", ["day", "hour", "quarter", "minute"])
+def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
+    """The invariant the surface is built on, checked over the whole
+    extent at each zoom: a bar's door answers the bar's count."""
+    import re
+
+    view = surfaced.get(
+        "/timeline/density",
+        params={"bin": bin_name, "start": JUNE_10, "end": JUNE_10 + DAY},
+        headers={"accept": "application/json"},
+    ).json()
+    assert view["bins"], "the June day has bars at every zoom"
+    for bar in view["bins"]:
+        opened = surfaced.get(f"/g?{bar['qs']}")
+        assert opened.status_code == 200, opened.text
+        total = int(re.search(r'data-total="(\d+)"', opened.text).group(1))
+        assert total == bar["pictures"], (
+            f"{bin_name} bar at {bar['at']}: bar says {bar['pictures']}, door opens {total}"
+        )
