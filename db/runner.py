@@ -880,15 +880,17 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
         told.phase("loading-captioner", model=key[1])
         try:
             captioner = captions_module.captioner_for(key[0], key[1], provision=True)
-        except LookupError as why:
+        except (LookupError, OSError, ValueError) as why:
             # Held, so every item of this job fails by the same name at
-            # once instead of re-attempting a download per picture.
+            # once instead of re-attempting a download per picture --
+            # OSError is what from_pretrained raises for a repository that
+            # is not there (transformers utils/hub.py), an item failure too.
             _CAPTIONERS[key] = why
             _logger.exception("annotate: no captioner for caption_model=%s", key[1])
             raise
         _CAPTIONERS[key] = captioner
         _logger.info("annotate: captioner %s %s (models_dir=%s)", captioner.model_id, captioner.model_version, key[0])
-    if isinstance(captioner, LookupError):
+    if isinstance(captioner, Exception):
         raise captioner
     kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     path = detect.path_of(conn, file_id)

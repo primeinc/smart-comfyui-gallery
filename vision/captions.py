@@ -19,7 +19,8 @@ from vision.weights import Unprovisioned, hub_cached
 #: The default `caption_model` setting: BLIP base, captioning head, BSD-3.
 MODEL = "Salesforce/blip-image-captioning-base"
 REVISION = "main"
-#: Words a caption may run to; BLIP captions are one sentence.
+#: Tokens a caption may run to (generate's max_new_tokens); BLIP
+#: captions are one sentence.
 MOST_TOKENS = 40
 _WEIGHTS = ("model.safetensors", "pytorch_model.bin")
 _SNAPSHOT_FILES = ("config.json", "preprocessor_config.json", "tokenizer_config.json", "vocab.txt")

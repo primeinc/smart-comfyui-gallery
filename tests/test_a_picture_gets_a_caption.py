@@ -162,6 +162,27 @@ def test_a_refused_captioner_is_held_so_every_item_fails_by_name(tmp_path, monke
     assert len(tried) == 1
 
 
+def test_a_repository_that_is_not_there_is_held_like_any_refusal(tmp_path, monkeypatch):
+    """from_pretrained raises OSError for a missing or gated repository
+    (transformers utils/hub.py); the job holds that too, so 22k items
+    fail by one sentence instead of attempting 22k downloads."""
+    conn = fresh_schema()
+    file_id = _one_picture(conn, tmp_path / "lib")
+    tried: list = []
+
+    def gone(*a, **k):
+        tried.append(1)
+        raise OSError("Salesforce/nope is not a local folder and is not a valid model identifier")
+
+    monkeypatch.setattr(captions, "captioner_for", gone)
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    payload = {"models_dir": "M", "model": "Salesforce/nope"}
+    for _ in range(3):
+        with pytest.raises(OSError, match="not a valid model identifier"):
+            runner._annotate_item(conn, file_id, payload, 0.0)
+    assert len(tried) == 1
+
+
 def test_serving_never_downloads_the_captioner(monkeypatch):
     monkeypatch.setattr(weights, "hub_cached", lambda *a, **k: None)
     with pytest.raises(weights.Unprovisioned, match="run /jobs/annotate"):

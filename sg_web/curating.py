@@ -219,8 +219,10 @@ def bulk_place(
 
     def write(conn, ids):
         now = time.time()
-        parent = places.named(conn, data.within, data.within_kind, now) if data.within else None
-        place_id = places.named(conn, data.name, data.kind, now, within=parent) if data.name is not None else None
+        place_id = None
+        if data.name is not None:
+            parent = places.named(conn, data.within, data.within_kind, now) if data.within else None
+            place_id = places.named(conn, data.name, data.kind, now, within=parent)
         for file_id in ids:
             authored.set_place(conn, file_id, state.actor_id, place_id, now)
             context.rebuild_one(conn, file_id, now)

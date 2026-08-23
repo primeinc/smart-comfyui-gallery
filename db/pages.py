@@ -875,7 +875,10 @@ TIMELINE_EVENTS = _TIMELINE_EVENTS_HEAD + _TIMELINE_EVENTS_TAIL
 #: A session is in scope when one of its members is: the scope's
 #: conjunct, over that member as `f`.
 _SESSION_MEMBER_IN_SCOPE = (
-    " AND EXISTS (SELECT 1 FROM derived_event_file ef JOIN file f ON f.id = ef.file_id WHERE ef.event_id = e.id",
+    (
+        " AND EXISTS (SELECT 1 FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+        " AND f.missing_since IS NULL WHERE ef.event_id = e.id"
+    ),
     ")",
 )
 
@@ -995,7 +998,8 @@ TIMELINE_EXTENT = (
 #: to those with a member in it.
 _TIMELINE_SESSIONS_HEAD = (
     "SELECT e.id, e.kind, e.local_start, e.local_end, e.instant_start, e.instant_end,"
-    " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures,"
+    " (SELECT count(*) FROM derived_event_file ef JOIN file f ON f.id = ef.file_id AND f.missing_since IS NULL"
+    "   WHERE ef.event_id = e.id) AS pictures,"
     " (SELECT s.id FROM story_snapshot s WHERE s.member_hash = e.member_hash"
     "   AND s.event_kind = e.kind AND s.grouper = r.grouper ORDER BY s.id DESC LIMIT 1),"
     " (SELECT sr.id FROM story_snapshot s JOIN story_plan sp ON sp.snapshot_id = s.id"
@@ -1003,7 +1007,8 @@ _TIMELINE_SESSIONS_HEAD = (
     "   AND s.event_kind = e.kind AND s.grouper = r.grouper"
     "   ORDER BY sr.id DESC LIMIT 1),"
     " e.place_id, p.name, pe.slug,"
-    " (SELECT count(*) FROM derived_event_file ef JOIN file f ON f.id = ef.file_id WHERE ef.event_id = e.id"
+    " (SELECT count(*) FROM derived_event_file ef JOIN file f ON f.id = ef.file_id AND f.missing_since IS NULL"
+    "   WHERE ef.event_id = e.id"
 )
 _TIMELINE_SESSIONS_MIDDLE = (
     ") AS here"
@@ -1101,9 +1106,10 @@ def session_samples(conn, event_id: int) -> list[str]:
     return [row[1] for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))]
 
 
-def timeline_coverage(conn) -> tuple[int, int, int]:
-    """(interpreted present files, present files, contested contexts)."""
-    row = conn.execute(TIMELINE_COVERAGE, (context.POLICY_VERSION,)).fetchone()
+def timeline_coverage(conn, scope: tuple[str, list] = ("", [])) -> tuple[int, int, int]:
+    """(interpreted present files, present files, contested contexts) --
+    of the scope, when the surface has one."""
+    row = conn.execute(TIMELINE_COVERAGE + scope[0], (context.POLICY_VERSION, *scope[1])).fetchone()
     return (int(row[0] or 0), int(row[1] or 0), int(row[2] or 0))
 
 

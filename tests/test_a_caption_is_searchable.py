@@ -146,3 +146,16 @@ def test_the_configured_models_caption_is_the_one_a_cell_says(tmp_path, asks):
     assert derived.said_first(conn, [ids["a"]]) == {ids["a"]: "first by name"}
     assert derived.said_first(conn, [ids["a"]], prefer="zzz/blip") == {ids["a"]: "the configured one"}
     assert derived.said_first(conn, [ids["a"]], prefer="nobody/spoke") == {ids["a"]: "first by name"}
+
+
+def test_a_caption_of_older_bytes_ranks_nothing(tmp_path, asks):
+    """The staleness contract the sweep keeps, retrieval keeps too: a
+    file replaced on disk does not answer for the picture it used to be."""
+    conn, ids, clip = _shelf(tmp_path, {"a": 0.9, "b": 0.8})
+    sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (ids["b"],)).fetchone()[0]
+    derived.annotate(conn, ids["b"], "caption", "a red bicycle", "m", "1", sha, NOW)
+    assert [f for f, _ in derived.rank_by_annotation(conn, "bicycle", 10)] == [ids["b"]]
+    conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("e" * 64, ids["b"]))
+    assert derived.rank_by_annotation(conn, "bicycle", 10) == []
+    found = retrieval.query(conn, str(tmp_path), "bicycle", 3, NOW)
+    assert found["contributors"] == [clip], "the caption is of bytes that are gone; it entered no fusion"

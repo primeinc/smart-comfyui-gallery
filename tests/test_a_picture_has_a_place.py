@@ -134,6 +134,10 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         _drain(client)
         assert client.get(f"/i/{a}", headers=AS_MACHINE).json()["where"]["basis"] == "authored"
 
+        # a withdrawal that names a "within" mints nothing
+        before_places = len(client.get("/places", headers=AS_MACHINE).json())
+        assert client.post(f"/i/{c}/place", json={"name": None, "within": "Atlantis"}).status_code in (200, 201)
+        assert len(client.get("/places", headers=AS_MACHINE).json()) == before_places
         # withdrawn: nowhere said again; a bad kind is refused
         gone = client.post(f"/i/{a}/place", json={"name": None})
         assert gone.status_code in (200, 201)
@@ -169,12 +173,34 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
         assert len(sessions) == 1, sessions
         assert sessions[0]["place"]["name"] == "Lisbon"
         assert sessions[0]["place"]["qs"].startswith("f=place.id%3Aeq%3A")
+        lisbon = sessions[0]["place"]["id"]
+        narrowed = client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()
+        assert "f=place.id%3Aeq%3A" in narrowed["sessions"][0]["place"]["qs"], "place door carries the scope"
+        assert "kind=image" in narrowed["sessions"][0]["place"]["qs"]
+        assert narrowed["coverage"]["present"] == 3, "coverage counts the scope"
+        assert (
+            narrowed["coverage"]["contested_qs"].endswith("kind=image")
+            or "kind=image" in narrowed["coverage"]["contested_qs"]
+        )
+        assert lisbon
 
         client.post(f"/i/{c}/place", json={"name": "Porto", "kind": "city"})
         client.post("/jobs/events")
         _drain(client)
         sessions = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
         assert sessions[0]["place"] is None, "two places: the session is not in one"
+        # a member gone missing leaves the card's count and its door agreeing
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            gone = conn.execute("SELECT id FROM file WHERE name LIKE 'Screenshot 2023-06-10 at 14.10%'").fetchone()[0]
+            conn.execute("UPDATE file SET missing_since = 1.0 WHERE id = ?", (gone,))
+            conn.commit()
+        finally:
+            connect.close(conn)
+        [session] = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
+        assert session["pictures"] == 2 == session["in_scope"]
+        door = client.get(f"/g?{session['qs']}", headers={"accept": "text/html"}).text
+        assert 'data-total="2"' in door
 
 
 def test_the_lightbox_says_where_too(tmp_path):

@@ -153,13 +153,13 @@ SESSIONS_MOST = 200
 SESSIONS_SAMPLED_MOST = 60
 
 
-def _coverage(conn) -> dict:
-    have, present, contested = pages.timeline_coverage(conn)
+def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.GalleryQuery = WHOLE) -> dict:
+    have, present, contested = pages.timeline_coverage(conn, scope)
     return {
         "interpreted": have,
         "present": present,
         "contested": contested,
-        "contested_qs": _door(WHOLE, facets.facet("context.disputed", "eq", "1")),
+        "contested_qs": _door(question, facets.facet("context.disputed", "eq", "1")),
         "policy_version": context.POLICY_VERSION,
         "complete": have == present,
     }
@@ -190,7 +190,7 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
                 "id": place_id,
                 "name": place_name,
                 "slug": place_slug,
-                "qs": _door(WHOLE, facets.facet("place.id", "eq", str(place_id))),
+                "qs": _door(scope, facets.facet("place.id", "eq", str(place_id))),
             }
             if place_id is not None
             else None
@@ -245,7 +245,7 @@ def density(
     conn = connect.connect(state.db_path, read_only=True)
     try:
         scope, held = _scope(conn, state, asked)
-        coverage = _coverage(conn)
+        coverage = _coverage(conn, scope, held)
         extent = pages.timeline_extent(conn, scope)
         if extent is None or extent[0] is None:
             return Response(
@@ -324,7 +324,7 @@ def timeline(
     conn = connect.connect(state.db_path, read_only=True)
     try:
         scope, held = _scope(conn, state, asked)
-        coverage = _coverage(conn)
+        coverage = _coverage(conn, scope, held)
         months = [
             {"month": month, "pictures": pictures, "qs": _month_door(month, held)}
             for month, pictures in pages.timeline_months(conn, scope)

@@ -97,8 +97,10 @@ def set_place(state: State, slug: str, data: DesiredPlace) -> Response:
         file_id = _resolved(conn, "file", slug, "/i")
         now = time.time()
         try:
-            parent = places.named(conn, data.within, data.within_kind, now) if data.within else None
-            place_id = places.named(conn, data.name, data.kind, now, within=parent) if data.name is not None else None
+            place_id = None
+            if data.name is not None:
+                parent = places.named(conn, data.within, data.within_kind, now) if data.within else None
+                place_id = places.named(conn, data.name, data.kind, now, within=parent)
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         authored.set_place(conn, file_id, state.actor_id, place_id, now)

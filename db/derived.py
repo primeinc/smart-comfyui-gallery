@@ -1403,7 +1403,7 @@ def rank_by_annotation(conn, phrase: str, limit: int, allowed=None) -> list[tupl
     rows = conn.execute(
         "SELECT a.file_id, bm25(annotation_fts) FROM annotation_fts"
         "  JOIN derived_annotation a ON a.id = annotation_fts.rowid"
-        "  JOIN file f ON f.id = a.file_id"
+        "  JOIN file f ON f.id = a.file_id AND a.source_sha256 = f.content_sha256"
         " WHERE annotation_fts MATCH ? AND f.missing_since IS NULL"
         " ORDER BY bm25(annotation_fts), a.file_id",
         (match,),
