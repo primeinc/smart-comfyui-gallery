@@ -1014,6 +1014,8 @@ def test_a_person_page_says_when_they_were_seen(faces):
     html = client.get("/p/ana", headers={"accept": "text/html"}).text
     assert "data-person-sessions" in html
     assert f'data-person-session="{session["id"]}"' in html
+    assert session["timeline"].startswith("/timeline?bin=hour&start=")
+    assert "data-person-session-tell" in html, "no story yet: the page opens the session's window on the timeline"
 
 
 def test_search_refuses_rows_of_another_width_instead_of_crashing(faces, monkeypatch):

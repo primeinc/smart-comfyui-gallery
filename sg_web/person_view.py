@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import time
+import urllib.parse
 
 from litestar import Request, get, post
 from litestar.datastructures import State
@@ -78,6 +79,16 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                         resultset.parse(person=slug, facets=[f"event.id:eq:{event_id}"], sort="moment")
                     ),
                     "story": f"/stories/renders/{render_id}" if render_id is not None else None,
+                    # the session's hour window on the timeline, where its
+                    # story is told; None while the session has no time
+                    "timeline": (
+                        "/timeline?"
+                        + urllib.parse.urlencode(
+                            {"bin": "hour", "start": int(start // 3600) * 3600, "end": int(end // 3600) * 3600 + 3600}
+                        )
+                        if start is not None and end is not None
+                        else None
+                    ),
                 }
                 for event_id, kind, start, end, theirs, pictures, render_id in pages.person_sessions(conn, person_id)
             ],

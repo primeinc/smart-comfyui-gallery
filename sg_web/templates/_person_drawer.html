@@ -17,7 +17,7 @@
   {% if person.sessions %}
   <ul class="drawer-sessions" data-drawer-sessions>
     {% for s in person.sessions[:3] %}
-    <li><a href="/g?{{ s.qs }}">{{ s.kind.replace("_", " ") }}</a> · <time data-epoch="{{ s.start }}" data-domain="{{ s.domain }}">{{ s.start }}</time> · {{ s.theirs }} of {{ s.pictures }}</li>
+    <li><a href="/g?{{ s.qs }}">{{ s.kind.replace("_", " ") }}</a> · <time data-epoch="{{ s.start }}" data-domain="{{ s.domain }}">{{ s.start }}</time> · {{ s.theirs }} of {{ s.pictures }}{% if s.story %} · <a href="{{ s.story }}">story</a>{% elif s.timeline %} · <a href="{{ s.timeline }}">timeline</a>{% endif %}</li>
     {% endfor %}
     {% if person.sessions | length > 3 %}<li><a href="/p/{{ person.slug }}">all {{ person.sessions | length }} sessions</a></li>{% endif %}
   </ul>
