@@ -89,7 +89,7 @@ def view(
 
 
 def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str, told) -> dict:
-    name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields, kind = told
+    name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields, kind, read = told
     back = f"/g?{asked}" if asked else "/g"
     if found is not None and found["page"] > 1:
         back += ("&" if asked else "?") + f"page={found['page']}"
@@ -111,6 +111,9 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
         "duration": duration,
         "asked_for_width": asked_w,
         "checkpoint": checkpoint,
+        #: whether the metadata here was read from the CURRENT bytes:
+        #: 'current', 'stale' (a scan recorded new bytes since) or 'never'
+        "read": read,
         "loras": pages.file_loras(conn, file_id),
         "prompt": prompt,
         "seed": seed,

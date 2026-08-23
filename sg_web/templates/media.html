@@ -49,6 +49,7 @@
         {% if item.checkpoint %}<dt>checkpoint</dt><dd>{{ item.checkpoint }}</dd>{% endif %}
         {% if item.seed is not none %}<dt>seed</dt><dd>{{ item.seed }}</dd>{% endif %}
         {% if item.loras %}<dt>loras</dt><dd>{{ item.loras|join(", ") }}</dd>{% endif %}
+        <dt>metadata</dt><dd data-read="{{ item.read }}">{% if item.read == "current" %}read from these bytes{% elif item.read == "stale" %}<span class="warn">read from older bytes</span> — <a href="/operations">run the ingest job</a>{% else %}not read yet — <a href="/operations">run the ingest job</a>{% endif %}</dd>
       </dl>
       {% if item.prompt %}<p class="detail-prompt">{{ item.prompt }}</p>{% endif %}
       <h2>when</h2>

@@ -80,7 +80,10 @@ ONE_PICTURE = """
         WHERE gp.file_id = f.id AND gp.role = 'effective') AS prompt,
       (SELECT g.seed FROM generation g WHERE g.file_id = f.id) AS seed,
       (SELECT count(*) FROM file_param WHERE file_id = f.id) AS fields,
-      f.kind
+      f.kind,
+      CASE WHEN f.ingested_sha256 IS NULL THEN 'never'
+           WHEN f.ingested_sha256 = f.content_sha256 THEN 'current'
+           ELSE 'stale' END AS read_state
     FROM file f JOIN folder fo ON fo.id = f.folder_id
    WHERE f.id = ?
 """
