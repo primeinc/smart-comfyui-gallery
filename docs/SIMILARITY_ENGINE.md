@@ -11,7 +11,9 @@ decision can be re-taken when the inputs change.
 
 Probe environment: this application's venv (Python 3.13, sqlite 3.47.1),
 vec1 trunk 2026-08-20 compiled `gcc -O3 -DNDEBUG -mavx2 -mfma` per its
-own docs, vendored CUDA FAISS 1.15.0, 512-d unit vectors in planted
+own docs, the vendored CUDA FAISS (built from faiss v1.15.0,
+docs/FAISS_GPU_WINDOWS.md; `just faiss-verify` prints the build the
+process loads), 512-d unit vectors in planted
 clusters (the shape face embeddings have). Reproduce with
 `benchmarks/vec1_probe.py` (it prints the build command).
 
@@ -76,7 +78,7 @@ tests/test_faiss_index.py) at 1x plus a sidecar.
 ## The decision, stated as invariants
 
 - Durable truth: SQLite rows (BLOB representations + the
-  `derived_similarity_space` identity row). Already transactional;
+  `similarity_space` identity row). Already transactional;
   that was never the gap.
 - Serving: the one resident FAISS layer, CPU canonical + optional GPU
   clone, for every space -- float and binary alike.

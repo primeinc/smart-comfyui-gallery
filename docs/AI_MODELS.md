@@ -2,7 +2,8 @@
 
 Every model **runtime** is a core dependency (`pyproject.toml`
 `[project.dependencies]`; `uv sync` or `pip install -r requirements.txt`
-installs all of it -- there are no optional dependency groups). Model
+installs all of it; the only group is `dev` -- tests, linters -- which
+`uv sync` installs and `requirements.txt` does not). Model
 **weights** are data, not packages: they live under the run's models
 directory and arrive only when a job that needs them runs. Nothing on a
 serving path ever downloads -- `/search` resolves the exact local
@@ -30,10 +31,11 @@ own layout, `<models_dir>/insightface/models/antelopev2/`.
 | Captions (a picture, a video's poster and each sampled moment) | BLIP `Salesforce/blip-image-captioning-base` (the `caption_model` setting) | BSD-3 | Hugging Face Hub | `POST /jobs/annotate` |
 | Face, permissive stack | YuNet 2023mar + SFace 2021dec via OpenCV | Apache-2.0 | Hub repos `opencv/face_detection_yunet`, `opencv/face_recognition_sface` | `POST /jobs/faces` (`face_backend` opencv, or auto without the insightface runtime) |
 
-No URL and no checksum lives in this repository: each registry's own
-client fetches and verifies.
 | Perceptual identity | pHash64 + dHash64 (`imagehash`) | BSD | no weights |
 | Similarity index | FAISS -- vendored CUDA build in `vendor/`, `faiss-cpu` wheel otherwise | MIT | no weights |
+
+No URL and no checksum lives in this repository: each registry's own
+client fetches and verifies.
 
 The `semantic_model` setting is a comma list of
 `[provider:]<model>/<checkpoint>` entries; every entry is its own
@@ -52,7 +54,8 @@ provenance, the embed job fills the new one fresh.
 - **Runtimes install, weights arrive.** Nothing installs packages at
   runtime; nothing bundles weights in the repository.
 - **Device choice is a setting.** `faiss_gpu` (on/off) picks the index
-  device at manager construction; `face_backend` picks the face
+  device when the manager is constructed and faiss is first imported --
+  a change applies from the next start (db/settings.py); `face_backend` picks the face
   pipeline and `ort_providers` (`auto`/`cpu`/...) the ONNX Runtime
   execution providers for its recognition session, both read into the
   job payload at submit; the semantic encoders use CUDA when torch sees

@@ -20,23 +20,29 @@ uv run python -m sg_web --home D:/runs/two --port 8000
 A run lives wholly in its home directory (`~/.smartgallery` by default):
 the database, model weights, the thumbnail cache. Delete the directory,
 delete the run. Media is never under it -- libraries are roots you
-register.
+register. A home with no database gets one from `db/schema.sql` on
+first start (`db.connect.create`).
 
 First library:
 
 1. Open `/operations`, add a root, press **Scan**.
-2. Press the sweeps you want: **ingest** (metadata), **hash** /
+2. Press the sweeps you want: **ingest** (metadata), **phash** /
    **dupes**, **faces** then **cluster**, **embed** (semantic search,
    downloads weights once), **annotate** (a caption per picture and per sampled moment of a video,
    searchable and shown on its page; downloads weights once),
-   **context** then **events** (the timeline and stories).
+   **context** then **events** (the timeline and stories). Also there:
+   **verify** (every present file's bytes against its hash), **thumbs**
+   (every missing grid thumb and preview), **embed_prompts** (every
+   prompt's vector per space -- the substrate stories and
+   `/prompts/N/neighbours` read).
 
 Every sweep is a job row; the activity surface on every page shows it
 live over `/ws/jobs`. Nothing expensive runs by itself. The ingest, phash,
 faces, embed, annotate and context sweeps queue only what is still
 missing -- a file already read, fingerprinted, looked at for faces,
 embedded, captioned or interpreted for its current bytes is not an item
-again -- and answer 204 when nothing is left; `?everything=true` on the route (or
+again -- and answer 204 when nothing is left (embed, one job per
+space, answers an empty list instead); `?everything=true` on the route (or
 `{"everything": true}` in the faces and annotate bodies), or the
 console's **again** button beside the sweep, redoes all of it.
 
@@ -58,9 +64,26 @@ console's **again** button beside the sweep, redoes all of it.
 /operations         the console: worker, queue, every job's row and ledger, live; roots, sweeps, settings
 ```
 
-Every address answers JSON to a machine, a fragment to htmx, and a page
-to a browser (`Vary: Accept, HX-Request`). A renamed thing 301s from
+Every entity address (`/g`, `/i`, `/p`, `/t`, `/f`, `/m /l /w`,
+`/timeline`, `/stories`, `/operations`) answers JSON to a machine, a
+fragment to htmx, and a page to a browser (`Vary: Accept, HX-Request`);
+the index and job routes answer JSON only. A renamed thing 301s from
 its old slug forever.
+
+Writes, bytes and machine reads:
+
+```
+POST /i/<slug>/{favorite,rating,place,collections/<t>}      one picture's authored state
+POST /g/selection/{favorite,rating,place,collections/<t>}   a selection, proved against the answer it was made on (409 on a race)
+POST /albums  POST /albums/smart  PATCH /t/<slug>  PUT /t/<slug>/rule  POST /t/<slug>/convert  POST /t/<slug>/{add,remove}
+POST /jobs/<kind>  POST /jobs/N/cancel       GET /jobs  /jobs/N
+POST /stories/snapshots  /stories/plans  /stories/renders    GET the same, and /N
+POST /settings/<key>  POST /roots  POST /roots/N/scan        GET /settings  /roots
+/media/<slug>  /thumb/<slug>  /preview/<slug>  /avatar/<slug>   bytes (GET and HEAD, Range)
+/g/grid  /g/peek  /g/locate/<slug>  /timeline/density          the gallery's and the timeline's own reads
+/health  /models  /loras  /workflows  /clusterings  /ways  /dupes  /prompts/N/neighbours
+/operations/{overview,job/N,job/N/items,events,events/before}  the console's reads
+```
 
 ## Settings
 
@@ -68,7 +91,7 @@ Rows in the `setting` table, changed over `POST /settings/<key>` while
 the app runs; the vocabulary is `db/settings.py REGISTRY`
 (`models_dir`, `semantic_model`, `worker`, `faiss_gpu`,
 `dupe_threshold`, `dupe_dhash_verify`, `thumbnail_precache`,
-`ort_providers`, `caption_model`). No environment variables.
+`ort_providers`, `face_backend`, `caption_model`). No environment variables.
 
 ## Develop
 
@@ -77,8 +100,11 @@ just check          ruff, sglint, format, repo hygiene -- no tests
 just test           the fast tests, one module per worker (~20s)
 just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
 just check-all      the gate plus both test lanes
+just audit          sglint code rules, `--repo` hygiene, the linter self-tests -- seconds
 just types          pyright, on request
 just serve          the app
+just bench          faces-validate, browser-report: the measured evidence behind the docs
+just faiss-verify   which faiss build the process loads
 ```
 
 `sglint` is this repository's own linter for rules no stock tool holds:

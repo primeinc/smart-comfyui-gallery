@@ -20,7 +20,8 @@ RTX 3070 Ti (sm_86) + RTX 5060 Ti (sm_120), faiss commit `0f0f728`.
 
 ## Configure
 
-Under `vcvars64.bat`, with `<SRC>` a faiss checkout:
+Under `vcvars64.bat`, with `<SRC>` a faiss checkout at tag `v1.15.0`
+(the version `uv.lock` pins for `faiss-cpu`):
 
 ```
 cmake -S <SRC> -B build -G Ninja

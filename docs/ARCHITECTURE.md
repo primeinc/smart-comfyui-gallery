@@ -6,7 +6,8 @@ runtime.
 
 ```
 sg_web/app.py        Litestar: routes, lifespan, the worker thread, ChannelsPlugin
-sg_web/*_view.py     one Module per address: assemble a view, negotiate its shape
+sg_web/*_view.py, gallery.py, *_authoring.py, curating.py
+                     one Module per address: assemble a view, negotiate its shape; app.py keeps the machine routes
 sg_web/presenting.py the one negotiation: JSON / htmx fragment / full page
 sg_web/templates/    Jinja: base.html is the shell; pages extend it; _*.html are fragments
 sg_web/activity.py   the activity surface: persisted jobs rendered, deltas as oob fragments
@@ -46,8 +47,9 @@ Every response carries `Vary: Accept, HX-Request`.
 folders, timeline, stories, operations) and mounts the activity surface through the
 `activity()` Jinja global installed by `sg_web/activity.py` on the
 application's engine (`engine_callback`). Story and evolution pages
-render through `story_view._story_env` (StrictUndefined) and pass
-`request` so the same shell works there.
+render through that same engine and `base.html`;
+`tests/test_the_shell_mounts_every_surface.py` forbids a second
+environment.
 
 ## Realtime
 
@@ -59,10 +61,11 @@ worker / submit  --publish-->  channel "jobs"  --/ws/jobs-->  subscriber
 ```
 
 `/ws/jobs` sends JSON: `{"type":"snapshot","jobs":[...]}` then
-`{"job","kind","state","done","total"}` per change. `/ws/jobs?as=html`
-sends the same feed rendered: `_activity_list.html` (oob replacement of
-`#activity-jobs`), then `_job.html` per delta -- appended when the
-connection has not shown the job, replaced by id otherwise. The htmx ws
+`{"job","kind","state","done","total","cancel_requested","derive"}`
+per change. `/ws/jobs?as=html` sends the same feed rendered:
+`_activity_list.html` (oob replacement of `#activity-jobs`), then per
+delta `_job_append.html` (oob `beforeend:#activity-jobs`) when the
+connection has not shown the job, `_job.html` by id otherwise. The htmx ws
 extension swaps them; no JavaScript holds job state.
 
 A submit announces its committed `queued` row (`submitting.submitted`);
@@ -91,7 +94,8 @@ operational control.
 A sweep is `POST /jobs/<kind>` or its console button; every sweep is a
 job row. The ingest, phash, faces, embed, annotate and context sweeps
 queue only what is missing and answer 204 (the console: "nothing to
-do") when nothing is; `everything` -- the console's "again" button --
+do") when nothing is -- embed, one job per space, answers an empty list
+instead; `everything` -- the console's "again" button --
 redoes all of it. The console shows beside each such button how many
 present files the sweep would still queue (`inspecting.coverage`),
 counted by the same predicate the sweep uses. Each reads its own record
@@ -206,7 +210,7 @@ the sessions touching the range (`db/pages.py TIMELINE_*`,
 `resultset.scope_of`: the same membership predicates the gallery walks,
 appended to every timeline statement (HEAD + conjunct + TAIL), and
 every door is that question plus a moment and the precision the bar
-counted (`context.granule`), so what is drawn is what opens. A session is a door, never a scope; a rule-defined collection
+counted (the `context.granule` facet, db/facets.py), so what is drawn is what opens. A session is a door, never a scope; a rule-defined collection
 scopes through its materialized membership (`f.id IN (...)`, the one
 engine) and refuses with why when its rule cannot be answered. A
 person's, a folder's and an album's page open their own timeline, and
