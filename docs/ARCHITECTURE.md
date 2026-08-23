@@ -192,8 +192,11 @@ derived_event  --freeze-->  story_snapshot  --plan-->  story_plan  --render-->  
 
 One planner per session kind -- `generation_history`, `capture_history`,
 `file_history` -- each reading only the evidence its kind carries; the
-plan grammar is versioned and frozen (`STORY_PLAN_V1..V5`), a stored
-document is judged by its own version forever. `story_renderers` words
+plan grammar is versioned and frozen (`STORY_PLAN_V1..V6`), a stored
+document is judged by its own version forever. v6 added `seen`: what a
+captioning model said about a phase's members, read from the captions
+the snapshot froze -- every planner emits it, the renderer quotes one
+sentence and names the models under the technical profile. `story_renderers` words
 every claim kind through a closed registry; a render cites what
 supports it and `violations()` proves the chain on every read. The
 timeline offers the whole chain behind one button per session.
@@ -209,8 +212,9 @@ models kept side by side. `annotation_fts` indexes the text; retrieval
 fuses a bm25 ranking named `captions` with the semantic spaces once any
 caption exists (`derived.rank_by_annotation`). Surfaces: the media page
 and lightbox say what was said and by which model; the grid says it on
-hover; a story page shows a hero's current caption beside the frozen
-name, labelled as today's and never part of the snapshot.
+hover; a snapshot freezes every caption its members carry, the plan's
+`seen` claim cites them, and a story page also shows a hero's CURRENT
+caption beside the frozen name, labelled as today's.
 
 ## Coverage
 
