@@ -78,7 +78,9 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     # facets is vocabulary, not a query path: it parses and spells the
     # closed registry and never touches a connection
     "sg_web/gallery.py": frozenset({"connect", "facets", "naming", "resultset", "settings"}),
-    "sg_web/media_authored.py": frozenset({"authored", "collections", "connect", "naming", "pages"}),
+    "sg_web/media_authored.py": frozenset(
+        {"authored", "collections", "connect", "context", "naming", "pages", "places"}
+    ),
 }
 
 #: Calls an adapter must still make -- the delegation it exists for.
@@ -94,7 +96,7 @@ ADAPTER_MUST_CALL: dict[str, frozenset[str]] = {
             "view",
         }
     ),
-    "sg_web/media_authored.py": frozenset({"set_favorite", "set_rating", "set_membership", "media_state"}),
+    "sg_web/media_authored.py": frozenset({"set_favorite", "set_rating", "set_membership", "set_place", "media_state"}),
 }
 
 #: Qualified calls (`module.attr`) a module must make.

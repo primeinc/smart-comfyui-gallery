@@ -120,6 +120,7 @@ _KEYS = {
     "event.id": "session",
     "context.origin": "origin",
     "context.disputed": "disputed",
+    "place.id": "place",
 }
 
 

@@ -2424,6 +2424,24 @@ def _the_ingest_record(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE file ADD COLUMN ingested_sha256 TEXT")
 
 
+@step(27)
+def _authored_places(conn: sqlite3.Connection) -> None:
+    """v27 -> v28: `file_place`, a person's word on where a picture
+    happened (db/authored.py set_place); the context ladder reads it as
+    the 'authored' location basis. DDL is schema.sql's text VERBATIM.
+    """
+    conn.execute(
+        """CREATE TABLE file_place (
+    file_id     INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    place_id    INTEGER NOT NULL REFERENCES place(id) ON DELETE RESTRICT,
+    user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    asserted_at REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute("CREATE INDEX file_place_place ON file_place(place_id)")
+    conn.execute("CREATE INDEX file_place_user  ON file_place(user_id)")
+
+
 def optimize(conn: sqlite3.Connection) -> None:
     """Let SQLite refresh the statistics the planner runs on.
 

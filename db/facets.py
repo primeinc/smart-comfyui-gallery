@@ -106,6 +106,13 @@ REGISTRY: dict[str, _Spec] = {
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND (mc.time_conflicts IS NOT NULL) {op} ?)",
     ),
+    #: Where it happened, by place entity id: the door a place name opens.
+    "place.id": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
+        " AND mc.policy_version = {policy} AND mc.place_id {op} ?)",
+    ),
     #: A session's door: the members of one CURRENT event -- a run proven
     #: over this interpretation, so a stale hypothesis answers nothing.
     #: The timeline links here instead of growing a membership engine.

@@ -18,6 +18,19 @@ from .scan import mint
 KINDS = ("country", "region", "island", "county", "city", "locality", "neighborhood", "poi")
 
 
+def named(conn, name: str, kind: str, now: float) -> int:
+    """The place called `name` of this kind, minted on first mention:
+    two pictures said to be in Lisbon are in ONE Lisbon, by name
+    (case-insensitive) and kind, never two rows."""
+    if kind not in KINDS:
+        raise ValueError(f"a place kind is one of {', '.join(KINDS)}, not {kind!r}")
+    spelled = (name or "").strip()
+    if not spelled:
+        raise ValueError("a place's name is a non-empty string")
+    row = conn.execute("SELECT id FROM place WHERE name = ? COLLATE NOCASE AND kind = ?", (spelled, kind)).fetchone()
+    return int(row[0]) if row else place(conn, spelled, kind, now)
+
+
 def place(
     conn,
     name: str,

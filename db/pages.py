@@ -1071,6 +1071,27 @@ def session_people(conn, event_id: int, limit: int = SESSION_PEOPLE_MOST):
     return conn.execute(SESSION_PEOPLE, (event_id, limit)).fetchall()
 
 
+#: Where one picture happened, as the current interpretation holds it:
+#: the place entity and on what basis. No row while uninterpreted or
+#: placeless.
+MEDIA_PLACE = (
+    "SELECT p.id, e.slug, p.name, p.kind, mc.location_basis FROM derived_media_context mc"
+    "  JOIN place p ON p.id = mc.place_id JOIN entity e ON e.id = p.id"
+    " WHERE mc.file_id = ? AND mc.policy_version = ?"
+)
+
+#: Every place anyone has named, for the picker. Bounded.
+PLACES_NAMED = "SELECT p.name, p.kind FROM place p ORDER BY p.name COLLATE NOCASE LIMIT ?"
+
+
+def media_place(conn, file_id: int):
+    return conn.execute(MEDIA_PLACE, (file_id, context.POLICY_VERSION)).fetchone()
+
+
+def places_named(conn, limit: int = 200):
+    return conn.execute(PLACES_NAMED, (limit,)).fetchall()
+
+
 # --- one picture's faces ----------------------------------------------------
 
 #: Who the primary clustering says is in one file: each person's address,

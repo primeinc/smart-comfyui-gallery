@@ -21,6 +21,30 @@
     });
   }
 
+  // where it happened: one POST of desired state, then the page re-reads
+  const placeForm = document.querySelector("[data-place-form]");
+  if (placeForm) {
+    const say = async (body) => {
+      const answer = await fetch(`/i/${placeForm.dataset.slug}/place`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!answer.ok) {
+        window.alert((await answer.json()).detail || "the place could not be recorded");
+        return;
+      }
+      window.location.reload();
+    };
+    placeForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = placeForm.querySelector('[name="name"]').value.trim();
+      if (!name) return;
+      say({ name, kind: placeForm.querySelector('[name="kind"]').value });
+    });
+    placeForm.querySelector("[data-place-clear]")?.addEventListener("click", () => say({ name: null }));
+  }
+
   const back = document.querySelector("[data-return]");
   if (!back) return;
   document.addEventListener("keydown", (event) => {

@@ -505,6 +505,7 @@ def v1_database(tmp_path):
     conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
     conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
+    conn.execute("DROP TABLE file_place")  # v28's addition; its indexes go with it
     conn.execute("DROP TABLE derived_dupe_group")  # v3's addition; indexes go with it
     for trigger in (
         "collection_file_not_into_smart",
@@ -863,6 +864,7 @@ def v3_database_with_embeddings(tmp_path):
     conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
     conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
+    conn.execute("DROP TABLE file_place")  # v28's addition; its indexes go with it
     _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted: a real v3 file
     root = int(
@@ -953,7 +955,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == list(range(4, 28))
+    assert migrate.migrate(path) == list(range(4, 29))
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -1050,7 +1052,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27]
+    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27, 28]
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
@@ -1089,10 +1091,11 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     derived.record_faces(conn, file_id, "m", "1", "a" * 64, NOW, faces)
     conn.execute("DROP TABLE derived_face_scan")
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
+    conn.execute("DROP TABLE file_place")
     conn.execute("PRAGMA user_version = 25")
     conn.close()
 
-    assert migrate.migrate(path) == [26, 27]
+    assert migrate.migrate(path) == [26, 27, 28]
     assert build.drift(path) == []
     ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:

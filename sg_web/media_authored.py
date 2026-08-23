@@ -26,7 +26,8 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response
 
-from db import authored, collections, connect, naming, pages
+from db import authored, collections, connect, context, naming, pages, places
+from sg_web import media_view
 from sg_web.presenting import VARIES
 
 
@@ -70,6 +71,39 @@ def set_favorite(state: State, slug: str, data: DesiredFlag) -> Response:
         authored.set_favorite(conn, file_id, state.actor_id, data.value, time.time())
         conn.commit()
         return _answered(conn, file_id, state.actor_id)
+    finally:
+        connect.close(conn)
+
+
+@dataclasses.dataclass
+class DesiredPlace:
+    """The body of POST /i/{slug}/place: a place by name and kind, or a
+    null name to withdraw the claim."""
+
+    name: str | None = None
+    kind: str = "locality"
+
+
+@post("/i/{slug:str}/place", sync_to_thread=True)
+def set_place(state: State, slug: str, data: DesiredPlace) -> Response:
+    """Say where this picture happened. The place is found or minted by
+    name and kind, the claim is authored desired state, and the file's
+    context is re-interpreted at once so every page reads it."""
+    conn = connect.connect(state.db_path)
+    try:
+        file_id = _resolved(conn, "file", slug, "/i")
+        now = time.time()
+        try:
+            place_id = places.named(conn, data.name, data.kind, now) if data.name is not None else None
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        authored.set_place(conn, file_id, state.actor_id, place_id, now)
+        context.rebuild_one(conn, file_id, now)
+        conn.commit()
+        live = naming.entity_slug(conn, file_id)
+        return Response(
+            {"slug": live[1] if live else None, "where": media_view.where_of(conn, file_id)}, headers=VARIES
+        )
     finally:
         connect.close(conn)
 

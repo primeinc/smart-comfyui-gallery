@@ -155,6 +155,22 @@ def set_favorite(conn, file_id: int, user_id: int, value: bool, now: float) -> N
     set_favorite_many(conn, (file_id,), user_id, value, now)
 
 
+def set_place(conn, file_id: int, user_id: int, place_id: int | None, now: float) -> None:
+    """Where this picture happened, as desired state: one place per
+    file, replaced on a change of mind, None to withdraw. The context
+    is re-interpreted by the caller (db/context.py rebuild_one) so the
+    row reads through at once."""
+    if place_id is None:
+        conn.execute("DELETE FROM file_place WHERE file_id = ?", (file_id,))
+        return
+    conn.execute(
+        "INSERT INTO file_place(file_id, place_id, user_id, asserted_at) VALUES(?, ?, ?, ?)"
+        " ON CONFLICT(file_id) DO UPDATE SET place_id = excluded.place_id, user_id = excluded.user_id,"
+        " asserted_at = excluded.asserted_at",
+        (file_id, place_id, user_id, now),
+    )
+
+
 def set_rating(conn, file_id: int, user_id: int, value: int | None, now: float) -> None:
     """`None` clears; 1..5 sets. Validated in `_rating` so every caller
     gets the same refusal instead of a CHECK-constraint traceback."""

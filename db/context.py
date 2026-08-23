@@ -99,9 +99,10 @@ SELECT f.id, f.name, f.mtime, f.btime, f.folder_id,
   (SELECT value_text FROM file_param d WHERE d.file_id = f.id AND d.source = 'generation' AND d.key = 'date'),
   (SELECT value_text FROM file_param d WHERE d.file_id = f.id AND d.source = 'generation'
      AND d.key = 'generation_time'),
-  c.subsec_ms, c.body_serial, c.maker_tz_offset_min, f.duration
+  c.subsec_ms, c.body_serial, c.maker_tz_offset_min, f.duration, fp.place_id
 FROM file f
 LEFT JOIN capture c ON c.file_id = f.id
+LEFT JOIN file_place fp ON fp.file_id = f.id
 LEFT JOIN generation g ON g.file_id = f.id
 """
 
@@ -110,7 +111,7 @@ INSERT INTO derived_media_context(file_id, has_capture, has_generation, origin,
   local_at, instant_at, tz_offset_min, time_basis, time_certainty, time_supports,
   time_conflicts, time_precision, gps_lat, gps_lon, place_id, location_basis,
   location_certainty, policy_version, rebuilt_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _OCCUR_FILE = """
@@ -217,6 +218,7 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
         body_serial,
         maker_tz,
         duration,
+        said_place,
     ) in rows:
         has_capture, has_generation = int(captured_at is not None), int(tool is not None)
         origin = {(1, 1): "mixed", (1, 0): "captured", (0, 1): "generated"}.get(
@@ -287,8 +289,11 @@ def _interpret(conn, now: float, file_id: int | None = None) -> int:
                 *time,
                 lat,
                 lon,
-                "gps" if lat is not None else None,
-                1.0 if lat is not None else None,
+                said_place,
+                # a person's word is the place; GPS alone is coordinates
+                # with no identity (place_id stays NULL under it)
+                "authored" if said_place is not None else ("gps" if lat is not None else None),
+                1.0 if said_place is not None or lat is not None else None,
                 POLICY_VERSION,
                 now,
             ),

@@ -173,6 +173,19 @@ day the runs regroup -- save its day or moment window instead. The
 collection's page names the rule's words and opens the same question
 in the gallery.
 
+## Places
+
+A place is an entity (`place`, nested by kind: country .. poi). Nothing
+resolves coordinates to one -- no gazetteer ships, and GPS alone names
+no place -- so `derived_media_context.place_id` comes from a person's
+word: `POST /i/{slug}/place {"name", "kind"}` finds or mints the place
+by name and kind (`places.named`), records the claim as authored
+desired state (`file_place`, one per file, `authored.set_place`) and
+re-interprets the file at once, so the context reads
+`location_basis = 'authored'`. The claim survives every rebuild. A
+picture's page says where, or "nowhere said", and offers the form; the
+`place.id` facet is the door to everything there.
+
 ## Timeline
 
 `/timeline` draws the library over the human moment

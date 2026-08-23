@@ -1523,6 +1523,19 @@ CREATE TABLE comment (
 CREATE INDEX comment_file ON comment(file_id);
 CREATE INDEX comment_user ON comment(user_id);
 
+-- Where a picture happened, said by a person: the one authored location
+-- claim. Survives every rebuild; the context ladder reads it as the
+-- 'authored' basis above GPS. One place per file -- a picture happened
+-- in one place; a change of mind replaces the row.
+CREATE TABLE file_place (
+    file_id     INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    place_id    INTEGER NOT NULL REFERENCES place(id) ON DELETE RESTRICT,
+    user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    asserted_at REAL NOT NULL
+) STRICT;
+CREATE INDEX file_place_place ON file_place(place_id);
+CREATE INDEX file_place_user  ON file_place(user_id);
+
 CREATE TABLE favorite (
     file_id INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
@@ -1999,7 +2012,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 27;
+PRAGMA user_version   = 28;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

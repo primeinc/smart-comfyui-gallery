@@ -44,7 +44,7 @@ from litestar.datastructures import State
 from litestar.exceptions import HTTPException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import authored, connect, derived, naming, pages, resultset, settings
+from db import authored, connect, derived, naming, pages, places, resultset, settings
 from db.resultset import canonical
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
@@ -131,7 +131,33 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
         "when": _when(conn, file_id),
         "said": derived.said_about(conn, file_id),
         "faces": _faces(conn, file_id),
+        "where": where_of(conn, file_id),
+        "places": [{"name": name, "kind": kind} for name, kind in pages.places_named(conn)],
+        "place_kinds": list(places.KINDS),
         "context": context,
+    }
+
+
+def where_of(conn, file_id: int) -> dict | None:
+    """Where the picture happened, as the current interpretation holds
+    it: the place by address, its kind, the basis (a person's word, or
+    nothing yet -- GPS alone names no place), and the gallery door to
+    everything there."""
+    import urllib.parse
+
+    from db import facets
+
+    row = pages.media_place(conn, file_id)
+    if row is None:
+        return None
+    place_id, slug, name, kind, basis = row
+    return {
+        "id": place_id,
+        "slug": slug,
+        "name": name,
+        "kind": kind,
+        "basis": basis,
+        "qs": urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
     }
 
 

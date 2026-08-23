@@ -1141,6 +1141,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             media_view.media_page,
             media_authored.set_favorite,
             media_authored.set_rating,
+            media_authored.set_place,
             media_authored.set_membership,
             media_authored.collection_choices,
             folder_view.folders_index,
