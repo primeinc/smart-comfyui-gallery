@@ -51,6 +51,7 @@ PROFILES: dict[str, frozenset[str]] = {
             "disputed_time",
             "media_mix",
             "seen",
+            "located",
         }
     ),
     "technical": frozenset(
@@ -76,6 +77,7 @@ PROFILES: dict[str, frozenset[str]] = {
             "disputed_time",
             "media_mix",
             "seen",
+            "located",
         }
     ),
     "compact": frozenset(),
@@ -356,12 +358,23 @@ def _seen(claim: dict, phase: dict, ctx: Context) -> str:
     return told
 
 
+def _located(claim: dict, phase: dict, ctx: Context) -> str:
+    """Where the members happened, from the places they froze: one
+    place, or several named."""
+    places = claim["facts"]["places"]
+    n = claim["facts"]["members"]
+    if len(places) == 1:
+        return f"In {places[0]}, by a person's word, for {formatting.count(n, 'file')} here."
+    return f"In {formatting.join_names(places)}, by a person's word, across {formatting.count(n, 'file')} here."
+
+
 #: The whole vocabulary. Resolution is by this mapping and nothing else.
 REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
     "time_basis": _time_basis,
     "disputed_time": _disputed_time,
     "media_mix": _media_mix,
     "seen": _seen,
+    "located": _located,
     "pause": _pause,
     "lens_change": _lens_change,
     "burst": _burst,

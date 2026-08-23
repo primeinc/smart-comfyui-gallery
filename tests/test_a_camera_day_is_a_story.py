@@ -291,7 +291,7 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
             planner = planning.CaptureHistoryPlanner(None, {"pause_minutes": 10, "burst_seconds": 2.0})
             plan = planner.plan(document, snap.sha256)
             assert planning.validate_current_plan(plan, document, snap.sha256) == []
-            assert plan["v"] == 6
+            assert plan["v"] == 7
             assert plan["subject"]["sequenced"] is True
             assert plan["subject"]["label_hint"] == "Canon EOS 5D Mark III session · 4 frames · 2 phases"
             assert [p["member_refs"] for p in plan["phases"]] == [

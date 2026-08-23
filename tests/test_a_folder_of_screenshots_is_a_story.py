@@ -54,7 +54,7 @@ def test_the_screenshots_are_two_phases_with_a_pause_and_named_bases(told):
             document, snap.sha256
         )
         assert planning.validate_current_plan(plan, document, snap.sha256) == []
-        assert plan["v"] == 6
+        assert plan["v"] == 7
         assert plan["subject"]["sequenced"] is True
         assert plan["subject"]["label_hint"] == "stamped-name session · 5 files · 2 phases"
         assert [p["label_hint"] for p in plan["phases"]] == ["Phase 1", "Phase 2 · after a pause"]
@@ -77,8 +77,8 @@ def test_the_screenshots_are_two_phases_with_a_pause_and_named_bases(told):
         assert "Dated by 3 files by a stamp in the file name." in texts
         assert "Nothing was saved for 2 h 18 min before this phase." in texts
         assert not any("camera" in t for t in texts), "nobody held a camera"
-        assert render["renderer"]["version"] == 5
-        assert render["renderer"]["reads"]["plan"] == 6
+        assert render["renderer"]["version"] == 6
+        assert render["renderer"]["reads"]["plan"] == 7
         with pytest.raises(ValueError, match="file sessions only"):
             planning.FileHistoryPlanner().plan(
                 {**document, "subject": {**document["subject"], "event_kind": "capture_session"}}, snap.sha256
@@ -306,7 +306,7 @@ def test_a_caption_frozen_after_the_first_story_makes_a_new_story_say_it(told):
     import json
 
     plan = json.loads(document)
-    assert plan["v"] == 6
+    assert plan["v"] == 7
     seen = [claim for claim in plan["claims"] if claim["kind"] == "seen"]
     assert len(seen) == 1
     assert seen[0]["facts"] == {"members": 1, "models": ["m"]}

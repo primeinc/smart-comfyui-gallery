@@ -59,7 +59,7 @@ import typing
 from . import prompt_sections
 from .stories import canonical, digest
 
-FORMAT_VERSION = 6
+FORMAT_VERSION = 7
 
 #: Claim kinds that assert DIRECTION -- before/after, added/removed,
 #: from/to. They exist only in a sequenced plan, where the phase list is
@@ -375,7 +375,7 @@ class GenerationHistoryPlanner:
     #: The main-section texts the planner compares are the SNAPSHOT's
     #: frozen reading (stories.py freezes `main` per role); a parser
     #: change reaches a plan only through a new snapshot.
-    version = 9
+    version = 10
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -577,6 +577,17 @@ class GenerationHistoryPlanner:
                         {"members": len(seen), "models": _caption_models([members[i] for i in seen])},
                     )
                 )
+            placed = [i for i in indexes if _placed(members[i])]
+            if placed:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "located",
+                        1.0,
+                        [f"{refs[i]}:place" for i in placed],
+                        {"members": len(placed), "places": _place_names([members[i] for i in placed])},
+                    )
+                )
             representative = refs[_medoid(spoken, cosine)] if spoken else member_refs[0]
             phases.append(
                 {
@@ -674,7 +685,7 @@ class CaptureHistoryPlanner:
     """
 
     kind = "capture_history"
-    version = 2
+    version = 3
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 10, "burst_seconds": 2.0}
 
@@ -845,6 +856,17 @@ class CaptureHistoryPlanner:
                         {"members": len(seen), "models": _caption_models([members[i] for i in seen])},
                     )
                 )
+            placed = [i for i in member_indexes if _placed(members[i])]
+            if placed:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "located",
+                        1.0,
+                        [f"{refs[i]}:place" for i in placed],
+                        {"members": len(placed), "places": _place_names([members[i] for i in placed])},
+                    )
+                )
             middle = act_indexes[len(act_indexes) // 2]
             phases.append(
                 {
@@ -904,7 +926,7 @@ class FileHistoryPlanner:
     """
 
     kind = "file_history"
-    version = 2
+    version = 3
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 30, "burst_seconds": 5.0}
 
@@ -1053,6 +1075,17 @@ class FileHistoryPlanner:
                         {"members": len(seen), "models": _caption_models([members[i] for i in seen])},
                     )
                 )
+            placed = [i for i in indexes if _placed(members[i])]
+            if placed:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "located",
+                        1.0,
+                        [f"{refs[i]}:place" for i in placed],
+                        {"members": len(placed), "places": _place_names([members[i] for i in placed])},
+                    )
+                )
             middle = indexes[len(indexes) // 2]
             phases.append(
                 {
@@ -1110,6 +1143,16 @@ _MEDIA_KINDS = frozenset({"image", "animated_image", "video", "audio", "document
 
 def _captioned(member: dict) -> bool:
     return any(one.get("kind") == "caption" for one in member.get("annotations") or [])
+
+
+def _placed(member: dict) -> bool:
+    held = member.get("place")
+    return isinstance(held, dict) and bool(held.get("chain"))
+
+
+def _place_names(members: list[dict]) -> list[str]:
+    """The leaf place names the claim rests on, sorted, once each."""
+    return sorted({member["place"]["chain"][0]["name"] for member in members})
 
 
 def _caption_models(members: list[dict]) -> list[str]:
@@ -1341,6 +1384,15 @@ STORY_PLAN_V6 = {
     "version": 6,
     "claims": STORY_PLAN_V5["claims"] | frozenset({"seen"}),
 }
+#: StoryPlan v7 -- FROZEN. v6 plus `located`: where a phase's members
+#: happened, from the place each member froze (a person's word; GPS
+#: alone names no place). Facts are how many members carry a place and
+#: the leaf names they carry.
+STORY_PLAN_V7 = {
+    **STORY_PLAN_V6,
+    "version": 7,
+    "claims": STORY_PLAN_V6["claims"] | frozenset({"located"}),
+}
 _ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -1526,6 +1578,25 @@ def _facts_valid_v6(kind: str, facts) -> bool:
     return _facts_valid_v5(kind, facts)
 
 
+def _facts_valid_v7(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if kind == "located":
+        return (
+            set(facts) == {"members", "places"}
+            and _integer(facts["members"], 1)
+            and _strings(facts["places"])
+            and bool(facts["places"])
+        )
+    return _facts_valid_v6(kind, facts)
+
+
+def validate_story_plan_v7(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v7 document against the FROZEN
+    v7 vocabulary."""
+    return _validate_story_plan(plan, STORY_PLAN_V7, _facts_valid_v7)
+
+
 def validate_story_plan_v6(plan) -> list[str]:
     """The exact grammar of a StoryPlan v6 document against the FROZEN
     v6 vocabulary."""
@@ -1659,6 +1730,7 @@ _GRAMMARS = {
     4: validate_story_plan_v4,
     5: validate_story_plan_v5,
     6: validate_story_plan_v6,
+    7: validate_story_plan_v7,
 }
 
 

@@ -1055,7 +1055,7 @@ def test_the_v1_grammar_is_frozen_and_exception_proof(monkeypatch):
     assert planning.validate_story_plan(plan) == [], "the dispatcher routes a v1 document to the v1 grammar"
     assert planning.validate_story_plan({**plan, "v": 2}) == [], "v1's vocabulary is inside v2's"
     assert planning.validate_story_plan({**plan, "v": 3}) == [], "and inside v3's"
-    assert planning.validate_story_plan({**plan, "v": 7}), "an undefined version is invalid, not a crash"
+    assert planning.validate_story_plan({**plan, "v": 8}), "an undefined version is invalid, not a crash"
     assert planning.validate_story_plan({**plan, "v": True})
     v1_only = {
         **plan,
@@ -1711,7 +1711,7 @@ def test_a_captioned_member_makes_the_story_say_what_a_model_saw():
     members[2]["annotations"] = [{"kind": "tag", "text": "sea", "confidence": 0.9, "model": ["tagger", "1"]}]
     document, sha = _snapshot(members)
     plan = _planner().plan(document, sha)
-    assert plan["v"] == 6
+    assert plan["v"] == 7
     assert planning.validate_story_plan(plan) == []
     seen = [claim for claim in plan["claims"] if claim["kind"] == "seen"]
     assert len(seen) == 1
@@ -1726,3 +1726,28 @@ def test_a_captioned_member_makes_the_story_say_what_a_model_saw():
     plain = _planner().plan(*_snapshot([_member(i, text) for i, text in enumerate(LIGHTHOUSE[:3])]))
     assert not [claim for claim in plain["claims"] if claim["kind"] == "seen"]
     assert planning.validate_story_plan({**plan, "v": 5}), "v5 does not know `seen`; the claim is a v6 claim"
+
+
+def test_a_placed_member_makes_the_story_say_where():
+    """v7: a member whose frozen place names where it happened yields a
+    `located` claim citing those places; the renderer says it in words.
+    No place, no claim."""
+    from db import rendering
+
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:3])]
+    lisbon = {"uuid": "a" * 32, "chain": [{"uuid": "a" * 32, "kind": "city", "name": "Lisbon"}]}
+    members[0]["place"] = lisbon
+    members[2]["place"] = lisbon
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    assert plan["v"] == 7
+    assert planning.validate_story_plan(plan) == []
+    located = [claim for claim in plan["claims"] if claim["kind"] == "located"]
+    assert len(located) == 1
+    assert located[0]["facts"] == {"members": 2, "places": ["Lisbon"]}
+    assert located[0]["evidence_refs"] == ["member-001:place", "member-003:place"]
+    told = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
+    assert rendering.violations(told, plan, document, sha, planning.identity(plan)[1]) == []
+    words = " ".join(block["text"] for section in told["sections"] for block in section["blocks"])
+    assert "In Lisbon, by a person's word, for 2 files here." in words
+    assert planning.validate_story_plan({**plan, "v": 6}), "v6 does not know `located`"
