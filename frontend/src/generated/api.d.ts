@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ws/events/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** SocketFrames */
+        get: operations["WsEventsFramesSocketFrames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/i/{slug}": {
         parameters: {
             query?: never;
@@ -1563,6 +1580,14 @@ export interface components {
             rating: number | null;
             collections: components["schemas"]["CollectionSummary"][];
         };
+        /** BacklogFrame */
+        BacklogFrame: {
+            /** @constant */
+            frame: "backlog";
+            events: components["schemas"]["Event"][];
+            after: number;
+            last_id: number;
+        };
         /** BulkFlag */
         BulkFlag: {
             answer: string;
@@ -1650,6 +1675,16 @@ export interface components {
             expected_rev: number;
             media_kind?: string | null;
         };
+        /** Coverage */
+        Coverage: {
+            files: number;
+            missing: {
+                [key: string]: number;
+            };
+            embed_spaces?: {
+                [key: string]: number;
+            } | null;
+        };
         /** Curated */
         Curated: {
             targets: number;
@@ -1678,6 +1713,11 @@ export interface components {
         DesiredRating: {
             value?: number | null;
         };
+        /** EarlierEvents */
+        EarlierEvents: {
+            events: components["schemas"]["Event"][];
+            before: number;
+        };
         /** EditCollection */
         EditCollection: {
             expected_rev: number;
@@ -1686,6 +1726,51 @@ export interface components {
             description?: string | null;
             parent?: string | null;
             archived?: boolean | null;
+        };
+        /** Event */
+        Event: {
+            job_id: number;
+            at: number;
+            /** @enum {string} */
+            type: "job.submitted" | "job.claimed" | "job.reclaimed" | "job.paused" | "job.cancel_requested" | "job.cancelled" | "job.done" | "job.failed" | "item.started" | "item.done" | "item.failed" | "item.observed" | "phase.started" | "phase.progress" | "phase.finished" | "checkpoint.changed" | "worker.turn_failed";
+            item_id: number | null;
+            phase: string | null;
+            /** @enum {string} */
+            severity: "info" | "warning" | "error";
+            message: string | null;
+            data: {
+                [key: string]: unknown;
+            } | null;
+            text: string;
+            condition: string | null;
+            id: number;
+        };
+        /** EventFrame */
+        EventFrame: {
+            job_id: number;
+            at: number;
+            /** @enum {string} */
+            type: "job.submitted" | "job.claimed" | "job.reclaimed" | "job.paused" | "job.cancel_requested" | "job.cancelled" | "job.done" | "job.failed" | "item.started" | "item.done" | "item.failed" | "item.observed" | "phase.started" | "phase.progress" | "phase.finished" | "checkpoint.changed" | "worker.turn_failed";
+            item_id: number | null;
+            phase: string | null;
+            /** @enum {string} */
+            severity: "info" | "warning" | "error";
+            message: string | null;
+            data: {
+                [key: string]: unknown;
+            } | null;
+            text: string;
+            condition: string | null;
+            id: number;
+            /** @constant */
+            frame: "event";
+        };
+        /** EventPage */
+        EventPage: {
+            events: components["schemas"]["Event"][];
+            after: number;
+            next_after: number | null;
+            last_id: number;
         };
         /** Everything */
         Everything: {
@@ -1740,6 +1825,26 @@ export interface components {
             started_at: number | null;
             failed_count: number;
         };
+        /** LedgerHealth */
+        LedgerHealth: {
+            last_id: number;
+            events: number;
+        };
+        /** Lifecycle */
+        Lifecycle: {
+            elapsed: number | null;
+            queue_wait: number;
+            fraction: number | null;
+            pending: number | null;
+            succeeded: number;
+            rate: number | null;
+            eta: number | null;
+            /** @enum {string} */
+            cancellation: "cancelled" | "requested" | "not_requested";
+            heartbeat_age: number | null;
+            lease_remaining: number | null;
+            lease_expired: boolean;
+        };
         /** ListedCollection */
         ListedCollection: {
             slug: string;
@@ -1762,6 +1867,13 @@ export interface components {
             /** @enum {string} */
             kind: "album" | "flag";
         };
+        /** LiveReport */
+        LiveReport: {
+            phase: string | null;
+            type: string;
+            text: string;
+            item_id: number | null;
+        };
         /** Located */
         Located: {
             /** @constant */
@@ -1780,6 +1892,32 @@ export interface components {
             id: number;
             sha256: string;
             reused: boolean;
+        };
+        /** MatrixRow */
+        MatrixRow: {
+            id: number;
+            /** @enum {string} */
+            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            /** @enum {string} */
+            state: "queued" | "running" | "done" | "failed" | "cancelled";
+            cancel_requested: number;
+            total: number | null;
+            done_count: number;
+            failed_count: number;
+            attempt: number;
+            owner: string | null;
+            fence: number | null;
+            heartbeat_at: number | null;
+            lease_until: number | null;
+            created_at: number;
+            started_at: number | null;
+            finished_at: number | null;
+            error: string | null;
+            derive: string | null;
+            derived: components["schemas"]["Lifecycle"];
+            settled: boolean;
+            what: string;
+            live: components["schemas"]["LiveReport"] | null;
         };
         /** NamedPerson */
         NamedPerson: {
@@ -1834,6 +1972,19 @@ export interface components {
             /** @constant */
             in_answer: false;
         };
+        /** OperationsState */
+        OperationsState: {
+            overview: components["schemas"]["Overview"];
+            matrix: components["schemas"]["MatrixRow"][];
+        };
+        /** Overview */
+        Overview: {
+            now: number;
+            coverage: components["schemas"]["Coverage"];
+            worker: components["schemas"]["WorkerHealth"];
+            queue: components["schemas"]["QueueHealth"];
+            ledger: components["schemas"]["LedgerHealth"];
+        };
         /** PeekView */
         PeekView: {
             page: number;
@@ -1844,6 +1995,25 @@ export interface components {
             currency: string;
             answer: string;
             items: components["schemas"]["ResultItem"][];
+        };
+        /** PendingFrame */
+        PendingFrame: {
+            job_id: number;
+            at: number;
+            /** @enum {string} */
+            type: "job.submitted" | "job.claimed" | "job.reclaimed" | "job.paused" | "job.cancel_requested" | "job.cancelled" | "job.done" | "job.failed" | "item.started" | "item.done" | "item.failed" | "item.observed" | "phase.started" | "phase.progress" | "phase.finished" | "checkpoint.changed" | "worker.turn_failed";
+            item_id: number | null;
+            phase: string | null;
+            /** @enum {string} */
+            severity: "info" | "warning" | "error";
+            message: string | null;
+            data: {
+                [key: string]: unknown;
+            } | null;
+            text: string;
+            condition: string | null;
+            /** @constant */
+            frame: "pending";
         };
         /** PlaceAnswer */
         PlaceAnswer: {
@@ -1873,6 +2043,16 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** QueueHealth */
+        QueueHealth: {
+            queued: number;
+            running: number;
+            oldest_queued_age: number | null;
+            oldest_running_age: number | null;
+            settled_24h: {
+                [key: string]: number;
+            };
         };
         /** RenderRequest */
         RenderRequest: {
@@ -2030,6 +2210,17 @@ export interface components {
             qs: string;
             timeline: string;
         };
+        /** WorkerHealth */
+        WorkerHealth: {
+            enabled: boolean;
+            owners: string[];
+            working: boolean;
+            last_heartbeat: number | null;
+            heartbeat_age: number | null;
+            lease_seconds: number;
+            thread_alive: boolean;
+            thread: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -2075,6 +2266,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    WsEventsFramesSocketFrames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventFrame"] | components["schemas"]["PendingFrame"] | components["schemas"]["BacklogFrame"];
                 };
             };
         };
@@ -5035,7 +5246,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["OperationsState"];
                 };
             };
         };
@@ -5137,7 +5348,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["EventPage"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -5176,7 +5387,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["EarlierEvents"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

@@ -31,9 +31,31 @@ writes then fail rather than corrupting the job it no longer owns.
 from __future__ import annotations
 
 import json
+import typing
 from dataclasses import dataclass
 
 from . import ledger
+
+#: What a job is doing and how it is going, per db/schema.sql job.kind and
+#: job.state. Here rather than at a web seam because the table owns them:
+#: a value outside either is already impossible in the database, and the
+#: browser gets the closed set as a union instead of `string`.
+JobState = typing.Literal["queued", "running", "done", "failed", "cancelled"]
+JobKind = typing.Literal[
+    "scan",
+    "hash",
+    "embed",
+    "detect_faces",
+    "cluster_faces",
+    "sample_frames",
+    "annotate",
+    "remix",
+    "zip",
+    "context",
+    "events",
+    "story_plan",
+    "embed_prompts",
+]
 
 #: A job whose lease has expired by this much is reclaimable. Generous: a
 #: worker paused by a slow disk must not lose its job to a false positive.

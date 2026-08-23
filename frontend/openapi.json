@@ -48,6 +48,36 @@
                 "deprecated": false
             }
         },
+        "/ws/events/frames": {
+            "get": {
+                "summary": "SocketFrames",
+                "operationId": "WsEventsFramesSocketFrames",
+                "responses": {
+                    "200": {
+                        "description": "Request fulfilled, document follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "oneOf": [
+                                        {
+                                            "$ref": "#/components/schemas/EventFrame"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/PendingFrame"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/BacklogFrame"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/i/{slug}": {
             "get": {
                 "summary": "MediaPage",
@@ -7957,7 +7987,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/OperationsState"
                                 }
                             }
                         }
@@ -8197,7 +8227,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/EventPage"
                                 }
                             }
                         }
@@ -8299,7 +8329,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/EarlierEvents"
                                 }
                             }
                         }
@@ -8755,6 +8785,35 @@
                 ],
                 "title": "AuthoredState"
             },
+            "BacklogFrame": {
+                "properties": {
+                    "frame": {
+                        "type": "string",
+                        "const": "backlog"
+                    },
+                    "events": {
+                        "items": {
+                            "$ref": "#/components/schemas/Event"
+                        },
+                        "type": "array"
+                    },
+                    "after": {
+                        "type": "integer"
+                    },
+                    "last_id": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "after",
+                    "events",
+                    "frame",
+                    "last_id"
+                ],
+                "title": "BacklogFrame"
+            },
             "BulkFlag": {
                 "properties": {
                     "answer": {
@@ -9160,6 +9219,39 @@
                 ],
                 "title": "ConvertToSmart"
             },
+            "Coverage": {
+                "properties": {
+                    "files": {
+                        "type": "integer"
+                    },
+                    "missing": {
+                        "additionalProperties": {
+                            "type": "integer"
+                        },
+                        "type": "object"
+                    },
+                    "embed_spaces": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "integer"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "files",
+                    "missing"
+                ],
+                "title": "Coverage"
+            },
             "Curated": {
                 "properties": {
                     "targets": {
@@ -9264,6 +9356,26 @@
                 "required": [],
                 "title": "DesiredRating"
             },
+            "EarlierEvents": {
+                "properties": {
+                    "events": {
+                        "items": {
+                            "$ref": "#/components/schemas/Event"
+                        },
+                        "type": "array"
+                    },
+                    "before": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "before",
+                    "events"
+                ],
+                "title": "EarlierEvents"
+            },
             "EditCollection": {
                 "properties": {
                     "expected_rev": {
@@ -9326,6 +9438,272 @@
                     "expected_rev"
                 ],
                 "title": "EditCollection"
+            },
+            "Event": {
+                "properties": {
+                    "job_id": {
+                        "type": "integer"
+                    },
+                    "at": {
+                        "type": "number"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "job.submitted",
+                            "job.claimed",
+                            "job.reclaimed",
+                            "job.paused",
+                            "job.cancel_requested",
+                            "job.cancelled",
+                            "job.done",
+                            "job.failed",
+                            "item.started",
+                            "item.done",
+                            "item.failed",
+                            "item.observed",
+                            "phase.started",
+                            "phase.progress",
+                            "phase.finished",
+                            "checkpoint.changed",
+                            "worker.turn_failed"
+                        ]
+                    },
+                    "item_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": [
+                            "info",
+                            "warning",
+                            "error"
+                        ]
+                    },
+                    "message": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "condition": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "id": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "condition",
+                    "data",
+                    "id",
+                    "item_id",
+                    "job_id",
+                    "message",
+                    "phase",
+                    "severity",
+                    "text",
+                    "type"
+                ],
+                "title": "Event"
+            },
+            "EventFrame": {
+                "properties": {
+                    "job_id": {
+                        "type": "integer"
+                    },
+                    "at": {
+                        "type": "number"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "job.submitted",
+                            "job.claimed",
+                            "job.reclaimed",
+                            "job.paused",
+                            "job.cancel_requested",
+                            "job.cancelled",
+                            "job.done",
+                            "job.failed",
+                            "item.started",
+                            "item.done",
+                            "item.failed",
+                            "item.observed",
+                            "phase.started",
+                            "phase.progress",
+                            "phase.finished",
+                            "checkpoint.changed",
+                            "worker.turn_failed"
+                        ]
+                    },
+                    "item_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": [
+                            "info",
+                            "warning",
+                            "error"
+                        ]
+                    },
+                    "message": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "condition": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "id": {
+                        "type": "integer"
+                    },
+                    "frame": {
+                        "type": "string",
+                        "const": "event"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "condition",
+                    "data",
+                    "frame",
+                    "id",
+                    "item_id",
+                    "job_id",
+                    "message",
+                    "phase",
+                    "severity",
+                    "text",
+                    "type"
+                ],
+                "title": "EventFrame"
+            },
+            "EventPage": {
+                "properties": {
+                    "events": {
+                        "items": {
+                            "$ref": "#/components/schemas/Event"
+                        },
+                        "type": "array"
+                    },
+                    "after": {
+                        "type": "integer"
+                    },
+                    "next_after": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last_id": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "after",
+                    "events",
+                    "last_id",
+                    "next_after"
+                ],
+                "title": "EventPage"
             },
             "Everything": {
                 "properties": {
@@ -9603,6 +9981,130 @@
                 ],
                 "title": "JobSnapshot"
             },
+            "LedgerHealth": {
+                "properties": {
+                    "last_id": {
+                        "type": "integer"
+                    },
+                    "events": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "events",
+                    "last_id"
+                ],
+                "title": "LedgerHealth"
+            },
+            "Lifecycle": {
+                "properties": {
+                    "elapsed": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "queue_wait": {
+                        "type": "number"
+                    },
+                    "fraction": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "pending": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "succeeded": {
+                        "type": "integer"
+                    },
+                    "rate": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "eta": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "cancellation": {
+                        "type": "string",
+                        "enum": [
+                            "cancelled",
+                            "requested",
+                            "not_requested"
+                        ]
+                    },
+                    "heartbeat_age": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "lease_remaining": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "lease_expired": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "cancellation",
+                    "elapsed",
+                    "eta",
+                    "fraction",
+                    "heartbeat_age",
+                    "lease_expired",
+                    "lease_remaining",
+                    "pending",
+                    "queue_wait",
+                    "rate",
+                    "succeeded"
+                ],
+                "title": "Lifecycle"
+            },
             "ListedCollection": {
                 "properties": {
                     "slug": {
@@ -9739,6 +10241,45 @@
                 ],
                 "title": "ListedCollection"
             },
+            "LiveReport": {
+                "properties": {
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "item_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "item_id",
+                    "phase",
+                    "text",
+                    "type"
+                ],
+                "title": "LiveReport"
+            },
             "Located": {
                 "properties": {
                     "in_answer": {
@@ -9819,6 +10360,191 @@
                     "sha256"
                 ],
                 "title": "MadeOrFound"
+            },
+            "MatrixRow": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "scan",
+                            "hash",
+                            "embed",
+                            "detect_faces",
+                            "cluster_faces",
+                            "sample_frames",
+                            "annotate",
+                            "remix",
+                            "zip",
+                            "context",
+                            "events",
+                            "story_plan",
+                            "embed_prompts"
+                        ]
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "queued",
+                            "running",
+                            "done",
+                            "failed",
+                            "cancelled"
+                        ]
+                    },
+                    "cancel_requested": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "done_count": {
+                        "type": "integer"
+                    },
+                    "failed_count": {
+                        "type": "integer"
+                    },
+                    "attempt": {
+                        "type": "integer"
+                    },
+                    "owner": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "fence": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "heartbeat_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "lease_until": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "created_at": {
+                        "type": "number"
+                    },
+                    "started_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "finished_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "error": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "derive": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "derived": {
+                        "$ref": "#/components/schemas/Lifecycle"
+                    },
+                    "settled": {
+                        "type": "boolean"
+                    },
+                    "what": {
+                        "type": "string"
+                    },
+                    "live": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/LiveReport"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "attempt",
+                    "cancel_requested",
+                    "created_at",
+                    "derive",
+                    "derived",
+                    "done_count",
+                    "error",
+                    "failed_count",
+                    "fence",
+                    "finished_at",
+                    "heartbeat_at",
+                    "id",
+                    "kind",
+                    "lease_until",
+                    "live",
+                    "owner",
+                    "settled",
+                    "started_at",
+                    "state",
+                    "total",
+                    "what"
+                ],
+                "title": "MatrixRow"
             },
             "NamedPerson": {
                 "properties": {
@@ -10090,6 +10816,55 @@
                 ],
                 "title": "NotLocated"
             },
+            "OperationsState": {
+                "properties": {
+                    "overview": {
+                        "$ref": "#/components/schemas/Overview"
+                    },
+                    "matrix": {
+                        "items": {
+                            "$ref": "#/components/schemas/MatrixRow"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "matrix",
+                    "overview"
+                ],
+                "title": "OperationsState"
+            },
+            "Overview": {
+                "properties": {
+                    "now": {
+                        "type": "number"
+                    },
+                    "coverage": {
+                        "$ref": "#/components/schemas/Coverage"
+                    },
+                    "worker": {
+                        "$ref": "#/components/schemas/WorkerHealth"
+                    },
+                    "queue": {
+                        "$ref": "#/components/schemas/QueueHealth"
+                    },
+                    "ledger": {
+                        "$ref": "#/components/schemas/LedgerHealth"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "coverage",
+                    "ledger",
+                    "now",
+                    "queue",
+                    "worker"
+                ],
+                "title": "Overview"
+            },
             "PeekView": {
                 "properties": {
                     "page": {
@@ -10133,6 +10908,120 @@
                     "total"
                 ],
                 "title": "PeekView"
+            },
+            "PendingFrame": {
+                "properties": {
+                    "job_id": {
+                        "type": "integer"
+                    },
+                    "at": {
+                        "type": "number"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "job.submitted",
+                            "job.claimed",
+                            "job.reclaimed",
+                            "job.paused",
+                            "job.cancel_requested",
+                            "job.cancelled",
+                            "job.done",
+                            "job.failed",
+                            "item.started",
+                            "item.done",
+                            "item.failed",
+                            "item.observed",
+                            "phase.started",
+                            "phase.progress",
+                            "phase.finished",
+                            "checkpoint.changed",
+                            "worker.turn_failed"
+                        ]
+                    },
+                    "item_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "phase": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": [
+                            "info",
+                            "warning",
+                            "error"
+                        ]
+                    },
+                    "message": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "data": {
+                        "oneOf": [
+                            {
+                                "additionalProperties": {},
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "condition": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "frame": {
+                        "type": "string",
+                        "const": "pending"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "condition",
+                    "data",
+                    "frame",
+                    "item_id",
+                    "job_id",
+                    "message",
+                    "phase",
+                    "severity",
+                    "text",
+                    "type"
+                ],
+                "title": "PendingFrame"
             },
             "PlaceAnswer": {
                 "properties": {
@@ -10244,6 +11133,52 @@
                     "snapshot_id"
                 ],
                 "title": "PlanRequest"
+            },
+            "QueueHealth": {
+                "properties": {
+                    "queued": {
+                        "type": "integer"
+                    },
+                    "running": {
+                        "type": "integer"
+                    },
+                    "oldest_queued_age": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "oldest_running_age": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "settled_24h": {
+                        "additionalProperties": {
+                            "type": "integer"
+                        },
+                        "type": "object"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "oldest_queued_age",
+                    "oldest_running_age",
+                    "queued",
+                    "running",
+                    "settled_24h"
+                ],
+                "title": "QueueHealth"
             },
             "RenderRequest": {
                 "properties": {
@@ -11078,6 +12013,71 @@
                     "timeline"
                 ],
                 "title": "Where"
+            },
+            "WorkerHealth": {
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "owners": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "working": {
+                        "type": "boolean"
+                    },
+                    "last_heartbeat": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "heartbeat_age": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "lease_seconds": {
+                        "type": "number"
+                    },
+                    "thread_alive": {
+                        "type": "boolean"
+                    },
+                    "thread": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "enabled",
+                    "heartbeat_age",
+                    "last_heartbeat",
+                    "lease_seconds",
+                    "owners",
+                    "thread",
+                    "thread_alive",
+                    "working"
+                ],
+                "title": "WorkerHealth"
             }
         }
     }

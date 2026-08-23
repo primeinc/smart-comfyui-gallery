@@ -368,6 +368,9 @@ def test_the_wire_vocabulary_rule_can_fail(tmp_path):
     assert check('JobState = Literal["queued", "running"]\n') == ["SG709"], "a member the database allows is missing"
     assert check(agreed.replace('"done"', '"done", "melted"')) == ["SG709"], "a member no row can hold"
     assert check("JobState = str\n") == ["SG709"], "not a Literal at all is unreadable, not agreement"
+    assert check(agreed.replace("JobState = Literal", "JobState = typing.Literal")) == [], (
+        "a vocabulary spelled through the module is the same vocabulary"
+    )
 
     unconstrained = "CREATE TABLE job (\n    state TEXT NOT NULL\n) STRICT;\n"
     where.write_text(agreed, encoding="utf-8")

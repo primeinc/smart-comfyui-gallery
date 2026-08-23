@@ -94,8 +94,23 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/timeline_view.py": frozenset(
         {"connect", "context", "facets", "pages", "planning", "rendering", "resultset", "settings"}
     ),
+    # `jobs` is vocabulary here, not a query path: the console spells
+    # the job kinds and states the table constrains, and touches no
+    # connection through it.
     "sg_web/operations.py": frozenset(
-        {"connect", "derived", "inspecting", "ledger", "library", "pages", "prompts", "runner", "scan", "settings"}
+        {
+            "connect",
+            "derived",
+            "inspecting",
+            "jobs",
+            "ledger",
+            "library",
+            "pages",
+            "prompts",
+            "runner",
+            "scan",
+            "settings",
+        }
     ),
     # the composition root: it wires every seam and runs none of them
     "sg_web/app.py": frozenset(
@@ -239,7 +254,7 @@ LITERAL_STATEMENTS_ONLY: tuple[str, ...] = ("db/collection_rules.py",)
 #: database is built and no application is served to learn that two lists
 #: disagree.
 WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
-    "sg_web/app.py": {"JobKind": ("job", "kind"), "JobState": ("job", "state")},
+    "db/jobs.py": {"JobKind": ("job", "kind"), "JobState": ("job", "state")},
     "sg_web/media_view.py": {"PlaceKind": ("place", "kind")},
 }
 
@@ -305,11 +320,8 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/folder_view.py:folder_page",
         "sg_web/folder_view.py:folders_index",
         "sg_web/media_view.py:media_page",
-        "sg_web/operations.py:events",
-        "sg_web/operations.py:events_before",
         "sg_web/operations.py:job_inspector",
         "sg_web/operations.py:job_items",
-        "sg_web/operations.py:overview",
         "sg_web/person_view.py:people_index",
         "sg_web/person_view.py:person_page",
         "sg_web/place_view.py:places_index",

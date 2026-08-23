@@ -27,6 +27,7 @@ import dataclasses
 import logging
 import pathlib
 import time
+import typing
 from collections.abc import Callable
 
 from litestar import Request, Router, get, post
@@ -36,10 +37,11 @@ from litestar.params import FromPath, FromQuery, URLEncodedBody
 from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
-from db import connect, derived, inspecting, ledger, library, pages, prompts, runner, scan, settings
+from db import connect, derived, inspecting, jobs, ledger, library, pages, prompts, runner, scan, settings
 from sg_web import console, home
 from sg_web.presenting import VARIES, wants_json
 from sg_web.submitting import submitted
+from sg_web.wire import Wire
 
 _logger = logging.getLogger(__name__)
 
@@ -184,7 +186,7 @@ def _page_context(state: State) -> dict:
     now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        told = {
+        return {
             "roots": _roots(conn),
             "settings": settings.snapshot(conn),
             "clusterings": pages.clusterings(conn),
@@ -192,14 +194,11 @@ def _page_context(state: State) -> dict:
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
             "notice": None,
-            "overview": inspecting.overview(conn, now, models_dir=_weights(state, conn)),
-            "matrix": inspecting.matrix(conn, now),
-            "tape": [console.envelope(event) for event in ledger.latest(conn, limit=TAPE_COLD)],
+            **_state_of(state, conn, now).model_dump(mode="json"),
+            "tape": [console.envelope(event).model_dump(mode="json") for event in ledger.latest(conn, limit=TAPE_COLD)],
             "last_event_id": ledger.last_id(conn),
             "now": now,
         }
-        _with_live(state, told)
-        return told
     finally:
         connect.close(conn)
 
@@ -210,38 +209,61 @@ def operations_page(state: State) -> Template:
 
 
 @get("/overview", sync_to_thread=True)
-def overview(state: State) -> dict:
+def overview(state: State) -> OperationsState:
     """The health strip and the matrix, from the rows: what the console
     re-reads after a reconnect, and what a machine asks."""
     now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        told = {
-            "overview": inspecting.overview(conn, now, models_dir=_weights(state, conn)),
-            "matrix": inspecting.matrix(conn, now),
-        }
+        return _state_of(state, conn, now)
     finally:
         connect.close(conn)
-    _with_live(state, told)
-    return told
 
 
-def _with_live(state: State, told: dict) -> None:
-    """What only the running process knows, beside the rows: whether
-    its worker thread is alive, and the latest report inside each
-    running job's item (sg_web/app.py live_reports)."""
+def _state_of(state: State, conn, now: float) -> OperationsState:
+    """The console's whole read, assembled once.
+
+    The cold page and the JSON route are the same facts, so they are the
+    same assembly: the page used to build a parallel dict and mutate it
+    afterwards, which is how the two drifted into disagreeing about what
+    `worker` carries.
+    """
+    held = inspecting.overview(conn, now, models_dir=_weights(state, conn))
     thread = getattr(state, "worker_thread", None)
-    told["overview"]["worker"]["thread_alive"] = bool(thread is not None and thread.is_alive())
-    told["overview"]["worker"]["thread"] = getattr(thread, "name", None)
+    worker = WorkerHealth(
+        **held["worker"],
+        thread_alive=bool(thread is not None and thread.is_alive()),
+        thread=getattr(thread, "name", None),
+    )
+    return OperationsState(
+        overview=Overview(
+            now=held["now"],
+            coverage=Coverage(**held["coverage"]),
+            worker=worker,
+            queue=QueueHealth(**held["queue"]),
+            ledger=LedgerHealth(**held["ledger"]),
+        ),
+        matrix=[_matrix_row(state, row) for row in inspecting.matrix(conn, now)],
+    )
+
+
+def _matrix_row(state: State, row: dict) -> MatrixRow:
+    """One job row as the console is told it.
+
+    The live phase is beside the row, not in it: what a worker is doing
+    inside the item it is on lives in process memory until the item
+    settles (sg_web/app.py live_reports), so a row read from the database
+    cannot carry it and a job running in another process has none.
+    """
     live = getattr(state, "live_reports", {})
-    for job in told["matrix"]:
-        job["what"] = console.describe_kind(job["kind"], job.get("derive"))
-        held = live.get(job["id"]) if job["state"] == "running" else None
-        job["live"] = (
-            {"phase": held.get("phase"), "type": held["type"], "text": held["text"], "item_id": held.get("item_id")}
-            if held
-            else None
-        )
+    held = live.get(row["id"]) if row["state"] == "running" else None
+    return MatrixRow(
+        **{one: row[one] for one in MatrixRow.model_fields if one in row},
+        what=console.describe_kind(row["kind"], row.get("derive")),
+        live=None
+        if not held
+        else LiveReport(phase=held.get("phase"), type=held["type"], text=held["text"], item_id=held.get("item_id")),
+    )
 
 
 @get("/job/{job_id:int}", sync_to_thread=True)
@@ -314,10 +336,157 @@ def job_items(
     )
 
 
+class Coverage(Wire):
+    """Is the library done: present files, and what each missing-only
+    sweep still has to do.
+
+    `missing` is keyed by sweep name and `embed_spaces` by space key, so
+    both are open by nature -- a space added tomorrow is a key nobody
+    edits a model for. The VALUES are counts, which is the fact.
+    """
+
+    files: int
+    missing: dict[str, int]
+    embed_spaces: dict[str, int] | None = None
+
+
+class WorkerHealth(Wire):
+    """Whether anything is actually turning the crank."""
+
+    enabled: bool
+    owners: list[str]
+    #: a job is running AND its heartbeat is inside the lease. Running
+    #: with a stale heartbeat is a worker that died holding one.
+    working: bool
+    last_heartbeat: float | None
+    heartbeat_age: float | None
+    lease_seconds: float
+    #: whether THIS process is turning the crank. The rows cannot say it:
+    #: a job may be running under another owner entirely, and a thread
+    #: that died still leaves its row running until the lease lapses.
+    thread_alive: bool
+    thread: str | None
+
+
+class QueueHealth(Wire):
+    """What is waiting, what is moving, and what settled in a day."""
+
+    queued: int
+    running: int
+    oldest_queued_age: float | None
+    oldest_running_age: float | None
+    #: job state -> how many finished in that state in the last 24h; the
+    #: keys are the job-state vocabulary, counted only where non-zero
+    settled_24h: dict[str, int]
+
+
+class LedgerHealth(Wire):
+    """Where the event ledger stands."""
+
+    last_id: int
+    events: int
+
+
+class Overview(Wire):
+    """The health strip: the console's answer to "is anything wrong"."""
+
+    now: float
+    coverage: Coverage
+    worker: WorkerHealth
+    queue: QueueHealth
+    ledger: LedgerHealth
+
+
+class Lifecycle(Wire):
+    """What a job's numbers mean, derived rather than stored.
+
+    Every field here is computed from the row and the clock, so none of it
+    can disagree with the row -- which is why the console reads these
+    instead of doing the arithmetic itself.
+    """
+
+    elapsed: float | None
+    queue_wait: float
+    fraction: float | None
+    pending: int | None
+    succeeded: int
+    rate: float | None
+    eta: float | None
+    cancellation: typing.Literal["cancelled", "requested", "not_requested"]
+    heartbeat_age: float | None
+    lease_remaining: float | None
+    lease_expired: bool
+
+
+class LiveReport(Wire):
+    """What only the running process knows: the phase inside the item a
+    worker is on right now. The row cannot hold it until the item
+    settles, so it lives in process memory (sg_web/app.py live_reports)
+    and is null for every job that is not running here."""
+
+    phase: str | None
+    type: str
+    text: str
+    item_id: int | None
+
+
+class MatrixRow(Wire):
+    """One job as the matrix shows it."""
+
+    id: int
+    kind: jobs.JobKind
+    state: jobs.JobState
+    cancel_requested: int
+    total: int | None
+    done_count: int
+    failed_count: int
+    attempt: int
+    owner: str | None
+    fence: int | None
+    heartbeat_at: float | None
+    lease_until: float | None
+    created_at: float
+    started_at: float | None
+    finished_at: float | None
+    error: str | None
+    #: which derivation a sweep of this kind is doing, when its kind
+    #: covers several
+    derive: str | None
+    derived: Lifecycle
+    settled: bool
+    #: the sweep said in words
+    what: str
+    live: LiveReport | None
+
+
+class OperationsState(Wire):
+    """What the console re-reads after a reconnect, and what a machine
+    asks: the health strip and every job worth showing."""
+
+    overview: Overview
+    matrix: list[MatrixRow]
+
+
+class EventPage(Wire):
+    """A page of the ledger, ascending by id.
+
+    `next_after` is the cursor for the page after this one, and null when
+    this page reached the head -- a reader that gets null has caught up,
+    where a reader that gets a number has not. `last_id` is where the
+    ledger stands, so a client can tell how far behind it is without
+    asking again.
+    """
+
+    events: list[console.Event]
+    after: int
+    next_after: int | None
+    last_id: int
+
+
 @get("/events", sync_to_thread=True)
 def events(
     state: State, after: FromQuery[int] = 0, job: FromQuery[int | None] = None, limit: FromQuery[int] = 500
-) -> dict:
+) -> EventPage:
     """A page of the ledger, ascending from `after`, the whole ledger or
     one job's: the gap-fill and the "earlier" read. Every row, never a
     sample; `next_after` pages the rest."""
@@ -326,14 +495,25 @@ def events(
         told = inspecting.events(conn, job_id=job, after=after, limit=limit)
     finally:
         connect.close(conn)
-    told["events"] = [console.envelope(event) for event in told["events"]]
-    return told
+    return EventPage(
+        events=[console.envelope(event) for event in told["events"]],
+        after=told["after"],
+        next_after=told["next_after"],
+        last_id=told["last_id"],
+    )
+
+
+class EarlierEvents(Wire):
+    """The page above the one a reader holds, and which one that was."""
+
+    events: list[console.Event]
+    before: int
 
 
 @get("/events/before", sync_to_thread=True)
 def events_before(
     state: State, before: FromQuery[int] = 0, job: FromQuery[int | None] = None, limit: FromQuery[int] = 500
-) -> dict:
+) -> EarlierEvents:
     """The `limit` events with id < `before`, ascending: the tape's
     "earlier" button. Bounded; walks the index backwards and stops.
     No `before` is nothing earlier than the beginning: an empty page."""
@@ -343,7 +523,7 @@ def events_before(
         page = inspecting.events_before(conn, before, job_id=job, limit=limit)
     finally:
         connect.close(conn)
-    return {"events": [console.envelope(event) for event in page], "before": before}
+    return EarlierEvents(events=[console.envelope(event) for event in page], before=before)
 
 
 @post("/jobs/{kind:str}", sync_to_thread=True)

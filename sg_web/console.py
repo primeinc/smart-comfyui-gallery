@@ -15,8 +15,12 @@ ITEM_FAILURES); the console must not fold them back together.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from typing import Literal
+
+from litestar import get
 
 from db import ledger
+from sg_web.wire import Wire
 
 
 def _seconds(value) -> str:
@@ -171,6 +175,68 @@ CONDITIONS: dict[str, str] = {
 #: any other kind settles the item, and the live report with it.
 INSIDE_ITEM = frozenset({"phase.started", "phase.progress", "phase.finished", "item.observed"})
 
+#: What a ledger event can be, per db/schema.sql job_event.type.
+EventType = Literal[
+    "job.submitted",
+    "job.claimed",
+    "job.reclaimed",
+    "job.paused",
+    "job.cancel_requested",
+    "job.cancelled",
+    "job.done",
+    "job.failed",
+    "item.started",
+    "item.done",
+    "item.failed",
+    "item.observed",
+    "phase.started",
+    "phase.progress",
+    "phase.finished",
+    "checkpoint.changed",
+    "worker.turn_failed",
+]
+
+#: How loudly, per db/schema.sql job_event.severity.
+Severity = Literal["info", "warning", "error"]
+
+
+class Reported(Wire):
+    """What a handler said, whether or not it became a row.
+
+    The event's own columns plus what this module adds: `text` is the
+    event said in words, and `condition` is the handful the console must
+    keep apart -- an expected per-item failure reads differently from a
+    defect in the worker. Both are derived here, so neither is a column.
+
+    Everything except the id, because a report from inside an item has
+    none until the item settles.
+    """
+
+    job_id: int
+    at: float
+    type: EventType
+    item_id: int | None
+    phase: str | None
+    severity: Severity
+    message: str | None
+    #: whatever the event carried, with every secret-named key replaced
+    #: (db/ledger.py redacted)
+    data: dict[str, object] | None
+    text: str
+    #: None for the events that announce nothing the console reacts to
+    condition: str | None
+
+
+class Event(Reported):
+    """A committed ledger row.
+
+    The same shape crosses the HTTP pages and the /ws/events feed, because
+    it is the same event; a second spelling for the socket would be the
+    same contract written twice.
+    """
+
+    id: int
+
 
 def inside_item(type_: str) -> bool:
     return type_ in INSIDE_ITEM
@@ -221,10 +287,104 @@ def describe(event: Mapping) -> str:
     return render(event)
 
 
-def envelope(event: Mapping) -> dict:
-    """The event as the feed and the pages carry it: the row, its words,
-    its condition. `pending` survives when the runner marked it so."""
-    told = {**event, "text": describe(event), "condition": CONDITIONS.get(event["type"])}
-    if event.get("data") is not None:
-        told["data"] = ledger.redacted(event["data"])
-    return told
+class EventFrame(Event):
+    """A committed ledger row, live."""
+
+    frame: Literal["event"]
+
+
+class PendingFrame(Reported):
+    """A report from INSIDE the item a handler is on.
+
+    Reported, not Event, and that is the whole point of the split: there
+    is no id, because it is not a row yet and may never be one --
+    db/runner.py Report lands at the item boundary. A browser narrowed to
+    this arm cannot reach for an id that was never sent. The console holds
+    the newest per job and drops it when any other kind of event settles
+    the item.
+    """
+
+    frame: Literal["pending"]
+
+
+class BacklogFrame(Wire):
+    """Everything the client missed, read from the rows on connect.
+
+    Sent before the live subscription is drained, so a row committed
+    during the read is queued behind it rather than lost, and a row that
+    lands in both arrives as the same id twice -- the client keeps one.
+    """
+
+    frame: Literal["backlog"]
+    events: list[Event]
+    after: int
+    last_id: int
+
+
+#: What arrives on /ws/events. Discriminated on `frame`, so a browser
+#: narrows to the arm it is handling and cannot read `events` off a
+#: single event or an id off a pending report.
+#:
+#: Not an OpenAPI path -- a socket has none -- so this is carried into the
+#: contract by sg_web/wire.py socket_frames(), which puts the union in the
+#: document's components. The browser's type is generated from that, never
+#: written twice.
+Frame = EventFrame | PendingFrame | BacklogFrame
+
+
+@get("/ws/events/frames", sync_to_thread=False)
+def socket_frames() -> Frame:
+    """Every frame /ws/events sends, carried into the document.
+
+    A socket has no path OpenAPI can describe, so its frames would never
+    reach the generated types and the browser would go back to
+    hand-written interfaces beside `JSON.parse` -- the exact duplication
+    this contract exists to remove. Declaring the union as one route's
+    answer puts all three arms in components, and openapi-typescript
+    generates the browser's union from them.
+
+    It answers the empty backlog rather than raising: a route that exists
+    only to be read by a generator is still a route somebody can request,
+    and one that 500s when they do is a trap. Nothing needs to call it --
+    the frames arrive on the socket.
+    """
+    return BacklogFrame(frame="backlog", events=[], after=0, last_id=0)
+
+
+def _said(event: Mapping) -> dict:
+    """Everything a row and a report share, said in words."""
+    held = event.get("data")
+    scrubbed = None if held is None else ledger.redacted(held)
+    # The column is any valid JSON, so a rebuild rather than a cast: an
+    # event whose data is a list or a scalar carries no named facts, and
+    # saying so is more honest than asserting it is an object.
+    data: dict[str, object] | None = None
+    if isinstance(scrubbed, dict):
+        data = {str(k): v for k, v in scrubbed.items()}
+    return {
+        "job_id": event["job_id"],
+        "at": event["at"],
+        "type": event["type"],
+        "item_id": event.get("item_id"),
+        "phase": event.get("phase"),
+        "severity": event.get("severity", "info"),
+        "message": event.get("message"),
+        "data": data,
+        "text": describe(event),
+        "condition": CONDITIONS.get(event["type"]),
+    }
+
+
+def envelope(event: Mapping) -> Event:
+    """A committed row as the feed and the pages carry it."""
+    return Event(id=event["id"], **_said(event))
+
+
+def event_frame(event: Mapping) -> EventFrame:
+    """A committed row, on its way to the socket."""
+    return EventFrame(frame="event", id=event["id"], **_said(event))
+
+
+def pending_frame(event: Mapping) -> PendingFrame:
+    """A report from inside an item, on its way to the socket."""
+    return PendingFrame(frame="pending", **_said(event))

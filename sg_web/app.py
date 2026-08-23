@@ -233,27 +233,11 @@ def ways(state: State) -> list[dict]:
         connect.close(conn)
 
 
-#: The job vocabularies are the schema's, not a second opinion: db/schema.sql
-#: constrains both columns with CHECK, and a value outside either is already
-#: impossible in the database. Stating them here as Literals carries that
-#: closed set across the wire, so the browser gets a union instead of `string`
-#: and a typo in a comparison is a type error there too.
-JobState = Literal["queued", "running", "done", "failed", "cancelled"]
-JobKind = Literal[
-    "scan",
-    "hash",
-    "embed",
-    "detect_faces",
-    "cluster_faces",
-    "sample_frames",
-    "annotate",
-    "remix",
-    "zip",
-    "context",
-    "events",
-    "story_plan",
-    "embed_prompts",
-]
+#: The job vocabularies live with the table that owns them (db/jobs.py),
+#: so the two seams that spell them -- this one and the operations
+#: console -- cannot come to different conclusions about what a job is.
+JobState = jobs.JobState
+JobKind = jobs.JobKind
 
 
 class JobListed(Wire):
@@ -931,12 +915,17 @@ async def jobs_feed(socket: WebSocket, channels: NamedDependency[ChannelsPlugin]
                 continue
 
 
-def _backlog_of(db_path: str, after: int) -> tuple[list[dict], int]:
-    """The ledger since `after`, as envelopes, and the head id the page
-    was read at -- one read-only connection, one ordered index walk."""
+def _backlog_of(db_path: str, after: int) -> console.BacklogFrame:
+    """The ledger since `after` as one frame, read at a head the frame
+    names -- one read-only connection, one ordered index walk."""
     conn = connect.connect(db_path, read_only=True)
     try:
-        return [console.envelope(event) for event in ledger.since(conn, after)], ledger.last_id(conn)
+        return console.BacklogFrame(
+            frame="backlog",
+            events=[console.envelope(event) for event in ledger.since(conn, after)],
+            after=after,
+            last_id=ledger.last_id(conn),
+        )
     finally:
         connect.close(conn)
 
@@ -963,11 +952,11 @@ async def events_feed(socket: WebSocket, channels: NamedDependency[ChannelsPlugi
     await socket.accept()
     async with channels.start_subscription("events") as subscriber:
         while True:
-            page, head = await to_thread.run_sync(_backlog_of, state.db_path, after)
-            await socket.send_json({"frame": "backlog", "events": page, "after": after, "last_id": head})
-            if len(page) < ledger.PAGE_MOST:
+            page = await to_thread.run_sync(_backlog_of, state.db_path, after)
+            await socket.send_json(page.model_dump(mode="json"))
+            if len(page.events) < ledger.PAGE_MOST:
                 break
-            after = page[-1]["id"]
+            after = page.events[-1].id
         async with subscriber.run_in_background(socket.send_text):
             while (await socket.receive())["type"] != "websocket.disconnect":
                 continue
@@ -1179,15 +1168,18 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             """A ledger row (or a pending report) onto the events channel,
             with its words and condition (sg_web/console.py) -- the
             presentation seam, so the worker never learns the vocabulary."""
-            told = console.envelope(event)
+            frame: console.Frame
             if event.get("pending"):
-                live_reports[int(event["job_id"])] = told
-                frame = "pending"
+                # No id: a report from inside an item is not a row yet
+                # (db/runner.py Report lands at the item boundary), which
+                # is why PendingFrame carries no id to send.
+                frame = console.pending_frame(event)
+                live_reports[int(event["job_id"])] = frame.model_dump(mode="json")
             else:
-                frame = "event"
+                frame = console.event_frame(event)
                 if not console.inside_item(event["type"]):
                     live_reports.pop(int(event["job_id"]), None)
-            loop.call_soon_threadsafe(channels.publish, {"frame": frame, **told}, "events")
+            loop.call_soon_threadsafe(channels.publish, frame.model_dump(mode="json"), "events")
 
         # Request handlers run on the thread pool too, so a job's `queued`
         # delta (sg_web/submitting.py) crosses the same bridge the worker's
@@ -1234,6 +1226,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         route_handlers=[
             health,
             front,
+            # The socket's frames, declared so the generated types carry
+            # them: a WebSocket has no path OpenAPI can describe.
+            console.socket_frames,
             media_view.media_page,
             media_authored.set_favorite,
             media_authored.set_rating,

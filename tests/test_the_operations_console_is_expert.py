@@ -101,8 +101,8 @@ def test_every_event_type_renders_to_words(type_):
     words = console.describe(event)
     assert words.strip(), type_
     told = console.envelope(event)
-    assert told["text"] == words
-    assert told["type"] == type_
+    assert told.text == words
+    assert told.type == type_
 
 
 def test_an_item_failure_and_a_worker_defect_are_distinct_conditions():

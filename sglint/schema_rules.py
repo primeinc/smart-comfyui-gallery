@@ -234,7 +234,14 @@ def _literal_members(module: ast.Module, name: str) -> frozenset[str] | None:
             continue
         if not any(isinstance(one, ast.Name) and one.id == name for one in targets):
             continue
-        if not isinstance(value, ast.Subscript) or not isinstance(value.value, ast.Name) or value.value.id != "Literal":
+        if not isinstance(value, ast.Subscript):
+            return None
+        # `Literal[...]` and `typing.Literal[...]` are the same type, and a
+        # vocabulary spelled the second way is not a vocabulary this rule
+        # may refuse to read.
+        held = value.value
+        named = held.id if isinstance(held, ast.Name) else held.attr if isinstance(held, ast.Attribute) else None
+        if named != "Literal":
             return None
         held = value.slice.elts if isinstance(value.slice, ast.Tuple) else [value.slice]
         spelled = [one.value for one in held if isinstance(one, ast.Constant) and isinstance(one.value, str)]
