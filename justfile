@@ -7,13 +7,16 @@ set windows-shell := ["bash", "-cu"]
 python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
 
 # The fast lane: every test not marked slow, spread over the cores
+# (pytest-xdist, one module per worker: module-scoped stages assume the
+# file's own order; 73s -> 20s on 16 cores). pytest.ini already carries -q;
+# a second one would hide the pass/fail summary.
 test:
-    {{ python }} -m pytest tests/ -q -m "not slow"
+    {{ python }} -m pytest tests/ -m "not slow" -n auto --dist loadfile
 
 # The slow lane: the tests marked slow (real sample libraries, real
-# timeouts) -- seconds each, run on their own
+# browsers) -- a few seconds each, four at a time
 test-slow:
-    {{ python }} -m pytest tests/ -q -m slow
+    {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile
 
 # Ruff over the whole tree, then this repository's own structural rules (sglint)
 lint:
