@@ -142,6 +142,31 @@ An item failure (`item.failed`, the job continues) and a worker defect
 (`worker.turn_failed`, traceback, lease lapses, reclaimable) are
 distinct conditions on every surface.
 
+## Collections
+
+A listed collection's membership is its filed rows; a smart collection's
+is a typed rule (`db/collection_rules.py`) evaluated through the same
+ResultSet every gallery question goes through. The rule is authored from
+a GalleryQuery (`from_gallery_query`) -- the gallery's save-view button
+sends the mounted answer's canonical parameters, every repeated `f`
+included, and never a rule shape -- and read back per version:
+
+```
+v1  folder, person, kind, favorite, rating_min; select sort/text/take
+v2  + artifact (a checkpoint, LoRA or workflow, by entity uuid)
+v3  + facets (registered metadata predicates, db/facets.py, by spelling)
+```
+
+Reading is fail-closed: an unknown key, a missing key, a facet whose
+key this build no longer registers, or a version stamp that does not
+equal its column is `BrokenCollectionRule`, never an evaluated empty
+collection. Entity references are uuids, so a rename moves the address
+and not the membership. A rule never holds `event.id`: a session is a
+run's hypothesis over one interpretation and would answer nothing the
+day the runs regroup -- save its day or moment window instead. The
+collection's page names the rule's words and opens the same question
+in the gallery.
+
 ## Timeline
 
 `/timeline` draws the library over the human moment
