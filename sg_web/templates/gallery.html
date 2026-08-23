@@ -81,6 +81,14 @@
       <button type="button" data-bulk-file="1">add</button>
       <button type="button" data-bulk-file="0">remove</button>
     </span>
+    <span class="curate-group">
+      <input data-bulk-place-name placeholder="where did these happen?" aria-label="place name">
+      <select data-bulk-place-kind aria-label="kind of place">
+        {% for k in place_kinds %}<option value="{{ k }}"{% if k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+      </select>
+      <button type="button" data-bulk-place="1">say where</button>
+      <button type="button" data-bulk-place="0">withdraw</button>
+    </span>
     <button type="button" data-curate-clear>clear selection</button>
   </div>
   <div class="lightbox-root" data-lightbox-root hidden></div>

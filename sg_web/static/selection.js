@@ -67,11 +67,13 @@
     );
   };
 
-  const tell = async (path, value) => {
+  // `extra` replaces the boolean/rating `value` for routes whose desired
+  // fact has another shape (a place by name and kind)
+  const tell = async (path, value, extra) => {
     const answer = await fetch(`/g/selection/${path}${window.location.search}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ answer: state.answer, items: [...state.selected], value }),
+      body: JSON.stringify({ answer: state.answer, items: [...state.selected], ...(extra || { value }) }),
     });
     if (answer.status === 409) {
       // The answer moved underneath the selection: nothing was written,
@@ -126,6 +128,17 @@
     const filed = event.target.closest("[data-bulk-file]");
     if (filed && albums.value) {
       tell(`collections/${albums.value}`, filed.dataset.bulkFile === "1");
+      return;
+    }
+    const placed = event.target.closest("[data-bulk-place]");
+    if (placed) {
+      if (placed.dataset.bulkPlace === "1") {
+        const name = bar.querySelector("[data-bulk-place-name]").value.trim();
+        if (!name) return;
+        tell("place", null, { name, kind: bar.querySelector("[data-bulk-place-kind]").value });
+      } else {
+        tell("place", null, { name: null });
+      }
       return;
     }
     if (event.target.closest("[data-curate-clear]")) clear();

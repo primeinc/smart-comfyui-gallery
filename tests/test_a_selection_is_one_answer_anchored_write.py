@@ -421,3 +421,39 @@ def test_every_non_hex_spelling_is_refused_as_a_bad_question(chosen):
     landed = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [valid], "value": True})
     assert landed.status_code < 300
     assert _favorites(chosen) == {"pic-0"}
+
+
+def _where(client, slug: str):
+    return client.get(f"/i/{slug}", headers={"accept": "application/json"}).json()["where"]
+
+
+def test_a_selection_can_be_placed_at_once(chosen):
+    """Where these pictures happened, said for the whole selection: one
+    place found or minted, one authored claim per file, every file
+    re-interpreted -- and withdrawn the same way."""
+    answer, keys = _grid(chosen, folder="lib")
+    picked = [keys["pic-1"], keys["pic-3"]]
+    told = chosen.post(
+        "/g/selection/place",
+        params={"folder": "lib"},
+        json={"answer": answer, "items": picked, "name": "Porto", "kind": "city"},
+    )
+    assert told.status_code < 300, told.text
+    assert told.json()["targets"] == 2
+    first, third = _where(chosen, "pic-1"), _where(chosen, "pic-3")
+    assert (first["name"], first["kind"], first["basis"]) == ("Porto", "city", "authored")
+    assert third["id"] == first["id"], "one Porto for the whole selection"
+    assert _where(chosen, "pic-2") is None or _where(chosen, "pic-2")["basis"] != "authored"
+    gone = chosen.post(
+        "/g/selection/place", params={"folder": "lib"}, json={"answer": answer, "items": picked, "name": None}
+    )
+    assert gone.status_code < 300, gone.text
+    assert _where(chosen, "pic-1") is None
+    refused = chosen.post(
+        "/g/selection/place",
+        params={"folder": "lib"},
+        json={"answer": answer, "items": picked, "name": "Mars", "kind": "planet"},
+    )
+    assert refused.status_code == 400
+    page = chosen.get("/g", params={"folder": "lib"}).text
+    assert "data-bulk-place-name" in page

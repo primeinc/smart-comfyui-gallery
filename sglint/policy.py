@@ -77,7 +77,7 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/artifact_view.py": frozenset({"connect", "naming", "pages", "resultset", "settings"}),
     # facets is vocabulary, not a query path: it parses and spells the
     # closed registry and never touches a connection
-    "sg_web/gallery.py": frozenset({"connect", "facets", "naming", "resultset", "settings"}),
+    "sg_web/gallery.py": frozenset({"connect", "facets", "naming", "places", "resultset", "settings"}),
     "sg_web/media_authored.py": frozenset(
         {"authored", "collections", "connect", "context", "naming", "pages", "places"}
     ),

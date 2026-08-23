@@ -22,7 +22,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.response import Template
 
-from db import connect, naming, resultset, settings
+from db import connect, naming, places, resultset, settings
 from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
@@ -57,6 +57,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "missing_spaces": provenance.get("missing") or {},
         "captions_unmatched": unmatched,
         "answered_by": provenance.get("contributors") or [],
+        "place_kinds": list(places.KINDS),
         "q": query.text or "",
         "folder": query.folder or "",
         "album": query.album or "",

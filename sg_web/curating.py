@@ -38,7 +38,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.response import Response
 
-from db import authored, collections, connect, naming, resultset, settings
+from db import authored, collections, connect, context, naming, places, resultset, settings
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES
@@ -52,6 +52,18 @@ class BulkFlag:
     answer: str
     items: list[str]
     value: bool
+
+
+@dataclasses.dataclass
+class BulkPlace:
+    """POST /g/selection/place: where every selected picture happened,
+    by place name and kind -- found or minted once for all of them -- or
+    a null name to withdraw the claim from all of them."""
+
+    answer: str
+    items: list[str]
+    name: str | None = None
+    kind: str = "locality"
 
 
 @dataclasses.dataclass
@@ -182,6 +194,35 @@ def bulk_rating(
         data,
         lambda conn, ids: authored.set_rating_many(conn, ids, state.actor_id, data.value, time.time()),
     )
+
+
+@post("/g/selection/place", sync_to_thread=True)
+def bulk_place(
+    state: State,
+    data: BulkPlace,
+    folder: str | None = None,
+    album: str | None = None,
+    person: str | None = None,
+    artifact: str | None = None,
+    kind: str | None = None,
+    favorite: str | None = None,
+    rating_min: int | None = None,
+    q: str | None = None,
+    sort: str | None = None,
+    size: int | None = None,
+) -> Response:
+    query = _asked(
+        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+    )
+
+    def write(conn, ids):
+        now = time.time()
+        place_id = places.named(conn, data.name, data.kind, now) if data.name is not None else None
+        for file_id in ids:
+            authored.set_place(conn, file_id, state.actor_id, place_id, now)
+            context.rebuild_one(conn, file_id, now)
+
+    return _applied(state, query, data, write)
 
 
 @post("/g/selection/collections/{collection:str}", sync_to_thread=True)

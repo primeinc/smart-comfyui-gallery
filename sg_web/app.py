@@ -1212,6 +1212,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             gallery.locate_in_answer,
             curating.bulk_favorite,
             curating.bulk_rating,
+            curating.bulk_place,
             curating.bulk_membership,
             # The runtime's own surface, under one Router seam (litestar-org/
             # litestar@v2.24.0 docs/usage/routing/overview.rst "Routers"):
