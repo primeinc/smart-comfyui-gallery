@@ -18,6 +18,13 @@ from .scan import mint
 KINDS = ("country", "region", "island", "county", "city", "locality", "neighborhood", "poi")
 
 
+def label(conn, place_id: int) -> str | None:
+    """The place's name, or None when no such place: what a chip says
+    instead of an id."""
+    row = conn.execute("SELECT name FROM place WHERE id = ?", (place_id,)).fetchone()
+    return str(row[0]) if row else None
+
+
 def named(conn, name: str, kind: str, now: float) -> int:
     """The place called `name` of this kind, minted on first mention:
     two pictures said to be in Lisbon are in ONE Lisbon, by name

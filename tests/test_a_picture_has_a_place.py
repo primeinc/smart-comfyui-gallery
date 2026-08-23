@@ -78,7 +78,12 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         # and the door opens exactly the pictures there
         door = client.get(f"/g?{where['qs']}", headers={"accept": "text/html"}).text
         assert 'data-total="2"' in door
-        assert "place =" in door or "place" in door
+        assert "place Lisbon" in door, "the chip says the place's name, never its id"
+        assert f"place #{where['id']}" not in door
+        shelf_with_span = client.get("/places", headers=AS_MACHINE).json()[0]
+        assert shelf_with_span["first_seen"] is not None
+        assert shelf_with_span["last_seen"] >= shelf_with_span["first_seen"]
+        assert "data-seen" in client.get("/places", headers={"accept": "text/html"}).text
 
         # the shelf lists the place with its count and door
         shelf = client.get("/places", headers=AS_MACHINE).json()

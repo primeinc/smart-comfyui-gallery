@@ -39,6 +39,10 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()  # a semantic answer may have minted registry rows
+        # a place facet's chip says the place's name, not its id
+        spelled_places = {
+            int(one.value): places.label(conn, int(one.value)) for one in query.facets if one.key == "place.id"
+        }
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -67,14 +71,14 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "favorite": "" if query.favorite is None else ("1" if query.favorite else "0"),
         "rating_min": query.rating_min or "",
         "facets": [facets_module.spell(held) for held in query.facets],
-        "chips": _chips(query),
+        "chips": _chips(query, spelled_places),
         "qs": shape["qs"],
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
     }
 
 
-def _chips(query: resultset.GalleryQuery) -> list[dict]:
+def _chips(query: resultset.GalleryQuery, spelled_places: dict[int, str | None] | None = None) -> list[dict]:
     """Every facet the question carries, as a chip with the question
     that remains when it is removed -- spelled by the ResultSet, so the
     chip's link is the same canonical state the URL holds."""
@@ -98,7 +102,11 @@ def _chips(query: resultset.GalleryQuery) -> list[dict]:
     for held in query.facets:
         rest = dataclasses.replace(query, facets=tuple(one for one in query.facets if one != held))
         made.append(
-            {"spelled": facets_module.spell(held), "label": _chip_label(held), "remove_qs": resultset.canonical(rest)}
+            {
+                "spelled": facets_module.spell(held),
+                "label": _chip_label(held, spelled_places or {}),
+                "remove_qs": resultset.canonical(rest),
+            }
         )
     return made
 
@@ -125,7 +133,10 @@ _KEYS = {
 }
 
 
-def _chip_label(held) -> str:
+def _chip_label(held, spelled_places: dict[int, str | None]) -> str:
+    if held.key == "place.id":
+        name = spelled_places.get(int(held.value))
+        return f"place {name}" if name else f"place #{held.value} (no such place)"
     return f"{_KEYS.get(held.key, held.key)} {_OPS.get(held.op, held.op)}{held.value}"
 
 

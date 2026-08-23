@@ -31,9 +31,11 @@ def places_index(state: State, request: Request) -> Template | Response:
                 "name": name,
                 "kind": kind,
                 "pictures": int(pictures),
+                "first_seen": first,
+                "last_seen": last,
                 "qs": urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
             }
-            for place_id, slug, name, kind, pictures in pages.places_shelf(conn)
+            for place_id, slug, name, kind, pictures, first, last in pages.places_shelf(conn)
         ]
     finally:
         connect.close(conn)
