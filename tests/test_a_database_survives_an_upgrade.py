@@ -1063,3 +1063,38 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
             conn.execute("UPDATE capture SET iso = 0")
     finally:
         connect.close(conn)
+
+
+def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
+    """A v25 library's whole-still face instances prove a detector looked
+    at those bytes: v26 records the pass with its face count, so the
+    next faces sweep leaves those files alone. A face-free file left no
+    trace and is not invented."""
+    import numpy as np
+
+    from db import derived
+
+    path = tmp_path / "gallery.db"
+    _built(path)
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn.execute("PRAGMA foreign_keys = ON")
+    file_id = a_file_row(conn)
+    conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("a" * 64, file_id))
+    faces = [
+        {"region": derived.region(conn, 0.1 * i, 0.1, 0.2, 0.2), "embedding": np.full(4, i, np.float32).tobytes()}
+        for i in range(1, 3)
+    ]
+    derived.record_faces(conn, file_id, "m", "1", "a" * 64, NOW, faces)
+    conn.execute("DROP TABLE derived_face_scan")
+    conn.execute("PRAGMA user_version = 25")
+    conn.close()
+
+    assert migrate.migrate(path) == [26]
+    assert build.drift(path) == []
+    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        assert ro.execute(
+            "SELECT file_id, model_id, model_version, source_sha256, faces FROM derived_face_scan"
+        ).fetchall() == [(file_id, "m", "1", "a" * 64, 2)]
+    finally:
+        ro.close()

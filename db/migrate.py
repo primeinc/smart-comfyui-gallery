@@ -2388,8 +2388,10 @@ END"""
 def _face_scans(conn: sqlite3.Connection) -> None:
     """v25 -> v26: `derived_face_scan`, the record that a detector's pass
     over a file's current bytes happened and found N faces (db/detect.py).
-    DDL is schema.sql's text VERBATIM. Existing libraries start with no
-    rows: the next faces sweep looks at everything once and records it.
+    DDL is schema.sql's text VERBATIM. Every whole-still face instance
+    already held proves a pass over its file's bytes by its model, so
+    those passes are backfilled with their face counts; a face-free file
+    left no trace and is looked at once more by the next sweep.
     """
     conn.execute(
         """CREATE TABLE derived_face_scan (
@@ -2401,6 +2403,13 @@ def _face_scans(conn: sqlite3.Connection) -> None:
     computed_at   REAL NOT NULL,
     PRIMARY KEY (file_id, model_id, model_version)
 ) STRICT, WITHOUT ROWID"""
+    )
+
+    conn.execute(
+        "INSERT INTO derived_face_scan(file_id, model_id, model_version, source_sha256, faces, computed_at)"
+        " SELECT file_id, model_id, model_version, source_sha256, count(*), max(computed_at)"
+        "   FROM derived_face_instance WHERE sample_id IS NULL"
+        "  GROUP BY file_id, model_id, model_version, source_sha256"
     )
 
 
