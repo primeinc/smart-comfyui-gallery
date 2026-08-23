@@ -147,8 +147,12 @@ def view(
 class CollectionListed(Wire):
     """One collection in the flat list `/albums` serves to machines.
 
-    `first_seen` and `last_seen` are the span of the pictures filed in it,
-    absent on the archived shelf because that list does not compute spans.
+    `first_seen` and `last_seen` are the span of the pictures filed in it.
+    The archived shelf computes no spans, so it answers null for both --
+    NOT by omitting the keys, which is what the two hand-built dict
+    literals used to do and is a difference no client should have had to
+    discover. Both lists are one representation now; a shelf row carries
+    the span keys because a listed collection has them.
     """
 
     name: str

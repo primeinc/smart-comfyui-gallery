@@ -535,6 +535,29 @@ def test_an_archived_collection_is_off_the_shelf_and_out_of_the_picker(curated, 
     assert [row["slug"] for row in retired] == [archived_project]
 
 
+def test_both_album_lists_carry_the_same_keys(curated, archived_project):
+    """`/albums` and its archived shelf are one representation.
+
+    The two lists are built from different statements and the archived one
+    computes no spans, so it would be easy for them to answer with different
+    key sets and for nobody to notice. They do not: a shelf row carries
+    first_seen and last_seen as null, because the contract says a listed
+    collection has them, not because that list happened to look them up.
+    """
+    active = curated.get("/albums", headers=AS_MACHINE).json()
+    retired = curated.get("/albums", params={"state": "archived"}, headers=AS_MACHINE).json()
+    assert active, "the active list needs a row for this to prove anything"
+    assert retired, "and so does the archived shelf"
+
+    listed = frozenset({"name", "slug", "kind", "pictures", "first_seen", "last_seen"})
+    for row in (*active, *retired):
+        assert set(row) == listed, row
+
+    assert all(row["first_seen"] is None and row["last_seen"] is None for row in retired), (
+        "the archived shelf computes no spans, and says so with null rather than by omitting the keys"
+    )
+
+
 def test_an_active_child_surfaces_instead_of_vanishing_with_its_organizer(curated, archived_project):
     shelf = {row["slug"] for row in curated.get("/albums", headers=AS_MACHINE).json()}
     page = curated.get("/albums", headers=AS_BROWSER).text
@@ -1135,6 +1158,28 @@ _SMART_EXTRA = frozenset({"rule", "state"})
 _REASONED = frozenset({"reason"})
 #: A rule that produced no answer has no gallery-shaped facts at all.
 _UNGALLERIED = frozenset({"first_seen", "last_seen", "timeline", "places"})
+
+
+def test_a_lifecycle_write_answers_with_the_managed_shape(curated):
+    """The third representation, captured.
+
+    A write answers with the view assembled for MANAGEMENT, not the one
+    `GET /t/{slug}` serves a machine: it carries `parents` -- the moves the
+    database would allow -- and omits the legacy `files` list. The browser
+    reads `slug` and `definition_rev` out of it, so the difference has never
+    surfaced, but it is a difference and it is now written down.
+    """
+    made = curated.post("/albums", json={"name": "Fresh"})
+    assert made.status_code == 201, made.text
+    written = set(made.json())
+
+    served = set(_view(curated, made.json()["slug"]))
+
+    assert "parents" in written, "a write answers the manage view"
+    assert "files" not in written
+    assert "files" in served, "the machine GET answers the legacy adapter shape"
+    assert "parents" not in served
+    assert written - {"parents"} == served - {"files"}, "otherwise they are the same listed collection"
 
 
 def test_a_listed_collection_says_which_keys_it_carries(curated):
