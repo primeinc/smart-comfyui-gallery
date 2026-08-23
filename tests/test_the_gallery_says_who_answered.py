@@ -69,3 +69,20 @@ def test_a_phrase_no_caption_mentions_is_said_quietly_not_as_degraded(tmp_path, 
         assert "data-captions-unmatched" in page
         assert "no caption mentions a word of the phrase" in page
         assert "data-degraded" not in page, "nothing failed to answer"
+
+
+def test_the_gallery_opens_its_question_on_the_timeline(tmp_path):
+    """Every question but a phrase has a timeline: the header's door is
+    the canonical question; a semantic phrase ranks, it does not scope,
+    so a searched gallery offers none."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        whole = client.get("/g", headers={"accept": "text/html"}).text
+        assert 'data-timeline-door href="/timeline"' in whole
+        scoped = client.get("/g", params={"folder": "lib", "kind": "image"}, headers={"accept": "text/html"}).text
+        assert 'data-timeline-door href="/timeline?folder=lib&amp;kind=image"' in scoped
+        assert client.get("/timeline", params={"folder": "lib", "kind": "image"}).status_code == 200

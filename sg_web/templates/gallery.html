@@ -43,6 +43,8 @@
             title="save this view as a smart collection">save view</button>
     <button type="button" class="ask-save" data-replace-smart
             title="make this view an existing smart collection's new rule">replace a rule</button>
+    {% if not q %}<a class="ask-save" data-timeline-door href="/timeline{% if qs %}?{{ qs }}{% endif %}"
+            title="this question on its human axis">on the timeline</a>{% endif %}
   </header>
   {% if chips %}
   <div class="chips" data-chips>
