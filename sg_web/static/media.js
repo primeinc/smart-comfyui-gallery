@@ -11,6 +11,16 @@
     node.textContent = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}${z}`;
   }
 
+  // a moment's caption is a door into the clip: play from that second
+  const video = document.querySelector("video");
+  for (const at of document.querySelectorAll("[data-said-seek]")) {
+    at.addEventListener("click", () => {
+      if (!video) return;
+      video.currentTime = Number(at.dataset.saidSeek) / 1000;
+      video.play();
+    });
+  }
+
   const back = document.querySelector("[data-return]");
   if (!back) return;
   document.addEventListener("keydown", (event) => {

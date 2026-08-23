@@ -514,6 +514,7 @@ body {
 .story-words { display: grid; gap: 2px; min-width: 0; }
 .story-hero-said { display: block; color: var(--ink-muted); font-size: .8rem; font-style: italic; }
 .answered { color: var(--ink-muted); font-size: .85rem; margin: 0 0 6px; }
+.said-at { font: inherit; font-size: .85rem; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
 .answered-by { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .story-card .story-title { color: var(--ink); font-weight: 600; font-size: 16px; text-decoration: none; }
 .story-card .story-title:hover { color: var(--accent); }

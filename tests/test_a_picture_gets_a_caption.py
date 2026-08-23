@@ -289,3 +289,29 @@ def test_a_clip_is_captioned_whole_and_at_its_sampled_moments(tmp_path, monkeypa
     # the same item again replaces its own moments, never doubles them
     runner._annotate_item(conn, file_id, {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}, 2.0)
     assert len(derived.said_about(conn, file_id)) == 1 + len(moments)
+
+
+def test_a_moments_caption_is_a_door_into_the_clip(tmp_path, monkeypatch):
+    """On the page a moment's caption carries the second it describes,
+    and the page's script plays the clip from there."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    _clip(root / "walk.mp4")
+    monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: FakeCaptioner(say="a grey walk"))
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            settings.put(conn, "caption_model", "fake/captioner")
+            file_id = conn.execute("SELECT id FROM file WHERE kind = 'video'").fetchone()[0]
+            runner._annotate_item(conn, file_id, {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}, 1.0)
+            conn.commit()
+            slug = naming.entity_slug(conn, file_id)[1]
+        finally:
+            connect.close(conn)
+        page = client.get(f"/i/{slug}", headers={"accept": "text/html"}).text
+        assert 'data-said-seek="0"' in page, "the first sampled moment is the clip's start"
+        assert "<video" in page
+        assert page.count("data-said-seek=") >= 2
