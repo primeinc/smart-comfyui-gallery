@@ -91,7 +91,8 @@ operational control.
 A sweep is `POST /jobs/<kind>` or its console button; every sweep is a
 job row. The phash, faces, embed, annotate and context sweeps queue
 only what is missing and answer 204 (the console: "nothing to do") when
-nothing is; `everything` redoes all of it. Each reads its own record of
+nothing is; `everything` -- the console's "again" button -- redoes all of
+it. Each reads its own record of
 having been done against the file's CURRENT bytes:
 
 ```
