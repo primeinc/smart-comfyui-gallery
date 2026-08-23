@@ -46,6 +46,7 @@ console's **again** button beside the sweep, redoes all of it.
 /g                  the gallery: one question, one ordered answer
 /i/<slug>           a picture, a video, a document
 /p/<slug>           a person           /people
+/places             everywhere a person said a picture happened; each a door into the gallery
 /t/<slug>           an album or a smart collection   /albums
 /f/<slug>           a folder           /folders
 /m/<slug> /l/<slug> /w/<slug>   a model, a LoRA, a workflow

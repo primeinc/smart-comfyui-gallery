@@ -80,6 +80,13 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         assert 'data-total="2"' in door
         assert "place =" in door or "place" in door
 
+        # the shelf lists the place with its count and door
+        shelf = client.get("/places", headers=AS_MACHINE).json()
+        assert [(p["name"], p["kind"], p["pictures"]) for p in shelf] == [("Lisbon", "city", 2)]
+        assert shelf[0]["qs"] == where["qs"]
+        page = client.get("/places", headers={"accept": "text/html"}).text
+        assert f'data-place="{shelf[0]["slug"]}"' in page
+
         # a rebuild keeps a person's word: the claim is authored state
         assert client.post("/jobs/context", params={"everything": "true"}).status_code == 201
         _drain(client)

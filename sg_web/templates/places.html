@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Places{% endblock %}
+{% block body %}
+  <header class="bar">
+    <nav class="crumbs">
+      <span class="crumbs-here">Places</span>
+      <span class="crumbs-where">{{ places|length }} named</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if places %}
+    <div class="album-list" data-places>
+      {% for one in places %}
+      <a class="album-card" href="/g?{{ one.qs }}" data-place="{{ one.slug }}">
+        <span class="album-name">{{ one.name }}</span>
+        <span class="album-count">{{ one.kind }} &middot; {{ one.pictures }} picture{{ "" if one.pictures == 1 else "s" }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">nowhere said yet — open a picture and say where it happened, or select pictures in the <a href="/g">gallery</a> and say where for all of them.</p>
+    {% endif %}
+  </main>
+{% endblock %}

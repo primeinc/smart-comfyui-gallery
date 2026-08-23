@@ -1082,6 +1082,21 @@ MEDIA_PLACE = (
     " WHERE mc.file_id = ? AND mc.policy_version = ?"
 )
 
+#: Every place named, with how many present pictures the current
+#: interpretation puts there, most first.
+PLACES_SHELF = (
+    "SELECT p.id, e.slug, p.name, p.kind, count(f.id) AS pictures"
+    "  FROM place p JOIN entity e ON e.id = p.id"
+    "  LEFT JOIN derived_media_context mc ON mc.place_id = p.id AND mc.policy_version = ?"
+    "  LEFT JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " GROUP BY p.id ORDER BY pictures DESC, p.name COLLATE NOCASE"
+)
+
+
+def places_shelf(conn):
+    return conn.execute(PLACES_SHELF, (context.POLICY_VERSION,)).fetchall()
+
+
 #: Every place anyone has named, for the picker. Bounded.
 PLACES_NAMED = "SELECT p.name, p.kind FROM place p ORDER BY p.name COLLATE NOCASE LIMIT ?"
 

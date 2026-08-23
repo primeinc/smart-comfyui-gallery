@@ -111,12 +111,23 @@ def test_every_browser_page_carries_the_same_navigation(served):
     operational door is there too, and the shell's notice and activity
     surface are mounted once each."""
     client, _ = served
-    for where in ("/g", "/people", "/albums", "/folders", "/timeline", "/stories", "/operations", "/i/s-0", "/f/lib"):
+    for where in (
+        "/g",
+        "/people",
+        "/places",
+        "/albums",
+        "/folders",
+        "/timeline",
+        "/stories",
+        "/operations",
+        "/i/s-0",
+        "/f/lib",
+    ):
         page = client.get(where, headers=AS_BROWSER)
         assert page.status_code == 200, f"{where}: {page.status_code} {page.text[:300]}"
         shells = page.text.count('<nav class="shell"')
         assert shells == 1, f"{where} mounts the shell {shells} times"
-        for door in ("/g", "/people", "/albums", "/folders", "/timeline", "/stories", "/operations"):
+        for door in ("/g", "/people", "/places", "/albums", "/folders", "/timeline", "/stories", "/operations"):
             assert f'href="{door}"' in page.text, f"{where} does not reach {door}"
         assert page.text.count('id="shell-notice"') == 1, where
         assert page.text.count('id="activity-jobs"') == 1, where
@@ -135,7 +146,7 @@ def test_machine_representations_carry_no_shell(served):
     for part in (client.get("/i/s-0", headers={"hx-request": "true"}).text, client.get("/g/grid").text):
         assert "<html" not in part
         assert 'class="shell"' not in part
-    for index in ("/people", "/albums", "/folders", "/timeline", "/stories", "/f/lib"):
+    for index in ("/people", "/places", "/albums", "/folders", "/timeline", "/stories", "/f/lib"):
         machine = client.get(index)
         assert machine.headers["content-type"].startswith("application/json"), index
         assert machine.headers["vary"] == "Accept, HX-Request", index
@@ -352,6 +363,7 @@ SURFACES = {
     "media_view.media_page": ("sg_web/media_view.py", "grid cell; lightbox fragment", ("GET", "/i/s-0", None)),
     "person_view.people_index": ("sg_web/person_view.py", "shell nav", ("GET", "/people", None)),
     "person_view.person_page": ("sg_web/person_view.py", "person card; drawer fragment", None),
+    "place_view.places_index": ("sg_web/place_view.py", "shell nav", ("GET", "/places", None)),
     "collection_view.albums_index": ("sg_web/collection_view.py", "shell nav", ("GET", "/albums", None)),
     "collection_view.album_page": ("sg_web/collection_view.py", "album tree", None),
     "folder_view.folders_index": ("sg_web/folder_view.py", "shell nav", ("GET", "/folders", None)),

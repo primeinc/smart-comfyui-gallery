@@ -72,6 +72,7 @@ from sg_web import (
     media_view,
     operations,
     person_view,
+    place_view,
     story_view,
     timeline_view,
 )
@@ -1183,6 +1184,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             story_view.render_document,
             story_view.plan_evolution,
             person_view.people_index,
+            place_view.places_index,
             person_view.person_page,
             clusterings,
             ways,

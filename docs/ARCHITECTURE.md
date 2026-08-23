@@ -42,8 +42,8 @@ Every response carries `Vary: Accept, HX-Request`.
 
 ## Shell
 
-`base.html` renders navigation (gallery, people, albums, folders,
-timeline, stories, operations) and mounts the activity surface through the
+`base.html` renders navigation (gallery, people, places, albums,
+folders, timeline, stories, operations) and mounts the activity surface through the
 `activity()` Jinja global installed by `sg_web/activity.py` on the
 application's engine (`engine_callback`). Story and evolution pages
 render through `story_view._story_env` (StrictUndefined) and pass
@@ -183,8 +183,11 @@ by name and kind (`places.named`), records the claim as authored
 desired state (`file_place`, one per file, `authored.set_place`) and
 re-interprets the file at once, so the context reads
 `location_basis = 'authored'`. The claim survives every rebuild. A
-picture's page says where, or "nowhere said", and offers the form; the
-`place.id` facet is the door to everything there.
+picture's page says where, or "nowhere said", and offers the form; a
+selection can be placed at once (`POST /g/selection/place`); `/places`
+lists every place named with its count; the `place.id` facet is the
+door to everything there, and a session whose placed members agree
+carries the place on its card.
 
 ## Timeline
 

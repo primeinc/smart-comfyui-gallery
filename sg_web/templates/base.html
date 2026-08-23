@@ -24,6 +24,7 @@
     <a class="shell-brand" href="/g">SmartGallery</a>
     <a href="/g"{% if here == "/g" or here.startswith("/i/") %} aria-current="page"{% endif %}>gallery</a>
     <a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a>
+    <a href="/places"{% if here == "/places" %} aria-current="page"{% endif %}>places</a>
     <a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a>
     <a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a>
     <a href="/timeline"{% if here == "/timeline" %} aria-current="page"{% endif %}>timeline</a>

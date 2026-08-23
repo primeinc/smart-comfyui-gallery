@@ -68,6 +68,7 @@ STATEMENT_METHODS = frozenset({"execute", "executemany", "executescript", "curso
 ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/collection_authoring.py": frozenset({"collection_rules", "collections", "connect", "naming", "settings"}),
     "sg_web/person_view.py": frozenset({"authored", "connect", "naming", "pages", "resultset", "settings"}),
+    "sg_web/place_view.py": frozenset({"connect", "facets", "pages"}),
     # `library` is the marker-verified reachability probe the folders
     # index reports online state through -- presence, not membership.
     "sg_web/folder_view.py": frozenset({"connect", "library", "naming", "pages", "resultset", "settings"}),
