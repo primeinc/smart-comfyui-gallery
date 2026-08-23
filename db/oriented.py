@@ -67,7 +67,15 @@ def open_upright(path, orientation: int | None = None) -> Image.Image:
     the caller."""
     from vision import decode
 
-    return upright(decode.open_still(path), orientation)
+    opened = decode.open_still(path)
+    opened.load()  # pixels in memory; a single-frame file's handle closes here (Pillow file-handling)
+    if decode.is_animated(opened):
+        # a multi-frame file keeps its handle until closed: take the first
+        # frame into memory and let the handle go now, not at GC
+        still = opened.copy()
+        opened.close()
+        opened = still
+    return upright(opened, orientation)
 
 
 def orientation_of(conn, file_id: int) -> int | None:

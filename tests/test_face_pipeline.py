@@ -139,6 +139,29 @@ def test_upright_reads_the_exif_tag_out_of_the_file_itself():
     assert turned.getpixel((0, 0)) == (255, 0, 0)
 
 
+def test_open_upright_leaves_no_handle_behind(tmp_path):
+    """A still closes on load (Pillow file-handling); an animated file does
+    not -- open_upright takes its first frame and closes the handle, so no
+    ResourceWarning reaches the garbage collector for either."""
+    import gc
+    import warnings
+
+    still = tmp_path / "still.png"
+    upright_frame().save(still)
+    moving = tmp_path / "moving.gif"
+    frames = [Image.new("RGB", (8, 8), (255, 0, 0)), Image.new("RGB", (8, 8), (0, 255, 0))]
+    frames[0].save(moving, save_all=True, append_images=frames[1:], duration=100, loop=0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        for path, size in ((still, (40, 20)), (moving, (8, 8))):
+            turned = oriented.open_upright(path, 3)
+            assert turned.size == size
+            del turned
+            gc.collect()
+    leaked = [w for w in caught if issubclass(w.category, ResourceWarning)]
+    assert leaked == [], [str(w.message) for w in leaked]
+
+
 def test_every_stored_orientation_comes_back_upright():
     """All seven non-trivial EXIF orientations, each stored by the inverse
     transform and recovered by the mapping Pillow itself uses
