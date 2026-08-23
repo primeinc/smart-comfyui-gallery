@@ -145,7 +145,7 @@ def test_a_bin_is_a_door_that_opens_exactly_its_pictures(surfaced):
     ).json()
     two = next(b for b in view["bins"] if b["pictures"] == 2)
     assert "context.moment%3Agte%3A" in two["qs"]
-    assert "context.moment%3Alte%3A" in two["qs"]
+    assert "context.moment%3Alt%3A" in two["qs"], "the door is the half-open window the count uses"
     import re
 
     def total(qs: str) -> int:
@@ -300,3 +300,84 @@ def test_a_library_wider_than_the_day_cap_answers_at_the_week(surfaced):
         ).status_code
         == 200
     )
+
+
+#: A minute boundary (divisible by 60) past NOW.
+MINUTE_AT = 1_700_000_040.0
+
+
+def test_a_bar_counts_a_fractional_moment_and_its_door_opens_it(tmp_path_factory):
+    """A claimless file's moment is its mtime, fractional; the bar counts
+    on [at, at+width) over that real axis and the door must spell the
+    same half-open window, or a bar of one opens a gallery of none."""
+    import re
+
+    def build(root: pathlib.Path) -> None:
+        _plain(root / "download-c.png", MINUTE_AT + 59.5)
+
+    with staged(tmp_path_factory, "timeline-fraction", build, _interpreted) as stage:
+        client = stage.client
+        view = client.get(
+            "/timeline/density",
+            params={"bin": "minute", "start": MINUTE_AT, "end": MINUTE_AT + MIN},
+            headers={"accept": "application/json"},
+        ).json()
+        assert [(b["at"], b["pictures"]) for b in view["bins"]] == [(MINUTE_AT, 1)]
+        opened = client.get(f"/g?{view['bins'][0]['qs']}")
+        assert opened.status_code == 200, opened.text
+        assert int(re.search(r'data-total="(\d+)"', opened.text).group(1)) == 1, "the bar of one opens that one"
+
+
+def test_the_days_and_events_lists_say_when_they_are_cut(surfaced, monkeypatch):
+    from sg_web import timeline_view
+
+    whole = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    assert whole["days_total"] == len(whole["days"]) >= 2
+    assert whole["events_total"] == len(whole["events"]) >= 1
+    monkeypatch.setattr(timeline_view, "DAYS_MOST", 1)
+    monkeypatch.setattr(timeline_view, "EVENTS_MOST", 1)
+    cut = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    assert (len(cut["days"]), cut["days_total"]) == (1, whole["days_total"])
+    assert (len(cut["events"]), cut["events_total"]) == (1, whole["events_total"])
+    page = surfaced.get("/timeline", headers={"accept": "text/html"}).text
+    assert f"data-timeline-days-cut>1 of {whole['days_total']}<" in page
+    assert f"data-timeline-events-cut>1 of {whole['events_total']}<" in page
+
+
+def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surfaced):
+    """A rebuild advances the interpretation's generation; session runs
+    answer only at the generation they were computed over. The page
+    says the sessions need the events job instead of listing none."""
+    before = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    assert before["coverage"]["events_current"] is True
+    assert before["events"]
+    conn = connect.connect(surfaced.app.state.db_path, read_only=True)
+    try:
+        slug = conn.execute("SELECT e.slug FROM entity e JOIN file f ON f.id = e.id ORDER BY f.id LIMIT 1").fetchone()[
+            0
+        ]
+    finally:
+        connect.close(conn)
+    told = surfaced.post(f"/i/{slug}/place", json={"name": "Lisbon", "kind": "city"})
+    assert told.status_code < 300, told.text
+    after = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    assert after["coverage"]["events_current"] is False
+    assert after["events"] == []
+    assert after["events_total"] == 0
+    assert "data-timeline-events-stale" in surfaced.get("/timeline", headers={"accept": "text/html"}).text
+    density = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
+    assert density["coverage"]["events_current"] is False
+
+
+def test_an_empty_scope_answers_the_same_shape_as_a_full_one(surfaced):
+    full = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"})
+    empty = surfaced.get(
+        "/timeline/density",
+        params={"bin": "day", "f": "capture.iso:gte:999999"},
+        headers={"accept": "application/json"},
+    )
+    assert empty.status_code == 200, empty.text
+    assert set(empty.json()) == set(full.json())
+    assert empty.json()["bins"] == []
+    assert empty.json()["extent"] is None
+    assert empty.headers.get("vary") == full.headers.get("vary")

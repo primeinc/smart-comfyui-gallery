@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import sqlite3
 import time
 
 from litestar import post
@@ -91,15 +92,27 @@ def _applied(state: State, query, data, write) -> Response:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
 
         def proven():
-            return resultset.prove_subset(
-                conn,
-                weights,
-                query,
-                time.time(),
-                actor_id=state.actor_id,
-                expect_answer=data.answer,
-                entity_uuids=data.items,
-            )
+            # The proof reads under one snapshot; a space's first scoped
+            # question mints registry rows inside it, and a commit that
+            # landed since the snapshot's first read makes that write
+            # SQLITE_BUSY_SNAPSHOT -- refused at once, not waited for
+            # (sqlite/src/wal.c sqlite3WalBeginWriteTransaction). The
+            # snapshot rolled back; prove again on a fresh one.
+            for again in (False, True):
+                try:
+                    return resultset.prove_subset(
+                        conn,
+                        weights,
+                        query,
+                        time.time(),
+                        actor_id=state.actor_id,
+                        expect_answer=data.answer,
+                        entity_uuids=data.items,
+                    )
+                except sqlite3.OperationalError:
+                    if again:
+                        raise
+            raise AssertionError("unreachable")
 
         proof = proven()
         applied = False

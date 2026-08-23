@@ -64,7 +64,7 @@ def _bin_door(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -
     count applied -- a day-precision claim sitting at midnight inside an
     hour's window was not counted in that bar and must not open from it."""
     low = facets.facet("context.moment", "gte", str(int(at)))
-    high = facets.facet("context.moment", "lte", str(int(at) + width - 1))
+    high = facets.facet("context.moment", "lt", str(int(at) + width))
     fine = facets.facet("context.granule", "lte", str(int(width)))
     return _door(question, low, high, fine)
 
@@ -155,6 +155,10 @@ _SPAN = {"day": 86_400, "hour": 3_600, "minute": 60}
 #: are, and the person zooms in. Never a silent cut.
 SESSIONS_MOST = 200
 SESSIONS_SAMPLED_MOST = 60
+#: Days and events the page lists, newest first; the totals ride beside
+#: the lists so a cut is said, never silent.
+DAYS_MOST = 400
+EVENTS_MOST = 200
 
 
 def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.GalleryQuery = WHOLE) -> dict:
@@ -163,6 +167,11 @@ def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.Gall
         "interpreted": have,
         "present": present,
         "contested": contested,
+        #: a session run answers only at the current interpretation
+        #: (db/pages.py TIMELINE_EVENTS); one authored place moves the
+        #: generation and every session door goes dark until the events
+        #: job runs again -- the page names that remedy, never an empty list
+        "events_current": pages.timeline_events_current(conn),
         "contested_qs": _door(question, facets.facet("context.disputed", "eq", "1")),
         "policy_version": context.POLICY_VERSION,
         "complete": have == present,
@@ -217,6 +226,7 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
             {"slug": slug, "name": name, "href": f"/p/{slug}", "pictures": int(count)}
             for slug, name, count in pages.session_people(conn, event_id)
         ],
+        "people_total": pages.session_people_total(conn, event_id),
     }
 
 
@@ -256,14 +266,19 @@ def density(
                 {
                     "bin": bin_name,
                     "bin_seconds": pages.BINS.get(bin_name),
+                    "start": None,
+                    "end": None,
                     "scope": _scope_told(held),
+                    "extent": None,
+                    "coverage": coverage,
+                    "sampled": True,
                     "bins": [],
                     "spans": [],
                     "sessions": [],
                     "sessions_total": 0,
                     "sessions_sampled": True,
-                    "coverage": coverage,
-                }
+                },
+                headers=VARIES,
             )
         lo = float(start) if start is not None else float(extent[0])
         hi = float(end) if end is not None else float(extent[1]) + 1.0
@@ -335,8 +350,9 @@ def timeline(
         ]
         days = [
             {"day": day, "pictures": pictures, "qs": _day_door(day, held)}
-            for day, pictures in pages.timeline_days(conn, scope=scope)
+            for day, pictures in pages.timeline_days(conn, DAYS_MOST, scope=scope)
         ]
+        days_total = pages.timeline_days_total(conn, scope)
         happenings = [
             {
                 "id": event_id,
@@ -364,14 +380,17 @@ def timeline(
                 confidence,
                 member_hash,
                 pictures,
-            ) in pages.timeline_events(conn, scope=scope)
+            ) in pages.timeline_events(conn, EVENTS_MOST, scope=scope)
         ]
+        events_total = pages.timeline_events_total(conn, scope)
     finally:
         connect.close(conn)
     told = {
         "months": months,
         "days": days,
+        "days_total": days_total,
         "events": happenings,
+        "events_total": events_total,
         "coverage": coverage,
         "scope": _scope_told(held),
     }

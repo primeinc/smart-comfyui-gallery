@@ -883,6 +883,13 @@ _TIMELINE_DAYS_HEAD = (
 )
 _TIMELINE_DAYS_TAIL = " GROUP BY day ORDER BY day DESC LIMIT ?"
 TIMELINE_DAYS = _TIMELINE_DAYS_HEAD + _TIMELINE_DAYS_TAIL
+#: How many days the list above would hold uncut: the same rows, counted.
+_TIMELINE_DAYS_TOTAL_HEAD = (
+    "SELECT count(DISTINCT strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch'))"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ?"
+)
 
 #: Event runs answer only while they can PROVE they were computed over
 #: the current interpretation: generation and policy both match, or the
@@ -897,6 +904,21 @@ _TIMELINE_EVENTS_HEAD = (
 )
 _TIMELINE_EVENTS_TAIL = " ORDER BY e.instant_start DESC LIMIT ?"
 TIMELINE_EVENTS = _TIMELINE_EVENTS_HEAD + _TIMELINE_EVENTS_TAIL
+#: The same sessions, counted: what the list above would hold uncut.
+_TIMELINE_EVENTS_TOTAL_HEAD = (
+    "SELECT count(*)"
+    "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
+    " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
+    "   AND r.context_policy_version = ?"
+)
+#: Whether any session run stands at the current interpretation: False
+#: the moment a rebuild advanced the generation, until the events job
+#: runs again.
+TIMELINE_EVENTS_CURRENT = (
+    "SELECT EXISTS (SELECT 1 FROM derived_event_run r"
+    " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
+    "   AND r.context_policy_version = ?)"
+)
 #: A session is in scope when one of its members is: the scope's
 #: conjunct, over that member as `f`.
 _SESSION_MEMBER_IN_SCOPE = (
@@ -1174,6 +1196,20 @@ def timeline_events(conn, limit: int = 200, scope: tuple[str, list] = ("", [])):
     ).fetchall()
 
 
+def timeline_days_total(conn, scope: tuple[str, list] = ("", [])) -> int:
+    row = conn.execute(_TIMELINE_DAYS_TOTAL_HEAD + scope[0], (context.POLICY_VERSION, *scope[1])).fetchone()
+    return int(row[0] or 0)
+
+
+def timeline_events_total(conn, scope: tuple[str, list] = ("", [])) -> int:
+    row = conn.execute(_TIMELINE_EVENTS_TOTAL_HEAD + _members_in(scope), (context.POLICY_VERSION, *scope[1])).fetchone()
+    return int(row[0] or 0)
+
+
+def timeline_events_current(conn) -> bool:
+    return bool(conn.execute(TIMELINE_EVENTS_CURRENT, (context.POLICY_VERSION,)).fetchone()[0])
+
+
 #: Who is in one session, by the primary clustering: each person's
 #: address, name (NULL until named) and how many of the session's
 #: pictures hold them, most first. Bounded: a card names a few.
@@ -1190,8 +1226,23 @@ SESSION_PEOPLE = (
 SESSION_PEOPLE_MOST = 4
 
 
+SESSION_PEOPLE_TOTAL = (
+    "SELECT count(DISTINCT fp.person_id)"
+    "  FROM derived_event_file ef"
+    "  JOIN derived_file_person fp ON fp.file_id = ef.file_id"
+    "  JOIN derived_face_run r ON r.id = fp.run_id AND r.is_primary = 1"
+    " WHERE ef.event_id = ?"
+)
+
+
 def session_people(conn, event_id: int, limit: int = SESSION_PEOPLE_MOST):
     return conn.execute(SESSION_PEOPLE, (event_id, limit)).fetchall()
+
+
+def session_people_total(conn, event_id: int) -> int:
+    """Everyone in the session, counted -- the list above names the first
+    few; this is what "and others" means."""
+    return int(conn.execute(SESSION_PEOPLE_TOTAL, (event_id,)).fetchone()[0])
 
 
 #: Where one picture happened, as the current interpretation holds it:

@@ -427,3 +427,53 @@ def test_a_sweep_takes_its_weights_from_the_setting_never_the_body(tmp_path):
             connect.close(conn)
         assert dirs
         assert all("somewhere" not in one for one in dirs), dirs
+
+
+def test_a_place_within_itself_is_refused_not_a_500(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        (a,) = _slugs(client)
+        told = client.post(
+            f"/i/{a}/place", json={"name": "Lisbon", "kind": "city", "within": "Lisbon", "within_kind": "city"}
+        )
+        assert told.status_code == 400, told.text
+        assert "within itself" in told.json()["detail"]
+        client.post(
+            f"/i/{a}/place", json={"name": "Lisbon", "kind": "city", "within": "Portugal", "within_kind": "country"}
+        )
+        # Portugal inside Lisbon would close the loop
+        told = client.post(
+            f"/i/{a}/place", json={"name": "Portugal", "kind": "country", "within": "Lisbon", "within_kind": "city"}
+        )
+        assert told.status_code == 400, told.text
+        shelf = client.get("/places", headers=AS_MACHINE).json()
+        assert sorted(p["name"] for p in shelf) == ["Lisbon", "Portugal"], "a refusal mints nothing"
+
+
+def test_a_bare_mention_of_two_placed_twins_is_ambiguous(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(2):
+        Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        a, b = _slugs(client)
+        client.post(
+            f"/i/{a}/place", json={"name": "Lisbon", "kind": "city", "within": "Portugal", "within_kind": "country"}
+        )
+        client.post(f"/i/{b}/place", json={"name": "Lisbon", "kind": "city", "within": "Iowa", "within_kind": "region"})
+        told = client.post(f"/i/{b}/place", json={"name": "Lisbon", "kind": "city"})
+        assert told.status_code == 400, told.text
+        assert "Portugal" in told.json()["detail"]
+        assert "Iowa" in told.json()["detail"]
+        # said which: found, not minted
+        told = client.post(
+            f"/i/{b}/place", json={"name": "lisbon", "kind": "city", "within": "Iowa", "within_kind": "region"}
+        )
+        assert told.status_code < 300, told.text
+        assert told.json()["where"]["chain"] == ["Lisbon", "Iowa"]

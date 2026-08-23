@@ -10,6 +10,7 @@
         · policy v{{ coverage.policy_version }}
         {% if coverage.contested %}· <a href="/g?{{ coverage.contested_qs }}" data-timeline-contested title="pictures whose sources disagree about when">{{ "{:,}".format(coverage.contested) }} contested</a>{% endif %}
         {% if not coverage.complete %}· <a href="/operations">interpret the rest</a>{% endif %}
+        {% if coverage.present and not coverage.events_current %}· <a href="/operations" data-timeline-events-stale title="the interpretation moved since sessions were last grouped">sessions need the events job</a>{% endif %}
       </span>
     </nav>
   </header>
@@ -42,7 +43,7 @@
     </section>
     {% if days %}
     <section class="detail-facts">
-      <h2>days</h2>
+      <h2>days{% if days_total > days | length %} <span class="album-count" data-timeline-days-cut>{{ days | length }} of {{ "{:,}".format(days_total) }}</span>{% endif %}</h2>
       <ul>
         {% for held in days %}
         <li>
@@ -55,7 +56,7 @@
     {% endif %}
     {% if events %}
     <section class="detail-facts">
-      <h2>events</h2>
+      <h2>events{% if events_total > events | length %} <span class="album-count" data-timeline-events-cut>{{ events | length }} of {{ "{:,}".format(events_total) }}</span>{% endif %}</h2>
       <ul>
         {% for held in events %}
         <li data-event-kind="{{ held.kind }}">

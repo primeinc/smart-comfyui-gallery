@@ -260,6 +260,9 @@
           a.title = `${p.pictures} of these pictures`;
           who.appendChild(a);
         });
+        if (s.people_total > s.people.length) {
+          who.appendChild(document.createTextNode(` and ${s.people_total - s.people.length} others`));
+        }
         body.appendChild(who);
       }
       const doors = document.createElement("div");
@@ -299,13 +302,9 @@
 
   function stackFor(bin, start, end) {
     // the crumbs: every coarser level that contains this window
-    const made = [];
-    const extent = current && current.extent ? current.extent : null;
-    for (const coarser of ORDER.slice(0, ORDER.indexOf(bin))) {
-      if (coarser === ORDER[0] || coarser === "day") made.push({ bin: coarser, start: null, end: null });
-      else if (extent) made.push({ bin: coarser, start: null, end: null });
-    }
-    return made.filter((held, i, all) => all.findIndex((o) => o.bin === held.bin) === i);
+    // a crumb is a zoom level, not a window: the coarser view redraws
+    // over its whole extent
+    return ORDER.slice(0, ORDER.indexOf(bin)).map((coarser) => ({ bin: coarser, start: null, end: null }));
   }
 
   function show(bin, start, end) {
@@ -323,7 +322,8 @@
         note.textContent =
           `${fine} pictures placed at ${bin} resolution` +
           (coarse ? `; ${coarse} claim only a coarser window, drawn as spans` : "") +
-          (c && !c.complete ? ` · ${c.present - c.interpreted} files not yet interpreted` : "");
+          (c && !c.complete ? ` · ${c.present - c.interpreted} files not yet interpreted` : "") +
+          (c && c.present && !c.events_current ? " · sessions need the events job: the interpretation moved since they were grouped" : "");
       })
       .catch((why) => {
         // a library too wide for day bins opens at the week; the user zooms in

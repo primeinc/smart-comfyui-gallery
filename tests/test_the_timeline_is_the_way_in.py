@@ -217,6 +217,7 @@ def test_a_session_says_who_is_in_it(doors):
 
     whole = _density(doors, bin="day")
     assert all(s["people"] == [] for s in whole["sessions"]), "no faces recorded yet"
+    assert all(s["people_total"] == 0 for s in whole["sessions"])
     target = whole["sessions"][0]
     conn = connect.connect(doors.app.state.db_path)
     try:

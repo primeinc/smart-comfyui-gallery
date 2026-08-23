@@ -13,6 +13,7 @@ the same full entity citizen a person or a collection is.
 
 from __future__ import annotations
 
+from . import connect
 from .scan import mint
 
 KINDS = ("country", "region", "island", "county", "city", "locality", "neighborhood", "poi")
@@ -40,17 +41,25 @@ def named(conn, name: str, kind: str, now: float, *, within: int | None = None) 
     # Find-or-mint under the writer lane: two people naming Lisbon at once
     # must not mint two (the `place_identity` index refuses the second
     # outright; the lane makes the first win cleanly).
-    if not conn.in_transaction:
-        conn.execute("BEGIN IMMEDIATE")
+    connect.claim_lane(conn)
     rows = conn.execute(
         "SELECT id, parent_id FROM place WHERE name = ? COLLATE NOCASE AND kind = ? ORDER BY id", (spelled, kind)
     ).fetchall()
+    if within is None and len(rows) > 1 and all(parent_id is not None for _, parent_id in rows):
+        # two real places of this name, each within somewhere: a bare
+        # mention cannot pick one by insertion order
+        parents = ", ".join(label(conn, parent_id) or "?" for _, parent_id in rows)
+        raise ValueError(f"{spelled} is ambiguous: one within each of {parents}; say which")
     for place_id, parent_id in rows:
         if within is None or parent_id == within:
             return int(place_id)
     for place_id, parent_id in rows:
         if parent_id is None:
-            # a bare one, and nobody of that name is within `within` yet
+            # a bare one, and nobody of that name is within `within` yet --
+            # unless `within` is this very place or something inside it,
+            # which the no-cycle trigger would refuse as a 500
+            if within == place_id or place_id in {held["id"] for held in chain(conn, within)}:
+                raise ValueError(f"{spelled} cannot be within itself or within a place inside it")
             conn.execute("UPDATE place SET parent_id = ? WHERE id = ?", (within, place_id))
             return int(place_id)
     return place(conn, spelled, kind, now, parent_id=within)

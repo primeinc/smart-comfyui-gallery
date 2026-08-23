@@ -46,7 +46,7 @@ class _Spec:
     choices: tuple[str, ...] | None = None
 
 
-_OP_SQL = {"eq": "=", "gte": ">=", "lte": "<="}
+_OP_SQL = {"eq": "=", "gte": ">=", "lt": "<", "lte": "<="}
 
 #: The vocabulary, closed: each key names where the fact lives and how
 #: it may be asked. Adding a key here is the WHOLE work of adding a
@@ -90,10 +90,12 @@ REGISTRY: dict[str, _Spec] = {
     ),
     #: The surface's door: a bin of the human moment, as epoch seconds
     #: on the SAME axis the density is counted on -- so a bar of 14
-    #: pictures opens a gallery of exactly those 14.
+    #: pictures opens a gallery of exactly those 14. The axis is REAL
+    #: (a claimless file's moment is its fractional mtime), so a door is
+    #: the half-open [at, at+width) the count uses, never [at, at+width-1].
     "context.moment": _Spec(
         "int",
-        ("gte", "lte"),
+        ("gte", "lt", "lte"),
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND " + HUMAN_MOMENT + " {op} ?)",
     ),
