@@ -1608,11 +1608,17 @@ export interface components {
         /** DesiredPlace */
         DesiredPlace: {
             name?: string | null;
-            /** @default locality */
-            kind: string;
+            /**
+             * @default locality
+             * @enum {string}
+             */
+            kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
             within?: string | null;
-            /** @default country */
-            within_kind: string;
+            /**
+             * @default country
+             * @enum {string}
+             */
+            within_kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
         };
         /** DesiredRating */
         DesiredRating: {
@@ -1771,7 +1777,8 @@ export interface components {
             id: number;
             slug: string;
             name: string;
-            kind: string;
+            /** @enum {string} */
+            kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
             basis: string | null;
             chain: string[];
             qs: string;

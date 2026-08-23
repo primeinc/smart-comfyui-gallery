@@ -301,3 +301,26 @@ def test_authored_eligibility_rides_the_indexes(tmp_path):
         connect.close(conn)
         assert "TEMP B-TREE" not in plan.upper(), plan
         assert "USING INDEX file_in_folder_by_time" in plan, plan
+
+
+def test_a_body_the_contract_does_not_name_is_refused(kept):
+    """sg_web/wire.py says a JSON contract names every field that crosses
+    and refuses the rest, in BOTH directions. For a request that means a
+    misspelled field is a 400 at the seam, not a key silently ignored while
+    the route reports success for a write that never carried it.
+
+    The pair matters: the same body without the surprise must still be
+    accepted, or this would pass just as well against a route that refused
+    everything.
+    """
+    good = kept.post("/i/pic-3/favorite", json={"value": True})
+    assert good.status_code == 201, good.text
+
+    surprised = kept.post("/i/pic-3/favorite", json={"value": True, "supriseFieldNobodyAskedFor": 72})
+    assert surprised.status_code == 400, surprised.text
+
+    # and the closed vocabulary is closed: a place kind no place can be is
+    # refused by the contract rather than by the database three calls later
+    refused = kept.post("/i/pic-3/place", json={"name": "Lisbon", "kind": "planet"})
+    assert refused.status_code == 400, refused.text
+    assert kept.post("/i/pic-3/place", json={"name": "Lisbon", "kind": "city"}).status_code == 201

@@ -1964,3 +1964,15 @@ def test_the_wire_job_vocabularies_are_the_schema_s(db):
     table = db.execute("SELECT sql FROM sqlite_master WHERE name = 'job'").fetchone()[0]
     assert frozenset(typing.get_args(JobKind)) == _checked_members(table, "kind")
     assert frozenset(typing.get_args(JobState)) == _checked_members(table, "state")
+
+
+def test_the_wire_place_vocabulary_is_the_schema_s(db):
+    """The same proof for places: POST /i/{slug}/place names a kind, and
+    the kinds a place can be are the schema's CHECK constraint, not a list
+    somebody retyped beside the route."""
+    import typing
+
+    from sg_web.media_view import PlaceKind
+
+    table = db.execute("SELECT sql FROM sqlite_master WHERE name = 'place'").fetchone()[0]
+    assert frozenset(typing.get_args(PlaceKind)) == _checked_members(table, "kind")

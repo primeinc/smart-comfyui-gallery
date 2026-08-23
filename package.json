@@ -1,9 +1,9 @@
 {
   "private": true,
   "type": "module",
-  "//": "22.18 is where node runs a .ts file by default and without an experimental warning (node doc/api/typescript.md); the build script depends on that, and nothing here is ever shipped to a browser as-is.",
+  "//": "24.12 is where node's type stripping is stable rather than merely on by default (node doc/api/typescript.md), which is what running build.ts depends on. The floor and @types/node are one decision: checking the build script against a newer runtime surface than the oldest runtime we claim to support would let it use APIs that runtime does not have.",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=24.12"
   },
   "scripts": {
     "lint": "biome lint . --error-on-warnings",
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",
-    "@types/node": "24.10.1",
+    "@types/node": "24.13.3",
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   }

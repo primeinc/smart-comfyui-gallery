@@ -16,7 +16,7 @@
 // Every request here goes through the generated contract, so the three
 // desired-state routes are three named calls rather than one function
 // that concatenated a path fragment onto a slug and hoped.
-import { api } from "./api";
+import { type Answered, answered, api } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components, paths } from "./generated/api";
 
@@ -108,35 +108,43 @@ const settle = async (root: HTMLElement) => {
   }
 };
 
-/** Redraw from the authoritative answer, then check the mounted walk. */
-const applied = async (root: HTMLElement, answer: AuthoredAnswer | undefined) => {
-  if (!answer) return;
-  draw(root, answer.authored);
+/**
+ * Redraw from the authoritative answer, then check the mounted walk.
+ *
+ * A refusal is said out loud. It used to return null and the strip simply
+ * did not change, which looks exactly like a click that missed.
+ */
+const applied = async (root: HTMLElement, told: Answered<AuthoredAnswer>) => {
+  if (!told.ok) {
+    window.alert(told.refusal);
+    return;
+  }
+  draw(root, told.data.authored);
   await settle(root);
 };
 
 const setFavorite = async (root: HTMLElement, value: boolean) => {
-  const { data } = await api.POST("/i/{slug}/favorite", {
+  const told = await api.POST("/i/{slug}/favorite", {
     params: { path: { slug: requireData(root, "slug") } },
     body: { value },
   });
-  await applied(root, data);
+  await applied(root, answered(told, "the favorite could not be recorded"));
 };
 
 const setRating = async (root: HTMLElement, value: number | null) => {
-  const { data } = await api.POST("/i/{slug}/rating", {
+  const told = await api.POST("/i/{slug}/rating", {
     params: { path: { slug: requireData(root, "slug") } },
     body: { value },
   });
-  await applied(root, data);
+  await applied(root, answered(told, "the rating could not be recorded"));
 };
 
 const setMembership = async (root: HTMLElement, collection: string, value: boolean) => {
-  const { data } = await api.POST("/i/{slug}/collections/{collection}", {
+  const told = await api.POST("/i/{slug}/collections/{collection}", {
     params: { path: { slug: requireData(root, "slug"), collection } },
     body: { value },
   });
-  await applied(root, data);
+  await applied(root, answered(told, "the album membership could not be recorded"));
 };
 
 const choices = async (root: HTMLElement) => {
@@ -145,10 +153,15 @@ const choices = async (root: HTMLElement) => {
     box.hidden = true;
     return;
   }
-  const { data } = await api.GET("/i/{slug}/collection-choices", {
-    params: { path: { slug: requireData(root, "slug") } },
-  });
-  if (!data) return;
+  const told = answered(
+    await api.GET("/i/{slug}/collection-choices", { params: { path: { slug: requireData(root, "slug") } } }),
+    "the albums could not be read",
+  );
+  if (!told.ok) {
+    window.alert(told.refusal);
+    return;
+  }
+  const data = told.data;
   box.replaceChildren(
     ...data.map((one) => {
       const row = document.createElement("label");

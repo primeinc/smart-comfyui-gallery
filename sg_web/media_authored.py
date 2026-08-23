@@ -18,7 +18,6 @@ these routes' business.
 
 from __future__ import annotations
 
-import dataclasses
 import time
 
 from litestar import get, post
@@ -102,15 +101,13 @@ def _answered(conn, file_id: int, actor_id: int) -> Response[AuthoredAnswer]:
     )
 
 
-@dataclasses.dataclass
-class DesiredFlag:
+class DesiredFlag(Wire):
     """The body of the boolean desired-state routes."""
 
     value: bool
 
 
-@dataclasses.dataclass
-class DesiredRating:
+class DesiredRating(Wire):
     """The body of POST /i/{slug}/rating: 1..5, or null to clear."""
 
     value: int | None = None
@@ -128,16 +125,15 @@ def set_favorite(state: State, slug: FromPath[str], data: DesiredFlag) -> Respon
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class DesiredPlace:
+class DesiredPlace(Wire):
     """The body of POST /i/{slug}/place: a place by name and kind, or a
     null name to withdraw the claim."""
 
     name: str | None = None
-    kind: str = "locality"
+    kind: media_view.PlaceKind = "locality"
     #: the place this one is within, named the same way; optional
     within: str | None = None
-    within_kind: str = "country"
+    within_kind: media_view.PlaceKind = "country"
 
 
 class PlaceAnswer(Wire):

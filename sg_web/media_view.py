@@ -38,6 +38,7 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import time
+from typing import Literal
 
 from litestar import Request, get
 from litestar.datastructures import State
@@ -141,13 +142,21 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
     }
 
 
+#: The place vocabulary is the schema's: db/schema.sql constrains place.kind
+#: with CHECK, and db/places.py KINDS is the same list. Stating it here as a
+#: Literal carries the closed set across the wire, so a body naming a kind no
+#: place can ever be is a 400 at the seam rather than a row the database
+#: refuses later, and the browser gets a union instead of `string`.
+PlaceKind = Literal["country", "region", "island", "county", "city", "locality", "neighborhood", "poi"]
+
+
 class Where(Wire):
     """Where the picture happened, as the current interpretation holds it."""
 
     id: int
     slug: str
     name: str
-    kind: str
+    kind: PlaceKind
     #: a person's word, or nothing yet -- GPS alone names no place
     basis: str | None
     #: the place and every ancestor, leaf first: "Lisbon, Portugal"

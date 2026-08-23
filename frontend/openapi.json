@@ -8916,6 +8916,16 @@
                     },
                     "kind": {
                         "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ],
                         "default": "locality"
                     },
                     "within": {
@@ -8930,6 +8940,16 @@
                     },
                     "within_kind": {
                         "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ],
                         "default": "country"
                     }
                 },
@@ -9681,7 +9701,17 @@
                         "type": "string"
                     },
                     "kind": {
-                        "type": "string"
+                        "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ]
                     },
                     "basis": {
                         "oneOf": [
