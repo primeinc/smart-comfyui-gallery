@@ -40,8 +40,15 @@ repo-check:
 # The gate: lint, format, repo hygiene. No tests -- `just test` is its own step
 check: lint fmt-check types repo-check
 
-# The gate plus both test lanes
-check-all: check test test-slow
+# The gate, both test lanes, and the real run walked
+check-all: check test test-slow smoke
+
+# Every surface and five real pictures over the database in the home
+# directory -- the check a lane over fresh databases cannot make.
+# `just smoke --home D:/runs/two` for another run.
+[doc('Walk the real run: every surface and real pictures, over ~/.smartgallery')]
+smoke *ARGS:
+    {{ python }} -m sg_web.smoke "$@"
 
 # The repo-wide structural gates, on their own and in seconds: sglint's
 # rules (discovered scope: a package created tomorrow is swept the day it

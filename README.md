@@ -102,7 +102,8 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 just check          ruff, sglint, format, pyright, repo hygiene -- no tests
 just test           the fast tests, one module per worker (~20s)
 just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
-just check-all      the gate plus both test lanes
+just check-all      the gate, both test lanes, and the real run walked
+just smoke          every surface and real pictures over ~/.smartgallery (`--home` for another run)
 just audit          sglint code rules, `--repo` hygiene, the linter self-tests -- seconds
 just serve          the app
 just bench          faces-validate, browser-report: the measured evidence behind the docs
