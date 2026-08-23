@@ -47,6 +47,14 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+def _total_of(page: str) -> int:
+    import re
+
+    found = re.search(r'data-total="(\d+)"', page)
+    assert found is not None, "the gallery page carries its total"
+    return int(found.group(1))
+
+
 def _plain(path, at: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (12, 12), (30, 60, 90)).save(path)
@@ -310,7 +318,6 @@ def test_a_bar_counts_a_fractional_moment_and_its_door_opens_it(tmp_path_factory
     """A claimless file's moment is its mtime, fractional; the bar counts
     on [at, at+width) over that real axis and the door must spell the
     same half-open window, or a bar of one opens a gallery of none."""
-    import re
 
     def build(root: pathlib.Path) -> None:
         _plain(root / "download-c.png", MINUTE_AT + 59.5)
@@ -325,7 +332,7 @@ def test_a_bar_counts_a_fractional_moment_and_its_door_opens_it(tmp_path_factory
         assert [(b["at"], b["pictures"]) for b in view["bins"]] == [(MINUTE_AT, 1)]
         opened = client.get(f"/g?{view['bins'][0]['qs']}")
         assert opened.status_code == 200, opened.text
-        assert int(re.search(r'data-total="(\d+)"', opened.text).group(1)) == 1, "the bar of one opens that one"
+        assert _total_of(opened.text) == 1, "the bar of one opens that one"
 
 
 def test_the_days_and_events_lists_say_when_they_are_cut(surfaced, monkeypatch):
@@ -394,7 +401,6 @@ def test_an_empty_scope_answers_the_same_shape_as_a_full_one(surfaced):
 def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
     """The invariant the surface is built on, checked over the whole
     extent at each zoom: a bar's door answers the bar's count."""
-    import re
 
     view = surfaced.get(
         "/timeline/density",
@@ -405,7 +411,7 @@ def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
     for bar in view["bins"]:
         opened = surfaced.get(f"/g?{bar['qs']}")
         assert opened.status_code == 200, opened.text
-        total = int(re.search(r'data-total="(\d+)"', opened.text).group(1))
+        total = _total_of(opened.text)
         assert total == bar["pictures"], (
             f"{bin_name} bar at {bar['at']}: bar says {bar['pictures']}, door opens {total}"
         )

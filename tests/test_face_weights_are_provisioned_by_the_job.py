@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import pathlib
 
+import numpy as np
 import pytest
 
 from db import runner, settings
@@ -106,8 +107,9 @@ def test_with_provision_a_missing_hub_file_is_fetched_into_models_dir(models_dir
 
     asked: list = []
 
-    def fetched(repo_id, filename, *, cache_dir=None, revision=None, **kw):
+    def fetched(repo_id, filename, *, cache_dir: str | None = None, revision=None, **kw):
         asked.append((repo_id, filename, cache_dir, revision))
+        assert cache_dir is not None
         return os.path.join(cache_dir, filename)
 
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", fetched)
@@ -174,6 +176,7 @@ def test_a_pack_unzipped_one_level_too_deep_is_lifted_to_where_faceanalysis_look
     monkeypatch.setattr(insightface.utils, "ensure_available", fetched)
 
     root = weights.insightface_root(models_dir, provision=True)
+    assert root is not None
 
     pack = pathlib.Path(root) / "models" / weights.PACK
     assert sorted(p.name for p in pack.iterdir()) == ["glintr100.onnx", "scrfd_10g_bnkps.onnx"]
@@ -213,8 +216,9 @@ def test_without_the_pack_provisioning_fetches_yunet_and_sface(models_dir, share
 
     asked: list = []
 
-    def fetched(repo_id, filename, *, cache_dir=None, revision=None, **kw):
+    def fetched(repo_id, filename, *, cache_dir: str | None = None, revision=None, **kw):
         asked.append((repo_id, filename))
+        assert cache_dir is not None
         return os.path.join(cache_dir, filename)
 
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", fetched)
@@ -349,7 +353,9 @@ def test_the_job_item_asks_for_the_payloads_backend_with_provisioning(tmp_path, 
 
     def chosen(models_dir, *, choice, providers, provision):
         asked.append((models_dir, choice, providers, provision))
-        return StubFaceBackend(lambda img: [FaceDetection((0.1, 0.1, 0.2, 0.2), [], 0.9, [1.0, 0.0])])
+        return StubFaceBackend(
+            lambda img: [FaceDetection((0.1, 0.1, 0.2, 0.2), [], 0.9, np.asarray([1.0, 0.0], dtype=np.float32))]
+        )
 
     monkeypatch.setattr(faces, "backend_for", chosen)
     monkeypatch.setattr(runner, "_BACKENDS", {})

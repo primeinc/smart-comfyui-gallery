@@ -689,7 +689,10 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         if isinstance(resolved, str):
             return Redirect(path=f"{where}/{resolved}", status_code=301)
         file_id, path = resolved
-        kind, sha = pages.file_bytes(conn, file_id)
+        held = pages.file_bytes(conn, file_id)
+        if held is None:
+            raise NotFoundException(f"no file at {where}/{slug}")
+        kind, sha = held
         if kind not in ("image", "animated_image", "video"):
             raise NotFoundException(f"a {kind} has no {variant}")
         if sha is None:

@@ -10,11 +10,16 @@ present -- weights alone would fail halfway into from_pretrained.
 from __future__ import annotations
 
 import pathlib
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from PIL import Image
 
 from vision.weights import Unprovisioned, hub_cached
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from transformers import BatchFeature
 
 #: The default `caption_model` setting: BLIP base, captioning head, BSD-3.
 MODEL = "Salesforce/blip-image-captioning-base"
@@ -72,7 +77,9 @@ class BlipCaptioner:
         self.processor = BlipProcessor.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded = BlipForConditionalGeneration.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded.eval()
-        self.model = loaded.to(self.device)
+        # `Module.to` reaches pyright as the functools-wrapped descriptor
+        # transformers decorates it with, unbound; call it as the method it is
+        self.model = cast(BlipForConditionalGeneration, torch.nn.Module.to(loaded, self.device))
         self.model_id = model
         # In the hub cache layout the snapshot directory IS the commit:
         # the version recorded on every caption is immutable, never `main`.
@@ -82,7 +89,10 @@ class BlipCaptioner:
     def describe(self, image: Image.Image) -> str:
         import torch
 
-        inputs = self.processor(images=image.convert("RGB"), return_tensors="pt").to(self.device)
+        # the processor's typed kwargs nest `return_tensors` under a modality
+        # group the call merges at runtime; the call itself takes it flat
+        encode = cast("Callable[..., BatchFeature]", self.processor)
+        inputs = encode(images=image.convert("RGB"), return_tensors="pt").to(self.device)
         with torch.inference_mode():
             out = self.model.generate(**inputs, max_new_tokens=MOST_TOKENS)
         return self.processor.decode(out[0], skip_special_tokens=True).strip()

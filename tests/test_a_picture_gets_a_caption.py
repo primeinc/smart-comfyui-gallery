@@ -230,7 +230,9 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
                 conn.commit()
             conn.commit()
             file_id = conn.execute("SELECT id FROM file").fetchone()[0]
-            slug = naming.entity_slug(conn, file_id)[1]
+            named = naming.entity_slug(conn, file_id)
+            assert named is not None
+            slug = named[1]
             state = conn.execute("SELECT state FROM job WHERE kind = 'annotate'").fetchone()[0]
         finally:
             connect.close(conn)
@@ -351,7 +353,9 @@ def test_a_moments_caption_is_a_door_into_the_clip(tmp_path, monkeypatch):
             file_id = conn.execute("SELECT id FROM file WHERE kind = 'video'").fetchone()[0]
             runner._annotate_item(conn, file_id, {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}, 1.0)
             conn.commit()
-            slug = naming.entity_slug(conn, file_id)[1]
+            named = naming.entity_slug(conn, file_id)
+            assert named is not None
+            slug = named[1]
         finally:
             connect.close(conn)
         page = client.get(f"/i/{slug}", headers={"accept": "text/html"}).text

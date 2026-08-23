@@ -125,13 +125,20 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
 }
 
 
+def _one(job_id: int | None) -> list[int]:
+    """A submit's answer as the launcher's list: None is "nothing to do"."""
+    return [] if job_id is None else [job_id]
+
+
 def _phash_again(state: State, conn) -> list[int]:
-    return [runner.submit_phash(conn, time.time(), everything=True)]
+    return _one(runner.submit_phash(conn, time.time(), everything=True))
 
 
 def _faces_again(state: State, conn) -> list[int]:
     cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
-    return [runner.submit_faces(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache, everything=True)]
+    return _one(
+        runner.submit_faces(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache, everything=True)
+    )
 
 
 def _embed_again(state: State, conn) -> list[int]:
@@ -139,17 +146,17 @@ def _embed_again(state: State, conn) -> list[int]:
 
 
 def _annotate_again(state: State, conn) -> list[int]:
-    return [runner.submit_annotate(conn, time.time(), models_dir=_weights(state, conn), everything=True)]
+    return _one(runner.submit_annotate(conn, time.time(), models_dir=_weights(state, conn), everything=True))
 
 
 def _context_again(state: State, conn) -> list[int]:
-    return [runner.submit_context(conn, time.time(), everything=True)]
+    return _one(runner.submit_context(conn, time.time(), everything=True))
 
 
 #: The sweeps that are for what is missing, each with its "all of it
 #: again" -- the second button beside the first, never a hidden flag.
 def _ingest_again(state: State, conn) -> list[int]:
-    return [runner.submit_ingest(conn, time.time(), everything=True)]
+    return _one(runner.submit_ingest(conn, time.time(), everything=True))
 
 
 AGAIN: dict[str, Launcher] = {

@@ -247,16 +247,19 @@ class OpenCVFaceBackend(FaceBackend):
         except Exception as exc:  # the registry refused or the network did
             raise BackendUnavailable(f"fetching the OpenCV face weights failed: {exc}") from exc
         detector_path = held.yunet
-        recognizer_path = held.sface
-        arcface_path = held.arcface
         if embedder == "auto":
-            embedder = "arcface" if arcface_path is not None else "sface"
+            embedder = "arcface" if held.arcface is not None else "sface"
+        # the one recognizer this backend will load, proven present here
+        arcface_path: str | None = None
+        recognizer_path: str | None = None
         if embedder == "arcface":
-            if arcface_path is None:
+            if held.arcface is None:
                 raise BackendUnavailable(f"ArcFace model (the {weights_module.PACK} pack) is not under {models_dir}")
+            arcface_path = held.arcface
         elif embedder == "sface":
-            if recognizer_path is None:
+            if held.sface is None:
                 raise BackendUnavailable(f"SFace model is not under {models_dir} or the shared HF cache")
+            recognizer_path = held.sface
         else:
             raise ValueError(f"unknown face embedder: {embedder!r}")
         self._embedder = embedder
@@ -293,10 +296,10 @@ class OpenCVFaceBackend(FaceBackend):
                 prev_level = None
         try:
             self._detector = cv2.FaceDetectorYN.create(detector_path, "", (320, 320), score_threshold=min_det_score)
-            if embedder == "arcface":
+            if arcface_path is not None:
                 self._recognizer = None
                 self._arcface = cv2.dnn.readNetFromONNX(arcface_path)
-            else:
+            elif recognizer_path is not None:
                 self._recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
                 self._arcface = None
         except Exception as exc:

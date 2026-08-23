@@ -145,12 +145,13 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
             return None
     if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
         import rawpy
+        from rawpy._rawpy import LibRawError  # rawpy re-exports it unmarked; the stub defines it here
 
         try:
             with rawpy.imread(os.fspath(path)) as raw:
                 held = raw.sizes
                 return int(held.width), int(held.height)
-        except (rawpy.LibRawError, OSError, ValueError):  # the documented name (docs/api/exceptions.rst)
+        except (LibRawError, OSError, ValueError):  # the documented name (docs/api/exceptions.rst)
             return None
     ensure_decoders()
     try:

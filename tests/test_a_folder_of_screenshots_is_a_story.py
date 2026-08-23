@@ -173,7 +173,9 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     conn = connect.connect(client.app.state.db_path)
     try:
         hero_slug = shelf[0]["heroes"][0]["thumbnail"].rsplit("/", 1)[1]
-        hero_id = naming.resolve(conn, "file", hero_slug)[0]
+        resolved = naming.resolve(conn, "file", hero_slug)
+        assert resolved is not None
+        hero_id = resolved[0]
         sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (hero_id,)).fetchone()[0]
         derived.annotate(conn, hero_id, "caption", "a window full of icons", "m", "1", sha, NOW)
         conn.commit()

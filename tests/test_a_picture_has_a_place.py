@@ -32,12 +32,22 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
+def _answer_of(page: str) -> str:
+    import re
+
+    found = re.search(r'data-answer="([^"]+)"', page)
+    assert found is not None, "the gallery page carries its answer identity"
+    return found.group(1)
+
+
 def _slugs(client) -> list[str]:
     from db import naming
 
     conn = connect.connect(client.app.state.db_path, read_only=True)
     try:
-        return [naming.entity_slug(conn, fid)[1] for (fid,) in conn.execute("SELECT id FROM file ORDER BY id")]
+        named = [naming.entity_slug(conn, fid) for (fid,) in conn.execute("SELECT id FROM file ORDER BY id")]
+        assert all(one is not None for one in named)
+        return [one[1] for one in named if one is not None]
     finally:
         connect.close(conn)
 
@@ -118,7 +128,9 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         try:
             from db import collections, naming
 
-            collection_id = naming.resolve(conn, "collection", made.json()["slug"])[0]
+            resolved = naming.resolve(conn, "collection", made.json()["slug"])
+            assert resolved is not None
+            collection_id = resolved[0]
             for name in ("p0.png", "p1.png"):
                 fid = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()[0]
                 collections.set_membership(conn, collection_id, fid, True, 5.0)
@@ -345,7 +357,7 @@ def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
         page = client.get("/g", params={"folder": "lib"}).text
         import re
 
-        answer = re.search(r'data-answer="([^"]+)"', page).group(1)
+        answer = _answer_of(page)
         keys = re.findall(r'data-selection-key="([0-9a-f]{32})"', page)
         assert len(keys) == 4
         calls.clear()
@@ -383,7 +395,7 @@ def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
         client.post(f"/i/{b}/place", json={"name": "Lisbon", "kind": "city"})
         spelled = f"place.id:eq:{where['id']}"
         page = client.get("/g", params={"f": spelled}).text
-        answer = re.search(r'data-answer="([^"]+)"', page).group(1)
+        answer = _answer_of(page)
         keys = re.findall(r'data-selection-key="([0-9a-f]{32})"', page)
         assert len(keys) == 2
         told = client.post(

@@ -410,7 +410,9 @@ def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
     slug = saved.json()["slug"]
     conn = _raw(client)
     try:
-        stored = collection_rules.load(conn, naming.resolve(conn, "collection", slug)[0])
+        resolved = naming.resolve(conn, "collection", slug)
+        assert resolved is not None
+        stored = collection_rules.load(conn, resolved[0])
         assert stored is not None
         assert stored.version == 3
         assert [facets.spell(one) for one in stored.facets] == ["capture.iso:gte:800"]
@@ -431,7 +433,9 @@ def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
     assert two.status_code == 201, two.text
     conn = _raw(client)
     try:
-        held = collection_rules.load(conn, naming.resolve(conn, "collection", two.json()["slug"])[0])
+        resolved = naming.resolve(conn, "collection", two.json()["slug"])
+        assert resolved is not None
+        held = collection_rules.load(conn, resolved[0])
         assert held is not None
         assert [facets.spell(one) for one in held.facets] == ["capture.iso:gte:800", "context.origin:eq:captured"]
     finally:

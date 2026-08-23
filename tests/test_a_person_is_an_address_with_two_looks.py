@@ -1010,7 +1010,9 @@ def test_a_person_page_says_when_they_were_seen(faces):
     import re
 
     page = client.get(f"/g?{session['qs']}").text
-    assert int(re.search(r'data-total="(\d+)"', page).group(1)) == 2, "the door opens on Ana's pictures in that session"
+    total = re.search(r'data-total="(\d+)"', page)
+    assert total is not None
+    assert int(total.group(1)) == 2, "the door opens on Ana's pictures in that session"
     html = client.get("/p/ana", headers={"accept": "text/html"}).text
     assert "data-person-sessions" in html
     assert f'data-person-session="{session["id"]}"' in html

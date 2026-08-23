@@ -34,6 +34,7 @@ from __future__ import annotations
 import pathlib
 import time
 import urllib.parse
+from typing import Annotated
 
 from litestar import Request, get
 from litestar.datastructures import State
@@ -217,7 +218,7 @@ def _albums_nested(db_path: str) -> tuple[list[dict], int]:
 async def albums_index(
     state: State,
     request: Request,
-    shown: str | None = QueryParameter(name="state", default=None, required=False),
+    shown: Annotated[str | None, QueryParameter(name="state")] = None,
 ) -> Template | Response:
     """Every active collection, alphabetically -- rendered for a
     browser, the historical JSON list for everything else.

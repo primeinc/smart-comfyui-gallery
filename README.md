@@ -96,12 +96,11 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 ## Develop
 
 ```
-just check          ruff, sglint, format, repo hygiene -- no tests
+just check          ruff, sglint, format, pyright, repo hygiene -- no tests
 just test           the fast tests, one module per worker (~20s)
 just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
 just check-all      the gate plus both test lanes
 just audit          sglint code rules, `--repo` hygiene, the linter self-tests -- seconds
-just types          pyright, on request
 just serve          the app
 just bench          faces-validate, browser-report: the measured evidence behind the docs
 just faiss-verify   which faiss build the process loads

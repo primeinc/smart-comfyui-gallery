@@ -19,6 +19,7 @@ import calendar
 import dataclasses
 import pathlib
 import time
+from typing import Annotated
 
 from litestar import Request, get
 from litestar.datastructures import State
@@ -233,7 +234,7 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
 @get("/timeline/density", sync_to_thread=True)
 def density(
     state: State,
-    bin_name: str = QueryParameter(name="bin", default="day"),
+    bin_name: Annotated[str, QueryParameter(name="bin")] = "day",
     start: FromQuery[float | None] = None,
     end: FromQuery[float | None] = None,
     folder: FromQuery[str | None] = None,

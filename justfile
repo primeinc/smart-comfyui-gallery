@@ -27,7 +27,7 @@ lint:
 fmt-check:
     {{ python }} -m ruff format --check .
 
-# Pyright, on request; not in the gate
+# Pyright: cross-module type inference, the half ruff cannot do; part of the gate
 types:
     {{ python }} -m pyright
 
@@ -38,7 +38,7 @@ repo-check:
     {{ python }} -m sglint --repo
 
 # The gate: lint, format, repo hygiene. No tests -- `just test` is its own step
-check: lint fmt-check repo-check
+check: lint fmt-check types repo-check
 
 # The gate plus both test lanes
 check-all: check test test-slow

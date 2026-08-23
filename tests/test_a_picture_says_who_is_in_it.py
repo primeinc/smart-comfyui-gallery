@@ -33,7 +33,9 @@ def _slug(client, name: str) -> tuple[int, str]:
     conn = connect.connect(client.app.state.db_path, read_only=True)
     try:
         file_id = conn.execute("SELECT id FROM file WHERE name = ?", (name,)).fetchone()[0]
-        return file_id, naming.entity_slug(conn, file_id)[1]
+        named = naming.entity_slug(conn, file_id)
+        assert named is not None
+        return file_id, named[1]
     finally:
         connect.close(conn)
 
