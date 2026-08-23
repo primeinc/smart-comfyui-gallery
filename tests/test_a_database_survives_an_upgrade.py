@@ -1107,3 +1107,40 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
         ).fetchall() == [(file_id, "m", "1", "a" * 64, 2)]
     finally:
         ro.close()
+
+
+def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
+    """A run over a file an older build wrote does not 500 on the first
+    column it lacks: build_app migrates it forward first, snapshot beside
+    it; a file from a newer build is refused at boot with the reason."""
+    from litestar.testing import TestClient
+
+    from sg_web.app import build_app
+    from sg_web.home import db_path
+
+    burrow = tmp_path / "run"
+    burrow.mkdir()
+    path = db_path(burrow)
+    _built(path)
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
+    conn.execute("DROP INDEX IF EXISTS place_identity")
+    conn.execute("DROP TABLE file_place")
+    conn.execute("PRAGMA user_version = 26")
+    conn.close()
+
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        assert client.get("/g", headers={"accept": "application/json"}).status_code == 200
+        assert client.get("/operations/overview").status_code == 200
+    ro = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        assert ro.execute("PRAGMA user_version").fetchone()[0] == migrate.USER_VERSION
+    finally:
+        ro.close()
+    assert path.with_suffix(".v26.backup").exists(), "the snapshot sits beside the file it was taken from"
+
+    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn.execute(f"PRAGMA user_version = {migrate.USER_VERSION + 1}")
+    conn.close()
+    with pytest.raises(SystemExit, match="Restore the backup"):
+        build_app(str(burrow), worker=False)

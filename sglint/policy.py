@@ -108,6 +108,7 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "jobs",
             "ledger",
             "library",
+            "migrate",
             "naming",
             "oriented",
             "pages",

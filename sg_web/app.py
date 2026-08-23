@@ -51,6 +51,7 @@ from db import (
     jobs,
     ledger,
     library,
+    migrate,
     naming,
     oriented,
     pages,
@@ -1040,6 +1041,18 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     where = home.db_path(base)
     if not where.exists():
         connect.create(where)
+    else:
+        # A database an older build wrote is brought forward HERE, one
+        # version per transaction with a `.vN.backup` beside it
+        # (db/migrate.py) -- never opened as-is to 500 on the first column
+        # it lacks. A newer build's file, or one this build has no step
+        # for, is refused at boot with the reason, not per request.
+        try:
+            applied = migrate.migrate(where)
+        except (migrate.Downgrade, migrate.StepMissing, migrate.NotOurDatabase) as refused:
+            raise SystemExit(f"{where}: {refused}") from refused
+        if applied:
+            _logger.info("%s: brought forward to v%d (steps %s)", where, applied[-1], applied)
 
     # The one local authored identity, resolved ONCE into application
     # state: every rating and favorite is per-user by schema, and this is

@@ -21,7 +21,10 @@ A run lives wholly in its home directory (`~/.smartgallery` by default):
 the database, model weights, the thumbnail cache. Delete the directory,
 delete the run. Media is never under it -- libraries are roots you
 register. A home with no database gets one from `db/schema.sql` on
-first start (`db.connect.create`).
+first start (`db.connect.create`); a database an older build wrote is
+brought forward on start, one version per transaction, with a
+`gallery.vN.backup` beside it (`db/migrate.py`). A newer build's file is
+refused at start with the reason.
 
 First library:
 
