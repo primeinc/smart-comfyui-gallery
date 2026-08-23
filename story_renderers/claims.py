@@ -50,6 +50,7 @@ PROFILES: dict[str, frozenset[str]] = {
             "time_basis",
             "disputed_time",
             "media_mix",
+            "seen",
         }
     ),
     "technical": frozenset(
@@ -74,6 +75,7 @@ PROFILES: dict[str, frozenset[str]] = {
             "time_basis",
             "disputed_time",
             "media_mix",
+            "seen",
         }
     ),
     "compact": frozenset(),
@@ -329,11 +331,37 @@ def _media_mix(claim: dict, phase: dict, ctx: Context) -> str:
     return "A mix of " + formatting.join_names(parts) + "."
 
 
+def _member_ref(ordinal: int) -> str:
+    return f"member-{ordinal + 1:03d}"  # db/planning.py _member_ref, the snapshot's own ref grammar
+
+
+def _seen(claim: dict, phase: dict, ctx: Context) -> str:
+    """What a model said, quoted from the FROZEN annotations of the
+    claim's lowest member ref: one sentence, and how many members were
+    described."""
+    members = {_member_ref(one["ordinal"]): one for one in ctx.snapshot["members"]}
+    spoken = None
+    for ref in sorted(claim["evidence_refs"]):
+        member = members.get(ref.split(":", 1)[0])
+        captions = [one for one in (member or {}).get("annotations") or [] if one.get("kind") == "caption"]
+        if captions:
+            spoken = captions[0]["text"]
+            break
+    told = f"A model described {formatting.count(claim['facts']['members'], 'file')} here"
+    if spoken:
+        told += f'; of one it said "{spoken}"'
+    told += "."
+    if ctx.profile == "technical":
+        told += " Captioned by " + formatting.join_names(claim["facts"]["models"]) + "."
+    return told
+
+
 #: The whole vocabulary. Resolution is by this mapping and nothing else.
 REGISTRY: dict[str, typing.Callable[[dict, dict, Context], str]] = {
     "time_basis": _time_basis,
     "disputed_time": _disputed_time,
     "media_mix": _media_mix,
+    "seen": _seen,
     "pause": _pause,
     "lens_change": _lens_change,
     "burst": _burst,

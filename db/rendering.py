@@ -96,6 +96,7 @@ COMPATIBILITY: dict[tuple[str, int], dict[str, frozenset[int]]] = {
     ("template", 2): {"snapshot": frozenset({1}), "plan": frozenset({2, 3})},
     ("template", 3): {"snapshot": frozenset({1}), "plan": frozenset({2, 3, 4})},
     ("template", 4): {"snapshot": frozenset({1}), "plan": frozenset({2, 3, 4, 5})},
+    ("template", 5): {"snapshot": frozenset({1}), "plan": frozenset({2, 3, 4, 5, 6})},
 }
 
 
@@ -121,7 +122,7 @@ class TemplateStoryRenderer:
     function of its two documents and the profile."""
 
     kind = "template"
-    version = 4
+    version = 5
 
     @property
     def reads(self) -> dict[str, frozenset[int]]:

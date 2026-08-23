@@ -59,7 +59,7 @@ import typing
 from . import prompt_sections
 from .stories import canonical, digest
 
-FORMAT_VERSION = 5
+FORMAT_VERSION = 6
 
 #: Claim kinds that assert DIRECTION -- before/after, added/removed,
 #: from/to. They exist only in a sequenced plan, where the phase list is
@@ -375,7 +375,7 @@ class GenerationHistoryPlanner:
     #: The main-section texts the planner compares are the SNAPSHOT's
     #: frozen reading (stories.py freezes `main` per role); a parser
     #: change reaches a plan only through a new snapshot.
-    version = 8
+    version = 9
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
@@ -566,6 +566,17 @@ class GenerationHistoryPlanner:
                 if params is not None:
                     kind = "parameter_change" if sequenced else "parameter_difference"
                     claim_refs.append(_claim(claims, kind, 1.0, params[0], params[1]))
+            seen = [i for i in indexes if _captioned(members[i])]
+            if seen:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "seen",
+                        1.0,
+                        [f"{refs[i]}:annotations" for i in seen],
+                        {"members": len(seen), "models": _caption_models([members[i] for i in seen])},
+                    )
+                )
             representative = refs[_medoid(spoken, cosine)] if spoken else member_refs[0]
             phases.append(
                 {
@@ -663,7 +674,7 @@ class CaptureHistoryPlanner:
     """
 
     kind = "capture_history"
-    version = 1
+    version = 2
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 10, "burst_seconds": 2.0}
 
@@ -823,6 +834,17 @@ class CaptureHistoryPlanner:
                         {"clips": len(clips), "seconds": round(sum(seconds), 3) if seconds else None},
                     )
                 )
+            seen = [i for i in member_indexes if _captioned(members[i])]
+            if seen:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "seen",
+                        1.0,
+                        [f"{refs[i]}:annotations" for i in seen],
+                        {"members": len(seen), "models": _caption_models([members[i] for i in seen])},
+                    )
+                )
             middle = act_indexes[len(act_indexes) // 2]
             phases.append(
                 {
@@ -882,7 +904,7 @@ class FileHistoryPlanner:
     """
 
     kind = "file_history"
-    version = 1
+    version = 2
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 30, "burst_seconds": 5.0}
 
@@ -1020,6 +1042,17 @@ class FileHistoryPlanner:
                         {"clips": len(clips), "seconds": round(sum(seconds), 3) if seconds else None},
                     )
                 )
+            seen = [i for i in indexes if _captioned(members[i])]
+            if seen:
+                claim_refs.append(
+                    _claim(
+                        claims,
+                        "seen",
+                        1.0,
+                        [f"{refs[i]}:annotations" for i in seen],
+                        {"members": len(seen), "models": _caption_models([members[i] for i in seen])},
+                    )
+                )
             middle = indexes[len(indexes) // 2]
             phases.append(
                 {
@@ -1073,6 +1106,17 @@ _BASIS_WORDS = {
 #: derived_media_occurrence.basis) and the media kinds a member may be.
 _BASES = frozenset({"capture", "embedded", "filename", "folder", "mtime", "btime"})
 _MEDIA_KINDS = frozenset({"image", "animated_image", "video", "audio", "document"})
+
+
+def _captioned(member: dict) -> bool:
+    return any(one.get("kind") == "caption" for one in member.get("annotations") or [])
+
+
+def _caption_models(members: list[dict]) -> list[str]:
+    """The models whose captions the claim rests on, sorted, once each."""
+    return sorted(
+        {one["model"][0] for member in members for one in member["annotations"] if one.get("kind") == "caption"}
+    )
 
 
 def _claim(claims: list, kind: str, confidence: float, evidence: list[str], facts: dict) -> str:
@@ -1288,6 +1332,15 @@ STORY_PLAN_V5 = {
     },
     "subjects": STORY_PLAN_V4["subjects"] | frozenset({"file_session"}),
 }
+#: StoryPlan v6 -- FROZEN. v5 plus `seen`: what a captioning model said
+#: about a phase's members, frozen in the snapshot's annotations. Every
+#: planner may emit it; the facts are how many members carry a caption
+#: and which models spoke.
+STORY_PLAN_V6 = {
+    **STORY_PLAN_V5,
+    "version": 6,
+    "claims": STORY_PLAN_V5["claims"] | frozenset({"seen"}),
+}
 _ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -1460,6 +1513,25 @@ def _facts_valid_v5(kind: str, facts) -> bool:
     return _facts_valid_v4(kind, facts)
 
 
+def _facts_valid_v6(kind: str, facts) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if kind == "seen":
+        return (
+            set(facts) == {"members", "models"}
+            and _integer(facts["members"], 1)
+            and _strings(facts["models"])
+            and bool(facts["models"])
+        )
+    return _facts_valid_v5(kind, facts)
+
+
+def validate_story_plan_v6(plan) -> list[str]:
+    """The exact grammar of a StoryPlan v6 document against the FROZEN
+    v6 vocabulary."""
+    return _validate_story_plan(plan, STORY_PLAN_V6, _facts_valid_v6)
+
+
 def validate_story_plan_v5(plan) -> list[str]:
     """The exact grammar of a StoryPlan v5 document against the FROZEN
     v5 vocabulary."""
@@ -1586,6 +1658,7 @@ _GRAMMARS = {
     3: validate_story_plan_v3,
     4: validate_story_plan_v4,
     5: validate_story_plan_v5,
+    6: validate_story_plan_v6,
 }
 
 

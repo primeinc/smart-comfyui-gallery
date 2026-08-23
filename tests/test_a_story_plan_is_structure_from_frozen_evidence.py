@@ -1695,3 +1695,34 @@ def test_the_http_adapters_freeze_and_read_only(storied):
         assert conn.execute("SELECT count(*) FROM story_snapshot").fetchone()[0] == 1
     finally:
         connect.close(conn)
+
+
+def test_a_captioned_member_makes_the_story_say_what_a_model_saw():
+    """v6: a member whose frozen annotations hold a caption yields a
+    `seen` claim citing those annotations, with how many members were
+    described and by which models; the renderer quotes one sentence.
+    No caption, no claim -- the vocabulary is frozen, not the story."""
+    from db import rendering
+
+    members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:3])]
+    members[1]["annotations"] = [
+        {"kind": "caption", "text": "a lighthouse on a rocky shore", "confidence": None, "model": ["blip/base", "82a3"]}
+    ]
+    members[2]["annotations"] = [{"kind": "tag", "text": "sea", "confidence": 0.9, "model": ["tagger", "1"]}]
+    document, sha = _snapshot(members)
+    plan = _planner().plan(document, sha)
+    assert plan["v"] == 6
+    assert planning.validate_story_plan(plan) == []
+    seen = [claim for claim in plan["claims"] if claim["kind"] == "seen"]
+    assert len(seen) == 1
+    assert seen[0]["facts"] == {"members": 1, "models": ["blip/base"]}
+    assert seen[0]["evidence_refs"] == ["member-002:annotations"], "a tag is not a caption"
+    told = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
+    assert rendering.violations(told, plan, document, sha, planning.identity(plan)[1]) == []
+    words = " ".join(block["text"] for section in told["sections"] for block in section["blocks"])
+    assert 'of one it said "a lighthouse on a rocky shore"' in words
+    assert "described 1 file here" in words
+
+    plain = _planner().plan(*_snapshot([_member(i, text) for i, text in enumerate(LIGHTHOUSE[:3])]))
+    assert not [claim for claim in plain["claims"] if claim["kind"] == "seen"]
+    assert planning.validate_story_plan({**plan, "v": 5}), "v5 does not know `seen`; the claim is a v6 claim"
