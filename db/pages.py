@@ -1062,7 +1062,7 @@ MONDAY = 345_600
 _ANCHOR = {"week": MONDAY}
 #: Bins sampled for the thumbnail strip: every bin up to this many; past
 #: it, the busiest this many -- a strip always, never an apology.
-SAMPLED_BINS_MOST = 400
+SAMPLED_BINS_MOST = 120
 SAMPLES_PER_BIN = 3
 SAMPLES_PER_SESSION = 6
 #: Which precisions are fine enough for each bin: a claim enters a bin
