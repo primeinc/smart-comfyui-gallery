@@ -71,9 +71,9 @@ def _target(conn, target_id: int | None) -> dict | None:
 
 #: What each missing-only sweep would still queue, counted the way the
 #: sweep counts (db/runner.py submit_*): present files with no record for
-#: their current bytes. Embed is per configured space and pinned
-#: checkpoint; it has no one number here -- /search provenance says who
-#: answered.
+#: their current bytes. Embed is per configured space at the checkpoint
+#: the cache pins, so it needs the models directory; without one it is
+#: not counted rather than guessed.
 _PRESENT = "SELECT count(*) FROM file f WHERE f.missing_since IS NULL"
 _PICTURE = " AND f.kind IN ('image', 'animated_image', 'video')"
 _MISSING = {
@@ -93,9 +93,40 @@ _MISSING_PHASH = (
 )
 
 
-def coverage(conn) -> dict:
+_MISSING_EMBED = (
+    _PRESENT + _PICTURE + " AND NOT EXISTS (SELECT 1 FROM derived_embedding e WHERE e.file_id = f.id AND e.space_id = ?"
+    "   AND e.source_sha256 = f.content_sha256)"
+)
+
+
+def _embed_missing(conn, models_dir: str) -> dict[str, int]:
+    """Per configured space, what the embed sweep would still queue; a
+    space nothing has minted yet has every picture missing. A refused
+    `semantic_model` setting is reported as nothing, not guessed at."""
+    from vision import semantic
+
+    from . import retrieval
+
+    try:
+        choices = retrieval.choices(conn)
+    except ValueError:
+        return {}
+    held: dict[str, int] = {}
+    for provider, model, configured in choices:
+        checkpoint = semantic.pin(provider, models_dir, model, configured)
+        key = semantic.space(provider, model, checkpoint, 1).key
+        found = retrieval._space_of(conn, provider, model, checkpoint)
+        if found is None:
+            held[key] = int(conn.execute(_PRESENT + _PICTURE).fetchone()[0])
+        else:
+            held[key] = int(conn.execute(_MISSING_EMBED, (found[0],)).fetchone()[0])
+    return held
+
+
+def coverage(conn, models_dir: str | None = None) -> dict:
     """Present files, and how many each missing-only sweep still has to
-    do -- the console's answer to "is the library done"."""
+    do -- the console's answer to "is the library done". `embed` is the
+    most any one space still lacks; `embed_spaces` says which."""
     from . import context, similarity
 
     held = {
@@ -110,10 +141,16 @@ def coverage(conn) -> dict:
         if space is not None
         else conn.execute(_PRESENT + _PICTURE).fetchone()[0]
     )
-    return {"files": conn.execute(_PRESENT).fetchone()[0], "missing": {k: int(v) for k, v in sorted(held.items())}}
+    told = {"files": conn.execute(_PRESENT).fetchone()[0], "missing": {k: int(v) for k, v in sorted(held.items())}}
+    if models_dir is not None:
+        spaces = _embed_missing(conn, models_dir)
+        told["embed_spaces"] = spaces
+        if spaces:
+            told["missing"]["embed"] = max(spaces.values())
+    return told
 
 
-def overview(conn, now: float) -> dict:
+def overview(conn, now: float, *, models_dir: str | None = None) -> dict:
     """The system health strip: worker, queue, ledger head, and what
     each sweep still has to do."""
     running = conn.execute(
@@ -129,7 +166,7 @@ def overview(conn, now: float) -> dict:
     ).fetchall()
     return {
         "now": now,
-        "coverage": coverage(conn),
+        "coverage": coverage(conn, models_dir),
         "worker": {
             "enabled": settings.flag(conn, "worker"),
             "owners": owners,

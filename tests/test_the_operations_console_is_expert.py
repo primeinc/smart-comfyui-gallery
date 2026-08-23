@@ -618,7 +618,8 @@ def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
             connect.close(conn)
         told = client.get("/operations/overview").json()["overview"]["coverage"]
         assert told["files"] == 2
-        assert told["missing"] == {"annotate": 2, "context": 2, "faces": 2, "ingest": 2, "phash": 2}
+        assert told["missing"] == {"annotate": 2, "context": 2, "embed": 2, "faces": 2, "ingest": 2, "phash": 2}
+        assert list(told["embed_spaces"].values()) == [2], "one configured space, nothing minted: every picture"
         page = client.get("/operations", headers={"accept": "text/html"}).text
         assert re.search(r'data-missing="phash"[^>]*>2 missing', page)
         assert re.search(r'data-missing="ingest"[^>]*>2 missing', page)

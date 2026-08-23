@@ -89,11 +89,13 @@ operational control.
 ### Sweeps
 
 A sweep is `POST /jobs/<kind>` or its console button; every sweep is a
-job row. The phash, faces, embed, annotate and context sweeps queue
-only what is missing and answer 204 (the console: "nothing to do") when
-nothing is; `everything` -- the console's "again" button -- redoes all of
-it. Each reads its own record of
-having been done against the file's CURRENT bytes:
+job row. The ingest, phash, faces, embed, annotate and context sweeps
+queue only what is missing and answer 204 (the console: "nothing to
+do") when nothing is; `everything` -- the console's "again" button --
+redoes all of it. The console shows beside each such button how many
+present files the sweep would still queue (`inspecting.coverage`),
+counted by the same predicate the sweep uses. Each reads its own record
+of having been done against the file's CURRENT bytes:
 
 ```
 ingest    file.ingested_sha256  the bytes the last metadata read was of

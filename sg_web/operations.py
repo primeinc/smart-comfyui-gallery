@@ -185,7 +185,7 @@ def _page_context(state: State) -> dict:
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
             "notice": None,
-            "overview": inspecting.overview(conn, now),
+            "overview": inspecting.overview(conn, now, models_dir=_weights(state, conn)),
             "matrix": inspecting.matrix(conn, now),
             "tape": [console.envelope(event) for event in ledger.latest(conn, limit=TAPE_COLD)],
             "last_event_id": ledger.last_id(conn),
@@ -209,7 +209,10 @@ def overview(state: State) -> dict:
     now = time.time()
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        told = {"overview": inspecting.overview(conn, now), "matrix": inspecting.matrix(conn, now)}
+        told = {
+            "overview": inspecting.overview(conn, now, models_dir=_weights(state, conn)),
+            "matrix": inspecting.matrix(conn, now),
+        }
     finally:
         connect.close(conn)
     _with_live(state, told)
