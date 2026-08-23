@@ -72,6 +72,12 @@ def add_root(conn, path, kind: str, now: float) -> int:
     return int(cursor.lastrowid or 0)
 
 
+def root_path(conn, root_id: int) -> str | None:
+    """Where one root lives, or None when no such root."""
+    row = conn.execute("SELECT path FROM root WHERE id = ?", (root_id,)).fetchone()
+    return str(row[0]) if row else None
+
+
 def relocate(conn, root_id: int, path) -> None:
     """Point a root at where it now is.
 

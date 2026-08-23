@@ -399,10 +399,10 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
     cheap, and its counts are the answer the person pressed for."""
     conn = connect.connect(state.db_path)
     try:
-        row = conn.execute("SELECT path FROM root WHERE id = ?", (root_id,)).fetchone()
-        if row is None:
+        path = library.root_path(conn, root_id)
+        if path is None:
             raise NotFoundException(f"no root {root_id}")
-        result = scan.scan(conn, root_id, row[0], time.time())
+        result = scan.scan(conn, root_id, path, time.time())
         conn.commit()
         cache = str(home.thumbs_dir(pathlib.Path(state.home)))
         precache = runner.precache_after_scan(conn, time.time(), result, thumbs_dir=cache)
@@ -413,7 +413,7 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
     finally:
         connect.close(conn)
     notice = (
-        f"scanned {row[0]}: {result.added} added, {result.matched} matched, {result.replaced} replaced,"
+        f"scanned {path}: {result.added} added, {result.matched} matched, {result.replaced} replaced,"
         f" {result.missing} missing, {result.ambiguous} ambiguous"
         + (f"; thumbnails queued as job #{precache}" if precache is not None else "")
     )

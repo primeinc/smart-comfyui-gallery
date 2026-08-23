@@ -82,6 +82,21 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/media_authored.py": frozenset(
         {"authored", "collections", "connect", "context", "naming", "pages", "places"}
     ),
+    "sg_web/media_view.py": frozenset(
+        {"authored", "connect", "derived", "facets", "naming", "pages", "places", "resultset", "settings"}
+    ),
+    "sg_web/curating.py": frozenset(
+        {"authored", "collections", "connect", "context", "naming", "places", "resultset", "settings"}
+    ),
+    "sg_web/story_view.py": frozenset(
+        {"connect", "derived", "evolution", "facets", "naming", "pages", "planning", "rendering", "settings", "stories"}
+    ),
+    "sg_web/timeline_view.py": frozenset(
+        {"connect", "context", "facets", "pages", "planning", "resultset", "settings"}
+    ),
+    "sg_web/operations.py": frozenset(
+        {"connect", "derived", "inspecting", "ledger", "library", "pages", "prompts", "runner", "scan", "settings"}
+    ),
 }
 
 #: Calls an adapter must still make -- the delegation it exists for.

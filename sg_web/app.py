@@ -959,10 +959,10 @@ def scan_root(state: State, root_id: int) -> dict:
     """Walk one root and reconcile the library with what is on disk."""
     conn = _connect(state.db_path)
     try:
-        row = conn.execute("SELECT path FROM root WHERE id = ?", (root_id,)).fetchone()
-        if row is None:
+        path = library.root_path(conn, root_id)
+        if path is None:
             raise NotFoundException(f"no root {root_id}")
-        result = scan.scan(conn, root_id, row[0], time.time())
+        result = scan.scan(conn, root_id, path, time.time())
         conn.commit()
         cache = str(home.thumbs_dir(pathlib.Path(state.home)))
         precache = runner.precache_after_scan(conn, time.time(), result, thumbs_dir=cache)

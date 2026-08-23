@@ -109,7 +109,7 @@
         <li class="cond cond-item-failure" data-condition="item-failure" data-item="{{ f.id }}"><b>⚠ item failure</b> {% if f.href %}<a href="{{ f.href }}">{{ f.name }}</a>{% elif f.name %}{{ f.name }}{% else %}item {{ f.id }}{% endif %} <code class="raw">item {{ f.id }} · {{ f.error }}</code> · the job continues</li>
         {% endfor %}
       </ul>
-      {% if job.failed_count > job.failures | length %}<p class="muted small">{{ job.failed_count - job.failures | length }} more failed items: <a href="/operations/job/{{ job.id }}/items?state_filter=failed&after={{ job.failures[-1].id }}">next page</a></p>{% endif %}
+      {% if job.failed_count > job.failures | length %}<p class="muted small">{{ job.failed_count - job.failures | length }} more failed items: <a href="/operations/job/{{ job.id }}/items?state_filter=failed&amp;after={{ job.failures[-1].id }}">next page</a></p>{% endif %}
       {% endif %}
       {% if not job.error and not job.defects and not job.failures %}<p class="muted">none.</p>{% endif %}
     </div>

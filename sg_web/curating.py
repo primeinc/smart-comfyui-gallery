@@ -103,7 +103,7 @@ def _applied(state: State, query, data, write) -> Response:
         proof = proven()
         applied = False
         for last in (False, True):
-            conn.execute("BEGIN IMMEDIATE")
+            connect.claim_lane(conn)
             try:
                 if resultset.currency(conn) == proof.currency:
                     write(conn, proof.ids)

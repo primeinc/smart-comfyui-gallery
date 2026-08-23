@@ -61,7 +61,7 @@
         body: JSON.stringify({ name, take, ...params }),
       });
       if (!answer.ok) {
-        window.alert((await answer.json()).detail || "the view could not be saved");
+        window.alert((await answer.json().catch(() => ({}))).detail || "the view could not be saved");
         return;
       }
       const told = await answer.json();

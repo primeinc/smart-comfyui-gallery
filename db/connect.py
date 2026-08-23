@@ -186,6 +186,14 @@ def check_version(conn: sqlite3.Connection) -> None:
         raise WrongVersion(ver, USER_VERSION)
 
 
+def claim_lane(conn) -> None:
+    """Take the one writer lane now (BEGIN IMMEDIATE): what a caller does
+    before a look-then-write whose look must not be raced. Idempotent
+    inside a transaction."""
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+
+
 def close(conn: sqlite3.Connection) -> None:
     """Close a connection, letting SQLite refresh what it learned.
 

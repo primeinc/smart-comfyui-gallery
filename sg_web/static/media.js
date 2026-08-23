@@ -31,7 +31,7 @@
         body: JSON.stringify(body),
       });
       if (!answer.ok) {
-        window.alert((await answer.json()).detail || "the place could not be recorded");
+        window.alert((await answer.json().catch(() => ({}))).detail || "the place could not be recorded");
         return;
       }
       window.location.reload();

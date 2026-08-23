@@ -82,7 +82,7 @@
       return;
     }
     if (!answer.ok) {
-      window.alert((await answer.json()).detail || "the selection could not be curated");
+      window.alert((await answer.json().catch(() => ({}))).detail || "the selection could not be curated");
       return;
     }
     const told = await answer.json();

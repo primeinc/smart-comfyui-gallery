@@ -661,3 +661,47 @@ def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
     assert "annotate" not in told["missing"], "the sweep refuses that setting; a count beside it would lie"
     settings.put(conn, "caption_model", "Salesforce/blip-image-captioning-base")
     assert "annotate" in inspecting.coverage(conn)["missing"]
+
+
+def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(tmp_path):
+    """`/operations/events/before` is the tape's "earlier" button: paging
+    down from the newest id reaches every persisted event once, and
+    meets `/operations/events?after=` coming up -- never sampled."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(3):
+        Image.new("RGB", (8, 8), (1, 2, 3 + i)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/jobs/ingest")
+        client.post("/jobs/context")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            while runner.run_next(conn, "test-worker", time.time()) is not None:
+                conn.commit()
+            conn.commit()
+            produced = ledger.count(conn)
+        finally:
+            connect.close(conn)
+        assert produced > 6
+        forward: list[int] = []
+        after = 0
+        while True:
+            page = client.get("/operations/events", params={"after": after, "limit": 3}).json()
+            forward.extend(e["id"] for e in page["events"])
+            if page.get("next_after") is None or not page["events"]:
+                break
+            after = page["next_after"]
+        assert len(forward) == produced
+        backward: list[int] = []
+        before = forward[-1] + 1
+        while True:
+            page = client.get("/operations/events/before", params={"before": before, "limit": 3}).json()
+            if not page["events"]:
+                break
+            ids = [e["id"] for e in page["events"]]
+            assert ids == sorted(ids), "a page is ascending"
+            backward = ids + backward
+            before = ids[0]
+        assert backward == forward, "backwards reaches every event once and meets the forward walk"
