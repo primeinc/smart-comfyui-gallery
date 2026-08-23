@@ -440,4 +440,15 @@ def neighbours(
             "SELECT e.uuid, e.slug, p.text FROM prompt p JOIN entity e ON e.id = p.id WHERE p.id = ?", (other,)
         ).fetchone()
         results.append({"prompt_id": other, "uuid": row[0].hex(), "slug": row[1], "text": row[2], "score": score})
-    return {"prompt_id": prompt_id, "space": spec.key, "policy": policy, "role": role, "results": results}
+    mine = conn.execute(
+        "SELECT e.slug, p.text FROM prompt p JOIN entity e ON e.id = p.id WHERE p.id = ?", (prompt_id,)
+    ).fetchone()
+    return {
+        "prompt_id": prompt_id,
+        "slug": mine[0] if mine else None,
+        "text": mine[1] if mine else None,
+        "space": spec.key,
+        "policy": policy,
+        "role": role,
+        "results": results,
+    }

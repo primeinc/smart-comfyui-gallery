@@ -21,7 +21,7 @@ from litestar import Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.params import FromPath, FromQuery
-from litestar.response import Response, Template
+from litestar.response import Redirect, Response, Template
 
 from db import connect, derived, evolution, facets, naming, pages, planning, rendering, settings, stories
 from sg_web import home, submitting
@@ -162,7 +162,11 @@ def plan_snapshot(state: State, data: PlanRequest) -> Response:
 
 
 @get("/stories/plans/{plan_id:int}", sync_to_thread=True)
-def plan_document(state: State, plan_id: FromPath[int]) -> dict:
+def plan_document(state: State, request: Request, plan_id: FromPath[int]) -> dict | Redirect:
+    """The plan document to a machine; a browser is sent to the plan's
+    page, which is its evolution view -- a person never lands on JSON."""
+    if not wants_json(request):
+        return Redirect(path=f"/stories/plans/{plan_id}/evolution", status_code=302)
     conn = connect.connect(state.db_path, read_only=True)
     try:
         try:

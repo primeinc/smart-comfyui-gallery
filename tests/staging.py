@@ -74,20 +74,6 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     return conn
 
 
-def selector_loop():
-    """The event loop the browser proofs serve on (uvicorn `loop=`, a
-    custom import string IS the loop factory -- uvicorn/config.py
-    get_loop_factory): the
-    selector loop closes a transport synchronously, where the Windows
-    Proactor defers `_call_connection_lost` behind a pending write and a
-    peer that aborts mid-write (Chromium navigating away) leaves the
-    transport to the garbage collector -- a ResourceWarning the lane
-    refuses (cpython asyncio/proactor_events.py close/__del__)."""
-    import asyncio
-
-    return asyncio.SelectorEventLoop()
-
-
 def settled(client: TestClient, job_id: int, timeout: float = 30.0) -> str:
     """ONE job's terminal state, read off its row. The feed carries every
     job's deltas, so a reader that takes the first terminal state it

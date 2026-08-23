@@ -51,6 +51,61 @@ def walk(home: str | None) -> list[str]:
                     and not (answer.status_code == 200 and answer.headers.get("content-type", "").startswith("image/"))
                 )
                 told.append(f"{'FAIL' if bad else 'ok  '} {answer.status_code} {path}")
+        told.extend(crawl(client))
+    return told
+
+
+#: Doors a page emits that are bytes or a machine's by design: not landings.
+BYTES = ("/media/", "/thumb/", "/preview/", "/avatar/", "/static/")
+#: How many doors of one SHAPE the crawl follows: a library has thousands
+#: of picture pages and they are one shape; the doors that matter are
+#: the shapes, and every shape is walked.
+PER_SHAPE = 3
+
+
+def _shape(path: str) -> str:
+    """A door's shape: its route with the slug or id blanked and the
+    query dropped -- `/i/abc?f=..` and `/i/def` are one shape."""
+    parts = path.split("?", 1)[0].split("/")
+    return "/".join(
+        "*"
+        if i > 1
+        and (
+            parts[i - 1] in ("i", "p", "t", "f", "m", "l", "w", "job", "plans", "renders", "prompts", "snapshots")
+            or seg.isdigit()
+        )
+        else seg
+        for i, seg in enumerate(parts)
+    )
+
+
+def crawl(client) -> list[str]:
+    """Every `href` every page emits, followed as a browser, a few of each
+    shape: a door that lands a person on JSON, a 4xx or a 5xx is a FAIL
+    line. Every shape of door is walked; no shape is sampled away."""
+    told: list[str] = []
+    seen: set[str] = set()
+    walked: dict[str, int] = {}
+    queue: list[str] = ["/g", "/timeline", "/people", "/places", "/albums", "/folders", "/operations"]
+    while queue:
+        path = queue.pop(0)
+        shape = _shape(path)
+        if path in seen or walked.get(shape, 0) >= PER_SHAPE:
+            continue
+        seen.add(path)
+        walked[shape] = walked.get(shape, 0) + 1
+        answer = client.get(path, headers={"accept": "text/html,application/xhtml+xml"}, follow_redirects=True)
+        kind = answer.headers.get("content-type", "")
+        if answer.status_code >= 400 or not kind.startswith("text/html"):
+            told.append(
+                f"FAIL {answer.status_code} {path} -> {kind.split(';')[0] or 'no content type'} (a door onto no page)"
+            )
+            continue
+        for found in re.findall(r'href="([^"#]+)"', answer.text):
+            door = found.replace("&amp;", "&")
+            if door.startswith("/") and not door.startswith(BYTES) and door not in seen:
+                queue.append(door)
+    told.append(f"ok   crawled {len(seen)} doors of {len(walked)} shapes")
     return told
 
 

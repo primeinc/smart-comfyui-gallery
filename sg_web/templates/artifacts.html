@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ shelf.title }}{% endblock %}
+{% block body %}
+  <header class="bar">
+    <nav class="crumbs">
+      <span class="crumbs-here">{{ shelf.title }}</span>
+      <span class="crumbs-where">{{ "{:,}".format(artifacts | length) }} {{ shelf.noun if artifacts | length != 1 else shelf.one }} · {{ "{:,}".format(shelf.pictures) }} pictures</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if artifacts %}
+    <ol class="shelf" data-shelf="{{ shelf.kind }}">
+      {% for one in artifacts %}
+      <li class="shelf-card">
+        <a class="shelf-name" href="{{ shelf.door }}/{{ one.slug }}" data-artifact="{{ one.slug }}">{{ one.name }}</a>
+        <span class="shelf-count">{{ "{:,}".format(one.pictures) }} pictures</span>
+        <a class="shelf-strip" href="/g?artifact={{ one.slug }}" title="all {{ "{:,}".format(one.pictures) }} in the gallery">
+          {% for slug in one.samples %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty">no {{ shelf.noun }} read yet — <a href="/operations">run ingest in Operations</a> to read what the pictures were made with.</p>
+    {% endif %}
+  </main>
+{% endblock %}

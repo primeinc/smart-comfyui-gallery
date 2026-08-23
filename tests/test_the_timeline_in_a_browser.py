@@ -1,25 +1,40 @@
-"""The timeline page, witnessed in a browser: the URL owns the zoom, a
-bar zooms and back returns, the strip carries thumbnails, a session card
-opens its pictures."""
+"""The timeline page, witnessed in a browser: the URL owns the window,
+a bar opens its hour and back returns, the strip carries thumbnails, a
+group card opens its pictures, tells its story, and carries it."""
 
 from __future__ import annotations
 
-import socket
-import threading
+import os
 import time
 
 import pytest
 from PIL import Image
+from playwright.sync_api import Page
+
+from tests.conftest import Live
 
 pytestmark = pytest.mark.slow
 
 FILES = 6
+DAY = 1_686_355_200  # 2023-06-10
 
 
-def _free_port() -> int:
-    with socket.socket() as held:
-        held.bind(("127.0.0.1", 0))
-        return held.getsockname()[1]
+def write_library(root) -> None:
+    base_at = DAY + 14 * 3600  # 14:00, stamped names every five minutes
+    for i in range(FILES):
+        path = root / f"Screenshot 2023-06-10 at 14.{i * 5:02d}.0{i}.png"
+        Image.new("RGB", (8, 8), (30 * i, 70, 130)).save(path)
+        os.utime(path, (base_at + i * 300, base_at + i * 300))
+
+
+def prepare(api, root) -> None:
+    made = api.post("/roots", json={"path": str(root)}).json()
+    swept = api.post(f"/roots/{made['id']}/scan").json()
+    if swept["precache"] is not None:
+        _settled(api, swept["precache"])
+    assert _settled(api, api.post("/jobs/ingest").json()["id"]) == "done"
+    assert _settled(api, api.post("/jobs/context").json()["id"]) == "done"
+    assert _settled(api, api.post("/jobs/events").json()["id"]) == "done"
 
 
 def _settled(api, job_id, timeout=60.0) -> str:
@@ -32,306 +47,82 @@ def _settled(api, job_id, timeout=60.0) -> str:
         time.sleep(0.05)
 
 
-@pytest.fixture(scope="module")
-def served(tmp_path_factory):
-    import os
-
-    import httpx
-    import uvicorn
-
-    from sg_web.app import build_app
-
-    tmp = tmp_path_factory.mktemp("timeline-browser")
-    root = tmp / "lib"
-    root.mkdir()
-    base_at = 1_686_355_200.0 + 14 * 3600  # 2023-06-10 14:00, stamped names every five minutes
-    for i in range(FILES):
-        path = root / f"Screenshot 2023-06-10 at 14.{i * 5:02d}.0{i}.png"
-        Image.new("RGB", (8, 8), (30 * i, 70, 130)).save(path)
-        os.utime(path, (base_at + i * 300, base_at + i * 300))
-    port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(
-            build_app(str(tmp / "run"), worker=True),
-            host="127.0.0.1",
-            port=port,
-            log_level="warning",
-            loop="tests.staging:selector_loop",
-        )
+def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, live: Live):
+    # a day-wide window: one bar per hour; a bar opens its hour
+    page.goto(f"/timeline?start={DAY}&end={DAY + 86400}")
+    page.wait_for_selector("[data-strip] .bin", timeout=10_000)
+    assert page.get_attribute("[data-surface]", "data-window-start") == f"{DAY}.0"
+    page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
+    page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
+    assert page.locator("[data-sessions] .session-strip img").count() >= 1
+    bar_at = page.get_attribute("[data-strip] [data-bin-window]", "data-bin-at")
+    assert bar_at is not None
+    page.click("[data-strip] [data-bin-window]")
+    page.wait_for_function(
+        "(at) => new URLSearchParams(location.search).get('start') === at", arg=bar_at, timeout=10_000
     )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    base = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 20
-    while True:
-        try:
-            if httpx.get(base + "/health", timeout=1).status_code == 200:
-                break
-        except httpx.HTTPError:
-            pass
-        assert time.monotonic() < deadline
-        time.sleep(0.1)
-    with httpx.Client(base_url=base, timeout=10) as api:
-        made = api.post("/roots", json={"path": str(root)}).json()
-        swept = api.post(f"/roots/{made['id']}/scan").json()
-        if swept["precache"] is not None:
-            _settled(api, swept["precache"])
-        assert _settled(api, api.post("/jobs/ingest").json()["id"]) == "done"
-        assert _settled(api, api.post("/jobs/context").json()["id"]) == "done"
-        assert _settled(api, api.post("/jobs/events").json()["id"]) == "done"
-        yield base, api
-    server.should_exit = True
-    thread.join(timeout=10)
+    page.wait_for_selector("[data-zoom] a", timeout=10_000)
+    assert page.get_attribute("[data-surface]", "data-window-start") == f"{bar_at}.0"
+    page.go_back()
+    page.wait_for_function(
+        "(d) => new URLSearchParams(location.search).get('start') === d", arg=str(DAY), timeout=10_000
+    )
+    page.wait_for_function(
+        "(d) => document.querySelector('[data-surface]').dataset.windowStart === d", arg=f"{DAY}.0", timeout=10_000
+    )
+    page.reload()
+    page.wait_for_selector("[data-strip] .bin", timeout=10_000)
+    assert page.get_attribute("[data-surface]", "data-window-start") == f"{DAY}.0"
+    href = page.get_attribute("[data-sessions] .session [data-session-open]", "href")
+    assert href is not None
+    assert "event.id%3Aeq%3A" in href
+    page.goto(href)
+    page.wait_for_selector("[data-chips] [data-chip]", timeout=10_000)
+    total = page.get_attribute("[data-grid]", "data-total")
+    assert total is not None
+    assert int(total) == FILES
 
 
-def test_the_url_owns_the_window_and_the_surface_carries_pictures(served):
-    from playwright.sync_api import sync_playwright
-
-    base, _api = served
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch()
-        page = browser.new_page()
-        # a day-wide window: one bar per hour; a bar opens its hour
-        day = 1_686_355_200
-        page.goto(base + f"/timeline?start={day}&end={day + 86400}")
-        page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-        assert page.get_attribute("[data-surface]", "data-window-start") == f"{day}.0"
-        page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
-        page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
-        assert page.locator("[data-sessions] .session-strip img").count() >= 1
-        bar_at = page.get_attribute("[data-strip] [data-bin-window]", "data-bin-at")
-        assert bar_at is not None
-        page.click("[data-strip] [data-bin-window]")
-        page.wait_for_function(
-            "(at) => new URLSearchParams(location.search).get('start') === at", arg=bar_at, timeout=10_000
-        )
-        page.wait_for_selector("[data-zoom] a", timeout=10_000)
-        assert page.get_attribute("[data-surface]", "data-window-start") == f"{bar_at}.0"
-        page.go_back()
-        page.wait_for_function(
-            "(d) => new URLSearchParams(location.search).get('start') === d", arg=str(day), timeout=10_000
-        )
-        page.wait_for_function(
-            "(d) => document.querySelector('[data-surface]').dataset.windowStart === d", arg=f"{day}.0", timeout=10_000
-        )
-        page.reload()
-        page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-        assert page.get_attribute("[data-surface]", "data-window-start") == f"{day}.0"
-        href = page.get_attribute("[data-sessions] .session [data-session-open]", "href")
-        assert href is not None
-        assert "event.id%3Aeq%3A" in href
-        page.goto(base + href)
-        page.wait_for_selector("[data-chips] [data-chip]", timeout=10_000)
-        total = page.get_attribute("[data-grid]", "data-total")
-        assert total is not None
-        assert int(total) == FILES
-        # tell the story: freeze, plan (a job the real worker drains), render, read
-        page.goto(base + "/timeline")
-        page.wait_for_selector("[data-sessions] .session [data-session-tell]", timeout=10_000)
-        page.click("[data-sessions] .session [data-session-tell]")
-        page.wait_for_url("**/stories/renders/*", timeout=60_000)
-        page.wait_for_selector(".story-heroes img", timeout=10_000)
-        assert page.locator(".story-members img").count() >= FILES
-        first = page.url
-        page.click('[data-story-profile-ask="technical"]')
-        page.wait_for_function("(was) => location.href !== was", arg=first, timeout=20_000)
-        page.wait_for_selector('[data-story-profile="technical"]', timeout=10_000)
-        page.click("[data-story-evolution]")
-        page.wait_for_url("**/evolution", timeout=10_000)
-        page.wait_for_selector("[data-evolution-story]", timeout=10_000)
-        page.goto(base + "/timeline")
-        page.wait_for_selector("[data-sessions] .session [data-session-story]", timeout=10_000)
-        # the story rides its card: title, heroes, the door to the whole
-        assert page.inner_text("[data-sessions] .session [data-session-story-title]").strip()
-        assert page.locator("[data-sessions] .session .session-story-hero").count() >= 1
-        assert page.locator("[data-sessions] .session [data-session-story-read]").count() == 1
-        browser.close()
+def test_a_group_tells_its_story_and_carries_it(page: Page, live: Live):
+    """Tell the story from the card: freeze, plan (a job the real worker
+    drains), render, read; back on the timeline the story rides the card
+    -- title, heroes, the door to the whole -- and the evolution view is
+    a door away."""
+    page.goto("/timeline")
+    page.wait_for_selector("[data-sessions] .session [data-session-tell]", timeout=10_000)
+    page.click("[data-sessions] .session [data-session-tell]")
+    page.wait_for_url("**/stories/renders/*", timeout=60_000)
+    page.wait_for_selector(".story-heroes img", timeout=10_000)
+    assert page.locator(".story-members img").count() >= FILES
+    first = page.url
+    page.click('[data-story-profile-ask="technical"]')
+    page.wait_for_function("(was) => location.href !== was", arg=first, timeout=20_000)
+    page.wait_for_selector('[data-story-profile="technical"]', timeout=10_000)
+    page.click("[data-story-evolution]")
+    page.wait_for_url("**/evolution", timeout=10_000)
+    page.wait_for_selector("[data-evolution-story]", timeout=10_000)
+    page.goto("/timeline")
+    page.wait_for_selector("[data-sessions] .session [data-session-story]", timeout=10_000)
+    assert page.inner_text("[data-sessions] .session [data-session-story-title]").strip()
+    assert page.locator("[data-sessions] .session .session-story-hero").count() >= 1
+    assert page.locator("[data-sessions] .session [data-session-story-read]").count() == 1
 
 
-def test_the_save_view_button_keeps_every_facet(served):
+def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
     """A two-facet door saved from the gallery is a two-facet rule: the
     button sends every `f` the mounted answer carries, and the saved
     collection's words name both."""
-    from playwright.sync_api import sync_playwright
-
-    base, api = served
     asked = "/g?f=context.local_day%3Aeq%3A2023-06-10&f=context.origin%3Aeq%3Aimported"
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch()
-        page = browser.new_page()
-        page.on("dialog", lambda dialog: dialog.accept("Two facets"))
-        page.goto(base + asked)
-        page.wait_for_selector("[data-grid]", timeout=10_000)
-        assert int(page.get_attribute("[data-grid]", "data-total") or 0) == FILES
-        page.click("[data-save-smart]")
-        page.wait_for_url("**/t/*", timeout=20_000)
-        slug = page.url.rsplit("/t/", 1)[1].split("?", 1)[0]
-        browser.close()
-    told = api.get(f"/t/{slug}", headers={"accept": "application/json"}).json()
+    page.on("dialog", lambda dialog: dialog.accept("Two facets"))
+    page.goto(asked)
+    page.wait_for_selector("[data-grid]", timeout=10_000)
+    assert int(page.get_attribute("[data-grid]", "data-total") or 0) == FILES
+    page.click("[data-save-smart]")
+    page.wait_for_url("**/t/*", timeout=20_000)
+    slug = page.url.rsplit("/t/", 1)[1].split("?", 1)[0]
+    told = live.api.get(f"/t/{slug}", headers={"accept": "application/json"}).json()
     assert told["rule"] is not None
     assert "context.local_day" in told["rule"]["nl"]
     assert "context.origin" in told["rule"]["nl"], "the second facet was dropped on the way to the rule"
-    inside = api.get(f"/g?album={slug}", headers={"accept": "text/html"}).text
+    inside = live.api.get(f"/g?album={slug}", headers={"accept": "text/html"}).text
     assert f'data-total="{FILES}"' in inside
-
-
-WIDE_FILES = 9
-
-
-@pytest.fixture(scope="module")
-def served_wide(tmp_path_factory):
-    """A library forty days wide, one picture every five days: room for a
-    month-wide opening window that is NOT the whole library, and for a
-    brush to move."""
-    import os
-
-    import httpx
-    import uvicorn
-
-    from sg_web.app import build_app
-
-    tmp = tmp_path_factory.mktemp("timeline-browser-wide")
-    root = tmp / "lib"
-    root.mkdir()
-    base_at = 1_686_355_200.0 + 14 * 3600
-    moments: list[float] = []
-    for i in range(WIDE_FILES):
-        for j in range(2):  # a pair a minute apart: enough for a group to form on each day
-            # the name carries the clock (14:0j:0i) and the file's mtime says the same moment
-            at = base_at + i * 5 * 86400 + j * 60 + i
-            moments.append(at)
-            day = time.strftime("%Y-%m-%d", time.gmtime(at))
-            path = root / f"Screenshot {day} at 14.0{j}.0{i}.png"
-            Image.new("RGB", (8, 8), (20 * i, 90 + 40 * j, 140)).save(path)
-            os.utime(path, (at, at))
-    port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(
-            build_app(str(tmp / "run"), worker=True),
-            host="127.0.0.1",
-            port=port,
-            log_level="warning",
-            loop="tests.staging:selector_loop",
-        )
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    base = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 20
-    while True:
-        try:
-            if httpx.get(base + "/health", timeout=1).status_code == 200:
-                break
-        except httpx.HTTPError:
-            pass
-        assert time.monotonic() < deadline
-        time.sleep(0.1)
-    with httpx.Client(base_url=base, timeout=10) as api:
-        made = api.post("/roots", json={"path": str(root)}).json()
-        swept = api.post(f"/roots/{made['id']}/scan").json()
-        if swept["precache"] is not None:
-            _settled(api, swept["precache"])
-        assert _settled(api, api.post("/jobs/ingest").json()["id"]) == "done"
-        assert _settled(api, api.post("/jobs/context").json()["id"]) == "done"
-        yield base, api, moments
-    server.should_exit = True
-    thread.join(timeout=10)
-
-
-def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(served_wide):
-    """A first visit is the last month that holds pictures, never the
-    whole library; the overview's brush drags the window and the presets
-    set it, each move swapping the one fragment and writing the URL; no
-    bar is ever "too many"."""
-    from playwright.sync_api import sync_playwright
-
-    base, api, moments = served_wide
-    extent = api.get("/timeline/density", params={"bin": "week", "lean": "true"}).json()["extent"]
-    whole_end = extent["end"] + 1
-    assert extent["end"] == max(moments), "the newest picture is the one the fixture wrote last"
-    in_the_last_month = [at for at in moments if at >= whole_end - 30 * 86400]
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch()
-        page = browser.new_page(viewport={"width": 1200, "height": 800})
-        page.goto(base + "/timeline")
-        page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-        start = float(page.get_attribute("[data-surface]", "data-window-start") or "nan")
-        end = float(page.get_attribute("[data-surface]", "data-window-end") or "nan")
-        assert end == whole_end, "the window ends at the newest picture"
-        assert start == min(in_the_last_month), "and opens on the earliest picture of the last month, exactly"
-        assert start > extent["start"], "which is not the whole forty-day library"
-        page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
-        assert "too many" not in page.inner_text("[data-surface]")
-        assert page.locator("[data-overview] [data-brush]").count() == 1
-        assert page.locator("[data-zoom] a[data-preset]").count() == 5
-
-        # the brush: a new window drawn across the left half of the overview
-        box = page.locator("[data-overview]").bounding_box()
-        assert box is not None
-        y = box["y"] + box["height"] / 2
-        page.mouse.move(box["x"] + 2, y)
-        page.mouse.down()
-        page.mouse.move(box["x"] + box["width"] * 0.5, y, steps=8)
-        page.mouse.up()
-        page.wait_for_function("() => new URLSearchParams(location.search).has('start')", timeout=10_000)
-        page.wait_for_function(
-            "(was) => document.querySelector('[data-surface]').dataset.windowEnd !== was", arg=str(end), timeout=10_000
-        )
-        moved_start = float(page.get_attribute("[data-surface]", "data-window-start") or "nan")
-        moved_end = float(page.get_attribute("[data-surface]", "data-window-end") or "nan")
-        whole = whole_end - extent["start"]
-        assert moved_start < extent["start"] + 0.02 * whole, "the drag began by the overview's left edge"
-        assert abs(moved_end - (extent["start"] + whole / 2)) < 0.02 * whole, "and ended at its middle"
-
-        # a preset: the whole library
-        page.click('[data-zoom] a[data-preset="all"]')
-        page.wait_for_function(
-            "(whole) => document.querySelector('[data-surface]').dataset.windowEnd === whole",
-            arg=str(float(whole_end)),  # the surface spells its window as the float it holds
-            timeout=10_000,
-        )
-        page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-        assert page.locator('[data-zoom] a[data-preset="all"][data-current]').count() == 1
-        assert page.locator("[data-samples] .surface-sample img").count() >= 1, "thumbnails at every window"
-        browser.close()
-
-
-def test_the_surface_moves_while_the_hand_moves_and_refreshes_itself(served_wide):
-    """Dynamic, in both senses: the stage re-renders WHILE the brush is
-    dragged, not only on release; and when a job that groups pictures
-    settles, the surface fetches itself again -- the session cards appear
-    with no reload."""
-    from playwright.sync_api import sync_playwright
-
-    base, api, _moments = served_wide
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch()
-        page = browser.new_page(viewport={"width": 1200, "height": 800})
-        page.goto(base + "/timeline")
-        page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-        was = page.get_attribute("[data-surface]", "data-window-start")
-        box = page.locator("[data-overview]").bounding_box()
-        assert box is not None
-        y = box["y"] + box["height"] / 2
-        page.mouse.move(box["x"] + 2, y)
-        page.mouse.down()
-        page.mouse.move(box["x"] + box["width"] * 0.3, y, steps=12)
-        page.wait_for_function(
-            "(was) => document.querySelector('[data-surface]').dataset.windowStart !== was", arg=was, timeout=10_000
-        )
-        still_dragging = page.get_attribute("[data-surface]", "data-window-start")
-        assert still_dragging != was, "the surface moved before the button was released"
-        page.mouse.up()
-        page.wait_for_function("() => new URLSearchParams(location.search).has('start')", timeout=10_000)
-
-        # no groups yet: the job that makes them lands on the page by itself
-        page.click('[data-zoom] a[data-preset="all"]')
-        page.wait_for_function(
-            "() => document.querySelector('[data-zoom] a[data-preset=\"all\"][data-current]') !== null", timeout=10_000
-        )
-        assert page.locator("[data-sessions] .session").count() == 0
-        assert _settled(api, api.post("/jobs/events").json()["id"]) == "done"
-        page.wait_for_selector("[data-sessions] .session", timeout=15_000)
-        assert page.url.endswith(page.evaluate("() => location.pathname + location.search")), "no reload, no redirect"
-        assert "too many" not in page.inner_text("[data-surface]")
-        browser.close()

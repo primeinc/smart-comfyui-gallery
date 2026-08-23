@@ -95,6 +95,46 @@ def _artifact_page(state: State, request: Request, slug: str, shelf: str) -> Tem
     return presented_page(request, told, page="artifact.html", context={"artifact": told, "shelf": shelf})
 
 
+#: The three shelves: what the index is called, what one row is, and
+#: where a row's page lives.
+_INDEXES = {
+    "checkpoint": {"title": "Models", "noun": "models", "one": "model", "door": "/m"},
+    "lora": {"title": "LoRAs", "noun": "LoRAs", "one": "LoRA", "door": "/l"},
+    "workflow": {"title": "Workflows", "noun": "workflows", "one": "workflow", "door": "/w"},
+}
+
+
+def _shelf_index(state: State, request: Request, kind: str) -> Template | Response:
+    """One shelf of artifacts by use -- counted by pictures, never by
+    mentions -- each row with its newest pictures: the machine list it
+    always was, or the page."""
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        rows = pages.workflows_by_use(conn) if kind == "workflow" else pages.artifacts_by_use(conn, kind)
+        told = [{"name": name, "slug": slug, "pictures": pictures} for name, slug, pictures in rows]
+        samples = pages.artifact_shelf_samples(conn, kind)
+    finally:
+        connect.close(conn)
+    cards = [{**one, "samples": samples.get(one["slug"], [])} for one in told]
+    shelf = {**_INDEXES[kind], "kind": kind, "pictures": sum(one["pictures"] for one in told)}
+    return presented_page(request, told, page="artifacts.html", context={"artifacts": cards, "shelf": shelf})
+
+
+@get("/models", sync_to_thread=True)
+def models_index(state: State, request: Request) -> Template | Response:
+    return _shelf_index(state, request, "checkpoint")
+
+
+@get("/loras", sync_to_thread=True)
+def loras_index(state: State, request: Request) -> Template | Response:
+    return _shelf_index(state, request, "lora")
+
+
+@get("/workflows", sync_to_thread=True)
+def workflows_index(state: State, request: Request) -> Template | Response:
+    return _shelf_index(state, request, "workflow")
+
+
 @get("/m/{slug:str}", sync_to_thread=True)
 def model_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     return _artifact_page(state, request, slug, "/m")

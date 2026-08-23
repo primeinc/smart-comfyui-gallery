@@ -364,6 +364,23 @@ body {
 }
 
 .album-list { display: grid; gap: 10px; max-width: 640px; }
+
+/* --- a shelf of artifacts: models, LoRAs, workflows, by use ----------- */
+.shelf { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.shelf-card { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.shelf-name { color: var(--ink); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.shelf-name:hover { color: var(--accent); }
+.shelf-count { color: var(--ink-muted); font-size: .85rem; white-space: nowrap; }
+.shelf-strip { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 3px; }
+.shelf-strip img { width: 56px; height: 56px; object-fit: cover; border-radius: 3px; background: var(--ground); }
+
+/* --- prompts like this -------------------------------------------------- */
+.prompt-self { padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 12px; }
+.prompt-self h1 { margin: 0 0 8px; font-size: 1.1rem; font-weight: 600; overflow-wrap: anywhere; }
+.prompt-neighbours { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.prompt-neighbour { display: grid; grid-template-columns: 56px 1fr; gap: 4px 12px; align-items: start; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.prompt-score { grid-row: 1 / span 2; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.prompt-text { margin: 0; overflow-wrap: anywhere; }
 .album-card {
   display: flex;
   gap: 12px;

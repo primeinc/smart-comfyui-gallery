@@ -38,7 +38,7 @@ from litestar.exceptions import ClientException, NotFoundException
 from litestar.params import FromPath, FromQuery
 from litestar.plugins import InitPlugin
 from litestar.plugins.jinja import JinjaTemplateEngine
-from litestar.response import Redirect, Response, Stream
+from litestar.response import Redirect, Response, Stream, Template
 from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
@@ -81,7 +81,7 @@ from sg_web import (
     timeline_view,
 )
 from sg_web import worker as worker_module
-from sg_web.presenting import VARIES, wants_json
+from sg_web.presenting import VARIES, presented_page, wants_json
 from sg_web.submitting import announce as _announce
 from sg_web.submitting import nudge as _nudge
 from sg_web.submitting import submitted as _submitted
@@ -152,37 +152,6 @@ def front(state: State, request: Request) -> Response | Redirect:
 # one address each, negotiated per caller. The shelf indexes below are
 # aggregates -- "which artifacts are commonly used?" -- not media
 # answers; every media answer is the ResultSet's.
-
-
-def _shelf_index(state: State, kind: str) -> list[dict]:
-    conn = _connect(state.db_path)
-    try:
-        return _rows(pages.artifacts_by_use(conn, kind), ("name", "slug", "pictures"))
-    finally:
-        connect.close(conn)
-
-
-@get("/models", sync_to_thread=True)
-def models(state: State) -> list[dict]:
-    """Checkpoints, by how many pictures used them -- a real join, never
-    a substring over a blob."""
-    return _shelf_index(state, "checkpoint")
-
-
-@get("/loras", sync_to_thread=True)
-def loras(state: State) -> list[dict]:
-    return _shelf_index(state, "lora")
-
-
-@get("/workflows", sync_to_thread=True)
-def workflows(state: State) -> list[dict]:
-    """Workflows attach through `generation`, so their shelf has its own
-    join (db/pages.py WORKFLOWS_BY_USE)."""
-    conn = _connect(state.db_path)
-    try:
-        return _rows(pages.workflows_by_use(conn), ("name", "slug", "pictures"))
-    finally:
-        connect.close(conn)
 
 
 # The album index and page live in sg_web/collection_view.py, and every
@@ -426,11 +395,12 @@ def submit_embed_prompts(state: State) -> list[dict]:
 @get("/prompts/{prompt_id:int}/neighbours", sync_to_thread=True)
 def prompt_neighbours(
     state: State,
+    request: Request,
     prompt_id: FromPath[int],
     space: FromQuery[str],
     k: FromQuery[int] = 10,
     role: FromQuery[str | None] = None,
-) -> dict:
+) -> Template | Response:
     """Prompts nearest to one prompt in ONE chosen space (`space` names
     the provider) under its current query policy, by that space's own
     cosine; no model loads. `role` constrains the candidates before
@@ -440,13 +410,14 @@ def prompt_neighbours(
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            return prompts.neighbours(conn, prompt_id, space, weights, k, time.time(), role=role)
+            told = prompts.neighbours(conn, prompt_id, space, weights, k, time.time(), role=role)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
     finally:
         connect.close(conn)
+    return presented_page(request, told, page="prompt_neighbours.html", context={"told": told})
 
 
 @get("/search", sync_to_thread=True)
@@ -1165,9 +1136,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             media_authored.collection_choices,
             folder_view.folders_index,
             folder_view.folder_page,
-            models,
-            loras,
-            workflows,
+            artifact_view.models_index,
+            artifact_view.loras_index,
+            artifact_view.workflows_index,
             artifact_view.model_page,
             artifact_view.lora_page,
             artifact_view.workflow_page,

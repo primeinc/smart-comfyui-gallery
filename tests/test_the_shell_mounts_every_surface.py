@@ -20,7 +20,6 @@ be declared headless with a reason.
 
 from __future__ import annotations
 
-import inspect
 import pathlib
 import re
 
@@ -352,126 +351,39 @@ def test_the_gallery_header_offers_no_operations(served):
         assert forbidden not in header, f"the gallery header grew an operational control: {forbidden}"
 
 
-# --- the coverage contract ---------------------------------------------------
-
-#: Every user-facing capability: its owning view Module, the browser
-#: affordance that reaches it, and a sample request that must render
-#: through the shell. Adding a capability means naming its door here.
-SURFACES = {
-    "gallery.gallery": ("sg_web/gallery.py", "shell nav", ("GET", "/g", None)),
-    "gallery.grid_fragment": ("sg_web/gallery.py", "pager hx-get in _grid.html", ("GET", "/g/grid", None)),
-    "media_view.media_page": ("sg_web/media_view.py", "grid cell; lightbox fragment", ("GET", "/i/s-0", None)),
-    "person_view.people_index": ("sg_web/person_view.py", "shell nav", ("GET", "/people", None)),
-    "person_view.person_page": ("sg_web/person_view.py", "person card; drawer fragment", None),
-    "place_view.places_index": ("sg_web/place_view.py", "shell nav", ("GET", "/places", None)),
-    "collection_view.albums_index": ("sg_web/collection_view.py", "shell nav", ("GET", "/albums", None)),
-    "collection_view.album_page": ("sg_web/collection_view.py", "album tree", None),
-    "folder_view.folders_index": ("sg_web/folder_view.py", "shell nav", ("GET", "/folders", None)),
-    "folder_view.folder_page": ("sg_web/folder_view.py", "folder card", ("GET", "/f/lib", None)),
-    "artifact_view.model_page": ("sg_web/artifact_view.py", "media facts", None),
-    "artifact_view.lora_page": ("sg_web/artifact_view.py", "media facts", None),
-    "artifact_view.workflow_page": ("sg_web/artifact_view.py", "story heroes", None),
-    "timeline_view.timeline": ("sg_web/timeline_view.py", "shell nav", ("GET", "/timeline", None)),
-    "story_view.stories_index": ("sg_web/story_view.py", "timeline session card", ("GET", "/stories", None)),
-    "story_view.render_document": ("sg_web/story_view.py", "timeline session; stories shelf", None),
-    "story_view.plan_evolution": ("sg_web/story_view.py", "story", None),
-    "operations.operations_page": ("sg_web/operations.py", "shell nav", ("GET", "/operations", None)),
-    "operations.job_inspector": ("sg_web/operations.py", "console matrix row", ("GET", "/operations/job/1", None)),
-    "operations.job_items": ("sg_web/operations.py", "inspector items tabs", ("GET", "/operations/job/1/items", None)),
-    "operations.launch": ("sg_web/operations.py", "sweep buttons", ("POST", "/operations/jobs/events", None)),
-    "operations.add_root": ("sg_web/operations.py", "add-root form", None),
-    "operations.scan_root": (
-        "sg_web/operations.py",
-        "scan button per root",
-        ("POST", "/operations/roots/1/scan", None),
-    ),
-    "operations.change_setting": (
-        "sg_web/operations.py",
-        "one form per setting",
-        ("POST", "/operations/settings/worker", {"value": "on"}),
-    ),
-    "operations.choose_primary": (
-        "sg_web/operations.py",
-        "choose button",
-        ("POST", "/operations/clusterings/choose", None),
-    ),
-}
-
-#: Browser-facing capabilities with no page of their own, and why.
-HEADLESS = {
-    "jobs_feed": "transport: the shell's activity surface is its page",
-    "events_feed": "transport: the operations console's ledger tape is its page",
-    "front": "redirects a browser to /g",
-    "health": "liveness probe",
-}
+# --- every door leads to a page ----------------------------------------------
 
 
-def _handlers(app):
-    for route in app.routes:
-        for handler in getattr(route, "route_handlers", [getattr(route, "route_handler", None)]):
-            if handler is not None and handler.handler_name != "options_handler":
-                yield route, handler
+def _doors(page: str) -> list[str]:
+    """Every same-site href a page emits that is a landing, not bytes."""
+    return [
+        href.replace("&amp;", "&")
+        for href in re.findall(r'href="([^"#]+)"', page)
+        if href.startswith("/") and not href.startswith(("/media/", "/thumb/", "/preview/", "/avatar/", "/static/"))
+    ]
 
 
-def _qualified(handler) -> str:
-    fn = handler.fn
-    while hasattr(fn, "func"):
-        fn = fn.func
-    module = getattr(fn, "__module__", "").rsplit(".", 1)[-1]
-    return f"{module}.{handler.handler_name}"
-
-
-def test_every_named_door_renders_through_the_shell(served):
-    """Each sample request in SURFACES, made as a browser, answers HTML --
-    a page through the shell, or a fragment with none of it."""
+def test_every_door_every_page_emits_lands_on_a_page(served):
+    """Walk as a person would: from the navigation, follow every link
+    every page renders, and every one of them answers an HTML page --
+    never JSON, never a 4xx, never a 5xx. Nothing is written down in
+    advance; the pages themselves say where a person can go."""
     client, _ = served
-    for name, (_module, _door, sample) in SURFACES.items():
-        if sample is None:
+    queue = ["/g", "/timeline", "/people", "/places", "/albums", "/folders", "/operations"]
+    seen: set[str] = set()
+    while queue:
+        where = queue.pop(0)
+        if where in seen:
             continue
-        method, where, data = sample
-        answer = client.request(method, where, headers=AS_BROWSER, data=data)
-        assert answer.status_code == 200, (name, answer.status_code, answer.text[:200])
-        assert answer.headers["content-type"].startswith("text/html"), name
-        is_page = "<html" in answer.text
-        assert is_page == ('<nav class="shell"' in answer.text), f"{name}: a page carries the shell, a fragment none"
+        seen.add(where)
+        answer = client.get(where, headers=AS_BROWSER, follow_redirects=True)
+        assert answer.status_code == 200, f"{where}: {answer.status_code} {answer.text[:200]}"
+        kind = answer.headers["content-type"]
+        assert kind.startswith("text/html"), f"{where} lands a person on {kind}"
+        assert '<nav class="shell"' in answer.text, f"{where} renders without the shell"
+        queue.extend(door for door in _doors(answer.text) if door not in seen)
+    assert len(seen) >= 12, sorted(seen)
     _drained(client, [row["id"] for row in client.get("/jobs").json()])
-
-
-def test_every_other_route_is_machine_shaped_or_declared_headless(served):
-    """The sweep: every registered handler is a named door, declared
-    headless, or -- requested as a browser -- answers something other
-    than HTML. Routes with path parameters that nobody named are
-    requested with a placeholder that must NOT render a page either.
-    GET only: a sweep that POSTs every machine route starts every sweep
-    (and downloads a model for the embed one); a POST route that renders
-    a page is caught by the source check, since a Template is what such a
-    handler returns. Litestar's own OpenAPI UI under /schema is the
-    framework's, not the product's."""
-    client, _ = served
-    registered: set[str] = set()
-    for route, handler in _handlers(client.app):
-        name = _qualified(handler)
-        registered.add(handler.handler_name)
-        if name in SURFACES or handler.handler_name in HEADLESS or handler.handler_name == "static":
-            continue
-        if route.path.startswith("/schema"):
-            continue
-        methods = set(getattr(handler, "http_methods", ()) or ())
-        if "GET" in methods:
-            where = re.sub(r"\{(\w+):int\}", "1", route.path)
-            where = re.sub(r"\{(\w+):str\}", "nobody", where)
-            answer = client.get(where, headers=AS_BROWSER)
-            assert not answer.headers.get("content-type", "").startswith("text/html"), (
-                f"{name} (GET {where}) renders HTML but names no browser door"
-            )
-        fn = handler.fn
-        while hasattr(fn, "func"):
-            fn = fn.func
-        if inspect.isfunction(fn):
-            assert "Template(" not in inspect.getsource(fn), f"{name} renders a Template but names no browser door"
-    stale = set(SURFACES) - {_qualified(handler) for _, handler in _handlers(client.app)}
-    assert not stale, f"SURFACES names handlers that are not registered: {sorted(stale)}"
-    assert set(HEADLESS) <= registered, sorted(set(HEADLESS) - registered)
 
 
 # --- the runtime invariant ---------------------------------------------------
