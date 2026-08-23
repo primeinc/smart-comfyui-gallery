@@ -46,6 +46,7 @@ def announce(state: State, conn, job_id: int, *, event_type: str | None = None) 
                 "done": told["done_count"],
                 "total": told["total"],
                 "cancel_requested": told["cancel_requested"],
+                "derive": told.get("derive"),
             }
         )
     publish_event = getattr(state, "publish_event", None)

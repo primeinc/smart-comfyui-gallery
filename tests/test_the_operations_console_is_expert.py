@@ -638,3 +638,26 @@ def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
         assert (after["phash"], after["ingest"]) == (0, 0)
         assert after["context"] == 2, "untouched sweeps keep their count"
         assert client.post("/jobs/phash").status_code == 204, "the count beside the button and the job agree"
+
+
+def test_the_activity_surface_words_the_hash_kinds_mode_too():
+    """The drawer on every page reads the same words as the console: a
+    perceptual job is not "verify every file's bytes" there."""
+    from sg_web import activity
+
+    row = {"id": 1, "kind": "hash", "state": "queued", "done_count": 0, "total": 3, "cancel_requested": 0}
+    assert activity.row_view({**row, "derive": "perceptual"})["what"] == "fingerprint every picture"
+    assert activity.row_view({**row, "derive": None})["what"] == "verify every file's bytes"
+    delta = {"job": 1, "kind": "hash", "state": "running", "done": 1, "total": 3, "derive": "groups"}
+    assert activity.delta_view(delta)["what"] == "group perceptual copies"
+
+
+def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
+    conn = fresh_schema()
+    from db import settings
+
+    settings.put(conn, "caption_model", "blip")
+    told = inspecting.coverage(conn)
+    assert "annotate" not in told["missing"], "the sweep refuses that setting; a count beside it would lie"
+    settings.put(conn, "caption_model", "Salesforce/blip-image-captioning-base")
+    assert "annotate" in inspecting.coverage(conn)["missing"]

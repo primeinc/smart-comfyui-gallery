@@ -291,19 +291,27 @@ def submit_verify(state: State) -> dict:
         connect.close(conn)
 
 
+@dataclasses.dataclass
+class Everything:
+    """The body of a missing-only sweep's route: redo all of it, or not.
+    Nothing else -- where weights live is the `models_dir` setting, never
+    a request's word."""
+
+    everything: bool = False
+
+
 @post("/jobs/faces", sync_to_thread=True)
-def submit_faces(state: State, data: dict) -> dict | Response:
+def submit_faces(state: State, data: Everything | None = None) -> dict | Response:
     """Ask for face detection over every picture no detector has looked
     at for its current bytes -- `{"everything": true}` for all of them
-    again -- with the models named. 204 when nothing is left."""
+    again -- with the models named by the settings. 204 when nothing is
+    left."""
     conn = _connect(state.db_path)
     try:
-        weights = data.get("models_dir") or str(
-            home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
-        )
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
         job_id = runner.submit_faces(
-            conn, time.time(), models_dir=weights, thumbs_dir=cache, everything=bool(data.get("everything"))
+            conn, time.time(), models_dir=weights, thumbs_dir=cache, everything=bool(data and data.everything)
         )
         if job_id is None:
             return Response(content=None, status_code=204)
@@ -314,18 +322,16 @@ def submit_faces(state: State, data: dict) -> dict | Response:
 
 
 @post("/jobs/annotate", sync_to_thread=True)
-def submit_annotate(state: State, data: dict) -> dict | Response:
+def submit_annotate(state: State, data: Everything | None = None) -> dict | Response:
     """Ask for a caption on every picture that lacks one from the
     configured model -- `{"everything": true}` for all of them again.
     204 when nothing is left to caption."""
     conn = _connect(state.db_path)
     try:
-        weights = data.get("models_dir") or str(
-            home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir"))
-        )
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
             job_id = runner.submit_annotate(
-                conn, time.time(), models_dir=weights, everything=bool(data.get("everything"))
+                conn, time.time(), models_dir=weights, everything=bool(data and data.everything)
             )
         except ValueError as refused:
             raise ClientException(str(refused)) from refused

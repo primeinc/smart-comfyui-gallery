@@ -155,20 +155,25 @@ def set_favorite(conn, file_id: int, user_id: int, value: bool, now: float) -> N
     set_favorite_many(conn, (file_id,), user_id, value, now)
 
 
-def set_place(conn, file_id: int, user_id: int, place_id: int | None, now: float) -> None:
-    """Where this picture happened, as desired state: one place per
+def set_place_many(conn, file_ids, user_id: int, place_id: int | None, now: float) -> None:
+    """Where these pictures happened, as desired state: one place per
     file, replaced on a change of mind, None to withdraw. The context
-    is re-interpreted by the caller (db/context.py rebuild_one) so the
-    row reads through at once."""
+    is re-interpreted by the caller (db/context.py rebuild_many) so the
+    rows read through at once."""
+    ids = [(int(one),) for one in file_ids]
     if place_id is None:
-        conn.execute("DELETE FROM file_place WHERE file_id = ?", (file_id,))
+        conn.executemany("DELETE FROM file_place WHERE file_id = ?", ids)
         return
-    conn.execute(
+    conn.executemany(
         "INSERT INTO file_place(file_id, place_id, user_id, asserted_at) VALUES(?, ?, ?, ?)"
         " ON CONFLICT(file_id) DO UPDATE SET place_id = excluded.place_id, user_id = excluded.user_id,"
         " asserted_at = excluded.asserted_at",
-        (file_id, place_id, user_id, now),
+        [(file_id, place_id, user_id, now) for (file_id,) in ids],
     )
+
+
+def set_place(conn, file_id: int, user_id: int, place_id: int | None, now: float) -> None:
+    set_place_many(conn, [file_id], user_id, place_id, now)
 
 
 def set_rating(conn, file_id: int, user_id: int, value: int | None, now: float) -> None:

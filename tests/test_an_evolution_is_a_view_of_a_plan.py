@@ -575,5 +575,5 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
     assert view["members"][0]["media"]["thumbnail"] == f"/thumb/{view['members'][0]['media']['slug']}"
     assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
-    assert view["doors"]["gallery_day"].startswith("/g?f=context.local_day:eq:")
+    assert view["doors"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
     assert view["doors"]["search"].startswith("/search")

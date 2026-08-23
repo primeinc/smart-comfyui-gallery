@@ -160,9 +160,20 @@ def bulk_favorite(
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
+    f: list[str] | None = None,
 ) -> Response:
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     return _applied(
         state,
@@ -186,9 +197,20 @@ def bulk_rating(
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
+    f: list[str] | None = None,
 ) -> Response:
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     return _applied(
         state,
@@ -212,9 +234,20 @@ def bulk_place(
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
+    f: list[str] | None = None,
 ) -> Response:
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
 
     def write(conn, ids):
@@ -223,8 +256,7 @@ def bulk_place(
         if data.name is not None:
             parent = places.named(conn, data.within, data.within_kind, now) if data.within else None
             place_id = places.named(conn, data.name, data.kind, now, within=parent)
-        for file_id in ids:
-            authored.set_place(conn, file_id, state.actor_id, place_id, now)
+        authored.set_place_many(conn, ids, state.actor_id, place_id, now)
         context.rebuild_many(conn, ids, now)
 
     return _applied(state, query, data, write)
@@ -245,9 +277,20 @@ def bulk_membership(
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
+    f: list[str] | None = None,
 ) -> Response:
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
 
     def write(conn, ids):

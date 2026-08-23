@@ -1126,6 +1126,8 @@ def run_next(
                 "done": moved.done,
                 "total": moved.total,
                 "cancel_requested": 1 if jobs.cancelled(conn, job_id) else 0,
+                # the hash kind's mode, so the activity surface words it
+                "derive": (json.loads(raw) if raw else {}).get("derive"),
             }
         )
 

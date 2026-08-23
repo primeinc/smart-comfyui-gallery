@@ -32,7 +32,7 @@ from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import connect, library, naming, pages, resultset, settings
+from db import connect, facets, library, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page, wants_json
 
@@ -120,7 +120,9 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
                     "name": name,
                     "kind": kind,
                     "pictures": int(pictures),
-                    "qs": urllib.parse.urlencode([("folder", slug), ("f", f"place.id:eq:{place_id}")]),
+                    "qs": urllib.parse.urlencode(
+                        [("folder", slug), ("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]
+                    ),
                 }
                 for place_id, place_slug, name, kind, pictures in pages.folder_places(conn, folder_id)
             ],

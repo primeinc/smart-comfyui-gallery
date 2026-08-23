@@ -911,7 +911,7 @@ def test_work_without_units_resumes_from_a_checkpoint(db, a_library):
     """A scan cannot enumerate its units up front -- it is discovering them."""
     jobs.submit(db, "scan", NOW)
     job_id, fence = claimed(db, "worker-a", NOW)
-    jobs.checkpoint(db, job_id, fence, {"after": "portraits/2026"}, done=140)
+    jobs.checkpoint(db, job_id, fence, {"after": "portraits/2026"}, done=140, at=NOW)
     stored = db.execute("SELECT checkpoint, done_count FROM job WHERE id = ?", (job_id,)).fetchone()
     assert json.loads(stored[0]) == {"after": "portraits/2026"}
     assert stored[1] == 140

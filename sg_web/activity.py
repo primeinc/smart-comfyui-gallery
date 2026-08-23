@@ -42,11 +42,11 @@ TERMINAL = ("done", "failed", "cancelled")
 RECENT = 12
 
 
-def _view(id_: int, kind: str, state: str, done: int, total: int | None, cancel_requested: int) -> dict:
+def _view(id_: int, kind: str, state: str, done: int, total: int | None, cancel_requested: int, derive=None) -> dict:
     return {
         "id": id_,
         "kind": kind,
-        "what": console.describe_kind(kind),
+        "what": console.describe_kind(kind, derive),
         "state": state,
         "done": done,
         "total": total,
@@ -57,7 +57,15 @@ def _view(id_: int, kind: str, state: str, done: int, total: int | None, cancel_
 
 def row_view(row: Mapping[str, Any]) -> dict:
     """One `jobs.active` / `jobs.recent` row as the template sees it."""
-    return _view(row["id"], row["kind"], row["state"], row["done_count"], row["total"], row["cancel_requested"])
+    return _view(
+        row["id"],
+        row["kind"],
+        row["state"],
+        row["done_count"],
+        row["total"],
+        row["cancel_requested"],
+        row.get("derive"),
+    )
 
 
 def delta_view(delta: Mapping[str, Any]) -> dict:
@@ -65,7 +73,13 @@ def delta_view(delta: Mapping[str, Any]) -> dict:
     cancel_requested}`, db/runner.py run_next and sg_web/submitting.py)
     as the template sees it -- the same shape as a row."""
     return _view(
-        delta["job"], delta["kind"], delta["state"], delta["done"], delta["total"], delta.get("cancel_requested", 0)
+        delta["job"],
+        delta["kind"],
+        delta["state"],
+        delta["done"],
+        delta["total"],
+        delta.get("cancel_requested", 0),
+        delta.get("derive"),
     )
 
 

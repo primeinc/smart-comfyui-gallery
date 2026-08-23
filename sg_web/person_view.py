@@ -32,7 +32,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Redirect, Response, Template
 
-from db import authored, connect, naming, pages, resultset, settings
+from db import authored, connect, facets, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented, presented_page, wants_json
 
@@ -100,7 +100,11 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                     "name": name,
                     "kind": kind,
                     "pictures": int(pictures),
-                    "qs": resultset.canonical(resultset.parse(person=slug, facets=[f"place.id:eq:{place_id}"])),
+                    "qs": resultset.canonical(
+                        resultset.parse(
+                            person=slug, facets=[facets.spell(facets.facet("place.id", "eq", str(place_id)))]
+                        )
+                    ),
                 }
                 for place_id, place_slug, name, kind, pictures in pages.person_places(conn, person_id)
             ],

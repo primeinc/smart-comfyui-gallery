@@ -359,3 +359,71 @@ def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
         assert len(calls) == 1, f"the folder tree was read {len(calls)} times for 4 files"
         for slug in _slugs(client):
             assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["where"]["name"] == "Porto"
+
+
+def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
+    """The doors this product grew carry facets; the bulk writes and the
+    picture page must prove and walk THAT question, or a selection made
+    on a place's door 409s forever and a picture opened from it walks
+    the whole library."""
+    import re
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(3):
+        Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/jobs/ingest")
+        client.post("/jobs/context")
+        _drain(client)
+        a, b, c = _slugs(client)
+        where = client.post(f"/i/{a}/place", json={"name": "Lisbon", "kind": "city"}).json()["where"]
+        client.post(f"/i/{b}/place", json={"name": "Lisbon", "kind": "city"})
+        spelled = f"place.id:eq:{where['id']}"
+        page = client.get("/g", params={"f": spelled}).text
+        answer = re.search(r'data-answer="([^"]+)"', page).group(1)
+        keys = re.findall(r'data-selection-key="([0-9a-f]{32})"', page)
+        assert len(keys) == 2
+        told = client.post(
+            "/g/selection/favorite", params={"f": spelled}, json={"answer": answer, "items": keys, "value": True}
+        )
+        assert told.status_code < 300, f"the bulk write must prove against the faceted question: {told.text}"
+        assert told.json()["targets"] == 2
+        placed = client.post(
+            "/g/selection/place",
+            params={"f": spelled},
+            json={"answer": answer, "items": keys, "name": "Porto", "kind": "city"},
+        )
+        assert placed.status_code < 300, placed.text
+        opened = client.get(f"/i/{c}", params={"f": spelled}, headers=AS_MACHINE).json()
+        assert opened["context"]["in_answer"] is False, "c was never in Lisbon: not in the faceted answer"
+        # Porto now: a and b moved; open a under the Porto door and walk it
+        porto = client.get(f"/i/{a}", headers=AS_MACHINE).json()["where"]
+        walked = client.get(f"/i/{a}", params={"f": f"place.id:eq:{porto['id']}"}, headers=AS_MACHINE).json()
+        assert walked["context"]["total"] == 2, "the page walks the faceted question it was opened from"
+        assert "place.id" in walked["context"]["qs"]
+
+
+def test_a_sweep_takes_its_weights_from_the_setting_never_the_body(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        for route in ("/jobs/faces", "/jobs/annotate"):
+            asked = client.post(route, json={"models_dir": "Z:/somewhere/else", "everything": True})
+            assert asked.status_code in (201, 400), asked.text  # 400 only when the setting itself is refused
+        conn = connect.connect(client.app.state.db_path, read_only=True)
+        try:
+            dirs = [
+                row[0]
+                for row in conn.execute("SELECT json_extract(payload, '$.models_dir') FROM job")
+                if row[0] is not None
+            ]
+        finally:
+            connect.close(conn)
+        assert dirs
+        assert all("somewhere" not in one for one in dirs), dirs

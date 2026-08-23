@@ -67,13 +67,13 @@ STATEMENT_METHODS = frozenset({"execute", "executemany", "executescript", "curso
 #: configuration and the one answer seam -- never a query module.
 ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/collection_authoring.py": frozenset({"collection_rules", "collections", "connect", "naming", "settings"}),
-    "sg_web/person_view.py": frozenset({"authored", "connect", "naming", "pages", "resultset", "settings"}),
+    "sg_web/person_view.py": frozenset({"authored", "connect", "facets", "naming", "pages", "resultset", "settings"}),
     "sg_web/place_view.py": frozenset({"connect", "facets", "pages"}),
     # `library` is the marker-verified reachability probe the folders
     # index reports online state through -- presence, not membership.
-    "sg_web/folder_view.py": frozenset({"connect", "library", "naming", "pages", "resultset", "settings"}),
+    "sg_web/folder_view.py": frozenset({"connect", "facets", "library", "naming", "pages", "resultset", "settings"}),
     "sg_web/collection_view.py": frozenset(
-        {"collection_rules", "collections", "connect", "naming", "pages", "resultset", "settings"}
+        {"collection_rules", "collections", "connect", "facets", "naming", "pages", "resultset", "settings"}
     ),
     "sg_web/artifact_view.py": frozenset({"connect", "naming", "pages", "resultset", "settings"}),
     # facets is vocabulary, not a query path: it parses and spells the
@@ -178,6 +178,7 @@ ONE_DELEGATES_TO_MANY: tuple[tuple[str, str], ...] = (
     ("set_favorite", "set_favorite_many"),
     ("set_rating", "set_rating_many"),
     ("set_membership", "set_membership_many"),
+    ("set_place", "set_place_many"),
 )
 ONE_TO_MANY_MODULES: tuple[str, ...] = ("db/authored.py", "db/collections.py")
 #: Modules whose every executed statement must be a literal: no road from

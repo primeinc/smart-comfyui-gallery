@@ -1218,7 +1218,7 @@ def media_place(conn, file_id: int):
     return conn.execute(MEDIA_PLACE, (file_id, context.POLICY_VERSION)).fetchone()
 
 
-def places_named(conn, limit: int = 200):
+def places_named(conn, limit: int = 5000):
     return conn.execute(PLACES_NAMED, (limit,)).fetchall()
 
 

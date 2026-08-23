@@ -246,6 +246,28 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
         assert 'hx-post="/operations/jobs/annotate"' in console
         assert client.post("/jobs/annotate", json={}).status_code == 204, "everything is captioned"
         assert client.post("/jobs/annotate", json={"everything": True}).status_code in (200, 201, 202)
+        # bytes that changed since: the page says so, the grid and the lightbox say nothing
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("d" * 64, file_id))
+            conn.commit()
+        finally:
+            connect.close(conn)
+        aged = client.get(f"/i/{slug}", headers={"accept": "application/json"}).json()
+        assert aged["said"][0]["stale"] == 1
+        assert aged["said_first"] is None
+        assert "data-said-stale" in client.get(f"/i/{slug}", headers={"accept": "text/html"}).text
+        assert "data-lightbox-said" not in client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            conn.execute(
+                "UPDATE file SET content_sha256 ="
+                " (SELECT source_sha256 FROM derived_annotation WHERE file_id = ?) WHERE id = ?",
+                (file_id, file_id),
+            )
+            conn.commit()
+        finally:
+            connect.close(conn)
         # the grid says it on hover, and the machine answer carries it
         grid = client.get("/g", headers={"accept": "text/html"}).text
         assert 'title="a green field" data-said' in grid

@@ -230,7 +230,7 @@ def finish_item(conn, job_id: int, fence: int, item_id: int, *, error=None) -> P
     return progress(conn, job_id)
 
 
-def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None, *, at: float | None = None) -> None:
+def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None, *, at: float) -> None:
     """Where to resume from, for work with no enumerable units. The change
     is an event: a resume that starts from the wrong place is explained by
     the last marker the ledger saw."""
@@ -239,7 +239,7 @@ def checkpoint(conn, job_id: int, fence: int, marker, done: int | None = None, *
         conn,
         job_id,
         "checkpoint.changed",
-        at if at is not None else 0.0,
+        at,
         message="checkpoint moved",
         data={"checkpoint": marker, "done": done, "fence": fence},
     )
@@ -333,7 +333,8 @@ def snapshot(conn, job_id: int) -> dict:
     """
     cursor = conn.execute(
         "SELECT id, kind, state, cancel_requested, total, done_count, attempt,"
-        " error, created_at, started_at, finished_at FROM job WHERE id = ?",
+        " error, created_at, started_at, finished_at, json_extract(payload, '$.derive') AS derive"
+        " FROM job WHERE id = ?",
         (job_id,),
     )
     row = cursor.fetchone()
@@ -348,7 +349,10 @@ def snapshot(conn, job_id: int) -> dict:
 
 #: What a live list shows of a job, active or settled: one column list so
 #: `active` and `recent` rows are the same shape to a renderer.
-_LISTED = "id, kind, state, cancel_requested, total, done_count, created_at, finished_at"
+_LISTED = (
+    "id, kind, state, cancel_requested, total, done_count, created_at, finished_at,"
+    " json_extract(payload, '$.derive') AS derive"
+)
 
 
 def active(conn) -> list[dict]:

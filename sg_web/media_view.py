@@ -130,6 +130,7 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
         "children": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.children(conn, file_id)],
         "when": _when(conn, file_id),
         "said": derived.said_about(conn, file_id),
+        "said_first": derived.said_first(conn, [file_id], prefer=settings.value(conn, "caption_model")).get(file_id),
         "faces": _faces(conn, file_id),
         "where": where_of(conn, file_id),
         "places": [{"name": name, "kind": kind} for name, kind in pages.places_named(conn)],
@@ -254,14 +255,27 @@ def media_page(
     q: str | None = None,
     sort: str | None = None,
     size: int | None = None,
+    f: list[str] | None = None,
 ) -> Template | Response | Redirect:
     """One media item at its address, presented for whoever is asking.
 
     The overlay's currency expectation arrives OUT-OF-BAND in the
     `X-SG-Expect` header -- never in the URL, which stays the canonical
-    context the browser may push, share or reload."""
+    context the browser may push, share or reload. The facets ride the
+    URL like every other part of the question: a picture opened from a
+    place's door walks that place, not the library."""
     query = _asked(
-        folder, album, kind, q, sort, size, person=person, artifact=artifact, favorite=favorite, rating_min=rating_min
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
     )
     conn = connect.connect(state.db_path)
     try:

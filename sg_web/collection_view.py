@@ -41,7 +41,7 @@ from litestar.exceptions import NotFoundException
 from litestar.params import Parameter
 from litestar.response import Redirect, Response, Template
 
-from db import collection_rules, collections, connect, naming, pages, resultset, settings
+from db import collection_rules, collections, connect, facets, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page, wants_json
 
@@ -119,7 +119,9 @@ def view(
                     "name": name,
                     "kind": kind,
                     "pictures": int(pictures),
-                    "qs": urllib.parse.urlencode([("album", slug), ("f", f"place.id:eq:{place_id}")]),
+                    "qs": urllib.parse.urlencode(
+                        [("album", slug), ("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]
+                    ),
                 }
                 for place_id, place_slug, name, kind, pictures in pages.collection_places(conn, collection_id)
             ]

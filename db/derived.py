@@ -1371,8 +1371,9 @@ def annotate(
 def said_about(conn, file_id: int, *, kind=None) -> list[dict]:
     sql = (
         "SELECT a.id, a.kind, a.text, a.confidence, a.model_id, a.model_version, a.region_id, a.sample_id,"
-        " s.offset_ms AS offset_ms"
-        "  FROM derived_annotation a LEFT JOIN derived_media_sample s ON s.id = a.sample_id WHERE a.file_id = ?"
+        " s.offset_ms AS offset_ms, (a.source_sha256 IS NOT f.content_sha256) AS stale"
+        "  FROM derived_annotation a JOIN file f ON f.id = a.file_id"
+        "  LEFT JOIN derived_media_sample s ON s.id = a.sample_id WHERE a.file_id = ?"
     )
     args: list = [file_id]
     if kind:
@@ -1428,9 +1429,10 @@ def said_first(conn, file_ids, *, prefer: str | None = None) -> dict[int, str]:
         return {}
     told: dict[int, str] = {}
     for file_id, text in conn.execute(
-        "SELECT file_id, text FROM derived_annotation WHERE kind = 'caption' AND sample_id IS NULL AND file_id IN ("
+        "SELECT a.file_id, a.text FROM derived_annotation a JOIN file f ON f.id = a.file_id"
+        " WHERE a.kind = 'caption' AND a.sample_id IS NULL AND a.source_sha256 = f.content_sha256 AND a.file_id IN ("
         + ",".join("?" for _ in ids)
-        + ") ORDER BY file_id, (model_id = ?) DESC, model_id, model_version",
+        + ") ORDER BY a.file_id, (a.model_id = ?) DESC, a.model_id, a.model_version",
         [*ids, prefer or ""],
     ):
         told.setdefault(file_id, text)

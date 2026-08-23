@@ -107,7 +107,7 @@
       {% if item.said %}
       <ul class="detail-said" data-said>
         {% for a in item.said %}
-        <li data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }} <span class="when-evidence">{{ a.kind }} &middot; {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} &middot; confidence {{ a.confidence }}{% endif %}</span></li>
+        <li data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }} <span class="when-evidence">{{ a.kind }} &middot; {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} &middot; confidence {{ a.confidence }}{% endif %}{% if a.stale %} &middot; <span class="warn" data-said-stale>of older bytes</span>{% endif %}</span></li>
         {% endfor %}
       </ul>
       {% else %}

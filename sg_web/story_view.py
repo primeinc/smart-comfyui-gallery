@@ -22,7 +22,7 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response, Template
 
-from db import connect, derived, evolution, naming, pages, planning, rendering, settings, stories
+from db import connect, derived, evolution, facets, naming, pages, planning, rendering, settings, stories
 from sg_web import home, submitting
 from sg_web.presenting import VARIES, presented_page, wants_json
 
@@ -329,7 +329,11 @@ def _addressed(view: dict) -> None:
         member["media"]["page"] = f"/i/{slug}" if slug else None
     day = view["identities"].get("local_day")
     view["doors"] = {
-        "gallery_day": f"/g?f=context.local_day:eq:{day}" if day else None,
+        "gallery_day": (
+            "/g?" + urllib.parse.urlencode([("f", facets.spell(facets.facet("context.local_day", "eq", day)))])
+            if day
+            else None
+        ),
         "search": "/search?q=",
         "neighbours": "/prompts/{id}/neighbours",
     }

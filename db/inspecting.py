@@ -132,9 +132,11 @@ def coverage(conn, models_dir: str | None = None) -> dict:
     held = {
         "ingest": conn.execute(_MISSING["ingest"]).fetchone()[0],
         "faces": conn.execute(_MISSING["faces"]).fetchone()[0],
-        "annotate": conn.execute(_MISSING["annotate"], (settings.value(conn, "caption_model"),)).fetchone()[0],
         "context": conn.execute(_MISSING["context"], (context.POLICY_VERSION,)).fetchone()[0],
     }
+    caption_model = settings.value(conn, "caption_model")
+    if "/" in caption_model:  # else the sweep refuses the setting; a count beside a refusal would be a lie
+        held["annotate"] = conn.execute(_MISSING["annotate"], (caption_model,)).fetchone()[0]
     space = similarity._current_space_of(conn, similarity.PHASH)
     held["phash"] = (
         conn.execute(_MISSING_PHASH, (space[0],)).fetchone()[0]
