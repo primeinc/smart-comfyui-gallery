@@ -547,55 +547,121 @@ body {
 .story-profile:hover { border-color: var(--accent); }
 .story-status { color: var(--ink-muted); }
 
-/* the timeline surface */
-.surface { margin-bottom: 16px; }
-.surface-head { display: flex; align-items: baseline; gap: 14px; }
-.surface-head h2 { margin: 0; font-size: 1rem; }
-.surface-zoom a { color: var(--ink-muted); margin-right: 8px; text-decoration: none; }
-.surface-zoom a[data-current] { color: var(--accent); }
-.surface-window { font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }
-/* the overview: the whole extent at week resolution under a brush */
-.surface-overview { width: 100%; height: 40px; margin-bottom: 4px; background: #1a1a1a; border: 1px solid var(--line); border-radius: 6px; cursor: crosshair; touch-action: none; }
-.surface-overview:focus-visible { outline: 2px solid var(--accent); }
-.surface-overview .overview-bar { fill: var(--ink-muted); opacity: .6; }
-.surface-overview .brush { fill: var(--accent); opacity: .25; cursor: grab; }
+/* the timeline surface: one axis, one rule beneath it, the window's
+   pictures where they happened. The one display element is the date
+   imprint -- amber tabular figures in a DIN, a film camera's corner stamp. */
+.surface { --imprint: #e9a43c; --stamp: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif; margin-bottom: 24px; font-variant-numeric: tabular-nums; }
+.surface a { color: inherit; text-decoration: none; }
+.surface .stamp { font-family: var(--stamp); font-weight: 600; color: var(--imprint); letter-spacing: .02em; text-shadow: 0 0 6px rgba(233, 164, 60, .35); }
+.surface .eyebrow { font-family: var(--stamp); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-muted); }
+.surface-head { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "window zoom" "note zoom"; align-items: baseline; column-gap: 18px; padding: 14px 0 10px; border-bottom: 1px solid var(--line); }
+.surface-head h1 { grid-area: window; margin: 0; font-size: 28px; line-height: 1.1; }
+.surface-note { grid-area: note; margin: 4px 0 0; }
+.surface-zoom { grid-area: zoom; display: flex; gap: 14px; font-family: var(--stamp); font-size: 13px; letter-spacing: .08em; }
+.surface-zoom a { color: var(--ink-muted); }
+.surface-zoom a[data-current] { color: var(--imprint); }
+/* the axis: furniture, density, sessions as frames, pictures at their moment */
+.axis { position: relative; height: 260px; margin-top: 10px; border-bottom: 1px solid var(--line); overflow: hidden; user-select: none; cursor: grab; touch-action: none; }
+.axis[data-dragging] { cursor: grabbing; }
+.axis-stage { position: absolute; inset: 0; width: 100%; height: 100%; }
+.axis-stage .tick line { stroke: var(--line); }
+.axis-stage .tick.major line { stroke: var(--ink-muted); }
+.axis-stage .now line { stroke: var(--imprint); stroke-dasharray: 2 4; }
+.axis-stage .band { fill: var(--ink-muted); opacity: .5; }
+.axis-stage .bin { cursor: pointer; }
+.axis-stage .bar { fill: var(--ink-muted); opacity: .55; transform-origin: center bottom; transform-box: fill-box; transition: transform .18s ease-out; }
+.axis-stage .bin:hover .bar { fill: var(--imprint); opacity: 1; }
+.axis-stage .bin:focus-visible .bar { stroke: var(--imprint); stroke-width: 2; }
+.axis[data-settling] .bar { transform: scaleY(.92); }
+.axis-labels { position: absolute; inset: 0 0 auto; height: 24px; pointer-events: none; font-family: var(--stamp); font-size: 11px; letter-spacing: .1em; color: var(--ink-muted); }
+.axis-labels span { position: absolute; top: 6px; padding-left: 5px; white-space: nowrap; }
+.axis-labels .major { color: var(--imprint); font-size: 13px; }
+.axis-labels .now { color: var(--imprint); text-transform: uppercase; }
+.axis-frames { position: absolute; left: 0; right: 0; top: 34px; height: 120px; }
+.frame { position: absolute; top: 0; height: 100%; min-width: 4px; box-sizing: border-box; border: 1px solid var(--imprint); border-radius: 2px; background: rgba(233, 164, 60, .06); overflow: hidden; }
+.frame:hover, .frame:focus-visible { background: rgba(233, 164, 60, .16); box-shadow: 0 0 0 1px var(--imprint); outline: none; }
+.frame-strip { display: flex; gap: 2px; height: 100%; padding: 6px; box-sizing: border-box; }
+.frame-strip img { height: 100%; aspect-ratio: 1; object-fit: cover; background: var(--panel); }
+.frame-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px; background: linear-gradient(transparent, rgba(20, 21, 26, .92)); font-family: var(--stamp); font-size: 11px; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+/* a picture per bin at its moment; never wrapped -- crowded bins are thinned by the page */
+.axis-samples { position: absolute; left: 0; right: 0; bottom: 52px; height: 40px; }
+.surface-sample { position: absolute; top: 0; width: 40px; height: 40px; }
+.surface-sample[hidden] { display: none; }
+.surface-sample img { width: 100%; height: 100%; object-fit: cover; border-radius: 2px; background: var(--panel); }
+.surface-sample:hover img { outline: 1px solid var(--imprint); }
+/* the rule: the whole library at week resolution under a brush */
+.surface-overview { display: block; width: 100%; height: 34px; margin-top: 6px; cursor: crosshair; touch-action: none; }
+.surface-overview:focus-visible { outline: 2px solid var(--imprint); }
+.surface-overview .overview-bar { fill: var(--ink-muted); }
+.surface-overview .overview-year { stroke: var(--line); }
+.surface-overview .overview-year-label { fill: var(--ink-muted); font-family: var(--stamp); font-size: 10px; }
+.surface-overview .brush { fill: rgba(233, 164, 60, .18); stroke: var(--imprint); cursor: grab; }
 .surface-overview[data-dragging="move"] .brush { cursor: grabbing; }
-.surface-overview .brush-edge { fill: var(--accent); cursor: ew-resize; }
-.surface-strip .bar { fill: var(--accent); transform-origin: center bottom; transform-box: fill-box; transition: transform .18s ease-out; }
-.surface-strip[data-settling] .bar { transform: scaleY(.92); }
-.session-story { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0; padding: 8px; background: var(--ground); border-radius: var(--radius); }
-.session-story-hero { width: 56px; height: 56px; object-fit: cover; border-radius: 3px; flex: 0 0 auto; }
-.session-story-words { min-width: 0; }
-.session-story-title { display: block; color: var(--ink); font-weight: 600; text-decoration: none; }
-.session-story-title:hover { color: var(--accent); }
-.session-story-dek { margin: 2px 0 0; color: var(--ink-muted); font-size: .9rem; }
-@media (prefers-reduced-motion: reduce) { .surface-strip .bar { transition: none; } }
-.surface-strip .band { fill: var(--ink-muted); opacity: .5; }
-.surface-strip { width: 100%; height: 140px; background: #1a1a1a; border: 1px solid var(--line); border-radius: 6px; }
-.surface-strip .bin { cursor: pointer; }
-.surface-strip .bin:hover rect { opacity: .8; }
-.surface-strip .axis { fill: var(--muted, #888); font-size: 11px; }
-.surface-strip .bin:focus-visible rect { stroke: var(--accent); stroke-width: 2; }
-/* previews wrap into rows; a strip that scrolls sideways is a scrollbar
-   nobody asked for */
-.surface-samples { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 8px 0 2px; min-height: 28px; }
-.surface-sample { display: inline-flex; gap: 2px; align-items: center; flex: 0 0 auto; text-decoration: none; color: var(--ink-muted); font-size: .75rem; }
-.surface-sample img { width: 40px; height: 40px; object-fit: cover; border-radius: 3px; background: var(--panel); }
-.surface-sample span { padding: 0 4px; }
-.surface-note { color: var(--muted, #888); font-size: .8rem; margin: 4px 0 0; }
-.surface-sessions { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
-.session { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
-.session-strip { display: flex; flex-wrap: wrap; gap: 3px; flex: 0 1 auto; min-width: 0; }
-.session-strip img { width: 48px; height: 48px; object-fit: cover; border-radius: 3px; background: var(--ground); }
-.session-body { display: grid; gap: 4px; min-width: 0; }
-.session-head { font-size: .9rem; }
-.session-doors { display: flex; gap: 12px; align-items: center; font-size: .85rem; flex-wrap: wrap; }
-.session-doors a { color: var(--accent); }
-.session-doors button { background: var(--ground); color: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius); padding: 2px 10px; cursor: pointer; font: inherit; font-size: .85rem; }
-.session-status { color: var(--ink-muted); }
-.session-more { color: var(--ink-muted); font-size: .85rem; padding: 4px 0; }
-.session-people { color: var(--ink-muted); font-size: .85rem; }
-.session-people a { color: var(--accent); }
+.surface-overview .brush-edge { fill: var(--imprint); cursor: ew-resize; }
+@media (prefers-reduced-motion: reduce) { .axis-stage .bar { transition: none; } }
+/* justified rows: each picture's flex is its ratio, so a row's height is
+   the one that makes its ratios fill the width (the Flickr shape) */
+.rows { display: flex; flex-wrap: wrap; gap: 4px; }
+.rows > * { flex: calc(var(--r) * 100) 1 calc(var(--r) * 180px); aspect-ratio: var(--r); max-height: 320px; overflow: hidden; border-radius: 2px; }
+.rows::after { content: ""; flex: 1e5 1 0; }
+.rows img { display: block; width: 100%; height: 100%; object-fit: cover; background: var(--panel); }
+.rows a:hover img { filter: brightness(1.08); }
+.rows a:focus-visible { outline: 2px solid var(--imprint); outline-offset: -2px; }
+.caption { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; padding: 14px 0 6px; }
+.caption .title { font-size: 15px; font-weight: 600; }
+.caption .meta { color: var(--ink-muted); font-size: 13px; }
+.caption .meta a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.caption .doors { margin-left: auto; font-size: 13px; }
+.caption .doors a { color: var(--imprint); }
+.caption .doors button { background: none; color: var(--imprint); border: 1px solid var(--imprint); border-radius: var(--radius); padding: 1px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.session-status { color: var(--ink-muted); font-size: 13px; margin-left: 8px; }
+.session-story { display: flex; gap: 10px; align-items: center; margin: 0 0 8px; color: var(--ink-muted); font-size: 13px; }
+.session-story-hero { width: 40px; height: 40px; object-fit: cover; border-radius: 2px; }
+.session-story-dek { margin: 0; }
+.session-strip { display: block; }
+/* the river: the rail is the axis, days stamped, empty days kept */
+.surface-sessions { list-style: none; padding: 0; margin: 0; }
+.session-more { color: var(--ink-muted); font-size: 13px; padding: 12px 0; }
+.river-cap { display: grid; grid-template-columns: 112px 1fr; column-gap: 24px; align-items: baseline; margin-top: 34px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.river-cap .stamp { font-size: 22px; text-align: right; }
+.river-gap { display: grid; grid-template-columns: 112px 1fr; column-gap: 24px; align-items: center; height: 34px; }
+.river-gap .eyebrow { text-align: right; }
+.river-gap i { display: block; height: 1px; background: repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 12px); }
+.river-day { display: grid; grid-template-columns: 112px 1fr; column-gap: 24px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.river-rail { position: sticky; top: 8px; align-self: start; text-align: right; padding-top: 16px; }
+.river-rail .stamp { font-size: 44px; line-height: 1; display: block; }
+.river-rail .eyebrow { display: block; margin-top: 2px; }
+.river-day.weekend .river-rail .eyebrow { color: var(--imprint); opacity: .8; }
+.river-day.unplaced .river-rail { padding-top: 18px; }
+.river-body { min-width: 0; }
+/* the calendar: month sheets, each day its own first picture */
+.calendar { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 36px 28px; margin-top: 24px; }
+.sheet-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-bottom: 8px; }
+.sheet-head .stamp { font-size: 22px; }
+.sheet-count { margin-left: auto; font-family: var(--stamp); font-size: 12px; color: var(--ink-muted); }
+.sheet-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.sheet-wd { font-family: var(--stamp); font-size: 10px; letter-spacing: .14em; color: var(--ink-muted); padding: 0 0 4px 4px; }
+.cell { position: relative; aspect-ratio: 1; background: var(--panel); border-radius: 2px; overflow: hidden; display: block; }
+.cell.void { background: transparent; }
+.cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cell .n { position: absolute; left: 6px; top: 4px; font-family: var(--stamp); font-size: 13px; color: var(--ink-muted); }
+.cell.has .n { color: var(--imprint); text-shadow: 0 0 6px rgba(0, 0, 0, .9); }
+.cell .c { position: absolute; right: 6px; bottom: 4px; font-family: var(--stamp); font-size: 12px; color: #fff; text-shadow: 0 0 6px rgba(0, 0, 0, .9); }
+.cell.today { outline: 1px dashed var(--imprint); outline-offset: -1px; }
+.cell.has:hover img { filter: brightness(1.1); }
+/* the years: a row per year, twelve month cells, a month a door to its window */
+.years { display: grid; gap: 28px; margin-top: 24px; }
+.year-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+.cell.month { aspect-ratio: 1; }
+.cell.month .n { font-size: 11px; letter-spacing: .1em; }
+.cell.month.outside { opacity: .35; }
+@media (max-width: 760px) { .year-months { grid-template-columns: repeat(6, 1fr); } }
+@media (max-width: 760px) {
+  .river-cap, .river-gap, .river-day { grid-template-columns: 64px 1fr; column-gap: 12px; }
+  .river-rail .stamp { font-size: 30px; }
+  .axis { height: 200px; }
+  .surface-head { grid-template-areas: "window" "note" "zoom"; grid-template-columns: 1fr; }
+}
 .album-seen { color: var(--ink-muted); font-size: .85rem; }
 .places-line { color: var(--ink-muted); font-size: .85rem; margin: 0; padding: 0 16px 8px; }
 .place-card { display: grid; gap: 2px; }

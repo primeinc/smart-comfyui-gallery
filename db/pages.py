@@ -1210,6 +1210,46 @@ def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("",
     ).fetchall()
 
 
+#: Every picture in a range, in moment order, with what a surface needs
+#: to draw it in place: its door, its shape, its moment and precision,
+#: and the CURRENT sessions it belongs to. HEAD + scope + TAIL; bounded
+#: by LIMIT, the caller says how many more there were.
+_TIMELINE_PICTURES_HEAD = (
+    "SELECT e.slug, f.name, f.kind, f.width, f.height, " + HUMAN_MOMENT + " AS moment,"
+    " mc.time_precision, mc.origin, mc.local_at IS NOT NULL AS wall,"
+    " (SELECT group_concat(ef.event_id) FROM derived_event_file ef"
+    "   JOIN derived_event ev ON ev.id = ef.event_id JOIN derived_event_run r ON r.id = ev.run_id"
+    "  WHERE ef.file_id = mc.file_id AND r.context_generation = (SELECT generation FROM derived_context_state)"
+    "    AND r.context_policy_version = ?) AS sessions"
+    "  FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = mc.file_id"
+    " WHERE mc.policy_version = ?"
+    "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+)
+_TIMELINE_PICTURES_TAIL = " ORDER BY moment, mc.file_id LIMIT ?"
+TIMELINE_PICTURES = _TIMELINE_PICTURES_HEAD + _TIMELINE_PICTURES_TAIL
+_TIMELINE_PICTURES_COUNT_HEAD = (
+    "SELECT count(*) FROM derived_media_context mc"
+    "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    " WHERE mc.policy_version = ?"
+    "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+)
+
+
+def timeline_pictures(conn, lo: float, hi: float, limit: int, scope: tuple[str, list] = ("", [])):
+    """(rows, total): the first `limit` pictures of [lo, hi) in moment
+    order, and how many the range holds."""
+    rows = conn.execute(
+        _TIMELINE_PICTURES_HEAD + scope[0] + _TIMELINE_PICTURES_TAIL,
+        (context.POLICY_VERSION, context.POLICY_VERSION, lo, hi, *scope[1], limit),
+    ).fetchall()
+    total = conn.execute(
+        _TIMELINE_PICTURES_COUNT_HEAD + scope[0], (context.POLICY_VERSION, lo, hi, *scope[1])
+    ).fetchone()[0]
+    return rows, int(total or 0)
+
+
 def timeline_months(conn, scope: tuple[str, list] = ("", [])):
     return conn.execute(
         _TIMELINE_MONTHS_HEAD + scope[0] + _TIMELINE_MONTHS_TAIL, (context.POLICY_VERSION, *scope[1])

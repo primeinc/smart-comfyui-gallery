@@ -278,6 +278,259 @@ HAPPENED = {
 UNIT = {"week": "week", "day": "day", "hour": "hour", "quarter": "quarter hour", "minute": "minute"}
 
 
+#: Pictures one surface draws in place. Past it the page says how many
+#: more there were; the person narrows the window.
+PICTURES_MOST = 2_000
+#: At the week zoom the body is month sheets; finer, it is the river.
+CALENDAR_AT = "week"
+_MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_TICK_STEPS = (
+    (3_600, 300),
+    (6 * 3_600, 1_800),
+    (2 * 86_400, 3 * 3_600),
+    (14 * 86_400, 86_400),
+    (float("inf"), 7 * 86_400),
+)
+
+
+def _utc(epoch: float) -> datetime.datetime:
+    return datetime.datetime.fromtimestamp(epoch, datetime.UTC)
+
+
+def _month_start(d: datetime.datetime) -> float:
+    return datetime.datetime(d.year, d.month, 1, tzinfo=datetime.UTC).timestamp()
+
+
+def _next_month(d: datetime.datetime) -> datetime.datetime:
+    return datetime.datetime(d.year + (d.month == 12), d.month % 12 + 1, 1, tzinfo=datetime.UTC)
+
+
+def _ticks(lo: float, hi: float) -> list[dict]:
+    """The axis's furniture: a tick per step of the zoom with its label,
+    major at the calendar boundary above it (midnight, the 1st, January)."""
+    span = hi - lo
+
+    def x(t: float) -> float:
+        return round(((t - lo) / span) * _W, 2)
+
+    out: list[dict] = []
+    if span > 183 * 86_400:
+        # months up to three years; past that only the years, else the
+        # labels pile into one another
+        years_only = span > 3 * 366 * 86_400
+        d = _utc(lo)
+        d = datetime.datetime(d.year, d.month, 1, tzinfo=datetime.UTC)
+        while d.timestamp() < hi:
+            t = d.timestamp()
+            if t >= lo and (d.month == 1 or not years_only):
+                out.append(
+                    {
+                        "x": x(t),
+                        "label": str(d.year) if d.month == 1 else d.strftime("%b").upper(),
+                        "major": d.month == 1,
+                    }
+                )
+            d = _next_month(d)
+        return out
+    step = next(s for most, s in _TICK_STEPS if span <= most)
+    t = -(-int(lo) // step) * step
+    while t < hi:
+        d = _utc(t)
+        midnight = t % 86_400 == 0
+        day_label = f"{d.day} {d.strftime('%b').upper()}"
+        if step >= 86_400:
+            out.append({"x": x(t), "label": day_label, "major": d.day <= step // 86_400})
+        else:
+            out.append({"x": x(t), "label": day_label if midnight else d.strftime("%H:%M"), "major": midnight})
+        t += step
+    return out
+
+
+def _picture(row, qs: str) -> dict:
+    slug, name, kind, width, height, moment, precision, origin, wall, sessions = row
+    return {
+        "slug": slug,
+        "name": name,
+        "kind": kind,
+        "width": width,
+        "height": height,
+        "ratio": round(width / height, 4) if width and height else 1.0,
+        "moment": moment,
+        "precision": precision,
+        "origin": origin,
+        "domain": "wall" if wall else "instant",
+        "sessions": [int(one) for one in sessions.split(",")] if sessions else [],
+        "href": f"/i/{slug}?{qs}",
+        "clock": _utc(moment).strftime("%H:%M"),
+    }
+
+
+def _grouped(pictures: list[dict], sessions: list[dict], bins: list[dict], width: int, window_qs: str) -> list[dict]:
+    """The window's pictures in groups, oldest first: each listed session
+    holds its members; the rest gather by the bin they fall in. A
+    picture in two listed sessions is drawn in the first."""
+    by_session = {
+        s["id"]: {"t": s["start"], "end": s["end"], "session": s, "bin": None, "qs": s["qs"], "pictures": []}
+        for s in sessions
+    }
+    by_bin = {b["at"]: b for b in bins}
+    loose: dict[int, dict] = {}
+    for p in pictures:
+        sid = next((one for one in p["sessions"] if one in by_session), None)
+        if sid is not None:
+            by_session[sid]["pictures"].append(p)
+            continue
+        at = int(p["moment"] // width) * width
+        held = loose.get(at)
+        if held is None:
+            b = by_bin.get(at)
+            held = loose[at] = {
+                "t": at,
+                "end": at + width,
+                "session": None,
+                "bin": b,
+                "qs": b["qs"] if b else window_qs,
+                "pictures": [],
+            }
+        held["pictures"].append(p)
+    groups = [g for g in (*by_session.values(), *loose.values()) if g["pictures"]]
+    groups.sort(key=lambda g: g["t"])
+    for g in groups:
+        g["clock"] = f"{_utc(g['t']).strftime('%H:%M')}–{_utc(g['end']).strftime('%H:%M')}"
+        g["lasted"] = _lasted(g["end"] - g["t"])
+    return groups
+
+
+def _lasted(seconds: float) -> str:
+    if seconds < 90:
+        return "a minute"
+    if seconds < 3_600:
+        return f"{round(seconds / 60)} min"
+    if seconds < 2 * 86_400:
+        return f"{seconds / 3_600:.1f} h"
+    return f"{round(seconds / 86_400)} days"
+
+
+def _river(groups: list[dict]) -> list[dict]:
+    """Days, oldest first, each with its groups; a day carries the month
+    cap when it opens one, and the count of empty days before it."""
+    days: list[dict] = []
+    by_day: dict[str, list] = {}
+    for g in groups:
+        by_day.setdefault(_utc(g["t"]).strftime("%Y-%m-%d"), []).append(g)
+    prev_day, prev_month = None, None
+    for key in sorted(by_day):
+        d = datetime.datetime.strptime(key, "%Y-%m-%d").replace(tzinfo=datetime.UTC)
+        month = (d.year, d.month)
+        gap = 0 if prev_day is None or month != prev_month else (d - prev_day).days - 1
+        days.append(
+            {
+                "key": key,
+                "day": d.day,
+                "weekday": _WEEKDAYS[d.weekday()],
+                "weekend": d.weekday() >= 5,
+                "month_cap": {"year": d.year, "month": _MONTHS[d.month - 1]} if month != prev_month else None,
+                "gap_before": max(0, gap),
+                "groups": by_day[key],
+            }
+        )
+        prev_day, prev_month = d, month
+    return days
+
+
+def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuery) -> list[dict]:
+    """Month sheets over the window, newest first: every day a cell with
+    its count and first picture; day bins from the one density query."""
+    first = _month_start(_utc(lo))
+    last = _next_month(_utc(max(lo, hi - 1))).timestamp()
+    _, day_bins, _ = pages.timeline_density(conn, "day", first, last, scope)
+    samples = pages.timeline_samples(conn, "day", first, last, None, scope)
+    counts = {int(at): pictures for at, pictures, *_ in day_bins}
+    today = _utc(time.time()).strftime("%Y-%m-%d")
+    months = []
+    d = _utc(first)
+    while d.timestamp() < last:
+        nxt = _next_month(d)
+        days, total = [], 0
+        t = d.timestamp()
+        while t < nxt.timestamp():
+            n = counts.get(int(t), 0)
+            total += n
+            days.append(
+                {
+                    "n": _utc(t).day,
+                    "pictures": n,
+                    "hero": (samples.get(int(t)) or [None])[0],
+                    "qs": _bin_door(t, 86_400, question) if n else None,
+                    "spelled": _spell(t, "day"),
+                    "today": _utc(t).strftime("%Y-%m-%d") == today,
+                }
+            )
+            t += 86_400
+        months.append(
+            {"year": d.year, "month": _MONTHS[d.month - 1], "lead": d.weekday(), "pictures": total, "days": days}
+        )
+        d = nxt
+    months.reverse()
+    return months
+
+
+#: The widest window that draws month sheets; wider, the body is years.
+SHEETS_WIDEST = 2 * 366 * 86_400
+
+
+def _years(told_bins: list[dict], lo: float, hi: float, question: resultset.GalleryQuery) -> list[dict]:
+    """Year rows, newest first, each twelve month cells with the count
+    and first picture -- from the window's week bins, a week counted in
+    the month it starts in."""
+    months: dict[tuple[int, int], dict] = {}
+    for b in told_bins:
+        d = _utc(b["at"])
+        held = months.setdefault((d.year, d.month), {"pictures": 0, "hero": None})
+        held["pictures"] += b["pictures"]
+        if held["hero"] is None and b["samples"]:
+            held["hero"] = b["samples"][0]
+    years = []
+    for y in range(_utc(lo).year, _utc(max(lo, hi - 1)).year + 1):
+        cells = []
+        for m in range(1, 13):
+            start = datetime.datetime(y, m, 1, tzinfo=datetime.UTC)
+            end = _next_month(start)
+            held = months.get((y, m), {"pictures": 0, "hero": None})
+            door = _door(
+                question,
+                facets.facet("context.moment", "gte", str(int(start.timestamp()))),
+                facets.facet("context.moment", "lt", str(int(end.timestamp()))),
+            )
+            cells.append(
+                {
+                    "month": _MONTHS[m - 1][:3].upper(),
+                    "pictures": held["pictures"],
+                    "hero": held["hero"],
+                    "qs": door if held["pictures"] else None,
+                    "href": _window_url(question, start.timestamp(), end.timestamp()),
+                    "outside": end.timestamp() <= lo or start.timestamp() >= hi,
+                }
+            )
+        years.append({"year": y, "pictures": sum(c["pictures"] for c in cells), "months": cells})
+    years.reverse()
+    return years
+
+
 def _window_url(question: resultset.GalleryQuery, start: float, end: float) -> str:
     qs = resultset.canonical(question)
     return f"/timeline?{qs + '&' if qs else ''}start={int(start)}&end={int(end)}"
@@ -321,6 +574,16 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
             "sessions": [],
             "sessions_total": 0,
             "sessions_sampled": True,
+            "composition": "river",
+            "ticks": [],
+            "now_x": None,
+            "pictures_total": 0,
+            "pictures_drawn": 0,
+            "groups": [],
+            "river": [],
+            "calendar": [],
+            "years": [],
+            "listed": [],
         }
     whole_lo, whole_hi = float(extent[0]), float(extent[1]) + 1.0
     if start is None and end is None:
@@ -348,16 +611,27 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
     )
     samples = {} if lean else pages.timeline_samples(conn, bin_name, lo, hi, busiest, scope)
     rows = [] if lean else pages.timeline_sessions(conn, lo, hi, scope)
-    listed = rows[:SESSIONS_MOST]
+    # rows are oldest first (db/pages.py _TIMELINE_SESSIONS_TAIL); the tail is the latest
+    listed = rows[-SESSIONS_MOST:] if len(rows) > SESSIONS_MOST else rows
     sessions = [_session(conn, row, samples=len(listed) <= SESSIONS_SAMPLED_MOST, scope=held) for row in listed]
+    span = max(1.0, hi - lo)
     for one in sessions:
         one["when"] = _span(one["start"], one["end"] + 1)
         one["happened"] = HAPPENED.get(one["kind"], one["kind"].replace("_", " "))
+        one["title"] = one["story"]["title"] if one["story"] else f"{one['pictures']:,} {one['happened']}"
         named = [p for p in one["people"] if p["name"]]
         others = one["people_total"] - len(named)
         one["with"] = {"named": named, "others": others}
-
-    span = max(1.0, hi - lo)
+        one["lasted"] = _lasted(one["end"] - one["start"])
+        # the session's frame on the axis, clipped to the window
+        x0 = max(0.0, ((one["start"] - lo) / span) * _W)
+        x1 = min(float(_W), ((one["end"] + 1 - lo) / span) * _W)
+        one["x"], one["w"] = round(x0, 2), round(max(2.0, x1 - x0), 2)
+    window_qs = _door(
+        held, facets.facet("context.moment", "gte", str(int(lo))), facets.facet("context.moment", "lt", str(int(hi)))
+    )
+    picture_rows, pictures_total = ([], 0) if lean else pages.timeline_pictures(conn, lo, hi, PICTURES_MOST, scope)
+    drawn_rows = [_picture(row, window_qs) for row in picture_rows]
     most = max([1, *(pictures for _, pictures, *_ in bins)])
     bar_w = max(1.0, (width / span) * _W - 0.5)
     finest = bin_name == "minute"
@@ -432,7 +706,37 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
         note += f" · {coverage['present'] - coverage['interpreted']:,} pictures not dated yet"
     if coverage["present"] and not coverage["events_current"]:
         note += " · the groups are out of date"
+    if pictures_total > len(drawn_rows):
+        note += (
+            f" · the first {len(drawn_rows):,} of {pictures_total:,} pictures drawn — show less time to see them all"
+        )
+    groups = _grouped(drawn_rows, sessions, told_bins, width, window_qs)
+    composition = "river" if bin_name != CALENDAR_AT else ("calendar" if hi - lo <= SHEETS_WIDEST else "years")
+    drawn = {g["session"]["id"]: g["pictures"] for g in groups if g["session"]}
+    for one in sessions:
+        # the members the window holds; a session touching the window
+        # whose members all sit outside it (or past the cap) shows its samples
+        one["drawn_pictures"] = drawn.get(one["id"], [])
+    overview["years"] = [
+        {
+            "year": y,
+            "x": round(((datetime.datetime(y, 1, 1, tzinfo=datetime.UTC).timestamp() - whole_lo) / whole_span) * _W, 2),
+        }
+        for y in range(_utc(whole_lo).year + 1, _utc(whole_hi).year + 1)
+    ]
     return {
+        "composition": composition,
+        "ticks": _ticks(lo, hi),
+        "now_x": round(((time.time() - lo) / span) * _W, 2) if lo <= time.time() < hi else None,
+        "pictures_total": pictures_total,
+        "pictures_drawn": len(drawn_rows),
+        "groups": groups,
+        "river": _river(groups) if composition == "river" else [],
+        "calendar": _calendar(conn, lo, hi, scope, held) if composition == "calendar" and not lean else [],
+        "years": _years(told_bins, lo, hi, held) if composition == "years" else [],
+        #: the cards the body lists on its own: every session under the
+        #: sheets; in the river only those no day of it placed
+        "listed": sessions if composition != "river" else [one for one in sessions if not one["drawn_pictures"]],
         "bin": bin_name,
         "bin_seconds": width,
         "start": lo,
@@ -500,6 +804,49 @@ def density(
     finally:
         connect.close(conn)
     return Response(told, headers=VARIES)
+
+
+@get("/timeline/pictures", sync_to_thread=True)
+def pictures(
+    state: State,
+    start: FromQuery[float],
+    end: FromQuery[float],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    limit: FromQuery[int] = PICTURES_MOST,
+) -> Response:
+    """Every picture of [start, end) in the scope, in moment order, each
+    with its shape, its moment and precision, and the sessions it is in:
+    what a surface needs to draw pictures ON time rather than beside
+    it. Bounded by `limit` (at most PICTURES_MOST); `total` says how
+    many the window holds."""
+    if end <= start:
+        raise ClientException("the range is empty")
+    asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
+    conn = connect.connect(state.db_path, read_only=True)
+    try:
+        scope, held = _scope(conn, state, asked)
+        rows, total = pages.timeline_pictures(conn, start, end, max(1, min(limit, PICTURES_MOST)), scope)
+    finally:
+        connect.close(conn)
+    qs = resultset.canonical(dataclasses.replace(held, sort="moment"))
+    return Response(
+        {
+            "start": start,
+            "end": end,
+            "scope": _scope_told(held),
+            "qs": qs,
+            "total": total,
+            "pictures": [_picture(row, qs) for row in rows],
+        },
+        headers=VARIES,
+    )
 
 
 @get("/timeline", sync_to_thread=True)

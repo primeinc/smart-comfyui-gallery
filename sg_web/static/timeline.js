@@ -1,11 +1,11 @@
 // Interaction only. The surface is rendered by the server -- one window
-// of the human timeline, its overview and brush, its bars, thumbnails
-// and session cards (templates/_timeline_surface.html) -- and every
-// move here is a request for that same fragment at another window,
-// swapped in place with the URL updated. The brush maps pointer
-// geometry onto the extent; a bar and a preset are links that work
-// without this file. The story button drives the story routes and
-// waits on the job feed.
+// of the human timeline: the axis with its frames and pictures, the rule
+// with its brush, the body (templates/_timeline_surface.html) -- and
+// every move here is a request for that same fragment at another
+// window, swapped in place with the URL updated. The brush and the
+// axis map pointer geometry onto time; a bar and a preset are links
+// that work without this file. The story button drives the story
+// routes and waits on the job feed.
 (() => {
   "use strict";
 
@@ -49,10 +49,28 @@
     const held = swap.querySelector("[data-strip]");
     if (held) held.dataset.settling = "";
     swap.innerHTML = await answer.text();
+    thin();
     if (push === true) history.pushState({ url }, "", url);
     else if (push === false) history.replaceState({ url }, "", url);
     // push === null: a refresh of the same window; the URL already says it
   }
+
+  // the pictures on the axis sit at their moment and never wrap: when
+  // two would overlap, the later one yields -- a thinner strip, not a pile
+  const thin = () => {
+    const row = swap.querySelector("[data-samples]");
+    if (!row) return;
+    const width = row.getBoundingClientRect().width || 1;
+    let edge = -Infinity;
+    for (const a of row.querySelectorAll(".surface-sample")) {
+      const left = (parseFloat(a.style.left) / 100) * width;
+      if (left < edge) { a.hidden = true; continue; }
+      a.hidden = false;
+      edge = left + 42;
+    }
+  };
+  thin();
+  window.addEventListener("resize", thin);
 
   // While the hand moves, the surface moves: at most one fetch in flight
   // per LIVE_MS, the newest window always the one that lands.
@@ -93,7 +111,7 @@
 
   // a bar or a preset is a link to another window: swap instead of navigate
   swap.addEventListener("click", (e) => {
-    const a = e.target.closest("[data-preset], [data-bin-window]");
+    const a = e.target.closest("[data-preset], [data-bin-window], [data-month-window]");
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // a modified click is the browser's
     e.preventDefault();
     move(a.getAttribute("href"), true);
@@ -180,11 +198,52 @@
     }
   }, true);
 
-  // the wheel over the stage zooms around the cursor; with shift it pans
+  // the axis pans under the hand: a drag moves the window, a click is a
+  // click (a bar is a link) -- the hand decides by moving
+  let pan = null; // {x, start, end, moved}
+  swap.addEventListener("pointerdown", (event) => {
+    const axis = event.target.closest("[data-strip]");
+    const held = read();
+    if (!axis || !held || event.button !== 0) return;
+    // the axis is swapped under the hand while it moves: its width is
+    // read once here, never from an element that may since be detached
+    pan = { axis, px: axis.getBoundingClientRect().width || 1, x: event.clientX, start: held.start, end: held.end, moved: false, held };
+  });
+  swap.addEventListener("pointermove", (event) => {
+    if (!pan) return;
+    if (!pan.moved && Math.abs(event.clientX - pan.x) < 4) return;
+    if (!pan.moved) { pan.moved = true; pan.axis.dataset.dragging = ""; pan.axis.setPointerCapture(event.pointerId); }
+    const width = pan.end - pan.start;
+    const dt = ((pan.x - event.clientX) / pan.px) * width;
+    let start = Math.max(pan.held.extentStart, pan.start + dt);
+    start = Math.min(start, pan.held.extentEnd - width);
+    live(start, start + width);
+  });
+  let panned = false; // the click that ends a drag is not a click
+  swap.addEventListener("click", (e) => {
+    if (panned && e.target.closest("[data-strip]")) { e.preventDefault(); e.stopImmediatePropagation(); }
+    panned = false;
+  }, true);
+  const unpan = () => {
+    if (!pan) return;
+    const was = pan;
+    pan = null;
+    panned = was.moved;
+    if (!was.moved) return;
+    delete was.axis.dataset.dragging;
+    clearTimeout(liveTimer);
+    const held = read();
+    if (held) move(urlFor(Math.round(held.start), Math.round(held.end)), true);
+  };
+  swap.addEventListener("pointerup", unpan);
+  swap.addEventListener("pointercancel", unpan);
+
+  // ctrl+wheel over the axis or the rule zooms around the cursor; shift+wheel
+  // pans; a plain wheel is the page's, so the river below stays reachable
   swap.addEventListener("wheel", (e) => {
     const stage = e.target.closest("[data-strip], [data-overview]");
     const held = read();
-    if (!stage || !held) return;
+    if (!stage || !held || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
     e.preventDefault();
     const width = held.end - held.start;
     const box = stage.getBoundingClientRect();

@@ -141,6 +141,39 @@ def test_the_surface_carries_pictures_origins_and_its_coverage(doors):
         assert s["planner"] == "file_history"
 
 
+def test_the_pictures_of_a_window_come_with_their_place_on_it(doors):
+    """/timeline/pictures is what draws pictures ON time: every picture
+    of the window in moment order, each with its shape, its moment and
+    precision, the sessions it is in, and its door -- the same members
+    the window's door opens, the same sessions the surface lists."""
+    view = _density(doors, bin="hour", start=JUNE_10, end=JUNE_10 + DAY)
+    told = doors.get(
+        "/timeline/pictures", params={"start": JUNE_10, "end": JUNE_10 + DAY}, headers={"accept": "application/json"}
+    )
+    assert told.status_code == 200, told.text
+    body = told.json()
+    pictures = body["pictures"]
+    door = f"f=context.moment%3Agte%3A{int(JUNE_10)}&f=context.moment%3Alt%3A{int(JUNE_10 + DAY)}"
+    assert body["total"] == len(pictures) == _total(doors, door)
+    assert [p["moment"] for p in pictures] == sorted(p["moment"] for p in pictures)
+    for p in pictures:
+        assert JUNE_10 <= p["moment"] < JUNE_10 + DAY
+        assert p["width"], "a picture knows its shape"
+        assert p["height"]
+        assert p["precision"] in ("day", "hour", "minute", "second", "subsecond")
+        assert p["domain"] in ("wall", "instant")
+        assert p["href"].startswith(f"/i/{p['slug']}?")
+    listed = {s["id"] for s in view["sessions"]}
+    named = {sid for p in pictures for sid in p["sessions"]}
+    assert named == listed, "the sessions named are the ones the surface lists"
+    for s in view["sessions"]:
+        assert sum(s["id"] in p["sessions"] for p in pictures) == s["pictures"]
+    asked = {"start": JUNE_10, "end": JUNE_10 + DAY, "limit": 2}
+    capped = doors.get("/timeline/pictures", params=asked, headers={"accept": "application/json"}).json()
+    assert (len(capped["pictures"]), capped["total"]) == (2, body["total"]), "a cap says how many more"
+    assert doors.get("/timeline/pictures", params={"start": JUNE_10, "end": JUNE_10}).status_code == 400
+
+
 def test_a_week_starts_on_a_monday(doors):
     week = _density(doors, bin="week", start=JUNE_10 - 3 * DAY, end=JUNE_10 + 4 * DAY)
     assert week["bins"], "the June pictures fall in a week"
@@ -206,6 +239,7 @@ def test_the_session_list_is_bounded_and_says_so(doors, monkeypatch):
     monkeypatch.setattr(timeline_view, "SESSIONS_MOST", 1)
     capped = _density(doors, bin="day")
     assert (capped["sessions_total"], len(capped["sessions"])) == (2, 1)
+    assert capped["sessions"][0]["start"] == max(s["start"] for s in whole["sessions"]), "the one listed is the latest"
     monkeypatch.setattr(timeline_view, "SESSIONS_MOST", 200)
     monkeypatch.setattr(timeline_view, "SESSIONS_SAMPLED_MOST", 1)
     bare = _density(doors, bin="day")
