@@ -19,7 +19,6 @@ connections refuse cross-thread use, and the pool gives no thread pinning.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 import os
@@ -83,6 +82,7 @@ from sg_web import (
     place_view,
     story_view,
     timeline_view,
+    wire,
 )
 from sg_web import worker as worker_module
 from sg_web.presenting import VARIES, presented_page, wants_json
@@ -165,8 +165,7 @@ def front(state: State, request: Request) -> Response | Redirect:
 # membership routes below stay as compatibility adapters.
 
 
-@dataclasses.dataclass
-class AlbumEntry:
+class AlbumEntry(Wire):
     """The body of the album membership routes: a file, by its address."""
 
     file: str
@@ -343,8 +342,7 @@ def submit_verify(state: State) -> dict:
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class Everything:
+class Everything(Wire):
     """The body of a missing-only sweep's route: redo all of it, or not.
     Nothing else -- where weights live is the `models_dir` setting, never
     a request's word."""
@@ -822,15 +820,24 @@ def all_settings(state: State) -> list[dict]:
         connect.close(conn)
 
 
+class SettingChange(Wire):
+    """The body of POST /settings/{key}. A setting's value is stored as
+    text and read back through its own vocabulary, so the wire carries
+    whichever JSON scalar the setting is spelled with rather than
+    pretending every setting is a string."""
+
+    value: str | int | float | bool
+
+
 @post("/settings/{key:str}", sync_to_thread=True)
-def change_setting(state: State, key: FromPath[str], data: dict) -> dict:
+def change_setting(state: State, key: FromPath[str], data: SettingChange) -> dict:
     """Change one setting while the application runs. Unknown keys and
     out-of-vocabulary values are refused, so the table only ever holds
     configuration something reads."""
     conn = _connect(state.db_path)
     try:
         try:
-            settings.put(conn, key, str(data["value"]))
+            settings.put(conn, key, str(data.value))
         except (KeyError, ValueError) as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
@@ -984,14 +991,15 @@ def roots(state: State) -> list[dict]:
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class NewRoot:
-    """The body of POST /roots. Typed so a request without a path is a
-    400 from the signature model, never a KeyError a handler forgot --
-    the shape every write route's body should take."""
+#: What a watched directory is to the library, per db/schema.sql root.kind.
+RootKind = Literal["library", "mount", "trash"]
+
+
+class NewRoot(Wire):
+    """The body of POST /roots: a directory and what it is to us."""
 
     path: str
-    kind: str = "library"
+    kind: RootKind = "library"
 
 
 @post("/roots", sync_to_thread=True)
@@ -1322,7 +1330,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
                 directories=[str(pathlib.Path(__file__).resolve().parent / "static")],
             ),
         ],
-        plugins=[channels, _WorkerPlugin()],
+        plugins=[*wire.plugins(), channels, _WorkerPlugin()],
         template_config=TemplateConfig(instance=_template_engine()),
         # a 500 says what broke and where: the traceback page for a
         # browser, {"details": <traceback>} for JSON (litestar-org/litestar

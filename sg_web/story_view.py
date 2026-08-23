@@ -11,11 +11,11 @@ input. Reading a snapshot consults history only.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import pathlib
 import time
 import urllib.parse
+from typing import Literal
 
 from litestar import Request, get, post
 from litestar.datastructures import State
@@ -26,6 +26,7 @@ from litestar.response import Redirect, Response, Template
 from db import connect, derived, evolution, facets, naming, pages, planning, rendering, settings, stories
 from sg_web import home, submitting
 from sg_web.presenting import VARIES, presented_page, wants_json
+from sg_web.wire import Wire
 
 
 def _window(subject: dict) -> str | None:
@@ -79,8 +80,7 @@ def stories_index(state: State, request: Request, kind: FromQuery[str | None] = 
     return presented_page(request, told, page="stories.html", context={"stories": told, "kind": kind, "kinds": kinds})
 
 
-@dataclasses.dataclass
-class FreezeRequest:
+class FreezeRequest(Wire):
     """The body of POST /stories/snapshots: which current event."""
 
     event_id: int
@@ -119,17 +119,23 @@ def snapshot_document(state: State, snapshot_id: FromPath[int]) -> dict:
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class PlanRequest:
+#: How a plan reads a snapshot, per db/schema.sql story_plan.planner.
+Planner = Literal["generation_history", "capture_history", "file_history"]
+
+#: Which voice a render speaks in, per db/schema.sql story_render.profile.
+RenderProfile = Literal["memory", "technical", "compact"]
+
+
+class PlanRequest(Wire):
     """The body of POST /stories/plans: which frozen snapshot, under
     which planner, read by which similarity engine -- named EXACTLY
     (`lexical`, or a configured semantic provider such as `openclip` or
     `qwen`; never a default that might mean something else)."""
 
     snapshot_id: int
-    planner: str = "generation_history"
+    planner: Planner = "generation_history"
     similarity: str = "lexical"
-    settings: dict | None = None
+    settings: dict[str, object] | None = None
 
 
 @post("/stories/plans", sync_to_thread=True)
@@ -179,13 +185,12 @@ def plan_document(state: State, request: Request, plan_id: FromPath[int]) -> dic
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class RenderRequest:
+class RenderRequest(Wire):
     """The body of POST /stories/renders: which plan, under which
     profile and locale. Rendering is pure code and synchronous."""
 
     plan_id: int
-    profile: str = "memory"
+    profile: RenderProfile = "memory"
     locale: str = "en"
 
 

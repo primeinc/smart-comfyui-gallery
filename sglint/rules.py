@@ -499,6 +499,86 @@ def rule_producers(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     return found
 
 
+# --- SG4xx: the request contracts ----------------------------------------------------------------
+
+
+#: The decorators that make a function a route with a request body.
+_BODY_ROUTES = frozenset({"post", "put", "patch", "delete", "route"})
+
+
+def _wire_contracts(root: pathlib.Path) -> set[str]:
+    """Every class in sg_web that inherits Wire, by name."""
+    named: set[str] = set()
+    for source in sorted((root / "sg_web").glob("*.py")):
+        for node in ast.walk(parsed(source)):
+            if isinstance(node, ast.ClassDef) and any(
+                isinstance(base, ast.Name) and base.id == "Wire" for base in node.bases
+            ):
+                named.add(node.name)
+    return named
+
+
+def _annotation_name(node: ast.expr | None) -> str | None:
+    """The contract an annotation names, seeing through `X | None`."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        for side in (node.left, node.right):
+            if isinstance(side, ast.Constant) and side.value is None:
+                continue
+            return _annotation_name(side)
+    if isinstance(node, ast.Subscript):
+        return _annotation_name(node.value)
+    return None
+
+
+def rule_request_contracts(root: pathlib.Path = REPO_ROOT, reserved: frozenset[str] | None = None) -> list[Finding]:
+    """SG412: a route's JSON body is not a Wire contract.
+
+    sg_web/wire.py states one policy for every JSON shape crossing the
+    seam -- name every field, refuse the rest, translate rather than
+    coerce. A body annotated `dict` obeys none of it and a dataclass obeys
+    only some, and either way the OpenAPI document describes nothing, so
+    the browser's generated types cannot describe the request either.
+
+    Forms are exempt by shape, not by name: URLEncodedBody carries a form,
+    which is a different contract with different rules.
+    """
+    contracts = _wire_contracts(root)
+    excused = policy.REQUEST_CONTRACT_RESERVED if reserved is None else reserved
+    found: list[Finding] = []
+    for source in sorted((root / "sg_web").glob("*.py")):
+        for node in ast.walk(parsed(source)):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            routed = any(
+                isinstance(one, ast.Call) and isinstance(one.func, ast.Name) and one.func.id in _BODY_ROUTES
+                for one in node.decorator_list
+            )
+            if not routed:
+                continue
+            for argument in (*node.args.args, *node.args.kwonlyargs):
+                if argument.arg != "data":
+                    continue
+                named = _annotation_name(argument.annotation)
+                if named == "URLEncodedBody":
+                    continue
+                relative = source.relative_to(root).as_posix()
+                if f"{relative}:{node.name}" in excused:
+                    continue
+                if named not in contracts:
+                    found.append(
+                        Finding(
+                            source,
+                            argument.lineno,
+                            argument.col_offset,
+                            "SG412",
+                            f"{node.name} takes a JSON body typed {named or 'nothing'}, which is not a Wire contract",
+                        )
+                    )
+    return found
+
+
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
@@ -507,6 +587,7 @@ RULES = (
     rule_adapters,
     rule_surfaces,
     rule_producers,
+    rule_request_contracts,
 )
 
 
@@ -514,6 +595,11 @@ def run() -> list[Finding]:
     from . import schema_rules
 
     found: list[Finding] = []
-    for rule in (*RULES, schema_rules.rule_schema, schema_rules.rule_migrations):
+    for rule in (
+        *RULES,
+        schema_rules.rule_schema,
+        schema_rules.rule_migrations,
+        schema_rules.rule_wire_vocabularies,
+    ):
         found.extend(rule())
     return sorted(found, key=lambda f: (str(f.path), f.line, f.col, f.code))

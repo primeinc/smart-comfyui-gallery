@@ -319,6 +319,14 @@ def test_a_body_the_contract_does_not_name_is_refused(kept):
     surprised = kept.post("/i/pic-3/favorite", json={"value": True, "supriseFieldNobodyAskedFor": 72})
     assert surprised.status_code == 400, surprised.text
 
+    # And the coercion half, which no linter can see: Litestar decodes a
+    # body with model_validate(value, strict=...), and that argument beats
+    # the model's own config, so Wire's strictness is only real while the
+    # application registers PydanticPlugin(validate_strict=True). Lax, the
+    # 1 below would arrive as True and this route would answer 201.
+    coerced = kept.post("/i/pic-3/favorite", json={"value": 1})
+    assert coerced.status_code == 400, coerced.text
+
     # and the closed vocabulary is closed: a place kind no place can be is
     # refused by the contract rather than by the database three calls later
     refused = kept.post("/i/pic-3/place", json={"name": "Lisbon", "kind": "planet"})

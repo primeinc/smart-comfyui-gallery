@@ -13,6 +13,7 @@ import ast
 import pathlib
 import re
 import sqlite3
+import typing
 
 from db import connect
 
@@ -205,4 +206,81 @@ def rule_migrations(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
                 f"a step already leaves v{version}; did USER_VERSION forget to move with it?",
             )
         )
+    return found
+
+
+def _checked_members(ddl: str, table: str, column: str) -> frozenset[str] | None:
+    """The values a `CHECK (<column> IN (...))` constraint admits, or None
+    when the table's DDL carries no such constraint for that column."""
+    declaration = re.search(rf"CREATE TABLE {table} \((.*?)\n\) STRICT;", ddl, re.DOTALL)
+    if declaration is None:
+        return None
+    found = re.search(rf"CHECK \({column} IN\s*\(([^)]*)\)\)", declaration.group(1), re.DOTALL)
+    if found is None:
+        return None
+    return frozenset(re.findall(r"'([^']*)'", found.group(1)))
+
+
+def _literal_members(module: ast.Module, name: str) -> frozenset[str] | None:
+    """The members of a module-level `X = Literal["a", "b"]`, or None when
+    no such assignment is there to read."""
+    for node in module.body:
+        targets: typing.Sequence[ast.expr]
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        if not any(isinstance(one, ast.Name) and one.id == name for one in targets):
+            continue
+        if not isinstance(value, ast.Subscript) or not isinstance(value.value, ast.Name) or value.value.id != "Literal":
+            return None
+        held = value.slice.elts if isinstance(value.slice, ast.Tuple) else [value.slice]
+        spelled = [one.value for one in held if isinstance(one, ast.Constant) and isinstance(one.value, str)]
+        return frozenset(spelled) if len(spelled) == len(held) else None
+    return None
+
+
+def rule_wire_vocabularies(
+    root: pathlib.Path = REPO_ROOT,
+    ddl: str | None = None,
+    wanted: dict[str, dict[str, tuple[str, str]]] | None = None,
+) -> list[Finding]:
+    """SG709: a closed vocabulary the wire restates does not match the
+    schema's CHECK constraint, or could not be read from either side.
+
+    A vocabulary the browser is given as a union has to be the one the
+    database will accept. Both halves are text, so this compares them
+    without building a database or serving a request -- and it reports a
+    half it could not read rather than passing, because an unreadable
+    constraint and an equal one are not the same result.
+    """
+    text = ddl if ddl is not None else SCHEMA.read_text(encoding="utf-8")
+    declared = policy.WIRE_VOCABULARIES if wanted is None else wanted
+    found: list[Finding] = []
+    for relative, names in declared.items():
+        source = root / relative
+        module = ast.parse(source.read_text(encoding="utf-8"))
+        for name, (table, column) in sorted(names.items()):
+            stated = _literal_members(module, name)
+            constrained = _checked_members(text, table, column)
+            if stated is None:
+                found.append(Finding(source, 1, 0, "SG709", f"{name} is not a module-level Literal of strings"))
+                continue
+            if constrained is None:
+                found.append(Finding(SCHEMA, 1, 0, "SG709", f"no CHECK ({column} IN ...) on {table} for {name}"))
+                continue
+            if stated != constrained:
+                missing = sorted(constrained - stated)
+                extra = sorted(stated - constrained)
+                found.append(
+                    Finding(
+                        source,
+                        1,
+                        0,
+                        "SG709",
+                        f"{name} disagrees with {table}.{column}: missing {missing}, unknown {extra}",
+                    )
+                )
     return found

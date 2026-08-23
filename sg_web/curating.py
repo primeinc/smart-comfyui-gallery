@@ -29,7 +29,6 @@ settles by answer identity exactly as single writes do.
 
 from __future__ import annotations
 
-import dataclasses
 import pathlib
 import sqlite3
 import time
@@ -43,11 +42,12 @@ from litestar.response import Response
 from db import authored, collections, connect, context, naming, places, resultset, settings
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
+from sg_web.media_view import PlaceKind
 from sg_web.presenting import VARIES
+from sg_web.wire import Wire
 
 
-@dataclasses.dataclass
-class BulkFlag:
+class BulkFlag(Wire):
     """The body of the boolean bulk routes: the answer the selection was
     made against, the selected entity uuids, and the desired fact."""
 
@@ -56,8 +56,7 @@ class BulkFlag:
     value: bool
 
 
-@dataclasses.dataclass
-class BulkPlace:
+class BulkPlace(Wire):
     """POST /g/selection/place: where every selected picture happened,
     by place name and kind -- found or minted once for all of them -- or
     a null name to withdraw the claim from all of them."""
@@ -65,13 +64,12 @@ class BulkPlace:
     answer: str
     items: list[str]
     name: str | None = None
-    kind: str = "locality"
+    kind: PlaceKind = "locality"
     within: str | None = None
-    within_kind: str = "country"
+    within_kind: PlaceKind = "country"
 
 
-@dataclasses.dataclass
-class BulkRating:
+class BulkRating(Wire):
     """POST /g/selection/rating: 1..5 sets everyone, null clears."""
 
     answer: str

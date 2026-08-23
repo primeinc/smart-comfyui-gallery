@@ -338,3 +338,90 @@ def test_the_requirements_rule_sees_an_extra_drift(tmp_path):
 
     (tmp_path / "requirements.txt").write_text("litestar[pydantic]\n", encoding="utf-8")
     assert repo_rules.rule_requirements(tmp_path) == []
+
+
+def test_the_wire_vocabulary_rule_can_fail(tmp_path):
+    """SG709 compares a Literal in the wire against a CHECK in the DDL.
+
+    Four controls, because the rule has four outcomes and three of them are
+    failures that must not be mistaken for agreement: a vocabulary the DDL
+    does not constrain, an assignment that is not a Literal, sets that
+    disagree, and sets that match.
+    """
+    from sglint import schema_rules
+
+    listed = "'queued','running','done'"
+    ddl = f"CREATE TABLE job (\n    state TEXT NOT NULL CHECK (state IN\n      ({listed}))\n) STRICT;\n"
+
+    root = tmp_path / "repo"
+    (root / "sg_web").mkdir(parents=True)
+    where = root / "sg_web" / "app.py"
+    only = {"sg_web/app.py": {"JobState": ("job", "state")}}
+
+    def check(source: str):
+        where.write_text(source, encoding="utf-8")
+        return [f.code for f in schema_rules.rule_wire_vocabularies(root, ddl, only)]
+
+    agreed = 'JobState = Literal["queued", "running", "done"]\n'
+    assert check(agreed) == [], "the sets are equal"
+
+    assert check('JobState = Literal["queued", "running"]\n') == ["SG709"], "a member the database allows is missing"
+    assert check(agreed.replace('"done"', '"done", "melted"')) == ["SG709"], "a member no row can hold"
+    assert check("JobState = str\n") == ["SG709"], "not a Literal at all is unreadable, not agreement"
+
+    unconstrained = "CREATE TABLE job (\n    state TEXT NOT NULL\n) STRICT;\n"
+    where.write_text(agreed, encoding="utf-8")
+    assert [f.code for f in schema_rules.rule_wire_vocabularies(root, unconstrained, only)] == ["SG709"], (
+        "a DDL with no CHECK cannot be agreed with"
+    )
+
+
+def test_the_request_contract_rule_can_fail(tmp_path):
+    """SG412 holds every route's JSON body to a Wire contract.
+
+    Six controls, because the rule has to tell apart a body that obeys the
+    policy, three that do not, a form (which is a different contract, not a
+    broken one), and a handler the policy excuses on purpose.
+    """
+    root = tmp_path / "repo"
+    (root / "sg_web").mkdir(parents=True)
+    where = root / "sg_web" / "routes.py"
+    (root / "sg_web" / "wire.py").write_text("class Wire:\n    pass\n", encoding="utf-8")
+
+    def check(body: str, reserved: frozenset[str] = frozenset()):
+        where.write_text(
+            "import dataclasses\n"
+            "from sg_web.wire import Wire\n"
+            "\n"
+            "class Named(Wire):\n"
+            "    name: str\n"
+            "\n"
+            "@dataclasses.dataclass\n"
+            "class Loose:\n"
+            "    name: str\n"
+            "\n"
+            f"{body}",
+            encoding="utf-8",
+        )
+        return [f.code for f in rules.rule_request_contracts(root, reserved)]
+
+    assert check("@post('/x')\ndef write(data: Named) -> None: ...\n") == [], "a Wire contract is the whole point"
+    assert check("@post('/x')\ndef write(data: Named | None = None) -> None: ...\n") == [], (
+        "an optional body is still that body"
+    )
+    assert check("@post('/x')\ndef write(data: URLEncodedBody[Loose]) -> None: ...\n") == [], (
+        "a form is a different contract, not a broken one"
+    )
+
+    assert check("@post('/x')\ndef write(data: dict) -> None: ...\n") == ["SG412"], "an unnamed body names nothing"
+    assert check("@post('/x')\ndef write(data: Loose) -> None: ...\n") == ["SG412"], (
+        "a dataclass takes the body without the policy"
+    )
+    assert check("@patch('/x')\ndef write(data: dict) -> None: ...\n") == ["SG412"], "every writing verb, not just post"
+
+    assert check("@get('/x')\ndef read(data: dict) -> None: ...\n") == [], "a GET carries no body to hold"
+
+    excused = frozenset({"sg_web/routes.py:write"})
+    assert check("@post('/x')\ndef write(data: dict) -> None: ...\n", excused) == [], (
+        "the reserved list is what excuses a body, and it is read"
+    )

@@ -32,8 +32,16 @@ fmt-check:
     npm run --silent format-check
 
 # Pyright over the Python and tsc over the browser source: the cross-module
-# inference neither ruff nor esbuild can do. Part of the gate
-types: web::types
+# inference neither ruff nor esbuild can do. Part of the gate.
+#
+# Both halves always run. As a dependency with a body, the body was skipped
+# whenever the dependency failed, so a red browser source meant no Python was
+# type checked at all -- which during a migration is every single run.
+[parallel]
+types: web::types types-python
+
+[private]
+types-python:
     {{ python }} -m pyright
 
 # Repository hygiene: the git index, line endings, the requirements

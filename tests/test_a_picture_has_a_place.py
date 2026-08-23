@@ -426,7 +426,10 @@ def test_a_sweep_takes_its_weights_from_the_setting_never_the_body(tmp_path):
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         for route in ("/jobs/faces", "/jobs/annotate"):
-            asked = client.post(route, json={"models_dir": "Z:/somewhere/else", "everything": True})
+            # Naming weights in the body is refused outright -- the sweep's
+            # body contract is `everything` and nothing else.
+            assert client.post(route, json={"models_dir": "Z:/somewhere/else", "everything": True}).status_code == 400
+            asked = client.post(route, json={"everything": True})
             assert asked.status_code in (201, 400), asked.text  # 400 only when the setting itself is refused
         conn = connect.connect(client.app.state.db_path, read_only=True)
         try:

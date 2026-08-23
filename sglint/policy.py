@@ -225,10 +225,40 @@ LITERAL_STATEMENTS_ONLY: tuple[str, ...] = ("db/collection_rules.py",)
 
 # --- SG5xx: templates and scripts carry no query logic --------------------------------------
 
+#: Closed vocabularies the HTTP contract restates as `Literal`, and the CHECK
+#: constraint each one must equal: {module: {name: (table, column)}}.
+#:
+#: The wire says the members out loud so the browser is given a union instead
+#: of `string`, which means they are a human copy of the schema until
+#: something compares the two. This is text against text -- an assignment in a
+#: module and a constraint in the DDL -- so it is a lint, not a test: no
+#: database is built and no application is served to learn that two lists
+#: disagree.
+WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
+    "sg_web/app.py": {"JobKind": ("job", "kind"), "JobState": ("job", "state")},
+    "sg_web/media_view.py": {"PlaceKind": ("place", "kind")},
+}
+
 SURFACE_FORBIDDEN_WORDS: tuple[str, ...] = ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search")
 #: Each half of the sweep counts on its own. One shared minimum could not see
 #: every script leaving `sg_web/static` for `frontend/src`, because the
 #: templates alone cleared it.
+#: Route handlers whose JSON body SG412 does not hold to a Wire
+#: contract, and why. Each entry is `<path>:<function>`.
+REQUEST_CONTRACT_RESERVED: frozenset[str] = frozenset(
+    {
+        # The three collection writes take a partial definition: absent,
+        # explicitly null and given are three different instructions, and
+        # the rule and convert bodies are unions over the kind being asked
+        # for. They become Wire models with the discriminated collection
+        # document, not before -- a half-named body would describe the
+        # browser's request less honestly than an unnamed one.
+        "sg_web/collection_authoring.py:edit_definition",
+        "sg_web/collection_authoring.py:replace_rule",
+        "sg_web/collection_authoring.py:convert_collection",
+    }
+)
+
 TEMPLATE_MINIMUM: int = 30
 SCRIPT_MINIMUM: int = 11
 

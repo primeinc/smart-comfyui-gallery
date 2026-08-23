@@ -1568,11 +1568,17 @@ export interface components {
             answer: string;
             items: string[];
             name?: string | null;
-            /** @default locality */
-            kind: string;
+            /**
+             * @default locality
+             * @enum {string}
+             */
+            kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
             within?: string | null;
-            /** @default country */
-            within_kind: string;
+            /**
+             * @default country
+             * @enum {string}
+             */
+            within_kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
         };
         /** BulkRating */
         BulkRating: {
@@ -1681,8 +1687,11 @@ export interface components {
         /** NewCollection */
         NewCollection: {
             name: string;
-            /** @default album */
-            kind: string;
+            /**
+             * @default album
+             * @enum {string}
+             */
+            kind: "album" | "flag";
             parent?: string | null;
             color?: string | null;
             description?: string | null;
@@ -1694,8 +1703,11 @@ export interface components {
         /** NewRoot */
         NewRoot: {
             path: string;
-            /** @default library */
-            kind: string;
+            /**
+             * @default library
+             * @enum {string}
+             */
+            kind: "library" | "mount" | "trash";
         };
         /** NewSmart */
         NewSmart: {
@@ -1738,17 +1750,25 @@ export interface components {
         /** PlanRequest */
         PlanRequest: {
             snapshot_id: number;
-            /** @default generation_history */
-            planner: string;
+            /**
+             * @default generation_history
+             * @enum {string}
+             */
+            planner: "generation_history" | "capture_history" | "file_history";
             /** @default lexical */
             similarity: string;
-            settings?: Record<string, never> | null;
+            settings?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RenderRequest */
         RenderRequest: {
             plan_id: number;
-            /** @default memory */
-            profile: string;
+            /**
+             * @default memory
+             * @enum {string}
+             */
+            profile: "memory" | "technical" | "compact";
             /** @default en */
             locale: string;
         };
@@ -1767,6 +1787,10 @@ export interface components {
             path: string;
             /** @default library */
             kind: string;
+        };
+        /** SettingChange */
+        SettingChange: {
+            value: string | number | boolean;
         };
         /** SettingForm */
         SettingForm: {
@@ -4138,7 +4162,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["SettingChange"];
             };
         };
         responses: {

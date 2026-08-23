@@ -23,7 +23,6 @@ mounts over.
 
 from __future__ import annotations
 
-import dataclasses
 import time
 import urllib.parse
 
@@ -36,6 +35,7 @@ from litestar.response import Redirect, Response, Template
 from db import authored, connect, facets, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented, presented_page, wants_json
+from sg_web.wire import Wire
 
 
 def _wall(conn, event_id: int) -> bool:
@@ -177,10 +177,8 @@ def person_page(state: State, request: Request, slug: FromPath[str]) -> Template
     return presented(request, told, page="person.html", fragment="_person_drawer.html", name="person")
 
 
-@dataclasses.dataclass
-class NewName:
-    """The body of POST /p/{slug}/name. Typed so a nameless request is a
-    400 from the signature model."""
+class NewName(Wire):
+    """The body of POST /p/{slug}/name."""
 
     name: str
 

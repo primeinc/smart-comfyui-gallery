@@ -5291,7 +5291,7 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object"
+                                "$ref": "#/components/schemas/SettingChange"
                             }
                         }
                     },
@@ -8648,6 +8648,7 @@
                         "type": "string"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "file"
@@ -8670,6 +8671,7 @@
                         "$ref": "#/components/schemas/AuthoredState"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "authored",
@@ -8699,6 +8701,7 @@
                         "type": "array"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "collections",
@@ -8722,6 +8725,7 @@
                         "type": "boolean"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "answer",
@@ -8753,6 +8757,16 @@
                     },
                     "kind": {
                         "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ],
                         "default": "locality"
                     },
                     "within": {
@@ -8767,9 +8781,20 @@
                     },
                     "within_kind": {
                         "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ],
                         "default": "country"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "answer",
@@ -8799,6 +8824,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "answer",
@@ -8821,6 +8847,7 @@
                         "type": "boolean"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "filed",
@@ -8865,6 +8892,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "kind",
@@ -8883,6 +8911,7 @@
                         "type": "string"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "name",
@@ -8896,6 +8925,7 @@
                         "type": "boolean"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "value"
@@ -8953,6 +8983,7 @@
                         "default": "country"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [],
                 "title": "DesiredPlace"
@@ -8970,6 +9001,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [],
                 "title": "DesiredRating"
@@ -8981,6 +9013,7 @@
                         "default": false
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [],
                 "title": "Everything"
@@ -8991,6 +9024,7 @@
                         "type": "integer"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "event_id"
@@ -9070,6 +9104,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "cancel_requested",
@@ -9183,6 +9218,7 @@
                         "type": "integer"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "attempt",
@@ -9246,6 +9282,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "answer",
@@ -9267,6 +9304,10 @@
                     },
                     "kind": {
                         "type": "string",
+                        "enum": [
+                            "album",
+                            "flag"
+                        ],
                         "default": "album"
                     },
                     "parent": {
@@ -9300,6 +9341,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "name"
@@ -9312,6 +9354,7 @@
                         "type": "string"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "name"
@@ -9325,9 +9368,15 @@
                     },
                     "kind": {
                         "type": "string",
+                        "enum": [
+                            "library",
+                            "mount",
+                            "trash"
+                        ],
                         "default": "library"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "path"
@@ -9476,6 +9525,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "name"
@@ -9489,6 +9539,7 @@
                         "const": false
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "in_answer"
@@ -9525,6 +9576,7 @@
                         "type": "array"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "answer",
@@ -9561,6 +9613,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "slug",
@@ -9575,6 +9628,11 @@
                     },
                     "planner": {
                         "type": "string",
+                        "enum": [
+                            "generation_history",
+                            "capture_history",
+                            "file_history"
+                        ],
                         "default": "generation_history"
                     },
                     "similarity": {
@@ -9584,6 +9642,7 @@
                     "settings": {
                         "oneOf": [
                             {
+                                "additionalProperties": {},
                                 "type": "object"
                             },
                             {
@@ -9592,6 +9651,7 @@
                         ]
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "snapshot_id"
@@ -9605,6 +9665,11 @@
                     },
                     "profile": {
                         "type": "string",
+                        "enum": [
+                            "memory",
+                            "technical",
+                            "compact"
+                        ],
                         "default": "memory"
                     },
                     "locale": {
@@ -9612,6 +9677,7 @@
                         "default": "en"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "plan_id"
@@ -9649,6 +9715,7 @@
                         "type": "integer"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "id",
@@ -9676,6 +9743,32 @@
                     "path"
                 ],
                 "title": "RootForm"
+            },
+            "SettingChange": {
+                "properties": {
+                    "value": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "value"
+                ],
+                "title": "SettingChange"
             },
             "SettingForm": {
                 "properties": {
@@ -9736,6 +9829,7 @@
                         "type": "string"
                     }
                 },
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "basis",

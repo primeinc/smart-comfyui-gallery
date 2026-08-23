@@ -22,7 +22,6 @@ default would flatten (db/collections.py UNSET).
 
 from __future__ import annotations
 
-import dataclasses
 import pathlib
 import time
 
@@ -37,6 +36,7 @@ from db.resultset import canonical
 from sg_web import collection_view, home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES
+from sg_web.wire import Wire
 
 
 def _collection_at(conn, slug: str) -> int:
@@ -83,13 +83,12 @@ def _written(state: State, work) -> Response:
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class NewCollection:
+class NewCollection(Wire):
     """The body of POST /albums: the listed kinds, born active at
     revision 1, optionally already placed and decorated."""
 
     name: str
-    kind: str = "album"
+    kind: collections.ListedKind = "album"
     parent: str | None = None
     color: str | None = None
     description: str | None = None
@@ -113,8 +112,7 @@ def make_album(state: State, data: NewCollection) -> Response:
     return _written(state, work)
 
 
-@dataclasses.dataclass
-class NewSmart:
+class NewSmart(Wire):
     """The body of POST /albums/smart: a name, an optional cutoff, and
     the canonical spelling of the question being saved. The server
     reconstructs the typed rule through the same seams that own query

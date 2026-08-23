@@ -1192,12 +1192,29 @@ def test_a_listed_collection_says_which_keys_it_carries(curated):
         assert set(_view(curated, slug)) == _LISTED_KEYS, slug
 
 
+def _describes_no_answer(told: dict) -> None:
+    """What a state that produced no answer says in the keys it does carry.
+
+    Present-and-null is not the same as absent and not the same as empty:
+    `count` and `gallery` are null, while `files` is a LIST -- the legacy
+    adapter lists the filed members whether or not a rule ever ran. A model
+    that made all three null would keep every key set below passing.
+    """
+    assert told["count"] is None
+    assert told["gallery"] is None
+    assert isinstance(told["files"], list)
+
+
 def test_an_evaluated_smart_collection_adds_its_rule_and_state(curated):
     """A rule that ran is a listed collection plus the rule and its
     condition -- and no reason, because nothing needs explaining."""
     told = _view(curated, _made(curated, "/albums/smart", name="Everything")["slug"])
     assert told["state"] == "evaluated"
     assert set(told) == _LISTED_KEYS | _SMART_EXTRA
+    assert isinstance(told["count"], int), "an evaluated rule counted its members"
+    assert isinstance(told["gallery"], dict)
+    assert set(told["gallery"]) == {"items", "total", "pages", "qs"}
+    assert set(told["rule"]) == {"sql", "nl"}
 
 
 def test_an_unevaluated_smart_collection_carries_no_gallery_facts(curated):
@@ -1213,6 +1230,8 @@ def test_an_unevaluated_smart_collection_carries_no_gallery_facts(curated):
 
     assert told["state"] == "unevaluated"
     assert set(told) == (_LISTED_KEYS | _SMART_EXTRA) - _UNGALLERIED
+    _describes_no_answer(told)
+    assert told["rule"] == {"sql": "SELECT 1", "nl": None}, "the preserved prose is shown, never run"
 
 
 def test_a_broken_smart_collection_carries_a_reason(curated):
@@ -1232,6 +1251,10 @@ def test_a_broken_smart_collection_carries_a_reason(curated):
 
     assert told["state"] == "broken"
     assert set(told) == (_LISTED_KEYS | _SMART_EXTRA | _REASONED) - _UNGALLERIED
+    _describes_no_answer(told)
+    assert isinstance(told["reason"], str)
+    assert told["reason"], "a broken rule explains itself in words, never an empty string"
+    assert set(told["rule"]) == {"sql", "nl"}, "the rule that broke is still shown"
 
 
 def test_an_unavailable_smart_collection_carries_a_reason(curated, ranked_retrieval, monkeypatch):
@@ -1252,3 +1275,7 @@ def test_an_unavailable_smart_collection_carries_a_reason(curated, ranked_retrie
 
     assert told["state"] == "unavailable"
     assert set(told) == (_LISTED_KEYS | _SMART_EXTRA | _REASONED) - _UNGALLERIED
+    _describes_no_answer(told)
+    assert isinstance(told["reason"], str)
+    assert told["reason"], "an unanswerable rule says why, never an empty string"
+    assert set(told["rule"]) == {"sql", "nl"}
