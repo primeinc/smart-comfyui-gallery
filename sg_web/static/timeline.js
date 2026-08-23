@@ -233,7 +233,8 @@
       body.className = "session-body";
       const head = document.createElement("div");
       head.className = "session-head";
-      head.textContent = `${s.kind.replace("_", " ")} · ${s.pictures} pictures · ${spell(s.start, "hour", s.domain)} – ${spell(s.end, "hour", s.domain)}`;
+      const counted = s.in_scope != null && s.in_scope !== s.pictures ? `${s.in_scope} of ${s.pictures} pictures in scope` : `${s.pictures} pictures`;
+      head.textContent = `${s.kind.replace("_", " ")} · ${counted} · ${spell(s.start, "hour", s.domain)} – ${spell(s.end, "hour", s.domain)}`;
       body.appendChild(head);
       if (s.place) {
         const at = document.createElement("div");

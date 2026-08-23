@@ -288,7 +288,9 @@ def test_the_surface_can_be_scoped_by_the_gallerys_facets(doors):
     assert all("place.id%3Aeq%3A" in b["qs"] for b in scoped["bins"]), "every door carries the scope"
     assert all("place.id%3Aeq%3A" in s["qs"] for s in scoped["sessions"])
     for s in scoped["sessions"]:
-        assert _total(doors, s["qs"]) >= 1, "a scoped session's door opens its in-scope members"
+        assert _total(doors, s["qs"]) == s["in_scope"] >= 1, "a scoped session's door opens its in-scope members"
+        assert s["in_scope"] <= s["pictures"]
+    assert all(s["in_scope"] == s["pictures"] for s in whole["sessions"]), "unscoped, every member is in scope"
     assert len(scoped["sessions"]) <= len(whole["sessions"])
     page = doors.get("/timeline", params={"f": spelled}, headers={"accept": "text/html"}).text
     assert "data-timeline-scope" in page

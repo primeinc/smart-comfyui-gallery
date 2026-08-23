@@ -990,6 +990,9 @@ TIMELINE_EXTENT = (
 #: the same ordered membership. `member_hash` alone is a checksum of
 #: the files -- a capture session and a generation session over the
 #: same mixed files share it -- never an identity on its own.
+#: HEAD + scope + MIDDLE + member filter + TAIL: the scope's conjunct
+#: closes the in-scope member count (`here`), and filters the sessions
+#: to those with a member in it.
 _TIMELINE_SESSIONS_HEAD = (
     "SELECT e.id, e.kind, e.local_start, e.local_end, e.instant_start, e.instant_end,"
     " (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) AS pictures,"
@@ -999,7 +1002,11 @@ _TIMELINE_SESSIONS_HEAD = (
     "   JOIN story_render sr ON sr.plan_id = sp.id WHERE s.member_hash = e.member_hash"
     "   AND s.event_kind = e.kind AND s.grouper = r.grouper"
     "   ORDER BY sr.id DESC LIMIT 1),"
-    " e.place_id, p.name, pe.slug"
+    " e.place_id, p.name, pe.slug,"
+    " (SELECT count(*) FROM derived_event_file ef JOIN file f ON f.id = ef.file_id WHERE ef.event_id = e.id"
+)
+_TIMELINE_SESSIONS_MIDDLE = (
+    ") AS here"
     "  FROM derived_event e JOIN derived_event_run r ON r.id = e.run_id"
     "  LEFT JOIN place p ON p.id = e.place_id LEFT JOIN entity pe ON pe.id = e.place_id"
     " WHERE r.context_generation = (SELECT generation FROM derived_context_state)"
@@ -1008,7 +1015,7 @@ _TIMELINE_SESSIONS_HEAD = (
     "   AND COALESCE(e.local_end, e.instant_end) >= ?"
 )
 _TIMELINE_SESSIONS_TAIL = " ORDER BY COALESCE(e.local_start, e.instant_start)"
-TIMELINE_SESSIONS = _TIMELINE_SESSIONS_HEAD + _TIMELINE_SESSIONS_TAIL
+TIMELINE_SESSIONS = _TIMELINE_SESSIONS_HEAD + _TIMELINE_SESSIONS_MIDDLE + _TIMELINE_SESSIONS_TAIL
 
 #: Bin widths a zoom may ask for, by name. Anything else is refused.
 BINS = {"week": 604_800, "day": 86_400, "hour": 3_600, "quarter": 900, "minute": 60}
@@ -1109,9 +1116,11 @@ def media_sessions(conn, file_id: int):
 
 
 def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
+    """Sessions touching [lo, hi) -- under a scope, those with a member
+    in it, each saying how many of its members are."""
     return conn.execute(
-        _TIMELINE_SESSIONS_HEAD + _members_in(scope) + _TIMELINE_SESSIONS_TAIL,
-        (context.POLICY_VERSION, hi, lo, *scope[1]),
+        _TIMELINE_SESSIONS_HEAD + scope[0] + _TIMELINE_SESSIONS_MIDDLE + _members_in(scope) + _TIMELINE_SESSIONS_TAIL,
+        (*scope[1], context.POLICY_VERSION, hi, lo, *scope[1]),
     ).fetchall()
 
 

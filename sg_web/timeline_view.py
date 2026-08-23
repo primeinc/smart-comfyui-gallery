@@ -179,6 +179,7 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
         place_id,
         place_name,
         place_slug,
+        here,
     ) = row
     planner = PLANNER_FOR.get(kind)
     return {
@@ -200,6 +201,8 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
         "start": local_start if local_start is not None else instant_start,
         "end": local_end if local_end is not None else instant_end,
         "pictures": pictures,
+        #: of those, how many the surface's scope holds (all, unscoped)
+        "in_scope": int(here),
         "snapshot_id": snapshot_id,
         "story": f"/stories/renders/{render_id}" if render_id is not None else None,
         "qs": _event_door(event_id, scope),
