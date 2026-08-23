@@ -40,9 +40,13 @@
       // the URL arrived with.
       const mounted = document.querySelector("[data-grid]");
       const spelled = mounted ? mounted.dataset.qbase.replace(/&$/, "") : window.location.search;
-      const params = Object.fromEntries(new URLSearchParams(spelled));
+      const question = new URLSearchParams(spelled);
+      const params = Object.fromEntries(question);
       delete params.page;
       delete params.size;
+      // `f` repeats, one per facet; fromEntries keeps only the last and
+      // a two-facet view would save as a one-facet rule
+      if (question.has("f")) params.f = question.getAll("f");
       const name = window.prompt("name this smart collection");
       if (!name) return;
       let take = null;
@@ -92,9 +96,13 @@ ${smarts.map((held) => held.slug).join(", ")}`,
       }
       const mounted = document.querySelector("[data-grid]");
       const spelled = mounted ? mounted.dataset.qbase.replace(/&$/, "") : window.location.search;
-      const params = Object.fromEntries(new URLSearchParams(spelled));
+      const question = new URLSearchParams(spelled);
+      const params = Object.fromEntries(question);
       delete params.page;
       delete params.size;
+      // `f` repeats, one per facet; fromEntries keeps only the last and
+      // a two-facet view would save as a one-facet rule
+      if (question.has("f")) params.f = question.getAll("f");
       let take = null;
       if (params.q) {
         const asked = window.prompt("how many top results belong to it?", "100");

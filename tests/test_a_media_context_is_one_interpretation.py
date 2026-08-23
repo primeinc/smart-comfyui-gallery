@@ -422,6 +422,17 @@ def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
     refused = client.post("/albums/smart", json={"name": "One Session", "f": "event.id:eq:1"})
     assert refused.status_code == 400
     assert "hypothesis" in refused.json()["detail"]
+    # two facets arrive as a list and both are saved -- the browser's
+    # button sends every `f`, and the route must take every one
+    two = client.post("/albums/smart", json={"name": "Two", "f": ["capture.iso:gte:800", "context.origin:eq:captured"]})
+    assert two.status_code == 201, two.text
+    conn = _raw(client)
+    try:
+        held = collection_rules.load(conn, naming.resolve(conn, "collection", two.json()["slug"])[0])
+        assert held is not None
+        assert [facets.spell(one) for one in held.facets] == ["capture.iso:gte:800", "context.origin:eq:captured"]
+    finally:
+        connect.close(conn)
 
 
 def test_take_is_an_exact_integer_before_any_coercion(interpreted):

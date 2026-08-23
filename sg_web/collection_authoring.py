@@ -132,7 +132,9 @@ class NewSmart:
     parent: str | None = None
     color: str | None = None
     description: str | None = None
-    f: str | None = None
+    #: the facets, one spelling or a list of them -- `f` repeats in the
+    #: canonical question, and a view with two must save with two
+    f: str | list[str] | None = None
 
 
 @post("/albums/smart", sync_to_thread=True)

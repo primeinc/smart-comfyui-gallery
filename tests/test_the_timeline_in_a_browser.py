@@ -124,3 +124,30 @@ def test_the_url_owns_the_zoom_and_the_surface_carries_pictures(served):
         page.goto(base + "/timeline")
         page.wait_for_selector("[data-sessions] .session [data-session-story]", timeout=10_000)
         browser.close()
+
+
+def test_the_save_view_button_keeps_every_facet(served):
+    """A two-facet door saved from the gallery is a two-facet rule: the
+    button sends every `f` the mounted answer carries, and the saved
+    collection's words name both."""
+    from playwright.sync_api import sync_playwright
+
+    base, api = served
+    asked = "/g?f=context.local_day%3Aeq%3A2023-06-10&f=context.origin%3Aeq%3Aimported"
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.on("dialog", lambda dialog: dialog.accept("Two facets"))
+        page.goto(base + asked)
+        page.wait_for_selector("[data-grid]", timeout=10_000)
+        assert int(page.get_attribute("[data-grid]", "data-total") or 0) == FILES
+        page.click("[data-save-smart]")
+        page.wait_for_url("**/t/*", timeout=20_000)
+        slug = page.url.rsplit("/t/", 1)[1].split("?", 1)[0]
+        browser.close()
+    told = api.get(f"/t/{slug}", headers={"accept": "application/json"}).json()
+    assert told["rule"] is not None
+    assert "context.local_day" in told["rule"]["nl"]
+    assert "context.origin" in told["rule"]["nl"], "the second facet was dropped on the way to the rule"
+    inside = api.get(f"/g?album={slug}", headers={"accept": "text/html"}).text
+    assert f'data-total="{FILES}"' in inside
