@@ -419,6 +419,9 @@ def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
         assert inside["total"] == on_screen["total"] > 0
     finally:
         connect.close(conn)
+    # the collection's page opens the same question in the gallery
+    page = client.get(f"/t/{slug}", headers={"accept": "text/html"}).text
+    assert 'data-rule-gallery href="/g?f=capture.iso%3Agte%3A800"' in page
     refused = client.post("/albums/smart", json={"name": "One Session", "f": "event.id:eq:1"})
     assert refused.status_code == 400
     assert "hypothesis" in refused.json()["detail"]

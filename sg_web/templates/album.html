@@ -70,7 +70,7 @@
     {% if album.kind == "smart" and album.rule %}
     <section class="detail-facts">
       <h2>how membership is decided</h2>
-      {% if album.rule.nl %}<p>{{ album.rule.nl }}</p>{% endif %}
+      {% if album.rule.nl %}<p>{{ album.rule.nl }} &middot; <a data-rule-gallery href="/g{% if "=" in album.rule.nl %}?{{ album.rule.nl }}{% endif %}">open this question in the gallery</a></p>{% endif %}
       {% if album.rule.sql %}<pre class="detail-rule">{{ album.rule.sql }}</pre>{% endif %}
     </section>
     {% endif %}
