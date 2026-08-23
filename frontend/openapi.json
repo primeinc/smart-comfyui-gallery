@@ -348,7 +348,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/AuthoredAnswer"
                                 }
                             }
                         }
@@ -427,7 +427,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/AuthoredAnswer"
                                 }
                             }
                         }
@@ -506,7 +506,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/PlaceAnswer"
                                 }
                             }
                         }
@@ -594,7 +594,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/AuthoredAnswer"
                                 }
                             }
                         }
@@ -663,7 +663,10 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "items": {
+                                        "$ref": "#/components/schemas/CollectionChoice"
+                                    },
+                                    "type": "array"
                                 }
                             }
                         }
@@ -6748,7 +6751,14 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "oneOf": [
+                                        {
+                                            "$ref": "#/components/schemas/Located"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/NotLocated"
+                                        }
+                                    ]
                                 }
                             }
                         }
@@ -8640,6 +8650,59 @@
                 ],
                 "title": "AlbumEntry"
             },
+            "AuthoredAnswer": {
+                "properties": {
+                    "slug": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "authored": {
+                        "$ref": "#/components/schemas/AuthoredState"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "authored",
+                    "slug"
+                ],
+                "title": "AuthoredAnswer"
+            },
+            "AuthoredState": {
+                "properties": {
+                    "favorite": {
+                        "type": "boolean"
+                    },
+                    "rating": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/CollectionSummary"
+                        },
+                        "type": "array"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "collections",
+                    "favorite",
+                    "rating"
+                ],
+                "title": "AuthoredState"
+            },
             "BulkFlag": {
                 "properties": {
                     "answer": {
@@ -8738,6 +8801,46 @@
                     "items"
                 ],
                 "title": "BulkRating"
+            },
+            "CollectionChoice": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "filed": {
+                        "type": "boolean"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "filed",
+                    "kind",
+                    "name",
+                    "slug"
+                ],
+                "title": "CollectionChoice"
+            },
+            "CollectionSummary": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "slug"
+                ],
+                "title": "CollectionSummary"
             },
             "DesiredFlag": {
                 "properties": {
@@ -9030,6 +9133,65 @@
                 ],
                 "title": "JobSnapshot"
             },
+            "Located": {
+                "properties": {
+                    "in_answer": {
+                        "type": "boolean",
+                        "const": true
+                    },
+                    "ordinal": {
+                        "type": "integer"
+                    },
+                    "page": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "currency": {
+                        "type": "string"
+                    },
+                    "answer": {
+                        "type": "string"
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "previous": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "next": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "answer",
+                    "currency",
+                    "in_answer",
+                    "next",
+                    "ordinal",
+                    "page",
+                    "previous",
+                    "qs",
+                    "total"
+                ],
+                "title": "Located"
+            },
             "NewCollection": {
                 "properties": {
                     "name": {
@@ -9252,6 +9414,49 @@
                 ],
                 "title": "NewSmart"
             },
+            "NotLocated": {
+                "properties": {
+                    "in_answer": {
+                        "type": "boolean",
+                        "const": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "in_answer"
+                ],
+                "title": "NotLocated"
+            },
+            "PlaceAnswer": {
+                "properties": {
+                    "slug": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "where": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Where"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "slug",
+                    "where"
+                ],
+                "title": "PlaceAnswer"
+            },
             "PlanRequest": {
                 "properties": {
                     "snapshot_id": {
@@ -9329,6 +9534,56 @@
                     "value"
                 ],
                 "title": "SettingForm"
+            },
+            "Where": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "basis": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "chain": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "timeline": {
+                        "type": "string"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "basis",
+                    "chain",
+                    "id",
+                    "kind",
+                    "name",
+                    "qs",
+                    "slug",
+                    "timeline"
+                ],
+                "title": "Where"
             }
         }
     }

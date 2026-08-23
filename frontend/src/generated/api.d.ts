@@ -1546,6 +1546,17 @@ export interface components {
         AlbumEntry: {
             file: string;
         };
+        /** AuthoredAnswer */
+        AuthoredAnswer: {
+            slug: string | null;
+            authored: components["schemas"]["AuthoredState"];
+        };
+        /** AuthoredState */
+        AuthoredState: {
+            favorite: boolean;
+            rating: number | null;
+            collections: components["schemas"]["CollectionSummary"][];
+        };
         /** BulkFlag */
         BulkFlag: {
             answer: string;
@@ -1568,6 +1579,18 @@ export interface components {
             answer: string;
             items: string[];
             value?: number | null;
+        };
+        /** CollectionChoice */
+        CollectionChoice: {
+            slug: string;
+            name: string;
+            kind: string;
+            filed: boolean;
+        };
+        /** CollectionSummary */
+        CollectionSummary: {
+            slug: string;
+            name: string;
         };
         /** DesiredFlag */
         DesiredFlag: {
@@ -1627,6 +1650,19 @@ export interface components {
             started_at: number | null;
             failed_count: number;
         };
+        /** Located */
+        Located: {
+            /** @constant */
+            in_answer: true;
+            ordinal: number;
+            page: number;
+            total: number;
+            currency: string;
+            answer: string;
+            qs: string;
+            previous: string | null;
+            next: string | null;
+        };
         /** NewCollection */
         NewCollection: {
             name: string;
@@ -1663,6 +1699,16 @@ export interface components {
             description?: string | null;
             f?: string | string[] | null;
         };
+        /** NotLocated */
+        NotLocated: {
+            /** @constant */
+            in_answer: false;
+        };
+        /** PlaceAnswer */
+        PlaceAnswer: {
+            slug: string | null;
+            where: components["schemas"]["Where"] | null;
+        };
         /** PlanRequest */
         PlanRequest: {
             snapshot_id: number;
@@ -1689,6 +1735,17 @@ export interface components {
         /** SettingForm */
         SettingForm: {
             value: string;
+        };
+        /** Where */
+        Where: {
+            id: number;
+            slug: string;
+            name: string;
+            kind: string;
+            basis: string | null;
+            chain: string[];
+            qs: string;
+            timeline: string;
         };
     };
     responses: never;
@@ -1809,7 +1866,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AuthoredAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -1850,7 +1907,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AuthoredAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -1891,7 +1948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["PlaceAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -1933,7 +1990,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AuthoredAnswer"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -1970,7 +2027,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["CollectionChoice"][];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -4434,7 +4491,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["Located"] | components["schemas"]["NotLocated"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

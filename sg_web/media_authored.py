@@ -30,6 +30,7 @@ from litestar.response import Response
 from db import authored, collections, connect, context, naming, pages, places
 from sg_web import media_view
 from sg_web.presenting import VARIES
+from sg_web.wire import Wire
 
 
 def _resolved(conn, kind: str, slug: str, where: str) -> int:
@@ -41,13 +42,64 @@ def _resolved(conn, kind: str, slug: str, where: str) -> int:
     return found[0]
 
 
-def _answered(conn, file_id: int, actor_id: int) -> Response:
+class CollectionSummary(Wire):
+    """One collection a file is filed in: its address and its name."""
+
+    slug: str
+    name: str
+
+
+class AuthoredState(Wire):
+    """What this actor has written down about one file.
+
+    db/authored.py's MediaAuthoredState says `collections: tuple[dict, ...]`
+    with the keys in a comment. This is the same fact with the comment
+    promoted into the type, because the browser is given this one.
+    """
+
+    favorite: bool
+    rating: int | None
+    collections: list[CollectionSummary]
+
+
+class AuthoredAnswer(Wire):
+    """The authoritative post-commit state: the LIVE slug and the whole
+    authored state, so the strip that asked redraws from the response
+    instead of trusting its own click."""
+
+    slug: str | None
+    authored: AuthoredState
+
+
+class CollectionChoice(Wire):
+    """One row of the album picker's menu."""
+
+    slug: str
+    name: str
+    kind: str
+    filed: bool
+
+
+def _answered(conn, file_id: int, actor_id: int) -> Response[AuthoredAnswer]:
+    """The answer every desired-state route gives.
+
+    Built field by field rather than by asdict: the translation from the
+    database's value to the browser's contract is the seam's work, and
+    writing it out is what keeps `collections` from crossing as bare dicts.
+    """
     live = naming.entity_slug(conn, file_id)
-    told = {
-        "slug": live[1] if live else None,
-        "authored": dataclasses.asdict(authored.media_state(conn, file_id, actor_id)),
-    }
-    return Response(told, headers=VARIES)
+    state = authored.media_state(conn, file_id, actor_id)
+    return Response(
+        AuthoredAnswer(
+            slug=live[1] if live else None,
+            authored=AuthoredState(
+                favorite=state.favorite,
+                rating=state.rating,
+                collections=[CollectionSummary(slug=one["slug"], name=one["name"]) for one in state.collections],
+            ),
+        ),
+        headers=VARIES,
+    )
 
 
 @dataclasses.dataclass
@@ -65,7 +117,7 @@ class DesiredRating:
 
 
 @post("/i/{slug:str}/favorite", sync_to_thread=True)
-def set_favorite(state: State, slug: FromPath[str], data: DesiredFlag) -> Response:
+def set_favorite(state: State, slug: FromPath[str], data: DesiredFlag) -> Response[AuthoredAnswer]:
     conn = connect.connect(state.db_path)
     try:
         file_id = _resolved(conn, "file", slug, "/i")
@@ -88,8 +140,17 @@ class DesiredPlace:
     within_kind: str = "country"
 
 
+class PlaceAnswer(Wire):
+    """The authoritative post-commit answer of POST /i/{slug}/place: the
+    LIVE slug and where the picture now says it happened, or null where
+    the claim was withdrawn."""
+
+    slug: str | None
+    where: media_view.Where | None
+
+
 @post("/i/{slug:str}/place", sync_to_thread=True)
-def set_place(state: State, slug: FromPath[str], data: DesiredPlace) -> Response:
+def set_place(state: State, slug: FromPath[str], data: DesiredPlace) -> Response[PlaceAnswer]:
     """Say where this picture happened. The place is found or minted by
     name and kind, the claim is authored desired state, and the file's
     context is re-interpreted at once so every page reads it."""
@@ -109,14 +170,14 @@ def set_place(state: State, slug: FromPath[str], data: DesiredPlace) -> Response
         conn.commit()
         live = naming.entity_slug(conn, file_id)
         return Response(
-            {"slug": live[1] if live else None, "where": media_view.where_of(conn, file_id)}, headers=VARIES
+            PlaceAnswer(slug=live[1] if live else None, where=media_view.where_of(conn, file_id)), headers=VARIES
         )
     finally:
         connect.close(conn)
 
 
 @post("/i/{slug:str}/rating", sync_to_thread=True)
-def set_rating(state: State, slug: FromPath[str], data: DesiredRating) -> Response:
+def set_rating(state: State, slug: FromPath[str], data: DesiredRating) -> Response[AuthoredAnswer]:
     conn = connect.connect(state.db_path)
     try:
         file_id = _resolved(conn, "file", slug, "/i")
@@ -131,7 +192,9 @@ def set_rating(state: State, slug: FromPath[str], data: DesiredRating) -> Respon
 
 
 @post("/i/{slug:str}/collections/{collection:str}", sync_to_thread=True)
-def set_membership(state: State, slug: FromPath[str], collection: FromPath[str], data: DesiredFlag) -> Response:
+def set_membership(
+    state: State, slug: FromPath[str], collection: FromPath[str], data: DesiredFlag
+) -> Response[AuthoredAnswer]:
     conn = connect.connect(state.db_path)
     try:
         file_id = _resolved(conn, "file", slug, "/i")
@@ -147,7 +210,7 @@ def set_membership(state: State, slug: FromPath[str], collection: FromPath[str],
 
 
 @get("/i/{slug:str}/collection-choices", sync_to_thread=True)
-def collection_choices(state: State, slug: FromPath[str]) -> Response:
+def collection_choices(state: State, slug: FromPath[str]) -> Response[list[CollectionChoice]]:
     """The album picker's menu: every LISTED collection and whether this
     file is filed in each. Lazily fetched on click -- the MediaView
     itself carries only current memberships -- and not an entity: no
@@ -156,7 +219,7 @@ def collection_choices(state: State, slug: FromPath[str]) -> Response:
     try:
         file_id = _resolved(conn, "file", slug, "/i")
         told = [
-            {"slug": s, "name": n, "kind": k, "filed": bool(filed)}
+            CollectionChoice(slug=s, name=n, kind=k, filed=bool(filed))
             for s, n, k, filed in pages.collection_choices(conn, file_id)
         ]
     finally:

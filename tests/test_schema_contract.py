@@ -1931,3 +1931,36 @@ def test_the_time_doctrine_never_claims_a_wall_clock_is_utc(db):
     assert "The one exception is capture.captured_at" not in doctrine, (
         "captured_at is not the ONE exception once local_at columns exist"
     )
+
+
+def _checked_members(table_sql: str, column: str) -> frozenset[str]:
+    """The values a `CHECK (<column> IN (...))` constraint admits.
+
+    Asserts on the parse as well as the result: a regex that quietly stopped
+    matching would make every comparison below trivially true, which is the
+    one way a vocabulary test can pass forever while proving nothing.
+    """
+    found = re.search(rf"CHECK \({column} IN\s*\(([^)]*)\)\)", table_sql, re.S)
+    assert found is not None, f"no CHECK (... IN ...) found for {column}: the parse changed, not the vocabulary"
+    members = frozenset(re.findall(r"'([^']*)'", found.group(1)))
+    assert members, f"the CHECK for {column} parsed to no members"
+    return members
+
+
+def test_the_wire_job_vocabularies_are_the_schema_s(db):
+    """The HTTP contract states job kind and state as Literals, so the
+    browser is given a union of the real values instead of `string`.
+
+    Those members are a HUMAN COPY of the schema's CHECK constraint until
+    something proves the two sets are equal. This is that proof: add a kind
+    to the schema without adding it here (or the reverse) and this fails,
+    where otherwise the browser would keep a type that quietly excluded a
+    value the database happily stores.
+    """
+    import typing
+
+    from sg_web.app import JobKind, JobState
+
+    table = db.execute("SELECT sql FROM sqlite_master WHERE name = 'job'").fetchone()[0]
+    assert frozenset(typing.get_args(JobKind)) == _checked_members(table, "kind")
+    assert frozenset(typing.get_args(JobState)) == _checked_members(table, "state")

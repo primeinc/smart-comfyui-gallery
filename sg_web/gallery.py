@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pathlib
 import time
+from typing import Literal
 
 from litestar import get
 from litestar.datastructures import State
@@ -27,6 +28,7 @@ from db import connect, naming, places, resultset, settings
 from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
+from sg_web.wire import Wire
 
 
 def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dict:
@@ -264,6 +266,31 @@ def rail_peek(
         connect.close(conn)
 
 
+class NotLocated(Wire):
+    """The file is not in this answer's membership at all."""
+
+    in_answer: Literal[False]
+
+
+class Located(Wire):
+    """Where one picture sits in this answer. `previous` and `next` are
+    addresses in ANSWER order, which is what the arrows mean while a
+    result set is being walked."""
+
+    in_answer: Literal[True]
+    ordinal: int
+    page: int
+    total: int
+    #: the library generation this answer was computed at
+    currency: str
+    #: the identity of the ordering itself; the same answer means the
+    #: same ordering, whatever the currency has done since
+    answer: str
+    qs: str
+    previous: str | None
+    next: str | None
+
+
 @get("/g/locate/{slug:str}", sync_to_thread=True)
 def locate_in_answer(
     state: State,
@@ -279,10 +306,13 @@ def locate_in_answer(
     f: FromQuery[list[str] | None] = None,
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
-) -> dict:
+) -> Located | NotLocated:
     """Where one picture sits in this answer -- ordinal, page, and its
     previous/next in ANSWER order, which is what the arrows mean while
-    a result set is being walked."""
+    a result set is being walked.
+
+    Two shapes discriminated by `in_answer`, so a client that checks it
+    has the rest of the fields and one that does not cannot reach them."""
     query = _asked(
         folder,
         album,
@@ -308,7 +338,17 @@ def locate_in_answer(
             raise NotFoundException(str(missing)) from missing
         conn.commit()
         if told is None:
-            return {"in_answer": False}
-        return {"in_answer": True, **told}
+            return NotLocated(in_answer=False)
+        return Located(
+            in_answer=True,
+            ordinal=told["ordinal"],
+            page=told["page"],
+            total=told["total"],
+            currency=told["currency"],
+            answer=told["answer"],
+            qs=told["qs"],
+            previous=told["previous"],
+            next=told["next"],
+        )
     finally:
         connect.close(conn)

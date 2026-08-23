@@ -2695,6 +2695,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "msgspec" },
     { name = "playwright" },
     { name = "psd-tools" },
     { name = "pyright" },
@@ -2738,6 +2739,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "msgspec" },
     { name = "playwright", specifier = ">=1.62.0" },
     { name = "psd-tools", specifier = ">=1.18.0" },
     { name = "pyright" },

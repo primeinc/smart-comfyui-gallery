@@ -1,10 +1,18 @@
 {
+  // build.ts is executed by node, not bundled, so node is its host and node's
+  // own rules apply: doc/api/typescript.md recommends exactly this module
+  // configuration for a file run through built-in type stripping. The browser
+  // project next door says `module: preserve` because ITS host is esbuild.
+  // Different host, different contract -- that is the whole reason these are
+  // two projects rather than one.
   "compilerOptions": {
-    "target": "ES2023",
-    "lib": ["ES2023"],
+    "target": "esnext",
+    "lib": ["ESNext"],
 
-    "module": "preserve",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "moduleDetection": "force",
+    "rewriteRelativeImportExtensions": true,
     "types": ["node"],
 
     "strict": true,
@@ -16,6 +24,10 @@
     "noUncheckedSideEffectImports": true,
 
     "isolatedModules": true,
+    // Both required by the stripper rather than merely advisable: node
+    // replaces types with whitespace and generates nothing, so an import
+    // without `type` is a value import at runtime, and any syntax that would
+    // need code generated for it is an error.
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
 

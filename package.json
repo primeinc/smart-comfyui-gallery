@@ -1,6 +1,10 @@
 {
   "private": true,
   "type": "module",
+  "//": "22.18 is where node runs a .ts file by default and without an experimental warning (node doc/api/typescript.md); the build script depends on that, and nothing here is ever shipped to a browser as-is.",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "lint": "biome lint . --error-on-warnings",
     "format-check": "biome format .",

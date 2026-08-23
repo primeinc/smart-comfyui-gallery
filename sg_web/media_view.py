@@ -50,6 +50,7 @@ from db.resultset import canonical
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import presented
+from sg_web.wire import Wire
 
 
 def view(
@@ -140,11 +141,26 @@ def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str
     }
 
 
-def where_of(conn, file_id: int) -> dict | None:
-    """Where the picture happened, as the current interpretation holds
-    it: the place by address, its kind, the basis (a person's word, or
-    nothing yet -- GPS alone names no place), and the gallery link to
-    everything there."""
+class Where(Wire):
+    """Where the picture happened, as the current interpretation holds it."""
+
+    id: int
+    slug: str
+    name: str
+    kind: str
+    #: a person's word, or nothing yet -- GPS alone names no place
+    basis: str | None
+    #: the place and every ancestor, leaf first: "Lisbon, Portugal"
+    chain: list[str]
+    #: the gallery's query string for everything there
+    qs: str
+    #: the same place on the timeline, as a whole address
+    timeline: str
+
+
+def where_of(conn, file_id: int) -> Where | None:
+    """Where the picture happened: the place by address, its kind, the
+    basis, and the links to everything there. None when nobody has said."""
     import urllib.parse
 
     from db import facets
@@ -153,18 +169,17 @@ def where_of(conn, file_id: int) -> dict | None:
     if row is None:
         return None
     place_id, slug, name, kind, basis = row
-    return {
-        "id": place_id,
-        "slug": slug,
-        "name": name,
-        "kind": kind,
-        "basis": basis,
-        #: the place and every ancestor, leaf first: "Lisbon, Portugal"
-        "chain": [one["name"] for one in places.chain(conn, place_id)],
-        "qs": urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
-        "timeline": "/timeline?"
-        + urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
-    }
+    spelled = urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))])
+    return Where(
+        id=place_id,
+        slug=slug,
+        name=name,
+        kind=kind,
+        basis=basis,
+        chain=[one["name"] for one in places.chain(conn, place_id)],
+        qs=spelled,
+        timeline=f"/timeline?{spelled}",
+    )
 
 
 def _faces(conn, file_id: int) -> dict:

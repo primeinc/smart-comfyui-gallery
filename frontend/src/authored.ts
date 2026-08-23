@@ -12,122 +12,193 @@
 // answer) pair: same answer -> adopt the new currency in place, so the
 // next arrow does not 409 over an unchanged answer; different answer or
 // no longer in it -> the mounted walk is really stale, redraw whole.
-(() => {
-  const strip = (node) => node.closest("[data-authored]");
+//
+// Every request here goes through the generated contract, so the three
+// desired-state routes are three named calls rather than one function
+// that concatenated a path fragment onto a slug and hoped.
+import { api } from "./api";
+import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
+import type { components, paths } from "./generated/api";
 
-  const draw = (root, authored) => {
-    root.querySelector("[data-fav]").setAttribute("aria-pressed", authored.favorite ? "true" : "false");
-    const stars = root.querySelector("[data-stars]");
-    stars.dataset.rating = authored.rating || 0;
-    for (const star of stars.querySelectorAll("[data-rate]")) {
-      const n = +star.dataset.rate;
-      if (n > 0) star.setAttribute("aria-pressed", authored.rating && authored.rating >= n ? "true" : "false");
+type AuthoredState = components["schemas"]["AuthoredState"];
+type AuthoredAnswer = components["schemas"]["AuthoredAnswer"];
+type LocateQuery = NonNullable<paths["/g/locate/{slug}"]["get"]["parameters"]["query"]>;
+
+const draw = (root: HTMLElement, authored: AuthoredState) => {
+  requireElement(root, "[data-fav]", HTMLElement).setAttribute("aria-pressed", authored.favorite ? "true" : "false");
+  const stars = requireElement(root, "[data-stars]", HTMLElement);
+  stars.dataset.rating = String(authored.rating ?? 0);
+  for (const star of everyElement(stars, "[data-rate]", HTMLElement)) {
+    const n = Number(requireData(star, "rate"));
+    if (n > 0) {
+      star.setAttribute("aria-pressed", authored.rating !== null && authored.rating >= n ? "true" : "false");
     }
-    const albums = root.querySelector("[data-albums]");
-    albums.replaceChildren(
-      ...authored.collections.map((held) => {
-        const link = document.createElement("a");
-        link.href = `/t/${held.slug}`;
-        link.textContent = held.name;
-        return link;
-      }),
-    );
+  }
+  const albums = requireElement(root, "[data-albums]", HTMLElement);
+  albums.replaceChildren(
+    ...authored.collections.map((held) => {
+      const link = document.createElement("a");
+      link.href = `/t/${held.slug}`;
+      link.textContent = held.name;
+      return link;
+    }),
+  );
+};
+
+// The mounted result-set surfaces this item is being walked over:
+// the lightbox fragment and/or the gallery grid behind it.
+const mounted = (): HTMLElement[] =>
+  [findElement(document, "[data-lightbox]", HTMLElement), findElement(document, "[data-grid]", HTMLElement)].filter(
+    (one): one is HTMLElement => one !== null,
+  );
+
+/**
+ * The mounted question, as locate's own declared parameters.
+ *
+ * The strip carries the walked question as a query string in `data-qs`.
+ * Spelling it out against the contract's parameter type is what makes the
+ * repeated `f` survive: an object built from the string wholesale would keep
+ * only the last facet, and a two-facet view would locate against a one-facet
+ * question.
+ */
+const asked = (qs: string | undefined): LocateQuery => {
+  const question = new URLSearchParams(qs ?? "");
+  // null, never undefined: the contract spells an absent parameter
+  // `str | None`, and under exactOptionalPropertyTypes a property that is
+  // present and undefined is not the same as one that is absent.
+  const one = (name: string) => question.get(name);
+  const counted = (name: string) => {
+    const held = question.get(name);
+    return held === null ? null : Number(held);
   };
-
-  // The mounted result-set surfaces this item is being walked over:
-  // the lightbox fragment and/or the gallery grid behind it.
-  const mounted = () =>
-    [document.querySelector("[data-lightbox]"), document.querySelector("[data-grid]")].filter(Boolean);
-
-  const settle = async (root) => {
-    const qs = root.dataset.qs;
-    const surfaces = mounted();
-    if (!surfaces.length) return;
-    const asked = await fetch(`/g/locate/${root.dataset.slug}${qs ? `?${qs}` : ""}`);
-    if (!asked.ok) {
-      window.location.reload();
-      return;
-    }
-    const told = await asked.json();
-    const held = surfaces[0].dataset.answer || "";
-    if (told.in_answer === false || (held && told.answer !== held)) {
-      // The walked answer really changed -- the URL owns the state.
-      window.location.reload();
-      return;
-    }
-    for (const surface of surfaces) {
-      surface.dataset.currency = told.currency;
-      surface.dataset.answer = told.answer;
-    }
+  return {
+    folder: one("folder"),
+    album: one("album"),
+    person: one("person"),
+    artifact: one("artifact"),
+    kind: one("kind"),
+    favorite: one("favorite"),
+    rating_min: counted("rating_min"),
+    q: one("q"),
+    f: question.getAll("f"),
+    sort: one("sort"),
+    size: counted("size"),
   };
+};
 
-  const tell = async (root, path, value) => {
-    const answer = await fetch(`/i/${root.dataset.slug}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ value }),
-    });
-    if (!answer.ok) return null;
-    const told = await answer.json();
-    draw(root, told.authored);
-    await settle(root);
-    return told;
-  };
-
-  const choices = async (root) => {
-    const box = root.querySelector("[data-album-choices]");
-    if (!box.hidden) {
-      box.hidden = true;
-      return;
-    }
-    const asked = await fetch(`/i/${root.dataset.slug}/collection-choices`);
-    if (!asked.ok) return;
-    const told = await asked.json();
-    box.replaceChildren(
-      ...told.map((one) => {
-        const row = document.createElement("label");
-        const tick = document.createElement("input");
-        tick.type = "checkbox";
-        tick.checked = one.filed;
-        tick.addEventListener("change", () => tell(root, `/collections/${one.slug}`, tick.checked));
-        row.append(tick, ` ${one.name}`);
-        return row;
-      }),
-    );
-    if (!told.length) box.textContent = "no albums yet — make one on /albums";
-    box.hidden = false;
-  };
-
-  document.addEventListener("click", (event) => {
-    const root = strip(event.target);
-    if (!root) return;
-    const fav = event.target.closest("[data-fav]");
-    if (fav) {
-      tell(root, "/favorite", fav.getAttribute("aria-pressed") !== "true");
-      return;
-    }
-    const star = event.target.closest("[data-rate]");
-    if (star) {
-      const n = +star.dataset.rate;
-      tell(root, "/rating", n > 0 ? n : null);
-      return;
-    }
-    if (event.target.closest("[data-album-picker]")) choices(root);
+const settle = async (root: HTMLElement) => {
+  const surfaces = mounted();
+  if (!surfaces.length) return;
+  const { data, error } = await api.GET("/g/locate/{slug}", {
+    params: { path: { slug: requireData(root, "slug") }, query: asked(root.dataset.qs) },
   });
+  if (error || !data) {
+    window.location.reload();
+    return;
+  }
+  const held = surfaces[0]?.dataset.answer ?? "";
+  if (!data.in_answer || (held && data.answer !== held)) {
+    // The walked answer really changed -- the URL owns the state.
+    window.location.reload();
+    return;
+  }
+  for (const surface of surfaces) {
+    surface.dataset.currency = data.currency;
+    surface.dataset.answer = data.answer;
+  }
+};
 
-  document.addEventListener("keydown", (event) => {
-    if (event.target.matches("input, textarea, select") || event.ctrlKey || event.metaKey || event.altKey) return;
-    const root = document.querySelector("[data-lightbox] [data-authored]") || document.querySelector("[data-authored]");
-    if (!root) return;
-    if (event.key === "f" || event.key === "F") {
-      const fav = root.querySelector("[data-fav]");
-      tell(root, "/favorite", fav.getAttribute("aria-pressed") !== "true");
-    } else if (event.key >= "1" && event.key <= "5") {
-      tell(root, "/rating", +event.key);
-    } else if (event.key === "0") {
-      tell(root, "/rating", null);
-    } else if (event.key === "a" || event.key === "A") {
-      choices(root);
-    }
+/** Redraw from the authoritative answer, then check the mounted walk. */
+const applied = async (root: HTMLElement, answer: AuthoredAnswer | undefined) => {
+  if (!answer) return;
+  draw(root, answer.authored);
+  await settle(root);
+};
+
+const setFavorite = async (root: HTMLElement, value: boolean) => {
+  const { data } = await api.POST("/i/{slug}/favorite", {
+    params: { path: { slug: requireData(root, "slug") } },
+    body: { value },
   });
-})();
+  await applied(root, data);
+};
+
+const setRating = async (root: HTMLElement, value: number | null) => {
+  const { data } = await api.POST("/i/{slug}/rating", {
+    params: { path: { slug: requireData(root, "slug") } },
+    body: { value },
+  });
+  await applied(root, data);
+};
+
+const setMembership = async (root: HTMLElement, collection: string, value: boolean) => {
+  const { data } = await api.POST("/i/{slug}/collections/{collection}", {
+    params: { path: { slug: requireData(root, "slug"), collection } },
+    body: { value },
+  });
+  await applied(root, data);
+};
+
+const choices = async (root: HTMLElement) => {
+  const box = requireElement(root, "[data-album-choices]", HTMLElement);
+  if (!box.hidden) {
+    box.hidden = true;
+    return;
+  }
+  const { data } = await api.GET("/i/{slug}/collection-choices", {
+    params: { path: { slug: requireData(root, "slug") } },
+  });
+  if (!data) return;
+  box.replaceChildren(
+    ...data.map((one) => {
+      const row = document.createElement("label");
+      const tick = document.createElement("input");
+      tick.type = "checkbox";
+      tick.checked = one.filed;
+      tick.addEventListener("change", () => {
+        void setMembership(root, one.slug, tick.checked);
+      });
+      row.append(tick, ` ${one.name}`);
+      return row;
+    }),
+  );
+  if (!data.length) box.textContent = "no albums yet — make one on /albums";
+  box.hidden = false;
+};
+
+const pressed = (root: HTMLElement) =>
+  requireElement(root, "[data-fav]", HTMLElement).getAttribute("aria-pressed") === "true";
+
+document.addEventListener("click", (event) => {
+  const root = closestFrom(event.target, "[data-authored]", HTMLElement);
+  if (!root) return;
+  if (closestFrom(event.target, "[data-fav]", HTMLElement)) {
+    void setFavorite(root, !pressed(root));
+    return;
+  }
+  const star = closestFrom(event.target, "[data-rate]", HTMLElement);
+  if (star) {
+    const n = Number(requireData(star, "rate"));
+    void setRating(root, n > 0 ? n : null);
+    return;
+  }
+  if (closestFrom(event.target, "[data-album-picker]", HTMLElement)) void choices(root);
+});
+
+document.addEventListener("keydown", (event) => {
+  const typing = event.target instanceof Element && event.target.matches("input, textarea, select");
+  if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+  const root =
+    findElement(document, "[data-lightbox] [data-authored]", HTMLElement) ??
+    findElement(document, "[data-authored]", HTMLElement);
+  if (!root) return;
+  if (event.key === "f" || event.key === "F") {
+    void setFavorite(root, !pressed(root));
+  } else if (event.key >= "1" && event.key <= "5") {
+    void setRating(root, Number(event.key));
+  } else if (event.key === "0") {
+    void setRating(root, null);
+  } else if (event.key === "a" || event.key === "A") {
+    void choices(root);
+  }
+});

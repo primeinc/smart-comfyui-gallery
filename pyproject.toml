@@ -83,6 +83,12 @@ dev = [
     "playwright>=1.62.0",
     "pytest-xdist>=3.8.0",
     "pytest-playwright>=0.9.0",
+    # `just api schema` imports msgspec directly, to write the OpenAPI
+    # document through litestar's own encoder exactly as its CLI does.
+    # Litestar depends on it too, but a file that imports a package should
+    # not rely on another library's dependency list to keep it installed.
+    # Dev, not runtime: nothing the application serves imports it.
+    "msgspec",
 ]
 [tool.uv]
 # Application, not a distributable package: uv manages the environment but
