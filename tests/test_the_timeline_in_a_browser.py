@@ -145,15 +145,16 @@ def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
 
 
 def test_a_page_of_dates_stays_alive_under_people_js(page: Page, live: Live):
-    """people.js spells every <time data-epoch> and watches the document
-    for new ones. Spelling is itself a mutation: a watcher that re-spelt
-    what it had just spelt looped the main thread forever, and every
-    person page -- the pages with dated sessions -- hung the tab. The
-    page must answer after load, with every date spelled once."""
+    """The People bundle spells every <time data-epoch> and watches the
+    document for new ones. Spelling is itself a mutation: a watcher that
+    re-spelt what it had just spelt looped the main thread forever, and
+    every person page -- the pages with dated sessions -- hung the tab.
+    The page must answer after load, with every date spelled once. The
+    script loaded here is the one the People page loads."""
     page.goto("/people")
     page.set_content(
         '<body><time data-epoch="1686355200">1686355200</time><time data-epoch="1686441600">x</time>'
-        f'<script src="{live.url}/static/people.js"></script></body>'
+        f'<script src="{live.url}/static/build/people.js"></script></body>'
     )
     page.wait_for_timeout(500)
     assert page.evaluate("[...document.querySelectorAll('time')].map(t => t.textContent)") == [

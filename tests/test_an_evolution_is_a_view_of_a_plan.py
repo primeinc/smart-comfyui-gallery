@@ -280,7 +280,7 @@ def test_the_page_draws_the_view_and_only_the_view(planned):
     assert page.status_code == 200
     html = page.text
     assert "data-evolution-view" in html
-    assert "/static/evolution.js" in html
+    assert "/static/build/evolution.js" in html
     assert 'data-tab="sequence"' in html
     assert 'data-tab="drift"' in html
     assert "<script" in html

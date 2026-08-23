@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ album.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/t/{{ album.slug }}">{% endblock %}
-{% block scripts %}<script src="/static/collection.js?v={{ static_v }}" defer></script><script src="/static/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">

@@ -395,10 +395,20 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
 def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     """SG501: a template or script carries query logic or a /search side channel."""
     web = root / "sg_web"
-    surfaces = [*sorted((web / "templates").glob("*.html")), *sorted((web / "static").glob("*.js"))]
+    authored = root / "frontend" / "src"
+    # The browser source is authored TypeScript under frontend/src; what
+    # sg_web/static holds is vendored htmx and esbuild's generated bundles,
+    # neither of which this sweep judges.
+    templates = sorted((web / "templates").glob("*.html"))
+    scripts = sorted(authored.rglob("*.ts"))
     found: list[Finding] = []
-    if len(surfaces) < policy.SURFACE_MINIMUM:
-        found.append(Finding(web, 1, 0, "SG500", f"the sweep lost its subjects: {len(surfaces)} surfaces"))
+    for what, where, sources, minimum in (
+        ("templates", web / "templates", templates, policy.TEMPLATE_MINIMUM),
+        ("scripts", authored, scripts, policy.SCRIPT_MINIMUM),
+    ):
+        if len(sources) < minimum:
+            found.append(Finding(where, 1, 0, "SG500", f"the sweep lost its {what}: {len(sources)} of {minimum}"))
+    surfaces = [*templates, *scripts]
     for source in surfaces:
         held = source.read_text(encoding="utf-8")
         for word in policy.SURFACE_FORBIDDEN_WORDS:

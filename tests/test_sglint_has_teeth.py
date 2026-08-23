@@ -88,15 +88,36 @@ def test_the_adapter_rules_can_fail(tree):
     assert "SG401" in {f.code for f in rules.rule_adapters(tree)}
 
 
+def _surfaces(root: pathlib.Path, templates: int, scripts: int) -> None:
+    """A tree with `templates` clean templates and `scripts` clean scripts."""
+    (root / "sg_web" / "templates").mkdir(parents=True, exist_ok=True)
+    (root / "frontend" / "src").mkdir(parents=True, exist_ok=True)
+    for i in range(templates):
+        (root / "sg_web" / "templates" / f"t{i}.html").write_text("<p>fine</p>", encoding="utf-8")
+    for i in range(scripts):
+        (root / "frontend" / "src" / f"s{i}.ts").write_text("export {};\n", encoding="utf-8")
+
+
 def test_the_surface_rule_can_fail(tmp_path):
     root = tmp_path / "repo"
-    (root / "sg_web" / "templates").mkdir(parents=True)
-    (root / "sg_web" / "static").mkdir(parents=True)
-    for i in range(policy.SURFACE_MINIMUM):
-        (root / "sg_web" / "templates" / f"t{i}.html").write_text("<p>fine</p>", encoding="utf-8")
-    (root / "sg_web" / "static" / "bad.js").write_text("fetch('/search?q=')", encoding="utf-8")
+    _surfaces(root, policy.TEMPLATE_MINIMUM, policy.SCRIPT_MINIMUM - 1)
+    (root / "frontend" / "src" / "bad.ts").write_text("fetch('/search?q=')", encoding="utf-8")
     assert [f.code for f in rules.rule_surfaces(root)] == ["SG501"]
     assert rules.rule_surfaces(pathlib.Path(rules.REPO_ROOT)) == []
+
+
+def test_the_surface_sweep_notices_either_half_vanishing(tmp_path):
+    """The sweep counts templates and scripts separately. One shared
+    minimum could not see every script leave for frontend/src, because
+    the templates alone cleared it: a sweep with no scripts at all
+    reported nothing. Each half must fail on its own."""
+    scriptless = tmp_path / "scriptless"
+    _surfaces(scriptless, policy.TEMPLATE_MINIMUM, 0)
+    assert [f.code for f in rules.rule_surfaces(scriptless)] == ["SG500"], "no scripts is not a pass"
+
+    templateless = tmp_path / "templateless"
+    _surfaces(templateless, 0, policy.SCRIPT_MINIMUM)
+    assert [f.code for f in rules.rule_surfaces(templateless)] == ["SG500"], "no templates is not a pass"
 
 
 # --- the second batch: source-text pins and the schema contract ---------------------------
@@ -171,7 +192,7 @@ def _rewrite(path: pathlib.Path, text: str) -> None:
 @pytest.mark.parametrize(
     ("relative", "addition", "code"),
     [
-        ("sg_web/static/evolution.js", "\nfetch('/x');\n", "SG406"),
+        ("frontend/src/evolution.ts", "\nfetch('/x');\n", "SG406"),
         ("db/evolution.py", "\n# generation_prompt\n", "SG406"),
         ("db/stories.py", "\n# UPDATE story_snapshot\n", "SG406"),
         ("sg_web/story_view.py", "\n# derived_\n", "SG406"),

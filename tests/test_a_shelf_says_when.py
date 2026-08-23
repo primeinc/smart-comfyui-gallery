@@ -102,7 +102,7 @@ def test_folders_and_albums_carry_the_span_of_their_pictures(tmp_path):
         page = client.get("/folders", headers={"accept": "text/html"}).text
         assert f'data-epoch="{FIRST}"' in page
         assert "data-seen" in page
-        assert "/static/timeline.js" in page, "the page spells its epochs"
+        assert "/static/build/timeline.js" in page, "the page spells its epochs"
 
         made = client.post("/albums", json={"name": "Trip", "kind": "album"})
         assert made.status_code < 300, made.text

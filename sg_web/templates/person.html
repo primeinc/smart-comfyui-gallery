@@ -2,8 +2,7 @@
 {% block title %}{{ person.name or "(unnamed)" }}{% endblock %}
 {% block head %}<link rel="canonical" href="/p/{{ person.slug }}">{% endblock %}
 {% block scripts %}
-  <script src="/static/media.js?v={{ static_v }}" defer></script>
-  <script src="/static/people.js?v={{ static_v }}" defer></script>
+  <script src="/static/build/person.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   <header class="bar">

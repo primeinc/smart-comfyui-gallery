@@ -1,10 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Gallery{% endblock %}
 {% block scripts %}
-  <script src="/static/overlay.js?v={{ static_v }}" defer></script>
-  <script src="/static/gallery.js?v={{ static_v }}" defer></script>
-  <script src="/static/authored.js?v={{ static_v }}" defer></script>
-  <script src="/static/selection.js?v={{ static_v }}" defer></script>
+  <script src="/static/build/gallery.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   <header class="bar">

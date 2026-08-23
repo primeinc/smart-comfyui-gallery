@@ -159,7 +159,7 @@ MUST_NOT_CONTAIN: dict[str, tuple[str, ...]] = {
     "sg_web/app.py": ("add_to_collection", "remove_from_collection"),
     # the Explorer page neither reaches nor reasons; the view module
     # neither writes, loads a model, nor owns a URL
-    "sg_web/static/evolution.js": ("fetch(", "XMLHttpRequest", "localStorage", "cosine ="),
+    "frontend/src/evolution.ts": ("fetch(", "XMLHttpRequest", "localStorage", "cosine ="),
     "db/evolution.py": (
         "INSERT",
         "UPDATE",
@@ -226,7 +226,11 @@ LITERAL_STATEMENTS_ONLY: tuple[str, ...] = ("db/collection_rules.py",)
 # --- SG5xx: templates and scripts carry no query logic --------------------------------------
 
 SURFACE_FORBIDDEN_WORDS: tuple[str, ...] = ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search")
-SURFACE_MINIMUM: int = 9
+#: Each half of the sweep counts on its own. One shared minimum could not see
+#: every script leaving `sg_web/static` for `frontend/src`, because the
+#: templates alone cleared it.
+TEMPLATE_MINIMUM: int = 30
+SCRIPT_MINIMUM: int = 11
 
 # --- SG6xx: every derived table has a producer something calls -------------------------------
 

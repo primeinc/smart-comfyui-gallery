@@ -10,12 +10,12 @@ python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { '.
 # (pytest-xdist, one module per worker: module-scoped stages assume the
 # file's own order; 73s -> 20s on 16 cores). pytest.ini already carries -q;
 # a second one would hide the pass/fail summary.
-test:
+test: web::build
     {{ python }} -m pytest tests/ -m "not slow" -n auto --dist loadfile
 
 # The slow lane: the tests marked slow (real sample libraries, real
 # browsers) -- a few seconds each, four at a time
-test-slow:
+test-slow: web::build
     {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile
 
 # Ruff over the Python, Biome over the browser source (biome.json: the
@@ -31,8 +31,9 @@ fmt-check:
     {{ python }} -m ruff format --check .
     npm run --silent format-check
 
-# Pyright: cross-module type inference, the half ruff cannot do; part of the gate
-types:
+# Pyright over the Python and tsc over the browser source: the cross-module
+# inference neither ruff nor esbuild can do. Part of the gate
+types: web::types
     {{ python }} -m pyright
 
 # Repository hygiene: the git index, line endings, the requirements
@@ -45,7 +46,7 @@ repo-check:
 # version held against this build -- a schema bump with no step from the
 # version in the home directory fails here, in under a second, before any
 # commit. No tests -- `just test` is its own step
-check: lint fmt-check types repo-check db-check
+check: web::build lint fmt-check types repo-check db-check
 
 # The gate, both test lanes, and the real run walked
 check-all: check test test-slow smoke
@@ -61,7 +62,7 @@ db-check:
 # directory -- the check a lane over fresh databases cannot make.
 # `just smoke --home D:/runs/two` for another run.
 [doc('Walk the real run: every surface and real pictures, over ~/.smartgallery')]
-smoke *ARGS:
+smoke *ARGS: web::build
     {{ python }} -m sg_web.smoke "$@"
 
 # The repo-wide structural gates, on their own and in seconds: sglint's
@@ -76,11 +77,14 @@ audit: repo-check
 # `just serve --home D:/runs/two` -- everything else is a settings row
 # changed in the running app.
 [doc('Serve the gallery (python -m sg_web)')]
-serve *ARGS:
+serve *ARGS: web::build
     {{ python }} -m sg_web "$@"
 
 # Benchmarks through the production pipeline (bench.just)
 mod bench
+
+# The browser source: type check, bundle, watch (web.just)
+mod web
 
 # Which faiss the app selects at runtime: the vendored GPU build
 # (vendor/faiss-gpu-win64, CUDA DLLs from the nvidia wheels) on

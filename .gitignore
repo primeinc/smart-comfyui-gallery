@@ -110,3 +110,8 @@ db/*.backup
 
 # npm: biome lives in node_modules; package-lock.json is committed
 node_modules/
+# esbuild's output. Generated from frontend/src by `just web build`, which
+# every recipe that serves or tests the app depends on. The Python `build/`
+# rule above already covers this path by accident; say it on purpose here, so
+# tidying that rule cannot start committing bundles.
+sg_web/static/build/
