@@ -140,7 +140,7 @@ def test_a_picture_can_be_clicked_walked_and_closed(served):
 INSIDE = (
     "() => { const p = document.querySelector('[data-rail-pop]'); const r = p.getBoundingClientRect();"
     " const bar = document.querySelector('header.bar').getBoundingClientRect();"
-    " p.style.pointerEvents = 'auto';"  # the preview is pointer-events:none by design; elementFromPoint skips such boxes
+    " p.style.pointerEvents = 'auto';"  # pointer-events:none by design; elementFromPoint skips such boxes
     " const mid = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
     " p.style.pointerEvents = '';"
     " return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height,"
