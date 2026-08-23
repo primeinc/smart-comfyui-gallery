@@ -149,8 +149,15 @@ def rule_line_endings(git: Git = real_git, root: pathlib.Path = REPO_ROOT, *, ch
     return found
 
 
-def _shape(requirement) -> tuple[str, str]:
-    return str(requirement.specifier), str(requirement.marker) if requirement.marker else ""
+def _shape(requirement) -> tuple[str, str, str]:
+    """Everything about a dependency that decides what gets installed.
+
+    Extras count: `litestar[pydantic]` and `litestar` install different
+    packages, so a file that carries the extra and a file that does not do
+    not agree, however identical their specifiers.
+    """
+    extras = ",".join(sorted(requirement.extras))
+    return str(requirement.specifier), str(requirement.marker) if requirement.marker else "", extras
 
 
 def rule_requirements(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
@@ -167,7 +174,7 @@ def rule_requirements(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     for entry in project["project"]["dependencies"]:
         requirement = Requirement(entry)
         declared[canonicalize_name(requirement.name)] = _shape(requirement)
-    listed: dict[str, tuple[str, str]] = {}
+    listed: dict[str, tuple[str, str, str]] = {}
     at = root / "requirements.txt"
     with open(at, encoding="utf-8") as fh:
         for line in fh:

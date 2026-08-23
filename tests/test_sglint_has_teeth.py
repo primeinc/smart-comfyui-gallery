@@ -322,3 +322,19 @@ def test_the_repo_rules_fire_on_a_fake_index(tmp_path):
     (tmp_path / "requirements.txt").write_text("numpy>=1\n", encoding="utf-8")
     codes = sorted(f.code for f in repo_rules.rule_requirements(tmp_path))
     assert codes == ["SG807", "SG807", "SG808"], codes
+
+
+def test_the_requirements_rule_sees_an_extra_drift(tmp_path):
+    """`litestar[pydantic]` and `litestar` install different packages. The
+    rule compared specifiers and markers only, so a file carrying the extra
+    and a file without it agreed on nothing and reported it."""
+    from sglint import repo_rules
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\ndependencies = ["litestar[pydantic]"]\n', encoding="utf-8"
+    )
+    (tmp_path / "requirements.txt").write_text("litestar\n", encoding="utf-8")
+    assert [f.code for f in repo_rules.rule_requirements(tmp_path)] == ["SG807"]
+
+    (tmp_path / "requirements.txt").write_text("litestar[pydantic]\n", encoding="utf-8")
+    assert repo_rules.rule_requirements(tmp_path) == []

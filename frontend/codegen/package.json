@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "The contract generator, kept apart because it needs a different TypeScript than the application does. openapi-typescript emits its output through the TypeScript compiler's factory API, which the 7.x native port does not expose (`ts.factory` is undefined, and typescript-go's own README lists the API as not ready). It declares `peer typescript@^5.x` and means it. The application is checked by TypeScript 7; this one tool runs on the 5.x it requires, in its own tree, so neither is forced to pretend.",
+  "scripts": {
+    "generate": "openapi-typescript ../openapi.json -o ../src/generated/api.d.ts",
+    "check": "openapi-typescript ../openapi.json -o ../src/generated/api.d.ts --check"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

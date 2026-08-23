@@ -7,7 +7,7 @@
     "defaultBranch": "dev"
   },
   "files": {
-    "includes": ["frontend/src/**/*.ts", "sg_web/static/**/*.css", "!!sg_web/static/build"],
+    "includes": ["frontend/src/**/*.ts", "sg_web/static/**/*.css", "!!sg_web/static/build", "!!frontend/src/generated"],
     "ignoreUnknown": false
   },
   "formatter": {

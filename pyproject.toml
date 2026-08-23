@@ -17,7 +17,11 @@ description = "Local-first browser-based DAM for ComfyUI with an optional derive
 # model runtime's.
 requires-python = ">=3.11"
 dependencies = [
-    "litestar",
+    # [pydantic]: the HTTP seam's contracts are pydantic models, so every
+    # JSON body and response has a named schema Litestar puts in its OpenAPI
+    # and the browser's types are generated from. The plugin registers itself
+    # when pydantic is importable (litestar/app.py _get_default_plugins).
+    "litestar[pydantic]",
     "jinja2",  # the gallery templates; litestar's Jinja engine needs it installed
     "uvicorn",  # the server behind `python -m sg_web`
     # uvicorn speaks WebSocket only through an installed protocol package;

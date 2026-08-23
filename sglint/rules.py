@@ -400,7 +400,12 @@ def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     # sg_web/static holds is vendored htmx and esbuild's generated bundles,
     # neither of which this sweep judges.
     templates = sorted((web / "templates").glob("*.html"))
-    scripts = sorted(authored.rglob("*.ts"))
+    # frontend/src/generated is the browser's view of the application's own
+    # OpenAPI document. It is not authored, and it names every route the
+    # application serves -- including /search -- so sweeping it for the words
+    # a hand-written surface must not contain would fail on the contract
+    # itself rather than on anybody's code.
+    scripts = sorted(p for p in authored.rglob("*.ts") if "generated" not in p.parts)
     found: list[Finding] = []
     for what, where, sources, minimum in (
         ("templates", web / "templates", templates, policy.TEMPLATE_MINIMUM),

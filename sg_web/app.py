@@ -26,7 +26,9 @@ import os
 import pathlib
 import sqlite3
 import time
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
+from typing import Any, Literal
 
 from litestar import Litestar, Request, get, post, route, websocket
 from litestar.channels import ChannelsPlugin
@@ -87,6 +89,7 @@ from sg_web.presenting import VARIES, presented_page, wants_json
 from sg_web.submitting import announce as _announce
 from sg_web.submitting import nudge as _nudge
 from sg_web.submitting import submitted as _submitted
+from sg_web.wire import Wire
 
 _logger = logging.getLogger(__name__)
 
@@ -231,25 +234,99 @@ def ways(state: State) -> list[dict]:
         connect.close(conn)
 
 
+#: The job vocabularies are the schema's, not a second opinion: db/schema.sql
+#: constrains both columns with CHECK, and a value outside either is already
+#: impossible in the database. Stating them here as Literals carries that
+#: closed set across the wire, so the browser gets a union instead of `string`
+#: and a typo in a comparison is a type error there too.
+JobState = Literal["queued", "running", "done", "failed", "cancelled"]
+JobKind = Literal[
+    "scan",
+    "hash",
+    "embed",
+    "detect_faces",
+    "cluster_faces",
+    "sample_frames",
+    "annotate",
+    "remix",
+    "zip",
+    "context",
+    "events",
+    "story_plan",
+    "embed_prompts",
+]
+
+
+class JobListed(Wire):
+    """One job as a list carries it -- db/jobs.py `active` and `recent`,
+    which share a column list so both are this shape."""
+
+    id: int
+    kind: JobKind
+    state: JobState
+    cancel_requested: bool
+    total: int | None
+    done_count: int
+    created_at: float
+    finished_at: float | None
+    derive: str | None
+
+
+class JobSnapshot(JobListed):
+    """Everything a client renders one job from cold: the listed columns
+    and the rest of the row. `failed_count` is here because "done, with
+    three files unreadable" and "done" are different outcomes a page must
+    show without a worker's turn summary to read."""
+
+    attempt: int
+    error: str | None
+    started_at: float | None
+    failed_count: int
+
+
+def _job_listed(row: Mapping[str, Any]) -> JobListed:
+    """A `job` row as the wire carries it. `cancel_requested` is the one
+    translation: SQLite stores the flag as 0 or 1, the contract promises a
+    boolean, and strict mode will not pretend those are the same."""
+    return JobListed(
+        id=row["id"],
+        kind=row["kind"],
+        state=row["state"],
+        cancel_requested=bool(row["cancel_requested"]),
+        total=row["total"],
+        done_count=row["done_count"],
+        created_at=row["created_at"],
+        finished_at=row["finished_at"],
+        derive=row["derive"],
+    )
+
+
 @get("/jobs", sync_to_thread=True)
-def active_jobs(state: State) -> list[dict]:
+def active_jobs(state: State) -> list[JobListed]:
     conn = _connect(state.db_path)
     try:
-        return jobs.active(conn)
+        return [_job_listed(row) for row in jobs.active(conn)]
     finally:
         connect.close(conn)
 
 
 @get("/jobs/{job_id:int}", sync_to_thread=True)
-def job_snapshot(state: State, job_id: FromPath[int]) -> dict:
+def job_snapshot(state: State, job_id: FromPath[int]) -> JobSnapshot:
     """The persisted snapshot -- what a client renders from cold. A page
     reload or a dropped socket recovers by reading this, never a replay."""
     conn = _connect(state.db_path)
     try:
         try:
-            return jobs.snapshot(conn, job_id)
+            row = jobs.snapshot(conn, job_id)
         except LookupError as missing:
             raise NotFoundException(str(missing)) from missing
+        return JobSnapshot(
+            **_job_listed(row).model_dump(),
+            attempt=row["attempt"],
+            error=row["error"],
+            started_at=row["started_at"],
+            failed_count=row["failed_count"],
+        )
     finally:
         connect.close(conn)
 

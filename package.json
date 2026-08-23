@@ -10,7 +10,12 @@
     "types-source": "tsc -p frontend",
     "types-build": "tsc -p frontend/tsconfig.node.json",
     "build-web": "node frontend/build.ts",
-    "watch-web": "node frontend/build.ts --watch"
+    "watch-web": "node frontend/build.ts --watch",
+    "api-types": "npm --silent --prefix frontend/codegen run generate",
+    "api-types-check": "npm --silent --prefix frontend/codegen run check"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",

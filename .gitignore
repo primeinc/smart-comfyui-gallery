@@ -108,7 +108,9 @@ db/*.db-wal
 db/*.db-shm
 db/*.backup
 
-# npm: biome lives in node_modules; package-lock.json is committed
+# npm: biome lives in node_modules; package-lock.json is committed. The
+# contract generator has its own tree (frontend/codegen) because it needs a
+# TypeScript the application does not; `node_modules/` matches at any depth.
 node_modules/
 # esbuild's output. Generated from frontend/src by `just web build`, which
 # every recipe that serves or tests the app depends on. The Python `build/`
