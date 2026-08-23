@@ -3939,7 +3939,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/MadeOrFound"
                                 }
                             }
                         }
@@ -4218,7 +4218,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/MadeOrFound"
                                 }
                             }
                         }
@@ -5137,7 +5137,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/NamedPerson"
                                 }
                             }
                         }
@@ -9798,6 +9798,48 @@
                     "total"
                 ],
                 "title": "Located"
+            },
+            "MadeOrFound": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "sha256": {
+                        "type": "string"
+                    },
+                    "reused": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "id",
+                    "reused",
+                    "sha256"
+                ],
+                "title": "MadeOrFound"
+            },
+            "NamedPerson": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "asserted": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "asserted",
+                    "name",
+                    "slug"
+                ],
+                "title": "NamedPerson"
             },
             "NewCollection": {
                 "properties": {

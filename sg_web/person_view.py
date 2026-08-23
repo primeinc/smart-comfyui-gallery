@@ -177,6 +177,23 @@ def person_page(state: State, request: Request, slug: FromPath[str]) -> Template
     return presented(request, told, page="person.html", fragment="_person_drawer.html", name="person")
 
 
+class NamedPerson(Wire):
+    """What naming a person answers.
+
+    The name became the ADDRESS, so `slug` is where the person lives now
+    and the browser replaces its location with it -- the old slug retires
+    into history and answers 301, and leaving it as a history stop would
+    put a redirect between Back and the index.
+    """
+
+    slug: str
+    name: str
+    #: how many of the person's faces the name was written down against.
+    #: A name with none would be lost by the next re-cluster, so the write
+    #: is refused before the commit rather than accepted and forgotten.
+    asserted: int
+
+
 class NewName(Wire):
     """The body of POST /p/{slug}/name."""
 
@@ -184,7 +201,7 @@ class NewName(Wire):
 
 
 @post("/p/{slug:str}/name", sync_to_thread=True)
-def name_person(state: State, slug: FromPath[str], data: NewName) -> dict:
+def name_person(state: State, slug: FromPath[str], data: NewName) -> NamedPerson:
     """Name a person -- the People page's primary action.
 
     The name becomes the address: a new slug is minted and the old one
@@ -212,6 +229,6 @@ def name_person(state: State, slug: FromPath[str], data: NewName) -> dict:
             # what it cannot keep.
             raise ClientException(f"/p/{slug} has no clustered face to keep the name by; nothing was renamed")
         conn.commit()
-        return {"slug": fresh, "name": cleaned, "asserted": asserted}
+        return NamedPerson(slug=fresh, name=cleaned, asserted=asserted)
     finally:
         connect.close(conn)

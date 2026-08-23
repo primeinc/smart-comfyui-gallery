@@ -86,8 +86,22 @@ class FreezeRequest(Wire):
     event_id: int
 
 
+class MadeOrFound(Wire):
+    """A content-addressed row, and whether this request is what made it.
+
+    A snapshot of an event and a render of a plan are both identified by
+    the sha of their content, so asking twice is one row. `reused` says
+    which happened -- the same thing the status code says (200 found, 201
+    made), in the body, so a client reading only JSON still knows.
+    """
+
+    id: int
+    sha256: str
+    reused: bool
+
+
 @post("/stories/snapshots", sync_to_thread=True)
-def freeze_snapshot(state: State, data: FreezeRequest) -> Response:
+def freeze_snapshot(state: State, data: FreezeRequest) -> Response[MadeOrFound]:
     conn = connect.connect(state.db_path)
     try:
         try:
@@ -100,7 +114,7 @@ def freeze_snapshot(state: State, data: FreezeRequest) -> Response:
     finally:
         connect.close(conn)
     return Response(
-        {"id": made.id, "sha256": made.sha256, "reused": made.reused},
+        MadeOrFound(id=made.id, sha256=made.sha256, reused=made.reused),
         status_code=200 if made.reused else 201,
     )
 
@@ -195,7 +209,7 @@ class RenderRequest(Wire):
 
 
 @post("/stories/renders", sync_to_thread=True)
-def render_plan(state: State, data: RenderRequest) -> Response:
+def render_plan(state: State, data: RenderRequest) -> Response[MadeOrFound]:
     conn = connect.connect(state.db_path)
     try:
         try:
@@ -211,7 +225,7 @@ def render_plan(state: State, data: RenderRequest) -> Response:
     finally:
         connect.close(conn)
     return Response(
-        {"id": made.id, "sha256": made.sha256, "reused": made.reused},
+        MadeOrFound(id=made.id, sha256=made.sha256, reused=made.reused),
         status_code=200 if made.reused else 201,
     )
 

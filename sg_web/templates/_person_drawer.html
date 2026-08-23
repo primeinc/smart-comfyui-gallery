@@ -10,7 +10,7 @@
       &middot; <a href="{{ person.timeline }}" data-drawer-timeline>their timeline</a>
     </div>
   </div>
-  <form class="person-rename" data-rename action="/p/{{ person.slug }}/name" method="post">
+  <form class="person-rename" data-rename="{{ person.slug }}" action="/p/{{ person.slug }}/name" method="post">
     <input name="name" placeholder="{{ 'rename' if person.name else 'give them a name' }}"
            aria-label="name" required>
     <button type="submit">name</button>

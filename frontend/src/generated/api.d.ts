@@ -1775,6 +1775,18 @@ export interface components {
             previous: string | null;
             next: string | null;
         };
+        /** MadeOrFound */
+        MadeOrFound: {
+            id: number;
+            sha256: string;
+            reused: boolean;
+        };
+        /** NamedPerson */
+        NamedPerson: {
+            slug: string;
+            name: string;
+            asserted: number;
+        };
         /** NewCollection */
         NewCollection: {
             name: string;
@@ -3568,7 +3580,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["MadeOrFound"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -3720,7 +3732,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["MadeOrFound"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -4264,7 +4276,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["NamedPerson"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
