@@ -210,7 +210,7 @@ the sessions touching the range (`db/pages.py TIMELINE_*`,
 `resultset.scope_of`: the same membership predicates the gallery walks,
 appended to every timeline statement (HEAD + conjunct + TAIL), and
 every door is that question plus a moment and the precision the bar
-counted (the `context.granule` facet, db/facets.py), so what is drawn is what opens. A session is a door, never a scope; a rule-defined collection
+counted (the `context.granule` facet, db/facets.py), so what is drawn is what opens. A session door over a run grouped before the interpretation last moved is refused with the events job (`resultset.StaleSession`); the surface says the same beside its coverage. A session is a door, never a scope; a rule-defined collection
 scopes through its materialized membership (`f.id IN (...)`, the one
 engine) and refuses with why when its rule cannot be answered. A
 person's, a folder's and an album's page open their own timeline, and
