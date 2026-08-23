@@ -150,8 +150,17 @@ PRESETS = (("1w", 7 * 86_400), ("1m", 30 * 86_400), ("3m", 91 * 86_400), ("1y", 
 #: The zoom follows the window's width: enough bars to see the shape,
 #: never more than the strip samples thumbnails for.
 _ZOOM = (("minute", 6 * 3_600), ("quarter", 2 * 86_400), ("hour", 14 * 86_400), ("day", 183 * 86_400))
+#: The narrowest window the surface opens on.
+NARROWEST = 3_600
 #: The drawing's width in its own units (the SVG viewBox).
 _W = 1000
+
+
+def _height(pictures: int, most: int, full: float) -> float:
+    """A bar's height on a square-root scale: one week holding most of
+    the library still leaves the other bursts visible as bars, not
+    hairlines."""
+    return (pictures / most) ** 0.5 * full if pictures else 0.0
 
 
 def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.GalleryQuery = WHOLE) -> dict:
@@ -283,10 +292,19 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
             "sessions_sampled": True,
         }
     whole_lo, whole_hi = float(extent[0]), float(extent[1]) + 1.0
-    lo = float(start) if start is not None else max(whole_lo, whole_hi - OPENING)
-    hi = float(end) if end is not None else whole_hi
-    if start is not None and end is None:
-        hi = whole_hi
+    if start is None and end is None:
+        # the opening window: the last month, tightened to where its
+        # pictures actually sit -- a month whose pictures all fall on one
+        # day opens on that day, not on one bar in thirty days of nothing
+        lo, hi = max(whole_lo, whole_hi - OPENING), whole_hi
+        first, last, _ = pages.timeline_span(conn, lo, hi, scope)
+        if first is not None:
+            lo, hi = max(lo, float(first)), min(hi, float(last) + 1.0)
+            if hi - lo < NARROWEST:
+                lo = max(whole_lo, hi - NARROWEST)
+    else:
+        lo = float(start) if start is not None else whole_lo
+        hi = float(end) if end is not None else whole_hi
     bin_name = bin_name or _bin_for(hi - lo)
     try:
         width, bins, spans = pages.timeline_density(conn, bin_name, lo, hi, scope)
@@ -311,7 +329,7 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
     finest = bin_name == "minute"
     told_bins = []
     for at, pictures, wall, instant, captured, generated, mixed, imported in bins:
-        h = (pictures / most) * 100
+        h = _height(pictures, most, 100)
         told_bins.append(
             {
                 "at": at,
@@ -343,7 +361,7 @@ def _surface(conn, state: State, asked: resultset.GalleryQuery, start, end, *, b
                 "spelled": _spell(at, "week"),
                 "x": round(((at - whole_lo) / whole_span) * _W, 2),
                 "w": round(max(1.0, (overview_width / whole_span) * _W), 2),
-                "h": round(max(1.0, (pictures / overview_most) * 36), 2),
+                "h": round(max(1.0, _height(pictures, overview_most, 36)), 2),
             }
             for at, pictures, *_ in overview_bins
         ],

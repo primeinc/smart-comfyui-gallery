@@ -248,7 +248,8 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(served_wide):
         start = float(page.get_attribute("[data-surface]", "data-window-start") or "nan")
         end = float(page.get_attribute("[data-surface]", "data-window-end") or "nan")
         assert end == whole_end, "the window ends at the newest picture"
-        assert start == end - 30 * 86400, "and opens a month wide"
+        # the last month holds the last six of nine pictures, five days apart
+        assert abs(start - (whole_end - 1 - 25 * 86400)) <= 10, "and opens on the span those pictures occupy"
         assert start > extent["start"], "which is not the whole forty-day library"
         page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
         assert "too many" not in page.inner_text("[data-surface]")

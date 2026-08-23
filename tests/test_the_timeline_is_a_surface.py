@@ -345,9 +345,11 @@ def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
     machine, the surface fragment to htmx, the page to a browser -- the
     same window, the same bars, the same doors."""
     told = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
-    assert told["bin"] == "day", "June to November: the zoom follows the month-wide opening window"
-    assert told["end"] == told["extent"]["end"] + 1
-    assert told["start"] == max(told["extent"]["start"], told["end"] - 30 * DAY)
+    # the last month holds the two November downloads an hour apart: the
+    # opening window tightens to that hour, and the zoom follows it
+    assert (told["start"], told["end"]) == (NOW, NOW + HOUR + 1)
+    assert told["bin"] == "minute"
+    assert sum(b["pictures"] for b in told["bins"]) == 2
     assert [p["name"] for p in told["presets"]] == ["1w", "1m", "3m", "1y", "all"]
     assert told["overview"]["bars"], "the whole extent at week resolution rides every answer"
     fragment = surfaced.get("/timeline", headers={"hx-request": "true"}).text
@@ -412,6 +414,19 @@ def test_an_empty_scope_answers_the_same_shape_as_a_full_one(surfaced):
     assert empty.json()["bins"] == []
     assert empty.json()["extent"] is None
     assert empty.headers.get("vary") == full.headers.get("vary")
+
+
+def test_the_opening_window_is_where_the_last_months_pictures_are(surfaced):
+    """The surface opens on the pictures, not on a month of nothing: the
+    last month is tightened to the span its pictures occupy, never
+    narrower than an hour, and a window the URL names is left alone."""
+    opened = surfaced.get("/timeline", headers={"accept": "application/json"}).json()
+    assert opened["end"] - opened["start"] >= 3600
+    assert all(b["pictures"] for b in opened["bins"]) or opened["bins"], "no bar of nothing at either end"
+    named = surfaced.get(
+        "/timeline", params={"start": JUNE_10, "end": JUNE_10 + DAY}, headers={"accept": "application/json"}
+    ).json()
+    assert (named["start"], named["end"]) == (JUNE_10, JUNE_10 + DAY), "a named window is not tightened"
 
 
 @pytest.mark.parametrize("bin_name", ["day", "hour", "quarter", "minute"])

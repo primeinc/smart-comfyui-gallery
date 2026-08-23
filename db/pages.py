@@ -1089,6 +1089,16 @@ def timeline_extent(conn, scope: tuple[str, list] = ("", [])):
     return conn.execute(TIMELINE_EXTENT + scope[0], (context.POLICY_VERSION, *scope[1])).fetchone()
 
 
+#: The extent inside one range: where the pictures of [lo, hi) actually
+#: sit, so an opening window can tighten to them.
+TIMELINE_SPAN = TIMELINE_EXTENT + " AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
+
+
+def timeline_span(conn, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
+    """(first moment, last moment, pictures) within [lo, hi), or Nones."""
+    return conn.execute(TIMELINE_SPAN + scope[0], (context.POLICY_VERSION, lo, hi, *scope[1])).fetchone()
+
+
 def timeline_density(conn, bin_name: str, lo: float, hi: float, scope: tuple[str, list] = ("", [])):
     """Bins of `bin_name` over [lo, hi) plus the spans too coarse for
     them. Refuses an unknown bin or an ask wider than MAX_BINS."""
