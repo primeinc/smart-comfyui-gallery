@@ -127,3 +127,6 @@ def test_a_person_page_says_where_they_were_seen(client):
     page = client.get("/p/ana", headers=AS_BROWSER).text
     assert "data-person-places" in page
     assert "where they were seen" in page
+    drawer = client.get("/p/ana", headers={"hx-request": "true"}).text
+    assert "data-drawer-places" in drawer
+    assert ">Lisbon</a>" in drawer

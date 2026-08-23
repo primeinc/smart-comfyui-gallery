@@ -14,6 +14,9 @@
            aria-label="name" required>
     <button type="submit">name</button>
   </form>
+  {% if person.places %}
+  <p class="places-line" data-drawer-places>in {% for where in person.places[:3] %}<a href="/g?{{ where.qs }}">{{ where.name }}</a> &middot; {{ where.pictures }}{% if not loop.last %}, {% endif %}{% endfor %}{% if person.places | length > 3 %}, <a href="/p/{{ person.slug }}">all {{ person.places | length }} places</a>{% endif %}</p>
+  {% endif %}
   {% if person.sessions %}
   <ul class="drawer-sessions" data-drawer-sessions>
     {% for s in person.sessions[:3] %}

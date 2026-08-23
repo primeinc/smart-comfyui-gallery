@@ -185,9 +185,11 @@ re-interprets the file at once, so the context reads
 `location_basis = 'authored'`. The claim survives every rebuild. A
 picture's page says where, or "nowhere said", and offers the form; a
 selection can be placed at once (`POST /g/selection/place`); `/places`
-lists every place named with its count; the `place.id` facet is the
-door to everything there, and a session whose placed members agree
-carries the place on its card.
+lists every place named with its count and span; the `place.id` facet
+is the door to everything there (its chip says the name); a session
+whose placed members agree carries the place on its card; a person's,
+a folder's and an album's page say where their pictures are; a story's
+`located` claim says it in words.
 
 ## Timeline
 
