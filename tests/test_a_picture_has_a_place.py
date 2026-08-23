@@ -91,3 +91,38 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         assert gone.json()["where"] is None
         assert client.get(f"/i/{a}", headers=AS_MACHINE).json()["where"] is None
         assert client.post(f"/i/{c}/place", json={"name": "Mars", "kind": "planet"}).status_code == 400
+
+
+def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
+    """A session's place is the one place its placed members agree on;
+    members nobody placed do not veto, two places do."""
+    import os
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    at = 1_686_355_200.0 + 14 * 3600
+    for i in range(3):
+        path = root / f"Screenshot 2023-06-10 at 14.{i * 5:02d}.00.png"
+        Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(path)
+        os.utime(path, (at + i * 300, at + i * 300))
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        client.post("/roots", json={"path": str(root)})
+        client.post("/roots/1/scan")
+        client.post("/jobs/ingest")
+        client.post("/jobs/context")
+        _drain(client)
+        a, b, c = _slugs(client)
+        client.post(f"/i/{a}/place", json={"name": "Lisbon", "kind": "city"})
+        client.post(f"/i/{b}/place", json={"name": "Lisbon", "kind": "city"})
+        client.post("/jobs/events")
+        _drain(client)
+        sessions = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
+        assert len(sessions) == 1, sessions
+        assert sessions[0]["place"]["name"] == "Lisbon"
+        assert sessions[0]["place"]["qs"].startswith("f=place.id%3Aeq%3A")
+
+        client.post(f"/i/{c}/place", json={"name": "Porto", "kind": "city"})
+        client.post("/jobs/events")
+        _drain(client)
+        sessions = client.get("/timeline/density", params={"bin": "day"}, headers=AS_MACHINE).json()["sessions"]
+        assert sessions[0]["place"] is None, "two places: the session is not in one"

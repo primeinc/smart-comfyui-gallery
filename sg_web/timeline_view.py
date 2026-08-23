@@ -88,9 +88,34 @@ def _coverage(conn) -> dict:
 
 
 def _session(conn, row, *, samples: bool) -> dict:
-    event_id, kind, local_start, local_end, instant_start, instant_end, pictures, snapshot_id, render_id = row
+    (
+        event_id,
+        kind,
+        local_start,
+        local_end,
+        instant_start,
+        instant_end,
+        pictures,
+        snapshot_id,
+        render_id,
+        place_id,
+        place_name,
+        place_slug,
+    ) = row
     planner = PLANNER_FOR.get(kind)
     return {
+        #: where the session happened: the one place its placed members
+        #: agree on (db/events.py _shared_place), with the gallery door
+        "place": (
+            {
+                "id": place_id,
+                "name": place_name,
+                "slug": place_slug,
+                "qs": _door(facets.facet("place.id", "eq", str(place_id))),
+            }
+            if place_id is not None
+            else None
+        ),
         "id": event_id,
         "kind": kind,
         "domain": "wall" if local_start is not None else "instant",

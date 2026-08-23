@@ -263,6 +263,21 @@ def member_hash(uuids) -> str:
     return hashlib.sha256(",".join(uuids).encode()).hexdigest()[:16]
 
 
+def _shared_place(conn, file_ids, policy: int) -> int | None:
+    """The one place the members that have a place agree on, or None:
+    a session happened somewhere when nobody who said where disagrees.
+    Members nobody placed do not veto; two places do."""
+    ids = list(file_ids)
+    if not ids:
+        return None
+    rows = conn.execute(
+        "SELECT DISTINCT place_id FROM derived_media_context WHERE policy_version = ? AND place_id IS NOT NULL"
+        " AND file_id IN (" + ",".join("?" for _ in ids) + ")",
+        [policy, *ids],
+    ).fetchall()
+    return int(rows[0][0]) if len(rows) == 1 else None
+
+
 def _persist(conn, grouper, proposals, generation: int, policy: int, now: float) -> int:
     run_id = int(
         conn.execute(
@@ -285,7 +300,9 @@ def _persist(conn, grouper, proposals, generation: int, policy: int, now: float)
                     proposal.local_end,
                     proposal.instant_start,
                     proposal.instant_end,
-                    proposal.place_id,
+                    proposal.place_id
+                    if proposal.place_id is not None
+                    else _shared_place(conn, proposal.file_ids, policy),
                     proposal.confidence,
                     member_hash(proposal.uuids),
                 ),

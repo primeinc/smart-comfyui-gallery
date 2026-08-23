@@ -226,6 +226,17 @@
       head.className = "session-head";
       head.textContent = `${s.kind.replace("_", " ")} · ${s.pictures} pictures · ${spell(s.start, "hour", s.domain)} – ${spell(s.end, "hour", s.domain)}`;
       body.appendChild(head);
+      if (s.place) {
+        const at = document.createElement("div");
+        at.className = "session-people";
+        at.dataset.sessionPlace = String(s.place.id);
+        at.appendChild(document.createTextNode("in "));
+        const a = document.createElement("a");
+        a.href = `/g?${s.place.qs}`;
+        a.textContent = s.place.name;
+        at.appendChild(a);
+        body.appendChild(at);
+      }
       if (s.people && s.people.length) {
         const who = document.createElement("div");
         who.className = "session-people";
