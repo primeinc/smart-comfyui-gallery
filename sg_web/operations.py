@@ -32,7 +32,7 @@ from collections.abc import Callable
 from litestar import Request, Router, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
-from litestar.params import FromPath, URLEncodedBody
+from litestar.params import FromPath, FromQuery, URLEncodedBody
 from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -275,9 +275,9 @@ def job_items(
     state: State,
     request: Request,
     job_id: FromPath[int],
-    state_filter: str | None = None,
-    after: int = 0,
-    limit: int = 200,
+    state_filter: FromQuery[str | None] = None,
+    after: FromQuery[int] = 0,
+    limit: FromQuery[int] = 200,
 ) -> Response | Template:
     """A page of one job's items by state: `?state_filter=failed&after=N`
     -- JSON to a machine, a fragment the inspector swaps in otherwise.
@@ -308,7 +308,9 @@ def job_items(
 
 
 @get("/events", sync_to_thread=True)
-def events(state: State, after: int = 0, job: int | None = None, limit: int = 500) -> dict:
+def events(
+    state: State, after: FromQuery[int] = 0, job: FromQuery[int | None] = None, limit: FromQuery[int] = 500
+) -> dict:
     """A page of the ledger, ascending from `after`, the whole ledger or
     one job's: the gap-fill and the "earlier" read. Every row, never a
     sample; `next_after` pages the rest."""
@@ -322,7 +324,9 @@ def events(state: State, after: int = 0, job: int | None = None, limit: int = 50
 
 
 @get("/events/before", sync_to_thread=True)
-def events_before(state: State, before: int = 0, job: int | None = None, limit: int = 500) -> dict:
+def events_before(
+    state: State, before: FromQuery[int] = 0, job: FromQuery[int | None] = None, limit: FromQuery[int] = 500
+) -> dict:
     """The `limit` events with id < `before`, ascending: the tape's
     "earlier" button. Bounded; walks the index backwards and stops.
     No `before` is nothing earlier than the beginning: an empty page."""
@@ -336,7 +340,7 @@ def events_before(state: State, before: int = 0, job: int | None = None, limit: 
 
 
 @post("/jobs/{kind:str}", sync_to_thread=True)
-def launch(state: State, kind: FromPath[str], everything: bool = False) -> Template:
+def launch(state: State, kind: FromPath[str], everything: FromQuery[bool] = False) -> Template:
     """Start one sweep from its button -- `?everything=true` from the
     "again" button of a sweep that is otherwise for what is missing. The
     answer is the notice fragment; the job itself arrives on the

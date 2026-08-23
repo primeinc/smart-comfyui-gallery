@@ -20,6 +20,7 @@ import urllib.parse
 from litestar import Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.params import FromPath, FromQuery
 from litestar.response import Response, Template
 
 from db import connect, derived, evolution, facets, naming, pages, planning, rendering, settings, stories
@@ -66,7 +67,7 @@ def _heroes(conn, words: dict, frozen: dict) -> list[dict]:
 
 
 @get("/stories", sync_to_thread=True)
-def stories_index(state: State, request: Request, kind: str | None = None) -> Template | Response:
+def stories_index(state: State, request: Request, kind: FromQuery[str | None] = None) -> Template | Response:
     """Every story told, newest first -- the shelf the timeline's
     buttons fill -- or, with `?kind=`, those of one session kind. Each
     entry is its title and dek as rendered, its heroes, its subject
@@ -130,7 +131,7 @@ def freeze_snapshot(state: State, data: FreezeRequest) -> Response:
 
 
 @get("/stories/snapshots/{snapshot_id:int}", sync_to_thread=True)
-def snapshot_document(state: State, snapshot_id: int) -> dict:
+def snapshot_document(state: State, snapshot_id: FromPath[int]) -> dict:
     conn = connect.connect(state.db_path, read_only=True)
     try:
         try:
@@ -186,7 +187,7 @@ def plan_snapshot(state: State, data: PlanRequest) -> Response:
 
 
 @get("/stories/plans/{plan_id:int}", sync_to_thread=True)
-def plan_document(state: State, plan_id: int) -> dict:
+def plan_document(state: State, plan_id: FromPath[int]) -> dict:
     conn = connect.connect(state.db_path, read_only=True)
     try:
         try:
@@ -232,7 +233,7 @@ def render_plan(state: State, data: RenderRequest) -> Response:
 
 
 @get("/stories/renders/{render_id:int}", sync_to_thread=True)
-def render_document(state: State, render_id: int, request: Request) -> Response | Template:
+def render_document(state: State, render_id: FromPath[int], request: Request) -> Response | Template:
     """The verified render, as JSON or laid out as HTML by Accept. The
     page interprets no claim, joins no table, calls no model: every
     hero and every member is the FROZEN name, linked to its picture only
@@ -291,7 +292,9 @@ def render_document(state: State, render_id: int, request: Request) -> Response 
 
 
 @get("/stories/plans/{plan_id:int}/evolution", sync_to_thread=True)
-def plan_evolution(state: State, plan_id: int, request: Request, space: str | None = None) -> Response | Template:
+def plan_evolution(
+    state: State, plan_id: FromPath[int], request: Request, space: FromQuery[str | None] = None
+) -> Response | Template:
     """The Generation Evolution Explorer: a read-only view of one plan
     (db/evolution.py) -- JSON, or the page by Accept. `space` names
     the provider whose joint space and query policy every metric is

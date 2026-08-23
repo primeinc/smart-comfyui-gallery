@@ -36,6 +36,7 @@ import time
 from litestar import post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
+from litestar.params import FromPath, FromQuery
 from litestar.response import Response
 
 from db import authored, collections, connect, context, naming, places, resultset, settings
@@ -150,17 +151,17 @@ def _applied(state: State, query, data, write) -> Response:
 def bulk_favorite(
     state: State,
     data: BulkFlag,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    f: list[str] | None = None,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Response:
     query = _asked(
         folder,
@@ -187,17 +188,17 @@ def bulk_favorite(
 def bulk_rating(
     state: State,
     data: BulkRating,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    f: list[str] | None = None,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Response:
     query = _asked(
         folder,
@@ -224,17 +225,17 @@ def bulk_rating(
 def bulk_place(
     state: State,
     data: BulkPlace,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    f: list[str] | None = None,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Response:
     query = _asked(
         folder,
@@ -265,19 +266,19 @@ def bulk_place(
 @post("/g/selection/collections/{collection:str}", sync_to_thread=True)
 def bulk_membership(
     state: State,
-    collection: str,
+    collection: FromPath[str],
     data: BulkFlag,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    f: list[str] | None = None,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Response:
     query = _asked(
         folder,

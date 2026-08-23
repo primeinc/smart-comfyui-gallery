@@ -20,6 +20,7 @@ import time
 from litestar import get
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
+from litestar.params import FromPath, FromQuery
 from litestar.response import Template
 
 from db import connect, naming, places, resultset, settings
@@ -144,18 +145,18 @@ def _chip_label(held, spelled_places: dict[int, str | None]) -> str:
 @get("/g", sync_to_thread=True)
 def gallery(
     state: State,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    f: list[str] | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    page: int = 1,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    page: FromQuery[int] = 1,
 ) -> Template:
     """The gallery, whole, from nothing but the URL."""
     query = _asked(
@@ -177,18 +178,18 @@ def gallery(
 @get("/g/grid", sync_to_thread=True)
 def grid_fragment(
     state: State,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    f: list[str] | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    page: int = 1,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    page: FromQuery[int] = 1,
 ) -> Template:
     """One page of cells, for the running page to swap in place."""
     query = _asked(
@@ -210,20 +211,20 @@ def grid_fragment(
 @get("/g/peek", sync_to_thread=True)
 def rail_peek(
     state: State,
-    page: int,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    f: list[str] | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    count: int = resultset.PEEK_MOST,
-    expect: str | None = None,
+    page: FromQuery[int],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    count: FromQuery[int] = resultset.PEEK_MOST,
+    expect: FromQuery[str | None] = None,
 ) -> dict:
     """The rail popover: real members of exactly the page a jump would
     land on, never a guess from scroll height.
@@ -266,18 +267,18 @@ def rail_peek(
 @get("/g/locate/{slug:str}", sync_to_thread=True)
 def locate_in_answer(
     state: State,
-    slug: str,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    f: list[str] | None = None,
-    sort: str | None = None,
-    size: int | None = None,
+    slug: FromPath[str],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
 ) -> dict:
     """Where one picture sits in this answer -- ordinal, page, and its
     previous/next in ANSWER order, which is what the arrows mean while

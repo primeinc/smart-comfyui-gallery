@@ -23,6 +23,7 @@ import time
 from litestar import Request, get
 from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
+from litestar.params import FromPath
 from litestar.response import Redirect, Response, Template
 
 from db import connect, naming, pages, resultset, settings
@@ -95,15 +96,15 @@ def _artifact_page(state: State, request: Request, slug: str, shelf: str) -> Tem
 
 
 @get("/m/{slug:str}", sync_to_thread=True)
-def model_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+def model_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     return _artifact_page(state, request, slug, "/m")
 
 
 @get("/l/{slug:str}", sync_to_thread=True)
-def lora_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+def lora_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     return _artifact_page(state, request, slug, "/l")
 
 
 @get("/w/{slug:str}", sync_to_thread=True)
-def workflow_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+def workflow_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     return _artifact_page(state, request, slug, "/w")

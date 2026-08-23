@@ -24,6 +24,7 @@ import time
 from litestar import get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.params import FromPath
 from litestar.response import Response
 
 from db import authored, collections, connect, context, naming, pages, places
@@ -64,7 +65,7 @@ class DesiredRating:
 
 
 @post("/i/{slug:str}/favorite", sync_to_thread=True)
-def set_favorite(state: State, slug: str, data: DesiredFlag) -> Response:
+def set_favorite(state: State, slug: FromPath[str], data: DesiredFlag) -> Response:
     conn = connect.connect(state.db_path)
     try:
         file_id = _resolved(conn, "file", slug, "/i")
@@ -88,7 +89,7 @@ class DesiredPlace:
 
 
 @post("/i/{slug:str}/place", sync_to_thread=True)
-def set_place(state: State, slug: str, data: DesiredPlace) -> Response:
+def set_place(state: State, slug: FromPath[str], data: DesiredPlace) -> Response:
     """Say where this picture happened. The place is found or minted by
     name and kind, the claim is authored desired state, and the file's
     context is re-interpreted at once so every page reads it."""
@@ -115,7 +116,7 @@ def set_place(state: State, slug: str, data: DesiredPlace) -> Response:
 
 
 @post("/i/{slug:str}/rating", sync_to_thread=True)
-def set_rating(state: State, slug: str, data: DesiredRating) -> Response:
+def set_rating(state: State, slug: FromPath[str], data: DesiredRating) -> Response:
     conn = connect.connect(state.db_path)
     try:
         file_id = _resolved(conn, "file", slug, "/i")
@@ -130,7 +131,7 @@ def set_rating(state: State, slug: str, data: DesiredRating) -> Response:
 
 
 @post("/i/{slug:str}/collections/{collection:str}", sync_to_thread=True)
-def set_membership(state: State, slug: str, collection: str, data: DesiredFlag) -> Response:
+def set_membership(state: State, slug: FromPath[str], collection: FromPath[str], data: DesiredFlag) -> Response:
     conn = connect.connect(state.db_path)
     try:
         file_id = _resolved(conn, "file", slug, "/i")
@@ -146,7 +147,7 @@ def set_membership(state: State, slug: str, collection: str, data: DesiredFlag) 
 
 
 @get("/i/{slug:str}/collection-choices", sync_to_thread=True)
-def collection_choices(state: State, slug: str) -> Response:
+def collection_choices(state: State, slug: FromPath[str]) -> Response:
     """The album picker's menu: every LISTED collection and whether this
     file is filed in each. Lazily fetched on click -- the MediaView
     itself carries only current memberships -- and not an entity: no

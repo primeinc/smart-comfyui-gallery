@@ -33,7 +33,9 @@ from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.connection import WebSocket
 from litestar.datastructures import State
+from litestar.di import NamedDependency
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.params import FromPath, FromQuery
 from litestar.plugins import InitPlugin
 from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.response import Redirect, Response, Stream
@@ -223,12 +225,12 @@ def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool
 
 
 @post("/t/{slug:str}/add", sync_to_thread=True)
-def album_add(state: State, slug: str, data: AlbumEntry) -> dict:
+def album_add(state: State, slug: FromPath[str], data: AlbumEntry) -> dict:
     return _album_membership(state, slug, data, adding=True)
 
 
 @post("/t/{slug:str}/remove", sync_to_thread=True)
-def album_remove(state: State, slug: str, data: AlbumEntry) -> dict:
+def album_remove(state: State, slug: FromPath[str], data: AlbumEntry) -> dict:
     return _album_membership(state, slug, data, adding=False)
 
 
@@ -267,7 +269,7 @@ def active_jobs(state: State) -> list[dict]:
 
 
 @get("/jobs/{job_id:int}", sync_to_thread=True)
-def job_snapshot(state: State, job_id: int) -> dict:
+def job_snapshot(state: State, job_id: FromPath[int]) -> dict:
     """The persisted snapshot -- what a client renders from cold. A page
     reload or a dropped socket recovers by reading this, never a replay."""
     conn = _connect(state.db_path)
@@ -361,7 +363,7 @@ def submit_thumbs(state: State) -> dict | Response:
 
 
 @post("/jobs/phash", sync_to_thread=True)
-def submit_phash(state: State, everything: bool = False) -> dict | Response:
+def submit_phash(state: State, everything: FromQuery[bool] = False) -> dict | Response:
     """Ask for the perceptual fingerprint of every present picture still
     without one -- `?everything=true` for all of them again -- the
     identity that survives copies of copies (db/runner.py submit_phash).
@@ -378,7 +380,7 @@ def submit_phash(state: State, everything: bool = False) -> dict | Response:
 
 
 @post("/jobs/embed", sync_to_thread=True)
-def submit_embed(state: State, everything: bool = False) -> list[dict]:
+def submit_embed(state: State, everything: FromQuery[bool] = False) -> list[dict]:
     """Ask for the joint image/text embedding of every present picture
     still without a current vector -- `?everything=true` for all of them
     again -- the representation /search answers from (db/runner.py
@@ -421,7 +423,13 @@ def submit_embed_prompts(state: State) -> list[dict]:
 
 
 @get("/prompts/{prompt_id:int}/neighbours", sync_to_thread=True)
-def prompt_neighbours(state: State, prompt_id: int, space: str, k: int = 10, role: str | None = None) -> dict:
+def prompt_neighbours(
+    state: State,
+    prompt_id: FromPath[int],
+    space: FromQuery[str],
+    k: FromQuery[int] = 10,
+    role: FromQuery[str | None] = None,
+) -> dict:
     """Prompts nearest to one prompt in ONE chosen space (`space` names
     the provider) under its current query policy, by that space's own
     cosine; no model loads. `role` constrains the candidates before
@@ -441,7 +449,7 @@ def prompt_neighbours(state: State, prompt_id: int, space: str, k: int = 10, rol
 
 
 @get("/search", sync_to_thread=True)
-def search(state: State, q: str, k: int = 60) -> dict:
+def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
     """Pictures by what they LOOK like: the phrase becomes a query vector
     in every participating joint space, each resident index answers with
     its nearest pictures, and the rankings fuse (db/retrieval.py) -- no
@@ -514,7 +522,7 @@ def dupes(state: State) -> list[dict]:
 
 
 @post("/jobs/context", sync_to_thread=True)
-def submit_context(state: State, everything: bool = False) -> dict | Response:
+def submit_context(state: State, everything: FromQuery[bool] = False) -> dict | Response:
     """Ask for every present file still without a current interpretation
     to get one from its sources' claims -- `?everything=true` for all of
     them again -- one item per file (db/runner.py submit_context). 204
@@ -545,7 +553,7 @@ def submit_events(state: State) -> dict:
 
 
 @post("/jobs/ingest", sync_to_thread=True)
-def submit_ingest(state: State, everything: bool = False) -> dict | Response:
+def submit_ingest(state: State, everything: FromQuery[bool] = False) -> dict | Response:
     """Ask for the metadata of every present file not yet read for its
     current bytes -- `?everything=true` for all of them again -- the
     expensive half of scanning, as a job (db/runner.py submit_ingest).
@@ -601,7 +609,7 @@ def _file_at(conn, slug: str, where: str) -> tuple[int, str] | str:
 
 
 @route("/media/{slug:str}", http_method=["GET", "HEAD"], sync_to_thread=True)
-def media_bytes(state: State, slug: str, request: Request) -> Stream | Redirect | Response:
+def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream | Redirect | Response:
     """The original bytes, typed by what they are and seekable by range.
 
     Content-Type comes from the sniff, never the suffix -- the route
@@ -699,19 +707,19 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
 
 
 @get("/thumb/{slug:str}", sync_to_thread=True)
-def thumb_bytes(state: State, slug: str) -> Response | Redirect:
+def thumb_bytes(state: State, slug: FromPath[str]) -> Response | Redirect:
     """The grid cell: longest side 512, upright, aspect kept."""
     return _variant_bytes(state, slug, "thumb", "/thumb")
 
 
 @get("/preview/{slug:str}", sync_to_thread=True)
-def preview_bytes(state: State, slug: str) -> Response | Redirect:
+def preview_bytes(state: State, slug: FromPath[str]) -> Response | Redirect:
     """The lightbox image: longest side 1440, upright, aspect kept."""
     return _variant_bytes(state, slug, "preview", "/preview")
 
 
 @get("/avatar/{slug:str}", sync_to_thread=True)
-def avatar_bytes(state: State, slug: str) -> Response | Redirect:
+def avatar_bytes(state: State, slug: FromPath[str]) -> Response | Redirect:
     """A person's face, squared: their highest-confidence detection in the
     primary run, cropped with context (vision/thumbs.py). A video face is
     cropped from the sampled frame the detection actually looked at."""
@@ -761,7 +769,7 @@ def all_settings(state: State) -> list[dict]:
 
 
 @post("/settings/{key:str}", sync_to_thread=True)
-def change_setting(state: State, key: str, data: dict) -> dict:
+def change_setting(state: State, key: FromPath[str], data: dict) -> dict:
     """Change one setting while the application runs. Unknown keys and
     out-of-vocabulary values are refused, so the table only ever holds
     configuration something reads."""
@@ -778,7 +786,7 @@ def change_setting(state: State, key: str, data: dict) -> dict:
 
 
 @post("/jobs/{job_id:int}/cancel", sync_to_thread=True)
-def cancel_job(state: State, job_id: int) -> dict:
+def cancel_job(state: State, job_id: FromPath[int]) -> dict:
     """Ask a job to stop. The runner stops it, at an item boundary; a
     still-queued job needs a claim to settle, hence the nudge."""
     conn = _connect(state.db_path)
@@ -804,7 +812,7 @@ def _active_jobs_of(db_path: str) -> list[dict]:
 
 
 @websocket("/ws/jobs")
-async def jobs_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -> None:
+async def jobs_feed(socket: WebSocket, channels: NamedDependency[ChannelsPlugin], state: State) -> None:
     """Live job progress: the persisted snapshot first, then every delta.
 
     The subscription opens BEFORE the snapshot is read, so a delta landing
@@ -873,7 +881,7 @@ def _backlog_of(db_path: str, after: int) -> tuple[list[dict], int]:
 
 
 @websocket("/ws/events")
-async def events_feed(socket: WebSocket, channels: ChannelsPlugin, state: State) -> None:
+async def events_feed(socket: WebSocket, channels: NamedDependency[ChannelsPlugin], state: State) -> None:
     """The ledger, live: `?after=N` names the last event id the client
     holds; everything newer is sent first as `backlog` frames read from
     the rows, then every committed row as it is published (`event`) and
@@ -946,7 +954,7 @@ def add_root(state: State, data: NewRoot) -> dict:
 
 
 @post("/roots/{root_id:int}/scan", sync_to_thread=True)
-def scan_root(state: State, root_id: int) -> dict:
+def scan_root(state: State, root_id: FromPath[int]) -> dict:
     """Walk one root and reconcile the library with what is on disk."""
     conn = _connect(state.db_path)
     try:

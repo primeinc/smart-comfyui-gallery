@@ -23,7 +23,7 @@ import time
 from litestar import Request, get
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
-from litestar.params import Parameter
+from litestar.params import FromQuery, QueryParameter
 from litestar.response import Response, Template
 
 from db import connect, context, facets, pages, planning, resultset, settings
@@ -223,17 +223,17 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
 @get("/timeline/density", sync_to_thread=True)
 def density(
     state: State,
-    bin_name: str = Parameter(query="bin", default="day"),
-    start: float | None = None,
-    end: float | None = None,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    f: list[str] | None = None,
+    bin_name: str = QueryParameter(name="bin", default="day"),
+    start: FromQuery[float | None] = None,
+    end: FromQuery[float | None] = None,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Response:
     """The surface at one zoom: pictures per bin of the human moment
     over [start, end) -- the whole interpreted extent when no range is
@@ -315,14 +315,14 @@ def density(
 def timeline(
     state: State,
     request: Request,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    f: list[str] | None = None,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Template | Response:
     asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     conn = connect.connect(state.db_path, read_only=True)

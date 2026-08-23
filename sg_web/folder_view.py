@@ -30,6 +30,7 @@ import urllib.parse
 from litestar import Request, get
 from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
+from litestar.params import FromPath
 from litestar.response import Redirect, Response, Template
 
 from db import connect, facets, library, naming, pages, resultset, settings
@@ -139,7 +140,7 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
 
 
 @get("/f/{slug:str}", sync_to_thread=True)
-def folder_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+def folder_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     """One folder at its address, presented for whoever is asking. A
     retired slug redirects to the live one."""
     conn = connect.connect(state.db_path)

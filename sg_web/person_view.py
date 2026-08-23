@@ -30,6 +30,7 @@ import urllib.parse
 from litestar import Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.params import FromPath
 from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, facets, naming, pages, resultset, settings
@@ -152,7 +153,7 @@ def people_index(state: State, request: Request) -> Template | Response:
 
 
 @get("/p/{slug:str}", sync_to_thread=True)
-def person_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+def person_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     """One person at their address, presented for whoever is asking. A
     retired slug redirects to the live one, so one person never has two
     addresses serving content."""
@@ -185,7 +186,7 @@ class NewName:
 
 
 @post("/p/{slug:str}/name", sync_to_thread=True)
-def name_person(state: State, slug: str, data: NewName) -> dict:
+def name_person(state: State, slug: FromPath[str], data: NewName) -> dict:
     """Name a person -- the People page's primary action.
 
     The name becomes the address: a new slug is minted and the old one

@@ -42,6 +42,7 @@ import time
 from litestar import Request, get
 from litestar.datastructures import State
 from litestar.exceptions import HTTPException, NotFoundException
+from litestar.params import FromPath, FromQuery
 from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, derived, naming, pages, places, resultset, settings
@@ -244,18 +245,18 @@ def _when(conn, file_id: int) -> dict | None:
 def media_page(
     state: State,
     request: Request,
-    slug: str,
-    folder: str | None = None,
-    album: str | None = None,
-    person: str | None = None,
-    artifact: str | None = None,
-    kind: str | None = None,
-    favorite: str | None = None,
-    rating_min: int | None = None,
-    q: str | None = None,
-    sort: str | None = None,
-    size: int | None = None,
-    f: list[str] | None = None,
+    slug: FromPath[str],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    f: FromQuery[list[str] | None] = None,
 ) -> Template | Response | Redirect:
     """One media item at its address, presented for whoever is asking.
 

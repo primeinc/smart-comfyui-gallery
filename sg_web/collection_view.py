@@ -38,7 +38,7 @@ import urllib.parse
 from litestar import Request, get
 from litestar.datastructures import State
 from litestar.exceptions import NotFoundException
-from litestar.params import Parameter
+from litestar.params import FromPath, QueryParameter
 from litestar.response import Redirect, Response, Template
 
 from db import collection_rules, collections, connect, facets, naming, pages, resultset, settings
@@ -217,7 +217,7 @@ def _albums_nested(db_path: str) -> tuple[list[dict], int]:
 async def albums_index(
     state: State,
     request: Request,
-    shown: str | None = Parameter(query="state", default=None, required=False),
+    shown: str | None = QueryParameter(name="state", default=None, required=False),
 ) -> Template | Response:
     """Every active collection, alphabetically -- rendered for a
     browser, the historical JSON list for everything else.
@@ -274,7 +274,7 @@ def _album_page(state: State, request: Request, slug: str) -> Template | Respons
 
 
 @get("/t/{slug:str}")
-async def album_page(state: State, request: Request, slug: str) -> Template | Response | Redirect:
+async def album_page(state: State, request: Request, slug: FromPath[str]) -> Template | Response | Redirect:
     """One collection at its address, presented for whoever is asking. A
     retired slug redirects to the live one. The definition's concurrency
     token is `definition_rev` in the body -- deliberately NOT an ETag:

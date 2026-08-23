@@ -29,6 +29,7 @@ import time
 from litestar import patch, post, put
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
+from litestar.params import FromPath
 from litestar.response import Response
 
 from db import collection_rules, collections, connect, naming, settings
@@ -210,7 +211,7 @@ def _edit_definition(state: State, expected_rev, slug: str, data: dict) -> Respo
 
 
 @patch("/t/{slug:str}")
-async def edit_definition(state: State, slug: str, data: dict) -> Response:
+async def edit_definition(state: State, slug: FromPath[str], data: dict) -> Response:
     """The whole definition edit as one desired-state patch under one
     revision claim. Kind is deliberately not patchable -- changing how
     membership is decided is a transition, not a field.
@@ -225,7 +226,7 @@ async def edit_definition(state: State, slug: str, data: dict) -> Response:
 
 
 @put("/t/{slug:str}/rule", sync_to_thread=True)
-def replace_rule(state: State, slug: str, data: dict) -> Response:
+def replace_rule(state: State, slug: FromPath[str], data: dict) -> Response:
     """This exact rule is now the collection's meaning: whole desired
     state, never predicate edits, under the same revision claim as any
     definition write. The body carries the same GalleryQuery-shaped
@@ -256,7 +257,7 @@ def replace_rule(state: State, slug: str, data: dict) -> Response:
 
 
 @post("/t/{slug:str}/convert", sync_to_thread=True)
-def convert_collection(state: State, slug: str, data: dict) -> Response:
+def convert_collection(state: State, slug: FromPath[str], data: dict) -> Response:
     """An explicit definition-mode transition. album<->flag moves
     freely; becoming smart requires an empty membership and a valid rule
     in this same operation; leaving smart requires the rule's discard
