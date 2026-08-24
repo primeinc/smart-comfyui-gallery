@@ -12,9 +12,14 @@ ceiling is what the application costs around the model, and it decides
 whether faster encoding is worth anything.
 
 Per-item timings come from the runner's own event stream rather than from
-instrumentation added here: `item.started` and `item.finished` are
-already committed with timestamps, so subtracting them measures the item
-as the console sees it.
+instrumentation added here: `item.started` and `item.done` are already
+committed with timestamps, so subtracting them measures the item as the
+console sees it.
+
+Resources are sampled while the job runs. `time.process_time()` over wall
+time gives the mean cores this process kept busy, which is the contention
+question and costs nothing; GPU utilisation comes from nvidia-smi,
+because pynvml is not installed and is not worth a dependency here.
 
 The database is a temporary one. The library's roots are scanned
 read-only into it, so a benchmark can never write to a real run's
@@ -26,10 +31,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import statistics
+import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 # The repo root on sys.path, so the script runs from any cwd without
@@ -77,6 +85,64 @@ def staged(home: pathlib.Path, roots: list[pathlib.Path], limit: int):
     return conn, kept
 
 
+class Watching:
+    """GPU utilisation and memory, sampled while something else runs.
+
+    Through `nvidia-smi` rather than a library: pynvml and psutil are not
+    installed and neither is worth a dependency for a benchmark. CPU is
+    not sampled at all -- `time.process_time()` over wall time already
+    says how many cores this process kept busy, which is the contention
+    question, and it needs nothing.
+    """
+
+    def __init__(self, every: float = 0.25) -> None:
+        self.every = every
+        self.utilisation: list[int] = []
+        self.memory_mb: list[int] = []
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def __enter__(self) -> Watching:
+        self._thread = threading.Thread(target=self._sample, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+
+    def _sample(self) -> None:
+        query = [
+            "nvidia-smi",
+            "--query-gpu=utilization.gpu,memory.used",
+            "--format=csv,noheader,nounits",
+            "--id=0",
+        ]
+        while not self._stop.is_set():
+            try:
+                found = subprocess.run(query, capture_output=True, text=True, timeout=5, check=False)
+            except (OSError, subprocess.SubprocessError):
+                return
+            line = found.stdout.strip().splitlines()
+            if line:
+                parts = [part.strip() for part in line[0].split(",")]
+                if len(parts) == 2 and all(part.isdigit() for part in parts):
+                    self.utilisation.append(int(parts[0]))
+                    self.memory_mb.append(int(parts[1]))
+            self._stop.wait(self.every)
+
+    def summary(self) -> dict:
+        if not self.utilisation:
+            return {"samples": 0}
+        return {
+            "samples": len(self.utilisation),
+            "gpu_percent_mean": round(statistics.mean(self.utilisation), 1),
+            "gpu_percent_max": max(self.utilisation),
+            "gpu_memory_mb_max": max(self.memory_mb),
+        }
+
+
 def run(conn, models_dir: str, owner: str) -> dict:
     """One embed job, timed, with the runner's own per-item stamps."""
     from db import runner
@@ -86,6 +152,7 @@ def run(conn, models_dir: str, owner: str) -> dict:
         raise SystemExit("nothing to embed; the cache already covers this corpus")
     started: dict[int, float] = {}
     latencies: list[float] = []
+    settled: list[tuple[int, float]] = []
     phases: list[tuple[float, str]] = []
 
     def heard(event) -> None:
@@ -100,17 +167,31 @@ def run(conn, models_dir: str, owner: str) -> dict:
         if kind == "item.started" and item is not None:
             started[item] = when
         elif kind in ("item.done", "item.failed") and item is not None and item in started:
-            latencies.append((when - started.pop(item)) * 1000)
+            took = (when - started.pop(item)) * 1000
+            latencies.append(took)
+            settled.append((item, took))
         elif kind == "item.observed":
             phases.append((when, str(event.get("phase"))))
 
+    kinds = dict(conn.execute("SELECT id, kind FROM file").fetchall())
+    per_kind: dict[str, list[float]] = {}
+
     opened = time.perf_counter()
-    summary = runner.run_next(conn, owner, 1.0, clock=time.time, on_event=heard)
-    whole = time.perf_counter() - opened
+    cpu_opened = time.process_time()
+    with Watching() as watching:
+        summary = runner.run_next(conn, owner, 1.0, clock=time.time, on_event=heard)
+        whole = time.perf_counter() - opened
+        cpu = time.process_time() - cpu_opened
+    for item, took in settled:
+        per_kind.setdefault(kinds.get(item, "?"), []).append(took)
     return {
         "job": summary,
         "wall_ms": whole * 1000,
+        "cpu_seconds": cpu,
+        "cores_busy": cpu / whole if whole else 0.0,
         "latencies_ms": latencies,
+        "by_kind_ms": per_kind,
+        "gpu": watching.summary(),
         "phases": phases,
     }
 
@@ -207,6 +288,22 @@ def main() -> None:
             f"p95 {latencies[min(len(latencies) - 1, round(0.95 * (len(latencies) - 1)))]:.1f} ms   "
             f"max {latencies[-1]:.1f} ms"
         )
+    by_kind = found["by_kind_ms"]
+    if len(by_kind) > 1:
+        print("  by media kind:")
+        for kind, took in sorted(by_kind.items(), key=lambda pair: -statistics.median(pair[1])):
+            print(f"    {kind:16} n={len(took):4}  p50 {statistics.median(took):7.1f} ms  max {max(took):7.1f} ms")
+    print(
+        f"  cores busy: {found['cores_busy']:.2f} of {os.cpu_count()}"
+        f"  (CPU {found['cpu_seconds']:.1f} s over {found['wall_ms'] / 1000:.1f} s wall)"
+    )
+    gpu = found["gpu"]
+    if gpu.get("samples"):
+        print(
+            f"  gpu: {gpu['gpu_percent_mean']:.0f}% mean, {gpu['gpu_percent_max']}% peak, "
+            f"{gpu['gpu_memory_mb_max']} MB peak ({gpu['samples']} samples)"
+        )
+
     inside = limit["decode_ms"] + limit["encode_ms"]
     print(
         f"\n  the job spends {found['wall_ms']:.0f} ms where decode and encode alone are {inside:.0f} ms:"
@@ -232,6 +329,12 @@ def main() -> None:
                     "max": round(latencies[-1], 1) if latencies else None,
                 },
                 "ceiling": {key: round(value, 1) for key, value in limit.items()},
+                "cores_busy": round(found["cores_busy"], 2),
+                "cpu_count": os.cpu_count(),
+                "gpu": found["gpu"],
+                "by_kind_p50_ms": {
+                    kind: round(statistics.median(took), 1) for kind, took in found["by_kind_ms"].items()
+                },
             },
             indent=2,
         ),
