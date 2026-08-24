@@ -39,6 +39,13 @@ workspace *args:
 thumbs-delivery *args:
     @"$python" benchmarks/thumb_delivery.py "$@"
 
+# Captioning throughput against batch size, precision and decode size --
+# each variant's captions compared word for word with today's, because a
+# caption that got faster by becoming a different caption is not the same
+# feature: benchmarks/results/caption_batch.json
+captions *args:
+    @"$python" benchmarks/caption_batch.py "$@"
+
 # Where thumbnail time goes, per phase and media kind, over a run's own
 # library: benchmarks/results/thumbnail_phases.json
 thumbs-phases *args:
@@ -71,7 +78,8 @@ clip-raster *args:
 
 # What a JOB achieves end to end and where its time goes, read off the
 # runner's own phase durations: benchmarks/results/job_<name>.json.
-# `--job scan|embed|hash|context`, `--under <root>` to pick a population.
+# `--job scan|embed|hash|context|annotate`, `--under <root>` to pick a
+# population.
 # Scans into a TEMPORARY database, never a real run's.
 job-phases *args:
     @"$python" benchmarks/job_phases.py "$@"

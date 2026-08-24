@@ -563,8 +563,50 @@ def openclip_batch() -> int:
     return openclip.BATCH
 
 
+class _Said:
+    """Captions computed for items the job has not reached yet.
+
+    The same bargain `_Ahead` makes for vectors, for the same reason: the
+    runner still works one item at a time -- started, committed, worked
+    and settled on its own -- and what changes is only WHEN the model
+    runs. An item that finds no caption waiting takes the next few of the
+    job's own pending items, captions them together, and keeps the rest
+    here.
+
+    Nothing durable is written ahead. A cancelled job discards what is
+    held, which costs the forward pass and nothing else: a caption is
+    regenerable by definition, which is what makes this safe to do
+    speculatively and a database write not.
+
+    Keyed by job alone, unlike vectors: one job carries one
+    `caption_model` in its payload (db/runner.py `submit_annotate` reads
+    the setting once), so there is no second axis for two answers about
+    one file to cross on.
+    """
+
+    def __init__(self) -> None:
+        self._held: dict[int, dict[int, str]] = {}
+
+    def take(self, job_id: int, file_id: int) -> str | None:
+        return self._held.get(job_id, {}).pop(file_id, None)
+
+    def keep(self, job_id: int, said: dict[int, str]) -> None:
+        self._held.setdefault(job_id, {}).update(said)
+
+    def forget(self, job_id: int) -> None:
+        self._held.pop(job_id, None)
+
+
+def caption_batch() -> int:
+    from vision import captions
+
+    return captions.BATCH
+
+
 #: Per process. A job's held vectors are dropped when its turn ends.
 _ahead = _Ahead()
+#: The same, for captions.
+_said = _Said()
 
 
 def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
@@ -1088,6 +1130,85 @@ def submit_annotate(conn, now: float, *, models_dir: str, everything: bool = Fal
     return jobs.submit(conn, "annotate", now, payload=payload, items=items)
 
 
+def _caption_with_lookahead(conn, told, captioner, file_id: int, kind: str, frame) -> str:
+    """This picture's caption, and as many of the job's next as fit.
+
+    The same shape the embed job uses (`_Ahead`), for the same measured
+    reason: one picture per `generate()` was 3.62 pictures/sec where a
+    batch of sixteen is 21.28. The item asked about is captioned and
+    returned exactly as before; the others are simply already done when
+    their turn comes.
+
+    A VIDEO leads no batch. Its poster is only half its work -- the
+    sampled moments are captioned per clip afterwards -- so batching it
+    with stills would mix two shapes of work for the smaller half.
+    """
+    from . import detect, oriented
+
+    if kind == "video":
+        told.phase("captioning", model=captioner.model_id)
+        return captioner.describe(frame)
+
+    together: list[tuple[int, object]] = []
+    # The LEADER is charged first: it is in the batch and it decodes like
+    # any other member, so leaving it out would make the stated bound a
+    # bound on the followers.
+    mine = conn.execute("SELECT width, height FROM file WHERE id = ?", (file_id,)).fetchone()
+    budget = BATCH_MEGAPIXELS - _megapixels(mine)
+    for item in [one for one in jobs.pending(conn, told.job_id) if one != file_id][: caption_batch() - 1]:
+        row = conn.execute("SELECT kind, width, height FROM file WHERE id = ?", (item,)).fetchone()
+        if row is None or row[0] == "video":
+            continue
+        # Bounded by PIXELS as well as by count, because cancellation is
+        # checked BETWEEN items and a batch runs inside one: an unbounded
+        # batch is an unbounded wait for somebody who asked it to stop.
+        budget -= _megapixels(row[1:])
+        if budget < 0:
+            break
+        together.append((item, detect.path_of(conn, item)))
+
+    if not together:
+        told.phase("captioning", model=captioner.model_id)
+        return captioner.describe(frame)
+
+    # Decoded HERE, on this thread, from paths and orientations read
+    # here. Handing a connection to a worker is what once turned the
+    # embed batch into a silent four-times-slower fallback.
+    frames = [frame]
+    kept: list[int] = []
+    for item, path in together:
+        try:
+            held = oriented.for_model(conn, item, path)
+        except (OSError, ValueError):
+            # Its own turn will fail it, by its own name, with its own
+            # error. Dropping it from the batch is not deciding anything
+            # about it.
+            continue
+        frames.append(held)
+        kept.append(item)
+
+    # Reported ONCE, against the item that triggered it, and named so it
+    # cannot be read as that item's own cost: `pictures` says how many it
+    # covered. The others report no captioning phase at all, which is
+    # true -- they performed none.
+    told.phase("batch-captioning", model=captioner.model_id, pictures=len(frames))
+    try:
+        said = captioner.describe_many(frames)
+    except (OSError, ValueError) as why:
+        # Narrower than ITEM_FAILURES on purpose. What a batch may
+        # legitimately fail with is what a bad PICTURE raises; catching
+        # sqlite3.Error here once turned a threading defect into a silent
+        # fallback that ran four times slower with nothing in the log.
+        _logger.warning(
+            "job #%d: a caption batch of %d failed (%s); captioning this item alone", told.job_id, len(frames), why
+        )
+        told.phase("captioning", model=captioner.model_id)
+        return captioner.describe(frame)
+
+    _said.keep(told.job_id, {item: text for item, text in zip(kept, said[1:], strict=True) if text})
+    return said[0]
+
+
 def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
     """One file through the captioner the payload names; a video is
     captioned by its poster frame, the same frame search embeds. The
@@ -1121,12 +1242,14 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
     if sha is None:
         sha = scan.sha256_of(path)
         conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
-    told.phase("decoding", kind=kind)
-    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
-    if frame is None:
-        raise ValueError(f"file {file_id} has no decodable frame to caption")
-    told.phase("captioning", model=captioner.model_id)
-    text = captioner.describe(frame).strip()
+    # Captioned already, with the batch some earlier item led.
+    text = _said.take(told.job_id, file_id) or ""
+    if not text:
+        told.phase("decoding", kind=kind)
+        frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+        if frame is None:
+            raise ValueError(f"file {file_id} has no decodable frame to caption")
+        text = _caption_with_lookahead(conn, told, captioner, file_id, kind, frame).strip()
     if not text:
         raise ValueError(f"{captioner.model_id} said nothing about file {file_id}")
     told.phase("recording")
@@ -1305,7 +1428,12 @@ def run_next(
     # items it covered may have been worked by another worker since, and
     # a vector held across a lease lapse is a guess about a file nobody
     # has looked at recently. Recomputing is the cheap half of this.
+    #
+    # Captions the same, and for the same reason: a sentence held across
+    # a lease lapse is a claim about bytes that may have changed, and a
+    # caption records the `source_sha256` it was made from.
     _ahead.forget(job_id)
+    _said.forget(job_id)
 
     kind, raw, attempt, lease_until = conn.execute(
         "SELECT kind, payload, attempt, lease_until FROM job WHERE id = ?", (job_id,)

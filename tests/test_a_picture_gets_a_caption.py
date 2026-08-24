@@ -362,3 +362,180 @@ def test_a_moments_caption_is_a_link_into_the_clip(tmp_path, monkeypatch):
         assert 'data-said-seek="0"' in page, "the first sampled moment is the clip's start"
         assert "<video" in page
         assert page.count("data-said-seek=") >= 2
+
+
+# --- captioned in batches ---------------------------------------------------
+#
+# One picture per `generate()` left the GPU idle between them. Measured
+# on 48 real pictures (`just bench captions`): 3.62 pictures/sec alone,
+# 15.72 batched at sixteen with every caption IDENTICAL, 21.28 batched in
+# half precision. The runner still works one item at a time -- started,
+# committed, settled on its own -- and what changed is only WHEN the model
+# runs.
+
+
+class BatchCaptioner(FakeCaptioner):
+    """A captioner that records the shape of every call it is given."""
+
+    def __init__(self, say="a red square on a table", fail_batches: bool = False):
+        super().__init__(say)
+        self.batches: list[int] = []
+        self.alone = 0
+        self.fail_batches = fail_batches
+
+    def describe(self, image):
+        self.alone += 1
+        return super().describe(image)
+
+    def describe_many(self, images):
+        self.batches.append(len(images))
+        if self.fail_batches:
+            raise ValueError("this batch is a bad picture")
+        for one in images:
+            self.seen.append(one.size)
+        return [self.say] * len(images)
+
+
+def _pictures(conn, root: pathlib.Path, count: int) -> list[int]:
+    from db import library, scan
+
+    root.mkdir()
+    for i in range(count):
+        Image.new("RGB", (16, 16), (200, 90 + i, 40)).save(root / f"p{i}.png")
+    root_id = library.add_root(conn, str(root), "library", 0.0)
+    scan.scan(conn, root_id, str(root), 0.0)
+    return [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
+
+
+def _annotate_job(conn, files: list[int]) -> int:
+    from db import jobs
+
+    payload = {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}
+    return jobs.submit(conn, "annotate", 0.0, payload=payload, items=files)
+
+
+def _said_for(conn, file_id: int) -> list[str]:
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT text FROM derived_annotation WHERE file_id = ? AND kind = 'caption'", (file_id,)
+        )
+    ]
+
+
+def test_one_item_captions_the_jobs_next_items_with_it(tmp_path, monkeypatch):
+    """The item asked about is captioned and returned exactly as before;
+    the others are simply already done when their turn comes."""
+    conn = fresh_schema()
+    files = _pictures(conn, tmp_path / "lib", 5)
+    fake = BatchCaptioner()
+    monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: fake)
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    monkeypatch.setattr(runner, "_said", runner._Said())
+    job_id = _annotate_job(conn, files)
+    payload = {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}
+
+    told = runner.report()
+    told.job_id = job_id
+    monkeypatch.setattr(runner, "report", lambda: told)
+
+    runner._annotate_item(conn, files[0], payload, 5.0)
+    assert fake.batches == [5], "the leader captioned itself and the four still pending"
+    assert fake.alone == 0
+    assert _said_for(conn, files[0]) == ["a red square on a table"], "and the leader committed its own"
+
+    # the rest are held, not written: nothing durable is written ahead
+    for other in files[1:]:
+        assert _said_for(conn, other) == []
+
+
+def test_the_held_captions_are_spent_and_the_model_runs_once(tmp_path, monkeypatch):
+    conn = fresh_schema()
+    files = _pictures(conn, tmp_path / "lib", 4)
+    fake = BatchCaptioner()
+    monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: fake)
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    monkeypatch.setattr(runner, "_said", runner._Said())
+    job_id = _annotate_job(conn, files)
+    payload = {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}
+    told = runner.report()
+    told.job_id = job_id
+    monkeypatch.setattr(runner, "report", lambda: told)
+
+    for file_id in files:
+        runner._annotate_item(conn, file_id, payload, 5.0)
+
+    assert fake.batches == [4], "one forward pass covered the whole job"
+    assert fake.alone == 0
+    for file_id in files:
+        assert _said_for(conn, file_id) == ["a red square on a table"], "and every item still committed its own"
+
+
+def test_a_failed_batch_captions_this_item_alone(tmp_path, monkeypatch):
+    """What a batch may legitimately fail with is what a bad PICTURE
+    raises. The honest response is to caption this one alone, so the
+    failure is attributed to whichever item actually owns it."""
+    conn = fresh_schema()
+    files = _pictures(conn, tmp_path / "lib", 3)
+    fake = BatchCaptioner(fail_batches=True)
+    monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: fake)
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    monkeypatch.setattr(runner, "_said", runner._Said())
+    job_id = _annotate_job(conn, files)
+    payload = {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}
+    told = runner.report()
+    told.job_id = job_id
+    monkeypatch.setattr(runner, "report", lambda: told)
+
+    runner._annotate_item(conn, files[0], payload, 5.0)
+    assert fake.batches == [3]
+    assert fake.alone == 1, "it fell back to captioning this one"
+    assert _said_for(conn, files[0]) == ["a red square on a table"]
+
+
+def test_nothing_is_held_across_a_turn(tmp_path, monkeypatch):
+    """A sentence held across a lease lapse is a claim about bytes that
+    may have changed, and a caption records the sha it was made from."""
+    held = runner._Said()
+    held.keep(7, {1: "a held caption"})
+    assert held.take(7, 1) == "a held caption"
+    assert held.take(7, 1) is None, "and it is spent, not repeated"
+
+    held.keep(7, {2: "another"})
+    held.forget(7)
+    assert held.take(7, 2) is None, "a new turn recomputes rather than trusting the last one"
+
+
+def test_a_clip_leads_no_batch(tmp_path, monkeypatch):
+    """A video's poster is only half its work -- the sampled moments are
+    captioned per clip afterwards -- so batching it with stills would mix
+    two shapes of work for the smaller half."""
+    from vision import decode as decode_module
+
+    conn = fresh_schema()
+    files = _pictures(conn, tmp_path / "lib", 3)
+    fake = BatchCaptioner()
+    monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: fake)
+    monkeypatch.setattr(runner, "_CAPTIONERS", {})
+    monkeypatch.setattr(runner, "_said", runner._Said())
+    job_id = _annotate_job(conn, files)
+    payload = {"models_dir": "M", "model": "fake/captioner", "kind": "caption"}
+    told = runner.report()
+    told.job_id = job_id
+    monkeypatch.setattr(runner, "report", lambda: told)
+
+    # The FIRST file is the clip. Its poster stands in for a decode this
+    # test has no real video for; what is under test is which shape of
+    # call the runner makes, not what the frame contains.
+    conn.execute("UPDATE file SET kind = 'video' WHERE id = ?", (files[0],))
+    monkeypatch.setattr(decode_module, "poster", lambda *a, **k: Image.new("RGB", (16, 16), (1, 2, 3)))
+    monkeypatch.setattr(runner, "_sampled_moments_are_captioned", None, raising=False)
+
+    runner._annotate_item(conn, files[0], payload, 5.0)
+    assert fake.batches == [], "a clip led no batch"
+    assert fake.alone >= 1, "it was captioned on its own"
+
+    # and a still behind it still leads one, over the stills only
+    fake.alone = 0
+    runner._annotate_item(conn, files[1], payload, 6.0)
+    assert fake.batches == [2], "the two remaining stills, and not the clip"

@@ -150,6 +150,11 @@ SUBMITTERS = {
     "scan": lambda runner, conn, home, models: runner.submit_ingest(conn, 0.0),
     "hash": lambda runner, conn, home, models: runner.submit_verify(conn, 0.0),
     "context": lambda runner, conn, home, models: runner.submit_context(conn, 0.0),
+    # The captioner, whose phases are `decoding`, `batch-captioning` (or
+    # `captioning` for a clip or a lone item) and `recording` -- so the
+    # split says whether the model or the decode in front of it is what
+    # a caption now costs.
+    "annotate": lambda runner, conn, home, models: runner.submit_annotate(conn, 0.0, models_dir=models),
 }
 
 
