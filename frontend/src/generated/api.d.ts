@@ -1743,11 +1743,22 @@ export interface components {
         };
         /** Creation */
         Creation: {
+            tool: string | null;
             prompt: string | null;
+            original: string | null;
+            negative: string | null;
+            original_negative: string | null;
             checkpoint: string | null;
+            loras: components["schemas"]["Weighted"][];
             seed: number | null;
-            loras: string[];
+            steps: number | null;
+            cfg: number | null;
+            denoise: number | null;
+            clip_skip: number | null;
+            sampler: string | null;
+            scheduler: string | null;
             asked_for_width: number | null;
+            asked_for_height: number | null;
         };
         /** Curated */
         Curated: {
@@ -3059,6 +3070,11 @@ export interface components {
         Viewing: {
             /** @enum {string} */
             wheel_modifier: "alt" | "none";
+        };
+        /** Weighted */
+        Weighted: {
+            name: string;
+            weight: number | null;
         };
         /** When */
         When: {

@@ -101,15 +101,99 @@
   {% endif %}
 
   {% if item.creation %}
-  <details class="panel" data-panel="creation">
-    <summary>creation</summary>
-    {% if item.creation.prompt %}<p class="detail-prompt">{{ item.creation.prompt }}</p>{% endif %}
-    <dl>
-      {% if item.creation.checkpoint %}<dt>checkpoint</dt><dd>{{ item.creation.checkpoint }}</dd>{% endif %}
-      {% if item.creation.loras %}<dt>loras</dt><dd>{{ item.creation.loras|join(", ") }}</dd>{% endif %}
-      {% if item.creation.seed is not none %}<dt>seed</dt><dd>{{ item.creation.seed }}</dd>{% endif %}
-      {% if item.creation.asked_for_width %}<dt>asked for</dt><dd>{{ item.creation.asked_for_width }}px wide</dd>{% endif %}
+  {#
+    The recipe, in the order somebody making the picture again needs it:
+    the prompt first and allowed to breathe, then what to load, then the
+    numbers. The old section put a paragraph of prompt above four <dt>s
+    and no way to copy any of it.
+
+    Every text here is EDITABLE and none of it is saved. Select it, cut it
+    about, empty it entirely -- it is a scratch copy of what the file
+    says, for taking somewhere else, and walking to the next picture
+    brings the file's own text back. Nothing about the recorded
+    generation changes, because what a file says it is is not a
+    preference (frontend/src/workspace.ts draws that line).
+  #}
+  <details class="panel panel-recipe" data-panel="creation" data-recipe>
+    <summary>
+      creation
+      {% if item.creation.tool %}<span class="recipe-tool">{{ item.creation.tool }}</span>{% endif %}
+    </summary>
+
+    {% for field in [
+      ("prompt", "prompt", item.creation.prompt),
+      ("negative", "negative prompt", item.creation.negative),
+      ("original", "as typed", item.creation.original),
+      ("original_negative", "negative, as typed", item.creation.original_negative),
+    ] %}
+    {% if field[2] %}
+    <section class="recipe-text" data-recipe-field="{{ field[0] }}">
+      <header>
+        <span class="recipe-label">{{ field[1] }}</span>
+        <button type="button" class="recipe-copy" data-copy="{{ field[0] }}"
+                aria-label="copy {{ field[1] }}">copy</button>
+      </header>
+      {#
+        A textarea, because it must behave like one: caret, selection,
+        undo, Ctrl-A, the lot. It is styled to look like the text it
+        holds rather than like a form control -- `spellcheck=false`
+        because a prompt is not prose, and the original kept in a data
+        attribute so an edit can be taken back.
+      #}
+      <textarea class="recipe-scratch" data-scratch spellcheck="false" rows="1"
+                aria-label="{{ field[1] }}, editable copy">{{ field[2] }}</textarea>
+      <button type="button" class="recipe-revert" data-revert hidden>revert</button>
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {% if item.creation.checkpoint or item.creation.loras %}
+    <section class="recipe-models">
+      {% if item.creation.checkpoint %}
+      <div class="recipe-model"><span class="recipe-label">checkpoint</span>
+        <span data-recipe-checkpoint>{{ item.creation.checkpoint }}</span></div>
+      {% endif %}
+      {% for lora in item.creation.loras %}
+      <div class="recipe-model recipe-lora"><span class="recipe-label">lora</span>
+        <span>{{ lora.name }}</span>
+        {# the weight is why this is not a list of names: without it the
+           recipe does not reproduce #}
+        {% if lora.weight is not none %}<b class="recipe-weight">{{ "%.2f"|format(lora.weight) }}</b>{% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {#
+      `data-recipe-key` is the name the TOOLS read, carried beside the
+      lowercase one a person reads. "cfg" is what this panel says and
+      "CFG scale" is what a paste into A1111 has to say; deriving one
+      from the other by capitalising would produce "Cfg", which nothing
+      matches on. Where the shown text and the copyable text differ at
+      all -- a size shown with a real multiplication sign -- the copyable
+      one is spelled out in `data-recipe-value`.
+    #}
+    <dl class="recipe-numbers">
+      {% for label, key, value in [
+        ("seed", "Seed", item.creation.seed),
+        ("steps", "Steps", item.creation.steps),
+        ("cfg", "CFG scale", item.creation.cfg),
+        ("sampler", "Sampler", item.creation.sampler),
+        ("scheduler", "Schedule type", item.creation.scheduler),
+        ("denoise", "Denoising strength", item.creation.denoise),
+        ("clip skip", "Clip skip", item.creation.clip_skip),
+      ] %}
+      {% if value is not none %}<dt>{{ label }}</dt><dd data-recipe-key="{{ key }}">{{ value }}</dd>{% endif %}
+      {% endfor %}
+      {% if item.creation.asked_for_width %}
+      <dt>asked for</dt>
+      <dd data-recipe-key="Size"
+          data-recipe-value="{{ item.creation.asked_for_width }}{% if item.creation.asked_for_height %}x{{ item.creation.asked_for_height }}{% endif %}"
+      >{{ item.creation.asked_for_width }}{% if item.creation.asked_for_height %}&times;{{ item.creation.asked_for_height }}{% endif %}</dd>
+      {% endif %}
     </dl>
+
+    <button type="button" class="recipe-all" data-copy-all>copy everything</button>
   </details>
   {% endif %}
 

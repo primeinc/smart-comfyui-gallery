@@ -9491,7 +9491,47 @@
             },
             "Creation": {
                 "properties": {
+                    "tool": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "prompt": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "original": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "negative": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "original_negative": {
                         "oneOf": [
                             {
                                 "type": "string"
@@ -9511,6 +9551,12 @@
                             }
                         ]
                     },
+                    "loras": {
+                        "items": {
+                            "$ref": "#/components/schemas/Weighted"
+                        },
+                        "type": "array"
+                    },
                     "seed": {
                         "oneOf": [
                             {
@@ -9521,13 +9567,77 @@
                             }
                         ]
                     },
-                    "loras": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array"
+                    "steps": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "cfg": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "denoise": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "clip_skip": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "sampler": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "scheduler": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     },
                     "asked_for_width": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "asked_for_height": {
                         "oneOf": [
                             {
                                 "type": "integer"
@@ -9541,11 +9651,22 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
+                    "asked_for_height",
                     "asked_for_width",
+                    "cfg",
                     "checkpoint",
+                    "clip_skip",
+                    "denoise",
                     "loras",
+                    "negative",
+                    "original",
+                    "original_negative",
                     "prompt",
-                    "seed"
+                    "sampler",
+                    "scheduler",
+                    "seed",
+                    "steps",
+                    "tool"
                 ],
                 "title": "Creation"
             },
@@ -16321,6 +16442,30 @@
                     "wheel_modifier"
                 ],
                 "title": "Viewing"
+            },
+            "Weighted": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "weight": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "weight"
+                ],
+                "title": "Weighted"
             },
             "When": {
                 "properties": {

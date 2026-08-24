@@ -137,7 +137,9 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
             4242,
         )
         assert pic["creation"]["prompt"].startswith("a brass diving helmet")
-        assert pic["creation"]["loras"] == ["filmGrain"]
+        # the weight, not just the name: the recipe panel copies
+        # `<lora:filmGrain:0.35>` and a name alone does not reproduce it
+        assert pic["creation"]["loras"] == [{"name": "filmGrain", "weight": 0.35}]
         assert pic["params"], "the parsed fields are rows, not a blob"
         assert {pic["context"]["previous"], pic["context"]["next"]} == {None, "helm-2"}, (
             "neighbours walk the answer: the default ResultSet, newest first"

@@ -33,7 +33,7 @@ table is never allowed, exemption or not.
 
 from __future__ import annotations
 
-from . import context
+from . import context, prompts
 from .context import HUMAN_MOMENT
 
 #: How many rows a grid asks for at once.
@@ -96,7 +96,7 @@ PARSED_FIELDS = "SELECT source, key, value_text FROM file_param WHERE file_id = 
 #: primary key's own tail, so the order is index-served -- and unique, so
 #: a name tiebreak was unreachable anyway and only bought a sort.
 FILE_LORAS = (
-    "SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
+    "SELECT a.name, fa.model_weight FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
     " WHERE fa.file_id = ? AND fa.role = 'lora' ORDER BY fa.ordinal"
 )
 
@@ -151,8 +151,42 @@ def fields_of(conn, file_id: int):
     return conn.execute(PARSED_FIELDS, (file_id,)).fetchall()
 
 
-def file_loras(conn, file_id: int) -> list[str]:
-    return [row[0] for row in conn.execute(FILE_LORAS, (file_id,))]
+def file_loras(conn, file_id: int) -> list[tuple[str, float | None]]:
+    """Each LoRA with the strength it was applied at.
+
+    The weight is not decoration: a LoRA named without it does not
+    reproduce the picture, and "copy all" that omits it is the complaint
+    people have about every other gallery's copy button.
+    """
+    return [(row[0], row[1]) for row in conn.execute(FILE_LORAS, (file_id,))]
+
+
+#: The whole recipe row. Every one of these has been stored since
+#: `generation` was written and none of them reached the viewer.
+GENERATION = (
+    "SELECT tool, seed, steps, cfg, denoise, clip_skip, sampler, scheduler, width, height"
+    " FROM generation WHERE file_id = ?"
+)
+
+
+def prompt_texts(conn, file_id: int) -> dict[str, str]:
+    """Role -> text for one generation's prompts.
+
+    The roles relation is db/prompts.py's; what a PAGE wants of it is the
+    text of each role and nothing else -- no ids, no hashes, no uuids.
+    Delegated rather than restated: a second copy of that join here would
+    be free to drift from the one every other consumer reads.
+    """
+    return {role: held["text"] for role, held in prompts.roles(conn, file_id).items()}
+
+
+def generation_of(conn, file_id: int) -> dict:
+    """How this picture was made, as far as the recipe was recorded."""
+    row = conn.execute(GENERATION, (file_id,)).fetchone()
+    if row is None:
+        return {}
+    named = ("tool", "seed", "steps", "cfg", "denoise", "clip_skip", "sampler", "scheduler", "width", "height")
+    return dict(zip(named, row, strict=True))
 
 
 def neighbour(conn, file_id: int, *, previous: bool = True):

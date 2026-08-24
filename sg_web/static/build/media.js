@@ -556,6 +556,88 @@
     return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
   }
 
+  // src/recipe.ts
+  function fit(field) {
+    if (field.clientWidth === 0) return;
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight}px`;
+  }
+  async function copied(button, text) {
+    const was = button.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "copied";
+      button.dataset.done = "true";
+    } catch {
+      button.textContent = "cannot copy";
+    }
+    setTimeout(() => {
+      button.textContent = was;
+      delete button.dataset.done;
+    }, 1200);
+  }
+  function scratchOf(root, named) {
+    const section = findElement(root, `[data-recipe-field="${named}"]`, HTMLElement);
+    const field = section && findElement(section, "[data-scratch]", HTMLTextAreaElement);
+    return field ? field.value : "";
+  }
+  function wholeRecipe(root) {
+    const lines = [];
+    const prompt = scratchOf(root, "prompt");
+    if (prompt.trim()) lines.push(prompt.trim());
+    const negative = scratchOf(root, "negative");
+    if (negative.trim()) lines.push(`Negative prompt: ${negative.trim()}`);
+    const pairs = [];
+    for (const value of everyElement(root, "[data-recipe-key]", HTMLElement)) {
+      const key = value.dataset.recipeKey ?? "";
+      const text = (value.dataset.recipeValue ?? value.textContent ?? "").trim();
+      if (key && text) pairs.push(`${key}: ${text}`);
+    }
+    const checkpoint = findElement(root, "[data-recipe-checkpoint]", HTMLElement);
+    if (checkpoint) pairs.push(`Model: ${(checkpoint.textContent ?? "").trim()}`);
+    const loras = [...everyElement(root, ".recipe-lora", HTMLElement)].map((row) => {
+      const name = row.querySelector("span:not(.recipe-label)")?.textContent?.trim() ?? "";
+      const weight = row.querySelector(".recipe-weight")?.textContent?.trim();
+      return { name, tag: weight ? `<lora:${name}:${weight}>` : `<lora:${name}>` };
+    }).filter((lora) => lora.name && !prompt.includes(`<lora:${lora.name}`)).map((lora) => lora.tag);
+    if (loras.length) pairs.push(`Loras: ${loras.join(" ")}`);
+    if (pairs.length) lines.push(pairs.join(", "));
+    return lines.join("\n");
+  }
+  function mountRecipe(root) {
+    const panel = findElement(root, "[data-recipe]", HTMLElement);
+    if (!panel) return;
+    for (const section of everyElement(panel, "[data-recipe-field]", HTMLElement)) {
+      const field = findElement(section, "[data-scratch]", HTMLTextAreaElement);
+      const revert = findElement(section, "[data-revert]", HTMLElement);
+      if (!field) continue;
+      const original = field.value;
+      fit(field);
+      field.addEventListener("input", () => {
+        fit(field);
+        if (revert) revert.hidden = field.value === original;
+      });
+      if (revert) {
+        revert.addEventListener("click", () => {
+          field.value = original;
+          fit(field);
+          revert.hidden = true;
+          field.focus();
+        });
+      }
+      const copy = findElement(section, "[data-copy]", HTMLElement);
+      if (copy) copy.addEventListener("click", () => void copied(copy, field.value));
+    }
+    const all = findElement(panel, "[data-copy-all]", HTMLElement);
+    if (all) all.addEventListener("click", () => void copied(all, wholeRecipe(panel)));
+    const refit = () => {
+      for (const field of everyElement(panel, "[data-scratch]", HTMLTextAreaElement)) fit(field);
+    };
+    panel.addEventListener("toggle", refit);
+    new MutationObserver(refit).observe(root, { attributeFilter: ["data-inspector"] });
+    refit();
+  }
+
   // src/workspace.ts
   var VERSION = 1;
   var KEY = `sg.workspace.v${VERSION}`;
@@ -840,6 +922,7 @@
         onElement(section, "toggle", () => rememberPanel(named, section.open));
       }
     }
+    mountRecipe(root);
     root.dataset.inspector = root.dataset.inspector ?? "closed";
     root.dataset.chrome = "visible";
     stageBox.dataset.quality = "preview";

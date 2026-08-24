@@ -97,10 +97,23 @@ def _assembled(
     if found is not None and found["page"] > 1:
         back += ("&" if asked else "?") + f"page={found['page']}"
     loras = pages.file_loras(conn, file_id)
+    recipe = pages.generation_of(conn, file_id)
+    # Every prompt role in one read (db/prompts.py ROLES), so the panel can
+    # show what was TYPED beside what the sampler actually saw -- they
+    # differ exactly when something expanded wildcards, which is when the
+    # person branching the picture wants the one they can edit.
+    typed = pages.prompt_texts(conn, file_id)
     # A recipe is the reason there is a Creation at all: a photograph was
     # taken, and giving it an empty prompt/checkpoint/seed block would be
     # a section the page renders for every picture that has none.
-    made = prompt is not None or checkpoint is not None or seed is not None or bool(loras) or asked_w is not None
+    made = (
+        prompt is not None
+        or checkpoint is not None
+        or seed is not None
+        or bool(loras)
+        or asked_w is not None
+        or bool(recipe)
+    )
     return MediaSurface(
         slug=slug,
         name=name,
@@ -125,7 +138,24 @@ def _assembled(
         said=_said(conn, file_id),
         said_first=derived.said_first(conn, [file_id], prefer=settings.value(conn, "caption_model")).get(file_id),
         creation=(
-            Creation(prompt=prompt, checkpoint=checkpoint, seed=seed, loras=loras, asked_for_width=asked_w)
+            Creation(
+                tool=recipe.get("tool"),
+                prompt=prompt,
+                original=typed.get("original"),
+                negative=typed.get("negative"),
+                original_negative=typed.get("original_negative"),
+                checkpoint=checkpoint,
+                loras=[Weighted(name=name, weight=weight) for name, weight in loras],
+                seed=seed,
+                steps=recipe.get("steps"),
+                cfg=recipe.get("cfg"),
+                denoise=recipe.get("denoise"),
+                clip_skip=recipe.get("clip_skip"),
+                sampler=recipe.get("sampler"),
+                scheduler=recipe.get("scheduler"),
+                asked_for_width=asked_w,
+                asked_for_height=recipe.get("height"),
+            )
             if made
             else None
         ),
@@ -532,17 +562,50 @@ class ParamRow(Wire):
     value: str
 
 
+class Weighted(Wire):
+    """One model applied at a strength. The strength is the point: a LoRA
+    named without its weight is not enough to make the picture again."""
+
+    name: str
+    weight: float | None
+
+
 class Creation(Wire):
     """How the picture was MADE, when a recipe was recorded. None on a
-    photograph, which was taken rather than generated."""
+    photograph, which was taken rather than generated.
 
+    This carries the whole REPRODUCTION RECIPE and not a summary of it.
+    The generation row has held seed, steps, cfg, denoise, clip_skip,
+    sampler, scheduler and size since it was written; the viewer showed
+    five fields and none of those, so the one question a person actually
+    has about a generated picture -- how do I make this again, or make it
+    slightly differently -- could not be answered from the page that
+    exists to answer it.
+    """
+
+    #: What made it: "swarm", "comfy", "a1111"...
+    tool: str | None
+    #: The prompt as the sampler saw it, after wildcards and substitution.
     prompt: str | None
+    #: What was typed, when the tool recorded both. Different from
+    #: `prompt` exactly when something expanded it, which is when a person
+    #: branching the picture wants the one they can edit.
+    original: str | None
+    negative: str | None
+    original_negative: str | None
     checkpoint: str | None
+    loras: list[Weighted]
     seed: int | None
-    loras: list[str]
+    steps: int | None
+    cfg: float | None
+    denoise: float | None
+    clip_skip: int | None
+    sampler: str | None
+    scheduler: str | None
     #: what the recipe ASKED for, which the file need not have obeyed
     #: (db/schema.sql: generation.width is the request, file.width the fact)
     asked_for_width: int | None
+    asked_for_height: int | None
 
 
 class FileFacts(Wire):

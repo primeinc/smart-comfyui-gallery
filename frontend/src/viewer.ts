@@ -29,6 +29,7 @@ import { closestFrom, everyElement, findElement, requireData } from "./dom";
 import type { components } from "./generated/api";
 import { register } from "./keys";
 import { isPlainClick } from "./overlay";
+import { mountRecipe } from "./recipe";
 import { panelState, remember, rememberPanel, workspace } from "./workspace";
 
 type Stage = components["schemas"]["MediaSurface"]["stage"];
@@ -563,6 +564,11 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
       onElement(section, "toggle", () => rememberPanel(named, section.open));
     }
   }
+
+  // The recipe's scratch fields are wired per mount, which is also what
+  // discards their edits: the viewer remounts on every walk, so the next
+  // picture arrives with the text its own file carries.
+  mountRecipe(root);
 
   root.dataset.inspector = root.dataset.inspector ?? "closed";
   root.dataset.chrome = "visible";

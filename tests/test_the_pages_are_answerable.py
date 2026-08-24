@@ -316,9 +316,10 @@ def test_the_image_page_answers_in_one_query(library):
     assert asked_for_width == 832, "the recipe's request is not readable beside it"
     assert checkpoint == "dreamshaper_8"
     assert missing_since is None, "a present file's page says so from the same row"
-    # One row per LoRA -- the group_concat column this replaced could not
-    # carry a name holding a comma, and the page never read it anyway.
-    assert pages.file_loras(conn, file_id) == ["filmGrain"]
+    # One row per LoRA, WITH its weight -- the group_concat column this
+    # replaced could not carry a name holding a comma, and a name without
+    # its strength does not make the picture again.
+    assert pages.file_loras(conn, file_id) == [("filmGrain", 0.35)]
     assert prompt.startswith("a brass diving helmet")
     assert seed == 4242
     assert fields > 0, "the parsed long tail is not reachable from the page"
