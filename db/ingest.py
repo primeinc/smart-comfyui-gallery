@@ -29,7 +29,7 @@ import os
 from dataclasses import dataclass, field
 
 import metaparse
-from metaparse.containers import load_raw
+from metaparse.containers import load_raw, load_raw_video
 from metaparse.typed import GenerationParams
 
 from . import capture as capture_module
@@ -37,6 +37,9 @@ from . import graph as graph_module
 from . import probe as probe_module
 from . import prompts as prompts_module
 from .scan import mint
+
+#: Kinds whose metadata lives in a media container, not an image header.
+_MOVING = ("video",)
 
 _logger = logging.getLogger(__name__)
 
@@ -591,7 +594,17 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # billed to `sniffing`, which is a 512-byte read and could not
     # honestly have cost 48 ms.
     told.phase("reading-generation", kind=kind)
-    held = load_raw(path)
+    # A CLIP carries its recipe too, one container along.
+    #
+    # metaparse was Pillow-only, so every generated video in every library
+    # had its workflow sitting in the file and no row anywhere: "AI
+    # generated video" was answerable and always empty -- not because the
+    # filter was wrong, but because nothing had ever written the
+    # generation row. ComfyUI writes `workflow` and `prompt` as container
+    # metadata tags, JSON-encoded, exactly as it writes them into a PNG's
+    # text chunks, so `load_raw_video` hands them back in the same shape
+    # and every adapter reads a clip without knowing anything changed.
+    held = load_raw_video(path) if kind in _MOVING else load_raw(path)
     generation(conn, file_id, path, now, out, held=held)
 
     # Written AFTER generation(), which retracts the whole 'container'
