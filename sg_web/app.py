@@ -904,12 +904,6 @@ def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) ->
         connect.close(conn)
     if not target.is_file():
         raise NotFoundException(f"the {variant} of {sha[:12]} could not be rendered")
-    return File(
-        path=target,
-        media_type="image/webp",
-        content_disposition_type="inline",
-        headers={"cache-control": ASSET_CACHE},
-    )
 
 
 @get("/thumb/{slug:str}", sync_to_thread=True)
