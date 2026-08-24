@@ -17,6 +17,7 @@ import pytest
 from PIL import Image
 
 from db import authored, collections, connect, derived, naming
+from tests import retrieving
 from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -356,7 +357,7 @@ def test_a_person_phrase_constrains_each_space_before_fusion(faces, monkeypatch)
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         seen.update({"allowed": allowed, "k": k})
-        return {"results": [], "participants": [], "contributors": [], "missing": {}}
+        return retrieving.answered([], participants=[], contributors=[])
 
     monkeypatch.setattr(retrieval, "query", fused)
     try:

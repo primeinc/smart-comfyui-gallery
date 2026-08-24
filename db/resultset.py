@@ -64,6 +64,13 @@ import threading
 #: timeline link opened -- with uninterpreted files last, never dropped.
 SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity")
 
+#: How much of a ranking is the ANSWER. `head` keeps the files that
+#: stand above their space's own middle (db/retrieval.py `head`); `all`
+#: keeps the whole ranked library, which is what a phrase used to
+#: return and is still the honest thing to offer whoever wants it.
+#: Only a phrase ranks anything, so only a phrase carries a depth.
+DEPTHS = ("head", "all")
+
 #: The file kinds a query may filter to -- the vocabulary of file.kind.
 KINDS = ("image", "animated_image", "video", "audio", "document")
 
@@ -128,6 +135,11 @@ class GalleryQuery:
     #: conjunction are one question.
     facets: tuple = ()
     sort: str = "newest"
+    #: Semantic only: `head` (the default) answers with the files that
+    #: stand above the middle of what each space said, `all` with the
+    #: whole ranked library. Two depths are two questions, never two
+    #: views of one -- the fingerprint carries it.
+    depth: str = "head"
     size: int = DEFAULT_PAGE_SIZE
 
 
@@ -143,6 +155,7 @@ def parse(
     text: str | None = None,
     facets=None,
     sort: str | None = None,
+    depth: str | None = None,
     size: int | None = None,
 ) -> GalleryQuery:
     """A validated GalleryQuery from request-shaped inputs.
@@ -168,6 +181,14 @@ def parse(
         # with its own membership rule; until that rule exists, refusing
         # beats silently ignoring the phrase.
         raise ValueError("a phrase orders by similarity; other sorts do not consume it")
+    chosen_depth = (depth or "").strip() or None
+    if chosen_depth is not None and chosen_depth not in DEPTHS:
+        raise ValueError(f"depth must be one of {', '.join(DEPTHS)}, not {chosen_depth!r}")
+    if chosen_depth is not None and text is None:
+        # Nothing was ranked, so there is no head to keep and no whole
+        # ranking to ask back for. Silently ignoring it would let a
+        # bookmarked `depth=all` mean nothing on half the surfaces.
+        raise ValueError("depth describes how much of a RANKING answers; only a phrase ranks anything")
     if folder is not None and album is not None:
         raise ValueError("choose a folder or an album, not both")
     # `person` deliberately COMPOSES with either -- and with kind and a
@@ -199,6 +220,7 @@ def parse(
         text=text,
         facets=held,
         sort=sort,
+        depth=chosen_depth or "head",
         size=chosen,
     )
 
@@ -302,6 +324,11 @@ class Projection:
     ids: tuple[int, ...]  # file ids, answer order
     ordinal: dict[int, int]  # file id -> 0-based position
     provenance: dict | None  # similarity only: participants/contributors/missing
+    #: similarity only: file id -> how far it stands from the middle of
+    #: what a space said toward that space's best, 0..1. Empty for a
+    #: timed answer, where no space was asked anything and there is no
+    #: such quantity to report.
+    relevance: dict[int, float] = dataclasses.field(default_factory=dict)
 
 
 #: (database, fingerprint, currency) -> Projection, oldest evicted first.
@@ -359,6 +386,8 @@ def canonical(query: GalleryQuery, page: int | None = None) -> str:
         pairs.extend(("f", facets_module.spell(held)) for held in query.facets)
     if query.sort != ("similarity" if query.text else "newest"):
         pairs.append(("sort", query.sort))
+    if query.text and query.depth != "head":
+        pairs.append(("depth", query.depth))
     if query.size != DEFAULT_PAGE_SIZE:
         pairs.append(("size", str(query.size)))
     if page is not None and page > 1:
@@ -556,6 +585,10 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "facets": [dataclasses.astuple(held) for held in query.facets],
             "text": query.text,
             "sort": query.sort,
+            # Two depths are two ORDERED ANSWERS over one library
+            # generation; sharing a projection key would serve whichever
+            # was computed first under the other's address.
+            "depth": query.depth,
             "size": query.size,
             # A smart scope's identity is its BOUND rule (recursively
             # fingerprinted -- ids, pinned actor, run) plus its take: two
@@ -718,7 +751,7 @@ def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset
             )
     if inner.query.text:
         try:
-            ids, _ = _fused_ids(conn, models_dir, inner, now)
+            ids, _, _ = _fused_ids(conn, models_dir, inner, now)
         except (ValueError, LookupError) as silent:
             raise UnavailableCollectionRule(
                 f"the collection's semantic rule cannot be answered right now: {silent}"
@@ -732,7 +765,7 @@ def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset
 
 def _fused_ids(
     conn, models_dir: str, bound: _Bound, now: float, members: frozenset[int] | None = None
-) -> tuple[list[int], dict | None]:
+) -> tuple[list[int], dict | None, dict[int, float]]:
     """The whole fused ordering, once.
 
     A scope or filter is handed to retrieval as the ALLOWED set, never
@@ -760,10 +793,10 @@ def _fused_ids(
     if allowed is not None and not allowed:
         # An empty scope needs no encoder and has no honest
         # provenance -- nothing was asked of any space.
-        return [], None
+        return [], None, {}
     if query.text is None:
         # no phrase, no semantic ordering: nothing was asked of any space
-        return [], None
+        return [], None, {}
     depth = len(allowed) if allowed is not None else _present(conn)
     found = retrieval.query(
         conn,
@@ -774,10 +807,23 @@ def _fused_ids(
         offline=True,
         allowed=None if allowed is None else set(allowed),
     )
-    fused = [row["file_id"] for row in found["results"]]
+    ranked = found["results"]
+    # `head` keeps what stands above the middle of what each space
+    # said; `all` keeps the ranking whole. Retrieval decided WHICH
+    # files answer -- it holds the per-space distributions this cannot
+    # see -- and this module decides whether the question wanted only
+    # those. A ranking is not an answer until something ends it.
+    kept = ranked if query.depth == "all" else [row for row in ranked if row["answers"]]
+    fused = [row["file_id"] for row in kept]
     provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
     provenance["unmatched"] = found.get("unmatched") or {}
-    return fused, provenance
+    #: What the cut cost, so a page can say it rather than looking like
+    #: a small library.
+    provenance["ranked"] = len(ranked)
+    provenance["answering"] = found["answering"]
+    provenance["depth"] = query.depth
+    relevance = {row["file_id"]: row["relevance"] for row in kept}
+    return fused, provenance, relevance
 
 
 def _present(conn) -> int:
@@ -801,9 +847,9 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: i
         return bound, held
     members = _rule_members(conn, models_dir, bound, now) if bound.rule is not None else None
     if query.sort == "similarity":
-        ids, provenance = _fused_ids(conn, models_dir, bound, now, members=members)
+        ids, provenance, relevance = _fused_ids(conn, models_dir, bound, now, members=members)
     else:
-        ids, provenance = _timed_ids(conn, bound), None
+        ids, provenance, relevance = _timed_ids(conn, bound), None, {}
         if members is not None:
             # The rule owns membership; the OUTER walk keeps its order.
             ids = [file_id for file_id in ids if file_id in members]
@@ -814,6 +860,7 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: i
         ids=tuple(ids),
         ordinal={file_id: position for position, file_id in enumerate(ids)},
         provenance=provenance,
+        relevance=relevance,
     )
     with _PROJECTION_LOCK:
         _PROJECTIONS[key] = made
@@ -903,7 +950,7 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float, *,
         number = min(max(1, int(number)), shape["pages"])
         start = (number - 1) * bound.query.size
         shape["page"] = number
-        shape["items"] = _named(conn, held.ids[start : start + bound.query.size], start)
+        shape["items"] = _named(conn, held.ids[start : start + bound.query.size], start, held.relevance)
         return shape
 
 
@@ -935,7 +982,7 @@ def peek(
             "currency": held.currency,
             "answer": held.answer,
             "qs": shape["qs"],
-            "items": _named(conn, held.ids[start : start + take], start),
+            "items": _named(conn, held.ids[start : start + take], start, held.relevance),
         }
 
 
@@ -1016,7 +1063,7 @@ def neighborhood(
         told = _located(conn, bound, held, position)
         take = min(max(1, int(count)), NEIGHBORHOOD_MOST)
         start = max(0, min(position - take // 2, max(0, len(held.ids) - take)))
-        items = _named(conn, held.ids[start : start + take], start)
+        items = _named(conn, held.ids[start : start + take], start, held.relevance)
         return {
             **told,
             "first_ordinal": start + 1 if items else 0,
@@ -1114,7 +1161,7 @@ def prove_subset(
         return SelectionProof(currency=held.currency, answer=held.answer, ids=tuple(ids))
 
 
-def _named(conn, ids, start: int) -> list[dict]:
+def _named(conn, ids, start: int, relevance: dict[int, float] | None = None) -> list[dict]:
     if not ids:
         return []
     marks = ",".join("?" for _ in ids)
@@ -1131,6 +1178,10 @@ def _named(conn, ids, start: int) -> list[dict]:
             # to the slug route, which can still answer.
             "sha": row[5],
             "said": None,
+            # How far this file stood above the middle of what a
+            # space said, 0..1 -- None when nothing was asked of any
+            # space, which is not the same claim as "nothing matched".
+            "relevance": None if relevance is None else relevance.get(row[0]),
         }
         for row in conn.execute(NAMED.format(marks=marks), list(ids))
     }

@@ -28,10 +28,62 @@ Two rules hold the composition honest:
 
 from __future__ import annotations
 
+import statistics
+
 #: The RRF damping constant -- the field's customary default. Small K
 #: weights top ranks harder; the choice matters little at gallery scale
 #: and is deliberately not a setting until measurement says otherwise.
 RRF_K = 60
+
+#: Where a ranking stops answering, as a fraction of the distance from
+#: one space's median score to its best.
+#:
+#: A ranking never ends on its own. Every space scores every file it
+#: holds, a text encoder maps ANY phrase somewhere, and the nearest
+#: neighbours of that somewhere always exist -- so without a cut the
+#: answer to a question is the library in a different order.
+#:
+#: No ABSOLUTE cosine can make the cut. Measured over a real 3,748-file
+#: library, the nonsense phrase `xyzzy plugh frobnitz` scored higher on
+#: OpenCLIP (max .263, mean .210) than `a photograph of a mountain
+#: landscape` (max .218, mean .084): a floor would have kept the
+#: nonsense whole and discarded the answer. Cross-space agreement is no
+#: better -- `asdfgh jkl zxcvbn` and `a car on a road` shared the same
+#: 15% of their top hundred.
+#:
+#: What DOES carry between phrases is the shape of one phrase's own
+#: distribution: a head standing clear of its own middle, or no head.
+#: That is scale-free, needs no per-model constant, and survives a new
+#: space being configured tomorrow. Half the span is where the same
+#: measurements put real phrases at 15-267 files out of 3,627 and
+#: nonsense at 250-322 -- neither pretending to reject the nonsense,
+#: which nothing can, nor paginating the library fifty times over.
+HEAD_SPAN = 0.5
+
+
+def head(scores: list[float], span: float = HEAD_SPAN) -> int:
+    """How many of ONE space's descending scores answer the phrase.
+
+    The median is the body of the ranking -- what this space says about
+    an unrelated file -- and the best is the most it has to say. A file
+    answers when it stands at least `span` of the way from the one to
+    the other. A ranking whose best IS its median has no head: nothing
+    stands out, so nothing is claimed, and the caller gets zero rather
+    than a confident list of everything.
+    """
+    if not scores:
+        return 0
+    best, middle = scores[0], statistics.median(scores)
+    if best <= middle:
+        return 0
+    cut = middle + span * (best - middle)
+    # The scores descend, so the count IS the prefix length.
+    return sum(1 for one in scores if one >= cut)
+
+
+def _standing(scores: list[float]) -> tuple[float, float]:
+    """One space's (median, best) -- the two ends `head` measures between."""
+    return (statistics.median(scores), scores[0]) if scores else (0.0, 0.0)
 
 
 def choices(conn) -> list[tuple[str, str, str]]:
@@ -250,10 +302,42 @@ def query(
     # Fusion is over FILES: a file's agreement across rankings must
     # accumulate, and its embedding ids differ per space by design.
     fused = rrf([[file_id for file_id, _ in ranked] for _, ranked in per_space])
+
+    # WHICH files answer is decided per space, on that space's own
+    # scores, and the heads UNION: fused RRF values measure agreement,
+    # not relatedness -- a file first in every ranking scores the same
+    # whether its cosine is .40 or .05 -- so the cut cannot be made on
+    # them. Union rather than intersection because the whole reason to
+    # configure a second space is that either can surface what the
+    # other missed; one space's confident answer is an answer.
+    answering: set[int] = set()
+    #: file id -> how far it stands from a space's middle toward that
+    #: space's best, its best such standing across the spaces. The same
+    #: quantity `head` cuts on, so a surface that shows it explains
+    #: where the answer ended.
+    standing: dict[int, float] = {}
+    for _, ranked in per_space:
+        scores = [score for _, score in ranked]
+        middle, best = _standing(scores)
+        answering.update(file_id for file_id, _ in ranked[: head(scores)])
+        if best > middle:
+            for file_id, score in ranked:
+                rose = min(1.0, max(0.0, (score - middle) / (best - middle)))
+                standing[file_id] = max(standing.get(file_id, 0.0), rose)
+
     told: dict[int, dict] = {}
     for space_key, ranked in per_space:
         for position, (file_id, score) in enumerate(ranked):
-            row = told.setdefault(file_id, {"file_id": file_id, "score": fused[file_id], "sources": {}})
+            row = told.setdefault(
+                file_id,
+                {
+                    "file_id": file_id,
+                    "score": fused[file_id],
+                    "relevance": round(standing.get(file_id, 0.0), 4),
+                    "answers": file_id in answering,
+                    "sources": {},
+                },
+            )
             row["sources"][space_key] = {"rank": position + 1, "score": score}
     results = sorted(told.values(), key=lambda row: row["score"], reverse=True)[:final_k]
     return {
@@ -262,6 +346,10 @@ def query(
         "contributors": [space_key for space_key, _ in per_space],
         "missing": missing,
         "unmatched": unmatched,
+        #: How many of `results` stand above their space's middle. The
+        #: caller decides whether to keep only those; the count is here
+        #: either way so a page can say what it left out.
+        "answering": sum(1 for row in results if row["answers"]),
     }
 
 

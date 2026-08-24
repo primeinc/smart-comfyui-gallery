@@ -155,6 +155,18 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "missing_spaces": provenance.get("missing") or {},
         "captions_unmatched": unmatched,
         "answered_by": provenance.get("contributors") or [],
+        # What the cut cost. A phrase ranks every file a space holds and
+        # `head` keeps the ones standing above the middle of what it
+        # said (db/retrieval.py); without these three the page looks
+        # like a small library rather than an answer that ended.
+        "ranked": provenance.get("ranked"),
+        "answering": provenance.get("answering"),
+        "depth": query.depth if query.text else None,
+        # The same question at the other depth, both spelled here: `qs`
+        # is whichever one is being looked at, so a link back to the
+        # other cannot be built from it.
+        "whole_qs": resultset.canonical(dataclasses.replace(query, depth="all")) if query.text else None,
+        "head_qs": resultset.canonical(dataclasses.replace(query, depth="head")) if query.text else None,
         "q": query.text or "",
         "folder": query.folder or "",
         "album": query.album or "",
@@ -279,6 +291,7 @@ def gallery(
     q: FromQuery[str | None] = None,
     f: FromQuery[list[str] | None] = None,
     sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     page: FromQuery[int] = 1,
     view: FromQuery[str] = "gallery",
@@ -305,6 +318,7 @@ def gallery(
         favorite=favorite,
         rating_min=rating_min,
         facets=f,
+        depth=depth,
     )
     return Template(template_name="gallery.html", context=_grid_context(state, query, page, view))
 
@@ -322,6 +336,7 @@ def grid_fragment(
     q: FromQuery[str | None] = None,
     f: FromQuery[list[str] | None] = None,
     sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     page: FromQuery[int] = 1,
 ) -> Template:
@@ -338,6 +353,7 @@ def grid_fragment(
         favorite=favorite,
         rating_min=rating_min,
         facets=f,
+        depth=depth,
     )
     return Template(template_name="_grid.html", context=_grid_context(state, query, page))
 
@@ -392,6 +408,7 @@ def filter_options(
     q: FromQuery[str | None] = None,
     f: FromQuery[list[str] | None] = None,
     sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     search: FromQuery[str | None] = None,
 ) -> FilterOptions:
@@ -414,6 +431,7 @@ def filter_options(
         favorite=favorite,
         rating_min=rating_min,
         facets=f,
+        depth=depth,
     )
     one = vocabulary.dimension(key)
     if one is None:
@@ -461,6 +479,7 @@ def rail_peek(
     q: FromQuery[str | None] = None,
     f: FromQuery[list[str] | None] = None,
     sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     count: FromQuery[int] = resultset.PEEK_MOST,
     expect: FromQuery[str | None] = None,
@@ -485,6 +504,7 @@ def rail_peek(
         favorite=favorite,
         rating_min=rating_min,
         facets=f,
+        depth=depth,
     )
     conn = connect.connect(state.db_path)
     try:
@@ -611,6 +631,7 @@ def locate_in_answer(
     q: FromQuery[str | None] = None,
     f: FromQuery[list[str] | None] = None,
     sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
 ) -> Located | NotLocated:
     """Where one picture sits in this answer -- ordinal, page, and its
@@ -631,6 +652,7 @@ def locate_in_answer(
         favorite=favorite,
         rating_min=rating_min,
         facets=f,
+        depth=depth,
     )
     conn = connect.connect(state.db_path)
     try:

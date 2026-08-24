@@ -32,6 +32,7 @@ import pytest
 from PIL import Image
 
 from db import authored, collection_rules, collections, connect, naming, resultset
+from tests import retrieving
 from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -922,12 +923,9 @@ def ranked_retrieval(curated, monkeypatch):
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         held = [i for i in ranked if allowed is None or i in allowed]
-        return {
-            "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in held],
-            "participants": ["fake"],
-            "contributors": ["fake"],
-            "missing": {},
-        }
+        # every file answers, so the rule's `take` is the only thing
+        # cutting -- which is what these tests are about
+        return retrieving.answered(held)
 
     monkeypatch.setattr(retrieval, "query", fused)
 

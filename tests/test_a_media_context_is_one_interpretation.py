@@ -24,6 +24,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, connect, context, facets, ingest, naming, resultset
+from tests import retrieving
 from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
@@ -371,12 +372,7 @@ def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpret
 
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             witnessed["allowed"] = None if allowed is None else set(allowed)
-            return {
-                "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in sorted(allowed or ())],
-                "participants": ["fake"],
-                "contributors": ["fake"],
-                "missing": {},
-            }
+            return retrieving.answered(sorted(allowed or ()))
 
         monkeypatch.setattr(retrieval, "query", fused)
         resultset.page(conn, "", resultset.parse(facets=["capture.iso:gte:800"], text="beach"), 1, NOW)

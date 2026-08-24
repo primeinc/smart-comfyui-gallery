@@ -20,6 +20,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, collections, connect, ingest, naming, resultset
+from tests import retrieving
 from tests.staging import Stage, staged
 
 NOW = 1_700_000_000.0
@@ -166,12 +167,7 @@ def test_a_semantic_artifact_question_constrains_before_fusion(recipes, monkeypa
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             witnessed["allowed"] = None if allowed is None else set(allowed)
             held = sorted(allowed or (), reverse=True)  # NOT the global order: the pin below notices reordering
-            return {
-                "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in held],
-                "participants": ["fake"],
-                "contributors": ["fake"],
-                "missing": {},
-            }
+            return retrieving.answered(held)
 
         monkeypatch.setattr(retrieval, "query", fused)
         told = resultset.page(conn, "", resultset.parse(artifact="lora-filmgrain", text="grain"), 1, NOW)

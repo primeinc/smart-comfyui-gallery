@@ -1644,8 +1644,9 @@
     };
     const cutoff = (spelled2) => {
       if (!new URLSearchParams(spelled2).get("q")) return null;
-      const held2 = window.prompt("how many top results belong to it?", "100");
-      return held2 === null ? void 0 : Number(held2);
+      const mounted2 = grid();
+      const total = mounted2 ? Number(requireData(mounted2, "total")) : Number.NaN;
+      return Number.isFinite(total) && total > 0 ? total : 1;
     };
     const saver = findElement(document, "[data-save-smart]", HTMLElement);
     saver?.addEventListener("click", async () => {
@@ -1653,7 +1654,6 @@
       const name = window.prompt("name this smart collection");
       if (!name) return;
       const take = cutoff(spelled2);
-      if (take === void 0) return;
       const { data, error } = await api.POST("/albums/smart", { body: { name, ...asked(spelled2, take) } });
       if (!data) {
         window.alert(refusal(error, "the view could not be saved"));
@@ -1686,7 +1686,6 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
       }
       const spelled2 = spelling();
       const take = cutoff(spelled2);
-      if (take === void 0) return;
       const { data, error } = await api.PUT("/t/{slug}/rule", {
         params: { path: { slug: named } },
         body: { expected_rev: current2.data.definition_rev, ...asked(spelled2, take) }

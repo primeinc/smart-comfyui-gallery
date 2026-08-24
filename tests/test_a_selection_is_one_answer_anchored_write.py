@@ -22,6 +22,7 @@ import pytest
 from PIL import Image
 
 from db import authored, collections, connect, resultset
+from tests import retrieving
 from tests.staging import Stage, staged
 
 AS_MACHINE = {"accept": "application/json"}
@@ -382,12 +383,7 @@ def test_a_semantic_proof_runs_without_the_writer_lane(chosen, monkeypatch):
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         witnessed.append("free" if _second_writer_can_begin(chosen.app.state.db_path) else "held")
         held = [i for i in ranked if allowed is None or i in allowed]
-        return {
-            "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in held],
-            "participants": ["fake"],
-            "contributors": ["fake"],
-            "missing": {},
-        }
+        return retrieving.answered(held)
 
     monkeypatch.setattr(retrieval, "query", fused)
     answer, keys = _grid(chosen, q="banana")

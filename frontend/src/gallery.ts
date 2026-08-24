@@ -104,13 +104,28 @@ const asked = (spelled: string, take: number | null): Rule => {
     return question.toString();
   };
 
-  /** How much of a ranked library belongs to the collection, or null. */
-  const cutoff = (spelled: string): number | null | undefined => {
+  /** How much of a ranked library belongs to the collection, or null.
+   *
+   * A phrase ranks rather than filters, so a rule built from one needs
+   * a cutoff to become a set. That cutoff is NOT a question for the
+   * person: it is the answer they are already looking at. This used to
+   * open a text box asking "how many top results belong to it?" -- the
+   * application declining to read its own total -- and then refuse the
+   * number that came back if it was larger than ten thousand.
+   */
+  const cutoff = (spelled: string): number | null => {
     if (!new URLSearchParams(spelled).get("q")) return null;
-    // Similarity ranks the WHOLE library, so only a cutoff makes it a
-    // membership set. Undefined means the person cancelled.
-    const held = window.prompt("how many top results belong to it?", "100");
-    return held === null ? undefined : Number(held);
+    // Off the grid, which is the answer's own element and already
+    // carries the count `spelling()` reads the question from. The
+    // total beside it in the header is words -- "1,204 results" --
+    // and parsing prose for a number is how a rule ends up meaning
+    // one.
+    const mounted = grid();
+    const total = mounted ? Number(requireData(mounted, "total")) : Number.NaN;
+    // A page that somehow carries no total still saves: one is a
+    // truthful floor, and the rule is editable afterwards. Never a
+    // modal, and never a refusal.
+    return Number.isFinite(total) && total > 0 ? total : 1;
   };
 
   // Save the CURRENT question as a smart collection: the server
@@ -122,7 +137,6 @@ const asked = (spelled: string, take: number | null): Rule => {
     const name = window.prompt("name this smart collection");
     if (!name) return;
     const take = cutoff(spelled);
-    if (take === undefined) return;
     const { data, error } = await api.POST("/albums/smart", { body: { name, ...asked(spelled, take) } });
     if (!data) {
       window.alert(refusal(error, "the view could not be saved"));
@@ -159,7 +173,6 @@ const asked = (spelled: string, take: number | null): Rule => {
     }
     const spelled = spelling();
     const take = cutoff(spelled);
-    if (take === undefined) return;
     const { data, error } = await api.PUT("/t/{slug}/rule", {
       params: { path: { slug: named } },
       body: { expected_rev: current.data.definition_rev, ...asked(spelled, take) },

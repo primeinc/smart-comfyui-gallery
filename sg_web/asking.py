@@ -25,6 +25,7 @@ def gallery_query(
     favorite: str | None = None,
     rating_min: int | None = None,
     facets=None,
+    depth: str | None = None,
 ) -> resultset.GalleryQuery:
     try:
         return resultset.parse(
@@ -38,6 +39,7 @@ def gallery_query(
             facets=facets,
             text=q,
             sort=sort,
+            depth=depth,
             size=size,
         )
     except ValueError as refused:

@@ -31,9 +31,20 @@
          controls are unusable to keyboards and screen readers. #}
       <input type="checkbox" class="cell-pick" data-pick aria-label="select {{ item.name }}">
       <a class="cell" href="/i/{{ item.slug }}{% if qs %}?{{ qs }}{% endif %}"
-         data-slug="{{ item.slug }}" data-kind="{{ item.kind }}" data-ordinal="{{ item.ordinal }}">
+         data-slug="{{ item.slug }}" data-kind="{{ item.kind }}" data-ordinal="{{ item.ordinal }}"
+         {%- if item.relevance is not none %} data-relevance="{{ "%.4f"|format(item.relevance) }}"{% endif %}>
         <img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy"{% if item.said %} title="{{ item.said }}" data-said{% endif %}>
         <span class="cell-name">{{ item.name }}</span>
+        {# How far this file stood above the middle of what a space said.
+           A bar rather than a number: the useful reading is where in the
+           answer relevance falls away, which is a shape, not a figure.
+           Absent entirely on a timed answer, where nothing was ranked. #}
+        {% if item.relevance is not none %}
+        <span class="cell-relevance" aria-hidden="true"
+              title="stands {{ (item.relevance * 100)|round|int }}% of the way from the middle of this answer to its best">
+          <i style="width: {{ (item.relevance * 100)|round(1) }}%"></i>
+        </span>
+        {% endif %}
       </a>
     </div>
     {% endfor %}

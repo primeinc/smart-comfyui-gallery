@@ -107,6 +107,34 @@ not a history.
 
 ## Surfaces
 
+- **A slideshow.** The viewer already owns the walk -- `_located` gives
+  it ordinal, arrows and a window over the ordered answer, and the keys
+  registry gives it a place to claim one. A slideshow is that walk on a
+  timer: play/pause and an interval. The pieces are all there; nothing
+  has put them together.
+
+  Two settings, not one, because they answer different questions and a
+  person wants them separately:
+
+  - **wrap** -- what the ARROWS do at either end of the answer. Off,
+    the walk stops; on, next from the last member is the first.
+  - **loop** -- what the SLIDESHOW does when it reaches the end. Off,
+    it stops and stays on the last picture; on, it starts again.
+
+  Both are workspace state, not query state (`frontend/src/workspace.ts`):
+  they change how you move through an answer, never which files the
+  answer contains, so neither belongs in the URL or the fingerprint.
+  Wrap must stay honest about the boundary either way -- crossing the
+  end is the walk restarting, never a silent slide into a different
+  question.
+
+- **Three native dialogs left in the save-view path.**
+  `frontend/src/gallery.ts` still opens `window.prompt` to name a smart
+  collection, and again to pick which collection a rule replaces --
+  the second one pastes a comma-joined list of slugs into a text box
+  and asks you to type one back. The cutoff prompt is gone (the answer
+  supplies it); these two want a real control.
+
 - **Benchmarks in the UI.** `just bench thumbs-phases` and the other
   benchmark recipes write JSON that only a terminal ever sees. The
   operations console is where a run's own facts already live; these
@@ -241,13 +269,23 @@ generation metadata out of video containers. What is NOT built:
   worse than either: a gate that fails one run in three teaches people
   to re-run it.
 
-- **`test_the_bytes_are_served.py` fails only under xdist.** `rc=0` in
-  isolation; under `-n 4` one case raises `asyncio.run() cannot be called
-  from a running event loop` and the next errors in setup. The trigger is
-  an unawaited-coroutine RuntimeWarning surfacing inside another test's
-  setup — `filterwarnings = error` turns it into a failure wherever the
-  garbage collector happens to run it. The test drives the ASGI app with
-  `asyncio.run` inside a worker that already has a loop.
+- **`test_the_bytes_are_served.py` fails whenever something earlier left
+  a running event loop.** Not xdist, as this was previously recorded:
+  it reproduces on a plain single-process `pytest tests/ -m slow`.
+  `test_a_raw_latin1_range_octet_is_answered_not_crashed` raises
+  `asyncio.run() cannot be called from a running event loop`, and the
+  unawaited coroutine it leaves behind surfaces as a
+  RuntimeWarning inside whichever test the garbage collector reaches
+  next — most recently
+  `test_the_harness_owns_its_connections.py::test_a_kept_connection_is_held_rather_than_its_address`,
+  which has nothing to do with either. `filterwarnings = error` turns
+  that into a second failure some distance from its cause.
+
+  Isolation proves the ordering: both files pass alone, with the
+  pytest-playwright plugin loaded AND with `-p no:playwright`. Only the
+  full run fails. The fix is in the test, not the application — it
+  drives the ASGI app with `asyncio.run` and must instead use the loop
+  it is already inside.
 
 ## Thumbnail delivery: done for the gallery, not for every surface
 

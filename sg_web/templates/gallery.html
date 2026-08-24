@@ -39,6 +39,24 @@
             aria-expanded="false" aria-controls="filters"
             title="filter this question">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
     <span class="ask-total" data-total-count>{{ "{:,}".format(total) }} result{{ "" if total == 1 else "s" }}</span>
+    {# A phrase ranks every file a space holds, so the answer is a CUT of
+       that ranking, not the ranking. Saying where it was made is the
+       difference between "these answered" and a library that looks
+       small; and the way back is a link, because whoever wants the
+       whole ranked walk should not have to know a URL. #}
+    {% if ranked and depth == "head" and ranked > total %}
+    <span class="ask-cut" data-cut data-ranked="{{ ranked }}">
+      of {{ "{:,}".format(ranked) }} ranked &middot;
+      <a href="/g?{{ whole_qs }}{% if view != "gallery" %}&view={{ view }}{% endif %}"
+         data-show-all title="every file the spaces ranked, best first">show all</a>
+    </span>
+    {% elif ranked and depth == "all" %}
+    <span class="ask-cut" data-cut data-depth="all">
+      the whole ranking &middot;
+      <a href="/g?{{ head_qs }}{% if view != "gallery" %}&view={{ view }}{% endif %}"
+         data-show-head title="only what stands above the middle">just the answer</a>
+    </span>
+    {% endif %}
     {# One answer, two presentations. `view` is not part of the question:
        switching leaves membership and total exactly where they were,
        which is the whole contract between them. #}

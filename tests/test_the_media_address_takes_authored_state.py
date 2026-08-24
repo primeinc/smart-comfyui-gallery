@@ -21,6 +21,7 @@ from PIL import Image
 
 from db import authored, collections, connect
 from sg_web.app import build_app
+from tests import retrieving
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
@@ -238,7 +239,7 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
 
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             seen.update({"allowed": allowed})
-            return {"results": [], "participants": [], "contributors": [], "missing": {}}
+            return retrieving.answered([], participants=[], contributors=[])
 
         monkeypatch.setattr(retrieval, "query", fused)
         rated = {

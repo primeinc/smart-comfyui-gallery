@@ -23,6 +23,7 @@ import pytest
 from PIL import Image
 
 from db import collections, connect, library, resultset, scan
+from tests import retrieving
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 NOW = 1_700_000_000.0
@@ -307,12 +308,12 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         asked.append((phrase, k, offline))
-        return {
-            "results": [{"file_id": file_id, "score": 1.0, "sources": {}} for file_id in ranked],
-            "participants": ["space.a", "space.b"],
-            "contributors": ["space.a"],
-            "missing": {"space.b": "not provisioned"},
-        }
+        return retrieving.answered(
+            ranked,
+            participants=["space.a", "space.b"],
+            contributors=["space.a"],
+            missing={"space.b": "not provisioned"},
+        )
 
     from db import retrieval
 
@@ -363,12 +364,7 @@ def test_the_scope_reaches_retrieval_as_the_allowed_set(shelves, monkeypatch):
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         seen.update({"allowed": allowed, "k": k})
         members = sorted(allowed or (), reverse=True)
-        return {
-            "results": [{"file_id": f, "score": 1.0, "sources": {}} for f in members],
-            "participants": ["s"],
-            "contributors": ["s"],
-            "missing": {},
-        }
+        return retrieving.answered(members, participants=["s"], contributors=["s"])
 
     from db import retrieval
 

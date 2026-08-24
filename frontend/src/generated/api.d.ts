@@ -5848,6 +5848,7 @@ export interface operations {
                 q?: string | null;
                 f?: string[] | null;
                 sort?: string | null;
+                depth?: string | null;
                 size?: number | null;
                 page?: number;
                 view?: string;
@@ -5897,6 +5898,7 @@ export interface operations {
                 q?: string | null;
                 f?: string[] | null;
                 sort?: string | null;
+                depth?: string | null;
                 size?: number | null;
                 page?: number;
             };
@@ -5946,6 +5948,7 @@ export interface operations {
                 q?: string | null;
                 f?: string[] | null;
                 sort?: string | null;
+                depth?: string | null;
                 size?: number | null;
                 search?: string | null;
             };
@@ -5995,6 +5998,7 @@ export interface operations {
                 q?: string | null;
                 f?: string[] | null;
                 sort?: string | null;
+                depth?: string | null;
                 size?: number | null;
                 count?: number;
                 expect?: string | null;
@@ -6044,6 +6048,7 @@ export interface operations {
                 q?: string | null;
                 f?: string[] | null;
                 sort?: string | null;
+                depth?: string | null;
                 size?: number | null;
             };
             header?: never;

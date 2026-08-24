@@ -122,6 +122,23 @@ body {
   outline: 2px solid var(--accent);
 }
 
+/* How far this cell stood above the middle of what a space said. A hair
+   along the top edge, always visible rather than revealed on hover: the
+   thing worth seeing is where down the page relevance falls away, and a
+   shape you have to hover for is not a shape. */
+.cell-relevance {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--ground) 55%, transparent);
+  pointer-events: none;
+}
+.cell-relevance > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
 .empty {
   color: var(--ink-muted);
   padding: 40px 0;
@@ -2712,6 +2729,30 @@ a.ask-save {
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
   margin-left: 4px;
+}
+/* "of 3,627 ranked - show all". Beside the total because it qualifies
+   it: without this the cut is invisible and the answer reads as a
+   small library. It keeps its width -- a flex row will happily shrink a
+   span until the button beside it sits on top of the link. */
+.ask-cut {
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Dressed like the rest of the bar. Left alone it is default-blue
+   underlined browser text on a dark panel, which reads as a mistake
+   rather than a control. */
+.ask-cut a {
+  color: var(--ink-muted);
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
+}
+.ask-cut a:hover,
+.ask-cut a:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentcolor;
 }
 
 /* Docked beside the grid on a wide screen, a full-height sheet on a

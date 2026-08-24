@@ -13,6 +13,7 @@ from PIL import Image
 
 from db import retrieval
 from sg_web.app import build_app
+from tests import retrieving
 
 
 def test_the_grid_names_the_rankings_that_answered(tmp_path, monkeypatch):
@@ -23,12 +24,12 @@ def test_the_grid_names_the_rankings_that_answered(tmp_path, monkeypatch):
 
     def fused(conn, models_dir, phrase, k, now, *, offline=True, allowed=None):
         ids = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
-        return {
-            "results": [{"file_id": file_id, "score": 1.0, "sources": {}} for file_id in ids],
-            "participants": ["semantic.openclip.ViT-B-32.laion2b_s34b_b79k", "captions", "space.b"],
-            "contributors": ["semantic.openclip.ViT-B-32.laion2b_s34b_b79k", "captions"],
-            "missing": {"space.b": "not provisioned"},
-        }
+        return retrieving.answered(
+            ids,
+            participants=["semantic.openclip.ViT-B-32.laion2b_s34b_b79k", "captions", "space.b"],
+            contributors=["semantic.openclip.ViT-B-32.laion2b_s34b_b79k", "captions"],
+            missing={"space.b": "not provisioned"},
+        )
 
     monkeypatch.setattr(retrieval, "query", fused)
     with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
@@ -53,13 +54,12 @@ def test_a_phrase_no_caption_mentions_is_said_quietly_not_as_degraded(tmp_path, 
 
     def fused(conn, models_dir, phrase, k, now, *, offline=True, allowed=None):
         ids = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
-        return {
-            "results": [{"file_id": file_id, "score": 1.0, "sources": {}} for file_id in ids],
-            "participants": ["space.a", "captions"],
-            "contributors": ["space.a"],
-            "missing": {},
-            "unmatched": {"captions": "no caption mentions a word of the phrase in this scope"},
-        }
+        return retrieving.answered(
+            ids,
+            participants=["space.a", "captions"],
+            contributors=["space.a"],
+            unmatched={"captions": "no caption mentions a word of the phrase in this scope"},
+        )
 
     monkeypatch.setattr(retrieval, "query", fused)
     with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:

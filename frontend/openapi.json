@@ -6062,6 +6062,24 @@
                         "allowReserved": false
                     },
                     {
+                        "name": "depth",
+                        "in": "query",
+                        "schema": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
+                    },
+                    {
                         "name": "size",
                         "in": "query",
                         "schema": {
@@ -6347,6 +6365,24 @@
                         "allowReserved": false
                     },
                     {
+                        "name": "depth",
+                        "in": "query",
+                        "schema": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
+                    },
+                    {
                         "name": "size",
                         "in": "query",
                         "schema": {
@@ -6614,6 +6650,24 @@
                     },
                     {
                         "name": "sort",
+                        "in": "query",
+                        "schema": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
+                    },
+                    {
+                        "name": "depth",
                         "in": "query",
                         "schema": {
                             "oneOf": [
@@ -6921,6 +6975,24 @@
                         "allowReserved": false
                     },
                     {
+                        "name": "depth",
+                        "in": "query",
+                        "schema": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
+                    },
+                    {
                         "name": "size",
                         "in": "query",
                         "schema": {
@@ -7204,6 +7276,24 @@
                     },
                     {
                         "name": "sort",
+                        "in": "query",
+                        "schema": {
+                            "oneOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
+                    },
+                    {
+                        "name": "depth",
                         "in": "query",
                         "schema": {
                             "oneOf": [
