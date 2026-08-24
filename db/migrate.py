@@ -2925,3 +2925,72 @@ def _an_answer_is_stale_only_when_an_answer_could_have_changed(conn: sqlite3.Con
                 f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
                 f" BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
             )
+
+
+@step(32)
+def _the_walk_becomes_a_job(conn: sqlite3.Connection) -> None:
+    """v33 -> v34: `job.kind` admits 'walk'.
+
+    The directory walk was the one expensive thing in this application
+    that was not a job. Every cheaper sweep after it -- hashing,
+    thumbnails, embeddings -- reported progress into the operations
+    console, while the walk itself, which reads every byte of every
+    changed file, showed nothing: `POST /roots/{id}/scan` did it inline
+    and the request simply hung.
+
+    'scan' could not be reused; it is the metadata read (db/runner.py
+    _ingest_item). A CHECK is the only thing in the way and ALTER TABLE
+    cannot widen one, so the table is rebuilt -- copied by the columns
+    it actually has rather than a list written here, which is how the
+    first draft of this step invented a `job` table missing
+    `heartbeat_at`.
+    """
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE job RENAME TO job_v33")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE job (
+    id               INTEGER PRIMARY KEY,
+    -- Constrained like every other `kind` here. A typo is otherwise a job
+    -- that queues successfully and no worker ever claims, because claim()
+    -- filters on the kinds it knows -- so it waits forever and looks fine.
+    -- 'walk' is the directory walk itself, which for a long time was the
+    -- one expensive thing in this application that was NOT a job: the
+    -- scan route did it inline, so a person who asked to scan 80,000
+    -- files watched a request hang for a minute with nothing to look at,
+    -- while every cheaper sweep after it reported progress. 'scan' was
+    -- already taken -- it is the metadata read (db/runner.py _ingest_item)
+    -- -- so the walk gets its own word rather than borrowing one.
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('walk','scan','hash','embed','detect_faces','cluster_faces',
+                        'sample_frames','annotate','remix','zip','context','events',
+                        'story_plan','embed_prompts')),
+    target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
+    state            TEXT NOT NULL CHECK (state IN
+                       ('queued','running','done','failed','cancelled')),
+    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+    payload          TEXT,
+    total            INTEGER,
+    done_count       INTEGER NOT NULL DEFAULT 0,
+    checkpoint       TEXT,
+    attempt          INTEGER NOT NULL DEFAULT 0,
+    -- a lease nobody owns cannot fence anyone: the reclaiming worker must be
+    -- able to prove it holds the job, and the evicted one must be rejected.
+    owner            TEXT,
+    fence            INTEGER NOT NULL DEFAULT 0,
+    lease_until      REAL,
+    heartbeat_at     REAL,
+    error            TEXT,
+    -- No external_ref here. `derivation_intent` already carries the
+    -- generator's own id, UNIQUE, and having it on both meant two rows could
+    -- claim the same external job and disagree about which one owned it.
+    created_at       REAL NOT NULL,
+    started_at       REAL,
+    finished_at      REAL
+) STRICT"""
+    )
+    named = ", ".join(row[1] for row in conn.execute("PRAGMA table_info(job_v33)"))
+    conn.execute(f"INSERT INTO job({named}) SELECT {named} FROM job_v33")
+    conn.execute("DROP TABLE job_v33")
+    conn.execute("""CREATE INDEX job_state ON job(state)""")
+    conn.execute("""CREATE INDEX job_target ON job(target_id)""")

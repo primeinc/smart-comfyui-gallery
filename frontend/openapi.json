@@ -12393,6 +12393,7 @@
                     "kind": {
                         "type": "string",
                         "enum": [
+                            "walk",
                             "scan",
                             "hash",
                             "embed",
@@ -12467,6 +12468,7 @@
                     "kind": {
                         "type": "string",
                         "enum": [
+                            "walk",
                             "scan",
                             "hash",
                             "embed",
@@ -12714,6 +12716,7 @@
                     "kind": {
                         "type": "string",
                         "enum": [
+                            "walk",
                             "scan",
                             "hash",
                             "embed",
@@ -12802,6 +12805,7 @@
                     "kind": {
                         "type": "string",
                         "enum": [
+                            "walk",
                             "scan",
                             "hash",
                             "embed",
@@ -13465,6 +13469,7 @@
                     "kind": {
                         "type": "string",
                         "enum": [
+                            "walk",
                             "scan",
                             "hash",
                             "embed",

@@ -596,8 +596,15 @@ CREATE TABLE job (
     -- Constrained like every other `kind` here. A typo is otherwise a job
     -- that queues successfully and no worker ever claims, because claim()
     -- filters on the kinds it knows -- so it waits forever and looks fine.
+    -- 'walk' is the directory walk itself, which for a long time was the
+    -- one expensive thing in this application that was NOT a job: the
+    -- scan route did it inline, so a person who asked to scan 80,000
+    -- files watched a request hang for a minute with nothing to look at,
+    -- while every cheaper sweep after it reported progress. 'scan' was
+    -- already taken -- it is the metadata read (db/runner.py _ingest_item)
+    -- -- so the walk gets its own word rather than borrowing one.
     kind             TEXT NOT NULL CHECK (kind IN
-                       ('scan','hash','embed','detect_faces','cluster_faces',
+                       ('walk','scan','hash','embed','detect_faces','cluster_faces',
                         'sample_frames','annotate','remix','zip','context','events',
                         'story_plan','embed_prompts')),
     target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
@@ -2234,7 +2241,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 32;
+PRAGMA user_version   = 33;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

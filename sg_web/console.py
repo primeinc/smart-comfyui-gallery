@@ -224,6 +224,7 @@ def inside_item(type_: str) -> bool:
 #: What each schema job kind does, in words, shown beside the raw kind
 #: (db/schema.sql job.kind CHECK; the contract test holds the two equal).
 KINDS: dict[str, str] = {
+    "walk": "look for files on disk",
     "scan": "read every file's metadata",
     "hash": "verify every file's bytes",
     "embed": "embed every picture for search",

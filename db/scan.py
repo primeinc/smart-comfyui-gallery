@@ -485,7 +485,7 @@ def _folders_by_path(conn, root_id: int, root_path: str) -> dict[str, int]:
     return found
 
 
-def survey(conn, root_id: int, root_path, now: float | None = None) -> Survey:
+def survey(conn, root_id: int, root_path, now: float | None = None, watch=None) -> Survey:
     """Walk the tree and hash what changed, WITHOUT writing anything.
 
     This is the long half of a scan -- `sha256_of` reads every changed
@@ -499,6 +499,13 @@ def survey(conn, root_id: int, root_path, now: float | None = None) -> Survey:
 
     Nothing here writes, so nothing here holds the lane. The reads are
     two statements taken up front.
+
+    `watch(folders, files, hashed)` is called as the walk goes, if given.
+    This is the long half and it used to be silent: a person scanning a
+    large root watched a request hang with nothing to look at, while
+    every cheaper sweep that followed reported itself. The callback is
+    how the walk says what it is doing without this module knowing what
+    a job is.
     """
     del now  # nothing here is dated; the write phase carries the clock
     root_path = os.fspath(root_path)
@@ -578,6 +585,13 @@ def survey(conn, root_id: int, root_path, now: float | None = None) -> Survey:
                 fs_id=held,
                 kind=kind,
             )
+            # Per FILE, and the CALLER decides how often that is worth
+            # acting on. Reporting per directory instead looks thriftier
+            # and says nothing: a library is often one flat folder, and
+            # 900 files in one of them produced exactly one report, at
+            # the end, which is the silence this exists to break.
+            if watch is not None:
+                watch(len(dirs), len(files), hashed)
     return Survey(dirs=dirs, files=files, hashed=hashed)
 
 
@@ -846,7 +860,7 @@ class RootOffline(Exception):
     """The root could not be read, so nothing can be concluded about it."""
 
 
-def scan(conn, root_id: int, root_path, now: float) -> ScanResult:
+def scan(conn, root_id: int, root_path, now: float, watch=None) -> ScanResult:
     """One pass: walk the root, decide, write.
 
     The veto comes first. `os.walk` on a path that is not there yields
@@ -872,7 +886,7 @@ def scan(conn, root_id: int, root_path, now: float) -> ScanResult:
     # background worker could not even claim a job; it got `database is
     # locked` and reported it as a crash. Reads do not take the lane, so
     # only the second half of this function does.
-    held = survey(conn, root_id, root_path, now)
+    held = survey(conn, root_id, root_path, now, watch)
     with _one_write(conn, "scan"):
         observed, hashed = record(conn, root_id, held, now)
         return apply_scan(conn, observed, now, hashed=hashed, roots={root_id})

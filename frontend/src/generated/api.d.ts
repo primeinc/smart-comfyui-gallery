@@ -2223,7 +2223,7 @@ export interface components {
             type: "delta";
             job: number;
             /** @enum {string} */
-            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            kind: "walk" | "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
             /** @enum {string} */
             state: "queued" | "running" | "done" | "failed" | "cancelled";
             done: number;
@@ -2235,7 +2235,7 @@ export interface components {
         JobDetail: {
             id: number;
             /** @enum {string} */
-            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            kind: "walk" | "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
             /** @enum {string} */
             state: "queued" | "running" | "done" | "failed" | "cancelled";
             cancel_requested: boolean;
@@ -2274,7 +2274,7 @@ export interface components {
         JobListed: {
             id: number;
             /** @enum {string} */
-            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            kind: "walk" | "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
             /** @enum {string} */
             state: "queued" | "running" | "done" | "failed" | "cancelled";
             cancel_requested: boolean;
@@ -2288,7 +2288,7 @@ export interface components {
         JobSnapshot: {
             id: number;
             /** @enum {string} */
-            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            kind: "walk" | "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
             /** @enum {string} */
             state: "queued" | "running" | "done" | "failed" | "cancelled";
             cancel_requested: boolean;
@@ -2406,7 +2406,7 @@ export interface components {
         MatrixRow: {
             id: number;
             /** @enum {string} */
-            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            kind: "walk" | "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
             /** @enum {string} */
             state: "queued" | "running" | "done" | "failed" | "cancelled";
             cancel_requested: boolean;

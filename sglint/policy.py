@@ -57,6 +57,11 @@ SQL_STRUCTURE: dict[str, str] = {
     # trigger's name and its event are structure -- neither can be bound.
     "verb": "keyword",
     "short": "identifier",
+    # db/migrate.py, the step that widens job.kind: the column list of the
+    # table being rebuilt, read from `PRAGMA table_info` rather than
+    # written out -- which is what stopped that step inventing a `job`
+    # table with no `heartbeat_at`. Column names are structure.
+    "named": "identifier",
     # db/jobs.py: the one module-literal column list the active and recent
     # reads share, so both rows carry the same shape
     "_LISTED": "identifier",

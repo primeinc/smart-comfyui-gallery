@@ -42,6 +42,10 @@ from . import ledger
 #: browser gets the closed set as a union instead of `string`.
 JobState = typing.Literal["queued", "running", "done", "failed", "cancelled"]
 JobKind = typing.Literal[
+    # the directory walk itself -- 'scan' is the metadata read that
+    # follows it (db/runner.py _ingest_item), which is why the walk
+    # needed a word of its own rather than borrowing that one
+    "walk",
     "scan",
     "hash",
     "embed",
@@ -109,6 +113,39 @@ def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=N
         data={"kind": kind, "total": len(items) if items is not None else None, "target_id": target_id},
     )
     return job_id
+
+
+def begin(conn, kind: str, owner: str, now: float, *, payload=None) -> tuple[int, int]:
+    """A job that is already running, owned by whoever asked for it.
+
+    For work a REQUEST does itself rather than handing to the worker --
+    the directory walk, which has to answer with its own counts. Submit
+    and then claim looks equivalent and is not: between the two the row
+    sits queued, the worker polls for any runnable kind, and it took the
+    walk, found no handler for it and failed it while the request that
+    created it was still reaching for it. Inserted running and owned,
+    the row is never claimable, because `claim` only takes queued ones.
+
+    Returns `(job_id, fence)` -- the same pair `claim` returns, so the
+    caller drives it with `checkpoint` and `settle` exactly as a worker
+    would, and the row obeys the same invariants either way.
+    """
+    lease = now + LEASE_SECONDS
+    cursor = conn.execute(
+        "INSERT INTO job(kind, state, payload, owner, fence, lease_until, heartbeat_at, attempt,"
+        " created_at, started_at) VALUES(?, 'running', ?, ?, 1, ?, ?, 1, ?, ?)",
+        (kind, json.dumps(payload) if payload is not None else None, owner, lease, now, now, now),
+    )
+    job_id = int(cursor.lastrowid or 0)
+    ledger.record(
+        conn,
+        job_id,
+        "job.submitted",
+        now,
+        message=f"{kind} started by {owner}",
+        data={"kind": kind, "owner": owner, "fence": 1},
+    )
+    return job_id, 1
 
 
 def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, int] | None:

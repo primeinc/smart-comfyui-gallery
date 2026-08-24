@@ -1263,16 +1263,102 @@ def forget_root(state: State, root_id: FromPath[int], confirm: FromQuery[str] = 
         connect.close(conn)
 
 
+#: How often the walk says where it is, in files. Every directory would
+#: be a write per folder, and a library of ten-thousand-file folders
+#: would report once an aeon; this is a number of files, so the cadence
+#: follows the work rather than the shape of the tree.
+WALK_EVERY = 250
+
+
 @post("/roots/{root_id:int}/scan", sync_to_thread=True)
 def scan_root(state: State, root_id: FromPath[int]) -> dict:
-    """Walk one root and reconcile the library with what is on disk."""
+    """Walk one root and reconcile the library with what is on disk.
+
+    The walk is a JOB, and until now it was the one expensive thing here
+    that was not. Everything cheaper that follows it -- hashing,
+    thumbnails, embeddings -- reported itself into the operations
+    console, while this read every byte of every changed file and showed
+    nothing at all: the request hung, and on a large root it hung for
+    minutes.
+
+    Still synchronous, so the answer is still the counts. What is new is
+    that somebody watching has something to watch: a `walk` row, its
+    phases, and a file count that moves.
+    """
     conn = _connect(state.db_path)
     try:
         path = library.root_path(conn, root_id)
         if path is None:
             raise NotFoundException(f"no root {root_id}")
-        result = scan.scan(conn, root_id, path, time.time())
+
+        # This request IS the worker for its own job -- the same
+        # checkpoint/settle the runner uses, so the row obeys the same
+        # invariants (a fence, a lease, one owner) rather than being a
+        # second kind of job nothing else understands.
+        #
+        # `begin`, not submit-then-claim: between those two the row sits
+        # QUEUED, and the background worker polls for any runnable kind.
+        # It took the walk, found no handler for it, failed it, and the
+        # request that had just created it then could not claim its own
+        # work. Inserted running and owned, it is never claimable.
+        #
+        # The root goes in the PAYLOAD: `target_id` references `entity`,
+        # and a root is not one -- its top folder is, and on a first scan
+        # that folder does not exist until this walk makes it.
+        owner = f"scan-{os.getpid()}"
+        walking, fence = jobs.begin(conn, "walk", owner, time.time(), payload={"root": root_id, "path": path})
         conn.commit()
+        _announce(state, conn, walking, event_type="job.submitted")
+
+        # The last seen counts, kept so the FINAL report is the true one.
+        # Throttling alone left the job settled at 750 of 790 -- the tail
+        # below the cadence was never spoken, so the count a person was
+        # watching stopped short of the number the same request returned.
+        seen = {"folders": 0, "files": 0, "hashed": 0, "spoken": 0}
+
+        def say(folders: int, files: int, hashed: int) -> None:
+            jobs.checkpoint(conn, walking, fence, {"folders": folders, "hashed": hashed}, files, at=time.time())
+            conn.commit()
+            _announce(state, conn, walking)
+
+        def watch(folders: int, files: int, hashed: int) -> None:
+            seen.update(folders=folders, files=files, hashed=hashed)
+            if files - seen["spoken"] < WALK_EVERY:
+                return
+            seen["spoken"] = files
+            say(folders, files, hashed)
+
+        try:
+            result = scan.scan(conn, root_id, path, time.time(), watch)
+        except Exception as broke:
+            jobs.settle(conn, walking, fence, "failed", time.time(), error=f"{type(broke).__name__}: {broke}")
+            ledger.record(
+                conn,
+                walking,
+                "job.failed",
+                time.time(),
+                severity="error",
+                message=f"{type(broke).__name__}: {broke}",
+            )
+            conn.commit()
+            _announce(state, conn, walking)
+            raise
+        if seen["files"] != seen["spoken"]:
+            say(seen["folders"], seen["files"], seen["hashed"])
+        jobs.settle(conn, walking, fence, "done", time.time())
+        ledger.record(
+            conn,
+            walking,
+            "job.done",
+            time.time(),
+            message=(
+                f"walked {result.added + result.matched + result.replaced} file(s),"
+                f" hashed {result.hashed}, {result.missing} now missing"
+            ),
+            data={"added": result.added, "matched": result.matched, "hashed": result.hashed},
+        )
+        conn.commit()
+        _announce(state, conn, walking)
         cache = str(home.thumbs_dir(pathlib.Path(state.home)))
         precache = runner.precache_after_scan(conn, time.time(), result, thumbs_dir=cache)
         if precache is not None:
