@@ -424,11 +424,18 @@ class _Ahead:
     def __init__(self) -> None:
         self._held: dict[tuple[int, str], dict[int, object]] = {}
 
-    def take(self, space, file_id: int):
-        for key, vectors in self._held.items():
-            if key[1] == space.key and file_id in vectors:
-                return vectors.pop(file_id)
-        return None
+    def take(self, job_id: int, space, file_id: int):
+        """The vector held for this file, by THIS job, in THIS space.
+
+        Keyed exactly. An earlier version searched every held job for a
+        matching space and file, which made the lookup contract
+        `space + file` while the storage key and the docstring both said
+        `job + space + file`. Two jobs over overlapping files in one
+        space would have crossed, and the reason it would usually have
+        looked fine -- the same file in the same space encodes to nearly
+        the same vector -- is exactly what would have kept it hidden.
+        """
+        return self._held.get((job_id, space.key), {}).pop(file_id, None)
 
     def forget(self, job_id: int) -> None:
         """Drop everything held for a job that has stopped."""
@@ -462,7 +469,13 @@ class _Ahead:
             # right and is not, because that closure reads `capture` for
             # the orientation tag.
             upcoming = [item for item in jobs.pending(conn, told.job_id) if item != file_id]
-            budget = BATCH_MEGAPIXELS
+            # The item that LEADS the batch is charged first. It is in the
+            # batch and it decodes like any other member, so leaving it
+            # out made the stated bound a bound on the followers: a 100
+            # megapixel leader and 150 of followers formed a 250
+            # megapixel batch under a limit of 160.
+            mine = conn.execute("SELECT width, height FROM file WHERE id = ?", (file_id,)).fetchone()
+            budget = BATCH_MEGAPIXELS - _megapixels(mine)
             for item in upcoming[: openclip_batch() - 1]:
                 row = conn.execute("SELECT kind, width, height FROM file WHERE id = ?", (item,)).fetchone()
                 if row is None or row[0] == "video":
@@ -473,8 +486,12 @@ class _Ahead:
                 # for all of it: cancellation is checked BETWEEN items,
                 # so an unbounded batch is also an unbounded wait for
                 # somebody who asked the job to stop.
-                budget -= (row[1] or 0) * (row[2] or 0) / 1e6 or 1.0
-                if budget < 0 and together:
+                #
+                # A leader already over the whole budget still encodes,
+                # alone: one picture is the smallest batch there is, and
+                # refusing it would be refusing to embed a large file.
+                budget -= _megapixels(row[1:])
+                if budget < 0:
                     break
                 together.append((item, detect.path_of(conn, item), oriented.orientation_of(conn, item)))
 
@@ -526,6 +543,18 @@ class _Ahead:
         for (item, _path, _tag), vector in zip(together, vectors[1:], strict=True):
             held[item] = vector
         return vectors[0]
+
+
+def _megapixels(size) -> float:
+    """A file row's `(width, height)` in megapixels.
+
+    One megapixel when the row does not say, which is the case for a file
+    scanned but not yet ingested. Counting an unknown as nothing would
+    let a batch of them past a bound meant to hold it.
+    """
+    if not size or not size[0] or not size[1]:
+        return 1.0
+    return size[0] * size[1] / 1e6
 
 
 def openclip_batch() -> int:
@@ -585,7 +614,7 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
     space = encoder.space()
 
-    vector = _ahead.take(space, file_id)
+    vector = _ahead.take(told.job_id, space, file_id)
     if vector is None:
         vector = _ahead.fill(conn, told, encoder, space, file_id, media)
     told.phase("recording", space=str(space))

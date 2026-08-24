@@ -531,6 +531,91 @@ def test_one_encoder_pass_covers_many_items_and_each_keeps_its_own_vector(db, tm
         assert np.allclose(stored, want), f"{name} was given another picture's vector"
 
 
+def test_two_jobs_over_the_same_files_never_read_each_other_vectors():
+    """The held vectors are keyed by job, space AND file, all three.
+
+    An earlier lookup searched every held job for a matching space and
+    file, which made the real contract `space + file` while the storage
+    key said otherwise. Two jobs over overlapping files in one space
+    would have crossed -- and the reason it would usually have looked
+    fine, that the same file in the same space encodes to nearly the same
+    vector, is exactly what would have kept it hidden.
+    """
+
+    class Space:
+        key = "semantic.openclip.ViT-B-32.laion2b_s34b_b79k"
+
+    class Other:
+        key = "semantic.qwen.something"
+
+    other = Other
+    held = runner._Ahead()
+    held._held[(1, Space.key)] = {42: "job one's vector"}
+    held._held[(2, Space.key)] = {42: "job two's vector"}
+    held._held[(1, other.key)] = {42: "another space's vector"}
+
+    assert held.take(1, Space(), 42) == "job one's vector"
+    assert held.take(2, Space(), 42) == "job two's vector"
+    assert held.take(1, other(), 42) == "another space's vector"
+    assert held.take(3, Space(), 42) is None, "a job that held nothing must not read a neighbour's"
+    assert held.take(1, Space(), 42) is None, "and a vector is taken once"
+
+    held.forget(1)
+    held._held[(2, Space.key)] = {7: "still job two's"}
+    assert held.take(2, Space(), 7) == "still job two's", "forgetting one job leaves the others alone"
+
+
+def test_a_batch_is_bounded_by_pixels_including_the_item_that_leads_it(db, tmp_path, monkeypatch):
+    """`BATCH_MEGAPIXELS` bounds the WHOLE batch.
+
+    The leader decodes like any other member and the item leading a batch
+    pays for all of it, so leaving it out of the budget made the stated
+    bound a bound on the followers only: a 100-megapixel leader plus 150
+    of followers formed a 250-megapixel batch under a limit of 160.
+
+    Cancellation is checked between items, so this bound is also the
+    longest a stop request can wait.
+    """
+    from db import similarity
+    from vision import semantic
+
+    widest: list[int] = []
+
+    class Grouping:
+        dimensions = 4
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+
+        def _v(self):
+            v = np.ones(4, dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+        def encode_media(self, media):
+            widest.append(1)
+            return self._v()
+
+        def encode_many(self, framers):
+            widest.append(len(framers))
+            return [self._v() for _ in framers]
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Grouping())
+    monkeypatch.setattr(runner, "BATCH_MEGAPIXELS", 100.0)
+    files = _pictures(db, tmp_path, {f"p{i}.png": i for i in range(8)})
+    # 40 megapixels each against a bound of 100. Charging the leader
+    # leaves room for exactly one follower, so batches are of two.
+    # WITHOUT charging it there is room for two followers and they would
+    # be three -- which is what makes this test tell the two apart rather
+    # than pass either way.
+    db.execute("UPDATE file SET width = 5000, height = 8000")
+    db.commit()
+
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 8, "failed": 0}
+    assert max(widest) == 2, f"batches of {max(widest)}: the leader's own pixels were not charged"
+    assert sum(widest) == len(files), f"pictures were encoded more than once: {widest}"
+
+
 def test_an_adapter_without_a_group_encoder_is_still_called_one_at_a_time(db, tmp_path, monkeypatch):
     """The fallback is not a special case, it is the older path intact.
 
