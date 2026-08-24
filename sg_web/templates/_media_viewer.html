@@ -1,0 +1,81 @@
+{# The viewer: the photograph, the few facts that change what it means, and
+   everything else one click away.
+
+   ONE partial, two containers. The page mounts it under a <main>, the
+   gallery mounts it inside the overlay's dialog, and neither adds or
+   removes a capability -- what differs is what surrounds it.
+
+   The stage carries its own contract as JSON so the browser reads typed
+   facts (source pixels, what the preview delivers, whether the original
+   has more to give) instead of measuring the DOM and guessing. Single
+   quotes because Jinja's tojson escapes < > & ' for exactly this. #}
+<div class="viewer" data-viewer data-chrome="visible" data-inspector="closed">
+
+  <header class="viewer-chrome" data-chrome-bar>
+    <a class="viewer-back" href="{{ item.context.return_url }}" data-return
+       aria-label="back to results">&larr;</a>
+    <div class="viewer-said">
+      {% if item.when %}
+      <button type="button" class="chip" data-panel-open="about" data-viewer-when>
+        <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>
+      </button>
+      {% endif %}
+      {% if item.where %}
+      <button type="button" class="chip" data-panel-open="about" data-viewer-where>{{ item.where.name }}</button>
+      {% endif %}
+      {% if item.context.in_answer %}
+      <span class="viewer-ordinal">{{ item.context.ordinal }} / {{ item.context.total }}</span>
+      {% endif %}
+    </div>
+    <div class="viewer-acts">
+      {% include "_media_authored.html" %}
+      <button type="button" class="viewer-act" data-focus title="focus (F)" aria-label="focus">&#9633;</button>
+      <button type="button" class="viewer-act" data-inspector-toggle aria-expanded="false"
+              title="information (I)" aria-label="information">&#9432;</button>
+      {# "close" is one word; what it DOES is the container's business --
+         the overlay goes Back, the page returns to its results. #}
+      <button type="button" class="viewer-act" data-close aria-label="close">&times;</button>
+    </div>
+  </header>
+
+  <div class="viewer-stage" data-quality="preview"
+       data-stage='{{ item.stage.model_dump(mode="json") | tojson }}'>
+    {% if item.context.previous %}
+    <a class="viewer-step viewer-step-back" data-nav="previous" rel="prev" aria-label="previous"
+       href="/i/{{ item.context.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&lsaquo;</a>
+    {% endif %}
+
+    {% if item.stage.kind == "video" %}
+    <video data-stage-media src="{{ item.stage.src }}" poster="{{ item.stage.poster }}" controls playsinline></video>
+    {% elif item.stage.kind == "animated_image" %}
+    <img data-stage-media src="{{ item.stage.src }}" alt="{{ item.name }}">
+    {% elif item.stage.kind == "image" %}
+    <img data-stage-media src="{{ item.stage.src }}" alt="{{ item.name }}"
+         {% if item.stage.shown %}width="{{ item.stage.shown.width }}" height="{{ item.stage.shown.height }}"{% endif %}>
+    {% elif item.stage.kind == "audio" %}
+    <audio data-stage-media src="{{ item.stage.src }}" controls></audio>
+    {% else %}
+    <a class="viewer-download" data-stage-media href="{{ item.stage.original }}">download {{ item.name }}</a>
+    {% endif %}
+
+    {% if item.context.next %}
+    <a class="viewer-step viewer-step-on" data-nav="next" rel="next" aria-label="next"
+       href="/i/{{ item.context.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rsaquo;</a>
+    {% endif %}
+
+    {% if not item.present %}<p class="viewer-warn">this file is not on disk right now</p>{% endif %}
+
+    <div class="viewer-facts" data-viewer-facts>
+      {% if item.faces.people %}
+      <span class="viewer-people" data-lightbox-people>
+        {% for who in item.faces.people %}<a class="chip" href="{{ who.href }}">{{ who.name or who.slug }}</a>{% endfor %}
+      </span>
+      {% endif %}
+      {% if item.said_first %}
+      <span class="viewer-caption" data-lightbox-said>&ldquo;{{ item.said_first }}&rdquo;</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include "_media_inspector.html" %}
+</div>

@@ -224,11 +224,13 @@ def test_the_lightbox_says_where_too(tmp_path):
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         [slug] = _slugs(client)
-        assert "data-lightbox-where" not in client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
+        # where is glanceable chrome, not a section somebody opens: it is a
+        # chip beside the picture, and there is no chip when nobody has said
+        assert "data-viewer-where" not in client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
         client.post(f"/i/{slug}/place", json={"name": "Porto", "kind": "city"})
         part = client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
-        assert "data-lightbox-where" in part
-        assert ">in Porto</a>" in part
+        assert "data-viewer-where" in part
+        assert ">Porto</button>" in part
 
 
 def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):

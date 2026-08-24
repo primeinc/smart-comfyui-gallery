@@ -4,6 +4,7 @@
 import { api, refusal } from "./api";
 import { everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components } from "./generated/api";
+import { mountViewer } from "./viewer";
 
 type DesiredPlace = components["schemas"]["DesiredPlace"];
 type PlaceKind = DesiredPlace["kind"];
@@ -82,9 +83,35 @@ const asPlaceKind = (held: string): PlaceKind => {
     });
   }
 
+  // The viewer, on the page's container. Same module the overlay mounts;
+  // what this file owns is only what dismissal MEANS here.
+  const mounted = findElement(document, "[data-viewer]", HTMLElement);
+  // A page walks by BEING the next page: no gallery is mounted here, so
+  // there is nothing to swap a fragment into.
+  const viewer = mounted
+    ? mountViewer(mounted, (href) => {
+        window.location.assign(href);
+      })
+    : null;
+
   const back = findElement(document, "[data-return]", HTMLAnchorElement);
   if (!back) return;
+  const leave = () => {
+    window.location.assign(back.href);
+  };
+
+  // A direct or pasted item has no gallery in its history, so leaving goes
+  // to the computed return-to-results URL -- never a blind history.back()
+  // that could take the browser off the site entirely.
+  for (const close of everyElement(document, "[data-close]", HTMLElement)) {
+    close.addEventListener("click", leave);
+  }
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") window.location.assign(back.href);
+    // The same ladder the overlay gets: the viewer spends the press on its
+    // own state -- a zoomed picture fits, an open inspector closes -- and
+    // only a viewer with nothing left to unwind lets Escape mean "leave".
+    if (event.key !== "Escape") return;
+    if (viewer?.unwind()) return;
+    leave();
   });
 })();

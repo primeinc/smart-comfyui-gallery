@@ -235,48 +235,345 @@ body {
   display: none;
 }
 
+/* The overlay's container adapter: the dialog fills the screen, because
+   the picture owns the viewport and the grid behind it is context, not a
+   frame to leave room for. */
 .lightbox {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- the viewer ------------------------------------------------------
+   One viewer, two containers, and NO mode. The axes below are independent
+   -- chrome, inspector, filmstrip, framing -- and the shapes a design
+   sketch calls "minimal", "sidebar", "focus" or "bottom sheet" are
+   combinations of them the viewer arrives at from what somebody is doing.
+   There is no .viewer-minimal to select. */
+
+.viewer-page {
+  position: fixed;
+  inset: 0;
+}
+
+.viewer {
+  position: absolute;
+  inset: 0;
   display: grid;
-  gap: 10px;
-  max-width: min(92vw, 1500px);
-  max-height: 94vh;
+  /* the inspector is a COLUMN that is zero wide until it is open: the
+     stage grows back into the space when it closes, with no reflow of
+     anything else */
+  grid-template-columns: 1fr 0;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "chrome chrome"
+    "stage inspector";
+  background: var(--ground);
 }
 
-.lightbox-media img,
-.lightbox-media video {
-  max-width: 92vw;
-  max-height: 84vh;
-  object-fit: contain;
-  border-radius: var(--radius);
-  display: block;
+.viewer[data-inspector="open"] {
+  grid-template-columns: 1fr minmax(280px, 24vw);
 }
 
-.lightbox-bar {
+/* --- chrome: present, then out of the way ---------------------------- */
+
+.viewer-chrome {
+  grid-area: chrome;
   display: flex;
   gap: 14px;
   align-items: center;
-  justify-content: center;
+  padding: 10px 14px;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
-}
-.lightbox-bar a {
-  color: var(--accent);
-}
-.lightbox-end {
-  opacity: 0.3;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 92%, transparent), transparent);
+  transition: opacity 220ms ease;
 }
 
-.lightbox-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: var(--panel);
-  color: var(--ink);
-  border: 1px solid var(--line);
+.viewer[data-chrome="resting"] .viewer-chrome,
+.viewer[data-chrome="focus"] .viewer-chrome {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viewer-said {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.viewer-acts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.viewer-back,
+.viewer-act {
+  background: none;
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  font-size: 20px;
-  padding: 2px 12px;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  padding: 5px 10px;
   cursor: pointer;
+  text-decoration: none;
+}
+.viewer-back:hover,
+.viewer-act:hover {
+  border-color: var(--line);
+}
+.viewer-act[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.viewer-ordinal {
+  color: var(--ink-muted);
+}
+
+.chip {
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 11px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+
+/* --- the stage ------------------------------------------------------- */
+
+.viewer-stage {
+  grid-area: stage;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  /* the wheel is the viewer's, not the page's */
+  touch-action: none;
+}
+
+/* Absolutely positioned with every inset zero and `margin: auto`, so the
+   picture is centred AND bounded by the stage in both directions.
+   `place-items: center` on a grid did neither reliably: the percentage
+   max-height had no definite height to resolve against, so a 1440x1080
+   preview stayed 1080 tall in a 656-tall stage, pinned to the top and
+   overflowing downward -- which also moved its centre away from the
+   stage's, and the wheel's anchor point with it.
+
+   `width`/`height` attributes stay on the element so the browser knows the
+   shape before the bytes arrive; auto here hands the used size back to the
+   max rules, which is the one thing the attributes must not decide. */
+.viewer-stage [data-stage-media] {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* Only a picture past fit can be dragged, and only then does it say so. */
+.viewer-stage[data-framing="fit"] [data-stage-media] {
+  cursor: default;
+}
+.viewer-stage:not([data-framing="fit"]) [data-stage-media] {
+  cursor: grab;
+}
+.viewer-stage[data-panning] [data-stage-media] {
+  cursor: grabbing;
+}
+
+.viewer-warn {
+  position: absolute;
+  bottom: 12px;
+  color: var(--danger);
+}
+
+.viewer-step {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: clamp(48px, 8vw, 110px);
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  color: var(--ink);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  z-index: 1;
+}
+.viewer-step-back {
+  left: 0;
+}
+.viewer-step-on {
+  right: 0;
+}
+.viewer[data-chrome="visible"] .viewer-step:hover,
+.viewer[data-chrome="visible"] .viewer-step:focus-visible {
+  opacity: 1;
+  background: linear-gradient(to right, color-mix(in srgb, var(--ground) 55%, transparent), transparent);
+}
+.viewer-step-on:hover {
+  background: linear-gradient(to left, color-mix(in srgb, var(--ground) 55%, transparent), transparent);
+}
+
+/* The facts that sit ON the picture: who is here, and what it was called.
+   They recede the moment somebody is inspecting pixels rather than
+   browsing -- at that point the neighbours are not what is being looked
+   at. */
+.viewer-facts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 18px;
+  background: linear-gradient(to top, color-mix(in srgb, var(--ground) 85%, transparent), transparent);
+  transition: opacity 220ms ease;
+}
+.viewer[data-absorbed="true"] .viewer-facts {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Focus is a decision, so it takes the surrounding walk with it; resting
+   is only the pointer being still, and the walk stays. Stated here, after
+   both are defined, so the cascade reads top to bottom. */
+.viewer[data-chrome="focus"] .viewer-facts,
+.viewer[data-chrome="focus"] .viewer-step {
+  opacity: 0;
+  pointer-events: none;
+}
+.viewer-caption {
+  color: var(--ink);
+}
+.viewer-people {
+  display: flex;
+  gap: 6px;
+}
+
+/* --- the inspector --------------------------------------------------- */
+
+.inspector {
+  grid-area: inspector;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0 16px 20px;
+}
+.viewer[data-inspector="closed"] .inspector {
+  display: none;
+}
+.inspector-bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  background: var(--panel);
+}
+.inspector-bar h2 {
+  font-size: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.panel {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+.panel h3 {
+  color: var(--ink-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+.panel h4 {
+  color: var(--ink-muted);
+  font-size: 13px;
+  margin: 12px 0 4px;
+}
+/* A panel a person has not opened keeps its heading -- the inspector is a
+   list of what is knowable, and a heading with nothing under it is how
+   somebody learns the section is there. */
+.panel[data-open="false"] > :not(h3) {
+  display: none;
+}
+.panel[data-open="false"] h3 {
+  cursor: pointer;
+}
+.panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 0;
+}
+.panel dt {
+  color: var(--ink-muted);
+}
+.panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.panel a {
+  color: var(--accent);
+}
+.panel .muted {
+  color: var(--ink-muted);
+}
+.badge {
+  background: none;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 9px;
+}
+
+/* Narrow: the inspector is a sheet under the picture rather than a column
+   beside it. The same markup, the same state -- geometry decides, so
+   nothing in the browser has to. */
+@media (max-width: 760px) {
+  .viewer,
+  .viewer[data-inspector="open"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "chrome"
+      "stage"
+      "inspector";
+  }
+  .inspector {
+    border-left: none;
+    border-top: 1px solid var(--line);
+    max-height: 45vh;
+  }
+}
+
+/* Written at the same specificity as the state rules above, so the
+   cascade never descends. */
+@media (prefers-reduced-motion: reduce) {
+  .viewer[data-chrome] .viewer-chrome,
+  .viewer[data-chrome] .viewer-facts,
+  .viewer[data-chrome] .viewer-step {
+    transition: none;
+  }
 }
 
 /* --- the detail page ------------------------------------------------ */

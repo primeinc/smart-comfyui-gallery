@@ -47,6 +47,24 @@ export interface OverlaySpec {
   generation?: () => string | null;
   /** Refresh the generation evidence; true means the mounted answer is proven unchanged. */
   recover?: () => Promise<boolean>;
+  /**
+   * The adapter's chance to spend a dismissal on its own state first.
+   *
+   * True means "I used it, stay open" -- a zoomed picture returning to
+   * fit, an inspector closing. False means dismissal stands. The shell
+   * ASKS rather than the adapter installing a competing Escape listener,
+   * because two listeners on one key is a race whose winner depends on
+   * which script loaded first.
+   */
+  dismiss?: () => boolean;
+  /**
+   * Called after each fragment lands, and after a dismissal with null.
+   *
+   * An overlay's contents are replaced wholesale on every open, so
+   * anything an adapter bound over the old DOM is pointing at nodes that
+   * no longer exist. This is where it rebinds.
+   */
+  mounted?: (root: HTMLElement | null) => void;
 }
 
 export interface Overlay {
@@ -146,6 +164,7 @@ export function addressableOverlay(spec: OverlaySpec): Overlay | null {
         }
       }
       root.innerHTML = fragment;
+      spec.mounted?.(root);
       if (root.hidden) {
         root.hidden = false;
         underlay(true);
@@ -161,6 +180,7 @@ export function addressableOverlay(spec: OverlaySpec): Overlay | null {
     flight += 1; // anything still in the air lands nowhere
     root.hidden = true;
     root.replaceChildren();
+    spec.mounted?.(null);
     underlay(false);
     if (opener?.isConnected) opener.focus();
     opener = null;
@@ -184,7 +204,10 @@ export function addressableOverlay(spec: OverlaySpec): Overlay | null {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (!root.hidden && event.key === "Escape") history.back();
+    if (root.hidden || event.key !== "Escape") return;
+    // The adapter unwinds its own state first, one rung per press.
+    if (spec.dismiss?.()) return;
+    history.back();
   });
 
   window.addEventListener("popstate", () => {

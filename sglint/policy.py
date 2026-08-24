@@ -262,13 +262,14 @@ MUST_CONTAIN: dict[str, tuple[str, ...]] = {
     # worker would be a second channel and half the subscribers would
     # never hear a job move (sg_web/__main__.py starts no workers).
     "sg_web/app.py": ("collections.set_membership", "MemoryChannelsBackend()"),
-    # Both presentations answer for every kind the schema admits. The
-    # addresses themselves are no longer spelled here: the stage mints
-    # them once (sg_web/media_view.py `_stage`), so a template that wants
-    # the bytes asks the view for them.
-    "sg_web/templates/media.html": ("video", "animated_image", "image", "audio", "item.stage"),
-    "sg_web/templates/_media_lightbox.html": ("video", "animated_image", "image", "audio", "item.stage"),
-    # ...and this is where they are spelled, exactly once each.
+    # ONE viewer, and it answers for every kind the schema admits. The two
+    # containers include it; neither may grow a second stage, which is what
+    # naming the kinds HERE and nowhere else holds them to.
+    "sg_web/templates/_media_viewer.html": ("video", "animated_image", "image", "audio", "item.stage"),
+    # The container adapters are containers: each mounts the one viewer.
+    "sg_web/templates/media.html": ("_media_viewer.html",),
+    "sg_web/templates/_media_lightbox.html": ("_media_viewer.html",),
+    # The variant addresses are spelled once each, where the stage is built.
     "sg_web/media_view.py": ("/media/", "/preview/"),
     # the grouping input IS the occurrence interface, named out loud
     "db/events.py": ("context.occurrences(",),

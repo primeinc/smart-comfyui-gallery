@@ -1,0 +1,344 @@
+"""The viewer, witnessed in a browser, in BOTH of its containers.
+
+Everything here needs a real one: cursor anchoring is a claim about where
+a pixel lands after a transform, promotion is a claim about which bytes an
+`<img>` ended up holding, and "a drag released over the backdrop does not
+close the overlay" is a claim about pointer capture. None of it can be
+decided from source, AST or types, so none of it belongs at a cheaper
+layer.
+
+The pairing is the point. Each behaviour is asserted on the page AND on
+the gallery overlay, because "one viewer, two containers" is only true if
+nobody can quietly fix one of them.
+"""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+from PIL import Image
+from playwright.sync_api import Page
+
+from tests.conftest import Live
+
+pytestmark = pytest.mark.slow
+
+#: Wider than the preview's 1440 box, so the original has more to give.
+BIG = (2400, 1800)
+#: Smaller than that box, so `contain` UPSCALED it and the original has less.
+SMALL = (320, 240)
+
+
+def write_library(root) -> None:
+    Image.new("RGB", BIG, (30, 90, 160)).save(root / "a_big.png")
+    Image.new("RGB", SMALL, (160, 90, 30)).save(root / "b_small.png")
+
+
+def prepare(api, root) -> None:
+    made = api.post("/roots", json={"path": str(root)}).json()
+    swept = api.post(f"/roots/{made['id']}/scan").json()
+    assert swept["added"] == 2
+    # the stage's arithmetic is built from file.width/height, which ingest
+    # is what records -- a scan alone leaves them NULL
+    api.post("/jobs/ingest")
+    _drained(api)
+    if swept["precache"] is not None:
+        _settled(api, swept["precache"])
+
+
+def _settled(api, job_id, timeout=60.0) -> str:
+    deadline = time.monotonic() + timeout
+    while True:
+        state = api.get(f"/jobs/{job_id}").json()["state"]
+        if state in ("done", "failed", "cancelled"):
+            return state
+        assert time.monotonic() < deadline, f"job {job_id} still {state}"
+        time.sleep(0.05)
+
+
+def _drained(api, timeout=60.0) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        running = [j["id"] for j in api.get("/jobs").json() if j["state"] in ("queued", "running")]
+        if not running:
+            return
+        assert time.monotonic() < deadline, f"jobs still running: {running}"
+        time.sleep(0.05)
+
+
+def _address(api, name: str) -> str:
+    """The library's own answer, by name. `/g/grid` is a fragment whatever
+    the Accept says; peek is the typed listing of the same ordering."""
+    listed = api.get("/g/peek", params={"page": 1, "count": 9}).json()["items"]
+    for row in listed:
+        if row["name"] == name:
+            return row["slug"]
+    raise AssertionError(f"no picture called {name} among {[r['name'] for r in listed]}")
+
+
+# --- the two containers, opened the two ways --------------------------------
+
+
+def _open_page(page: Page, live: Live, name: str) -> None:
+    """The direct address: a viewer with nothing underneath it."""
+    page.goto(f"/i/{_address(live.api, name)}")
+    page.wait_for_selector("[data-viewer] [data-stage] img[data-stage-media]", timeout=15_000)
+    _painted(page)
+
+
+def _open_overlay(page: Page, live: Live, name: str) -> None:
+    """The mounted gallery: the same viewer over a grid that stays put."""
+    slug = _address(live.api, name)
+    page.goto("/g")
+    page.wait_for_selector("[data-grid] a.cell", timeout=15_000)
+    page.click(f'[data-grid] a.cell[href^="/i/{slug}"]')
+    page.wait_for_selector("[data-lightbox] [data-viewer] img[data-stage-media]", timeout=15_000)
+    _painted(page)
+
+
+def _painted(page: Page) -> None:
+    page.wait_for_function(
+        "() => { const i = document.querySelector('img[data-stage-media]');"
+        " return i && i.complete && i.naturalWidth > 0; }",
+        timeout=15_000,
+    )
+
+
+OPENERS = [("page", _open_page), ("overlay", _open_overlay)]
+
+
+def _box(page: Page):
+    return page.evaluate(
+        "() => { const r = document.querySelector('img[data-stage-media]').getBoundingClientRect();"
+        " return {x: r.x, y: r.y, w: r.width, h: r.height}; }"
+    )
+
+
+def _zoom(page: Page) -> int:
+    return int(page.get_attribute("[data-viewer]", "data-zoom") or "0")
+
+
+def _placement(page: Page):
+    """Where the stage and the inspector actually landed."""
+    return page.evaluate(
+        "() => ({stage: document.querySelector('[data-stage]').getBoundingClientRect().toJSON(),"
+        " panel: document.querySelector('[data-inspector-panel]').getBoundingClientRect().toJSON()})"
+    )
+
+
+def _actual(page: Page) -> None:
+    page.keyboard.press("1")
+    page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'actual'")
+
+
+# --- what the viewer does ---------------------------------------------------
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_a_picture_opens_fitted_in_either_container(page: Page, live: Live, where, open_it):
+    """Fit is where every picture starts, in both presentations -- and
+    fitted means inside its stage, not merely small."""
+    open_it(page, live, "a_big.png")
+    assert _zoom(page) == 100, where
+    assert page.get_attribute("[data-stage]", "data-framing") == "fit"
+    stage = page.evaluate("() => document.querySelector('[data-stage]').getBoundingClientRect().toJSON()")
+    held = _box(page)
+    # the computed bound rides along, because "the picture is too big" and
+    # "the rule that bounds it never matched" are different bugs
+    bound = page.evaluate(
+        "() => { const i = document.querySelector('img[data-stage-media]');"
+        " const c = getComputedStyle(i); return {maxW: c.maxWidth, maxH: c.maxHeight}; }"
+    )
+    assert held["w"] <= stage["width"] + 1, f"{where}: picture {held} in stage {stage}, bounded by {bound}"
+    assert held["h"] <= stage["height"] + 1, f"{where}: picture {held} in stage {stage}, bounded by {bound}"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_wheel_zooms_around_the_pointer(page: Page, live: Live, where, open_it):
+    """The pixel under the cursor stays under the cursor.
+
+    Anchoring is the whole difference between a zoom and a jump: zoom on
+    a face near a corner and a centre-anchored transform throws it off
+    screen. Measured as the pointer's position WITHIN the picture, before
+    and after -- which is exactly what "stays under" means.
+    """
+    open_it(page, live, "a_big.png")
+    before = _box(page)
+    # well off centre, so a centre-anchored transform would move it
+    at_x = before["x"] + before["w"] * 0.25
+    at_y = before["y"] + before["h"] * 0.25
+    held_x = (at_x - before["x"]) / before["w"]
+    held_y = (at_y - before["y"]) / before["h"]
+
+    page.mouse.move(at_x, at_y)
+    page.mouse.wheel(0, -400)
+    page.wait_for_function("(was) => Number(document.querySelector('[data-viewer]').dataset.zoom) > was", arg=100)
+
+    after = _box(page)
+    now_x = (at_x - after["x"]) / after["w"]
+    now_y = (at_y - after["y"]) / after["h"]
+    assert abs(now_x - held_x) < 0.02, f"{where}: the point under the cursor moved horizontally"
+    assert abs(now_y - held_y) < 0.02, f"{where}: the point under the cursor moved vertically"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_actual_pixels_are_the_sources_own(page: Page, live: Live, where, open_it):
+    """`1` means one source pixel per DEVICE pixel, not per CSS pixel.
+
+    The two differ by devicePixelRatio, and a 1:1 that quietly showed
+    half the resolution would make the promotion machinery pointless.
+    """
+    open_it(page, live, "a_big.png")
+    _actual(page)
+    held = page.evaluate(
+        "() => document.querySelector('img[data-stage-media]').getBoundingClientRect().width"
+        " * (window.devicePixelRatio || 1)"
+    )
+    assert abs(held - BIG[0]) < 2, f"{where}: 1:1 showed {held} device pixels for a {BIG[0]}px source"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_zooming_a_large_source_promotes_to_the_original(page: Page, live: Live, where, open_it):
+    """The preview is enough until it is not, and then the original
+    arrives -- without the transform moving."""
+    open_it(page, live, "a_big.png")
+    assert page.get_attribute("[data-stage]", "data-quality") == "preview"
+    assert "/preview/" in (page.get_attribute("img[data-stage-media]", "src") or "")
+
+    _actual(page)
+    page.wait_for_function(
+        "() => document.querySelector('[data-stage]').dataset.quality === 'original'", timeout=15_000
+    )
+    assert "/media/" in (page.get_attribute("img[data-stage-media]", "src") or ""), where
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live: Live, where, open_it):
+    """The trap the server's arithmetic exists to close.
+
+    The preview is `ImageOps.contain`ed to a 1440 box, and `contain`
+    RESIZES rather than shrinks -- so a 320px picture is served as a
+    1440px preview. A viewer promoting on "displayed pixels exceed the
+    preview's naturalWidth" would fetch the original and get four times
+    FEWER pixels. `promotable` is the server's answer; this is the
+    control that proves the browser obeys it rather than measuring.
+    """
+    open_it(page, live, "b_small.png")
+    _actual(page)
+    page.wait_for_timeout(400)  # every chance to promote, before denying it did
+    assert page.get_attribute("[data-stage]", "data-quality") == "preview", where
+    assert "/preview/" in (page.get_attribute("img[data-stage-media]", "src") or ""), (
+        f"{where}: promoted a {SMALL[0]}px source to bytes smaller than the preview it already had"
+    )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_a_drag_released_off_the_picture_pans_and_does_not_dismiss(page: Page, live: Live, where, open_it):
+    """Pointer capture, proven by releasing exactly where dismissal lives.
+
+    The overlay's backdrop click IS Back (frontend/src/overlay.ts), so a
+    pan ending outside the picture would close the viewer if the pointer
+    were not captured. Released at the corner of the window on purpose.
+    """
+    open_it(page, live, "a_big.png")
+    _actual(page)
+    before = _box(page)
+
+    page.mouse.move(before["x"] + before["w"] / 2, before["y"] + before["h"] / 2)
+    page.mouse.down()
+    page.mouse.move(6, 6, steps=10)  # up into the chrome, off the picture entirely
+    page.mouse.up()
+
+    assert page.is_visible("[data-viewer]"), f"{where}: a pan closed the viewer"
+    after = _box(page)
+    assert (after["x"], after["y"]) != (before["x"], before["y"]), f"{where}: the drag did not pan"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_escape_unwinds_the_viewer_before_it_means_leave(page: Page, live: Live, where, open_it):
+    """One ladder, both containers: a zoomed picture fits, an open
+    inspector closes, and only then does Escape mean "leave"."""
+    open_it(page, live, "a_big.png")
+    _actual(page)
+
+    page.keyboard.press("Escape")
+    page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'fit'")
+    assert page.is_visible("[data-viewer]"), f"{where}: the first Escape left instead of unwinding the zoom"
+
+    page.keyboard.press("i")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+    page.keyboard.press("Escape")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'closed'")
+    assert page.is_visible("[data-viewer]"), f"{where}: Escape on an open inspector left the picture"
+
+    page.keyboard.press("Escape")
+    page.wait_for_url(lambda url: "/i/" not in url, timeout=15_000)
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, where, open_it):
+    """Placement is geometry's answer, not a preference.
+
+    Nothing in the browser decides this and nothing is stored: the same
+    markup and the same open state land beside the picture when there is
+    room, and under it when there is not.
+    """
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_it(page, live, "a_big.png")
+    page.keyboard.press("i")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+
+    wide = _placement(page)
+    assert wide["panel"]["width"] > 0, f"{where}: an open inspector is on screen: {wide}"
+    assert wide["panel"]["left"] >= wide["stage"]["right"] - 1, (
+        f"{where}: a wide viewer docks the inspector beside the picture: {wide}"
+    )
+
+    page.set_viewport_size({"width": 620, "height": 900})
+    page.wait_for_timeout(150)  # one layout pass
+    narrow = _placement(page)
+    assert narrow["panel"]["width"] > 0, f"{where}: the inspector stays open across the reflow: {narrow}"
+    assert narrow["panel"]["top"] >= narrow["stage"]["bottom"] - 1, (
+        f"{where}: a narrow viewer sheets the inspector under the picture: {narrow}"
+    )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live, where, open_it):
+    """Resting is the pointer being still; focus is a decision. A mouse
+    move undoes the first and must not undo the second."""
+    open_it(page, live, "a_big.png")
+    assert page.get_attribute("[data-viewer]", "data-chrome") == "visible"
+    page.keyboard.press("f")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'focus'")
+    page.mouse.move(300, 300)
+    page.wait_for_timeout(200)
+    assert page.get_attribute("[data-viewer]", "data-chrome") == "focus", f"{where}: a mouse move cancelled focus"
+    page.keyboard.press("f")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'visible'")
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_walk_is_the_servers_and_the_viewer_survives_it(page: Page, live: Live, where, open_it):
+    """Next means what the ResultSet says it means: the arrows are the
+    server's addresses, and the viewer never computes an ordering."""
+    open_it(page, live, "a_big.png")
+    # whichever end of the walk this picture sits at -- read without waiting,
+    # because "there is no next" is an answer, not a slow yes
+    walk = page.evaluate(
+        "() => Object.fromEntries([...document.querySelectorAll('[data-nav]')]"
+        ".map(a => [a.dataset.nav, a.getAttribute('href')]))"
+    )
+    assert walk, f"{where}: a library of two offers a step in one direction"
+    for href in walk.values():
+        assert href.startswith("/i/"), f"{where}: the walk is addresses, not client state"
+
+    was = page.evaluate("() => location.pathname")
+    page.keyboard.press("ArrowRight" if "next" in walk else "ArrowLeft")
+    page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
+    _painted(page)
+    assert page.is_visible("[data-viewer]"), f"{where}: walking lost the viewer"
+    assert page.get_attribute("[data-stage]", "data-framing") == "fit", (
+        f"{where}: the next picture opens fitted, not under the last one's zoom"
+    )

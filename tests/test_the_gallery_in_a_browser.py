@@ -65,7 +65,7 @@ def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live):
     page.wait_for_selector("[data-lightbox-root]:not([hidden]) [data-lightbox]", timeout=10_000)
     assert first_href.split("?")[0] in page.url
     page.wait_for_function(
-        "() => { const i = document.querySelector('[data-lightbox] .lightbox-media img');"
+        "() => { const i = document.querySelector('[data-lightbox] [data-stage] img[data-stage-media]');"
         " return i && i.complete && i.naturalWidth > 0; }",
         timeout=10_000,
     )

@@ -1,0 +1,175 @@
+{# Everything one click away, in the order somebody looks for it.
+
+   A section exists when it has something to say. "Nobody looked for faces
+   in these bytes" is a diagnostic, not a fact about the photograph, so it
+   lives under TECHNICAL; an empty CREATION is not rendered at all, because
+   a photograph was taken rather than generated. The rule is: exceptions
+   become visible, normality disappears.
+
+   Docked beside the stage or slid up from under it is the stylesheet's
+   decision, made from the space there is. Nothing here knows which. #}
+{# `data-inspector-panel`, not `data-inspector`: the viewer root carries
+   data-inspector as its OPEN/CLOSED state, and one word meaning both the
+   state and the element it describes makes querySelector pick whichever
+   comes first in the document. #}
+<aside class="inspector" data-inspector-panel aria-label="information">
+  <header class="inspector-bar">
+    <h2>{{ item.name }}</h2>
+    <button type="button" class="viewer-act" data-inspector-toggle aria-label="close information">&times;</button>
+  </header>
+
+  <section class="panel" data-panel="about" data-open="true">
+    <h3>about</h3>
+    <dl>
+      {% if item.when %}
+      <dt>when</dt>
+      <dd data-when data-domain="{{ item.when.domain }}">
+        <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>
+        <a href="/g?{{ item.when.day_qs }}" data-when-day>{{ item.when.local_day }}</a>
+        {% if item.when.conflicts %}
+        <button type="button" class="badge warn" data-panel-open="technical" data-when-conflicts>date disputed</button>
+        {% endif %}
+      </dd>
+      {% else %}
+      <dt>when</dt><dd class="muted" data-when-missing>not interpreted yet — <a href="/operations">run the context job</a></dd>
+      {% endif %}
+
+      {% if item.where %}
+      <dt>where</dt>
+      <dd data-where="{{ item.where.id }}">
+        <a href="/g?{{ item.where.qs }}" data-where-link>{{ item.where.name }}</a>{% if item.where.chain | length > 1 %}, {{ item.where.chain[1:] | join(", ") }}{% endif %}
+      </dd>
+      {% else %}
+      <dt>where</dt><dd class="muted" data-where-missing>nowhere said{% if item.when and item.when.origin == "captured" %} — the camera's coordinates alone name no place{% endif %}</dd>
+      {% endif %}
+
+      {% if item.faces.people %}
+      <dt>who</dt>
+      <dd data-people>{% for who in item.faces.people %}<a href="{{ who.href }}" data-person="{{ who.slug }}">{{ who.name or who.slug }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+      {% endif %}
+
+      {% if item.said %}
+      <dt>said</dt>
+      <dd data-said>
+        {% for a in item.said %}
+        <p data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }}</p>
+        {% endfor %}
+      </dd>
+      {% endif %}
+    </dl>
+
+    <form class="ask where-form" data-place-form data-slug="{{ item.slug }}">
+      <input name="name" list="places-named" placeholder="where did this happen?" aria-label="place name" value="{{ item.where.name if item.where and item.where.basis == "authored" else "" }}">
+      <select name="kind" aria-label="kind of place">
+        {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if item.where and item.where.kind == k %} selected{% elif not item.where and k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+      </select>
+      <input name="within" list="places-named" placeholder="within (optional)" aria-label="within" value="{{ item.where.chain[1] if item.where and item.where.chain | length > 1 else "" }}">
+      <select name="within_kind" aria-label="kind of the place it is within">
+        {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if k == "country" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+      </select>
+      <button type="submit">say where</button>
+      {% if item.where and item.where.basis == "authored" %}<button type="button" data-place-clear>withdraw</button>{% endif %}
+      <datalist id="places-named">{% for p in item.place_choices.named %}<option value="{{ p.name }}">{{ p.kind }}</option>{% endfor %}</datalist>
+    </form>
+  </section>
+
+  {% if (item.when and item.when.sessions) or item.lineage.copies or item.lineage.parents or item.lineage.children %}
+  <section class="panel" data-panel="context" data-open="false">
+    <h3>context</h3>
+    {% if item.when and item.when.sessions %}
+    <ul data-when-sessions>
+      {% for s in item.when.sessions %}
+      <li><a href="/g?{{ s.qs }}" data-when-session="{{ s.id }}">{{ s.kind.replace("_", " ") }}</a> · {{ s.pictures }} pictures · {% if s.story %}<a href="{{ s.story }}" data-when-session-story>story</a>{% else %}<a href="{{ s.timeline }}" data-when-session-tell>tell its story on the timeline</a>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if item.lineage.copies %}
+    <h4>other bodies of this picture</h4>
+    <ul>{% for copy in item.lineage.copies %}<li><a href="/i/{{ copy.slug }}">{{ copy.name }}</a>{% if copy.is_best %} · best{% endif %}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if item.lineage.parents or item.lineage.children %}
+    <h4>lineage</h4>
+    <ul>
+      {% for parent in item.lineage.parents %}<li>from <a href="/i/{{ parent.slug }}">{{ parent.name }}</a> ({{ parent.kind }})</li>{% endfor %}
+      {% for child in item.lineage.children %}<li>made <a href="/i/{{ child.slug }}">{{ child.name }}</a> ({{ child.kind }})</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if item.creation %}
+  <section class="panel" data-panel="creation" data-open="false">
+    <h3>creation</h3>
+    {% if item.creation.prompt %}<p class="detail-prompt">{{ item.creation.prompt }}</p>{% endif %}
+    <dl>
+      {% if item.creation.checkpoint %}<dt>checkpoint</dt><dd>{{ item.creation.checkpoint }}</dd>{% endif %}
+      {% if item.creation.loras %}<dt>loras</dt><dd>{{ item.creation.loras|join(", ") }}</dd>{% endif %}
+      {% if item.creation.seed is not none %}<dt>seed</dt><dd>{{ item.creation.seed }}</dd>{% endif %}
+      {% if item.creation.asked_for_width %}<dt>asked for</dt><dd>{{ item.creation.asked_for_width }}px wide</dd>{% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
+  <section class="panel" data-panel="file" data-open="false">
+    <h3>file</h3>
+    <dl>
+      <dt>name</dt><dd>{{ item.name }}</dd>
+      <dt>folder</dt><dd>{{ item.file.folder }}</dd>
+      <dt>kind</dt><dd>{{ item.stage.kind.replace("_", " ") }}</dd>
+      {% if item.stage.kind in ("image", "animated_image", "video") and item.stage.source %}
+      <dt>pixels</dt><dd>{{ item.stage.source.width }}&times;{{ item.stage.source.height }}</dd>
+      {% endif %}
+      {% if item.stage.kind in ("video", "audio") and item.stage.duration %}
+      <dt>length</dt><dd>{{ "%.1f"|format(item.stage.duration) }}s</dd>
+      {% endif %}
+      <dt>bytes</dt><dd><a href="{{ item.stage.original }}">the original</a></dd>
+    </dl>
+  </section>
+
+  <section class="panel" data-panel="technical" data-open="false">
+    <h3>technical</h3>
+    <dl>
+      <dt>metadata</dt>
+      <dd data-read="{{ item.file.read }}">
+        {% if item.file.read == "current" %}read from these bytes
+        {% elif item.file.read == "stale" %}<span class="warn">read from older bytes</span> — <a href="/operations">run the ingest job</a>
+        {% else %}not read yet — <a href="/operations">run the ingest job</a>{% endif %}
+      </dd>
+      {% if item.when %}
+      <dt>date</dt>
+      <dd>
+        {{ item.when.precision }} precision · {{ item.when.domain }} clock{% if item.when.tz_offset_min is not none %} · zone {{ item.when.tz_offset_min }} min{% endif %}<br>
+        {{ item.when.basis }} · certainty {{ item.when.certainty }}{% if item.when.supports %} · supported by {{ item.when.supports | join(", ") }}{% endif %}<br>
+        origin {{ item.when.origin }} · <a href="{{ item.when.timeline }}" data-when-timeline>on the timeline</a>
+        {% if item.when.conflicts %}<br><span class="warn">{{ item.when.conflicts | join("; ") }}</span>{% endif %}
+      </dd>
+      {% endif %}
+      {% if item.where %}
+      <dt>place</dt><dd>{{ item.where.kind }} · {{ "said by a person" if item.where.basis == "authored" else item.where.basis }} · <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></dd>
+      {% endif %}
+      <dt>faces</dt>
+      {% if item.faces.looked %}
+      <dd data-faces-looked>{% for pass in item.faces.looked %}{{ pass.model_id }} found {{ pass.faces }} face{{ "" if pass.faces == 1 else "s" }} <time data-epoch="{{ pass.at }}" data-domain="instant">{{ pass.at }}</time>{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+      {% else %}
+      <dd class="muted" data-faces-missing>nobody has looked for faces in these bytes — <a href="/operations">run the faces job</a></dd>
+      {% endif %}
+      {% if item.said %}
+      <dt>captions</dt>
+      <dd>{% for a in item.said %}<span class="when-evidence">{{ a.kind }} · {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} · confidence {{ a.confidence }}{% endif %}{% if a.stale %} · <span class="warn" data-said-stale>of older bytes</span>{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
+      {% else %}
+      <dt>captions</dt><dd class="muted" data-said-missing>no caption yet — <a href="/operations">run the annotate job</a></dd>
+      {% endif %}
+    </dl>
+  </section>
+
+  {% if item.params %}
+  <section class="panel" data-panel="raw" data-open="false">
+    <h3>raw metadata</h3>
+    <table class="detail-params"><tbody>
+      {% for row in item.params %}
+      <tr><td>{{ row.source }}</td><td>{{ row.key }}</td><td>{{ row.value }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </section>
+  {% endif %}
+</aside>

@@ -6,6 +6,7 @@ import { api, refusal } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components } from "./generated/api";
 import { addressableOverlay, isPlainClick } from "./overlay";
+import { type Viewer, mountViewer } from "./viewer";
 
 type PeekView = components["schemas"]["PeekView"];
 
@@ -315,10 +316,23 @@ const asked = (spelled: string, take: number | null): Rule => {
   // Back-on-dismiss, popstate and the generation check. What is MEDIA'S
   // alone lives here: which currency the view is walking, and the arrows
   // -- each a REPLACE, so browsing fifty items is one Back out.
+  // The viewer inside the mounted fragment. Each open replaces the
+  // overlay's contents, so the previous mount's listeners are released
+  // and a fresh one is bound over the new stage -- the fragment IS the
+  // state, and a viewer outliving its DOM would be pointing at nothing.
+  let viewer: Viewer | null = null;
+
   const lightbox = addressableOverlay({
     root: "[data-lightbox-root]",
     trigger: "a.cell",
     pathPrefix: "/i/",
+    dismiss: () => viewer?.unwind() ?? false,
+    mounted: (mounted) => {
+      viewer?.release();
+      const held = mounted && findElement(mounted, "[data-viewer]", HTMLElement);
+      // a step REPLACES the mount, so browsing fifty items is one Back out
+      viewer = held ? mountViewer(held, (href) => void lightbox?.open(href, "replace")) : null;
+    },
     generation: () => {
       const shown = findElement(document, "[data-lightbox]", HTMLElement);
       const held = shown?.dataset.currency;
@@ -376,13 +390,8 @@ const asked = (spelled: string, take: number | null): Rule => {
         lightbox.open(nav.href, "replace");
       }
     });
-    document.addEventListener("keydown", (event) => {
-      if (lightbox.root.hidden) return;
-      const asked: Record<string, string | undefined> = { ArrowRight: "next", ArrowLeft: "previous" };
-      const wanted = asked[event.key];
-      if (!wanted) return;
-      const nav = findElement(lightbox.root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
-      if (nav) lightbox.open(nav.href, "replace");
-    });
+    // The arrow keys are the VIEWER's now (frontend/src/viewer.ts): walking
+    // is what somebody looking at a picture does, and it worked in the
+    // overlay and nowhere else while this file owned it.
   }
 })();
