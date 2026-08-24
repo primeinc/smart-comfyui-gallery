@@ -31,3 +31,10 @@ thumbs-phases *args:
 # picks a population; source megapixels change the answer.
 clip-batch *args:
     @"$python" benchmarks/openclip_batch.py "$@"
+
+# What the host-to-device copy of a prepared CLIP batch costs, and which
+# stream/memory configuration overlaps it: benchmarks/results/openclip_transfer.json.
+# `--trace <path>` also writes Chrome traces, so the overlap is read
+# rather than inferred from a total.
+clip-transfer *args:
+    @"$python" benchmarks/openclip_transfer.py "$@"

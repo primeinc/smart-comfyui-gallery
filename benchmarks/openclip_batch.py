@@ -380,9 +380,11 @@ def main() -> None:
             "bit_identical": bool((together == alone).all()),
         }
         print(f"  batch {size:4}: largest element differs by {worst:.3e}, worst cosine {cosine:.9f}")
-    print("  drift saturates rather than accumulating: cuBLAS picks a different")
-    print("  kernel above a size threshold, so 128 is no worse than 8. What this")
-    print("  does NOT establish is whether a nearest-neighbour list reorders.")
+    print("  Drift reaches a similar magnitude from batch 8 through 128 rather")
+    print("  than growing with batch size. WHY is not established here -- that")
+    print("  would need kernel selection inspected, which this does not do.")
+    print("  Nor does a similar magnitude make these one equivalence class:")
+    print("  retrieval has to be tested against the batch actually proposed.")
 
     best = max(rows, key=lambda row: row["images_per_second"])
     first = rows[0]
