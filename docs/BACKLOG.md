@@ -99,13 +99,37 @@ consequences the architecture should keep room for, not work.
   before a commit under a currency taken after one is the exact
   mislabelling the contract exists to prevent. What is wrong is its
   GRANULARITY: "the database changed" stands in for "this answer
-  changed". The cheap version of the fix is one counter bumped by
-  triggers on the tables that can actually change membership or order
-  (`file`, `folder`, `entity`, the authored tables, `collection_file`,
-  the context tables) and read instead of `data_version`; the derived
-  caches then stop invalidating anything. The precise version gives each
-  answer the generation of only the tables its own dimensions read,
-  which db/vocabulary.py already knows.
+  changed".
+
+  Traced per table, which makes the target much narrower than it looks.
+  A thumbs job over 12 files writes:
+
+      job_event  89 inserts
+      job        54 updates,  1 insert
+      job_item   24 updates, 12 inserts
+
+  180 writes, every one of them the LEDGER, and not one able to change
+  any answer. That is the job that runs for hours over a large library.
+  An ingest job by contrast writes `file_param`, `file`, `capture`,
+  `derived_media_context` and more, and must keep invalidating.
+
+  So the question is not "which tables affect an answer" -- getting that
+  list wrong serves stale answers, the one failure this contract exists
+  to prevent -- but the safe inverse: which tables provably cannot.
+  `job`, `job_item` and `job_event` are the whole set, and they are the
+  noisy ones.
+
+  Two shapes, both defensible:
+
+  - A counter bumped by triggers on every NON-ledger table, generated
+    from `sqlite_master` rather than hand-listed, with a schema test
+    asserting each such table has them -- so a table added later cannot
+    silently stop invalidating. Costs a trigger on every write, which
+    wants measuring against the ingest path before it ships.
+  - Move the ledger into its own attached database, so `data_version`
+    on the main file is untouched by ledger writes and nothing else
+    changes at all. Cleaner conceptually -- the ledger IS a separate
+    concern -- and a bigger migration.
 
 - **Thumbnails are still serial.** 6.76 files/sec over the real library
   (`just bench thumbs-phases`), up from 1.80, but one worker renders one
