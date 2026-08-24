@@ -44,3 +44,9 @@ clip-transfer *args:
 # drift is not the question; ranking is.
 clip-retrieval *args:
     @"$python" benchmarks/openclip_retrieval.py "$@"
+
+# What the embed job actually achieves end to end -- decode, database,
+# ledger and all -- against the encoder's ceiling over the same files:
+# benchmarks/results/embed_job.json. Scans into a TEMPORARY database.
+embed-job *args:
+    @"$python" benchmarks/embed_job.py "$@"
