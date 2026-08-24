@@ -18,8 +18,8 @@
     <button type="button" class="viewer-act" data-inspector-toggle aria-label="close information">&times;</button>
   </header>
 
-  <section class="panel" data-panel="about" data-open="true">
-    <h3>about</h3>
+  <details class="panel" data-panel="about" open>
+    <summary>about</summary>
     <dl>
       {% if item.when %}
       <dt>when</dt>
@@ -71,11 +71,11 @@
       {% if item.where and item.where.basis == "authored" %}<button type="button" data-place-clear>withdraw</button>{% endif %}
       <datalist id="places-named">{% for p in item.place_choices.named %}<option value="{{ p.name }}">{{ p.kind }}</option>{% endfor %}</datalist>
     </form>
-  </section>
+  </details>
 
   {% if (item.when and item.when.sessions) or item.lineage.copies or item.lineage.parents or item.lineage.children %}
-  <section class="panel" data-panel="context" data-open="false">
-    <h3>context</h3>
+  <details class="panel" data-panel="context">
+    <summary>context</summary>
     {% if item.when and item.when.sessions %}
     <ul data-when-sessions>
       {% for s in item.when.sessions %}
@@ -94,12 +94,12 @@
       {% for child in item.lineage.children %}<li>made <a href="/i/{{ child.slug }}">{{ child.name }}</a> ({{ child.kind }})</li>{% endfor %}
     </ul>
     {% endif %}
-  </section>
+  </details>
   {% endif %}
 
   {% if item.creation %}
-  <section class="panel" data-panel="creation" data-open="false">
-    <h3>creation</h3>
+  <details class="panel" data-panel="creation">
+    <summary>creation</summary>
     {% if item.creation.prompt %}<p class="detail-prompt">{{ item.creation.prompt }}</p>{% endif %}
     <dl>
       {% if item.creation.checkpoint %}<dt>checkpoint</dt><dd>{{ item.creation.checkpoint }}</dd>{% endif %}
@@ -107,11 +107,11 @@
       {% if item.creation.seed is not none %}<dt>seed</dt><dd>{{ item.creation.seed }}</dd>{% endif %}
       {% if item.creation.asked_for_width %}<dt>asked for</dt><dd>{{ item.creation.asked_for_width }}px wide</dd>{% endif %}
     </dl>
-  </section>
+  </details>
   {% endif %}
 
-  <section class="panel" data-panel="file" data-open="false">
-    <h3>file</h3>
+  <details class="panel" data-panel="file">
+    <summary>file</summary>
     <dl>
       <dt>name</dt><dd>{{ item.name }}</dd>
       <dt>folder</dt><dd>{{ item.file.folder }}</dd>
@@ -124,10 +124,10 @@
       {% endif %}
       <dt>bytes</dt><dd><a href="{{ item.stage.original }}">the original</a></dd>
     </dl>
-  </section>
+  </details>
 
-  <section class="panel" data-panel="technical" data-open="false">
-    <h3>technical</h3>
+  <details class="panel" data-panel="technical">
+    <summary>technical</summary>
     <dl>
       <dt>metadata</dt>
       <dd data-read="{{ item.file.read }}">
@@ -160,16 +160,16 @@
       <dt>captions</dt><dd class="muted" data-said-missing>no caption yet — <a href="/operations">run the annotate job</a></dd>
       {% endif %}
     </dl>
-  </section>
+  </details>
 
   {% if item.params %}
-  <section class="panel" data-panel="raw" data-open="false">
-    <h3>raw metadata</h3>
+  <details class="panel" data-panel="raw">
+    <summary>raw metadata</summary>
     <table class="detail-params"><tbody>
       {% for row in item.params %}
       <tr><td>{{ row.source }}</td><td>{{ row.key }}</td><td>{{ row.value }}</td></tr>
       {% endfor %}
     </tbody></table>
-  </section>
+  </details>
   {% endif %}
 </aside>

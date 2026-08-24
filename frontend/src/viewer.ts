@@ -26,6 +26,7 @@
 // a photograph they were looking at.
 import { everyElement, findElement, requireData } from "./dom";
 import type { components } from "./generated/api";
+import { register } from "./keys";
 
 type Stage = components["schemas"]["MediaSurface"]["stage"];
 type Pixels = components["schemas"]["Pixels"];
@@ -142,6 +143,28 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     return { width: rect.width / look.scale, height: rect.height / look.scale };
   };
 
+  /**
+   * Pan far enough to see every part of a zoomed picture, and no further.
+   *
+   * Untethered, `x`/`y` were accumulated pointer deltas: one long drag
+   * flung the photograph off the screen and left an empty stage with no
+   * way back except Escape. The bound is the OVERHANG -- how far the
+   * scaled picture exceeds the stage on each axis -- so a picture that
+   * fits on an axis stays centred there and one that overflows can be
+   * pushed exactly to its own edge.
+   */
+  const tethered = (x: number, y: number, scale: number): { x: number; y: number } => {
+    const size = fitted();
+    const box = stageBox.getBoundingClientRect();
+    const room = (picture: number, stage: number) => Math.max(0, (picture * scale - stage) / 2);
+    const across = room(size.width, box.width);
+    const down = room(size.height, box.height);
+    return {
+      x: Math.min(across, Math.max(-across, x)),
+      y: Math.min(down, Math.max(-down, y)),
+    };
+  };
+
   const paint = () => {
     if (!media) return;
     media.style.transform = `translate(${look.x}px, ${look.y}px) scale(${look.scale})`;
@@ -215,15 +238,37 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     const px = clientX - (box.left + box.width / 2);
     const py = clientY - (box.top + box.height / 2);
     const ratio = next / look.scale;
-    look = {
-      framing: "free",
-      scale: next,
-      x: px - (px - look.x) * ratio,
-      y: py - (py - look.y) * ratio,
-    };
+    const held = tethered(px - (px - look.x) * ratio, py - (py - look.y) * ratio, next);
+    look = { framing: "free", scale: next, ...held };
     paint();
     promote();
   };
+
+  /**
+   * Put the framing back where it says it is, after the stage changed size.
+   *
+   * `fill` and `actual` are scales computed ONCE from the fitted size, and
+   * the fitted size moves whenever the stage does -- the inspector opening,
+   * a window resized, a phone turned, the narrow layout swapping the
+   * inspector from a column to a sheet. Left alone, a picture still
+   * labelled "actual" quietly stopped being 1:1, which is the one thing
+   * that label promises. `fit` is the browser's own doing, so it needs
+   * only its offsets cleared; `free` keeps its scale and is re-tethered,
+   * so a resize cannot strand a pan outside the new bounds.
+   */
+  const resettle = () => {
+    if (!still) return;
+    if (look.framing === "fit" || look.framing === "fill" || look.framing === "actual") {
+      frame(look.framing);
+      return;
+    }
+    look = { ...look, ...tethered(look.x, look.y, look.scale) };
+    paint();
+  };
+
+  const watching = new ResizeObserver(() => resettle());
+  watching.observe(stageBox);
+  bound.push(() => watching.disconnect());
 
   // --- chrome ---------------------------------------------------------------
   const wake = () => {
@@ -255,66 +300,86 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     }
   };
 
-  const panel = (named: string | null) => {
+  /**
+   * Reveal one named section.
+   *
+   * The sections are `<details>`, so opening and closing them by hand,
+   * by keyboard, or by assistive technology costs no JavaScript at all --
+   * they were headings with `cursor: pointer` and no handler, which is a
+   * control that looks like a control and is not one. This is only for the
+   * chips that point INTO a section ("date disputed" -> technical); the
+   * disclosure itself is the browser's.
+   */
+  const panel = (named: string) => {
     if (!inspector) return;
-    for (const section of everyElement(inspector, "[data-panel]", HTMLElement)) {
-      const mine = section.dataset.panel === named;
-      section.dataset.open = String(mine);
+    for (const section of everyElement(inspector, "[data-panel]", HTMLDetailsElement)) {
+      if (section.dataset.panel !== named) continue;
+      section.open = true;
+      section.scrollIntoView({ block: "nearest" });
     }
   };
 
   // --- the walk, on the wheel -----------------------------------------------
 
   /**
-   * Whether the key that walks the library is down for this event.
+   * Whether Alt walks the library on this run.
    *
    * The run's answer, rendered onto the root (db/settings.py
-   * `viewer_wheel_modifier`). An unknown word -- or "none" -- means no
-   * modifier walks, and the wheel only ever zooms; that is the setting
-   * doing its job, not a failure to read it.
+   * `viewer_wheel_modifier`). Alt is the ONLY modifier that can mean this:
+   * ctrl+wheel is how a browser delivers a trackpad pinch, and shift+wheel
+   * is its horizontal scroll, so neither is available to mean "next
+   * picture" without stealing a gesture that already means something.
    */
-  const held = (event: WheelEvent): boolean => {
-    const asked = root.dataset.wheelModifier;
-    if (asked === "alt") return event.altKey;
-    if (asked === "shift") return event.shiftKey;
-    if (asked === "ctrl") return event.ctrlKey;
-    return false;
-  };
+  const walksOnWheel = () => root.dataset.wheelModifier === "alt";
 
   /** One wheel notch, roughly, on the platforms that disagree about size. */
   const NOTCH = 90;
-  /** A fling is one gesture; a picture per event would cross the library. */
-  const SETTLE_MS = 320;
+  /**
+   * How long the wheel must be still before the NEXT gesture may step.
+   *
+   * A boundary, not a cooldown. A cooldown counts from the step, so an
+   * inertial flick still arriving after it expires steps again and one
+   * physical gesture walks two pictures; this counts from the last EVENT,
+   * so a gesture's own inertia keeps its own boundary pushed out ahead of
+   * it and lands nowhere.
+   */
+  const QUIET_MS = 260;
+
+  /** What the wheel is presently doing, if anything. */
   let rolled = 0;
-  // NOT 0: `performance.now()` counts from the page's load, so zero would
-  // mean "stepped at load" and the cooldown would swallow the first flick
-  // of anyone who opened a picture and immediately reached for the wheel.
-  let lastStep = Number.NEGATIVE_INFINITY;
+  let spent = false;
+  let lastWheel = Number.NEGATIVE_INFINITY;
 
   /**
-   * Step the walk once a gesture has actually asked for it.
+   * Step the walk once per gesture, however many events the gesture is.
    *
-   * A wheel does not emit one event per notch -- a trackpad emits dozens
-   * of small ones for a single flick -- so the deltas are accumulated to
-   * a notch's worth and the counter is reset on each step. The cooldown
-   * is the second half: a hard fling arrives as one burst, and without it
-   * a single gesture would walk past everything it crossed. Reversing
-   * direction drops whatever was accumulated the other way, so a
-   * correction is immediate rather than having to undo itself first.
+   * A wheel does not emit one event per notch: a hard flick or a trackpad
+   * swipe is a stream of dozens, decaying over hundreds of milliseconds.
+   * So a gesture is a run of events with no long silence in it -- the
+   * first crossing of a notch's worth steps, and everything after it is
+   * that same gesture's inertia and is swallowed. Only silence ends it.
+   *
+   * A reversal ends it too, and immediately: turning the wheel back is a
+   * person correcting themselves, and making them wait out the inertia of
+   * the flick they are undoing would feel broken.
    */
   const stepped = (by: number) => {
     if (by === 0) return;
-    if (rolled !== 0 && Math.sign(by) !== Math.sign(rolled)) rolled = 0;
-    rolled += by;
-    if (Math.abs(rolled) < NOTCH) return;
     const now = performance.now();
-    if (now - lastStep < SETTLE_MS) return;
-    const wanted = rolled > 0 ? "next" : "previous";
-    rolled = 0;
-    const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
-    if (!step) return; // an end of the walk is an answer, not a thing to force
-    lastStep = now;
-    walk(step.href);
+    const reversed = rolled !== 0 && Math.sign(by) !== Math.sign(rolled);
+    if (now - lastWheel > QUIET_MS || reversed) {
+      rolled = 0;
+      spent = false;
+    }
+    lastWheel = now;
+    rolled += by;
+    if (spent || Math.abs(rolled) < NOTCH) return;
+    const step = findElement(root, `[data-nav="${rolled > 0 ? "next" : "previous"}"]`, HTMLAnchorElement);
+    // An end of the walk is an answer, not a thing to force -- and the
+    // gesture is spent either way, so leaning on the wheel at the last
+    // picture does not fire again the moment a next one exists.
+    spent = true;
+    if (step) walk(step.href);
   };
 
   // --- the pointer ----------------------------------------------------------
@@ -326,27 +391,33 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     stageBox,
     "wheel",
     (event) => {
-      // Always: a wheel over the stage is the viewer's, so the page never
-      // scrolls out from under a zoom and ctrl never reaches the browser's
-      // own page zoom.
+      // The viewer cancels only what it ACTS on. It claims two gestures
+      // over its stage and no others: a plain wheel, which zooms, and
+      // Alt+wheel when the run asks for it, which walks. Anything else --
+      // a trackpad pinch, which arrives as ctrl+wheel; a shifted wheel,
+      // which is the browser's horizontal scroll -- is left alone and
+      // reaches the browser, which is what db/settings.py promises when it
+      // explains why those two are not offered as walk modifiers.
+      //
+      // Deciding BEFORE cancelling is the whole point: an unconditional
+      // preventDefault at the top of this handler made that promise false
+      // for every gesture the viewer then ignored.
+      const plain = !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey;
+      const walking = event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && walksOnWheel();
+      if (!plain && !walking) return;
       event.preventDefault();
+
       // deltaMode 1 is lines, 2 is pages: a trackpad and a wheel must not
       // mean different amounts of picture
       const pixels = (delta: number) => (event.deltaMode === 0 ? delta : delta * 16);
 
-      // The chosen modifier turns the wheel into the WALK: the next
-      // picture, the previous one. Exactly ONE key does this, named by the
-      // run's setting, so the other two keep whatever the browser does
-      // with them and nobody has to remember three answers. Some browsers
-      // move a shifted wheel's amount into deltaX, so both axes are read
-      // rather than either being trusted.
-      if (held(event)) {
+      if (walking) {
+        // some platforms move a modified wheel's amount into deltaX, so
+        // both axes are read rather than either being trusted
         stepped(pixels(event.deltaY || event.deltaX));
         return;
       }
-
-      // and without it, the wheel zooms -- which a stage with nothing to
-      // zoom simply declines
+      // a plain wheel zooms -- which a stage with nothing to zoom declines
       zoomAbout(Math.exp(-pixels(event.deltaY) / 400), event.clientX, event.clientY);
     },
     // not passive: the page must not scroll out from under a zoom
@@ -376,12 +447,8 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
 
     onElement(stageBox, "pointermove", (event) => {
       if (dragging !== event.pointerId) return;
-      look = {
-        framing: "free",
-        scale: look.scale,
-        x: from.ox + (event.clientX - from.x),
-        y: from.oy + (event.clientY - from.y),
-      };
+      const held = tethered(from.ox + (event.clientX - from.x), from.oy + (event.clientY - from.y), look.scale);
+      look = { framing: "free", scale: look.scale, ...held };
       paint();
     });
 
@@ -396,37 +463,40 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   }
 
   // --- the keys -------------------------------------------------------------
-  onDocument("keydown", (event) => {
-    if (!root.isConnected) return;
-    const target = event.target;
-    if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]")) return;
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const acted: Record<string, (() => void) | undefined> = {
-      i: () => showInspector(root.dataset.inspector !== "open"),
-      f: focus,
-      t: () => {
-        root.dataset.filmstrip = root.dataset.filmstrip === "hidden" ? "shown" : "hidden";
+  //
+  // Registered rather than listened for, so a key this claims cannot also
+  // mean something to another module in the same bundle (frontend/src/keys.ts).
+  // The letters here are the ones LEFT: the authored strip had F, 1-5, 0 and
+  // A long before this file existed, and a viewer that took F and 1 back was
+  // rating photographs while somebody looked at them.
+  //
+  //   Z  fit <-> actual pixels     L  lights out (focus)
+  //   I  information               T  filmstrip
+  //   + -  zoom about the middle   arrows  walk
+  const stepping = (wanted: string) => () => {
+    const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
+    if (step) walk(step.href); // an end of the walk is an answer, not a step
+  };
+  const middle = (by: number) => () => zoomAbout(by, window.innerWidth / 2, window.innerHeight / 2);
+  bound.push(
+    register([
+      { key: "z", by: "viewer: fit/actual", run: () => frame(look.framing === "actual" ? "fit" : "actual") },
+      { key: "l", by: "viewer: focus", run: focus },
+      { key: "i", by: "viewer: inspector", run: () => showInspector(root.dataset.inspector !== "open") },
+      {
+        key: "t",
+        by: "viewer: filmstrip",
+        run: () => {
+          root.dataset.filmstrip = root.dataset.filmstrip === "hidden" ? "shown" : "hidden";
+        },
       },
-      "1": () => frame("actual"),
-      "0": () => frame("fit"),
-      "+": () => zoomAbout(1.3, innerWidth / 2, innerHeight / 2),
-      "=": () => zoomAbout(1.3, innerWidth / 2, innerHeight / 2),
-      "-": () => zoomAbout(1 / 1.3, innerWidth / 2, innerHeight / 2),
-    };
-    const stepped: Record<string, string | undefined> = { ArrowRight: "next", ArrowLeft: "previous" };
-    const wanted = stepped[event.key];
-    if (wanted) {
-      const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
-      if (!step) return; // an end of the walk is an answer, not a key to eat
-      event.preventDefault();
-      walk(step.href);
-      return;
-    }
-    const run = acted[event.key.toLowerCase()];
-    if (!run) return;
-    event.preventDefault();
-    run();
-  });
+      { key: "+", by: "viewer: zoom in", run: middle(1.3) },
+      { key: "=", by: "viewer: zoom in", run: middle(1.3) },
+      { key: "-", by: "viewer: zoom out", run: middle(1 / 1.3) },
+      { key: "ArrowRight", by: "viewer: next", run: stepping("next") },
+      { key: "ArrowLeft", by: "viewer: previous", run: stepping("previous") },
+    ]),
+  );
 
   onDocument("pointermove", wake);
 

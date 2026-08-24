@@ -4,6 +4,7 @@
 import { api, refusal } from "./api";
 import { everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components } from "./generated/api";
+import { register } from "./keys";
 import { mountViewer } from "./viewer";
 
 type DesiredPlace = components["schemas"]["DesiredPlace"];
@@ -106,12 +107,20 @@ const asPlaceKind = (held: string): PlaceKind => {
   for (const close of everyElement(document, "[data-close]", HTMLElement)) {
     close.addEventListener("click", leave);
   }
-  document.addEventListener("keydown", (event) => {
-    // The same ladder the overlay gets: the viewer spends the press on its
-    // own state -- a zoomed picture fits, an open inspector closes -- and
-    // only a viewer with nothing left to unwind lets Escape mean "leave".
-    if (event.key !== "Escape") return;
-    if (viewer?.unwind()) return;
-    leave();
-  });
+  // The same ladder the overlay gets, through the same registry: the viewer
+  // spends the press on its own state -- a zoomed picture fits, an open
+  // inspector closes -- and only a viewer with nothing left to unwind lets
+  // Escape mean "leave". No overlay is mounted on this page, so this is the
+  // one claim on the key here; if that ever stopped being true, keys.ts
+  // would say so rather than the page dismissing twice.
+  register([
+    {
+      key: "Escape",
+      by: "media page: leave",
+      run: () => {
+        if (viewer?.unwind()) return;
+        leave();
+      },
+    },
+  ]);
 })();

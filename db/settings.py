@@ -15,21 +15,31 @@ from __future__ import annotations
 
 import typing
 
-#: Which held key turns the viewer's wheel into a step through the walk
-#: rather than a zoom. ONE of them, chosen here, because a modifier that
-#: means two things depending on which one you grabbed is worse than one
-#: that means nothing: the other two keep whatever the browser does with
-#: them. "none" leaves the wheel to zoom alone.
+#: Whether a held Alt turns the viewer's wheel into a step through the
+#: walk rather than a zoom, and nothing else. "none" leaves the wheel to
+#: zoom alone.
 #:
-#: `alt` leads because it is the only one nothing else has already taken:
-#: a browser reads shift+wheel as horizontal scroll and ctrl+wheel as its
-#: own page zoom, so choosing either means the viewer must swallow a
-#: gesture the person may have meant for the browser.
+#: Two modifiers are deliberately NOT offered, because three booleans on a
+#: WheelEvent are not three interchangeable answers:
+#:
+#: `ctrl` is unsafe. A trackpad pinch reaches the page as a wheel event
+#: with `ctrlKey` set -- that is how browsers deliver pinch-to-zoom (MDN,
+#: Element: wheel event; MouseEvent.ctrlKey) -- so a ctrl walk would mean
+#: pinching a photograph skipped to the next one.
+#:
+#: `shift` is already spoken for: a browser reads shift+wheel as
+#: horizontal scroll, and taking it would swallow a gesture the person may
+#: have meant for the page.
+#:
+#: Alt is the one nothing else has claimed, which is the whole reason it
+#: is the default and now the only choice. The unchosen modifiers keep
+#: whatever the browser does with them -- the viewer calls preventDefault
+#: only for the gestures it actually acts on (frontend/src/viewer.ts).
 #:
 #: Spelled as a Literal so the browser is typed against the same closed
 #: set the registry validates writes with -- one vocabulary, two readers,
 #: the way db/ledger.py owns the event types.
-WheelModifier = typing.Literal["alt", "shift", "ctrl", "none"]
+WheelModifier = typing.Literal["alt", "none"]
 WHEEL_MODIFIERS: tuple[WheelModifier, ...] = typing.get_args(WheelModifier)
 
 #: Every setting this application has, with its default and, where the

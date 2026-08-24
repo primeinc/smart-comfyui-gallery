@@ -137,11 +137,84 @@ def _walk(page: Page) -> dict:
 
 
 def _actual(page: Page) -> None:
-    page.keyboard.press("1")
+    page.keyboard.press("z")
     page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'actual'")
 
 
 # --- what the viewer does ---------------------------------------------------
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_no_keystroke_means_two_things_at_once(page: Page, live: Live, where, open_it):
+    """The defect this exists for: the viewer and the authored strip each
+    listened to the document, so F was focus AND favorite, 1 was
+    actual-pixels AND one star, 0 was fit AND clear-rating -- and every
+    one of them fired both, silently rating a photograph somebody was
+    only looking at.
+
+    That no key CAN mean two things is proved elsewhere and more cheaply:
+    the registry throws on a second claim, so a colliding build fails to
+    mount the viewer at all and every other test here goes red, and sglint
+    SG503 refuses a module that listens to the document directly. What is
+    left for a browser is the half neither can see -- that the keys which
+    DID collide now do their authored job and leave the picture alone.
+    """
+    open_it(page, live, "a_big.png")
+
+    # F is the authored strip's, and must not touch the picture
+    before = _zoom(page)
+    framing = page.get_attribute("[data-stage]", "data-framing")
+    page.keyboard.press("f")
+    page.wait_for_function("() => document.querySelector('[data-fav]').getAttribute('aria-pressed') === 'true'")
+    assert _zoom(page) == before, f"{where}: favorite changed the zoom"
+    assert page.get_attribute("[data-stage]", "data-framing") == framing, f"{where}: favorite reframed the picture"
+    assert page.get_attribute("[data-viewer]", "data-chrome") != "focus", f"{where}: favorite entered focus"
+
+    # and 1 is one star, not actual pixels
+    page.keyboard.press("1")
+    page.wait_for_function("() => document.querySelector('[data-stars]').dataset.rating === '1'")
+    assert page.get_attribute("[data-stage]", "data-framing") == framing, f"{where}: one star reframed the picture"
+    page.keyboard.press("0")
+    page.wait_for_function("() => document.querySelector('[data-stars]').dataset.rating === '0'")
+    assert page.get_attribute("[data-stage]", "data-framing") == framing, f"{where}: clearing a rating reframed"
+    page.keyboard.press("f")  # leave the library as it was found
+    page.wait_for_function("() => document.querySelector('[data-fav]').getAttribute('aria-pressed') === 'false'")
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_every_inspector_section_opens_by_pointer_and_by_keyboard(page: Page, live: Live, where, open_it):
+    """A heading with `cursor: pointer` and nothing listening is a control
+    that looks like one and is not. The sections are `<details>`, so the
+    browser owns the disclosure: focusable, Enter and Space, announced.
+    Every section is exercised, not a sample -- the bug was that four of
+    six were inert while two worked."""
+    open_it(page, live, "a_big.png")
+    page.keyboard.press("i")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+
+    named = page.evaluate(
+        "() => [...document.querySelectorAll('[data-inspector-panel] [data-panel]')].map(d => d.dataset.panel)"
+    )
+    assert len(named) >= 3, f"{where}: the inspector renders its sections: {named}"
+
+    for panel in named:
+        held = page.locator(f'[data-panel="{panel}"]')
+        summary = held.locator("summary")
+        assert summary.count() == 1, f"{where}: {panel} is a real disclosure, not a heading"
+        was = held.evaluate("d => d.open")
+        summary.click()
+        page.wait_for_function(
+            "([p, before]) => document.querySelector(`[data-panel='${p}']`).open !== before",
+            arg=[panel, was],
+            timeout=5_000,
+        )
+        # and by keyboard, which is the half a click test cannot see
+        summary.press("Enter")
+        page.wait_for_function(
+            "([p, back]) => document.querySelector(`[data-panel='${p}']`).open === back",
+            arg=[panel, was],
+            timeout=5_000,
+        )
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
@@ -235,26 +308,54 @@ def test_the_chosen_modifier_walks_the_library_on_the_wheel(page: Page, live: Li
     assert page.is_visible("[data-viewer]"), f"{where}: walking on the wheel lost the viewer"
 
 
+@pytest.mark.parametrize("modifier", ["Shift", "Control"])
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_a_modifier_nobody_chose_still_zooms(page: Page, live: Live, where, open_it):
-    """ONE key walks. The control that says so: with alt chosen, shift is
-    not a second answer -- it falls through to the zoom, exactly as no
-    modifier would. A viewer where every modifier walked would pass the
-    test above and still be wrong."""
+def test_a_gesture_the_viewer_does_not_claim_reaches_the_browser(page: Page, live: Live, where, open_it, modifier):
+    """The viewer cancels only what it acts on.
+
+    Ctrl+wheel is how a browser delivers a trackpad PINCH, and shift+wheel
+    is its horizontal scroll. Neither may walk the library -- pinching a
+    photograph must not skip to the next one -- and neither may be
+    swallowed either, which is what an unconditional preventDefault at the
+    top of the handler did while the setting's own docstring promised the
+    opposite.
+
+    `defaultPrevented`, read after the viewer's listener has had the
+    event, is the only honest way to ask "did you leave this to me?".
+    """
     open_it(page, live, "a_big.png")
     was = page.evaluate("() => location.pathname")
+    held = _zoom(page)
+    page.evaluate(
+        "() => { window.__wheel = null;"
+        " document.addEventListener('wheel', e => { window.__wheel = e.defaultPrevented; }, {passive: true}); }"
+    )
 
-    _wheel(page, "Shift", -300)
-    page.wait_for_function("(from) => Number(document.querySelector('[data-viewer]').dataset.zoom) > from", arg=100)
-    assert page.evaluate("() => location.pathname") == was, f"{where}: shift walked when alt was the chosen key"
+    _wheel(page, modifier, -300)
+    page.wait_for_function("() => window.__wheel !== null", timeout=5_000)
+
+    assert page.evaluate("() => window.__wheel") is False, (
+        f"{where}: {modifier}+wheel was cancelled; the viewer claims only a plain wheel and Alt"
+    )
+    assert page.evaluate("() => location.pathname") == was, f"{where}: {modifier} walked the library"
+    assert _zoom(page) == held, f"{where}: {modifier}+wheel zoomed the picture"
 
 
-@pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, open_it):
-    """A wheel emits many events per gesture -- a trackpad, dozens. Left
-    ungoverned, one flick crosses the whole library. This library holds
-    two, so a second step would come back to where it started, which is
-    what the ordinal here is watching for."""
+@pytest.mark.parametrize(("where", "open_it", "pace_ms"), [(w, o, p) for w, o in OPENERS for p in (0, 90)])
+def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, open_it, pace_ms):
+    """A gesture is a run of events, not an event.
+
+    A hard flick or a trackpad swipe is a stream of dozens decaying over
+    hundreds of milliseconds. Run at pace 0 that stream arrives as a
+    burst; run at 90ms it spans about a second, which is the case a
+    cooldown counted from the STEP cannot survive -- it expires while the
+    gesture's own inertia is still arriving and walks a second picture.
+    The boundary is silence since the last EVENT, so a gesture keeps
+    pushing its own boundary ahead of itself.
+
+    The library holds two, so a second step returns to where it started
+    and the pathname is what catches it.
+    """
     open_it(page, live, "a_big.png")
     walk = _walk(page)
     assert walk, f"{where}: a library of two offers a step"
@@ -266,16 +367,48 @@ def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, op
     page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
     forward = 300 if "next" in walk else -300
     page.keyboard.down("Alt")
-    for _ in range(6):  # one gesture's worth of events, all at once
+    for _ in range(10):
         page.mouse.wheel(0, forward)
+        if pace_ms:
+            page.wait_for_timeout(pace_ms)
     page.keyboard.up("Alt")
     page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
     landed = page.evaluate("() => location.pathname")
 
     page.wait_for_timeout(600)  # long enough for a second step to land
     assert page.evaluate("() => location.pathname") == landed, (
-        f"{where}: one flick walked more than one picture ({was} -> {landed} -> onwards)"
+        f"{where}: a {pace_ms}ms-paced flick walked more than one picture ({was} -> {landed} -> onwards)"
     )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_turning_the_wheel_back_is_a_new_gesture(page: Page, live: Live, where, open_it):
+    """The other half of the boundary rule, stated so it cannot drift.
+
+    Silence ends a gesture -- and so does reversing, immediately, because
+    turning the wheel back is somebody correcting themselves and making
+    them wait out the inertia of the flick they are undoing would feel
+    broken. Without this the test above would pass for a viewer that
+    simply refused every second step.
+    """
+    open_it(page, live, "a_big.png")
+    walk = _walk(page)
+    assert walk, f"{where}: a library of two offers a step"
+    was = page.evaluate("() => location.pathname")
+
+    at = _box(page)
+    page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
+    forward = 300 if "next" in walk else -300
+    page.keyboard.down("Alt")
+    page.mouse.wheel(0, forward)
+    page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
+    there = page.evaluate("() => location.pathname")
+
+    # straight back, with no pause at all: a reversal is its own gesture
+    page.mouse.wheel(0, -forward)
+    page.keyboard.up("Alt")
+    page.wait_for_function("(from) => location.pathname !== from", arg=there, timeout=15_000)
+    assert page.evaluate("() => location.pathname") == was, f"{where}: turning back did not return to {was}"
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
@@ -327,6 +460,62 @@ def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live
     assert "/preview/" in (page.get_attribute("img[data-stage-media]", "src") or ""), (
         f"{where}: promoted a {SMALL[0]}px source to bytes smaller than the preview it already had"
     )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_a_pan_cannot_lose_the_photograph(page: Page, live: Live, where, open_it):
+    """Dragged hard enough, the picture used to leave the stage entirely
+    and there was no way back but Escape. Pan is bounded by the overhang:
+    a zoomed picture can be pushed exactly to its own edge and no
+    further, so some of it is always on screen."""
+    open_it(page, live, "a_big.png")
+    _actual(page)
+    stage = page.evaluate("() => document.querySelector('[data-stage]').getBoundingClientRect().toJSON()")
+
+    for corner in ((4, 4), (2000, 2000), (4, 2000), (2000, 4)):
+        at = _box(page)
+        page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
+        page.mouse.down()
+        page.mouse.move(corner[0], corner[1], steps=8)
+        page.mouse.up()
+        held = _box(page)
+        overlap = {
+            "left edge": held["x"] < stage["right"],
+            "right edge": held["x"] + held["w"] > stage["left"],
+            "top edge": held["y"] < stage["bottom"],
+            "bottom edge": held["y"] + held["h"] > stage["top"],
+        }
+        gone = [edge for edge, on in overlap.items() if not on]
+        assert not gone, f"{where}: dragged to {corner} the picture left the stage past its {gone}: {held} vs {stage}"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_actual_pixels_stay_actual_when_the_stage_changes_size(page: Page, live: Live, where, open_it):
+    """`actual` is a scale computed from the fitted size, and the fitted
+    size moves whenever the stage does. Opening the inspector and resizing
+    the window both change it, so a picture still labelled 1:1 had quietly
+    stopped being 1:1 -- the one thing that label promises."""
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_it(page, live, "a_big.png")
+    _actual(page)
+
+    def device_pixels() -> float:
+        return page.evaluate(
+            "() => document.querySelector('img[data-stage-media]').getBoundingClientRect().width"
+            " * (window.devicePixelRatio || 1)"
+        )
+
+    assert abs(device_pixels() - BIG[0]) < 2, where
+
+    page.keyboard.press("i")  # the inspector takes a column from the stage
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+    page.wait_for_timeout(200)
+    assert abs(device_pixels() - BIG[0]) < 2, f"{where}: opening the inspector broke 1:1"
+    assert page.get_attribute("[data-stage]", "data-framing") == "actual", f"{where}: it stopped calling itself actual"
+
+    page.set_viewport_size({"width": 700, "height": 620})  # and the sheet layout
+    page.wait_for_timeout(300)
+    assert abs(device_pixels() - BIG[0]) < 2, f"{where}: resizing the window broke 1:1"
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
@@ -406,12 +595,12 @@ def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live
     move undoes the first and must not undo the second."""
     open_it(page, live, "a_big.png")
     assert page.get_attribute("[data-viewer]", "data-chrome") == "visible"
-    page.keyboard.press("f")
+    page.keyboard.press("l")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'focus'")
     page.mouse.move(300, 300)
     page.wait_for_timeout(200)
     assert page.get_attribute("[data-viewer]", "data-chrome") == "focus", f"{where}: a mouse move cancelled focus"
-    page.keyboard.press("f")
+    page.keyboard.press("l")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'visible'")
 
 

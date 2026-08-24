@@ -497,26 +497,39 @@ body {
   border-top: 1px solid var(--line);
   padding: 10px 0;
 }
-.panel h3 {
+/* The sections are <details>, so the browser owns opening them: the
+   summary is focusable, operable by Enter and Space, announced as a
+   disclosure, and needs no script. It replaced an <h3> wearing
+   `cursor: pointer` with nothing listening -- a control that looked like
+   one and was not. */
+.panel > summary {
   color: var(--ink-muted);
+  cursor: pointer;
   font-size: 12px;
   letter-spacing: 0.08em;
-  margin: 0 0 8px;
+  list-style: none;
+  padding: 4px 0;
   text-transform: uppercase;
+}
+.panel > summary::-webkit-details-marker {
+  display: none;
+}
+.panel > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+.panel[open] > summary::before {
+  transform: rotate(90deg);
+}
+.panel > summary:hover,
+.panel > summary:focus-visible {
+  color: var(--ink);
 }
 .panel h4 {
   color: var(--ink-muted);
   font-size: 13px;
   margin: 12px 0 4px;
-}
-/* A panel a person has not opened keeps its heading -- the inspector is a
-   list of what is knowable, and a heading with nothing under it is how
-   somebody learns the section is there. */
-.panel[data-open="false"] > :not(h3) {
-  display: none;
-}
-.panel[data-open="false"] h3 {
-  cursor: pointer;
 }
 .panel dl {
   display: grid;

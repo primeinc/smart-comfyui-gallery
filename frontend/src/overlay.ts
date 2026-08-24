@@ -32,6 +32,7 @@
 // -- the absence is a fact about the DOM, not about which scripts a
 // template happened to list.
 import { closestFrom, findElement } from "./dom";
+import { register } from "./keys";
 
 /** How an open should touch history: a new stop, the current one, or neither. */
 export type OpenMode = "push" | "replace" | "none";
@@ -203,12 +204,21 @@ export function addressableOverlay(spec: OverlaySpec): Overlay | null {
     }
   });
 
-  document.addEventListener("keydown", (event) => {
-    if (root.hidden || event.key !== "Escape") return;
-    // The adapter unwinds its own state first, one rung per press.
-    if (spec.dismiss?.()) return;
-    history.back();
-  });
+  // Escape goes through the one keyboard registry like every other key
+  // (frontend/src/keys.ts), so a surface that grew a second meaning for it
+  // is refused at registration rather than dismissing twice.
+  register([
+    {
+      key: "Escape",
+      by: `overlay: ${spec.pathPrefix}`,
+      run: () => {
+        if (root.hidden) return;
+        // The adapter unwinds its own state first, one rung per press.
+        if (spec.dismiss?.()) return;
+        history.back();
+      },
+    },
+  ]);
 
   window.addEventListener("popstate", () => {
     if (window.location.pathname.startsWith(spec.pathPrefix)) void open(window.location.href, "none");

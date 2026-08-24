@@ -3040,7 +3040,7 @@ export interface components {
         /** Viewing */
         Viewing: {
             /** @enum {string} */
-            wheel_modifier: "alt" | "shift" | "ctrl" | "none";
+            wheel_modifier: "alt" | "none";
         };
         /** When */
         When: {

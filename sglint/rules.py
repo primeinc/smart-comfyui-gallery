@@ -706,6 +706,53 @@ def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
                 line = held[: held.index(word)].count("\n") + 1
                 found.append(Finding(source, line, 0, "SG501", f"carries query logic: {word!r}"))
     found.extend(_page_shapes(templates))
+    found.extend(_one_keyboard(scripts))
+    return found
+
+
+#: The one module allowed to listen to the document for keystrokes.
+KEY_ROUTER = "keys.ts"
+#: Claiming keys for a whole surface, however it is spelled -- the direct
+#: listener, one through a module's own helper. An element-scoped listener
+#: (`swap.addEventListener("keydown", ...)`) is deliberately not matched:
+#: a key pressed inside one widget is that widget's business.
+_DOCUMENT_KEYDOWN = re.compile(r'(?:(?:document|window)\.addEventListener|onDocument)\(\s*"keydown"')
+
+
+def _one_keyboard(scripts: typing.Iterable[pathlib.Path]) -> list[Finding]:
+    """SG503: a browser module listens to the document for keystrokes.
+
+    Two modules cannot agree about a key by being careful. The viewer and
+    the authored strip ship in the same bundle on the same surfaces, and
+    each had grown its own document listener: `F` was focus AND favorite,
+    `1` was actual-pixels AND one star, `0` was fit AND clear-rating, and
+    every one of them fired both -- somebody looking closely at a
+    photograph was silently rating it.
+
+    So the dispatch lives in ONE place (frontend/src/keys.ts) and modules
+    register what they answer to, where a second claim on a live key is
+    refused by name. That only holds while nothing else listens, which is
+    what this rule is. An element-scoped listener is untouched: a key
+    pressed inside one widget is that widget's business.
+    """
+    found: list[Finding] = []
+    for source in scripts:
+        if source.name == KEY_ROUTER:
+            continue
+        held = source.read_text(encoding="utf-8")
+        claim = _DOCUMENT_KEYDOWN.search(held)
+        if claim is None:
+            continue
+        line = held[: claim.start()].count("\n") + 1
+        found.append(
+            Finding(
+                source,
+                line,
+                0,
+                "SG503",
+                f"listens to the document for keystrokes; register them with {KEY_ROUTER} instead",
+            )
+        )
     return found
 
 

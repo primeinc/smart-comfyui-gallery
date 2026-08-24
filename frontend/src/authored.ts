@@ -19,6 +19,7 @@
 import { type Answered, answered, api } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components, paths } from "./generated/api";
+import { register } from "./keys";
 
 type AuthoredState = components["schemas"]["AuthoredState"];
 type AuthoredAnswer = components["schemas"]["AuthoredAnswer"];
@@ -198,20 +199,52 @@ document.addEventListener("click", (event) => {
   if (closestFrom(event.target, "[data-album-picker]", HTMLElement)) void choices(root);
 });
 
-document.addEventListener("keydown", (event) => {
-  const typing = event.target instanceof Element && event.target.matches("input, textarea, select");
-  if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
-  const root =
-    findElement(document, "[data-lightbox] [data-authored]", HTMLElement) ??
-    findElement(document, "[data-authored]", HTMLElement);
-  if (!root) return;
-  if (event.key === "f" || event.key === "F") {
-    void setFavorite(root, !pressed(root));
-  } else if (event.key >= "1" && event.key <= "5") {
-    void setRating(root, Number(event.key));
-  } else if (event.key === "0") {
-    void setRating(root, null);
-  } else if (event.key === "a" || event.key === "A") {
-    void choices(root);
-  }
-});
+/**
+ * The strip on the surface being looked at.
+ *
+ * The lightbox's, when one is mounted: the grid behind it carries its own
+ * markup, and a key pressed over an open picture means that picture.
+ */
+const strip = (): HTMLElement | null =>
+  findElement(document, "[data-lightbox] [data-authored]", HTMLElement) ??
+  findElement(document, "[data-authored]", HTMLElement);
+
+// Registered, not listened for: these keys and the viewer's ship in the
+// same bundle on the same surfaces, and a second claim on one of them is
+// refused where it is made rather than firing twice (frontend/src/keys.ts).
+// 1-5 stay ratings because every photo tool spells them that way, so the
+// viewer's framing moved to Z rather than these moving anywhere.
+register([
+  {
+    key: "f",
+    by: "authored: favorite",
+    run: () => {
+      const root = strip();
+      if (root) void setFavorite(root, !pressed(root));
+    },
+  },
+  {
+    key: "a",
+    by: "authored: albums",
+    run: () => {
+      const root = strip();
+      if (root) void choices(root);
+    },
+  },
+  ...[1, 2, 3, 4, 5].map((stars) => ({
+    key: String(stars),
+    by: `authored: ${stars} star${stars === 1 ? "" : "s"}`,
+    run: () => {
+      const root = strip();
+      if (root) void setRating(root, stars);
+    },
+  })),
+  {
+    key: "0",
+    by: "authored: clear rating",
+    run: () => {
+      const root = strip();
+      if (root) void setRating(root, null);
+    },
+  },
+]);

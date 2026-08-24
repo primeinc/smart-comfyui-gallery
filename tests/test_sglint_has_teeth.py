@@ -110,6 +110,44 @@ def test_the_surface_rule_can_fail(tmp_path):
     assert rules.rule_surfaces(pathlib.Path(rules.REPO_ROOT)) == []
 
 
+@pytest.mark.parametrize(
+    "claim",
+    [
+        'document.addEventListener("keydown", (e) => e);',
+        'window.addEventListener("keydown", (e) => e);',
+        'onDocument("keydown", (e) => e);',
+    ],
+)
+def test_a_second_module_claiming_the_keyboard_can_fail(tmp_path, claim):
+    """SG503: one module owns keystroke dispatch, whatever the spelling.
+
+    The defect it exists for: the viewer and the authored strip each had a
+    document listener, so F was focus AND favorite, 1 was actual-pixels AND
+    one star, 0 was fit AND clear-rating -- and every one of them fired
+    both. Two listeners cannot agree about a key by being careful.
+    """
+    root = tmp_path / "repo"
+    _surfaces(root, policy.TEMPLATE_MINIMUM, policy.SCRIPT_MINIMUM - 1)
+    (root / "frontend" / "src" / "greedy.ts").write_text(claim, encoding="utf-8")
+    assert [f.code for f in rules.rule_surfaces(root)] == ["SG503"]
+
+
+def test_the_keyboard_router_and_a_widget_may_both_listen(tmp_path):
+    """The negative control, twice over: the router itself is the point of
+    the rule, and an ELEMENT-scoped listener is a widget minding its own
+    keys, not a claim on the surface. A rule that flagged either would be
+    unusable, and a rule that flagged neither would have no teeth."""
+    root = tmp_path / "repo"
+    _surfaces(root, policy.TEMPLATE_MINIMUM, policy.SCRIPT_MINIMUM - 2)
+    (root / "frontend" / "src" / rules.KEY_ROUTER).write_text(
+        'document.addEventListener("keydown", (e) => e);', encoding="utf-8"
+    )
+    (root / "frontend" / "src" / "widget.ts").write_text(
+        'swap.addEventListener("keydown", (e) => e);', encoding="utf-8"
+    )
+    assert [f.code for f in rules.rule_surfaces(root)] == []
+
+
 def test_the_surface_sweep_notices_either_half_vanishing(tmp_path):
     """The sweep counts templates and scripts separately. One shared
     minimum could not see every script leave for frontend/src, because
