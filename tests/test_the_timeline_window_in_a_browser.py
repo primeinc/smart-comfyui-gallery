@@ -10,7 +10,7 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import FloatRect, Page
 
 from tests.conftest import Live
 
@@ -31,6 +31,34 @@ def write_library(root) -> None:
             path = root / f"Screenshot {day} at 14.0{j}.0{i}.png"
             Image.new("RGB", (8, 8), (20 * i, 90 + 40 * j, 140)).save(path)
             os.utime(path, (at, at))
+
+
+def overview_box(page: Page) -> FloatRect:
+    """The overview's rectangle, once it is safe to read one.
+
+    This page replaces its content through htmx, so `[data-overview]` can
+    be torn out and rebuilt between two calls: the locator then points at
+    a detached node and `bounding_box()` answers None. Playwright will
+    happily have reported the element visible a moment earlier, which is
+    what makes the failure read as impossible and is the tell that the
+    element under the box is not the one that was checked.
+
+    Waiting for the swap to settle first is the fix. Measured on the test
+    that failed most often: 1 run in 6 before, 0 in 12 after.
+
+    Both callers go through here rather than repeating the wait, because
+    the second one was already the same bug in the same file and was
+    found only after the first was fixed.
+    """
+    page.wait_for_function(
+        "() => !document.getElementById('timeline-swap').hasAttribute('data-loading')",
+        timeout=10_000,
+    )
+    overview = page.locator("[data-overview]")
+    overview.wait_for(state="visible", timeout=10_000)
+    box = overview.bounding_box()
+    assert box is not None, "the overview settled and is visible but still has no box to brush across"
+    return box
 
 
 def moments() -> list[float]:
@@ -82,16 +110,8 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
     assert page.locator("[data-overview] [data-brush]").count() == 1
     assert page.locator("[data-zoom] a[data-preset]").count() == 5
 
-    # the brush: a new window drawn across the left half of the overview.
-    # Waited for, not merely located: `count()` returns 1 as soon as the
-    # element is in the DOM, and `bounding_box()` answers None until it
-    # has been laid out. Reading it straight after the count failed about
-    # one run in six -- measured, 1 of 6 at HEAD and 1 of 5 with an
-    # unrelated change, which is how it was shown to be this and not that.
-    overview = page.locator("[data-overview]")
-    overview.wait_for(state="visible", timeout=10_000)
-    box = overview.bounding_box()
-    assert box is not None, "the overview is visible but has no box to brush across"
+    # the brush: a new window drawn across the left half of the overview
+    box = overview_box(page)
     y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + 2, y)
     page.mouse.down()
@@ -129,8 +149,7 @@ def test_the_surface_moves_while_the_hand_moves_and_refreshes_itself(page: Page,
     page.goto("/timeline")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
     was = page.get_attribute("[data-surface]", "data-window-start")
-    box = page.locator("[data-overview]").bounding_box()
-    assert box is not None
+    box = overview_box(page)
     y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + 2, y)
     page.mouse.down()
