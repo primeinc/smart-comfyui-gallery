@@ -91,3 +91,11 @@ job-phases *args:
 # Scans into a TEMPORARY database, never a real run's.
 scan-lock *args:
     @"$python" benchmarks/scan_lock.py "$@"
+
+# What a page costs while anything else is writing. The ordered answer is
+# cached per (question, data currency), and currency is PRAGMA data_version
+# -- which any commit bumps, including one to a table the answer never
+# reads. Sweeps library sizes: benchmarks/results/answer_currency.json.
+# Synthesises rows in a TEMPORARY database, never a real run's.
+answer-currency *args:
+    @"$python" benchmarks/answer_currency.py "$@"

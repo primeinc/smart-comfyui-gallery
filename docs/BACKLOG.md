@@ -66,6 +66,47 @@ consequences the architecture should keep room for, not work.
 
 ## Performance
 
+- **Every page rebuilds the whole answer while any job runs, and the
+  cost is the library.** The biggest one measured so far, and the reason
+  the application feels slow on a large library rather than a small one.
+
+  The ResultSet materialises the ordered answer once and pages it by
+  slicing. A projection is valid for one (question, data currency) pair,
+  and currency is `PRAGMA data_version` -- which bumps when ANY other
+  connection commits ANYTHING. That is what the pragma measures, so a
+  thumbnail row landing in `derived_thumbnail` invalidates a projection
+  over `file` ordering, which cannot have changed. Jobs commit per item
+  (db/runner.py `committed`, nine call sites, several inside the item
+  loop), so the invalidation is continuous for the length of a job --
+  and a precache over 80,000 files at 6.76 files/sec runs for hours.
+
+  Measured (`just bench answer-currency`,
+  benchmarks/results/answer_currency.json), one page of the default
+  question, quiet versus a second connection committing one row between
+  every request:
+
+      files    quiet     while writing    factor
+      1,000    0.19 ms       0.64 ms        3.4x
+     10,000    0.18 ms       4.29 ms       23.8x
+     40,000    0.18 ms      19.04 ms      105.9x
+     80,000    0.18 ms      38.26 ms      214.4x
+
+  The quiet cost is flat and the busy cost is linear, because the
+  rebuild is O(library) and the slice is O(page). Nothing here is a
+  constant factor to tune away.
+
+  Currency has to stay part of validity -- serving an answer computed
+  before a commit under a currency taken after one is the exact
+  mislabelling the contract exists to prevent. What is wrong is its
+  GRANULARITY: "the database changed" stands in for "this answer
+  changed". The cheap version of the fix is one counter bumped by
+  triggers on the tables that can actually change membership or order
+  (`file`, `folder`, `entity`, the authored tables, `collection_file`,
+  the context tables) and read instead of `data_version`; the derived
+  caches then stop invalidating anything. The precise version gives each
+  answer the generation of only the tables its own dimensions read,
+  which db/vocabulary.py already knows.
+
 - **Thumbnails are still serial.** 6.76 files/sec over the real library
   (`just bench thumbs-phases`), up from 1.80, but one worker renders one
   file at a time. `run_next()` loops over every pending item, so a 20,000
