@@ -424,9 +424,12 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
             raise ValueError(f"file {file_id} has no decodable frame to embed")
         return frame
 
-    media = semantic.MediaRef(path=str(path), kind=kind, frame=representative_frame)
-    provider, model, checkpoint = payload["choice"]
     told = report()
+    # The adapter names its own stages through this. Handed in rather
+    # than reached for: the reporter lives here and vision must not
+    # import db (db/oriented.py already imports vision/decode).
+    media = semantic.MediaRef(path=str(path), kind=kind, frame=representative_frame, phase=told.phase)
+    provider, model, checkpoint = payload["choice"]
     told.phase("loading-encoder", provider=provider, model=model)
     encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
     told.phase("encoding", kind=kind)

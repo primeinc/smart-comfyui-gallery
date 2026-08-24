@@ -200,12 +200,36 @@ class ClipBackend:
     def encode_media(self, media):
         """One MediaRef to one unit-length vector. CLIP consumes exactly
         one frame, so every kind of media enters through the reference's
-        canonical representative frame."""
+        canonical representative frame.
+
+        The three stages are named separately because they are three
+        different machines and they do not cost alike. Measured over a
+        real job, the whole of this was 52% of an item under one label,
+        which says nothing about whether the answer is a cheaper raster,
+        a bigger batch, or a faster copy. `media.phase` is the runner's
+        reporter when there is one and does nothing when there is not.
+        """
         import torch
 
-        tensor = self.preprocess(media.frame().convert("RGB")).unsqueeze(0).to(self.device)
+        media.phase("preprocess", model=self.model_name)
+        tensor = self.preprocess(media.frame().convert("RGB")).unsqueeze(0)
+        media.phase("to-device")
+        tensor = tensor.to(self.device)
+        if self.device == "cuda":
+            # The copy is asynchronous, so without this the wait for it
+            # is billed to whatever runs next -- here, inference.
+            torch.cuda.synchronize()
+        media.phase("inference", batch=1)
         with torch.no_grad():
             features = self.model.encode_image(tensor, normalize=True)
+        if self.device == "cuda":
+            # Kernel launches return immediately, so without this the
+            # wait for the GPU lands in whatever is timed next. It was
+            # landing in `from-device`, which then read 12% of the job
+            # for copying 512 floats back -- a number that is obviously
+            # not bandwidth and was measuring this instead.
+            torch.cuda.synchronize()
+        media.phase("from-device")
         return features[0].cpu().float().numpy()
 
     def encode_query(self, text: str):
