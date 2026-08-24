@@ -4,6 +4,66 @@ Work that is known, agreed and not done. One line per item: what, and why
 it matters. Delete an entry when it ships — this file is the pending list,
 not a history.
 
+## What this is for
+
+Not a backlog item; the thing the items are measured against, written
+down because it decides which of them matter.
+
+The commodity product is media management, and the incumbents are good
+at it. If the goal were a self-hosted photo library, the answer is
+Immich. If it were a generation-output browser, the answer is Infinite
+Image Browsing. The only defensible reason this exists is narrower:
+
+> **Local cross-media provenance. Captured and generated media searched,
+> explained, analysed and curated through one authoritative answer.**
+
+Underneath that is the thing that makes it worth finishing:
+
+> **Make the data legible enough to stop being afraid to touch it.**
+
+That is what the pedantic parts are for, and why they are not
+architecture for its own sake. A file has identity apart from its path,
+so duplicates need no cleanup to work. Authored claims outlive derived
+rebuilds, so a name survives reclustering. Renames keep address history.
+Capture evidence and generation evidence coexist rather than one
+winning. Bulk writes prove which answer they were made against. The
+timeline separates evidence from interpretation. Every one of those is
+the same sentence: **no destructive action should require faith.**
+
+Two consequences that are not yet true in the code:
+
+- **Reproducible does not mean disposable.** "Derived" is currently a
+  synonym for "cache", and it should be three things: *cache*
+  (thumbnails, query results — disposable by design), *derived state*
+  (the FAISS index, the current clustering — rebuildable and
+  replaceable), and *derived observations* (embeddings, detections,
+  captions, scores — reproducible, and potentially worth keeping).
+  Inference roughly doubles in quality every few months, so a newer
+  model should SUPERSEDE an older observation for the current
+  projection without deleting it. Ten years of a stable corpus then
+  answers questions nothing else can: which faces did the 2026 model
+  confuse, what did successive captioners say about this picture, how
+  did one person's embedding move from 30 to 40. None of that survives
+  an upgrade that vacuums the old outputs because they were labelled
+  derived. Face embeddings are biometric templates, so retaining
+  generations of them makes encryption-at-rest and no-accidental-network
+  a storage rule, not a preference.
+
+- **Anything expensive the program learns should be exportable without
+  the program.** The application can always rebuild an index; the
+  accumulated understanding is the valuable part. Concretely: export a
+  person's face representation over a date range as embeddings WITH
+  their provenance — model identity and version, dimensions,
+  normalisation, preprocessing, source content hash, occurrence,
+  capture time, face region — plus a centroid. Not a naked 512-float
+  vector, which recreates exactly the opaque dependency this is
+  supposed to escape.
+
+Deferred on purpose, and deliberately not listed below: portable
+catalogs, workspaces federating several of them, reversible
+repartitioning, PDFs, email, and anything with a price on it. They are
+consequences the architecture should keep room for, not work.
+
 ## Performance
 
 - **Thumbnails are still serial.** 6.76 files/sec over the real library
@@ -173,6 +233,16 @@ not a history.
   `sg_web/static/build` first because esbuild leaves obsolete files
   behind. One canonical command should own the clean.
 
+- **`neighborhood` hydrates wide and throws most of it away.** It calls
+  `_named()`, which resolves uuid and runs caption hydration
+  (`derived.said_first`) for every neighbour, and `FilmstripItem`
+  discards both. A bounded narrow read for the strip, or a hydration
+  flag on `_named`, stops the walk paying for fields nobody renders.
+  Its test matrix is also short two cases the filmstrip claims to
+  support: neighborhood under a FILTERED ResultSet, and under a
+  SEMANTIC one. `sort=oldest` covers the non-default timed order;
+  nothing covers those two.
+
 - **`neighborhood` clamps a count it says it refuses.** The bound is
   documented and tested as a refusal, and implemented as
   `min(max(1, count), NEIGHBOURHOOD_MOST)`. Pick one and prove it at 0,
@@ -216,31 +286,71 @@ not a history.
 
 Built: the query vocabulary (db/vocabulary.py), filter discovery
 (db/discovery.py), answer analysis (db/analysis.py), the filter drawer,
-Gallery/Table/Analyze, the compare tray, endless browsing, and reading
-generation metadata out of video containers. What is NOT built:
+Gallery/Table/Analyze, the compare tray, endless browsing, reading
+generation metadata out of video containers, Any/All multi-select on
+every dimension where both readings mean something, value lists on
+`folder`/`album`/`people.person`/`place.id`, a door to the long tail
+(`param.has`, `param.is`), and a cut on the semantic ranking so a
+search answers with a set. What is NOT built:
 
-- **Within a dimension, multi-select is AND, never OR.** Repeated facets
-  conjoin, which is right for "this checkpoint with that LoRA" and wrong
-  for "image or video". Every dimension whose values are mutually
-  exclusive (kind, sampler, checkpoint) therefore offers a list where
-  choosing a second value gives zero. The UI does not pretend otherwise
-  -- the count says 0 before you click -- but the honest fix is an `in`
-  operator in db/facets.py taking a list, and an Any/All control on the
-  dimensions where both readings are meaningful (people, LoRAs).
+- **The field catalog: one searchable Add-filter over every fact.**
+  This is the largest remaining gap and the door we built is the proof
+  of it. `param.is` is a text box whose placeholder is `key=value`
+  (`frontend/src/filters.ts:334`), so it can only be used by somebody
+  who already knows the internal spelling -- which is the one thing the
+  application is supposed to remember for you. The requirement is not a
+  nicer box; it is that the application TEACHES its own vocabulary:
 
-- **`context.origin` is not offered as a multi-select either**, for the
-  same reason, which is why `has.generation` exists beside it.
+      Add filter…    [ edit                          ]
+      ─────────────────────────────────────────────
+      Used local editor                     SwarmUI
+      Edit reference megapixels          Generation
 
-- **No `folder`/`album`/`person` value lists.** Those dimensions are
-  `slug`-carried scopes with no `discover` statement, so the drawer shows
-  them with no options. They need a name-to-slug listing each; the
-  vocabulary has the field (`discover`) and they have no value for it.
+  You type what you half-remember, it tells you what it knows. Then
+  the chosen field decides its own operators and offers its own values
+  (`is / above / below / between` for a number, `is / any of` for an
+  enumeration, `contains` for text). The catalog must match on friendly
+  label, alias, raw source key and source application, so `edit`,
+  `editor` and the ugly serialised key all arrive at the same fact.
 
-- **Advanced metadata has no door.** `file_param` holds every key any
-  tool emitted and `param_key` registers them; the plan was a section
-  that lets somebody ask `generation.foo >= 17` by key. Nothing is built:
-  the vocabulary is deliberately curated and the long tail is
-  unreachable from any surface.
+  `param.has` already discovers keys with counts and should stop being
+  a filter somebody uses by hand and become the thing that POWERS this.
+  The curated/discovered split stays real internally -- one has
+  semantics we understand, the other is a recorded fact -- and stops
+  being visible to the person.
+
+  Three things make this harder than it looks, all measured against
+  the real 3,748-file library (108 distinct `file_param` keys):
+
+  1. **`_param()` flattens lists into INDEXED keys.** `used_wildcards.0`
+     through `used_wildcards.6` are one concept wearing seven names, 55
+     files each; likewise `loras.0`/`loras.1` and
+     `unused_parameters.0..2`. "Did this use a wildcard" is currently
+     seven separate questions. The catalog has to collapse an indexed
+     family into one dimension whose repeats OR -- which is exactly the
+     `multi="any"` machinery already built.
+  2. **Everything is TEXT.** `automaticvae` is the string `'True'` with
+     `value_num` NULL on all 155 files, so no operator can be derived
+     from storage. The observed type has to be inferred from the values.
+  3. **About 40 of the 108 keys are EXIF plumbing** -- `StripOffsets`,
+     `YCbCrPositioning`, `FocalPlaneXResolution`. A picker built
+     straight off `param_key` is a haystack. Rank by how much a key
+     discriminates within the answer, and let the ugly ones be findable
+     without being offered first.
+
+  The acceptance test is a browser interaction, not a unit test for
+  `param.is`: open the app knowing nothing of the schema, type `edit`,
+  discover the field exists, choose `is -> yes`, get the right media,
+  save the question, reload, get the same answer.
+
+- **A saved view is not a first-class thing.** Everything a question can
+  become is a collection today. People distinguish three: an **album**
+  (things I deliberately put together), a **smart collection** (a
+  dynamic grouping that behaves like a collection), and a **saved
+  view** ("that was a useful question, remember it"). They can share
+  one `GalleryQuery` underneath without being one product object. The
+  tell that this is missing: having composed a good question twice, the
+  only offer is "save view", which makes a collection.
 
 - **The analysis has no prompt-term view.** Exact prompt identity is
   built and counted. Recurring TERMS across an answer -- which is a
@@ -254,7 +364,112 @@ generation metadata out of video containers. What is NOT built:
 
 - **The compare tray has no two-up A/B mode.** It shows everything kept,
   side by side, in tray order. Two is the common case and works; naming
-  one A and one B and flipping between them is not built.
+  one A and one B and flipping between them is not built. digiKam's
+  Light Table is the reference, including synchronised pan and zoom.
+
+## Modalities the schema allows and nothing produces
+
+Each of these has a slot already cut for it. The slot being empty is
+not a design decision anybody made; it is work nobody did.
+
+- **OCR.** `db/schema.sql:1469` permits `said.kind = 'ocr'` and
+  `sg_web/media_view.py:475` types it. Nothing writes one. For an
+  application whose thesis is "search what you have", text sitting
+  inside a screenshot, a receipt or a document is a whole modality
+  missing. Immich searches it as a first-class field.
+
+- **Tags and keywords.** `said.kind = 'tag'` is likewise permitted and
+  likewise never written, and `db/vocabulary.py` has no tag dimension
+  at all -- 41 dimensions and not one of them is the oldest idea in
+  digital asset management. Every serious DAM has hierarchical
+  keywords; this has people, places, albums and generation entities and
+  no free-form vocabulary at all.
+
+- **Metadata portability, in and out.** There is no export route in
+  `sg_web/app.py`. Names, ratings, places, tags, collections and
+  provenance live only in `gallery.db`, so deleting the application
+  deletes the understanding. This one contradicts the product thesis
+  directly -- an application about custody of your own data must not be
+  the only place your knowledge can exist. XMP sidecars are the boring
+  standard: LibrePhotos round-trips face regions and names as MWG-RS,
+  digiKam edits EXIF/IPTC/XMP in place. Read AND write, so another DAM
+  can see what you decided here.
+
+- **Reverse geocoding, as a suggestion.** `db/places.py:8` already
+  names "a future reverse-geocoding job (cached by geographic cell)".
+  The current rule -- GPS never mints a human place, a person authors
+  it -- is right and must survive. What is missing is the middle step:
+  GPS evidence produces a derived SUGGESTION, a person accepts or
+  corrects it, and the acceptance is the authored claim. "We have your
+  coordinates but refuse to mention they are in Detroit" is not the
+  same virtue as "we did not silently decide for you".
+
+## Human workflows we have the data for and not the product
+
+- **Face correction.** The persistence model is arguably better than
+  anyone's -- an accepted name survives reclustering, which is the
+  whole point of separating authored claims from derived observations
+  -- and there is no workflow around it. Merging two clusters,
+  rejecting a bad match, reviewing unknown faces, choosing an exemplar:
+  Immich, PhotoPrism and LibrePhotos all expose these. A durable model
+  with no correction UI means the durability protects whatever mistake
+  was made first.
+
+- **Duplicate review.** `/jobs/dupes` and `/dupes` detect groups.
+  Nothing resolves them, and the naive resolution is the one to avoid:
+  byte identity and organisational identity are different things. Three
+  copies of one file in `Iowa 2019`, `Family` and `Old Backup` are one
+  content and three placements, and a deduper that celebrates "1
+  duplicate removed" has silently turned a complete collection into an
+  incomplete one. The operation worth building is not *delete
+  duplicates* but *consolidate redundant storage while preserving every
+  logical placement*, shown as a preview of the post-state before
+  anything is touched:
+
+      3 exact copies - SHA-256 identical
+      Used by:  Iowa 2019  428/428 present
+                Family     113/113 present
+      After:    3 placements, 1 stored payload, all collections complete
+
+  Hydrus is the deep reference for duplicate/alternate relationships;
+  Immich for the review-and-keep flow.
+
+- **The replacement gauntlet.** Nobody has put the incumbents on this
+  library and lost to them on purpose. Until that happens, "ours is
+  different" is an assertion. Install current **Immich** (as a
+  read-only external library), **Infinite Image Browsing** (MIT, and
+  alarmingly close to the generated-media half of this), **digiKam
+  9.2** and **LibrePhotos** (MIT), and run real questions through each:
+  all generated videos with this LoRA; what prompts dominate this
+  answer; find this person in August; which files contain this
+  screenshot text; compare three outputs and their recipes; fix a wrong
+  face; resolve these duplicates; export my names so another DAM sees
+  them; why does it think this happened in 2023. Verdict per app per
+  question: **better than ours / good enough / painful but possible /
+  impossible**. Then the rule is brutal -- where an incumbent wins and
+  the slice is not structurally required by our model, stop maintaining
+  the inferior reinvention. Integrate, copy the pattern, or delete ours.
+
+  Licence note, because it changes what reuse means: IIB and
+  LibrePhotos are MIT and can be read from and borrowed with
+  attribution. Immich is AGPL-3.0 -- excellent to study, consequential
+  to copy into an MIT tree.
+
+- **Steal SwarmUI-Quarry's mechanism, not its database.** Quarry
+  (`jtreminio/SwarmUI-Quarry`, MIT) is where Swarm's Image Search tab
+  comes from, and its useful idea is not a list of fields: it promotes
+  a small core, keeps every other `sui_image_params` / `sui_extra_data`
+  property generically, and asks the index which keys the corpus
+  actually contains. That is the field catalog above, independently
+  arrived at. What NOT to take is its parallel path-keyed history
+  index; `file_param` + `param_key` + one authoritative ResultSet is
+  the better shape, and its recursive flattening is better than a JSON
+  blob. Its metadata-extraction and filter-builder tests are a boring
+  regression corpus worth porting with the licence notice.
+
+  Its own rough edges are worth not copying either: creating a rule
+  opens a native browser prompt, and it refuses large result counts.
+  We had both of those defects until this week.
 
 ## Two flakes in the suite, characterised and not fixed
 
