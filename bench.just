@@ -20,3 +20,8 @@ faces-validate *args:
 # benchmarks/results/browser/report.html
 browser-report *args:
     @"$python" benchmarks/browser_report.py "$@"
+
+# Where thumbnail time goes, per phase and media kind, over a run's own
+# library: benchmarks/results/thumbnail_phases.json
+thumbs-phases *args:
+    @"$python" benchmarks/thumbnail_phases.py "$@"
