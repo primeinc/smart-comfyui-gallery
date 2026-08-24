@@ -296,6 +296,38 @@ body {
   pointer-events: none;
 }
 
+/* The way out of lights-out. `visibility`, not opacity alone: an invisible
+   button that is still in the tab order is a control nobody can see and
+   everybody can land on, so it leaves the page's order entirely until the
+   lights are actually off. Dim, because the picture is the point; full
+   strength under a pointer or a keyboard focus ring. */
+.viewer-lights-on {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 2;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  padding: 5px 10px;
+  cursor: pointer;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.viewer[data-chrome="focus"] .viewer-lights-on {
+  visibility: visible;
+  opacity: 0.4;
+}
+.viewer[data-chrome="focus"] .viewer-lights-on:hover,
+.viewer[data-chrome="focus"] .viewer-lights-on:focus-visible {
+  opacity: 1;
+  border-color: var(--line);
+}
+
 .viewer-said {
   display: flex;
   gap: 10px;
@@ -672,6 +704,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .viewer[data-chrome] .viewer-chrome,
   .viewer[data-chrome] .viewer-facts,
+  .viewer[data-chrome] .viewer-lights-on,
   .viewer[data-chrome] .viewer-step {
     transition: none;
   }

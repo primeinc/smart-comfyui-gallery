@@ -912,8 +912,9 @@
         panel(requireData(button, "panelOpen"));
       });
     }
-    const focusButton = findElement(root, "[data-focus]", HTMLElement);
-    if (focusButton) onElement(focusButton, "click", focus);
+    for (const button of everyElement(root, "[data-focus]", HTMLElement)) {
+      onElement(button, "click", focus);
+    }
     root.dataset.inspector = root.dataset.inspector ?? "closed";
     root.dataset.chrome = "visible";
     stageBox.dataset.quality = "preview";

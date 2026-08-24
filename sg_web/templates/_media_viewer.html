@@ -39,6 +39,14 @@
     </div>
   </header>
 
+  {# Lights out takes the chrome with it, INCLUDING the control that turned
+     them off, so the only ways back were a key nothing on screen mentions.
+     This is the one thing that survives. It exists only while the lights
+     are off, which is what keeps a corner × from reading as "close": in
+     the state where it can be seen, close is not on offer. #}
+  <button type="button" class="viewer-lights-on" data-focus
+          title="lights on (L)" aria-label="lights on">&times;</button>
+
   <div class="viewer-stage" data-quality="preview"
        data-stage='{{ item.stage.model_dump(mode="json") | tojson }}'>
     {% if item.context.previous %}

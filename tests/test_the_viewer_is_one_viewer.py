@@ -697,9 +697,9 @@ def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, wher
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live, where, open_it, unbroken):
-    """Resting is the pointer being still; focus is a decision. A mouse
-    move undoes the first and must not undo the second."""
+def test_lights_out_is_a_decision_a_mouse_move_does_not_undo(page: Page, live: Live, where, open_it, unbroken):
+    """Resting is the pointer being still; lights out is a decision. A
+    mouse move undoes the first and must not undo the second."""
     open_it(page, live, "a_big.png")
     assert page.get_attribute("[data-viewer]", "data-chrome") == "visible"
     page.keyboard.press("l")
@@ -709,6 +709,45 @@ def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live
     assert page.get_attribute("[data-viewer]", "data-chrome") == "focus", f"{where}: a mouse move cancelled focus"
     page.keyboard.press("l")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'visible'")
+
+
+def _lights_on_button(page: Page) -> dict:
+    """Whether the way out of lights-out can be SEEN, and whether it is in
+    the page's tab order -- `visibility`, which `checkVisibility` only
+    reports when asked for it."""
+    return page.evaluate(
+        "() => { const b = document.querySelector('[data-viewer] .viewer-lights-on');"
+        " if (!b) return {there: false};"
+        " return {there: true, seen: b.checkVisibility({visibilityProperty: true}),"
+        "         opacity: Number(getComputedStyle(b).opacity)}; }"
+    )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_lights_out_leaves_a_visible_way_back(page: Page, live: Live, where, open_it, unbroken):
+    """L hides every control the viewer has, including the one that turned
+    the lights off -- so without this, the only exits are two keys nothing
+    on screen names. The button appears only while the lights ARE off, and
+    it is a mouse's answer, not a keyboard's: pressed, not typed."""
+    open_it(page, live, "a_big.png")
+    lit = _lights_on_button(page)
+    assert lit["there"], f"{where}: no way out of lights-out is rendered at all"
+    assert not lit["seen"], f"{where}: the way out is on screen while the lights are on: {lit}"
+
+    page.keyboard.press("l")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'focus'")
+    # it fades in, so the settled value is the claim -- a button that is
+    # technically visible at zero opacity is still nothing anybody can see
+    page.wait_for_function(
+        "() => Number(getComputedStyle(document.querySelector('[data-viewer] .viewer-lights-on')).opacity) > 0",
+        timeout=2_000,
+    )
+    dark = _lights_on_button(page)
+    assert dark["seen"], f"{where}: lights out, and nothing on screen says how to get back: {dark}"
+
+    page.click("[data-viewer] .viewer-lights-on")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome !== 'focus'")
+    assert not _lights_on_button(page)["seen"], f"{where}: the way out stayed after the lights came on"
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)

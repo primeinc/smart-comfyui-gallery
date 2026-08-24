@@ -9,8 +9,9 @@
 // design sketch would call "minimal", "sidebar", "focus" or "bottom sheet"
 // are combinations of them the viewer arrives at by itself:
 //
-//   chrome      visible -> auto-hidden while the pointer rests -> hidden by
-//               L (lights out), restored by the next movement
+//   chrome      visible -> auto-hidden while the pointer rests, back on the
+//               next movement -> put out by L, which a movement does NOT
+//               undo, so one dim x stays behind as the way back
 //   inspector   closed | open (I). WHERE it sits is geometry's business:
 //               CSS docks it beside a wide stage and sheets it under a
 //               narrow one, so nothing here knows which
@@ -526,8 +527,12 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
       panel(requireData(button, "panelOpen"));
     });
   }
-  const focusButton = findElement(root, "[data-focus]", HTMLElement);
-  if (focusButton) onElement(focusButton, "click", focus);
+  // Two, not one: the chrome's toggle turns the lights off, and the one
+  // that outlives the chrome turns them back on. Same command, so binding
+  // only the first would leave whichever came second inert.
+  for (const button of everyElement(root, "[data-focus]", HTMLElement)) {
+    onElement(button, "click", focus);
+  }
 
   root.dataset.inspector = root.dataset.inspector ?? "closed";
   root.dataset.chrome = "visible";
