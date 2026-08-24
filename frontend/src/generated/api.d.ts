@@ -5787,6 +5787,7 @@ export interface operations {
                 sort?: string | null;
                 size?: number | null;
                 page?: number;
+                view?: string;
             };
             header?: never;
             path?: never;

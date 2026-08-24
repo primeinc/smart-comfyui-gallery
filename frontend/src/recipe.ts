@@ -40,11 +40,15 @@ function fit(field: HTMLTextAreaElement): void {
 /**
  * Put text on the clipboard and say so on the button that asked.
  *
+ * Exported because the analysis panel copies prompts too, and two
+ * copy buttons that confirm differently are two features wearing one
+ * name.
+ *
  * The confirmation is the button's own label for a moment. A toast would
  * be a second thing to look at somewhere else on the screen for an
  * action whose whole point is that it was instant.
  */
-async function copied(button: HTMLElement, text: string): Promise<void> {
+export async function copied(button: HTMLElement, text: string): Promise<void> {
   const was = button.textContent;
   try {
     await navigator.clipboard.writeText(text);

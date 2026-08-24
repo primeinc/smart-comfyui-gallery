@@ -139,6 +139,51 @@ def options(
     return Options(key=key, label=one.label, options=tuple(made[:most]), more=over)
 
 
+def breakdown(
+    conn,
+    query: resultset.GalleryQuery,
+    key: str,
+    *,
+    actor_id: int | None = None,
+    models_dir: str | None = None,
+    now: float | None = None,
+    most: int = MOST,
+) -> Options:
+    """What one dimension holds ACROSS THIS ANSWER.
+
+    The same statement `options` runs, scoped differently, because they
+    answer different questions and the difference is the whole reason
+    both exist:
+
+        options    counted WITHOUT this dimension -- "what could I ask
+                   next", so the list can widen the question
+        breakdown  counted WITH the whole question -- "what is in what I
+                   am looking at", which is what an analysis says
+
+    Scoped through `resultset.scope_of` either way, so an analysis and
+    the grid beneath it are describing the same media.
+    """
+    one = vocabulary.dimension(key)
+    if one is None:
+        raise ValueError(f"there is no filter named {key!r}")
+    if one.discover is None:
+        return Options(key=key, label=one.label, options=(), more=0)
+
+    conjunct, args, _ = resultset.scope_of(conn, query, actor_id, models_dir=models_dir, now=now)
+    sql = one.discover.replace("{scope}", conjunct).replace("{policy}", str(int(context.POLICY_VERSION)))
+    rows = list(conn.execute(sql + " LIMIT ?", [*args, most + 1]))
+    held = set(chosen_values(query, key))
+    made = [
+        Option(value=str(value), label=str(label), count=int(count), chosen=str(value) in held)
+        for value, label, count in rows
+        # a value nothing in this answer carries is not part of what this
+        # answer IS; the options list is where "it exists and gives none"
+        # belongs
+        if int(count) > 0
+    ]
+    return Options(key=key, label=one.label, options=tuple(made[:most]), more=max(0, len(made) - most))
+
+
 def labels(conn, query: resultset.GalleryQuery) -> dict[str, dict[int, str]]:
     """The names behind every id-valued clause the question carries.
 

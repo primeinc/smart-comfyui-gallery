@@ -39,6 +39,16 @@
             aria-expanded="false" aria-controls="filters"
             title="filter this question (F)">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
     <span class="ask-total" data-total-count>{{ "{:,}".format(total) }} result{{ "" if total == 1 else "s" }}</span>
+    {# One answer, two presentations. `view` is not part of the question:
+       switching leaves membership and total exactly where they were,
+       which is the whole contract between them. #}
+    <span class="ask-views" role="group" aria-label="how to show this answer">
+      {% for one in views %}
+      <a class="ask-view{% if one == view %} is-here{% endif %}"
+         href="/g?{% if qs %}{{ qs }}{% endif %}{% if one != "gallery" %}{% if qs %}&{% endif %}view={{ one }}{% endif %}"
+         data-view="{{ one }}"{% if one == view %} aria-current="page"{% endif %}>{{ one }}</a>
+      {% endfor %}
+    </span>
     <button type="button" class="ask-save" data-save-smart
             title="save this view as a smart collection">save view</button>
     <button type="button" class="ask-save" data-replace-smart
@@ -99,7 +109,11 @@
   </aside>
   <main class="stage">
     <div id="gallery-swap">
+      {% if view == "analyze" %}
+      {% include "_analyze.html" %}
+      {% else %}
       {% include "_grid.html" %}
+      {% endif %}
     </div>
     <div class="rail" data-rail aria-label="result set rail">
       <div class="rail-track"></div>

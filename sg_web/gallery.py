@@ -25,14 +25,86 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.params import FromPath, FromQuery
 from litestar.response import Template
 
-from db import connect, discovery, naming, places, resultset, settings, vocabulary
+from db import analysis, connect, discovery, naming, places, resultset, settings, vocabulary
 from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.wire import Wire
 
+#: The presentations one answer has. `view` is NOT part of the question:
+#: it never reaches the GalleryQuery, never moves the fingerprint, and
+#: switching between them must leave the membership and the total exactly
+#: where they were. It rides the URL so a link to an analysis is a link.
+VIEWS = ("gallery", "analyze")
 
-def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dict:
+
+def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str) -> str:
+    """The question with one more clause, canonically spelled.
+
+    What makes an analysis navigation rather than a report. A count that
+    cannot be clicked back into the query is a dashboard, and a dashboard
+    is where data goes to be looked at instead of used.
+    """
+    one = vocabulary.dimension(key)
+    if one is None:
+        return resultset.canonical(query)
+    if one.carried == "scope":
+        held = dataclasses.replace(query, **{key: value})
+    else:
+        made = facets_module.facet(key, one.ops[0], value)
+        held = dataclasses.replace(
+            query,
+            facets=facets_module.normalized(
+                [*[facets_module.spell(f) for f in query.facets], facets_module.spell(made)]
+            ),
+        )
+    spelled = resultset.canonical(held)
+    if view != "gallery":
+        spelled = f"{spelled}&view={view}" if spelled else f"view={view}"
+    return spelled
+
+
+def _analysis(conn, query: resultset.GalleryQuery, total: int, weights: str, view: str) -> dict:
+    """The answer, described -- and every row carrying the question it
+    would make."""
+    told = analysis.analyze(conn, query, total, models_dir=weights, now=time.time())
+    return {
+        "breakdowns": [
+            {
+                "key": one.key,
+                "label": one.label,
+                "covered": one.covered,
+                "more": one.more,
+                "rows": [
+                    {
+                        "label": row.label,
+                        "count": row.count,
+                        "share": row.share,
+                        "chosen": row.chosen,
+                        "qs": _with_clause(query, one.key, row.value, view),
+                    }
+                    for row in one.rows
+                ],
+            }
+            for one in told.breakdowns
+        ],
+        "prompts": [{"id": one.id, "text": one.text, "uses": one.uses, "role": one.role} for one in told.prompts],
+        "more_prompts": told.more_prompts,
+        "loras": [
+            {
+                "name": one.name,
+                "uses": one.uses,
+                "typical": one.typical,
+                "lowest": one.lowest,
+                "highest": one.highest,
+                "qs": _with_clause(query, "generation.lora", str(one.id), view),
+            }
+            for one in told.loras
+        ],
+    }
+
+
+def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: str = "gallery") -> dict:
     conn = connect.connect(state.db_path)
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
@@ -45,6 +117,9 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         conn.commit()  # a semantic answer may have minted registry rows
         # an id-valued chip says the name, not the number
         named = discovery.labels(conn, query)
+        # only when asked: an analysis is a dozen aggregates, and
+        # nobody drawing a grid is waiting for them
+        described = _analysis(conn, query, shape["total"], weights, view) if view == "analyze" else None
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -75,6 +150,9 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "place_kinds": list(places.KINDS),
         "chips": _chips(query, named),
         "qs": shape["qs"],
+        "view": view,
+        "views": VIEWS,
+        "analysis": described,
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
         # the filter surface, drawn from the one vocabulary: the
@@ -153,8 +231,18 @@ def gallery(
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
     page: FromQuery[int] = 1,
+    view: FromQuery[str] = "gallery",
 ) -> Template:
-    """The gallery, whole, from nothing but the URL."""
+    """One answer, in whichever presentation was asked for, from nothing
+    but the URL.
+
+    `view` is presentation, never the question: it does not reach the
+    GalleryQuery and does not move the fingerprint, so switching from the
+    grid to the analysis and back leaves membership and total exactly
+    where they were. That is the whole contract between them.
+    """
+    if view not in VIEWS:
+        raise ClientException(f"view is one of {', '.join(VIEWS)}, not {view!r}")
     query = _asked(
         folder,
         album,
@@ -168,7 +256,7 @@ def gallery(
         rating_min=rating_min,
         facets=f,
     )
-    return Template(template_name="gallery.html", context=_grid_context(state, query, page))
+    return Template(template_name="gallery.html", context=_grid_context(state, query, page, view))
 
 
 @get("/g/grid", sync_to_thread=True)

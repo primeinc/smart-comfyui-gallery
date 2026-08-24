@@ -87,8 +87,11 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     # and it takes that count through resultset.scope_of rather than
     # writing membership SQL of its own, which is the whole point of it
     # existing beside the ResultSet instead of inside this adapter.
+    # `analysis` is the other presentation of one answer: it aggregates
+    # over the SAME membership, taken through resultset.scope_of, and
+    # writes no WHERE clause of its own about which media are included.
     "sg_web/gallery.py": frozenset(
-        {"connect", "discovery", "facets", "naming", "places", "resultset", "settings", "vocabulary"}
+        {"analysis", "connect", "discovery", "facets", "naming", "places", "resultset", "settings", "vocabulary"}
     ),
     "sg_web/media_authored.py": frozenset(
         {"authored", "collections", "connect", "context", "naming", "pages", "places"}

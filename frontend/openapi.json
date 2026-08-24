@@ -5985,6 +5985,18 @@
                         "deprecated": false,
                         "allowEmptyValue": false,
                         "allowReserved": false
+                    },
+                    {
+                        "name": "view",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "default": "gallery"
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
                     }
                 ],
                 "responses": {
