@@ -259,7 +259,7 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
         assert aged["said"][0]["stale"] == 1
         assert aged["said_first"] is None
         assert "data-said-stale" in client.get(f"/i/{slug}", headers={"accept": "text/html"}).text
-        assert "data-lightbox-said" not in client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
+        assert "data-viewer-said" not in client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
         conn = connect.connect(client.app.state.db_path)
         try:
             conn.execute(

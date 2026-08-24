@@ -97,6 +97,35 @@ def live(request, tmp_path_factory):
                 os.environ[key] = value
 
 
+@pytest.fixture
+def unbroken(page, live: Live):
+    """Nothing the browser itself calls broken, for the duration of a test.
+
+    A first-party 404 is not a warning: `media.js` returning one rendered
+    a photograph with no viewer behind it -- no zoom, no keys, no walk --
+    and every browser test passed, because they watched for 500s and
+    uncaught exceptions and a missing script is neither.
+
+    Requested by name rather than autouse: a test that means to provoke a
+    refusal says so by not asking for this.
+    """
+    found: list[str] = []
+
+    def answered(response) -> None:
+        if response.url.startswith(live.url) and response.status >= 400:
+            found.append(f"{response.status} {response.url}")
+
+    def logged(message) -> None:
+        if message.type == "error":
+            found.append(f"console.error {message.text}")
+
+    page.on("response", answered)
+    page.on("pageerror", lambda error: found.append(f"pageerror {error}"))
+    page.on("console", logged)
+    yield found
+    assert not found, "the browser reported these while the test ran:\n  " + "\n  ".join(found)
+
+
 @pytest.fixture(scope="module")
 def browser_context_args(browser_context_args: dict, live: Live) -> dict:
     """pytest-playwright's `page.goto("/path")` resolves against the served

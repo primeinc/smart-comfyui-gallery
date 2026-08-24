@@ -41,10 +41,10 @@ def _settled(api, job_id, timeout=60.0) -> str:
         time.sleep(0.05)
 
 
-def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live):
-    broken: list[str] = []
-    page.on("response", lambda r: broken.append(f"{r.status} {r.url}") if r.status >= 500 else None)
-    page.on("pageerror", lambda e: broken.append(f"pageerror {e}"))
+def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live, unbroken):
+    # `unbroken` watches every first-party answer, not only 500s: a script
+    # that 404s is a page which renders and does nothing, which is how a
+    # dead viewer sat behind a green suite (tests/conftest.py).
 
     page.goto("/g")
     page.wait_for_selector("[data-grid] a.cell img", timeout=10_000)
@@ -91,7 +91,7 @@ def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live):
     page.wait_for_function(
         "() => Array.from(document.images).some(i => i.complete && i.naturalWidth > 0)", timeout=10_000
     )
-    assert broken == [], broken
+    # what the browser found is asserted by `unbroken` as the test ends
 
 
 INSIDE = (

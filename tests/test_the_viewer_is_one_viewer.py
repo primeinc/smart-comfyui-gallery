@@ -145,7 +145,7 @@ def _actual(page: Page) -> None:
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_no_keystroke_means_two_things_at_once(page: Page, live: Live, where, open_it):
+def test_no_keystroke_means_two_things_at_once(page: Page, live: Live, where, open_it, unbroken):
     """The defect this exists for: the viewer and the authored strip each
     listened to the document, so F was focus AND favorite, 1 was
     actual-pixels AND one star, 0 was fit AND clear-rating -- and every
@@ -182,7 +182,7 @@ def test_no_keystroke_means_two_things_at_once(page: Page, live: Live, where, op
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_every_inspector_section_opens_by_pointer_and_by_keyboard(page: Page, live: Live, where, open_it):
+def test_every_inspector_section_opens_by_pointer_and_by_keyboard(page: Page, live: Live, where, open_it, unbroken):
     """A heading with `cursor: pointer` and nothing listening is a control
     that looks like one and is not. The sections are `<details>`, so the
     browser owns the disclosure: focusable, Enter and Space, announced.
@@ -218,7 +218,7 @@ def test_every_inspector_section_opens_by_pointer_and_by_keyboard(page: Page, li
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_a_picture_opens_fitted_in_either_container(page: Page, live: Live, where, open_it):
+def test_a_picture_opens_fitted_in_either_container(page: Page, live: Live, where, open_it, unbroken):
     """Fit is where every picture starts, in both presentations -- and
     fitted means inside its stage, not merely small."""
     open_it(page, live, "a_big.png")
@@ -237,7 +237,7 @@ def test_a_picture_opens_fitted_in_either_container(page: Page, live: Live, wher
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_the_wheel_zooms_around_the_pointer(page: Page, live: Live, where, open_it):
+def test_the_wheel_zooms_around_the_pointer(page: Page, live: Live, where, open_it, unbroken):
     """The pixel under the cursor stays under the cursor.
 
     Anchoring is the whole difference between a zoom and a jump: zoom on
@@ -276,7 +276,7 @@ def _wheel(page: Page, modifier: str | None, amount: float) -> None:
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_the_chosen_modifier_walks_the_library_on_the_wheel(page: Page, live: Live, where, open_it):
+def test_the_chosen_modifier_walks_the_library_on_the_wheel(page: Page, live: Live, where, open_it, unbroken):
     """Alt+wheel steps to the next picture instead of zooming.
 
     The default, and the reason it is alt: a browser already reads
@@ -310,7 +310,9 @@ def test_the_chosen_modifier_walks_the_library_on_the_wheel(page: Page, live: Li
 
 @pytest.mark.parametrize("modifier", ["Shift", "Control"])
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_a_gesture_the_viewer_does_not_claim_reaches_the_browser(page: Page, live: Live, where, open_it, modifier):
+def test_a_gesture_the_viewer_does_not_claim_reaches_the_browser(
+    page: Page, live: Live, where, open_it, modifier, unbroken
+):
     """The viewer cancels only what it acts on.
 
     Ctrl+wheel is how a browser delivers a trackpad PINCH, and shift+wheel
@@ -342,7 +344,7 @@ def test_a_gesture_the_viewer_does_not_claim_reaches_the_browser(page: Page, liv
 
 
 @pytest.mark.parametrize(("where", "open_it", "pace_ms"), [(w, o, p) for w, o in OPENERS for p in (0, 90)])
-def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, open_it, pace_ms):
+def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, open_it, pace_ms, unbroken):
     """A gesture is a run of events, not an event.
 
     A hard flick or a trackpad swipe is a stream of dozens decaying over
@@ -382,7 +384,7 @@ def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, op
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_turning_the_wheel_back_is_a_new_gesture(page: Page, live: Live, where, open_it):
+def test_turning_the_wheel_back_is_a_new_gesture(page: Page, live: Live, where, open_it, unbroken):
     """The other half of the boundary rule, stated so it cannot drift.
 
     Silence ends a gesture -- and so does reversing, immediately, because
@@ -412,7 +414,7 @@ def test_turning_the_wheel_back_is_a_new_gesture(page: Page, live: Live, where, 
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_actual_pixels_are_the_sources_own(page: Page, live: Live, where, open_it):
+def test_actual_pixels_are_the_sources_own(page: Page, live: Live, where, open_it, unbroken):
     """`1` means one source pixel per DEVICE pixel, not per CSS pixel.
 
     The two differ by devicePixelRatio, and a 1:1 that quietly showed
@@ -428,7 +430,7 @@ def test_actual_pixels_are_the_sources_own(page: Page, live: Live, where, open_i
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_zooming_a_large_source_promotes_to_the_original(page: Page, live: Live, where, open_it):
+def test_zooming_a_large_source_promotes_to_the_original(page: Page, live: Live, where, open_it, unbroken):
     """The preview is enough until it is not, and then the original
     arrives -- without the transform moving."""
     open_it(page, live, "a_big.png")
@@ -443,7 +445,7 @@ def test_zooming_a_large_source_promotes_to_the_original(page: Page, live: Live,
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live: Live, where, open_it):
+def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live: Live, where, open_it, unbroken):
     """The trap the server's arithmetic exists to close.
 
     The preview is `ImageOps.contain`ed to a 1440 box, and `contain`
@@ -463,7 +465,7 @@ def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_a_pan_cannot_lose_the_photograph(page: Page, live: Live, where, open_it):
+def test_a_pan_cannot_lose_the_photograph(page: Page, live: Live, where, open_it, unbroken):
     """Dragged hard enough, the picture used to leave the stage entirely
     and there was no way back but Escape. Pan is bounded by the overhang:
     a zoomed picture can be pushed exactly to its own edge and no
@@ -490,7 +492,7 @@ def test_a_pan_cannot_lose_the_photograph(page: Page, live: Live, where, open_it
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_actual_pixels_stay_actual_when_the_stage_changes_size(page: Page, live: Live, where, open_it):
+def test_actual_pixels_stay_actual_when_the_stage_changes_size(page: Page, live: Live, where, open_it, unbroken):
     """`actual` is a scale computed from the fitted size, and the fitted
     size moves whenever the stage does. Opening the inspector and resizing
     the window both change it, so a picture still labelled 1:1 had quietly
@@ -519,7 +521,7 @@ def test_actual_pixels_stay_actual_when_the_stage_changes_size(page: Page, live:
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_a_drag_released_off_the_picture_pans_and_does_not_dismiss(page: Page, live: Live, where, open_it):
+def test_a_drag_released_off_the_picture_pans_and_does_not_dismiss(page: Page, live: Live, where, open_it, unbroken):
     """Pointer capture, proven by releasing exactly where dismissal lives.
 
     The overlay's backdrop click IS Back (frontend/src/overlay.ts), so a
@@ -541,7 +543,7 @@ def test_a_drag_released_off_the_picture_pans_and_does_not_dismiss(page: Page, l
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_escape_unwinds_the_viewer_before_it_means_leave(page: Page, live: Live, where, open_it):
+def test_escape_unwinds_the_viewer_before_it_means_leave(page: Page, live: Live, where, open_it, unbroken):
     """One ladder, both containers: a zoomed picture fits, an open
     inspector closes, and only then does Escape mean "leave"."""
     open_it(page, live, "a_big.png")
@@ -562,7 +564,7 @@ def test_escape_unwinds_the_viewer_before_it_means_leave(page: Page, live: Live,
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, where, open_it):
+def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, where, open_it, unbroken):
     """Placement is geometry's answer, not a preference.
 
     Nothing in the browser decides this and nothing is stored: the same
@@ -590,7 +592,7 @@ def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, wher
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live, where, open_it):
+def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live, where, open_it, unbroken):
     """Resting is the pointer being still; focus is a decision. A mouse
     move undoes the first and must not undo the second."""
     open_it(page, live, "a_big.png")
@@ -605,7 +607,7 @@ def test_focus_hides_the_chrome_and_only_f_brings_it_back(page: Page, live: Live
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
-def test_the_walk_is_the_servers_and_the_viewer_survives_it(page: Page, live: Live, where, open_it):
+def test_the_walk_is_the_servers_and_the_viewer_survives_it(page: Page, live: Live, where, open_it, unbroken):
     """Next means what the ResultSet says it means: the arrows are the
     server's addresses, and the viewer never computes an ordering."""
     open_it(page, live, "a_big.png")

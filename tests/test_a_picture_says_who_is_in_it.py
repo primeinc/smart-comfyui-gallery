@@ -78,7 +78,7 @@ def test_a_recorded_pass_says_who_looked_and_what_it_found(client):
 def test_the_lightbox_says_who_is_with_you(client):
     _, slug = _slug(client, "ana_1.png")
     part = client.get(f"/i/{slug}", headers={"hx-request": "true"}).text
-    assert "data-lightbox-people" in part
+    assert "data-viewer-people" in part
     assert 'href="/p/ana"' in part
 
 

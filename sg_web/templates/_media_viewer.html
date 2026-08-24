@@ -68,12 +68,12 @@
 
     <div class="viewer-facts" data-viewer-facts>
       {% if item.faces.people %}
-      <span class="viewer-people" data-lightbox-people>
+      <span class="viewer-people" data-viewer-people>
         {% for who in item.faces.people %}<a class="chip" href="{{ who.href }}">{{ who.name or who.slug }}</a>{% endfor %}
       </span>
       {% endif %}
       {% if item.said_first %}
-      <span class="viewer-caption" data-lightbox-said>&ldquo;{{ item.said_first }}&rdquo;</span>
+      <span class="viewer-caption" data-viewer-said>&ldquo;{{ item.said_first }}&rdquo;</span>
       {% endif %}
     </div>
   </div>
