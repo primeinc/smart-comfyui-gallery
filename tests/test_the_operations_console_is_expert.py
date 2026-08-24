@@ -79,13 +79,6 @@ def _types(db, job_id):
 # --- the vocabulary is closed, and every word has a rendering ----------------
 
 
-def test_every_word_the_ledger_accepts_has_a_rendering():
-    """A type the ledger can write without words, or words for a type it
-    cannot write, fails here. That the vocabulary equals the schema's
-    CHECK is text against text -- sglint SG709 -- not a test."""
-    assert set(console.RENDERINGS) == set(ledger.TYPES), "an event type has no console rendering"
-
-
 @pytest.mark.parametrize("type_", ledger.TYPES)
 def test_every_event_type_renders_to_words(type_):
     event = {"id": 1, "job_id": 7, "at": NOW, "type": type_, "item_id": 3, "phase": "decoding", "severity": "info"}
@@ -221,23 +214,6 @@ def test_a_checkpoint_move_is_an_event(db):
     jobs.checkpoint(db, job_id, fence, {"page": 3}, 30, at=NOW + 1)
     row = db.execute("SELECT data FROM job_event WHERE type = 'checkpoint.changed'").fetchone()
     assert json.loads(row[0]) == {"checkpoint": {"page": 3}, "done": 30, "fence": fence}
-
-
-def test_every_shipped_handler_reports_from_inside_its_item():
-    """Contract 5: a long handler that says nothing between item.started
-    and item.done is a frozen bar. Every handler the runner ships reaches
-    the reporting seam; a new kind that does not fails here."""
-    import inspect as inspecting_source
-
-    silent = [
-        kind
-        for kind, handler in runner.HANDLERS.items()
-        if kind != "hash" and "report()" not in inspecting_source.getsource(handler)
-    ]
-    assert silent == [], f"these handlers never report a phase: {silent}"
-    # the hash kind dispatches to four modes; each of those reports too
-    for mode in (runner._verify_item, runner._perceptual_item, runner._thumbs_item, runner._dupe_groups_item):
-        assert "report()" in inspecting_source.getsource(mode), mode.__name__
 
 
 # --- the read model exposes what the row knows -------------------------------

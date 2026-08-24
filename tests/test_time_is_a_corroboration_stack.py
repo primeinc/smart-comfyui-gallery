@@ -210,10 +210,6 @@ def test_a_verdict_depends_on_its_file_alone():
     """No sibling reaches the judge: the same claims give the same
     verdict whatever else is in the folder (a folder-level profile is
     a later, separately invalidated interpretation)."""
-    import inspect
-
-    assert "collapsed" not in inspect.signature(when.judge_generation).parameters
-    assert "folder_id" not in inspect.getsource(when)
 
 
 # --- the live library: a real SwarmUI run forms a session --------------------------

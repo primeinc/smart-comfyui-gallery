@@ -658,24 +658,6 @@ def test_the_threshold_is_pinned_against_the_engine():
     assert planning.GenerationHistoryPlanner.defaults["phase_threshold"] == 0.5
 
 
-def test_the_planner_owns_no_connection_no_sql_and_no_model():
-    import inspect
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "planning.py").read_text(encoding="utf-8")
-    head = source.split("# --- persistence and orchestration", 1)[0]
-    # engine_for resolves CONFIGURATION (which provider is set up) and is
-    # the one pre-persistence function allowed a connection; the planner
-    # body, the engines and the validators may not see one.
-    before, after = head.split("def engine_for(conn", 1)
-    body = before + after.split("\n\n\ndef pairwise_cosine", 1)[1]
-    for banned in ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"):
-        assert banned not in body, f"the planner reached for the database: {banned!r}"
-    for banned in ("import openai", "anthropic", "import requests", "import httpx", "torch"):
-        assert banned not in source
-    assert "conn" not in inspect.signature(planning.GenerationHistoryPlanner.plan).parameters
-
-
 # --- persistence, the service and the job, against a real frozen snapshot ----
 
 

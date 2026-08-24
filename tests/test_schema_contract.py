@@ -65,20 +65,6 @@ _INSERT_ONLY_ON_PURPOSE = {
     "feedback: feedback must name what it judges",
 }
 
-# TEXT columns whose name looks like an enum but whose values are genuinely
-# open. Each is a decision on the record, not an oversight.
-_FREE_TEXT = {
-    # the location of a root, which is the one place a path IS the fact
-    "path",
-    # a person's own words, and the name of a thing as its metadata spelled it
-    "name",
-    "note",
-    "summary",
-    "description",
-    "body",
-    "text",
-}
-
 
 @pytest.fixture(scope="module")
 def ddl():
@@ -1026,33 +1012,6 @@ def test_the_registry_survives_a_reparse(db):
     db.execute("INSERT INTO param_fts(param_fts, rank) VALUES('integrity-check', 1)")
 
 
-def test_nothing_writes_file_param_with_replace():
-    """The rule the counter and the search index both rest on.
-
-    REPLACE fires no DELETE trigger and gives the replacement a new rowid, so
-    `occurrences` drifts up forever and the FTS entry keyed on the old rowid
-    is stranded. Absorbing that by recomputing from scratch is what cost a
-    full scan per insert -- 1.5 ms per row at 8k rows and still doubling,
-    against a flat 34 us/row once the writes are honest.
-
-    It cannot be a trigger: SQLite runs BEFORE INSERT triggers before conflict
-    resolution, so a guard there rejects `ON CONFLICT DO UPDATE` too -- the
-    exact statement it exists to steer callers towards. Written as a trigger
-    first, and that is how this test came to exist.
-    """
-    root = pathlib.Path(__file__).resolve().parent.parent
-    offenders = []
-    for path in sorted((root / "db").rglob("*.py")):
-        source = path.read_text(encoding="utf-8")
-        for match in re.finditer(r"INSERT\s+OR\s+REPLACE\s+INTO\s+file_param", source, re.IGNORECASE):
-            line = source[: match.start()].count("\n") + 1
-            offenders.append(f"{path.name}:{line}")
-    assert offenders == [], (
-        f"these strand an FTS entry and inflate param_key: {offenders}. "
-        f"Use ON CONFLICT(file_id, source, key) DO UPDATE."
-    )
-
-
 def test_an_upsert_is_not_mistaken_for_a_replace(db):
     """The control for the rule above: the supported statement must work, and
     must leave both the counter and the index saying one."""
@@ -1639,50 +1598,6 @@ def test_a_name_survives_dropping_everything_derived(db):
     assert rows == [("Ilse", 1)]
 
 
-def test_no_index_is_a_prefix_of_another(db):
-    """An index whose columns are a prefix of another index's, under the same
-    partial predicate, is write cost on every insert for a read the other one
-    already serves.
-
-    Stated as a prefix rule rather than measured by dropping and replanning.
-    A planner probe on the leading column alone condemns any composite index
-    whose first column is also covered by a narrower one -- it flagged
-    `file_param_key_num`, which exists for `key = ? AND value_num BETWEEN ?`
-    and is not redundant at all.
-
-    The predicates have to match too: an index over all rows is not replaced
-    by a partial one, because the partial one cannot answer for the rows it
-    excludes.
-    """
-
-    def shape(index):
-        columns = [row[2] for row in db.execute(f"PRAGMA index_xinfo({index})") if row[5]]
-        sql = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (index,)).fetchone()[0]
-        where = sql.upper().split(" WHERE ", 1)
-        return columns, (where[1].strip() if len(where) > 1 else None)
-
-    redundant = []
-    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
-        if table in virtual_table_names(db):
-            continue
-        indexes = [
-            row[0]
-            for row in db.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL",
-                (table,),
-            )
-        ]
-        for candidate in indexes:
-            columns, predicate = shape(candidate)
-            for other in indexes:
-                if other == candidate:
-                    continue
-                wider, other_predicate = shape(other)
-                if len(wider) > len(columns) and wider[: len(columns)] == columns and other_predicate == predicate:
-                    redundant.append(f"{candidate} is a prefix of {other}")
-    assert redundant == [], f"these indexes earn nothing: {redundant}"
-
-
 def test_a_guard_that_only_fires_on_insert_is_declared_as_such(db):
     """A rule enforced on INSERT and not on UPDATE is one statement from
     useless: write the row correctly, then change it.
@@ -1753,157 +1668,6 @@ def test_a_role_cannot_be_updated_into_a_lie(db):
     db.execute("INSERT INTO file_artifact(file_id,artifact_id,role) VALUES(9,600,'captured_with')")
     with pytest.raises(sqlite3.IntegrityError):
         db.execute("UPDATE file_artifact SET role='checkpoint' WHERE file_id=9")
-
-
-def test_every_foreign_key_column_can_be_looked_up_by(db):
-    """SQLite's own `.lint fkey-indexes`, as a gate.
-
-    Deleting a parent row makes SQLite run `SELECT 1 FROM child WHERE
-    child_key = ?` against every child table (src/shell.c.in:5981-6014).
-    Unindexed that is a full scan per delete, so removing one file walks
-    every derivation, every annotation and every piece of feedback in the
-    library -- work that is invisible until the library is large.
-    """
-    unindexed = []
-    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
-        if table in virtual_table_names(db):
-            continue
-        leading = set()
-        for (index,) in db.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)):
-            columns = list(db.execute(f"PRAGMA index_info({index})"))
-            if columns:
-                leading.add(columns[0][2])
-        primary = {r[1] for r in db.execute(f"PRAGMA table_info({table})") if r[5]}
-        for row in db.execute(f"PRAGMA foreign_key_list({table})"):
-            column = row[3]
-            if column not in leading and column not in primary:
-                unindexed.append(f"{table}.{column} -> {row[2]}")
-    assert unindexed == [], f"deleting a parent row scans these child tables: {unindexed}"
-
-
-def test_a_column_naming_a_fixed_set_is_constrained_to_it(db):
-    """An unconstrained enum accepts every typo, and every typo is a row that
-    never matches the filter that was meant to find it.
-
-    `param_key.source` and `file_param.source` name the same set, and
-    `slug_history.kind` and `entity.kind` name the same set; the registry and
-    the history were the two that carried no CHECK, so the pair enforced in
-    one place and not the other could drift on the first direct write.
-    """
-    unconstrained = []
-    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
-        if table in virtual_table_names(db):
-            continue
-        sql = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
-        for row in db.execute(f"PRAGMA table_info({table})"):
-            column, kind = row[1], row[2]
-            if kind != "TEXT" or column in _FREE_TEXT:
-                continue
-            if not re.search(
-                r"(kind|state|role|verdict|space|carrier|source|severity|sex|policy)$",
-                column,
-            ):
-                continue
-            if not re.search(rf"\b{column}\b[^,]*CHECK|CHECK\s*\(\s*{column}\b", sql):
-                unconstrained.append(f"{table}.{column}")
-    assert unconstrained == [], (
-        f"these name a fixed set but accept anything: {unconstrained}. "
-        f"Add a CHECK, or add the column to _FREE_TEXT with the reason."
-    )
-
-
-def columns_actually_written(db):
-    """Map each table to the columns some INSERT or UPDATE names on it.
-
-    Parsed from the statements, not matched against the text. The check here
-    used to be `re.search(rf"\\b{column}\\b", source)` over every db/*.py file
-    concatenated -- comments and docstrings included -- so a column counted as
-    produced when its name appeared anywhere at all: in prose, as a local
-    variable, as an attribute of an unrelated object, or as a column of a
-    different table. `file.width` and `file.height` passed it for years'
-    worth of `typed.width` and `raw.width` in db/ingest.py while nothing has
-    ever written either one.
-    """
-    source = "".join(
-        path.read_text(encoding="utf-8")
-        for path in pathlib.Path(__file__).resolve().parent.parent.joinpath("db").rglob("*.py")
-    )
-    # Triggers are producers too: param_key is filled entirely by one, and a
-    # sweep that only reads Python would call the whole registry dead.
-    source += "".join(row[0] or "" for row in db.execute("SELECT sql FROM sqlite_master WHERE type='trigger'"))
-    # Quotes out, whitespace flattened: SQL in this repo is written as adjacent
-    # Python string literals, so a statement only reads as one after the
-    # delimiters between its halves are gone.
-    flat = " ".join(re.sub(r"""["']""", " ", source).split())
-
-    written: dict[str, set[str]] = {}
-    everything: set[str] = set()
-    for match in re.finditer(
-        r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\(([^()]*)\))?",
-        flat,
-        re.IGNORECASE,
-    ):
-        table = match.group(1)
-        if match.group(3) is None:
-            # No column list: every column is being written.
-            everything.add(table)
-            continue
-        written.setdefault(table, set()).update(name.strip() for name in match.group(3).split(","))
-    for match in re.finditer(
-        r"UPDATE\s+([A-Za-z_][A-Za-z0-9_]*)\s+SET\s+(.*?)(?:\s+WHERE\s|\s+RETURNING\s|;)",
-        flat,
-        re.IGNORECASE,
-    ):
-        written.setdefault(match.group(1), set()).update(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", match.group(2)))
-    # `DO UPDATE SET` needs no pass of its own: an upsert can only set columns
-    # its INSERT already named, and those are collected above.
-    return written, everything
-
-
-def test_a_column_nothing_writes_says_so(db):
-    """A column no producer fills is unfinished, not neutral.
-
-    It reads as a feature -- a facet built on it returns an empty library,
-    and nothing distinguishes "no video has a duration" from "nothing has
-    ever measured one". Whichever it is, the DDL has to say.
-    """
-    written, everything = columns_actually_written(db)
-    silent = []
-    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
-        if table in virtual_table_names(db) or table in everything:
-            continue
-        declaration = db.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0]
-        for row in db.execute(f"PRAGMA table_info({table})"):
-            column, is_pk = row[1], row[5]
-            if is_pk or column in written.get(table, ()):
-                continue
-            # The admission sits in the comment block above the column, so
-            # look at the whole declaration rather than forward from the name.
-            if "NOTHING WRITES THIS YET" in declaration.upper() and re.search(
-                rf"NOTHING WRITES THIS YET.{{0,400}}\b{re.escape(column)}\b",
-                declaration,
-                re.IGNORECASE | re.DOTALL,
-            ):
-                continue
-            silent.append(f"{table}.{column}")
-    assert silent == [], f"no producer writes these, and the DDL does not admit it: {silent}"
-
-
-def test_the_producer_sweep_reads_statements_not_prose(db):
-    """The control. Without it the sweep passes on a column that is only ever
-    mentioned, which is how `file.width` and `file.height` read as produced
-    while nothing had ever written either."""
-    written, everything = columns_actually_written(db)
-
-    assert "file" not in everything, "every INSERT into file names its columns"
-    assert {"folder_id", "name", "content_sha256"} <= written["file"], (
-        "the sweep cannot see the columns apply_scan plainly writes"
-    )
-    # A word this repo says constantly, and never as a column of `file`.
-    assert "parsed_by" not in written["file"]
-    # Filled entirely by a trigger, which is the half a Python-only sweep
-    # would call dead.
-    assert "occurrences" in written["param_key"]
 
 
 def test_the_build_control_counts_real_tables(db):

@@ -190,6 +190,65 @@ def rule_spawns(
     return found
 
 
+#: How a test inspects production SOURCE rather than exercising it, as
+#: (module, function): each is a linter wearing a pytest nametag -- it can
+#: fail without running the thing whose behaviour it claims.
+#:
+#: Qualified, and that matters: `parse` alone matched `facets.parse` and
+#: `resultset.parse` sixty-two times, which are the application's own
+#: functions being CALLED, the opposite of what this looks for.
+_SOURCE_INSPECTION = {
+    ("inspect", "getsource"): "asks Python for a function's source and searches it",
+    ("inspect", "getsourcelines"): "asks Python for a function's source and searches it",
+    ("ast", "parse"): "parses production source",
+}
+
+
+def rule_tests_run_things(
+    tests: pathlib.Path = REPO_ROOT / "tests", excused: frozenset[str] | None = None
+) -> list[Finding]:
+    """SG007: a test that inspects source instead of running the thing.
+
+    The rule the layers are built on: if an assertion can be decided from
+    source, AST, schema structure, generated contracts or types WITHOUT
+    exercising behaviour, it is not a pytest. Every such sweep in this
+    repository has moved to sglint, and this is what stops the next one
+    arriving -- `inspect.getsource`, `ast.parse`, and a `*.py` glob over
+    the tree are the three shapes they all took.
+
+    The linter's own tests are exempt by name: proving a rule fires means
+    handing it source, which is the one place that is the point.
+    """
+    skip = policy.SOURCE_INSPECTION_EXCUSED if excused is None else excused
+    found: list[Finding] = []
+    for source in sorted(tests.rglob("*.py")):
+        if source.name in skip:
+            continue
+        for node in ast.walk(parsed(source)):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            named = node.func.attr
+            owner = node.func.value.id if isinstance(node.func.value, ast.Name) else ""
+            why = _SOURCE_INSPECTION.get((owner, named))
+            if why is not None:
+                found.append(
+                    Finding(source, node.lineno, node.col_offset, "SG007", f"a test {why}; sglint can prove it cheaper")
+                )
+            if named in ("glob", "rglob") and node.args:
+                held = node.args[0]
+                if isinstance(held, ast.Constant) and isinstance(held.value, str) and held.value.endswith(".py"):
+                    found.append(
+                        Finding(
+                            source,
+                            node.lineno,
+                            node.col_offset,
+                            "SG007",
+                            "a test sweeps the tree for Python source; sglint can prove it cheaper",
+                        )
+                    )
+    return found
+
+
 # --- SG1xx: SQL is built from structure only --------------------------------------------------
 
 SQL_SHAPED = re.compile(
@@ -434,7 +493,42 @@ def _db_vocabulary(tree: ast.AST) -> dict[str, tuple[int, int]]:
     return found
 
 
-def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+def _before_marker(
+    root: pathlib.Path, pins: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] | None = None
+) -> list[Finding]:
+    """SG407: a word before a marker that the module's first half may not
+    carry -- the narrator above its persistence section, the planner above
+    its orchestration.
+
+    A named function is cut out first. The planner's `engine_for` resolves
+    WHICH provider is configured and is the one function before the marker
+    allowed a connection; cutting it by name keeps the rule over the rest
+    exact, where widening the word list would excuse the same word
+    everywhere in the module.
+    """
+    declared = policy.MUST_NOT_CONTAIN_BEFORE if pins is None else pins
+    found: list[Finding] = []
+    for relative, (marker, words, excused) in declared.items():
+        held = (root / relative).read_text(encoding="utf-8")
+        head = held.split(marker, 1)[0]
+        for name in excused:
+            opened = head.find(f"def {name}(")
+            if opened == -1:
+                found.append(Finding(root / relative, 1, 0, "SG407", f"nothing named {name} to excuse"))
+                continue
+            closed = head.find("\n\n\ndef ", opened)
+            head = head[:opened] + (head[closed:] if closed != -1 else "")
+        for word in words:
+            if word in head:
+                line = head[: head.index(word)].count("\n") + 1
+                found.append(Finding(root / relative, line, 0, "SG407", f"carries {word!r} before {marker!r}"))
+    return found
+
+
+def rule_adapters(
+    root: pathlib.Path = REPO_ROOT,
+    must_not_contain_before: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] | None = None,
+) -> list[Finding]:
     """SG401 an adapter ran its own statement; SG402 it imported a query
     module; SG403 it stopped delegating; SG404 a one-item adapter no
     longer shares the _many implementation; SG405 a non-literal statement
@@ -520,13 +614,7 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
         found.extend(
             Finding(root / relative, 1, 0, "SG406", f"no longer carries {word!r}") for word in words if word not in held
         )
-    for relative, (marker, words) in policy.MUST_NOT_CONTAIN_BEFORE.items():
-        held = (root / relative).read_text(encoding="utf-8")
-        head = held.split(marker, 1)[0]
-        for word in words:
-            if word in head:
-                line = head[: head.index(word)].count("\n") + 1
-                found.append(Finding(root / relative, line, 0, "SG407", f"carries {word!r} before {marker!r}"))
+    found.extend(_before_marker(root, must_not_contain_before))
     for relative, words in policy.MUST_NOT_CONTAIN_AFTER_DOCSTRING.items():
         held = (root / relative).read_text(encoding="utf-8")
         body = held.split('"""', 2)[2] if held.count('"""') >= 2 else held
@@ -537,16 +625,27 @@ def rule_adapters(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     for relative, pairs in policy.NO_PARAMETER_NAMED.items():
         tree = parsed(root / relative)
         for dotted, param in pairs:
-            owner, method = dotted.split(".")
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and node.name == owner:
-                    for fn in node.body:
-                        if not (isinstance(fn, ast.FunctionDef) and fn.name == method):
-                            continue
-                        if any(a.arg == param for a in fn.args.args + fn.args.kwonlyargs):
-                            found.append(
-                                Finding(root / relative, fn.lineno, fn.col_offset, "SG408", f"{dotted} takes {param!r}")
-                            )
+            # "Class.method" names one method; a bare name is a function
+            # of the module, which is how a judge or a planner is spelled
+            owner, _, method = dotted.rpartition(".")
+            scopes: list[list[ast.stmt]] = (
+                [tree.body]
+                if not owner
+                else [node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == owner]
+            )
+            wanted = [
+                fn
+                for scope in scopes
+                for fn in scope
+                if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) and fn.name == method
+            ]
+            if not wanted:
+                found.append(Finding(root / relative, 1, 0, "SG408", f"{dotted} is not there to check"))
+            found.extend(
+                Finding(root / relative, fn.lineno, fn.col_offset, "SG408", f"{dotted} takes {param!r}")
+                for fn in wanted
+                if any(a.arg == param for a in fn.args.args + fn.args.kwonlyargs)
+            )
     for package, patterns in policy.PACKAGE_FORBIDDEN_PATTERNS.items():
         for source in sorted((root / package).rglob("*.py")):
             held = source.read_text(encoding="utf-8")
@@ -606,6 +705,37 @@ def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
             if word in held:
                 line = held[: held.index(word)].count("\n") + 1
                 found.append(Finding(source, line, 0, "SG501", f"carries query logic: {word!r}"))
+    found.extend(_page_shapes(templates))
+    return found
+
+
+def _page_shapes(templates: typing.Iterable[pathlib.Path]) -> list[Finding]:
+    """SG502: a page that is not a child of the shell, or a fragment that
+    is a whole document.
+
+    A full page extends base.html and owns no document of its own, so the
+    navigation, the notice and the activity surface cannot be missing from
+    one page and present on the rest. A fragment is mounted into a page
+    that already has a document; one carrying `<html>` or a doctype is a
+    page somebody will eventually serve whole.
+    """
+    found: list[Finding] = []
+    for source in templates:
+        held = source.read_text(encoding="utf-8")
+        lowered = held.lower()
+        if source.name.startswith("_"):
+            for word in ("<html", "<!doctype"):
+                if word in lowered:
+                    line = lowered[: lowered.index(word)].count("\n") + 1
+                    found.append(Finding(source, line, 0, "SG502", f"a fragment carrying {word} is a page"))
+            continue
+        if source.name == policy.SHELL_TEMPLATE:
+            continue
+        if not held.lstrip().startswith(policy.EXTENDS_SHELL):
+            found.append(Finding(source, 1, 0, "SG502", f"a page that does not open with {policy.EXTENDS_SHELL}"))
+        if "<!doctype" in lowered:
+            line = lowered[: lowered.index("<!doctype")].count("\n") + 1
+            found.append(Finding(source, line, 0, "SG502", "a page carrying its own document; the shell owns it"))
     return found
 
 
@@ -986,6 +1116,7 @@ def rule_response_contracts(
 
 RULES = (
     rule_spawns,
+    rule_tests_run_things,
     rule_sql_structure,
     rule_connection_lifetime,
     rule_adapters,
@@ -1005,6 +1136,12 @@ def run() -> list[Finding]:
         schema_rules.rule_schema,
         schema_rules.rule_migrations,
         schema_rules.rule_wire_vocabularies,
+        schema_rules.rule_foreign_key_indexes,
+        schema_rules.rule_closed_columns,
+        schema_rules.rule_index_prefixes,
+        schema_rules.rule_vocabulary_handlers,
+        schema_rules.rule_handlers_report,
+        schema_rules.rule_written_columns,
     ):
         found.extend(rule())
     return sorted(found, key=lambda f: (str(f.path), f.line, f.col, f.code))

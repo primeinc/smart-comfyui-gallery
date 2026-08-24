@@ -10,6 +10,10 @@ from __future__ import annotations
 
 #: Directories that are not this project's code.
 NOT_OURS = frozenset({".git", ".venv", "__pycache__", "node_modules", "vendor"})
+#: The test files SG007 does not judge: proving a rule fires means
+#: handing it source, which is the one place that is the point.
+SOURCE_INSPECTION_EXCUSED: frozenset[str] = frozenset({"test_sglint_has_teeth.py"})
+
 #: Our code that does not ship to a user: builds throwaway state on purpose.
 TOOLING = frozenset({"tests", "benchmarks", "experiments", "probes", "sglint"})
 #: The application pairing every consumer of the database lives in.
@@ -176,6 +180,8 @@ MUST_NOT_CONTAIN: dict[str, tuple[str, ...]] = {
     "sg_web/media_view.py": ("neighbour",),
     "db/pages.py": ("ARTIFACT_FILES", "WORKFLOW_FILES", "def artifact_files", "def workflow_files"),
     "sg_web/app.py": ("add_to_collection", "remove_from_collection"),
+    # uvicorn workers > 1 splits the in-memory feed across processes
+    "sg_web/__main__.py": ("workers=",),
     # the Explorer page neither reaches nor reasons; the view module
     # neither writes, loads a model, nor owns a URL
     "frontend/src/evolution.ts": ("fetch(", "XMLHttpRequest", "localStorage", "cosine ="),
@@ -200,11 +206,35 @@ MUST_NOT_CONTAIN: dict[str, tuple[str, ...]] = {
     "story_renderers/claims.py": ("execute(", "sqlite3", "jinja", "import db"),
     "story_renderers/formatting.py": ("POLICY_VERSION",),
     "sg_web/templates/story.html": ("|safe", "{% set", "cosine", "similarity", "claim.kind", "execute"),
+    # a grouper consumes the per-claim occurrence interface, never a
+    # source table: reading `file` or `capture` directly would be a second
+    # interpretation of time beside db/context.py's one
+    "db/events.py": ("FROM file", "FROM capture", "FROM generation", "JOIN entity", "FROM entity"),
+    # no sibling reaches the judge: the same claims give the same verdict
+    # whatever else is in the folder, so the folder is not an input
+    "db/when.py": ("folder_id",),
+    # the planner writes no story with a model and calls nothing over the
+    # network; it reads frozen evidence and structures it
+    "db/planning.py": ("import openai", "anthropic", "import requests", "import httpx", "torch"),
 }
 #: Words a file must not contain BEFORE a marker: the narrator (everything
 #: above its persistence section) never touches a connection.
-MUST_NOT_CONTAIN_BEFORE: dict[str, tuple[str, tuple[str, ...]]] = {
-    "db/rendering.py": ("# --- persistence", ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)")),
+#: {module: (marker, banned words, functions cut out before the sweep)}.
+MUST_NOT_CONTAIN_BEFORE: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
+    "db/rendering.py": (
+        "# --- persistence",
+        ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"),
+        (),
+    ),
+    # The planner structures frozen evidence: it holds no connection, runs
+    # no statement and loads no model. `engine_for` resolves which provider
+    # is CONFIGURED, which is the one thing before the marker that needs a
+    # connection, so it is cut out rather than the words being widened.
+    "db/planning.py": (
+        "# --- persistence and orchestration",
+        ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"),
+        ("engine_for",),
+    ),
 }
 #: Words a file must not contain AFTER its module docstring.
 MUST_NOT_CONTAIN_AFTER_DOCSTRING: dict[str, tuple[str, ...]] = {
@@ -213,6 +243,9 @@ MUST_NOT_CONTAIN_AFTER_DOCSTRING: dict[str, tuple[str, ...]] = {
 #: A function (class.method) whose signature must not carry a parameter.
 NO_PARAMETER_NAMED: dict[str, tuple[tuple[str, str], ...]] = {
     "db/rendering.py": (("TemplateStoryRenderer.render", "conn"),),
+    # the judge weighs one file's own claims; a collapsed sibling set is
+    # not evidence about it
+    "db/when.py": (("judge_generation", "collapsed"),),
 }
 #: Regexes no file of a package may match.
 PACKAGE_FORBIDDEN_PATTERNS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -225,9 +258,14 @@ PACKAGE_FORBIDDEN_PATTERNS: dict[str, tuple[tuple[str, str], ...]] = {
 PAGE_QUERIES_MINIMUM: int = 12
 #: Words a source file must contain.
 MUST_CONTAIN: dict[str, tuple[str, ...]] = {
-    "sg_web/app.py": ("collections.set_membership",),
+    # One process, one channel: the feed is in-memory, so a second
+    # worker would be a second channel and half the subscribers would
+    # never hear a job move (sg_web/__main__.py starts no workers).
+    "sg_web/app.py": ("collections.set_membership", "MemoryChannelsBackend()"),
     "sg_web/templates/media.html": ("video", "animated_image", "image", "audio", "/media/"),
     "sg_web/templates/_media_lightbox.html": ("video", "animated_image", "image", "audio", "/media/"),
+    # the grouping input IS the occurrence interface, named out loud
+    "db/events.py": ("context.occurrences(",),
 }
 #: Single-item desired-state adapters that must delegate to their _many
 #: form (so validation cannot fork), and the _many must use executemany.
@@ -264,6 +302,10 @@ WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
 }
 
 SURFACE_FORBIDDEN_WORDS: tuple[str, ...] = ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search")
+
+#: The shell every full page is a child of, and how a page says so.
+SHELL_TEMPLATE = "base.html"
+EXTENDS_SHELL = '{% extends "base.html" %}'
 
 #: The functions that open a connection meant to outlive the call, and why.
 #: SG103 takes returning or yielding as a transfer; it does not take storing
@@ -388,6 +430,39 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("job_event", "item_id"),
     }
 )
+#: TEXT columns whose name looks like a closed vocabulary but whose values
+#: are genuinely open. Each is a decision on the record, not an oversight
+#: -- SG711 reads a name ending in one of its suffixes as an enum unless it
+#: is here.
+FREE_TEXT: frozenset[str] = frozenset(
+    {
+        # the location of a root, which is the one place a path IS the fact
+        "path",
+        # a person's own words, and the name of a thing as its metadata
+        # spelled it
+        "name",
+        "note",
+        "summary",
+        "description",
+        "body",
+        "text",
+    }
+)
+
+#: The column-name endings SG711 reads as naming a fixed set.
+VOCABULARY_ENDINGS: tuple[str, ...] = (
+    "kind",
+    "state",
+    "role",
+    "verdict",
+    "space",
+    "carrier",
+    "source",
+    "severity",
+    "sex",
+    "policy",
+)
+
 #: Composite-key tables that must be WITHOUT ROWID (sqlite.org/withoutrowid.html).
 WITHOUT_ROWID: tuple[str, ...] = ("file_artifact", "derived_file_person", "collection_file", "rating", "favorite")
 #: The long tail keeps its rowid: multi-KB values are what the optimization is not for.
@@ -416,3 +491,29 @@ LOAD_BEARING_REFERENCES: dict[tuple[str, str], str] = {
     ("derived_face_cluster", "person_id"): "person",
     ("job", "target_id"): "entity",
 }
+
+
+# --- SG713 / SG415: a vocabulary and the code that must cover it --------------------------------
+
+#: A dispatch table and the closed vocabulary every one of its keys must
+#: cover: {module: {table: (vocabulary module, vocabulary name)}}. Both
+#: halves are module-level literals, so this is text against text -- an
+#: event the ledger can write and the console cannot say is caught without
+#: building a database or rendering anything.
+VOCABULARY_HANDLERS: dict[str, dict[str, tuple[str, str]]] = {
+    "sg_web/console.py": {"RENDERINGS": ("db/ledger.py", "EventType")},
+}
+
+#: Job handler registries whose every handler must reach the reporting
+#: seam: {module: registry name}. A long handler that says nothing between
+#: item.started and item.done is a frozen progress bar.
+HANDLER_REGISTRIES: dict[str, str] = {"db/runner.py": "HANDLERS"}
+
+#: A kind whose handler only dispatches, and the functions it dispatches
+#: to -- those are what must report, not the router.
+HANDLER_DISPATCH: dict[str, tuple[str, ...]] = {
+    "hash": ("_verify_item", "_perceptual_item", "_thumbs_item", "_dupe_groups_item"),
+}
+
+#: The call that IS reporting.
+REPORTING_CALL = "report"

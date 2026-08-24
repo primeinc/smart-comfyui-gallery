@@ -89,22 +89,6 @@ def test_the_front_link_is_the_gallery(served):
     assert all(row["slug"] for row in front["newest"])
 
 
-def test_every_page_template_extends_the_shell():
-    """Structural: a full page is a child of base.html, never its own
-    document. Fragments (underscore-prefixed) are mounted, never served
-    whole, and carry no document at all."""
-    pages = sorted(p for p in TEMPLATES.glob("*.html") if not p.name.startswith("_") and p.name != "base.html")
-    assert len(pages) >= 13, [p.name for p in pages]
-    for page in pages:
-        held = page.read_text(encoding="utf-8")
-        assert held.lstrip().startswith('{% extends "base.html" %}'), f"{page.name} is not a child of the shell"
-        assert "<!doctype" not in held.lower(), f"{page.name} carries its own document"
-    for fragment in TEMPLATES.glob("_*.html"):
-        held = fragment.read_text(encoding="utf-8").lower()
-        assert "<html" not in held, f"{fragment.name} is a page, not a fragment"
-        assert "<!doctype" not in held, f"{fragment.name} is a page, not a fragment"
-
-
 def test_every_browser_page_carries_the_same_navigation(served):
     """The product areas are reachable from every rendered page, the
     operational link is there too, and the shell's notice and activity
@@ -394,11 +378,3 @@ def test_the_feed_is_one_process_by_construction():
     starts exactly one, and nothing passes uvicorn a worker count; both
     are pinned so the day either changes, the channel backend changes
     with it."""
-    import ast
-
-    here = pathlib.Path(__file__).resolve().parent.parent / "sg_web"
-    tree = ast.parse((here / "__main__.py").read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "run":
-            assert "workers" not in {kw.arg for kw in node.keywords}, "uvicorn workers > 1 splits the feed"
-    assert "MemoryChannelsBackend()" in (here / "app.py").read_text(encoding="utf-8")

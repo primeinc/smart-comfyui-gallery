@@ -89,11 +89,15 @@ def test_the_adapter_rules_can_fail(tree):
 
 
 def _surfaces(root: pathlib.Path, templates: int, scripts: int) -> None:
-    """A tree with `templates` clean templates and `scripts` clean scripts."""
+    """A tree with `templates` clean templates and `scripts` clean scripts.
+
+    The templates are written as fragments: SG502 holds pages to the shell,
+    and these exist to exercise SG500 and SG501, not that one.
+    """
     (root / "sg_web" / "templates").mkdir(parents=True, exist_ok=True)
     (root / "frontend" / "src").mkdir(parents=True, exist_ok=True)
     for i in range(templates):
-        (root / "sg_web" / "templates" / f"t{i}.html").write_text("<p>fine</p>", encoding="utf-8")
+        (root / "sg_web" / "templates" / f"_t{i}.html").write_text("<p>fine</p>", encoding="utf-8")
     for i in range(scripts):
         (root / "frontend" / "src" / f"s{i}.ts").write_text("export {};\n", encoding="utf-8")
 
@@ -539,3 +543,240 @@ def test_the_connection_lifetime_rule_can_fail():
     assert _flagged(rules.rule_connection_lifetime([module], stale)) == (dropped - {"stores"}) | {"closes"}, (
         "and a declaration that no longer describes the function is reported, so the ledger can only shrink"
     )
+
+
+def test_the_structural_schema_sweeps_hold_and_each_can_fail():
+    """SG710, SG711, SG712: three sweeps that used to be pytest.
+
+    Each is decidable from the DDL alone -- build it in memory, ask the
+    PRAGMAs -- so each moved to the linter, and each is bent here to prove
+    the new gate has teeth rather than being a green sweep nobody can fail.
+    """
+    from sglint import schema_rules
+
+    ddl = schema_rules.SCHEMA.read_text(encoding="utf-8")
+    assert schema_rules.rule_foreign_key_indexes(ddl) == []
+    assert schema_rules.rule_closed_columns(ddl) == []
+    assert schema_rules.rule_index_prefixes(ddl) == []
+
+    # SG710: drop the index a child's foreign key leads, and deleting the
+    # parent starts scanning that child
+    index = "CREATE INDEX job_event_job ON job_event(job_id, id);"
+    assert ddl.count(index) == 1, "the control's handle moved"
+    unindexed = schema_rules.rule_foreign_key_indexes(ddl.replace(index, ""))
+    assert {f.code for f in unindexed} == {"SG710"}
+    assert any("job_event.job_id" in f.message for f in unindexed)
+
+    # SG711: a TEXT column named for a vocabulary, carrying no CHECK
+    loose = ddl.replace(
+        "CREATE TABLE rating (",
+        "CREATE TABLE mood (id INTEGER PRIMARY KEY, state TEXT) STRICT;\nCREATE TABLE rating (",
+        1,
+    )
+    told = schema_rules.rule_closed_columns(loose)
+    assert {f.code for f in told} == {"SG711"}
+    assert any("mood.state" in f.message for f in told)
+    # and the exemption is read: the same column, named free text
+    excused = schema_rules.rule_closed_columns(loose, free_text=schema_rules.policy.FREE_TEXT | {"state"})
+    assert excused == [], "a column named in FREE_TEXT is a decision, not a finding"
+
+    # SG712: an index whose columns are a prefix of another's, same predicate
+    doubled = ddl.replace(index, index + "\nCREATE INDEX job_event_job_only ON job_event(job_id);", 1)
+    prefixed = schema_rules.rule_index_prefixes(doubled)
+    assert {f.code for f in prefixed} == {"SG712"}
+    assert any("job_event_job_only is a prefix of job_event_job" in f.message for f in prefixed)
+    # a partial index over different rows is NOT replaced by the wider one
+    partial = ddl.replace(
+        index, index + "\nCREATE INDEX job_event_job_open ON job_event(job_id) WHERE item_id IS NULL;", 1
+    )
+    assert schema_rules.rule_index_prefixes(partial) == [], "a different predicate answers for different rows"
+
+
+def test_the_vocabulary_and_handler_rules_hold_and_can_fail(tmp_path):
+    """SG713 and SG415: two parities that used to be pytest.
+
+    SG713 compared `console.RENDERINGS` with `ledger.EventType` -- two
+    module-level literals. SG415 asked Python for a handler's SOURCE and
+    substring-searched it, which is a linter wearing a pytest nametag.
+    """
+    from sglint import schema_rules
+
+    assert schema_rules.rule_vocabulary_handlers() == []
+    assert schema_rules.rule_handlers_report() == []
+
+    here = tmp_path / "repo"
+    (here / "words").mkdir(parents=True)
+    (here / "run").mkdir(parents=True)
+    (here / "words" / "vocab.py").write_text('import typing\n\nKind = typing.Literal["a", "b"]\n', encoding="utf-8")
+    handlers = {"words/say.py": {"SAYS": ("words/vocab.py", "Kind")}}
+
+    # covered exactly
+    (here / "words" / "say.py").write_text("SAYS = {'a': 1, 'b': 2}\n", encoding="utf-8")
+    assert schema_rules.rule_vocabulary_handlers(here, handlers) == []
+    # a member nothing covers, and words for a member that cannot be written
+    (here / "words" / "say.py").write_text("SAYS = {'a': 1, 'c': 3}\n", encoding="utf-8")
+    told = schema_rules.rule_vocabulary_handlers(here, handlers)
+    assert {f.code for f in told} == {"SG713"}
+    assert "missing ['b']" in told[0].message
+    assert "unknown ['c']" in told[0].message
+
+    # SG415: a handler that never reports, and a dispatcher whose modes do
+    (here / "run" / "worker.py").write_text(
+        "def _quiet(conn, item):\n    return 1\n\n"
+        "def _loud(conn, item):\n    report().phase('x')\n    return 2\n\n"
+        "HANDLERS = {'quiet': _quiet, 'loud': _loud}\n",
+        encoding="utf-8",
+    )
+    silent = schema_rules.rule_handlers_report(here, {"run/worker.py": "HANDLERS"})
+    assert {f.code for f in silent} == {"SG415"}
+    assert len(silent) == 1
+    assert "_quiet handles 'quiet'" in silent[0].message
+
+
+def test_the_page_shape_rule_can_fail(tmp_path):
+    """SG502: template inheritance and document shape, which used to be a
+    pytest that walked the template directory reading files."""
+    where = tmp_path / "templates"
+    where.mkdir()
+    shell = where / policy.SHELL_TEMPLATE
+    shell.write_text("<!doctype html><html><body>{% block body %}{% endblock %}</body></html>", encoding="utf-8")
+    page = where / "good.html"
+    page.write_text(policy.EXTENDS_SHELL + "\n{% block body %}<p>fine</p>{% endblock %}\n", encoding="utf-8")
+    fragment = where / "_good.html"
+    fragment.write_text("<p>a piece</p>\n", encoding="utf-8")
+    clean = [shell, page, fragment]
+    assert rules._page_shapes(clean) == [], "the shell itself is not a page, and these two are right"
+
+    orphan = where / "orphan.html"
+    orphan.write_text("<p>no shell</p>\n", encoding="utf-8")
+    told = rules._page_shapes([*clean, orphan])
+    assert {f.code for f in told} == {"SG502"}
+    assert "does not open with" in told[0].message
+
+    whole = where / "whole.html"
+    whole.write_text(policy.EXTENDS_SHELL + "\n<!DOCTYPE html>\n", encoding="utf-8")
+    assert "carrying its own document" in rules._page_shapes([*clean, whole])[0].message
+
+    swollen = where / "_swollen.html"
+    swollen.write_text("<html><body>a fragment that grew</body></html>\n", encoding="utf-8")
+    assert "is a page" in rules._page_shapes([*clean, swollen])[0].message
+
+
+def test_the_before_marker_sweep_excuses_a_named_function_and_nothing_else(tmp_path):
+    """SG407's cut-out: the planner's `engine_for` is allowed a connection
+    before the marker, and nothing else is.
+
+    Widening the word list instead would excuse `(conn` everywhere in the
+    module, which is the opposite of what the pin is for.
+    """
+    here = tmp_path / "repo"
+    (here / "db").mkdir(parents=True)
+    module = here / "db" / "planner.py"
+    marker = "# --- persistence"
+    wanted = {"db/planner.py": (marker, ("(conn", "execute("), ("engine_for",))}
+    clean = (
+        "def engine_for(conn, name):\n    return conn.execute('SELECT 1')\n\n\n"
+        "def plan(document):\n    return document\n\n\n" + marker + "\n\ndef save(conn):\n    pass\n"
+    )
+    module.write_text(clean, encoding="utf-8")
+    assert rules._before_marker(here, wanted) == [], "the excused function is allowed both"
+
+    # the same words, one function further along, are a finding
+    module.write_text(
+        clean.replace("def plan(document):\n    return document", "def plan(conn):\n    return conn"), encoding="utf-8"
+    )
+    told = rules._before_marker(here, wanted)
+    assert {f.code for f in told} == {"SG407"}
+
+    # and an excused name that is not there is itself a finding: a pin
+    # cannot outlive the thing it excuses
+    module.write_text(clean.replace("def engine_for(conn, name):", "def engine_of(conn, name):"), encoding="utf-8")
+    assert any("nothing named engine_for" in f.message for f in rules._before_marker(here, wanted))
+
+
+def test_the_written_column_sweep_reads_statements_not_prose():
+    """SG714's control, moved with the rule it belongs to.
+
+    Without it the sweep passes on a column that is only ever MENTIONED,
+    which is how `file.width` and `file.height` read as produced while
+    nothing had ever written either.
+    """
+    from sglint import schema_rules
+
+    conn = schema_rules.built(schema_rules.SCHEMA.read_text(encoding="utf-8"))
+    try:
+        written, everything = schema_rules.written_columns(rules.REPO_ROOT, conn)
+    finally:
+        conn.close()
+    assert "file" not in everything, "every INSERT into file names its columns"
+    assert {"folder_id", "name", "content_sha256"} <= written["file"], (
+        "the sweep cannot see the columns apply_scan plainly writes"
+    )
+    # a word this repo says constantly, and never as a column of `file`
+    assert "parsed_by" not in written["file"]
+    # filled entirely by a trigger, which is the half a Python-only sweep
+    # would call dead
+    assert "occurrences" in written["param_key"]
+
+
+def test_the_written_column_rule_can_fail():
+    """SG714: add a column nothing writes, and the DDL must say so."""
+    from sglint import schema_rules
+
+    ddl = schema_rules.SCHEMA.read_text(encoding="utf-8")
+    assert schema_rules.rule_written_columns(ddl=ddl) == []
+    handle = "CREATE TABLE rating ("
+    assert ddl.count(handle) == 1, "the control's handle moved"
+    silent = ddl.replace(handle, "CREATE TABLE weather (id INTEGER PRIMARY KEY, mood TEXT) STRICT;\n" + handle, 1)
+    told = schema_rules.rule_written_columns(ddl=silent)
+    assert {f.code for f in told} == {"SG714"}
+    assert any("weather.mood" in f.message for f in told)
+    # the admission in the comment block above it is the way out
+    admitted = ddl.replace(
+        handle,
+        f"CREATE TABLE weather (\n    id INTEGER PRIMARY KEY,\n    -- {schema_rules.UNWRITTEN_ADMISSION}\n"
+        "    mood TEXT\n) STRICT;\n" + handle,
+        1,
+    )
+    assert schema_rules.rule_written_columns(ddl=admitted) == [], "an admitted column is a decision, not a finding"
+
+
+def test_the_layer_boundary_holds_and_can_fail(tmp_path):
+    """SG007: the rule the layers rest on.
+
+    If an assertion can be decided from source, AST, schema structure,
+    generated contracts or types without exercising behaviour, it is not a
+    pytest. Every such sweep in this repository has moved to sglint; this
+    is what stops the next one arriving.
+
+    The predicate is QUALIFIED on purpose. A bare `parse` matched
+    `facets.parse` and `resultset.parse` sixty-two times -- the
+    application's own functions being called, which is the opposite of
+    what this looks for.
+    """
+    here = tmp_path / "tests"
+    here.mkdir()
+    (here / "test_behaviour.py").write_text(
+        "import facets\n\n\ndef test_a_facet_round_trips():\n    assert facets.parse(facets.spell(one)) == one\n",
+        encoding="utf-8",
+    )
+    assert rules.rule_tests_run_things(here) == [], "calling the application's own parse is not source inspection"
+
+    (here / "test_source.py").write_text(
+        "import ast\nimport inspect\nimport pathlib\n\nfrom db import when\n\n\n"
+        "def test_the_judge_ignores_the_folder():\n"
+        "    assert 'folder_id' not in inspect.getsource(when)\n"
+        "    ast.parse(pathlib.Path('db/when.py').read_text())\n"
+        "    for one in pathlib.Path('db').rglob('*.py'):\n        assert one\n",
+        encoding="utf-8",
+    )
+    told = rules.rule_tests_run_things(here)
+    assert {f.code for f in told} == {"SG007"}
+    assert len(told) == 3, [f.message for f in told]
+    assert any("asks Python for a function's source" in f.message for f in told)
+    assert any("parses production source" in f.message for f in told)
+    assert any("sweeps the tree for Python source" in f.message for f in told)
+
+    # the linter's own tests are the one place handing a rule source IS
+    # the point, and they are excused by name
+    assert rules.rule_tests_run_things(here, excused=frozenset({"test_source.py"})) == []

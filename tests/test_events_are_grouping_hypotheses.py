@@ -156,15 +156,6 @@ def test_a_mixed_file_tells_each_story_at_its_own_time():
     assert sessions[0].instant_start is None, "an unzoned generator claim invents no instant"
 
 
-def test_groupers_consume_the_metadata_interface_not_source_tables():
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "events.py").read_text(encoding="utf-8")
-    for named in ("FROM file", "FROM capture", "FROM generation", "JOIN entity", "FROM entity"):
-        assert named not in source, f"a grouper read {named!r}; groupers consume the Metadata interface"
-    assert "context.occurrences(" in source, "the grouping input is the per-claim occurrence interface"
-
-
 # --- currentness, persistence and the jobs -----------------------------------
 
 
