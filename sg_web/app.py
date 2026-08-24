@@ -1264,8 +1264,18 @@ def _template_engine() -> JinjaTemplateEngine:
 
 
 def _static_version() -> str:
+    """The newest mtime of anything served under `static/`, in millis.
+
+    `rglob`, not `iterdir`: the value is stamped onto
+    `/static/build/*.js` as well as onto the stylesheets beside it, and
+    a walk one directory deep could not see the bundles. Editing only
+    TypeScript therefore left the cache-buster exactly where it was, so
+    a browser holding yesterday's `gallery.js` was told the URL had not
+    changed and went on holding it -- the one failure this value exists
+    to prevent, on the files most likely to change.
+    """
     static = pathlib.Path(__file__).resolve().parent / "static"
-    newest = max((p.stat().st_mtime_ns for p in static.iterdir() if p.is_file()), default=0)
+    newest = max((p.stat().st_mtime_ns for p in static.rglob("*") if p.is_file()), default=0)
     return str(newest // 1_000_000)
 
 

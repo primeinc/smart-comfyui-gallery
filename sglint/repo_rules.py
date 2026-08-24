@@ -269,10 +269,101 @@ def rule_commit_stamp(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -> li
     return found
 
 
+def recipe_commands(text: str, name: str) -> list[str]:
+    """One `just` recipe's RUNNABLE lines, with its comments dropped.
+
+    Comments are dropped because a recipe is entitled to explain itself:
+    the `fresh` recipe's comment says why `git diff` is the wrong tool,
+    and a rule reading the whole block would find that sentence and call
+    it the defect. Matched at a line start rather than after a newline,
+    so the first recipe in a file is not invisible to its own rule.
+    """
+    marker = f"{name}:"
+    start = 0 if text.startswith(marker) else text.find(f"\n{marker}") + 1
+    if start <= 0 and not text.startswith(marker):
+        return []
+    rest = text[start:]
+    end = rest.find("\n\n")
+    return [
+        line.strip()
+        for line in (rest if end < 0 else rest[:end]).splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def rule_bundle_freshness(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG811 the committed-bundle gate compares against the INDEX, so it
+    cannot see a bundle git was never told about.
+
+    `web::fresh` rebuilds and then asks whether the bundles differ. It
+    asked with `git diff --quiet`, which compares the working tree to
+    the index -- and a newly generated file is in neither. Add an entry
+    point, forget to `git add` its output, and the gate stayed silent
+    while a clean checkout served a template loading a 404.
+
+    Proved rather than read: a bundle-shaped file is planted, and the
+    two commands are asked about it. `git status --porcelain` must call
+    it `??` and `git diff` must miss it, or the change this rule guards
+    was pointless. It lives here and not in a test because starting a
+    program is what `sglint --repo` is for (SG006).
+    """
+    at = root / "web.just"
+    ran = recipe_commands(at.read_text(encoding="utf-8"), "fresh")
+    found: list[Finding] = []
+    if not any("git status --porcelain" in line for line in ran):
+        found.append(Finding(at, 1, 0, "SG811", "the freshness gate must ask `git status --porcelain`"))
+    if any("git diff" in line for line in ran):
+        found.append(Finding(at, 1, 0, "SG811", "`git diff` compares against the index and cannot see a new bundle"))
+
+    planted = root / "sg_web" / "static" / "build" / "sglint-never-added.js"
+    planted.parent.mkdir(parents=True, exist_ok=True)
+    planted.write_text("// planted by sglint; removed below\n", encoding="utf-8")
+    try:
+        listed = [
+            line for line in _lines(git("status", "--porcelain", "--", "sg_web/static/build")) if planted.name in line
+        ]
+        if not listed or not listed[0].startswith("??"):
+            found.append(Finding(at, 1, 0, "SG811", f"git status did not report an untracked bundle as ??: {listed}"))
+        if git("diff", "--quiet", "--", "sg_web/static/build").returncode != 0:
+            found.append(
+                Finding(at, 1, 0, "SG811", "git diff noticed an untracked bundle; this rule rests on it not doing so")
+            )
+    finally:
+        planted.unlink(missing_ok=True)
+    return found
+
+
+def rule_one_build_contract(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG812 the documented build command and the gate's build command
+    are two contracts, and only one of them clears stale output.
+
+    The README hands people `npm run build-web`; the gate runs `just web
+    build`. esbuild does not empty its own outdir (`BuildOptions` has
+    `outdir` and nothing that clears it -- refs/evanw/esbuild
+    lib/shared/types.ts), so whoever owns the clean decides whether a
+    renamed surface leaves its old bundle behind for a template to load.
+    It must be the bundler, which both commands go through.
+    """
+    at = root / "frontend" / "build.ts"
+    builder = at.read_text(encoding="utf-8")
+    found: list[Finding] = []
+    if "rm(" not in builder or "recursive: true" not in builder:
+        found.append(Finding(at, 1, 0, "SG812", "the bundler must clear its own outdir; esbuild will not"))
+
+    recipe = root / "web.just"
+    ran = recipe_commands(recipe.read_text(encoding="utf-8"), "build")
+    if any("rm -rf" in line for line in ran):
+        found.append(Finding(recipe, 1, 0, "SG812", "the recipe owns a clean the documented command does not"))
+    if not any("build-web" in line for line in ran):
+        found.append(Finding(recipe, 1, 0, "SG812", "the recipe must delegate to the documented command"))
+    return found
+
+
 def run() -> list[Finding]:
     found: list[Finding] = []
-    for rule in (rule_index, rule_line_endings, rule_commit_stamp):
+    for rule in (rule_index, rule_line_endings, rule_commit_stamp, rule_bundle_freshness):
         found.extend(rule())
     found.extend(rule_requirements())
     found.extend(rule_pytest_path())
+    found.extend(rule_one_build_contract())
     return sorted(found, key=lambda f: (str(f.path), f.line, f.col, f.code))

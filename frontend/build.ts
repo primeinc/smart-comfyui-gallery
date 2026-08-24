@@ -9,6 +9,7 @@
 // The options object is checked against esbuild's own BuildOptions, whose
 // SameShape helper resolves an unknown key to `never`: a typo here is a type
 // error at `just web types`, not a silently ignored flag.
+import { rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
@@ -43,6 +44,21 @@ const options = {
   minify: false,
   logLevel: "info",
 } satisfies esbuild.BuildOptions;
+
+// The output directory is cleared HERE, not by whatever ran this.
+// esbuild has no option for it -- `BuildOptions` carries `outdir` and
+// nothing that empties it (lib/shared/types.ts) -- and it does not clear
+// a directory that already has files in it, so a renamed or deleted
+// surface leaves a stale bundle behind that a template goes on loading.
+//
+// It used to live in `just web build` alone, which meant the command the
+// README hands people (`npm run build-web`) and the command the gate runs
+// were two different contracts, and only one of them was safe. One
+// command owns the clean now, and every caller inherits it.
+//
+// Once, before watching too: rebuilds inside a watch are incremental and
+// clearing between them would delete output nothing is about to rewrite.
+await rm(options.outdir, { recursive: true, force: true });
 
 if (process.argv.includes("--watch")) {
   const context = await esbuild.context(options);

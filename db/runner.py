@@ -32,6 +32,14 @@ _logger = logging.getLogger(__name__)
 #: defect in the handler, not a fact about the item.
 ITEM_FAILURES = (OSError, ValueError, RuntimeError, LookupError, sqlite3.Error)
 
+#: SQLite saying somebody else is writing. By NAME, not by message: the
+#: driver carries the result code as `sqlite_errorname` (Python 3.11+),
+#: and the strings behind these are "database is locked" and "database
+#: table is locked" (sqlite/sqlite src/main.c:1667-1668) -- which a
+#: future release is free to word differently and a matcher on prose
+#: would then silently stop recognising.
+BUSY = frozenset({"SQLITE_BUSY", "SQLITE_LOCKED"})
+
 
 # --- the reporting seam ----------------------------------------------------
 
@@ -1419,7 +1427,24 @@ def run_next(
     tick = clock if clock is not None else (lambda: now)
     tell = on_progress if on_progress is not None else (lambda delta: None)
     tell_event = on_event if on_event is not None else (lambda event: None)
-    claimed = jobs.claim(conn, owner, now, kinds=kinds, gate=gate)
+    try:
+        claimed = jobs.claim(conn, owner, now, kinds=kinds, gate=gate)
+    except sqlite3.OperationalError as busy:
+        if getattr(busy, "sqlite_errorname", "") not in BUSY:
+            raise
+        # Another writer holds the lane. SQLite has ONE, and a long
+        # write -- a scan of a new root walks and commits once -- holds
+        # it well past `busy_timeout`. Nothing has gone wrong: there is
+        # no turn to take right now, which is what None already means
+        # here and what the worker already waits on.
+        #
+        # Raising instead produced a traceback every few seconds saying
+        # "a worker turn died; the job's lease will be reclaimed" --
+        # both halves false, because the claim is what failed, so no job
+        # was claimed and no lease exists. A log that reports healthy
+        # backpressure as a crash teaches people to ignore it.
+        _logger.info("the database is busy; no turn this pass (%s)", busy)
+        return None
     if claimed is None:
         return None
     job_id, fence = claimed

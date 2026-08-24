@@ -55,18 +55,24 @@ types-test:
 # ask git whether anything moved.
 [script]
 fresh: build
-    if ! git diff --quiet -- sg_web/static/build; then
-      echo 'the committed bundles are stale: run `just web build` and commit the result' >&2
-      git --no-pager diff --stat -- sg_web/static/build >&2
+    # `git status --porcelain`, not `git diff --quiet`: diff compares the
+    # tree against the index and says nothing at all about a file git has
+    # never been told exists. Add an entry point, forget to `git add` its
+    # bundle, and this gate stayed silent while a clean checkout served a
+    # template that loads a 404. Porcelain lists an untracked file as `??`,
+    # so the modified, the deleted and the never-added all arrive here.
+    held="$(git status --porcelain -- sg_web/static/build)"
+    if [ -n "$held" ]; then
+      echo 'the committed bundles do not match the built ones: run `just web build` and commit the result' >&2
+      printf '%s\n' "$held" >&2
       exit 1
     fi
 
-# Bundle every surface. The output directory is removed first because esbuild
-# does not clear it ("it will not be cleared if it already contains some
-# files", esbuild.github.io/api/#outdir): a renamed or deleted surface would
-# otherwise leave a stale bundle behind that a template still loads.
+# Bundle every surface. The clean lives inside `frontend/build.ts`, so this
+# recipe and the bare `npm run build-web` the README documents are the same
+# contract -- when the clean lived HERE they were two, and only this one was
+# safe against a renamed surface leaving its old bundle behind.
 build:
-    rm -rf sg_web/static/build
     npm run --silent build-web
 
 # Rebuild on change, for a second terminal. Deliberately not type checking:

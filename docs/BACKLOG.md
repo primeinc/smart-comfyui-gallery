@@ -260,6 +260,32 @@ consequences the architecture should keep room for, not work.
   value onto `/static/build/*.js`. Changing only TypeScript leaves the
   cache-buster unchanged.
 
+- **Thirty-two substring bans cannot tell a statement from a sentence.**
+  `sglint/policy.py` `MUST_NOT_CONTAIN` holds 59 banned tokens, and 32
+  of them name something this tree uses five or more times elsewhere:
+  `sg_web/story_view.py` bans `"FROM "` (731 uses elsewhere) and
+  `"execute("` (912); `db/evolution.py` bans `"DELETE"` (305) and
+  `"INSERT"` (212); `db/rendering.py` bans `"torch"` (37);
+  `sg_web/templates/story.html` bans `"similarity"` (231).
+
+  Each guards a real constraint -- evolution.py genuinely must not
+  write, story_view.py genuinely must not reach for SQL -- but by a
+  mechanism that reads prose. A comment saying "this module never
+  DELETEs" trips it, and the failure looks like an architecture
+  violation rather than a word. That already happened once, to
+  `media_view.py: "neighbour"`, which was deleted rather than satisfied.
+
+  The 27 remaining bans are fine and should stay: `ARTIFACT_FILES`,
+  `workers=`, `import openai` and the rest appear nowhere else, so they
+  cannot fire innocently.
+
+  The file already carries the better mechanisms, so this is
+  reclassification rather than invention: `MUST_NOT_CALL_QUALIFIED` for
+  a call (AST), `MUST_NOT_CONTAIN_BEFORE` for "not above this marker",
+  `PACKAGE_FORBIDDEN_PATTERNS` for a regex with a stated reason. Each
+  prose-fragile ban should move to whichever states what it means, and
+  the ones that cannot should at least stop scanning comments.
+
 - **`unbroken` is opt-in.** The fixture that fails a browser test on
   first-party HTTP failures and console errors has to be requested by
   name, so a test author who forgets it gets no such check. It should be

@@ -83,3 +83,11 @@ clip-raster *args:
 # Scans into a TEMPORARY database, never a real run's.
 job-phases *args:
     @"$python" benchmarks/job_phases.py "$@"
+
+# How long a scan holds SQLite's ONE write lane, split into the half that
+# hashes (no lock) and the half that writes rows (locked). The ratio is
+# what the survey/record split changed; the absolute locked figure is what
+# says whether a large library still crosses `busy_timeout`.
+# Scans into a TEMPORARY database, never a real run's.
+scan-lock *args:
+    @"$python" benchmarks/scan_lock.py "$@"

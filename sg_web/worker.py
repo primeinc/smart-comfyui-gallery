@@ -81,6 +81,14 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
                 except Exception:
                     # run_next already committed a `worker.turn_failed`
                     # row with the traceback before letting this propagate.
+                    #
+                    # A BUSY database does not arrive here: `run_next`
+                    # answers None when it cannot get the writer to claim,
+                    # because that is backpressure and not a defect. It
+                    # used to reach this line, and this line described it
+                    # as a turn that died and a lease to be reclaimed --
+                    # neither of which had happened, since the claim is
+                    # what failed.
                     conn.rollback()
                     from db import similarity
 

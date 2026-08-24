@@ -441,6 +441,184 @@ def _fs_id_of(path) -> str | None:
         return None
 
 
+class Survey(NamedTuple):
+    """What a walk saw, before anything is written.
+
+    Keyed by PATH rather than by folder id, because a folder id is a row
+    and rows are what the write phase makes. Producing this costs the
+    whole walk and a hash of every changed file; consuming it costs a
+    handful of statements.
+    """
+
+    #: every directory met, parents first (os.walk is top-down), as
+    #: (path, parent path or None, name, filesystem id)
+    dirs: list[tuple[str, str | None, str, str | None]]
+    #: (directory path, file name) -> what was found there
+    files: dict[tuple[str, str], Found]
+    #: how many files had to be read to hash them
+    hashed: int
+
+
+def _folders_by_path(conn, root_id: int, root_path: str) -> dict[str, int]:
+    """The folder rows this root already has, by absolute path.
+
+    Best effort ON PURPOSE. It exists so the walk can ask "have I seen
+    this file before" without writing anything, and a path it fails to
+    resolve simply means the file gets hashed -- correct, just slower.
+    Nothing durable is decided from it: the write phase asks
+    `ensure_folder`, which is authoritative.
+    """
+    kids: dict[int | None, list[tuple[int, str]]] = {}
+    for folder_id, parent_id, name in conn.execute(
+        "SELECT id, parent_id, name FROM folder WHERE root_id = ? AND missing_since IS NULL",
+        (root_id,),
+    ):
+        kids.setdefault(parent_id, []).append((folder_id, name))
+    found: dict[str, int] = {}
+    for folder_id, _ in kids.get(None, []):
+        stack = [(folder_id, root_path)]
+        while stack:
+            here, path = stack.pop()
+            found[os.path.normcase(path)] = here
+            for child, child_name in kids.get(here, []):
+                stack.append((child, os.path.join(path, child_name)))
+    return found
+
+
+def survey(conn, root_id: int, root_path, now: float | None = None) -> Survey:
+    """Walk the tree and hash what changed, WITHOUT writing anything.
+
+    This is the long half of a scan -- `sha256_of` reads every changed
+    file off the disk -- and it used to run inside the same savepoint as
+    the writes. SQLite has one write lane per database, so a scan of a
+    new root (where every directory is created, opening the transaction
+    on the first one) held that lane for as long as the hashing took.
+    Everything else that writes was dead meanwhile: the background
+    worker could not even claim a job, and each attempt raised
+    `database is locked`.
+
+    Nothing here writes, so nothing here holds the lane. The reads are
+    two statements taken up front.
+    """
+    del now  # nothing here is dated; the write phase carries the clock
+    root_path = os.fspath(root_path)
+    known = _folders_by_path(conn, root_id, root_path)
+    # `stored` re-keyed by PATH, so the "unchanged, reuse its hash"
+    # shortcut works without a folder id having been minted first.
+    at_path = {folder_id: path for path, folder_id in known.items()}
+    stored: dict[tuple[str, str], tuple] = {}
+    for folder_id, name, size, mtime, identifier, sha in conn.execute(
+        "SELECT f.folder_id, f.name, f.size, f.mtime, f.fs_id, f.content_sha256"
+        "  FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?",
+        (root_id,),
+    ):
+        where = at_path.get(folder_id)
+        if where is not None:
+            stored[(where, name)] = (size, mtime, identifier, sha)
+
+    dirs: list[tuple[str, str | None, str, str | None]] = [
+        (root_path, None, os.path.basename(root_path) or root_path, _fs_id_of(root_path))
+    ]
+    seen = {os.path.normcase(root_path)}
+    files: dict[tuple[str, str], Found] = {}
+    hashed = 0
+
+    for current, subdirs, names in os.walk(root_path):
+        # A leading dot means "not the user's content", and the app puts its
+        # own state directly inside the library root: caches, downloaded
+        # weights, the root marker. Measured against a real library, 5998 of
+        # the 11775 media files under it live in dot-directories -- and 5992
+        # of those are the thumbnail cache, which would have entered the
+        # gallery as photographs and outnumbered the real ones.
+        subdirs[:] = sorted(d for d in subdirs if not d.startswith("."))
+        kept = sorted(n for n in names if not n.startswith("."))
+        if os.path.normcase(current) not in seen:
+            continue
+        for name in subdirs:
+            child = os.path.join(current, name)
+            dirs.append((child, current, name, _fs_id_of(child)))
+            seen.add(os.path.normcase(child))
+        for name in kept:
+            kind = KIND_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
+            if kind is None:
+                continue
+            path = os.path.join(current, name)
+            try:
+                info = os.stat(path)
+            except OSError:
+                # Vanished or unreadable between walk and stat. Reporting it
+                # as absent would make a transient lock look like a deletion,
+                # so it is simply not observed on this pass.
+                continue
+            # Same hazard as a directory's: a FILE on ReFS or a network
+            # share reports a 128-bit identifier too, and this one reaches
+            # an INSERT rather than a SELECT.
+            held = fs_id(info.st_ino)
+            previous = stored.get((os.path.normcase(current), name))
+            # `previous[3] is not None` is part of the test: a row that has
+            # never been hashed has nothing to reuse, and returning its NULL
+            # here is what made the missing hash permanent -- the shortcut
+            # kept handing back NULL for as long as size, mtime and fs_id
+            # held still, which for an untouched file is forever.
+            if previous is not None and previous[3] is not None and previous[:3] == (info.st_size, info.st_mtime, held):
+                sha = previous[3]
+            else:
+                try:
+                    sha = sha256_of(path)
+                except OSError:
+                    # Locked or vanished between stat and read. Not observed
+                    # on this pass rather than observed as unreadable.
+                    continue
+                hashed += 1
+            files[(current, name)] = Found(
+                sha=sha,
+                size=info.st_size,
+                mtime=info.st_mtime,
+                btime=getattr(info, "st_birthtime", None),
+                fs_id=held,
+                kind=kind,
+            )
+    return Survey(dirs=dirs, files=files, hashed=hashed)
+
+
+def record(conn, root_id: int, held: Survey, now: float | None = None) -> tuple[dict, int]:
+    """Turn a survey into folder rows and an observation keyed by them.
+
+    The short half, and the only half that writes. Every statement here
+    is a row: no filesystem is touched and nothing is hashed, so the
+    write lane is held for about as long as the database takes.
+    """
+    folder_ids: dict[str, int] = {}
+    for path, parent, name, identifier in held.dirs:
+        parent_id = None if parent is None else folder_ids.get(os.path.normcase(parent))
+        if parent is not None and parent_id is None:
+            continue  # its parent was skipped, so this subtree is not ours
+        folder_ids[os.path.normcase(path)] = ensure_folder(conn, root_id, parent_id, name, identifier, now=now)
+
+    observed: dict[tuple[int, str], Found] = {}
+    for (where, name), found in held.files.items():
+        folder_id = folder_ids.get(os.path.normcase(where))
+        if folder_id is not None:
+            observed[(folder_id, name)] = found
+
+    # Directories that were there last time and are not there now. Marked,
+    # never deleted -- deleting cascades to every file beneath and takes the
+    # ratings with it, and a folder that has gone missing is exactly as
+    # ambiguous as a file that has. `scan` refuses to run at all against a
+    # root it cannot read, which is what keeps an unplugged drive from
+    # arriving here as an empty tree.
+    standing = set(folder_ids.values())
+    for (folder_id,) in conn.execute(
+        "SELECT id FROM folder WHERE root_id = ? AND missing_since IS NULL", (root_id,)
+    ).fetchall():
+        if folder_id not in standing:
+            conn.execute(
+                "UPDATE folder SET missing_since = COALESCE(?, unixepoch()) WHERE id = ?",
+                (now, folder_id),
+            )
+    return observed, held.hashed
+
+
 def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tuple[dict, int]:
     """Walk `root_path`, ensure its folders exist, and report its media.
 
@@ -458,105 +636,8 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
     already had, and left the ratings on the paths. Content reconciliation
     cannot catch that -- it never sees the real bytes.
     """
-    # Scoped to this root. `stored` is only consulted for paths under the tree
-    # being walked, and a folder belongs to exactly one root, so reading the
-    # whole `file` table here held every row in the library in memory to answer
-    # questions about one drive -- twice per scan, counting resolve_scan.
-    stored = {
-        (folder_id, name): (size, mtime, identifier, sha)
-        for folder_id, name, size, mtime, identifier, sha in conn.execute(
-            "SELECT f.folder_id, f.name, f.size, f.mtime, f.fs_id, f.content_sha256"
-            "  FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?",
-            (root_id,),
-        )
-    }
-    observed: dict[tuple[int, str], Found] = {}
-    hashed = 0
-    root_path = os.fspath(root_path)
-    root_folder = ensure_folder(
-        conn,
-        root_id,
-        None,
-        os.path.basename(root_path) or root_path,
-        _fs_id_of(root_path),
-        now=now,
-    )
-    folder_ids = {os.path.normcase(root_path): root_folder}
-
-    for current, subdirs, names in os.walk(root_path):
-        # A leading dot means "not the user's content", and the app puts its
-        # own state directly inside the library root: caches, downloaded
-        # weights, the root marker. Measured against a real library, 5998 of
-        # the 11775 media files under it live in dot-directories -- and 5992
-        # of those are the thumbnail cache, which would have entered the
-        # gallery as photographs and outnumbered the real ones.
-        subdirs[:] = sorted(d for d in subdirs if not d.startswith("."))
-        kept = sorted(n for n in names if not n.startswith("."))
-        folder_id = folder_ids.get(os.path.normcase(current))
-        if folder_id is None:
-            continue
-        for name in subdirs:
-            child = os.path.join(current, name)
-            folder_ids[os.path.normcase(child)] = ensure_folder(
-                conn, root_id, folder_id, name, _fs_id_of(child), now=now
-            )
-        for name in kept:
-            kind = KIND_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
-            if kind is None:
-                continue
-            path = os.path.join(current, name)
-            try:
-                info = os.stat(path)
-            except OSError:
-                # Vanished or unreadable between walk and stat. Reporting it
-                # as absent would make a transient lock look like a deletion,
-                # so it is simply not observed on this pass.
-                continue
-            # Same hazard as a directory's: a FILE on ReFS or a network
-            # share reports a 128-bit identifier too, and this one reaches
-            # an INSERT rather than a SELECT.
-            held = fs_id(info.st_ino)
-            previous = stored.get((folder_id, name))
-            # `previous[3] is not None` is part of the test: a row that has
-            # never been hashed has nothing to reuse, and returning its NULL
-            # here is what made the missing hash permanent -- the shortcut
-            # kept handing back NULL for as long as size, mtime and fs_id
-            # held still, which for an untouched file is forever.
-            if previous is not None and previous[3] is not None and previous[:3] == (info.st_size, info.st_mtime, held):
-                sha = previous[3]
-            else:
-                try:
-                    sha = sha256_of(path)
-                except OSError:
-                    # Locked or vanished between stat and read. Not observed
-                    # on this pass rather than observed as unreadable.
-                    continue
-                hashed += 1
-            observed[(folder_id, name)] = Found(
-                sha=sha,
-                size=info.st_size,
-                mtime=info.st_mtime,
-                btime=getattr(info, "st_birthtime", None),
-                fs_id=held,
-                kind=kind,
-            )
-
-    # Directories that were there last time and are not there now. Marked,
-    # never deleted -- deleting cascades to every file beneath and takes the
-    # ratings with it, and a folder that has gone missing is exactly as
-    # ambiguous as a file that has. `scan` refuses to run at all against a
-    # root it cannot read, which is what keeps an unplugged drive from
-    # arriving here as an empty tree.
-    standing = set(folder_ids.values())
-    for (folder_id,) in conn.execute(
-        "SELECT id FROM folder WHERE root_id = ? AND missing_since IS NULL", (root_id,)
-    ).fetchall():
-        if folder_id not in standing:
-            conn.execute(
-                "UPDATE folder SET missing_since = COALESCE(?, unixepoch()) WHERE id = ?",
-                (now, folder_id),
-            )
-    return observed, hashed
+    held = survey(conn, root_id, root_path, now)
+    return record(conn, root_id, held, now)
 
 
 class ScanResult(NamedTuple):
@@ -784,8 +865,16 @@ def scan(conn, root_id: int, root_path, now: float) -> ScanResult:
     # The folder writes belong inside the same savepoint as the file writes:
     # observe_tree creates, renames and marks folders missing, and a failure
     # during apply_scan would otherwise leave those standing.
+    # The walk and every hash happen OUTSIDE the savepoint. SQLite has one
+    # write lane per database file, and this used to hold it for the whole
+    # survey -- `sha256_of` reading every changed file off the disk -- so a
+    # scan of a new root made every other writer wait minutes. The
+    # background worker could not even claim a job; it got `database is
+    # locked` and reported it as a crash. Reads do not take the lane, so
+    # only the second half of this function does.
+    held = survey(conn, root_id, root_path, now)
     with _one_write(conn, "scan"):
-        observed, hashed = observe_tree(conn, root_id, root_path, now)
+        observed, hashed = record(conn, root_id, held, now)
         return apply_scan(conn, observed, now, hashed=hashed, roots={root_id})
 
 
@@ -801,16 +890,24 @@ def scan_all(conn, now: float) -> ScanResult:
     A root that cannot be read is skipped and marked offline. It is not
     observed as empty, so nothing under it is concluded to be gone.
     """
+    # Every root surveyed first, with no lane held, for the same reason
+    # `scan` does it: the hashing is the long part and it writes nothing.
+    # Which roots are reachable is decided here too, so the write half
+    # never stats a disk.
+    surveyed: list[tuple[int, Survey | None]] = []
+    for root_id, path in conn.execute("SELECT id, path FROM root").fetchall():
+        surveyed.append((root_id, survey(conn, root_id, path, now) if os.path.isdir(path) else None))
+
     with _one_write(conn, "scan_all"):
         observed: dict = {}
         walked: set[int] = set()
         hashed = 0
-        for root_id, path in conn.execute("SELECT id, path FROM root").fetchall():
-            if not os.path.isdir(path):
+        for root_id, held in surveyed:
+            if held is None:
                 conn.execute("UPDATE root SET online = 0 WHERE id = ?", (root_id,))
                 continue
             conn.execute("UPDATE root SET online = 1 WHERE id = ?", (root_id,))
-            found, read = observe_tree(conn, root_id, path, now)
+            found, read = record(conn, root_id, held, now)
             observed.update(found)
             walked.add(root_id)
             hashed += read
