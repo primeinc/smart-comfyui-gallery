@@ -118,7 +118,9 @@ def _phase_progress(e: Mapping) -> str:
 
 
 def _phase_finished(e: Mapping) -> str:
-    return f"{_item(e)} · phase {e.get('phase')} finished"
+    took = (e.get("data") or {}).get("elapsed_ms")
+    said = f"{_item(e)} · phase {e.get('phase')} finished"
+    return said if took is None else f"{said} · {took:g} ms"
 
 
 def _checkpoint(e: Mapping) -> str:

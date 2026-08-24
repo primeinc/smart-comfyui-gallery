@@ -21,6 +21,7 @@ import contextvars
 import json
 import logging
 import sqlite3
+import time
 import traceback
 
 from . import jobs, ledger
@@ -57,6 +58,7 @@ class Report:
         self._speak = speak
         self.kept: list[dict] = []
         self.phase_now: str | None = None
+        self.phase_opened = time.perf_counter()
 
     def _note(self, type_: str, *, phase: str | None, message: str | None, data: dict | None) -> None:
         told = {
@@ -74,10 +76,35 @@ class Report:
 
     def phase(self, name: str, **data) -> None:
         """A named stretch of work begins; the previous one, if any, ends."""
-        if self.phase_now is not None:
-            self._note("phase.finished", phase=self.phase_now, message=f"{self.phase_now} finished", data=None)
+        self._finish()
         self.phase_now = name
+        self.phase_opened = time.perf_counter()
         self._note("phase.started", phase=name, message=f"{name} started", data=data or None)
+
+    def _finish(self) -> None:
+        """End the open phase, saying how long it took.
+
+        The duration is the point. `phase.finished` used to carry nothing,
+        so anything that wanted to know where a job's time went had to
+        pair the events up itself and subtract their `at` stamps -- which
+        made "what is slow" a question you could only answer by writing a
+        program, and every consumer wrote a different one.
+
+        Measured with `perf_counter` rather than the ledger's clock. That
+        clock is whatever the turn was given: `time.time` when a worker
+        runs, a fixed number in a test that pins it. Subtracting stamps
+        from a pinned clock reports every phase as instant, which is a
+        plausible-looking zero rather than an obvious absence.
+        """
+        if self.phase_now is None:
+            return
+        took = round((time.perf_counter() - self.phase_opened) * 1000, 1)
+        self._note(
+            "phase.finished",
+            phase=self.phase_now,
+            message=f"{self.phase_now} finished in {took:g} ms",
+            data={"elapsed_ms": took},
+        )
 
     def progress(self, unit: str, done: int, total: int | None = None) -> None:
         """How far the current phase is, in its own unit."""
@@ -94,9 +121,8 @@ class Report:
         self._note("item.observed", phase=self.phase_now, message=name, data={"name": name, **data})
 
     def close(self) -> None:
-        if self.phase_now is not None:
-            self._note("phase.finished", phase=self.phase_now, message=f"{self.phase_now} finished", data=None)
-            self.phase_now = None
+        self._finish()
+        self.phase_now = None
 
 
 class _Silent(Report):
@@ -380,7 +406,20 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
 
     @functools.cache
     def representative_frame():
-        frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+        # Its own phase, because it is lazy and therefore lands wherever
+        # the adapter happens to ask for it. Without this the decode was
+        # billed to "encoding" -- 92% of the job under a name that made
+        # it look like the model's fault, when the model is a fifth of it.
+        # Named from inside so an adapter that never asks for a frame
+        # never reports a decode it did not do.
+        told = report()
+        resuming = told.phase_now
+        told.phase("decoding", kind=kind)
+        try:
+            frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+        finally:
+            if resuming is not None:
+                told.phase(resuming)
         if frame is None:
             raise ValueError(f"file {file_id} has no decodable frame to embed")
         return frame

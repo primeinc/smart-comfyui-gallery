@@ -82,9 +82,16 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
     assert page.locator("[data-overview] [data-brush]").count() == 1
     assert page.locator("[data-zoom] a[data-preset]").count() == 5
 
-    # the brush: a new window drawn across the left half of the overview
-    box = page.locator("[data-overview]").bounding_box()
-    assert box is not None
+    # the brush: a new window drawn across the left half of the overview.
+    # Waited for, not merely located: `count()` returns 1 as soon as the
+    # element is in the DOM, and `bounding_box()` answers None until it
+    # has been laid out. Reading it straight after the count failed about
+    # one run in six -- measured, 1 of 6 at HEAD and 1 of 5 with an
+    # unrelated change, which is how it was shown to be this and not that.
+    overview = page.locator("[data-overview]")
+    overview.wait_for(state="visible", timeout=10_000)
+    box = overview.bounding_box()
+    assert box is not None, "the overview is visible but has no box to brush across"
     y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + 2, y)
     page.mouse.down()

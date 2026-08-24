@@ -153,7 +153,7 @@ def run(conn, models_dir: str, owner: str) -> dict:
     started: dict[int, float] = {}
     latencies: list[float] = []
     settled: list[tuple[int, float]] = []
-    phases: list[tuple[float, str]] = []
+    phases: list[tuple[str, float]] = []
 
     def heard(event) -> None:
         # The runner's own vocabulary: an item settles as `item.done` or
@@ -161,6 +161,13 @@ def run(conn, models_dir: str, owner: str) -> dict:
         # (db/runner.py:1186, :1206, :1242). Guessing at "item.finished"
         # collected nothing at all and reported no latencies rather than
         # an error, which is the quiet kind of wrong.
+        # Every report is spoken TWICE: once immediately marked `pending`,
+        # while the transaction that produced it may still roll back, and
+        # once as the committed ledger row (db/runner.py Report). Counting
+        # both attributed 184% of the wall clock to one phase, which is
+        # the useful kind of impossible number. The row is the history.
+        if event.get("pending"):
+            return
         kind = event.get("type")
         item = event.get("item_id")
         when = time.perf_counter()
@@ -170,8 +177,10 @@ def run(conn, models_dir: str, owner: str) -> dict:
             took = (when - started.pop(item)) * 1000
             latencies.append(took)
             settled.append((item, took))
-        elif kind == "item.observed":
-            phases.append((when, str(event.get("phase"))))
+        elif kind == "phase.finished":
+            took = (event.get("data") or {}).get("elapsed_ms")
+            if took is not None:
+                phases.append((str(event.get("phase")), float(took)))
 
     kinds = dict(conn.execute("SELECT id, kind FROM file").fetchall())
     per_kind: dict[str, list[float]] = {}
@@ -193,6 +202,22 @@ def run(conn, models_dir: str, owner: str) -> dict:
         "by_kind_ms": per_kind,
         "gpu": watching.summary(),
         "phases": phases,
+    }
+
+
+def by_phase(phases: list[tuple[str, float]]) -> dict[str, dict]:
+    """Total and median milliseconds per named phase.
+
+    Read off `phase.finished`, which carries its own `elapsed_ms`, so
+    this is the runner's own account of where the job went rather than
+    something reconstructed out here.
+    """
+    held: dict[str, list[float]] = {}
+    for name, took in phases:
+        held.setdefault(name, []).append(took)
+    return {
+        name: {"n": len(took), "total_ms": round(sum(took), 1), "p50_ms": round(statistics.median(took), 2)}
+        for name, took in held.items()
     }
 
 
@@ -304,6 +329,16 @@ def main() -> None:
             f"{gpu['gpu_memory_mb_max']} MB peak ({gpu['samples']} samples)"
         )
 
+    spent = by_phase(found["phases"])
+    if spent:
+        print("  where the job says its time went:")
+        for name, held in sorted(spent.items(), key=lambda pair: -pair[1]["total_ms"]):
+            share = held["total_ms"] / found["wall_ms"] * 100
+            print(
+                f"    {name:24} n={held['n']:4}  {held['total_ms']:8.0f} ms  "
+                f"p50 {held['p50_ms']:7.2f} ms  {share:4.0f}%"
+            )
+
     inside = limit["decode_ms"] + limit["encode_ms"]
     print(
         f"\n  the job spends {found['wall_ms']:.0f} ms where decode and encode alone are {inside:.0f} ms:"
@@ -332,6 +367,7 @@ def main() -> None:
                 "cores_busy": round(found["cores_busy"], 2),
                 "cpu_count": os.cpu_count(),
                 "gpu": found["gpu"],
+                "by_phase": spent,
                 "by_kind_p50_ms": {
                     kind: round(statistics.median(took), 1) for kind, took in found["by_kind_ms"].items()
                 },

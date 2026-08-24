@@ -158,6 +158,51 @@ def test_a_turn_is_a_typed_append_only_history_with_item_starts_and_phases(db):
     assert json.loads(failed[2])["job_continues"] is True
 
 
+def test_a_finished_phase_says_how_long_it_took(db):
+    """`phase.finished` carries its own duration.
+
+    It used to carry nothing, so anything that wanted to know where a
+    job's time went had to pair the started/finished events itself and
+    subtract their `at` stamps. That made "which phase is slow" a
+    question only a program could answer, and every consumer wrote a
+    different program.
+
+    The duration is `perf_counter`, not the ledger's clock. This test
+    pins `at` to NOW for every row, so a clock-derived elapsed would be
+    exactly 0.0 for every phase -- a plausible-looking zero rather than a
+    visible absence, which is the failure this asserts against.
+    """
+    slept = 0.02
+
+    def slow(conn, item_id, payload, now):
+        told = runner.report()
+        told.phase("dawdling")
+        time.sleep(slept)
+        told.phase("brisk")
+
+    job_id = jobs.submit(db, "embed", NOW, items=[1])
+    runner.run_next(db, "w1", NOW + 1, handlers={"embed": slow})
+
+    finished = db.execute(
+        "SELECT phase, at, message, data FROM job_event WHERE job_id = ? AND type = 'phase.finished' ORDER BY id",
+        (job_id,),
+    ).fetchall()
+    took = {}
+    for phase, at, message, data in finished:
+        assert at == NOW + 1, "the ledger stamp is still the turn's clock"
+        held = json.loads(data)
+        assert "elapsed_ms" in held, f"{phase} finished without saying how long it took"
+        assert "ms" in message, "the message a person reads carries it too"
+        took[phase] = held["elapsed_ms"]
+
+    assert set(took) == {"dawdling", "brisk"}
+    # The phase that slept must report having slept. A duration derived
+    # from `at` could not: this turn stamps every row NOW + 1, so it would
+    # read 0.0 here and look plausible while measuring nothing.
+    assert took["dawdling"] >= slept * 1000 * 0.5, f"the slow phase reported {took['dawdling']} ms"
+    assert took["brisk"] < took["dawdling"], "and the phase that did nothing is the shorter of the two"
+
+
 def test_a_worker_defect_is_recorded_with_its_traceback_and_the_job_stays_running(db):
     job_id = jobs.submit(db, "embed", NOW, items=[1, 2])
     said = Spoken()
