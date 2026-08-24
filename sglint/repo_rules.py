@@ -310,20 +310,32 @@ def rule_bundle_freshness(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -
     at = root / "web.just"
     ran = recipe_commands(at.read_text(encoding="utf-8"), "fresh")
     found: list[Finding] = []
-    if not any("git status --porcelain" in line for line in ran):
-        found.append(Finding(at, 1, 0, "SG811", "the freshness gate must ask `git status --porcelain`"))
-    if any("git diff" in line for line in ran):
-        found.append(Finding(at, 1, 0, "SG811", "`git diff` compares against the index and cannot see a new bundle"))
+    # TWO questions, because neither command answers both. `git diff`
+    # sees a rebuilt bundle nobody staged and deliberately not one that
+    # was staged -- which matters, since build/gate/add/commit is the
+    # ordinary flow and a gate refusing staged output could never be
+    # passed. `ls-files --others` is the only one that sees a file git
+    # was never told about.
+    if not any("ls-files --others" in line for line in ran):
+        found.append(
+            Finding(at, 1, 0, "SG811", "the freshness gate must ask `git ls-files --others` about untracked bundles")
+        )
+    if not any("git diff" in line for line in ran):
+        found.append(
+            Finding(at, 1, 0, "SG811", "the freshness gate must ask `git diff` about a rebuilt bundle nobody staged")
+        )
 
     planted = root / "sg_web" / "static" / "build" / "sglint-never-added.js"
     planted.parent.mkdir(parents=True, exist_ok=True)
     planted.write_text("// planted by sglint; removed below\n", encoding="utf-8")
     try:
         listed = [
-            line for line in _lines(git("status", "--porcelain", "--", "sg_web/static/build")) if planted.name in line
+            line
+            for line in _lines(git("ls-files", "--others", "--exclude-standard", "--", "sg_web/static/build"))
+            if planted.name in line
         ]
-        if not listed or not listed[0].startswith("??"):
-            found.append(Finding(at, 1, 0, "SG811", f"git status did not report an untracked bundle as ??: {listed}"))
+        if not listed:
+            found.append(Finding(at, 1, 0, "SG811", "git ls-files --others did not report an untracked bundle"))
         if git("diff", "--quiet", "--", "sg_web/static/build").returncode != 0:
             found.append(
                 Finding(at, 1, 0, "SG811", "git diff noticed an untracked bundle; this rule rests on it not doing so")

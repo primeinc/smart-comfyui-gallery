@@ -1037,8 +1037,14 @@ def locate(
         return None if position is None else _located(conn, bound, held, position)
 
 
-#: The widest neighborhood a caller may ask for. A bound, so an absurd
-#: `count` is refused rather than answered with a page of thumbnails.
+#: The widest neighborhood a caller may ask for. CLAMPED, not refused --
+#: the comment here used to say the opposite of what the code does, and
+#: the code is right: a strip is a convenience, an absurd `count` still
+#: has an obvious best answer, and refusing it would turn a cosmetic
+#: mistake into a 400 where a person expected pictures. Same reasoning
+#: as a collection's `take` (db/collection_rules.py): do not refuse a
+#: number that costs nothing to honour. Zero and negatives clamp UP to
+#: one, because a window of nothing is not a window.
 NEIGHBORHOOD_MOST = 51
 
 

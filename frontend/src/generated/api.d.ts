@@ -976,6 +976,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/roots/{root_id}/removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RemovalCost */
+        get: operations["RootsRootIdRemovalRemovalCost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roots/{root_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** ForgetRoot */
+        delete: operations["RootsRootIdForgetRoot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roots/{root_id}/scan": {
         parameters: {
             query?: never;
@@ -2626,11 +2660,28 @@ export interface components {
             ordinal: number;
             thumb: string | null;
         };
+        /** RootForgotten */
+        RootForgotten: {
+            forgot: components["schemas"]["RootRemoval"];
+        };
         /** RootForm */
         RootForm: {
             path: string;
             /** @default library */
             kind: string;
+        };
+        /** RootRemoval */
+        RootRemoval: {
+            root: number;
+            path: string;
+            folders: number;
+            files: number;
+            ratings: number;
+            favorites: number;
+            comments: number;
+            people_named: number;
+            places: number;
+            in_collections: number;
         };
         /** RuleView */
         RuleView: {
@@ -5216,6 +5267,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    RootsRootIdRemovalRemovalCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                root_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RootRemoval"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    RootsRootIdForgetRoot: {
+        parameters: {
+            query?: {
+                confirm?: string;
+            };
+            header?: never;
+            path: {
+                root_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RootForgotten"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

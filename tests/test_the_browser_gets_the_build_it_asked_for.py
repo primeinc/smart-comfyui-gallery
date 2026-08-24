@@ -149,8 +149,13 @@ def test_the_freshness_gate_looks_for_untracked_bundles_too():
     """`git diff` compares the tree against the INDEX. A bundle git has
     never been told about is in neither, so it was invisible."""
     fresh = _recipe("fresh")
-    assert "git status --porcelain" in fresh, fresh
-    assert "git diff --quiet" not in fresh, f"the index comparison cannot see an untracked bundle:\n{fresh}"
+    assert "ls-files --others" in fresh, f"nothing here asks about an untracked bundle:\n{fresh}"
+    # and `git diff` STAYS, for the other question: a bundle rebuilt and
+    # not staged. Answering both with one `git status --porcelain` is
+    # wrong, because that also reports STAGED output -- the normal state
+    # between `just web build` and the commit, so a gate refusing it
+    # could never be passed. This file made that mistake first.
+    assert "git diff" in fresh, f"nothing here asks about an unstaged rebuild:\n{fresh}"
 
 
 # --- one build contract -----------------------------------------------------

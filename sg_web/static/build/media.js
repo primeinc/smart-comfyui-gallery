@@ -26,7 +26,7 @@
     async function coreFetch(schemaPath, fetchOptions) {
       const {
         baseUrl: localBaseUrl,
-        fetch: fetch2 = baseFetch,
+        fetch = baseFetch,
         Request = CustomRequest,
         headers,
         params = {},
@@ -93,7 +93,7 @@
         id = randomID();
         options = Object.freeze({
           baseUrl: finalBaseUrl,
-          fetch: fetch2,
+          fetch,
           parseAs,
           querySerializer,
           bodySerializer,
@@ -123,7 +123,7 @@
       }
       if (!response) {
         try {
-          response = await fetch2(request, requestInitExt);
+          response = await fetch(request, requestInitExt);
         } catch (error2) {
           let errorAfterMiddleware = error2;
           if (finalMiddlewares.length) {
@@ -519,6 +519,9 @@
   function describe(found) {
     return found === null ? "nothing" : found.constructor.name;
   }
+  function isPlainClick(event, link) {
+    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
+  }
 
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();
@@ -550,11 +553,6 @@
     event.preventDefault();
     command.run();
   });
-
-  // src/overlay.ts
-  function isPlainClick(event, link) {
-    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
-  }
 
   // src/recipe.ts
   function fit(field) {

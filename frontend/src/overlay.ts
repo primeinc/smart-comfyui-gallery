@@ -31,7 +31,7 @@
 // page returns null, so a surface that renders no drawer wires nothing
 // -- the absence is a fact about the DOM, not about which scripts a
 // template happened to list.
-import { closestFrom, findElement } from "./dom";
+import { closestFrom, findElement, isPlainClick } from "./dom";
 import { register } from "./keys";
 
 /** How an open should touch history: a new stop, the current one, or neither. */
@@ -72,18 +72,6 @@ export interface Overlay {
   readonly root: HTMLElement;
   open(href: string, mode: OpenMode): Promise<void>;
   close(): void;
-}
-
-/** A click the browser should handle itself is not ours to intercept. */
-export function isPlainClick(event: MouseEvent, link: Element | null): boolean {
-  return (
-    event.button === 0 &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    !event.altKey &&
-    link?.getAttribute("target") !== "_blank"
-  );
 }
 
 export function addressableOverlay(spec: OverlaySpec): Overlay | null {

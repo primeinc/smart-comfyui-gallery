@@ -196,6 +196,26 @@ def test_a_neighborhood_is_bounded(shelves):
     assert resultset.NEIGHBORHOOD_MOST < 10_000
 
 
+@pytest.mark.parametrize(
+    ("asked", "want"),
+    [(0, 1), (-3, 1), (1, 1), (7, 7), (resultset.NEIGHBORHOOD_MOST, 23), (resultset.NEIGHBORHOOD_MOST + 1, 23)],
+)
+def test_a_window_width_is_clamped_at_both_ends(shelves, asked, want):
+    """Every boundary, because the constant's comment used to claim a
+    refusal while the code clamped, and neither had been proved at 0, at
+    a negative, at 1, at the maximum or past it.
+
+    23 is the whole answer, so anything at or above it yields 23: an
+    answer cannot lend more members than it has.
+    """
+    conn = shelves["conn"]
+    q = _q(size=5)
+    only = resultset.page(conn, "", q, 1, NOW)["items"][0]
+    told = resultset.neighborhood(conn, "", q, only["id"], NOW, count=asked)
+    assert told is not None, "a clamped width still answers"
+    assert len(told["items"]) == want, f"count={asked} gave {len(told['items'])} members"
+
+
 def test_the_last_page_is_short_and_a_number_past_the_end_answers_it(shelves):
     conn = shelves["conn"]
     q = _q(size=5)

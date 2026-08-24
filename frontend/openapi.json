@@ -4804,6 +4804,156 @@
                 "deprecated": false
             }
         },
+        "/roots/{root_id}/removal": {
+            "get": {
+                "summary": "RemovalCost",
+                "operationId": "RootsRootIdRemovalRemovalCost",
+                "parameters": [
+                    {
+                        "name": "root_id",
+                        "in": "path",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true,
+                        "deprecated": false
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request fulfilled, document follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RootRemoval"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request syntax or unsupported method",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status_code": {
+                                            "type": "integer"
+                                        },
+                                        "detail": {
+                                            "type": "string"
+                                        },
+                                        "extra": {
+                                            "additionalProperties": {},
+                                            "type": [
+                                                "null",
+                                                "object",
+                                                "array"
+                                            ]
+                                        }
+                                    },
+                                    "type": "object",
+                                    "required": [
+                                        "detail",
+                                        "status_code"
+                                    ],
+                                    "description": "Validation Exception",
+                                    "examples": [
+                                        {
+                                            "status_code": 400,
+                                            "detail": "Bad Request",
+                                            "extra": {}
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
+        "/roots/{root_id}": {
+            "delete": {
+                "summary": "ForgetRoot",
+                "operationId": "RootsRootIdForgetRoot",
+                "parameters": [
+                    {
+                        "name": "root_id",
+                        "in": "path",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true,
+                        "deprecated": false
+                    },
+                    {
+                        "name": "confirm",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "default": ""
+                        },
+                        "required": false,
+                        "deprecated": false,
+                        "allowEmptyValue": false,
+                        "allowReserved": false
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request fulfilled, document follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RootForgotten"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request syntax or unsupported method",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status_code": {
+                                            "type": "integer"
+                                        },
+                                        "detail": {
+                                            "type": "string"
+                                        },
+                                        "extra": {
+                                            "additionalProperties": {},
+                                            "type": [
+                                                "null",
+                                                "object",
+                                                "array"
+                                            ]
+                                        }
+                                    },
+                                    "type": "object",
+                                    "required": [
+                                        "detail",
+                                        "status_code"
+                                    ],
+                                    "description": "Validation Exception",
+                                    "examples": [
+                                        {
+                                            "status_code": 400,
+                                            "detail": "Bad Request",
+                                            "extra": {}
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/roots/{root_id}/scan": {
             "post": {
                 "summary": "ScanRoot",
@@ -14639,6 +14789,19 @@
                 ],
                 "title": "ResultItem"
             },
+            "RootForgotten": {
+                "properties": {
+                    "forgot": {
+                        "$ref": "#/components/schemas/RootRemoval"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "forgot"
+                ],
+                "title": "RootForgotten"
+            },
             "RootForm": {
                 "properties": {
                     "path": {
@@ -14654,6 +14817,55 @@
                     "path"
                 ],
                 "title": "RootForm"
+            },
+            "RootRemoval": {
+                "properties": {
+                    "root": {
+                        "type": "integer"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "folders": {
+                        "type": "integer"
+                    },
+                    "files": {
+                        "type": "integer"
+                    },
+                    "ratings": {
+                        "type": "integer"
+                    },
+                    "favorites": {
+                        "type": "integer"
+                    },
+                    "comments": {
+                        "type": "integer"
+                    },
+                    "people_named": {
+                        "type": "integer"
+                    },
+                    "places": {
+                        "type": "integer"
+                    },
+                    "in_collections": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "comments",
+                    "favorites",
+                    "files",
+                    "folders",
+                    "in_collections",
+                    "path",
+                    "people_named",
+                    "places",
+                    "ratings",
+                    "root"
+                ],
+                "title": "RootRemoval"
             },
             "RuleView": {
                 "properties": {

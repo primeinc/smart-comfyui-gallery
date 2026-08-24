@@ -519,6 +519,9 @@
   function describe(found) {
     return found === null ? "nothing" : found.constructor.name;
   }
+  function isPlainClick(event, link) {
+    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
+  }
 
   // src/recipe.ts
   function fit(field) {
@@ -1168,9 +1171,6 @@
   }
 
   // src/overlay.ts
-  function isPlainClick(event, link) {
-    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
-  }
   function addressableOverlay(spec) {
     const root = findElement(document, spec.root, HTMLElement);
     if (!root) return null;

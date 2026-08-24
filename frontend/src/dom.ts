@@ -61,3 +61,22 @@ export function requireData(node: HTMLElement, key: string): string {
 function describe(found: Element | null): string {
   return found === null ? "nothing" : found.constructor.name;
 }
+
+/** A click the browser should handle itself is not ours to intercept.
+ *
+ * Here rather than in `overlay.ts` because the viewer needs it and the
+ * viewer is meant to be container-independent: the overlay IS the
+ * container, so `viewer -> overlay` was the dependency pointing the
+ * wrong way. A generic predicate about a MouseEvent and a link belongs
+ * beside the other generic DOM facts.
+ */
+export function isPlainClick(event: MouseEvent, link: Element | null): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    link?.getAttribute("target") !== "_blank"
+  );
+}

@@ -3,12 +3,12 @@
 // page numbers and renders what it is told. Hooks are semantic data
 // attributes, never style classes.
 import { api, refusal } from "./api";
-import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
+import { closestFrom, everyElement, findElement, isPlainClick, requireData, requireElement } from "./dom";
 import { mountAnalyze } from "./analyze";
 import { mountEndless } from "./endless";
 import { mountFilters } from "./filters";
 import type { components } from "./generated/api";
-import { addressableOverlay, isPlainClick } from "./overlay";
+import { addressableOverlay } from "./overlay";
 import { type Viewer, mountViewer } from "./viewer";
 
 type PeekView = components["schemas"]["PeekView"];

@@ -235,30 +235,6 @@ consequences the architecture should keep room for, not work.
   and asks you to type one back. The cutoff prompt is gone (the answer
   supplies it); these two want a real control.
 
-- **A root can be added and never removed.** `sg_web/app.py` has
-  `GET /roots`, `POST /roots` and `POST /roots/{id}/scan` and no delete.
-  Whatever you point at the application is pointed at forever.
-
-  This one needs the deletion doctrine applied rather than a route
-  bolted on, because "remove this root" is at least three different
-  wishes and only the first is safe by default:
-
-  - **Stop watching it.** The files are not gone -- nothing on disk
-    changed -- so they must NOT be marked missing, which is the same
-    reasoning `online` already encodes for an unplugged drive. The root
-    goes quiet; its rows stay.
-  - **Forget what I learned about it.** Ratings, names, places,
-    collection memberships for files under that root. Destructive, and
-    the export story should exist before this does, or the only way out
-    of a mistake is a backup.
-  - **It is really gone.** The bytes were deleted outside the
-    application. That is already what a scan of a present-but-empty
-    root says, and it is deliberately NOT what an unreadable root says.
-
-  The first is the one to build. It also wants the answer to "what
-  happens to a file that is in two roots", which content identity
-  already has an opinion about.
-
 - **`library` and `mount` are the same thing.** `root.kind` admits
   `library`, `mount` and `trash`, and nothing anywhere branches on the
   first two: `db/pages.py:276` selects `kind IN ('library','mount')`
@@ -333,22 +309,11 @@ consequences the architecture should keep room for, not work.
   the default for browser tests, with an explicit opt-out for tests that
   exercise failure deliberately.
 
-- **`neighborhood` clamps a count it says it refuses.** The bound is
-  documented and tested as a refusal, and implemented as
-  `min(max(1, count), NEIGHBOURHOOD_MOST)`. Pick one and prove it at 0,
-  negative, 1, the maximum and the maximum plus one.
-
 - **No cold acceptance lane.** Nothing runs the documented bootstrap from
   a checkout with no `.venv`, no `node_modules` and no
   `sg_web/static/build`. `test_the_documented_launch_serves_a_whole_application.py`
   tests the launcher's refusals in-process and says so; it is not that
   lane.
-
-## Layering
-
-- **`viewer.ts` imports `isPlainClick` from `overlay.ts`.** The viewer
-  core is meant to be container-independent and the overlay is the
-  container. A generic click predicate belongs in a neutral module.
 
 ## The gate's remaining hole
 

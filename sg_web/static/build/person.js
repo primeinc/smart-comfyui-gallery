@@ -515,6 +515,9 @@
   function describe(found) {
     return found === null ? "nothing" : found.constructor.name;
   }
+  function isPlainClick(event, link) {
+    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
+  }
 
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();
@@ -546,125 +549,6 @@
     event.preventDefault();
     command.run();
   });
-
-  // src/overlay.ts
-  function isPlainClick(event, link) {
-    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
-  }
-  function addressableOverlay(spec) {
-    const root = findElement(document, spec.root, HTMLElement);
-    if (!root) return null;
-    root.tabIndex = -1;
-    let flight = 0;
-    let opener = null;
-    const underlay = (frozen) => {
-      for (const el of document.body.children) {
-        if (el !== root && el.tagName !== "SCRIPT" && el instanceof HTMLElement) el.inert = frozen;
-      }
-    };
-    const open = async (href, mode) => {
-      const ticket = ++flight;
-      let mended = false;
-      while (true) {
-        const headers = { "HX-Request": "true" };
-        const expected = spec.generation ? spec.generation() : null;
-        if (expected) headers["X-SG-Expect"] = expected;
-        let answer;
-        try {
-          answer = await fetch(href, { headers });
-        } catch {
-          if (ticket !== flight) return;
-          window.location.assign(href);
-          return;
-        }
-        if (ticket !== flight) return;
-        if (!answer.ok) {
-          if (answer.status === 409 && spec.recover && !mended) {
-            let proven = false;
-            try {
-              proven = await spec.recover();
-            } catch {
-              proven = false;
-            }
-            if (ticket !== flight) return;
-            if (proven) {
-              mended = true;
-              continue;
-            }
-          }
-          window.location.assign(href);
-          return;
-        }
-        let fragment;
-        try {
-          fragment = await answer.text();
-        } catch {
-          if (ticket !== flight) return;
-          window.location.assign(href);
-          return;
-        }
-        if (ticket !== flight) return;
-        if (expected) {
-          const got = /data-currency="([^"]*)"/.exec(fragment);
-          if (!got?.[1] || got[1] !== expected) {
-            window.location.assign(href);
-            return;
-          }
-        }
-        root.innerHTML = fragment;
-        spec.mounted?.(root);
-        if (root.hidden) {
-          root.hidden = false;
-          underlay(true);
-        }
-        if (mode === "push") history.pushState({ sgOverlay: true }, "", href);
-        else if (mode === "replace") history.replaceState({ sgOverlay: true }, "", href);
-        root.focus();
-        return;
-      }
-    };
-    const close = () => {
-      flight += 1;
-      root.hidden = true;
-      root.replaceChildren();
-      spec.mounted?.(null);
-      underlay(false);
-      if (opener?.isConnected) opener.focus();
-      opener = null;
-    };
-    document.addEventListener("click", (event) => {
-      const trigger = closestFrom(event.target, spec.trigger, HTMLElement);
-      if (trigger) {
-        if (!isPlainClick(event, trigger)) return;
-        const href = trigger.getAttribute("href");
-        if (!href) return;
-        event.preventDefault();
-        opener = trigger;
-        void open(href, "push");
-        return;
-      }
-      if (event.target === root || closestFrom(event.target, "[data-close]", Element)) {
-        event.preventDefault();
-        history.back();
-      }
-    });
-    register([
-      {
-        key: "Escape",
-        by: `overlay: ${spec.pathPrefix}`,
-        run: () => {
-          if (root.hidden) return;
-          if (spec.dismiss?.()) return;
-          history.back();
-        }
-      }
-    ]);
-    window.addEventListener("popstate", () => {
-      if (window.location.pathname.startsWith(spec.pathPrefix)) void open(window.location.href, "none");
-      else if (!root.hidden) close();
-    });
-    return { root, open, close };
-  }
 
   // src/recipe.ts
   function fit(field) {
@@ -1152,6 +1036,122 @@
       }
     ]);
   })();
+
+  // src/overlay.ts
+  function addressableOverlay(spec) {
+    const root = findElement(document, spec.root, HTMLElement);
+    if (!root) return null;
+    root.tabIndex = -1;
+    let flight = 0;
+    let opener = null;
+    const underlay = (frozen) => {
+      for (const el of document.body.children) {
+        if (el !== root && el.tagName !== "SCRIPT" && el instanceof HTMLElement) el.inert = frozen;
+      }
+    };
+    const open = async (href, mode) => {
+      const ticket = ++flight;
+      let mended = false;
+      while (true) {
+        const headers = { "HX-Request": "true" };
+        const expected = spec.generation ? spec.generation() : null;
+        if (expected) headers["X-SG-Expect"] = expected;
+        let answer;
+        try {
+          answer = await fetch(href, { headers });
+        } catch {
+          if (ticket !== flight) return;
+          window.location.assign(href);
+          return;
+        }
+        if (ticket !== flight) return;
+        if (!answer.ok) {
+          if (answer.status === 409 && spec.recover && !mended) {
+            let proven = false;
+            try {
+              proven = await spec.recover();
+            } catch {
+              proven = false;
+            }
+            if (ticket !== flight) return;
+            if (proven) {
+              mended = true;
+              continue;
+            }
+          }
+          window.location.assign(href);
+          return;
+        }
+        let fragment;
+        try {
+          fragment = await answer.text();
+        } catch {
+          if (ticket !== flight) return;
+          window.location.assign(href);
+          return;
+        }
+        if (ticket !== flight) return;
+        if (expected) {
+          const got = /data-currency="([^"]*)"/.exec(fragment);
+          if (!got?.[1] || got[1] !== expected) {
+            window.location.assign(href);
+            return;
+          }
+        }
+        root.innerHTML = fragment;
+        spec.mounted?.(root);
+        if (root.hidden) {
+          root.hidden = false;
+          underlay(true);
+        }
+        if (mode === "push") history.pushState({ sgOverlay: true }, "", href);
+        else if (mode === "replace") history.replaceState({ sgOverlay: true }, "", href);
+        root.focus();
+        return;
+      }
+    };
+    const close = () => {
+      flight += 1;
+      root.hidden = true;
+      root.replaceChildren();
+      spec.mounted?.(null);
+      underlay(false);
+      if (opener?.isConnected) opener.focus();
+      opener = null;
+    };
+    document.addEventListener("click", (event) => {
+      const trigger = closestFrom(event.target, spec.trigger, HTMLElement);
+      if (trigger) {
+        if (!isPlainClick(event, trigger)) return;
+        const href = trigger.getAttribute("href");
+        if (!href) return;
+        event.preventDefault();
+        opener = trigger;
+        void open(href, "push");
+        return;
+      }
+      if (event.target === root || closestFrom(event.target, "[data-close]", Element)) {
+        event.preventDefault();
+        history.back();
+      }
+    });
+    register([
+      {
+        key: "Escape",
+        by: `overlay: ${spec.pathPrefix}`,
+        run: () => {
+          if (root.hidden) return;
+          if (spec.dismiss?.()) return;
+          history.back();
+        }
+      }
+    ]);
+    window.addEventListener("popstate", () => {
+      if (window.location.pathname.startsWith(spec.pathPrefix)) void open(window.location.href, "none");
+      else if (!root.hidden) close();
+    });
+    return { root, open, close };
+  }
 
   // src/people.ts
   var pad2 = (n) => String(n).padStart(2, "0");

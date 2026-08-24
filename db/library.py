@@ -152,6 +152,68 @@ def check_roots(conn) -> list[tuple[int, str, bool]]:
     return seen
 
 
+#: What hangs off a file, as (name, table, its file column). Counted so
+#: a person removing "just a directory" is told what else goes with it.
+_ATTACHED = (
+    ("ratings", "rating", "file_id"),
+    ("favorites", "favorite", "file_id"),
+    ("comments", "comment", "file_id"),
+    ("people_named", "person_assertion", "file_id"),
+    ("places", "file_place", "file_id"),
+    ("in_collections", "collection_file", "file_id"),
+)
+
+
+def removal_cost(conn, root_id: int) -> dict:
+    """Everything that goes if this root is removed.
+
+    Counted BEFORE anything is touched, because the answer is the point:
+    `folder.root_id` cascades to folders, folders cascade to files, and
+    files cascade to every rating, comment, favourite, name and place
+    somebody attached to them. A person deleting "just a directory"
+    would otherwise find that out afterwards.
+
+    Nothing on disk is counted because nothing on disk is touched. This
+    removes rows.
+    """
+    told = {
+        "root": root_id,
+        "path": root_path(conn, root_id),
+        "folders": conn.execute("SELECT count(*) FROM folder WHERE root_id = ?", (root_id,)).fetchone()[0],
+        "files": conn.execute(
+            "SELECT count(*) FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?", (root_id,)
+        ).fetchone()[0],
+    }
+    for name, table, column in _ATTACHED:
+        told[name] = conn.execute(
+            f"SELECT count(*) FROM {table} t JOIN file f ON f.id = t.{column}"
+            "  JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?",
+            (root_id,),
+        ).fetchone()[0]
+    return told
+
+
+def forget_root(conn, root_id: int) -> dict:
+    """Stop indexing a directory, and drop what was indexed from it.
+
+    NOT a deletion of anything on disk -- the bytes are exactly where
+    they were, and re-adding the directory finds them again. What goes
+    is this library's knowledge of them, which is the part that cannot
+    be recomputed: the ratings, the names, the places, the memberships.
+
+    Returns what it removed, counted first, so a caller can say what
+    happened rather than "done".
+    """
+    cost = removal_cost(conn, root_id)
+    if cost["path"] is None:
+        raise LookupError(f"no root {root_id}")
+    # ON DELETE CASCADE does the rest: root -> folder -> file -> every
+    # row that hangs off a file. Said here so the one line below is not
+    # mistaken for a small one.
+    conn.execute("DELETE FROM root WHERE id = ?", (root_id,))
+    return cost
+
+
 def roots(conn, *, kind=None) -> list[tuple]:
     if kind:
         return conn.execute("SELECT id, path, kind, online FROM root WHERE kind = ? ORDER BY path", (kind,)).fetchall()

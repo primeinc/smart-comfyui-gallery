@@ -25,10 +25,9 @@
 // chrome is hidden are what the person is doing RIGHT NOW; the moment they
 // become a setting is the moment somebody has to be asked a question about
 // a photograph they were looking at.
-import { closestFrom, everyElement, findElement, requireData } from "./dom";
+import { closestFrom, everyElement, findElement, isPlainClick, requireData } from "./dom";
 import type { components } from "./generated/api";
 import { register } from "./keys";
-import { isPlainClick } from "./overlay";
 import { mountRecipe } from "./recipe";
 import { panelState, remember, rememberPanel, workspace } from "./workspace";
 

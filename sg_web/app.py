@@ -30,7 +30,7 @@ from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from litestar import Litestar, Request, get, post, route, websocket
+from litestar import Litestar, Request, delete, get, post, route, websocket
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.connection import WebSocket
@@ -1182,6 +1182,87 @@ def add_root(state: State, data: NewRoot) -> dict:
         connect.close(conn)
 
 
+class RootRemoval(Wire):
+    """What removing one root would cost.
+
+    Every count is of ROWS. Nothing on disk is counted because nothing
+    on disk is touched -- the numbers that matter are the ones a rescan
+    cannot bring back.
+    """
+
+    root: int
+    path: str
+    folders: int
+    files: int
+    ratings: int
+    favorites: int
+    comments: int
+    people_named: int
+    places: int
+    in_collections: int
+
+
+class RootForgotten(Wire):
+    """What removing one root did cost, counted before it happened."""
+
+    forgot: RootRemoval
+
+
+@get("/roots/{root_id:int}/removal", sync_to_thread=True)
+def removal_cost(state: State, root_id: FromPath[int]) -> RootRemoval:
+    """What removing this root would cost, before anything is removed.
+
+    Its own address because a person is entitled to look before they
+    decide, and because the answer is not obvious: `folder.root_id`
+    cascades to folders, folders to files, files to every rating,
+    comment, favourite, name, place and collection membership on them.
+    Nothing on disk is counted, because nothing on disk is touched.
+    """
+    conn = _connect(state.db_path)
+    try:
+        told = library.removal_cost(conn, root_id)
+        if told["path"] is None:
+            raise NotFoundException(f"no root {root_id}")
+        return RootRemoval(**told)
+    finally:
+        connect.close(conn)
+
+
+@delete("/roots/{root_id:int}", status_code=200, sync_to_thread=True)
+def forget_root(state: State, root_id: FromPath[int], confirm: FromQuery[str] = "") -> RootForgotten:
+    """Stop indexing a directory and drop what was indexed from it.
+
+    Nothing on disk is touched. Re-adding the directory finds every file
+    again; what does not come back is the knowledge attached to them,
+    which is the half no rescan can recompute.
+
+    `confirm` must be the root's own path. Not ceremony: this is the
+    only route in the application that can destroy authored state in
+    bulk, and the doctrine everywhere else is that a destructive act
+    proves what it is acting on first. Ask `GET /roots/{id}/removal` to
+    see the cost, then repeat the path back.
+    """
+    conn = _connect(state.db_path)
+    try:
+        told = library.removal_cost(conn, root_id)
+        if told["path"] is None:
+            raise NotFoundException(f"no root {root_id}")
+        if confirm != told["path"]:
+            raise ClientException(
+                f"removing this root drops {told['files']} file(s) and what is attached to them"
+                f" -- {told['ratings']} rating(s), {told['favorites']} favourite(s),"
+                f" {told['comments']} comment(s), {told['people_named']} named person(s),"
+                f" {told['places']} place(s), {told['in_collections']} collection membership(s)."
+                f" Nothing on disk is touched. Repeat the path to confirm:"
+                f" DELETE /roots/{root_id}?confirm={told['path']}"
+            )
+        removed = library.forget_root(conn, root_id)
+        conn.commit()
+        return RootForgotten(forgot=RootRemoval(**removed))
+    finally:
+        connect.close(conn)
+
+
 @post("/roots/{root_id:int}/scan", sync_to_thread=True)
 def scan_root(state: State, root_id: FromPath[int]) -> dict:
     """Walk one root and reconcile the library with what is on disk."""
@@ -1474,6 +1555,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             ways,
             roots,
             add_root,
+            removal_cost,
+            forget_root,
             scan_root,
             active_jobs,
             job_snapshot,

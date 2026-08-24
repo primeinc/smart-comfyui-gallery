@@ -55,16 +55,23 @@ types-test:
 # ask git whether anything moved.
 [script]
 fresh: build
-    # `git status --porcelain`, not `git diff --quiet`: diff compares the
-    # tree against the index and says nothing at all about a file git has
-    # never been told exists. Add an entry point, forget to `git add` its
-    # bundle, and this gate stayed silent while a clean checkout served a
-    # template that loads a 404. Porcelain lists an untracked file as `??`,
-    # so the modified, the deleted and the never-added all arrive here.
-    held="$(git status --porcelain -- sg_web/static/build)"
-    if [ -n "$held" ]; then
+    # Two questions, because neither command answers both.
+    #
+    # `git diff` compares the working tree against the INDEX, so it sees
+    # a rebuilt bundle nobody staged -- and deliberately does NOT see one
+    # that was staged, which matters: the ordinary flow is build, gate,
+    # add, commit, and a gate that refused staged output could never be
+    # passed. But the index says nothing about a file git has never been
+    # told exists, so a new entry point whose bundle was never `git add`ed
+    # slipped through and a clean checkout served a template loading a 404.
+    #
+    # `ls-files --others` is that second question and only that one.
+    stale="$(git diff --name-only -- sg_web/static/build)"
+    never="$(git ls-files --others --exclude-standard -- sg_web/static/build)"
+    if [ -n "$stale" ] || [ -n "$never" ]; then
       echo 'the committed bundles do not match the built ones: run `just web build` and commit the result' >&2
-      printf '%s\n' "$held" >&2
+      [ -n "$stale" ] && printf 'rebuilt, not staged:\n%s\n' "$stale" >&2
+      [ -n "$never" ] && printf 'never added to git:\n%s\n' "$never" >&2
       exit 1
     fi
 
