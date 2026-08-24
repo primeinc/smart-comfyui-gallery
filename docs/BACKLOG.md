@@ -19,6 +19,22 @@ not a history.
   `/thumb/x` is real work and a speculative queue is not — and two
   requests for the same missing key currently render it twice.
 
+- **RAW takes whichever preview LibRaw calls the default.** A raw file
+  can hold several embedded previews; LibRaw knows them all through
+  `imgdata.thumbs_list` and `unpack_thumb_ex(i)`, and exposes each one's
+  size and its own `tflip`, which it warns can differ from the main
+  image's orientation. rawpy 0.27.0 exposes neither — checked: it has
+  `unpack_thumb`, `extract_thumb` and `dcraw_make_mem_thumb` and nothing
+  else — so `extract_thumb()` takes the default, which on the sample
+  5D Mark III files is the full 5760x3840 JPEG when 1440 was wanted.
+
+  Smaller than it sounds now that the decoder is asked in the right
+  aspect: that preview loads at scale 1/4, and raw decode is 41.7 ms of a
+  137 ms file. Picking a smaller preview saves part of that 41.7 and
+  costs either ctypes into LibRaw or a contribution to rawpy. Worth doing
+  when the pipeline is parallel and decode is the remaining cost, not
+  before, and the per-preview `tflip` needs fixtures before it is trusted.
+
 - **One raster serves every OTHER consumer.** Thumbnails now ask for what
   they need (`decode.open_bounded`, `oriented.for_derivatives`), but
   `oriented.for_model()` still returns a full-resolution frame to the

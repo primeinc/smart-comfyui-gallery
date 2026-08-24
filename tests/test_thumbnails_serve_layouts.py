@@ -82,6 +82,34 @@ def test_fit_returns_the_same_image_when_nothing_needs_doing(tmp_path):
     assert shrunk.size == (50, 40)
 
 
+def test_a_bounded_open_asks_the_decoder_for_the_right_shape(tmp_path):
+    """`draft` is asked in the picture's own aspect, not a square.
+
+    JpegImagePlugin.draft takes `min(width // want_w, height // want_h)`
+    and snaps it to 8, 4, 2 or 1 (:447-460), so the SHORTER side governs.
+    Asking a 4000x2000 JPEG for (1440, 1440) gives min(2, 1) = 1: no
+    reduction at all. Asking for (1440, 720) gives min(2, 2) = 2, and the
+    decoder returns half. Four times the pixels rode on that, through the
+    resize and the encode as well as the decode.
+
+    Scales are powers of two, so what comes back is never smaller than
+    asked -- `thumbs.fit` after it can only ever shrink.
+    """
+    source = tmp_path / "wide.jpg"
+    Image.new("RGB", (4000, 2000), (10, 200, 30)).save(source, quality=90)
+
+    with decode.open_still(source) as square:
+        square.draft(None, (1440, 1440))
+        assert square.size == (4000, 2000), "a square ask reduces this by nothing at all"
+
+    # the handle rides with the `with`, the way for_derivatives holds it
+    with decode.open_bounded(source, 1440) as bounded:
+        assert max(bounded.size) < 4000, "the bounded open did not reduce anything"
+        assert max(bounded.size) >= 1440, "it reduced below what the preview edge needs"
+        assert bounded.size == (2000, 1000)
+        assert thumbs.fit(bounded, 1440).size == (1440, 720), "and the picture survives the shortcut"
+
+
 def test_an_unknown_variant_is_refused(tmp_path):
     with pytest.raises(ValueError, match="not a variant"):
         thumbs.path_for(tmp_path, SHA, "poster")

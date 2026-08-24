@@ -166,8 +166,29 @@ def open_bounded(path: str | os.PathLike[str], want: int) -> Image.Image:
             return preview
         return open_still(path)
     opened = Image.open(path)
-    opened.draft(None, (want, want))
+    _draft_to_edge(opened, want)
     return opened
+
+
+def _draft_to_edge(opened: Image.Image, want: int) -> None:
+    """Ask the reader for the smallest scale that still covers `want`.
+
+    The box must keep the picture's own aspect. `draft` chooses a scale
+    that covers the request in BOTH directions, so asking for a square
+    `(want, want)` overshoots by the aspect ratio: a 5760x3840 JPEG asked
+    for (1440, 1440) comes back 2880x1920, because 1440x960 is under 1440
+    tall. Four times the pixels, for a derivative whose longest side is
+    1440 either way. Asked as (1440, 960) it comes back 1440x960.
+
+    A no-op for every reader without scales to choose from, and for a
+    picture already smaller than `want`.
+    """
+    width, height = opened.size
+    longest = max(width, height)
+    if longest <= want:
+        return
+    scale = want / longest
+    opened.draft(None, (max(1, round(width * scale)), max(1, round(height * scale))))
 
 
 def _raw_preview(path: str | os.PathLike[str], want: int) -> Image.Image | None:
@@ -197,7 +218,7 @@ def _raw_preview(path: str | os.PathLike[str], want: int) -> Image.Image | None:
     if found.format != ThumbFormat.JPEG or not isinstance(found.data, bytes):
         return None
     preview = open_bytes(found.data)
-    preview.draft(None, (want, want))
+    _draft_to_edge(preview, want)
     preview.load()
     if max(preview.size) < want:
         # Smaller than what was asked for. Enlarging a preview is not a
