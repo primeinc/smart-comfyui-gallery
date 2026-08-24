@@ -885,7 +885,12 @@
   function counted(n) {
     return n.toLocaleString();
   }
-  function drawList(body, told, carried) {
+  function operatorFor(told, carried) {
+    if (carried === "scope" || !told.multi) return told.ops[0] ?? "eq";
+    if (told.multi === "any") return "any";
+    return panelState(`all:${told.key}`) ? "eq" : "any";
+  }
+  function drawList(body, told, carried, again) {
     body.replaceChildren();
     if (!told.options.length) {
       const empty = document.createElement("p");
@@ -893,6 +898,37 @@
       empty.textContent = "nothing here answers this yet";
       body.append(empty);
       return;
+    }
+    if (told.multi === "both") {
+      const choice = document.createElement("div");
+      choice.className = "filter-choice";
+      choice.dataset.filterChoice = told.key;
+      const all = panelState(`all:${told.key}`) === true;
+      for (const [mode, said, why] of [
+        ["any", "any of", `media with any one of these ${told.label}s`],
+        ["all", "all of", `media carrying every one of these ${told.label}s`]
+      ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "filter-choice-mode";
+        button.dataset.mode = mode;
+        button.title = why;
+        button.textContent = said;
+        button.setAttribute("aria-pressed", String(all === (mode === "all")));
+        button.addEventListener("click", () => {
+          rememberPanel(`all:${told.key}`, mode === "all");
+          const wanted = mode === "all" ? "eq" : "any";
+          const asked4 = question();
+          const rest = asked4.getAll("f").filter((held2) => !held2.startsWith(`${told.key}:`));
+          const mine = asked4.getAll("f").filter((held2) => held2.startsWith(`${told.key}:`)).map((held2) => `${told.key}:${wanted}:${held2.split(":").slice(2).join(":")}`);
+          asked4.delete("f");
+          for (const held2 of [...rest, ...mine]) asked4.append("f", held2);
+          if (mine.length) go(asked4);
+          else again();
+        });
+        choice.append(button);
+      }
+      body.append(choice);
     }
     if (told.options.length > 12 || told.more > 0) {
       const find = document.createElement("input");
@@ -928,7 +964,7 @@
       pick.append(name, tally);
       if (one.count === 0 && !one.chosen) pick.disabled = true;
       pick.addEventListener("click", () => {
-        go(toggled(told.key, carried, told.ops[0] ?? "eq", one.value, !one.chosen));
+        go(toggled(told.key, carried, operatorFor(told, carried), one.value, !one.chosen));
       });
       row.append(pick);
       list.append(row);
@@ -944,6 +980,47 @@
   function drawRange(body, key, carried, kind, ops) {
     body.replaceChildren();
     const now = held(key, carried);
+    if (kind === "bool") {
+      const pair = document.createElement("div");
+      pair.className = "filter-choice";
+      for (const [value, said] of [
+        ["1", "yes"],
+        ["0", "no"]
+      ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "filter-choice-mode";
+        button.dataset.option = value;
+        button.dataset.label = said;
+        button.textContent = said;
+        const on = now.has(value);
+        button.setAttribute("aria-pressed", String(on));
+        button.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", on ? null : value)));
+        pair.append(button);
+      }
+      body.append(pair);
+      return;
+    }
+    if (kind === "pair") {
+      const form2 = document.createElement("form");
+      form2.className = "filter-range";
+      const field = document.createElement("input");
+      field.type = "text";
+      field.placeholder = "key=value";
+      field.setAttribute("aria-label", `${key}, written key equals value`);
+      field.value = [...now][0] ?? "";
+      const apply2 = document.createElement("button");
+      apply2.type = "submit";
+      apply2.textContent = "apply";
+      form2.append(field, apply2);
+      form2.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const wanted = field.value.trim();
+        go(onlyClause(key, carried, ops[0] ?? "eq", wanted === "" ? null : wanted));
+      });
+      body.append(form2);
+      return;
+    }
     const form = document.createElement("form");
     form.className = "filter-range";
     const fields = [];
@@ -1020,7 +1097,7 @@
     try {
       const answered2 = await fetch(`/g/options?${asked4.toString()}`, { headers: { accept: "application/json" } });
       if (!answered2.ok) throw new Error(`${answered2.status}`);
-      drawList(body, await answered2.json(), carried);
+      drawList(body, await answered2.json(), carried, () => void fill(section));
       body.dataset.state = "ready";
     } catch {
       body.replaceChildren();

@@ -169,7 +169,12 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         # is thirty queries nobody asked for; each section fetches its
         # own from /g/options when somebody opens it.
         "filter_groups": [
-            {"name": name, "label": label, "dimensions": held} for name, label, held in vocabulary.grouped(query.kind)
+            {"name": name, "label": label, "dimensions": held}
+            # `asked_kind`, not `query.kind`: the question can say which
+            # medium in two places now -- the scope every bookmark
+            # carries, and the facet the drawer writes so kinds can be
+            # OR'd -- and which dimensions apply must follow both.
+            for name, label, held in vocabulary.grouped(discovery.asked_kind(query))
         ],
         "filter_counts": discovery.counts(query),
         "filters_held": sum(discovery.counts(query).values()),
@@ -206,11 +211,38 @@ def _chips(query: resultset.GalleryQuery, named: dict[str, dict[int, str]] | Non
                 }
             )
             continue
-        # A facet may appear more than once -- two LoRAs are two clauses
-        # -- so each is its own chip and each removes only itself.
-        for facet in query.facets:
-            if facet.key != one.key:
-                continue
+        held = [facet for facet in query.facets if facet.key == one.key]
+        # An OR GROUP is one thing the question says, so it is one chip
+        # that removes as one. Rendering `kind image` beside `kind video`
+        # would read exactly like two ANDed clauses -- the opposite
+        # question, and one that answers nothing.
+        ored = [facet for facet in held if facet.op == facets_module.ANY]
+        if ored:
+            rest = dataclasses.replace(query, facets=tuple(other for other in query.facets if other not in ored))
+            made.append(
+                {
+                    "key": one.key,
+                    "spelled": facets_module.spell(ored[0]),
+                    "label": vocabulary.chip_any(one, [f.value for f in ored], named and named.get(one.key)),
+                    "remove_qs": resultset.canonical(rest),
+                }
+            )
+        # Repeated `eq` on a dimension a file can hold several of means
+        # ALL of them, which is also one thing said once -- and saying it
+        # as separate chips reads identically to an OR.
+        anded = [facet for facet in held if facet.op != facets_module.ANY]
+        if one.multi == "both" and len(anded) > 1:
+            rest = dataclasses.replace(query, facets=tuple(other for other in query.facets if other not in anded))
+            made.append(
+                {
+                    "key": one.key,
+                    "spelled": facets_module.spell(anded[0]),
+                    "label": vocabulary.chip_all(one, [f.value for f in anded], named and named.get(one.key)),
+                    "remove_qs": resultset.canonical(rest),
+                }
+            )
+            continue
+        for facet in anded:
             rest = dataclasses.replace(query, facets=tuple(other for other in query.facets if other != facet))
             made.append(
                 {
@@ -323,6 +355,11 @@ class FilterOptions(Wire):
     note: str
     value_kind: str
     ops: list[str]
+    #: How choosing SEVERAL reads: "" one at a time, "any" OR'd, "both"
+    #: OR'd or ANDed at the person's choosing. A fact about the
+    #: dimension, not a preference (db/vocabulary.py `multi`), so the
+    #: surface is told rather than deciding.
+    multi: str
     options: list[FilterOption]
     #: how many values were not returned. Never silently zero: a
     #: truncated list that does not say so reads as a complete one, and
@@ -390,6 +427,7 @@ def filter_options(
         note=one.note,
         value_kind=one.value_kind,
         ops=list(one.ops),
+        multi=one.multi,
         options=[
             FilterOption(value=each.value, label=each.label, count=each.count, chosen=each.chosen)
             for each in told.options

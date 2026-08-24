@@ -3408,3 +3408,31 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 .answer-seed {
   user-select: all;
 }
+
+/* Any / All: offered only where a file can carry several at once, so
+   the two readings are different questions rather than one of them
+   being an answer that is always empty. */
+.filter-choice {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: inline-flex;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.filter-choice-mode {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 2px 10px;
+}
+.filter-choice-mode:hover {
+  color: var(--ink);
+}
+.filter-choice-mode[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--ground);
+}

@@ -23,6 +23,11 @@ import re
 from . import context
 from .context import HUMAN_MOMENT, ORIGINS
 
+#: The file kinds, stated here rather than imported from
+#: db/resultset.py, which imports this module. Held against
+#: `resultset.KINDS` by a test, so the two cannot drift.
+KINDS = ("image", "animated_image", "video", "audio", "document")
+
 
 @dataclasses.dataclass(frozen=True)
 class Facet:
@@ -46,7 +51,14 @@ class _Spec:
     choices: tuple[str, ...] | None = None
 
 
-_OP_SQL = {"eq": "=", "gte": ">=", "lt": "<", "lte": "<="}
+#: `any` compares like `eq`. What makes it different is not the
+#: comparison but the ASSEMBLY: several `any` clauses on one key become
+#: one OR'd group (see `clauses`), where several `eq` clauses stay
+#: separate conjuncts.
+_OP_SQL = {"eq": "=", "any": "=", "gte": ">=", "lt": "<", "lte": "<="}
+
+#: The operator whose repeats mean "or", not "and".
+ANY = "any"
 
 #: The vocabulary, closed: each key names where the fact lives and how
 #: it may be asked. Adding a key here is the WHOLE work of adding a
@@ -60,7 +72,7 @@ REGISTRY: dict[str, _Spec] = {
     ),
     "generation.sampler": _Spec(
         "text",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.sampler {op} ?)",
     ),
     "generation.seed": _Spec(
@@ -70,7 +82,7 @@ REGISTRY: dict[str, _Spec] = {
     ),
     "context.origin": _Spec(
         "text",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND mc.origin {op} ?)",
         choices=ORIGINS,
@@ -124,7 +136,7 @@ REGISTRY: dict[str, _Spec] = {
     #: Where it happened, by place entity id: the link a place name opens.
     "place.id": _Spec(
         "int",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND mc.place_id {op} ?)",
     ),
@@ -189,13 +201,13 @@ REGISTRY: dict[str, _Spec] = {
     #: Repeating one key ANDs, so two LoRAs mean "both were applied".
     "generation.checkpoint": _Spec(
         "int",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
         " AND fa.role = 'checkpoint' AND fa.artifact_id {op} ?)",
     ),
     "generation.lora": _Spec(
         "int",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
         " AND fa.role = 'lora' AND fa.artifact_id {op} ?)",
     ),
@@ -203,30 +215,30 @@ REGISTRY: dict[str, _Spec] = {
     #: -- the one place an artifact's own kind changes its relation.
     "generation.workflow": _Spec(
         "int",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.workflow_id {op} ?)",
     ),
     "capture.camera": _Spec(
         "int",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
         " AND fa.role = 'captured_with' AND fa.artifact_id {op} ?)",
     ),
     "capture.lens": _Spec(
         "int",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
         " AND fa.role = 'mounted_lens' AND fa.artifact_id {op} ?)",
     ),
     # --- the recipe, by its numbers ------------------------------------
     "generation.tool": _Spec(
         "text",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.tool {op} ?)",
     ),
     "generation.scheduler": _Spec(
         "text",
-        ("eq",),
+        ("eq", "any"),
         "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.scheduler {op} ?)",
     ),
     "generation.steps": _Spec(
@@ -264,6 +276,61 @@ REGISTRY: dict[str, _Spec] = {
         "num",
         ("eq", "gte", "lte"),
         "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.exposure_time {op} ?)",
+    ),
+    #: WHICH MEDIUM, as a facet, so it can be OR'd.
+    #:
+    #: `kind=` is also a GalleryQuery scope, and stays one: every
+    #: bookmark, every smart collection and every other surface's link
+    #: spells it that way, and rewriting them would break all of it to no
+    #: one's benefit. But a scope holds exactly ONE value, so "image or
+    #: video" was unaskable -- and it is the most ordinary multi-select
+    #: there is. The filter surface writes this; the scope keeps working;
+    #: both compose, and asking one thing twice is merely redundant.
+    "media.kind": _Spec(
+        "text",
+        ("eq", "any"),
+        "f.kind {op} ?",
+        choices=KINDS,
+    ),
+    #: WHO IS IN IT, as a facet, so several people can be asked for at
+    #: once -- either "any of these" or "all of these", which are both
+    #: real questions about a photograph and mean opposite things.
+    #:
+    #: Bound to the PRIMARY clustering, exactly as the `person` scope is
+    #: (db/resultset.py bind), so the two cannot disagree about which
+    #: answer they are reading.
+    "people.person": _Spec(
+        "int",
+        ("eq", "any"),
+        "EXISTS (SELECT 1 FROM derived_file_person fp"
+        " JOIN derived_face_run fr ON fr.id = fp.run_id AND fr.is_primary = 1"
+        " WHERE fp.file_id = f.id AND fp.person_id {op} ?)",
+    ),
+    #: THE LONG TAIL, asked by name.
+    #:
+    #: The schema records every key any tool emitted into `file_param`
+    #: and registers it in `param_key` -- whose own comment says the
+    #: registry "is what the facet UI is generated from". Nothing
+    #: generated one, so a library full of ComfyUI's own parameters had
+    #: no way to ask about any of them.
+    #:
+    #: These stay OUT of the curated sections on purpose. A dimension is
+    #: a fact this application understands well enough to name in a
+    #: person's words; a `param_key` row is a string some tool wrote. The
+    #: two do not belong in one list, and dumping four hundred discovered
+    #: keys into the drawer would bury the twenty that mean something.
+    "param.has": _Spec(
+        "text",
+        ("eq", "any"),
+        "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key {op} ?)",
+    ),
+    #: One key AND what it holds, spelled `key=value`. Two binds, which
+    #: is why `predicate` returns a list: the tail is rows, not columns,
+    #: so naming a field costs a value of its own.
+    "param.is": _Spec(
+        "pair",
+        ("eq", "any"),
+        "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key = ? AND fp.value_text {op} ?)",
     ),
     # --- the bytes, which every medium has -----------------------------
     #: `file.width`/`file.height` are the PIXELS ON DISK, never what a
@@ -324,6 +391,11 @@ def facet(key: str, op: str, raw: str) -> Facet:
         if _DATE.fullmatch(raw) is None:
             raise ValueError(f"{key} takes a date written YYYY-MM-DD, not {raw!r}")
         return Facet(key, op, raw)
+    if spec.value_kind == "pair":
+        name, sign, held = raw.partition("=")
+        if not sign or not name.strip() or not held.strip():
+            raise ValueError(f"{key} is written key=value, not {raw!r}")
+        return Facet(key, op, f"{name.strip()}={held.strip()}")
     value = raw.strip()
     if not value:
         raise ValueError(f"{key} takes a non-empty value")
@@ -358,6 +430,51 @@ def spell(held: Facet) -> str:
 UNSCOPED: tuple[str, list] = ("", [])
 
 
+def clauses(held) -> list[tuple[str, list]]:
+    """Facets as SQL clauses, with `any` REPEATS OR'D TOGETHER.
+
+    Repeating a key is how a question says more than one thing about one
+    dimension, and there are two meanings for it:
+
+        eq   repeated -> AND. "this checkpoint AND that LoRA", and
+             "both these LoRAs were applied" -- which is the only
+             reading that makes sense for a dimension a file can hold
+             several of at once.
+        any  repeated -> OR. "image or video", "generated or mixed" --
+             which is the only reading that makes sense for a dimension
+             a file has exactly one of, where AND would ask for a file
+             that is two things and always answer nothing.
+
+    One vocabulary cannot pick for both: which is right is a fact about
+    the DIMENSION, so it is spelled in the operator and the surface
+    chooses it (db/vocabulary.py `multi`).
+
+    Ordering is by first appearance, so the SQL a question produces is
+    stable and its plan is comparable between runs.
+    """
+    order: list[tuple[str, str]] = []
+    grouped: dict[tuple[str, str], list[tuple[str, list]]] = {}
+    for one in held:
+        # `eq` clauses never share a group, so each gets its own key --
+        # which is what keeps them separate conjuncts.
+        at = (one.key, ANY) if one.op == ANY else (one.key, f"eq:{len(order)}")
+        if at not in grouped:
+            grouped[at] = []
+            order.append(at)
+        grouped[at].append(predicate(one))
+    made: list[tuple[str, list]] = []
+    for at in order:
+        parts = grouped[at]
+        if len(parts) == 1:
+            made.append((parts[0][0], list(parts[0][1])))
+            continue
+        values: list = []
+        for _, bound in parts:
+            values.extend(bound)
+        made.append(("(" + " OR ".join(sql for sql, _ in parts) + ")", values))
+    return made
+
+
 def conjunction(held) -> tuple[str, list]:
     """Every facet as one SQL conjunct over the ResultSet's file alias
     `f`, values bound: `(" AND p1 AND p2", [v1, v2])`, UNSCOPED when
@@ -365,19 +482,33 @@ def conjunction(held) -> tuple[str, list]:
     a scoped surface counts exactly what the gallery's link would open."""
     parts: list[str] = []
     values: list = []
-    for one in held:
-        sql, value = predicate(one)
+    for sql, bound in clauses(held):
         parts.append(sql)
-        values.append(value)
+        values.extend(bound)
     return ("".join(" AND " + part for part in parts), values)
 
 
-def predicate(held: Facet) -> tuple[str, int | float | str]:
+def bound_values(held: Facet) -> list:
+    """The values one facet binds, in the order its template asks.
+
+    One, for every key whose value is one thing. TWO for a `pair`, whose
+    value is `key=value` and whose template asks about a registered
+    metadata key AND what it holds -- the long tail is stored as rows,
+    not columns, so naming a field there takes a value of its own.
+    """
+    spec = REGISTRY[held.key]
+    if spec.value_kind == "pair":
+        name, _, value = str(held.value).partition("=")
+        return [name, value]
+    return [held.value]
+
+
+def predicate(held: Facet) -> tuple[str, list]:
     """The registered SQL for one facet -- structure from the closed
-    registry, the value bound."""
+    registry, the value or values bound."""
     spec = REGISTRY[held.key]
     # {policy} is the RUNNING interpretation policy, read at call time:
     # after a software upgrade the old rows are honestly invisible here
     # exactly as they are on the timeline, until the context job runs.
     # An int constant from code, never request data -- still structure.
-    return spec.template.format(op=_OP_SQL[held.op], policy=int(context.POLICY_VERSION)), held.value
+    return spec.template.format(op=_OP_SQL[held.op], policy=int(context.POLICY_VERSION)), bound_values(held)

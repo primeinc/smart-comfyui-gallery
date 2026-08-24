@@ -260,8 +260,33 @@ def test_counts_narrow_from_another_dimension(library):
 
 
 def test_the_kind_dimension_counts_every_medium_the_library_holds(library):
-    held = discovery.options(library, _query(), "kind")
+    # `media.kind`, not the `kind` scope: the scope is what old links
+    # carry and is still answered, but a scope holds one value and the
+    # surface needs one that can be OR'd.
+    held = discovery.options(library, _query(), "media.kind")
     assert _by_label(held) == {"image": len(MADE) + 1, "video": 1}
+
+
+def test_which_dimensions_apply_follows_either_spelling_of_the_kind(library):
+    """A sound has no aperture, and the question can say which medium in
+    two places now. Both have to reach the surface's own decision."""
+    by_scope = {
+        one.key for _, _, held in vocabulary.grouped(discovery.asked_kind(_query(kind="image"))) for one in held
+    }
+    by_facet = {
+        one.key
+        for _, _, held in vocabulary.grouped(discovery.asked_kind(_query(facets=["media.kind:any:image"])))
+        for one in held
+    }
+    assert by_scope == by_facet
+    assert "media.duration" not in by_scope, "a still picture has no length, however the question spelled it"
+
+    # two kinds OR'd is not one medium, so everything either of them
+    # carries still applies
+    both = discovery.asked_kind(_query(facets=["media.kind:any:image", "media.kind:any:video"]))
+    assert both is None
+    everything = {one.key for _, _, held in vocabulary.grouped(both) for one in held}
+    assert "media.duration" in everything
 
 
 def test_a_dimension_that_is_not_a_fact_about_a_medium_is_not_offered(library):
@@ -336,3 +361,76 @@ def test_the_badge_counts_the_clauses_the_question_carries(library):
         "generation.lora": 1,
     }
     assert discovery.counts(_query()) == {}
+
+
+# --- saying more than one thing about one dimension -------------------------
+
+
+def test_repeating_a_key_with_any_means_or(library):
+    """The gap the whole multi-select feature exists to close.
+
+    Repeated facets conjoin, which is right for "this checkpoint with
+    that LoRA" and catastrophic for "image or video": a file cannot be
+    two kinds at once, so the AND reading answers nothing, every time,
+    for the most ordinary multi-select there is.
+    """
+    both = _query(facets=["media.kind:any:image", "media.kind:any:video"])
+    assert _total(library, both) == _total(library, _query()), "every file is one kind or the other"
+
+    stills = _query(facets=["media.kind:any:image"])
+    assert _total(library, stills) == len(MADE) + 1
+
+    # and the AND reading is still available, and still says nothing --
+    # which is correct, not a bug: no file is two kinds
+    impossible = _query(facets=["media.kind:eq:image", "media.kind:eq:video"])
+    assert _total(library, impossible) == 0
+
+
+def test_or_and_and_are_both_available_on_a_dimension_that_needs_both(library):
+    """A picture carries several LoRAs at once, so "any of these" and
+    "all of these" are different questions and both are real."""
+    loras = discovery.options(library, _query(), "generation.lora")
+    film = next(one for one in loras.options if one.label == "filmGrain")
+    detail = next(one for one in loras.options if one.label == "detailTweaker")
+
+    either = _query(facets=[f"generation.lora:any:{film.value}", f"generation.lora:any:{detail.value}"])
+    assert _total(library, either) == 6, "four with one, two with the other"
+
+    both = _query(facets=[f"generation.lora:eq:{film.value}", f"generation.lora:eq:{detail.value}"])
+    assert _total(library, both) == 0, "no picture in this library used both"
+
+
+def test_an_or_group_composes_with_everything_else_as_one_clause(library):
+    """The group is ONE thing the question says, so it narrows with the
+    rest rather than replacing it."""
+    checkpoints = discovery.options(library, _query(), "generation.checkpoint")
+    dreamshaper = next(one for one in checkpoints.options if one.label == "dreamshaper_8")
+
+    asked = _query(
+        facets=[
+            "media.kind:any:image",
+            "media.kind:any:video",
+            f"generation.checkpoint:eq:{dreamshaper.value}",
+        ]
+    )
+    assert _total(library, asked) == 4, "either kind, AND that one checkpoint"
+
+
+def test_the_vocabulary_says_which_reading_a_dimension_takes(library):
+    """Which is right is a fact about the dimension, not a preference:
+    a file has one kind and several LoRAs."""
+    kind = vocabulary.dimension("media.kind")
+    lora = vocabulary.dimension("generation.lora")
+    seed = vocabulary.dimension("generation.seed")
+    assert kind is not None
+    assert lora is not None
+    assert seed is not None
+    assert kind.multi == "any", "a file is one kind, so OR is the only sane reading"
+    assert lora.multi == "both", "a picture carries several, so both readings are real"
+    assert seed.multi == "", "one seed made one picture; there is nothing to multi-select"
+
+
+def test_the_kinds_the_two_modules_know_are_the_same_kinds(library):
+    """`db/facets.py` states them rather than importing `resultset`,
+    which imports it. Two statements of one fact, held together."""
+    assert facets.KINDS == resultset.KINDS

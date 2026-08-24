@@ -11831,6 +11831,9 @@
                         },
                         "type": "array"
                     },
+                    "multi": {
+                        "type": "string"
+                    },
                     "options": {
                         "items": {
                             "$ref": "#/components/schemas/FilterOption"
@@ -11847,6 +11850,7 @@
                     "key",
                     "label",
                     "more",
+                    "multi",
                     "note",
                     "ops",
                     "options",

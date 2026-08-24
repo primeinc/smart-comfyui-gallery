@@ -51,8 +51,12 @@ PROMPTS_MOST = 40
 #: answer "what am I looking at". Curated rather than "every dimension",
 #: because thirty charts is not an analysis, it is a wall.
 BREAKDOWNS: tuple[str, ...] = (
-    "kind",
+    # `media.kind`, not the `kind` scope: the scope holds one value and
+    # has no value list, so breaking an answer down by it counted
+    # nothing at all.
+    "media.kind",
     "has.generation",
+    "people.person",
     "generation.checkpoint",
     # NOT `generation.lora`: LoRAs have their own panel, with the weight
     # each was applied at, which is a strictly better telling of the same

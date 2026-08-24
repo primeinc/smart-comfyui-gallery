@@ -639,10 +639,13 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
     if query.facets:
         from . import facets as facets_module
 
-        for held in query.facets:
-            sql, value = facets_module.predicate(held)
+        # Through `clauses`, never `predicate` in a loop: repeating a key
+        # with `any` means OR and has to arrive here as ONE clause. A
+        # loop that appended each predicate separately would AND them,
+        # and "image or video" would silently answer nothing.
+        for sql, values in facets_module.clauses(query.facets):
             where.append(sql)
-            args.append(value)
+            args.extend(values)
     return where, args, len(where) > 1
 
 

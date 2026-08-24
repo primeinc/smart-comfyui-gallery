@@ -52,6 +52,7 @@ interface Options {
   note: string;
   value_kind: string;
   ops: string[];
+  multi: string;
   options: Option[];
   more: number;
 }
@@ -151,8 +152,26 @@ function counted(n: number): string {
   return n.toLocaleString();
 }
 
+/**
+ * Which operator a click on a value writes.
+ *
+ * `any` repeated means OR, `eq` repeated means AND, and which one a
+ * dimension SHOULD take is a fact about the dimension rather than a
+ * preference (db/vocabulary.py `multi`). A file has one kind, so ANDing
+ * two kinds asks for a file that is two things and answers nothing --
+ * that dimension is always `any`. A picture carries several LoRAs, so
+ * both readings are real and the person picks; the stored choice is
+ * per-dimension workspace state, because "all of these LoRAs" is an
+ * arrangement somebody made, not part of the question's spelling.
+ */
+function operatorFor(told: Options, carried: string): string {
+  if (carried === "scope" || !told.multi) return told.ops[0] ?? "eq";
+  if (told.multi === "any") return "any";
+  return panelState(`all:${told.key}`) ? "eq" : "any";
+}
+
 /** One dimension's list of values, drawn. */
-function drawList(body: HTMLElement, told: Options, carried: string): void {
+function drawList(body: HTMLElement, told: Options, carried: string, again: () => void): void {
   body.replaceChildren();
   if (!told.options.length) {
     const empty = document.createElement("p");
@@ -160,6 +179,49 @@ function drawList(body: HTMLElement, told: Options, carried: string): void {
     empty.textContent = "nothing here answers this yet";
     body.append(empty);
     return;
+  }
+
+  // Any / All, only where a file can carry several of these at once and
+  // the two readings are therefore different questions. Not offered on a
+  // dimension a file has exactly one of, where "all" is a question that
+  // answers nothing by construction.
+  if (told.multi === "both") {
+    const choice = document.createElement("div");
+    choice.className = "filter-choice";
+    choice.dataset.filterChoice = told.key;
+    const all = panelState(`all:${told.key}`) === true;
+    for (const [mode, said, why] of [
+      ["any", "any of", `media with any one of these ${told.label}s`],
+      ["all", "all of", `media carrying every one of these ${told.label}s`],
+    ] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "filter-choice-mode";
+      button.dataset.mode = mode;
+      button.title = why;
+      button.textContent = said;
+      button.setAttribute("aria-pressed", String(all === (mode === "all")));
+      button.addEventListener("click", () => {
+        rememberPanel(`all:${told.key}`, mode === "all");
+        // Every clause this dimension already holds is respelled, so
+        // the switch changes the QUESTION rather than only the next
+        // click -- which would leave a list whose control disagrees
+        // with the chips above it.
+        const wanted = mode === "all" ? "eq" : "any";
+        const asked = question();
+        const rest = asked.getAll("f").filter((held) => !held.startsWith(`${told.key}:`));
+        const mine = asked
+          .getAll("f")
+          .filter((held) => held.startsWith(`${told.key}:`))
+          .map((held) => `${told.key}:${wanted}:${held.split(":").slice(2).join(":")}`);
+        asked.delete("f");
+        for (const held of [...rest, ...mine]) asked.append("f", held);
+        if (mine.length) go(asked);
+        else again();
+      });
+      choice.append(button);
+    }
+    body.append(choice);
   }
 
   // Search within the dimension, once it is big enough to need one. A
@@ -207,7 +269,7 @@ function drawList(body: HTMLElement, told: Options, carried: string): void {
     if (one.count === 0 && !one.chosen) pick.disabled = true;
 
     pick.addEventListener("click", () => {
-      go(toggled(told.key, carried, told.ops[0] ?? "eq", one.value, !one.chosen));
+      go(toggled(told.key, carried, operatorFor(told, carried), one.value, !one.chosen));
     });
     row.append(pick);
     list.append(row);
@@ -232,6 +294,58 @@ function drawList(body: HTMLElement, told: Options, carried: string): void {
 function drawRange(body: HTMLElement, key: string, carried: string, kind: string, ops: string[]): void {
   body.replaceChildren();
   const now = held(key, carried);
+
+  // A yes/no is two buttons, not a number box. `favorite` is carried as
+  // 1/0 and rendering it as `<input type=number>` asked somebody to type
+  // a boolean.
+  if (kind === "bool") {
+    const pair = document.createElement("div");
+    pair.className = "filter-choice";
+    for (const [value, said] of [
+      ["1", "yes"],
+      ["0", "no"],
+    ] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "filter-choice-mode";
+      button.dataset.option = value;
+      button.dataset.label = said;
+      button.textContent = said;
+      const on = now.has(value);
+      button.setAttribute("aria-pressed", String(on));
+      // Choosing what is already chosen clears it, so the pair behaves
+      // like the tri-state the question actually has: yes, no, or not
+      // asked at all.
+      button.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", on ? null : value)));
+      pair.append(button);
+    }
+    body.append(pair);
+    return;
+  }
+
+  // A field this application has no name of its own for: the key is
+  // typed because there is no curated list of them, and the whole point
+  // of the advanced door is asking about one nothing here anticipated.
+  if (kind === "pair") {
+    const form = document.createElement("form");
+    form.className = "filter-range";
+    const field = document.createElement("input");
+    field.type = "text";
+    field.placeholder = "key=value";
+    field.setAttribute("aria-label", `${key}, written key equals value`);
+    field.value = [...now][0] ?? "";
+    const apply = document.createElement("button");
+    apply.type = "submit";
+    apply.textContent = "apply";
+    form.append(field, apply);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const wanted = field.value.trim();
+      go(onlyClause(key, carried, ops[0] ?? "eq", wanted === "" ? null : wanted));
+    });
+    body.append(form);
+    return;
+  }
   const form = document.createElement("form");
   form.className = "filter-range";
 
@@ -323,7 +437,7 @@ async function fill(section: HTMLDetailsElement): Promise<void> {
   try {
     const answered = await fetch(`/g/options?${asked.toString()}`, { headers: { accept: "application/json" } });
     if (!answered.ok) throw new Error(`${answered.status}`);
-    drawList(body, (await answered.json()) as Options, carried);
+    drawList(body, (await answered.json()) as Options, carried, () => void fill(section));
     body.dataset.state = "ready";
   } catch {
     // Say which way it went. A section that silently stays on

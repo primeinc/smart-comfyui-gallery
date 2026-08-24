@@ -206,6 +206,24 @@ def labels(conn, query: resultset.GalleryQuery) -> dict[str, dict[int, str]]:
     return made
 
 
+def asked_kind(query: resultset.GalleryQuery) -> str | None:
+    """The one medium this question is about, or None.
+
+    Which dimensions apply is decided by the medium being asked about --
+    a sound has no aperture -- and the question can now say which medium
+    in two places: the `kind=` scope that every bookmark carries, and the
+    `media.kind` facet the drawer writes so kinds can be OR'd.
+
+    Exactly ONE kind, from either. Two OR'd kinds mean the answer holds
+    both, so a dimension either of them carries still applies; and no
+    kind at all means the answer may hold anything.
+    """
+    if query.kind is not None:
+        return query.kind
+    held = {str(one.value) for one in query.facets if one.key == "media.kind"}
+    return next(iter(held)) if len(held) == 1 else None
+
+
 def counts(query: resultset.GalleryQuery) -> dict[str, int]:
     """How many clauses the question carries per dimension.
 

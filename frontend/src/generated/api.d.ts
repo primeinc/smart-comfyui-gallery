@@ -2127,6 +2127,7 @@ export interface components {
             note: string;
             value_kind: string;
             ops: string[];
+            multi: string;
             options: components["schemas"]["FilterOption"][];
             more: number;
         };

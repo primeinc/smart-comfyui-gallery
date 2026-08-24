@@ -253,7 +253,7 @@ def test_an_answer_of_mixed_media_is_described_as_one(page: Page, live: Live, un
     clip and a photograph, is one answer with one description."""
     _analyze(page)
     assert _total(page) == f"{WHOLE} results"
-    assert _bars(page, "kind") == {"image": WHOLE - 1, "video": 1}
+    assert _bars(page, "media.kind") == {"image": WHOLE - 1, "video": 1}
     assert _bars(page, "has.generation") == {"yes": len(MADE), "no": 2}
 
 
@@ -273,7 +273,7 @@ def test_describing_a_medium_with_nothing_to_say_says_nothing(page: Page, live: 
     assert _total(page) == "1 result"
     assert _prompts(page) == {}
     assert page.locator("[data-analyze-loras]").count() == 0
-    assert _bars(page, "kind") == {}, "one video, described as 'video, 100%', is the question read back"
+    assert _bars(page, "media.kind") == {}, "one video, described as 'video, 100%', is the question read back"
     assert page.locator(".analyze-bar").count() == 0
 
     # the control: the SAME surface over an answer that does hold a

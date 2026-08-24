@@ -51,6 +51,13 @@ GROUPS: tuple[tuple[str, str], ...] = (
     ("time", "time"),
     ("generation", "generation"),
     ("camera", "camera"),
+    #: LAST, and deliberately last: the long tail nothing here
+    #: curated. A dimension above is a fact this application
+    #: understands well enough to name in a person's words; a
+    #: `param_key` row is a string some tool wrote. Four hundred
+    #: discovered keys in the drawer would bury the twenty that mean
+    #: something, so they live behind their own heading.
+    ("advanced", "advanced metadata"),
 )
 
 #: Every file kind. A dimension that names no kinds applies to all of
@@ -93,6 +100,21 @@ class Dimension:
     kinds: tuple[str, ...] = ()
     #: A short sentence for the surface, where the label alone misleads.
     note: str = ""
+    #: How choosing SEVERAL values reads.
+    #:
+    #:   ""      one at a time; choosing another replaces it
+    #:   "any"   several, OR'd -- the only sane reading for a dimension a
+    #:           file has exactly ONE of. "image or video". AND there
+    #:           would ask for a file that is two things at once and
+    #:           always answer nothing.
+    #:   "both"  several, and BOTH readings are real, so the surface
+    #:           offers the choice. A picture carries several LoRAs and
+    #:           several people at once, so "any of these" and "all of
+    #:           these" are questions somebody genuinely asks separately.
+    #:
+    #: Which is right is a fact about the dimension, not a preference, so
+    #: it is stated once here rather than guessed at by each surface.
+    multi: str = ""
     #: Whether the filter surface LISTS this dimension.
     #:
     #: False for the links another surface makes rather than a person:
@@ -176,15 +198,64 @@ DIMENSIONS: tuple[Dimension, ...] = (
         ops=("gte",),
         note="at least this many stars",
     ),
-    Dimension(key="album", label="album", group="mine", carried="scope", value_kind="slug"),
-    Dimension(key="folder", label="folder", group="mine", carried="scope", value_kind="slug"),
+    #: A scope, and now a discoverable one. It held a slug and offered no
+    #: list, so the drawer showed a heading with nothing under it -- a
+    #: filter you can only use if you already know the answer.
+    Dimension(
+        key="album",
+        label="album",
+        group="mine",
+        carried="scope",
+        value_kind="slug",
+        discover=(
+            "SELECT e.slug, c.name, COUNT(DISTINCT f.id) FROM file f"
+            " JOIN collection_file cf ON cf.file_id = f.id"
+            " JOIN collection c ON c.id = cf.collection_id AND c.archived_at IS NULL"
+            " JOIN entity e ON e.id = c.id"
+            " WHERE f.missing_since IS NULL {scope}"
+            " GROUP BY c.id ORDER BY COUNT(DISTINCT f.id) DESC, c.name COLLATE NOCASE"
+        ),
+    ),
+    Dimension(
+        key="folder",
+        label="folder",
+        group="mine",
+        carried="scope",
+        value_kind="slug",
+        discover=(
+            "SELECT e.slug, fo.name, COUNT(*) FROM file f"
+            " JOIN folder fo ON fo.id = f.folder_id"
+            " JOIN entity e ON e.id = fo.id"
+            " WHERE f.missing_since IS NULL {scope}"
+            " GROUP BY fo.id ORDER BY COUNT(*) DESC, fo.name COLLATE NOCASE"
+        ),
+    ),
     # --- media ---------------------------------------------------------
+    #: Two spellings of one question, on purpose.
+    #:
+    #: `kind=` is a GalleryQuery scope and every bookmark, saved
+    #: collection and cross-surface link uses it -- so it stays, and
+    #: stays described, or those chips would print a raw key. But a scope
+    #: holds ONE value, and "image or video" is the most ordinary
+    #: multi-select there is. The surface writes `media.kind`, which
+    #: can be OR'd. Both compose; asking one thing twice is redundant
+    #: rather than wrong.
     Dimension(
         key="kind",
         label="kind",
         group="media",
         carried="scope",
         value_kind="text",
+        offered=False,
+    ),
+    Dimension(
+        key="media.kind",
+        label="kind",
+        group="media",
+        carried="facet",
+        value_kind="text",
+        ops=("any", "eq"),
+        multi="any",
         discover=(
             "SELECT f.kind, f.kind, COUNT(*) FROM file f"
             " WHERE f.missing_since IS NULL {scope}"
@@ -221,7 +292,31 @@ DIMENSIONS: tuple[Dimension, ...] = (
         note="seconds",
     ),
     # --- people --------------------------------------------------------
-    Dimension(key="person", label="person", group="people", carried="scope", value_kind="slug"),
+    #: As with `kind`: the scope is what a person's own page links with,
+    #: the facet is what the drawer writes -- because "Hannah or Lelly"
+    #: and "Hannah AND Lelly" are both real questions about a
+    #: photograph, and a scope can express neither.
+    Dimension(key="person", label="person", group="people", carried="scope", value_kind="slug", offered=False),
+    Dimension(
+        key="people.person",
+        label="person",
+        group="people",
+        carried="facet",
+        value_kind="id",
+        ops=("any", "eq"),
+        multi="both",
+        note="any of them, or all of them in one picture",
+        names="SELECT p.id, p.name FROM person p JOIN json_each(?) ids ON ids.value = p.id",
+        discover=(
+            "SELECT p.id, COALESCE(p.name, e.slug), COUNT(DISTINCT f.id) FROM file f"
+            " JOIN derived_file_person fp ON fp.file_id = f.id"
+            " JOIN derived_face_run fr ON fr.id = fp.run_id AND fr.is_primary = 1"
+            " JOIN person p ON p.id = fp.person_id"
+            " JOIN entity e ON e.id = p.id"
+            " WHERE f.missing_since IS NULL {scope}"
+            " GROUP BY p.id ORDER BY COUNT(DISTINCT f.id) DESC, COALESCE(p.name, e.slug) COLLATE NOCASE"
+        ),
+    ),
     Dimension(
         key="has.people",
         label="anybody in it",
@@ -249,6 +344,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
             " GROUP BY p.id ORDER BY COUNT(*) DESC, p.name COLLATE NOCASE"
         ),
         names=PLACE_NAMES,
+        ops=("any", "eq"),
+        multi="both",
     ),
     Dimension(
         key="has.place",
@@ -284,6 +381,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
             " WHERE f.missing_since IS NULL {scope}"
             " GROUP BY mc.origin ORDER BY COUNT(*) DESC, mc.origin"
         ),
+        ops=("any", "eq"),
+        multi="any",
     ),
     Dimension(
         key="context.disputed",
@@ -345,6 +444,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         value_kind="id",
         discover=_artifact_values("checkpoint"),
         names=ARTIFACT_NAMES,
+        ops=("any", "eq"),
+        multi="both",
     ),
     Dimension(
         key="generation.lora",
@@ -355,6 +456,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         note="choosing two means both were applied",
         discover=_artifact_values("lora"),
         names=ARTIFACT_NAMES,
+        ops=("any", "eq"),
+        multi="both",
     ),
     Dimension(
         key="generation.workflow",
@@ -370,6 +473,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
             " GROUP BY a.id ORDER BY COUNT(*) DESC, a.name COLLATE NOCASE"
         ),
         names=ARTIFACT_NAMES,
+        ops=("any", "eq"),
+        multi="both",
     ),
     Dimension(
         key="generation.tool",
@@ -378,6 +483,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         carried="facet",
         value_kind="text",
         discover=_generation_values("tool"),
+        ops=("any", "eq"),
+        multi="any",
     ),
     Dimension(
         key="generation.sampler",
@@ -386,6 +493,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         carried="facet",
         value_kind="text",
         discover=_generation_values("sampler"),
+        ops=("any", "eq"),
+        multi="any",
     ),
     Dimension(
         key="generation.scheduler",
@@ -394,6 +503,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         carried="facet",
         value_kind="text",
         discover=_generation_values("scheduler"),
+        ops=("any", "eq"),
+        multi="any",
     ),
     Dimension(
         key="generation.steps",
@@ -455,6 +566,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         value_kind="id",
         discover=_artifact_values("captured_with"),
         names=ARTIFACT_NAMES,
+        ops=("any", "eq"),
+        multi="both",
     ),
     Dimension(
         key="capture.lens",
@@ -464,6 +577,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         value_kind="id",
         discover=_artifact_values("mounted_lens"),
         names=ARTIFACT_NAMES,
+        ops=("any", "eq"),
+        multi="both",
     ),
     Dimension(
         key="capture.iso",
@@ -503,6 +618,33 @@ DIMENSIONS: tuple[Dimension, ...] = (
         value_kind="num",
         ops=("eq", "gte", "lte"),
         note="seconds",
+    ),
+    # --- the long tail ---------------------------------------------------
+    Dimension(
+        key="param.has",
+        label="carries the field",
+        group="advanced",
+        carried="facet",
+        value_kind="text",
+        ops=("any", "eq"),
+        multi="any",
+        note="every metadata key any tool wrote, as the registry recorded it",
+        discover=(
+            "SELECT fp.key, fp.key, COUNT(DISTINCT f.id) FROM file f"
+            " JOIN file_param fp ON fp.file_id = f.id"
+            " WHERE f.missing_since IS NULL {scope}"
+            " GROUP BY fp.key ORDER BY COUNT(DISTINCT f.id) DESC, fp.key COLLATE NOCASE"
+        ),
+    ),
+    Dimension(
+        key="param.is",
+        label="field is",
+        group="advanced",
+        carried="facet",
+        value_kind="pair",
+        ops=("eq", "any"),
+        multi="any",
+        note="written key=value, for a field this application has no name of its own for",
     ),
 )
 
@@ -576,6 +718,33 @@ def chip(one: Dimension, op: str, value, named: dict | None = None) -> str:
     """A whole clause, as a person reads it: `LoRA detail-tweaker`,
     `rating from 4`, `AI generated yes`."""
     return f"{one.label} {OP_WORDS.get(op, op + ' ')}{spelled_value(one, value, named)}".strip()
+
+
+def chip_any(one: Dimension, values, named: dict | None = None) -> str:
+    """Several values of one dimension, OR'd, as ONE clause.
+
+    An OR group is one thing the question says, so it is one chip that
+    removes as one. Three chips reading `kind image`, `kind video`,
+    `kind audio` would look exactly like three ANDed clauses -- which is
+    the opposite question, and one that answers nothing.
+    """
+    spelled = [spelled_value(one, value, named) for value in values]
+    if len(spelled) == 1:
+        return f"{one.label} {spelled[0]}"
+    return f"{one.label} {', '.join(spelled[:-1])} or {spelled[-1]}"
+
+
+def chip_all(one: Dimension, values, named: dict | None = None) -> str:
+    """Several values of one dimension, ANDed, as ONE chip.
+
+    Said in words, because `LoRA A` beside `LoRA B` is ambiguous to
+    read: it is exactly what an OR would look like. "all of" is the
+    difference.
+    """
+    spelled = [spelled_value(one, value, named) for value in values]
+    if len(spelled) == 1:
+        return f"{one.label} {spelled[0]}"
+    return f"{one.label} all of {', '.join(spelled)}"
 
 
 def unknown_facets() -> tuple[str, ...]:

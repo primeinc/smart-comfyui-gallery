@@ -179,7 +179,7 @@ def test_the_surface_offers_far_more_than_the_header_ever_did(page: Page, live: 
     _open_filters(page)
     offered = page.evaluate("() => [...document.querySelectorAll('[data-filter]')].map(d => d.dataset.filter)")
     assert len(offered) >= 20, f"only {len(offered)} filters reached the surface"
-    for key in ("has.generation", "generation.checkpoint", "generation.lora", "kind", "capture.iso"):
+    for key in ("has.generation", "generation.checkpoint", "generation.lora", "media.kind", "capture.iso"):
         assert key in offered, f"{key} is answerable and was not offered"
     # and the machine's own links are described but never listed
     assert "context.moment" not in offered
@@ -196,8 +196,8 @@ def test_the_values_are_counted_and_the_counts_are_real(page: Page, live: Live, 
     _open_dimension(page, "generation.checkpoint")
     assert _values(page, "generation.checkpoint") == {"dreamshaper_8": 4, "juggernautXL": 2}
 
-    _open_dimension(page, "kind")
-    assert _values(page, "kind") == {"image": WHOLE - 1, "video": 1}
+    _open_dimension(page, "media.kind")
+    assert _values(page, "media.kind") == {"image": WHOLE - 1, "video": 1}
 
 
 def test_choosing_a_value_narrows_the_answer_and_says_so(page: Page, live: Live, unbroken):
@@ -256,7 +256,7 @@ def test_the_surface_is_not_a_feature_for_one_file_type(page: Page, live: Live, 
     """A video is as filterable as a picture, and the sections offered
     follow the medium being asked about."""
     _open_gallery(page)
-    _pick(page, "kind", "video")
+    _pick(page, "media.kind", "video")
     assert _cells(page) == 1
     assert _chips(page) == ["kind video"]
 
@@ -398,3 +398,83 @@ def test_slash_puts_the_caret_in_the_search_box(page: Page, live: Live, unbroken
     # must not turn the lights out on the way past the l
     page.keyboard.type("lantern")
     assert page.input_value('[data-ask] input[type="search"]') == "lantern"
+
+
+# --- saying more than one thing about one dimension -------------------------
+
+
+def test_choosing_two_kinds_means_either_and_reads_as_one_chip(page: Page, live: Live, unbroken):
+    """The most ordinary multi-select there is, and it was unaskable: a
+    scope holds one value, and repeated facets ANDed -- which for a
+    dimension a file has exactly one of answers nothing, every time."""
+    _open_gallery(page)
+    _pick(page, "media.kind", "image")
+    assert _cells(page) == WHOLE - 1
+    _pick(page, "media.kind", "video")
+    assert _cells(page) == WHOLE, "either kind, not both at once"
+
+    # ONE chip, because an OR group is one thing the question says.
+    # Two chips would read exactly like two ANDed clauses.
+    assert _chips(page) == ["kind image or video"], _chips(page)
+
+
+def test_any_and_all_are_offered_only_where_both_are_real(page: Page, live: Live, unbroken):
+    """A file has one kind, so "all of these kinds" is a question that
+    answers nothing by construction and is not offered. A picture
+    carries several LoRAs, so both readings are real."""
+    _open_gallery(page)
+    _open_dimension(page, "media.kind")
+    assert page.locator('[data-filter-choice="media.kind"]').count() == 0
+
+    _open_dimension(page, "generation.lora")
+    assert page.locator('[data-filter-choice="generation.lora"]').count() == 1
+
+
+def test_switching_to_all_respells_the_clauses_already_held(page: Page, live: Live, unbroken):
+    """The switch changes the QUESTION, not merely the next click -- or
+    the control would sit there disagreeing with the chips above it."""
+    _open_gallery(page)
+    _pick(page, "generation.lora", "filmGrain")
+    _pick(page, "generation.lora", "detailTweaker")
+    assert _cells(page) == len(MADE), "either LoRA"
+    assert _chips(page) == ["LoRA filmGrain or detailTweaker"], _chips(page)
+
+    _open_dimension(page, "generation.lora")
+    page.click('[data-filter-choice="generation.lora"] [data-mode="all"]')
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    assert _cells(page) == 0, "no picture in this library used both"
+    assert _chips(page) == ["LoRA all of filmGrain, detailTweaker"], _chips(page)
+
+
+def test_the_advanced_door_is_there_and_asks_the_long_tail(page: Page, live: Live, unbroken):
+    """The schema records every key any tool emitted and registers it,
+    and `param_key`'s own comment says the registry is what the facet UI
+    is generated from. Nothing generated one."""
+    _open_gallery(page)
+    _open_filters(page)
+    groups = page.evaluate(
+        "() => [...document.querySelectorAll('[data-filter-group]')].map(g => g.dataset.filterGroup)"
+    )
+    assert "advanced" in groups, groups
+    assert groups[-1] == "advanced", "last, so four hundred discovered keys do not bury the curated twenty"
+
+    _open_dimension(page, "param.has")
+    offered = _values(page, "param.has")
+    assert offered, "the registry has keys and they are listed with counts"
+    # Discovered, not curated: these are whatever the tools that made
+    # this library happened to write, which is the whole point of the
+    # door. Asserting a PARTICULAR key would be asserting the parsers'
+    # current output, which is not what this surface promises.
+    picked = next(iter(offered))
+    _pick(page, "param.has", picked)
+    assert _cells(page) == offered[picked], f"choosing {picked!r} leaves exactly what it was counted at"
+    assert _chips(page) == [f"carries the field {picked}"], _chips(page)
+
+
+def test_folder_and_album_offer_their_values_now(page: Page, live: Live, unbroken):
+    """They held a slug and offered no list, so the drawer showed a
+    heading with nothing under it -- a filter you can only use if you
+    already know the answer."""
+    _open_gallery(page)
+    _open_dimension(page, "folder")
+    assert _values(page, "folder"), "a folder list, counted"
