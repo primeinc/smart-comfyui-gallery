@@ -128,8 +128,8 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     return Image.open(path)
 
 
-def open_bounded(path: str | os.PathLike[str], want: int) -> Image.Image:
-    """A still no larger than `want` on its longest side, decoded cheaply.
+def open_bounded(path: str | os.PathLike[str], want: int, *, edge: str = "longest") -> Image.Image:
+    """A still bounded to `want` on one edge, decoded cheaply.
 
     The same picture `open_still` returns, except that nothing here ever
     owns more pixels than the caller said it needs. That is a different
@@ -155,22 +155,32 @@ def open_bounded(path: str | os.PathLike[str], want: int) -> Image.Image:
     derivative asked for, so a shortcut never costs a worse picture, and
     development remains the fallback.
 
+    WHICH edge is bounded is the caller's, and the two answers are not
+    interchangeable. A derivative wants its LONGEST side capped: a 1440
+    preview is 1440 at its widest whatever its shape. A model wants its
+    SHORTEST side floored, because a transform that resizes the short
+    edge to 224 and centre-crops (open_clip's, and most others') would
+    UPSCALE from anything smaller -- inventing detail the original had,
+    which is worse than the decode it saved.
+
     Orientation is NOT applied here. Every still leaves this module as
     stored, turned once by db/oriented.py from the tag ingest recorded --
     the same rule `open_still` states, for the same reason.
     """
     ensure_decoders()
     if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
-        preview = _raw_preview(path, want)
+        # The embedded preview is accepted on the same test either way:
+        # it must not be smaller than what was asked for.
+        preview = _raw_preview(path, want, edge=edge)
         if preview is not None:
             return preview
         return open_still(path)
     opened = Image.open(path)
-    _draft_to_edge(opened, want)
+    _draft_to_edge(opened, want, edge)
     return opened
 
 
-def _draft_to_edge(opened: Image.Image, want: int) -> None:
+def _draft_to_edge(opened: Image.Image, want: int, edge: str = "longest") -> None:
     """Ask the reader for the smallest scale that still covers `want`.
 
     The box must keep the picture's own aspect. `draft` chooses a scale
@@ -180,18 +190,22 @@ def _draft_to_edge(opened: Image.Image, want: int) -> None:
     tall. Four times the pixels, for a derivative whose longest side is
     1440 either way. Asked as (1440, 960) it comes back 1440x960.
 
+    `edge` says which side the bound is on: "longest" caps it, which is
+    what a derivative wants, and "shortest" floors it, which is what a
+    model's own transform needs.
+
     A no-op for every reader without scales to choose from, and for a
     picture already smaller than `want`.
     """
     width, height = opened.size
-    longest = max(width, height)
-    if longest <= want:
+    measured = max(width, height) if edge == "longest" else min(width, height)
+    if measured <= want:
         return
-    scale = want / longest
+    scale = want / measured
     opened.draft(None, (max(1, round(width * scale)), max(1, round(height * scale))))
 
 
-def _raw_preview(path: str | os.PathLike[str], want: int) -> Image.Image | None:
+def _raw_preview(path: str | os.PathLike[str], want: int, *, edge: str = "longest") -> Image.Image | None:
     """A RAW file's embedded JPEG preview, or None to develop it instead.
 
     None covers every case where the shortcut is not honestly available:
@@ -218,9 +232,9 @@ def _raw_preview(path: str | os.PathLike[str], want: int) -> Image.Image | None:
     if found.format != ThumbFormat.JPEG or not isinstance(found.data, bytes):
         return None
     preview = open_bytes(found.data)
-    _draft_to_edge(preview, want)
+    _draft_to_edge(preview, want, edge)
     preview.load()
-    if max(preview.size) < want:
+    if (max(preview.size) if edge == "longest" else min(preview.size)) < want:
         # Smaller than what was asked for. Enlarging a preview is not a
         # shortcut, it is a worse picture, so pay for the development.
         return None

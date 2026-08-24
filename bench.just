@@ -45,6 +45,12 @@ clip-transfer *args:
 clip-retrieval *args:
     @"$python" benchmarks/openclip_retrieval.py "$@"
 
+# What bounding OpenCLIP's input costs and buys, per population:
+# benchmarks/results/openclip_raster[_<under>].json. Run the populations
+# APART -- a bound does nothing to a PNG and changes a raw's rendering.
+clip-raster *args:
+    @"$python" benchmarks/openclip_raster.py "$@"
+
 # What a JOB achieves end to end and where its time goes, read off the
 # runner's own phase durations: benchmarks/results/job_<name>.json.
 # `--job scan|embed|hash|context`, `--under <root>` to pick a population.
