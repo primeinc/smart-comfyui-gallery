@@ -241,25 +241,6 @@ consequences the architecture should keep room for, not work.
 
 ## Correctness
 
-- **Filmstrip requests thumbnails that cannot exist.** `media_view.py`
-  gives every neighbour `/thumb/{slug}` regardless of kind, and
-  `_media_viewer.html` renders it unconditionally, but `/thumb` returns
-  404 for audio and documents (`app.py:803`). A walk containing either
-  produces first-party 404s. Needs kind-aware cells and a mixed-media
-  browser fixture — the current filmstrip corpus is entirely PNGs, which
-  is why it passes.
-
-- **A new bundle can escape the committed-bundle gate.** `web::fresh`
-  rebuilds and runs `git diff --quiet -- sg_web/static/build`, which
-  catches a modified or deleted tracked bundle but not a newly generated
-  untracked one. Add an entry point, forget to `git add` its output, and
-  local tests pass while a clean checkout 404s.
-
-- **`static_v` does not version the bundles.** `_static_version()` reads
-  only the immediate files in `sg_web/static`, but templates stamp that
-  value onto `/static/build/*.js`. Changing only TypeScript leaves the
-  cache-buster unchanged.
-
 - **Thirty-two substring bans cannot tell a statement from a sentence.**
   `sglint/policy.py` `MUST_NOT_CONTAIN` holds 59 banned tokens, and 32
   of them name something this tree uses five or more times elsewhere:
@@ -286,26 +267,31 @@ consequences the architecture should keep room for, not work.
   prose-fragile ban should move to whichever states what it means, and
   the ones that cannot should at least stop scanning comments.
 
+- **A big enough scan still crosses `busy_timeout`.** The walk no longer
+  holds SQLite's write lane (db/scan.py `survey`/`record`), and over the
+  sample roots the hold fell from 3,116 ms per 1000 files to 147 ms
+  (`just bench scan-lock`). 147 ms per 1000 crosses the 5000 ms
+  `busy_timeout` at roughly 34,000 files, and libraries are bigger than
+  that -- so on a large first scan a writing ROUTE can still wait five
+  seconds and then 500. The worker is fine (a busy claim is now no turn
+  rather than a crash), but a person rating a picture mid-scan is not.
+
+  The fix is to stop making the write half one transaction: `record` +
+  `apply_scan` could commit in bounded batches, which trades "a scan is
+  one atomic reconciliation" for "nothing waits more than a moment".
+  That trade needs deciding rather than assuming -- a half-applied scan
+  is a state the module has never had to describe.
+
+- **`neighborhood`'s test matrix is short two cases** the filmstrip
+  claims to support: the neighbourhood under a FILTERED ResultSet, and
+  under a SEMANTIC one. `sort=oldest` covers the non-default timed
+  order; nothing covers those two.
+
 - **`unbroken` is opt-in.** The fixture that fails a browser test on
   first-party HTTP failures and console errors has to be requested by
   name, so a test author who forgets it gets no such check. It should be
   the default for browser tests, with an explicit opt-out for tests that
   exercise failure deliberately.
-
-- **Two build contracts.** The README documents `npm run build-web`,
-  which does not clear stale output; `just web build` removes
-  `sg_web/static/build` first because esbuild leaves obsolete files
-  behind. One canonical command should own the clean.
-
-- **`neighborhood` hydrates wide and throws most of it away.** It calls
-  `_named()`, which resolves uuid and runs caption hydration
-  (`derived.said_first`) for every neighbour, and `FilmstripItem`
-  discards both. A bounded narrow read for the strip, or a hydration
-  flag on `_named`, stops the walk paying for fields nobody renders.
-  Its test matrix is also short two cases the filmstrip claims to
-  support: neighborhood under a FILTERED ResultSet, and under a
-  SEMANTIC one. `sort=oldest` covers the non-default timed order;
-  nothing covers those two.
 
 - **`neighborhood` clamps a count it says it refuses.** The bound is
   documented and tested as a refusal, and implemented as
