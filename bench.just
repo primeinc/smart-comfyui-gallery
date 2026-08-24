@@ -25,3 +25,9 @@ browser-report *args:
 # library: benchmarks/results/thumbnail_phases.json
 thumbs-phases *args:
     @"$python" benchmarks/thumbnail_phases.py "$@"
+
+# OpenCLIP throughput against batch size, with vector equivalence against
+# batch 1: benchmarks/results/openclip_batch.json. `--under swarm-mixed`
+# picks a population; source megapixels change the answer.
+clip-batch *args:
+    @"$python" benchmarks/openclip_batch.py "$@"
