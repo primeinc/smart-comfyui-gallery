@@ -1239,7 +1239,8 @@
       return {
         slug: cell.dataset.slug,
         name: shown?.getAttribute("alt") || cell.dataset.slug,
-        kind: cell.dataset.kind ?? ""
+        kind: cell.dataset.kind ?? "",
+        thumb: shown?.getAttribute("src") ?? ""
       };
     }
     return null;
@@ -1337,7 +1338,7 @@
       item.dataset.compareSlug = one.slug;
       item.dataset.at = String(at);
       const shown = document.createElement("img");
-      shown.src = `/thumb/${one.slug}`;
+      shown.src = one.thumb ?? `/thumb/${one.slug}`;
       shown.alt = one.name;
       shown.title = one.name;
       const drop = document.createElement("button");

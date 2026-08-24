@@ -105,6 +105,8 @@ def _analysis(conn, query: resultset.GalleryQuery, total: int, weights: str, vie
 
 
 def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: str = "gallery") -> dict:
+    from vision import thumbs
+
     conn = connect.connect(state.db_path)
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
@@ -126,12 +128,21 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         listed = (
             pages.table_of(conn, [item["id"] for item in shape["items"]], state.actor_id) if view == "table" else None
         )
+        if listed:
+            for row in listed:
+                row["thumb"] = thumbs.asset_url(row.get("sha"), row["slug"])
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
     # a caption that mentions no word of the phrase is the ordinary
     # outcome of a word match (retrieval's `unmatched`), said quietly
     unmatched = (provenance.get("unmatched") or {}).get("captions")
+    # Where each cell points, resolved ONCE for the page. The ResultSet
+    # already carried the content hash out of its own row read, so this
+    # is arithmetic rather than a query -- and it is what stops sixty
+    # cells being sixty connections (vision/thumbs.py `asset_url`).
+    for item in shape["items"]:
+        item["thumb"] = thumbs.asset_url(item.get("sha"), item["slug"])
     return {
         "items": shape["items"],
         "page": shape["page"],
@@ -520,9 +531,16 @@ class ResultItem(Wire):
     said: str | None
     #: position in the whole answer, 1-based -- not within the page
     ordinal: int
+    #: Where to point an `<img>`: the content-addressed asset when the
+    #: bytes have been hashed, the slug route when they have not.
+    #: RESOLVED ONCE, here, for the whole page -- which is the entire
+    #: point (vision/thumbs.py `asset_url`).
+    thumb: str
 
 
 def result_items(rows: list[dict]) -> list[ResultItem]:
+    from vision import thumbs
+
     return [
         ResultItem(
             id=row["id"],
@@ -532,6 +550,7 @@ def result_items(rows: list[dict]) -> list[ResultItem]:
             uuid=row["uuid"],
             said=row["said"],
             ordinal=row["ordinal"],
+            thumb=thumbs.asset_url(row.get("sha"), row["slug"]),
         )
         for row in rows
     ]

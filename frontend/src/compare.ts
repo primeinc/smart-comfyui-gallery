@@ -39,6 +39,15 @@ export interface Kept {
   slug: string;
   name: string;
   /**
+   * Where its picture lives, as the surface that kept it was told.
+   *
+   * Content-addressed and immutable when the bytes have been hashed
+   * (vision/thumbs.py `asset_url`), so the tray costs no application
+   * request at all. Absent for a surface that does not carry one yet,
+   * where the slug route still answers.
+   */
+  thumb?: string;
+  /**
    * What it is, when the surface that kept it said so.
    *
    * Optional because not every grid in this application spells it, and
@@ -104,6 +113,7 @@ function current(root: HTMLElement): Kept | null {
       slug: cell.dataset.slug,
       name: shown?.getAttribute("alt") || cell.dataset.slug,
       kind: cell.dataset.kind ?? "",
+      thumb: shown?.getAttribute("src") ?? "",
     };
   }
   return null;
@@ -255,7 +265,10 @@ function drawTray(tray: HTMLElement): void {
     item.dataset.at = String(at);
 
     const shown = document.createElement("img");
-    shown.src = `/thumb/${one.slug}`;
+    // The surface that kept it knew where its picture lives; keeping
+    // the URL rather than the slug means the tray never asks the
+    // application to work it out again.
+    shown.src = one.thumb ?? `/thumb/${one.slug}`;
     shown.alt = one.name;
     shown.title = one.name;
 

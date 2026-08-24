@@ -272,7 +272,11 @@ const asked = (spelled: string, take: number | null): Rule => {
     popGrid.replaceChildren(
       ...told.items.map((item) => {
         const img = new Image();
-        img.src = `/thumb/${item.slug}`;
+        // The URL the ANSWER resolved, not one assembled here: the
+        // ResultSet already knows the content hash, and a preview
+        // that rebuilt `/thumb/<slug>` would send every rail hover
+        // back through slug resolution for pictures nobody opened.
+        img.src = item.thumb;
         img.alt = item.name;
         return img;
       }),

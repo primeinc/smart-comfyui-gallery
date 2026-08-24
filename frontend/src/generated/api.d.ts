@@ -1198,6 +1198,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/thumbs/{shard}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** AssetBytes */
+        get: operations["ThumbsShardNameAssetBytes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/thumb/{slug}": {
         parameters: {
             query?: never;
@@ -2607,6 +2624,7 @@ export interface components {
             uuid: string;
             said: string | null;
             ordinal: number;
+            thumb: string;
         };
         /** RootForm */
         RootForm: {
@@ -5643,6 +5661,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ThumbsShardNameAssetBytes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shard: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File Download */
+            200: {
+                headers: {
+                    /** @description File size in bytes */
+                    "content-length"?: string;
+                    /** @description Last modified data-time in RFC 2822 format */
+                    "last-modified"?: string;
+                    /** @description Entity tag */
+                    etag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "": string;
                 };
             };
             /** @description Bad request syntax or unsupported method */

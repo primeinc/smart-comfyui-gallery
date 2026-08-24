@@ -270,16 +270,19 @@ def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypat
         day = pages.timeline_days(conn)[0][0]
         assert pages.timeline_months(conn) != []
         assert len(pages.timeline_events(conn)) >= 1
-        link_sql, link_value = facets.predicate(facets.facet("context.local_day", "eq", day))
-        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", (link_value,)).fetchone()[0]
+        # `predicate` returns the values a template binds, as a LIST:
+        # most keys bind one, and an advanced `key=value` binds two,
+        # because the long tail is rows rather than columns.
+        link_sql, link_values = facets.predicate(facets.facet("context.local_day", "eq", day))
+        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", link_values).fetchone()[0]
         assert opened >= 1, "the link answers while the interpretation is current"
 
         monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
         assert pages.timeline_months(conn) == [], "an upgraded build shows honest absence, not yesterday's ladder"
         assert pages.timeline_days(conn) == []
         assert pages.timeline_events(conn) == []
-        link_sql, link_value = facets.predicate(facets.facet("context.local_day", "eq", day))
-        assert conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", (link_value,)).fetchone()[0] == 0, (
+        link_sql, link_values = facets.predicate(facets.facet("context.local_day", "eq", day))
+        assert conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", link_values).fetchone()[0] == 0, (
             "the facet link and the timeline must agree on what 'current' means"
         )
         assert context.occurrences(conn, "generation") == [], "the occurrence reader goes dark with every other reader"

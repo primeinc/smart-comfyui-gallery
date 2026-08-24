@@ -1627,6 +1627,7 @@ def children(conn, file_id: int):
 #: answer holds.
 TABLE_ROWS = (
     "SELECT f.id, e.slug, f.name, f.kind, f.size, f.mtime, f.width, f.height, f.duration,"
+    " f.content_sha256,"
     " g.tool, g.seed, g.steps, g.cfg, g.sampler,"
     " ck.name, cam.name,"
     " cap.iso, cap.f_number, cap.focal_length,"
@@ -1655,6 +1656,7 @@ TABLE_COLUMNS = (
     "width",
     "height",
     "duration",
+    "sha",
     "tool",
     "seed",
     "steps",
@@ -1687,3 +1689,25 @@ def table_of(conn, file_ids, actor_id: int | None = None) -> list[dict]:
     rows = conn.execute(TABLE_ROWS, (actor_id, actor_id, json.dumps(held)))
     made = {row[0]: dict(zip(TABLE_COLUMNS, row, strict=True)) for row in rows}
     return [made[one] for one in held if one in made]
+
+
+#: One present file with these exact bytes.
+#:
+#: The derivative cache is keyed on content, so a cache MISS knows the
+#: hash and needs a file -- any file -- carrying it, to render from. Any
+#: will do: they are the same bytes by definition, which is the whole
+#: reason the cache is content-addressed. `missing_since IS NULL` because
+#: a file that is offline cannot be rendered from, and another copy of
+#: the same content may still be here.
+FILE_OF_CONTENT = (
+    "SELECT f.id, f.kind FROM file f WHERE f.content_sha256 = ? AND f.missing_since IS NULL ORDER BY f.id LIMIT 1"
+)
+
+
+def file_of_content(conn, sha: str):
+    """`(file_id, kind)` for one present file with these bytes, or None.
+
+    Where the bytes ARE is db/detect.py `path_of`, which composes the
+    path from the folder tree; there is no stored path text to select.
+    """
+    return conn.execute(FILE_OF_CONTENT, (sha,)).fetchone()

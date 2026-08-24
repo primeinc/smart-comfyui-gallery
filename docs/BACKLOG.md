@@ -248,3 +248,39 @@ generation metadata out of video containers. What is NOT built:
   setup — `filterwarnings = error` turns it into a failure wherever the
   garbage collector happens to run it. The test drives the ASGI app with
   `asyncio.run` inside a worker that already has a loop.
+
+## Thumbnail delivery: done for the gallery, not for every surface
+
+The gallery grid, the table, the rail preview and the compare tray now
+point at `/thumbs/<shard>/<sha>.webp` -- content-addressed, immutable,
+served with no database at all. Measured over one 60-cell page
+(`just bench thumbs-delivery`, benchmarks/results/thumb_delivery.json):
+
+    SQLite connections per page view   63  ->  3
+    ...for the sixty thumbnails        60  ->  0
+    cacheable responses              0/60  -> 60/60
+    fan-out                        285.8ms -> 178.4ms
+
+These surfaces still spell `/thumb/<slug>` and still pay a connection
+per picture. Each needs the content hash carried on the row its page
+already reads, then the same `thumbs.asset_url` call:
+
+- `person.html` and `_person_drawer.html`
+- `folder.html`, `album.html`, `artifact.html`, `artifacts.html`
+- `_timeline_surface.html` -- the densest of them all: session strips,
+  scrubber segments, month and day cells are dozens of thumbnails per
+  page, every one a connection
+- `frontend/src/timeline.ts` (two places)
+
+Also not done:
+
+- **Nothing is served by anything but Litestar.** The point of a
+  content-addressed immutable path is that a static server or a cache
+  in front can answer it without the application running at all;
+  `create_static_files_router` over the thumbs directory, or a Caddy
+  rule, would take even the ASGI dispatch out. Worth measuring before
+  assuming it matters at this scale.
+- **No sprite sheet or atlas, deliberately.** The measurement says the
+  static fan-out is no longer material: sixty requests that touch no
+  database and cache for a year are not the problem nine
+  database-backed ones were.

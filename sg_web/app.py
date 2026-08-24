@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sqlite3
 import time
 from collections.abc import Mapping
@@ -41,7 +42,7 @@ from litestar.logging import LoggingConfig
 from litestar.params import FromPath, FromQuery
 from litestar.plugins import InitPlugin
 from litestar.plugins.jinja import JinjaTemplateEngine
-from litestar.response import Redirect, Response, Stream, Template
+from litestar.response import File, Redirect, Response, Stream, Template
 from litestar.static_files import create_static_files_router
 from litestar.template import TemplateConfig
 
@@ -815,6 +816,102 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
     return Response(content=target.read_bytes(), media_type="image/webp")
 
 
+#: How long a content-addressed asset may be kept. A year, and
+#: `immutable`, because the URL names the BYTES: `<sha>.webp` cannot come
+#: to mean different pixels, so a browser that has it never needs to ask
+#: again. Immich says the same thing about its assets in
+#: refs/immich-app/immich/server/src/utils/file.ts:41 -- `private`
+#: because a library is somebody's, cacheable because the bytes are
+#: fixed.
+ASSET_CACHE = "private, max-age=31536000, immutable, no-transform"
+
+#: The variants an asset URL may name, and the on-disk suffix of each.
+#: A closed vocabulary, so a request cannot ask for a path.
+ASSET_VARIANTS = {"thumb": "", "preview": ".preview"}
+#: The same vocabulary, read the other way, for a URL that arrives.
+ASSET_VARIANTS_BY_SUFFIX = {suffix: name for name, suffix in ASSET_VARIANTS.items()}
+
+_ASSET_NAME = re.compile(r"^([0-9a-f]{64})(\.preview)?\.webp$")
+
+
+@get("/thumbs/{shard:str}/{name:str}", sync_to_thread=True, name="asset")
+def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File:
+    """One derivative, by the hash of the bytes it was made from.
+
+    NO DATABASE. Not a connection, not a slug to resolve, not a kind to
+    look up -- the URL already carries the only fact needed, because the
+    cache is keyed on `content_sha256` and always was. Sixty cells used
+    to be sixty connections; this is the whole reason the hash now rides
+    the ResultSet's rows.
+
+    The name is matched against a pattern rather than trusted: sixty-four
+    hex characters and one of two known suffixes, so nothing that is not
+    a cache entry can be spelled, and `..` cannot appear at all.
+    """
+    found = _ASSET_NAME.match(name)
+    if found is None or shard != name[:2]:
+        raise NotFoundException(f"/thumbs/{shard}/{name} is not the name of a derivative")
+    sha, suffix = found.group(1), found.group(2) or ""
+    if suffix not in ASSET_VARIANTS.values():
+        raise NotFoundException(f"/thumbs/{shard}/{name} names no variant")
+    target = home.thumbs_dir(pathlib.Path(state.home)) / shard / name
+    if not target.is_file():
+        # A MISS RENDERS, exactly as the slug route always did.
+        #
+        # The surface emits this URL for anything ingest has hashed,
+        # which is not the same set as "anything the thumbs job has
+        # rendered" -- so 404ing here would give a fresh library a grid
+        # of broken pictures where it used to give a slow one. This is
+        # the ONLY path that opens a connection, and after the precache
+        # job it is never taken.
+        #
+        # By CONTENT, not by slug: the cache is keyed on the bytes, so
+        # any present file carrying them will do, which is the whole
+        # reason it is content-addressed.
+        _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
+    return File(
+        path=target,
+        media_type="image/webp",
+        content_disposition_type="inline",
+        headers={"cache-control": ASSET_CACHE},
+    )
+
+
+def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) -> None:
+    """Render one missing derivative from any file with those bytes."""
+    from vision import derive
+
+    conn = _connect(state.db_path)
+    try:
+        found = pages.file_of_content(conn, sha)
+        if found is None:
+            raise NotFoundException(f"nothing present carries the bytes {sha[:12]}")
+        file_id, kind = found
+        if kind not in ("image", "animated_image", "video"):
+            raise NotFoundException(f"a {kind} has no {variant}")
+        path = detect.path_of(conn, file_id)
+        if not os.path.isfile(path):
+            raise NotFoundException(f"the bytes behind {sha[:12]} are offline")
+        derive.put_one(
+            home.thumbs_dir(pathlib.Path(state.home)),
+            sha,
+            pathlib.Path(path),
+            kind,
+            oriented.orientation_of(conn, file_id),
+            variant,
+        )
+    finally:
+        connect.close(conn)
+    if not target.is_file():
+        raise NotFoundException(f"the {variant} of {sha[:12]} could not be rendered")
+    return File(
+        path=target,
+        media_type="image/webp",
+        content_disposition_type="inline",
+        headers={"cache-control": ASSET_CACHE},
+    )
+
+
 @get("/thumb/{slug:str}", sync_to_thread=True)
 def thumb_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirect:
     """The grid cell: longest side 512, upright, aspect kept."""
@@ -1388,6 +1485,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             all_settings,
             change_setting,
             media_bytes,
+            asset_bytes,
             thumb_bytes,
             preview_bytes,
             avatar_bytes,

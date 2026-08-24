@@ -192,3 +192,31 @@ def _publish(target: pathlib.Path, put) -> pathlib.Path:
     put(staging)
     os.replace(staging, target)
     return target
+
+
+def asset_url(sha: str | None, slug: str, kind: str = "thumb") -> str:
+    """Where a surface should point a picture's `src`.
+
+    The content-addressed asset when the bytes have been hashed, and the
+    slug route when they have not.
+
+    ONE function, because the choice is a fact about the data and not a
+    preference of whichever template is rendering: a grid cell, a
+    filmstrip frame, a rail preview and a compare tray thumbnail must all
+    reach the same conclusion, or some of them go on paying for a
+    database round trip nobody can see.
+
+    `/thumbs/<shard>/<name>` mirrors the on-disk layout exactly, so the
+    route that serves it is a path join with no query, no slug and no
+    connection. The address names the BYTES, so it can be cached for a
+    year -- the same bargain PhotoPrism and Immich make.
+    """
+    if kind not in EDGES:
+        raise ValueError(f"{kind!r} is not a variant; EDGES in vision/thumbs.py is the vocabulary")
+    if not sha:
+        # Not yet hashed -- ingest has not reached it. The slug route can
+        # still answer, at the cost this exists to avoid, which is the
+        # right trade for a file nobody has finished reading.
+        return f"/{kind}/{slug}"
+    suffix = "" if kind == "thumb" else f".{kind}"
+    return f"/thumbs/{sha[:2]}/{sha}{suffix}.webp"

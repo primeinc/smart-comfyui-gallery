@@ -310,7 +310,20 @@ _PROJECTION_LOCK = threading.Lock()
 
 #: The names one page of cells needs, id-keyed; order is restored from
 #: the projection slice, so this query carries none.
-NAMED = "SELECT f.id, e.slug, f.name, f.kind, e.uuid FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+#: One row per member, and it carries `content_sha256` because THE
+#: THUMBNAIL'S IDENTITY IS RESOLVED HERE, ONCE, for the whole page.
+#:
+#: The derivative cache is content-addressed (vision/thumbs.py
+#: `path_for`), so the hash IS the asset's address. Carrying it means a
+#: cell's `src` can point straight at an immutable file instead of at a
+#: route that opens a connection, resolves the slug, reads the kind and
+#: the hash back out of the database, and only then knows which file to
+#: send. Sixty cells were sixty of those. This is the same shape
+#: PhotoPrism and Immich settled on: resolve once, serve statically.
+NAMED = (
+    "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256"
+    " FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+)
 
 
 def canonical(query: GalleryQuery, page: int | None = None) -> str:
@@ -1108,7 +1121,17 @@ def _named(conn, ids, start: int) -> list[dict]:
     from . import derived, settings
 
     held = {
-        row[0]: {"id": row[0], "slug": row[1], "name": row[2], "kind": row[3], "uuid": row[4].hex(), "said": None}
+        row[0]: {
+            "id": row[0],
+            "slug": row[1],
+            "name": row[2],
+            "kind": row[3],
+            "uuid": row[4].hex(),
+            # None until ingest has hashed it; a surface then falls back
+            # to the slug route, which can still answer.
+            "sha": row[5],
+            "said": None,
+        }
         for row in conn.execute(NAMED.format(marks=marks), list(ids))
     }
     for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():

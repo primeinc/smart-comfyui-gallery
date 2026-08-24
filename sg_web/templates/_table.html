@@ -44,7 +44,7 @@
       <tr data-row="{{ row.slug }}" data-kind="{{ row.kind }}">
         <td class="answer-thumb">
           <a href="/i/{{ row.slug }}{% if qs %}?{{ qs }}{% endif %}" data-slug="{{ row.slug }}" data-kind="{{ row.kind }}">
-            <img src="/thumb/{{ row.slug }}" alt="{{ row.name }}" loading="lazy" decoding="async">
+            <img src="{{ row.thumb }}" alt="{{ row.name }}" loading="lazy" decoding="async">
           </a>
         </td>
         <td class="answer-name"><a href="/i/{{ row.slug }}{% if qs %}?{{ qs }}{% endif %}">{{ row.name }}</a></td>

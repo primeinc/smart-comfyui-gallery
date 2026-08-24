@@ -32,6 +32,13 @@ browser-report *args:
 workspace *args:
     @"$python" benchmarks/workspace_shots.py "$@"
 
+# What one gallery page costs to DELIVER, per thumbnail: application
+# requests, SQLite connections opened, bytes, and whether a second view
+# can cost nothing. `--label before` / `--label after` keep both in
+# benchmarks/results/thumb_delivery.json.
+thumbs-delivery *args:
+    @"$python" benchmarks/thumb_delivery.py "$@"
+
 # Where thumbnail time goes, per phase and media kind, over a run's own
 # library: benchmarks/results/thumbnail_phases.json
 thumbs-phases *args:
