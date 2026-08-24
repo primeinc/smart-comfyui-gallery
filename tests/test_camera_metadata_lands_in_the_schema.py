@@ -596,6 +596,52 @@ def test_ingest_opens_a_file_for_camera_tags_only_when_it_has_any(tmp_path, monk
     db.close()
 
 
+def test_an_exif_read_that_throws_is_not_a_file_without_camera_tags(tmp_path, monkeypatch):
+    """ "There is no EXIF" and "looking for EXIF failed" are different facts.
+
+    The skip above is earned by the FIRST only. Folding them together --
+    which one boolean would have to do -- reports a damaged photograph as
+    a clean file carrying nothing, and quietly drops the one path that
+    was there to notice the damage.
+
+    So `load_raw` records three states and only `absent` licenses the
+    skip. Here `getexif` throws, which must leave the state `failed` and
+    send ingest down the ordinary path.
+    """
+    from PIL import Image as ImageModule
+
+    from db import ingest, library
+    from metaparse import containers
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    # A PNG, not a JPEG. Pillow's JPEG `_open` calls `getexif()` itself to
+    # read the DPI (PIL/JpegImagePlugin.py:507), so making that method
+    # throw breaks the OPEN and tests nothing about the EXIF read. The
+    # first version of this test did exactly that and blamed the code.
+    Image.new("RGB", (16, 16)).save(root / "picture.png")
+
+    db = fresh_schema()
+    root_id = library.add_root(db, str(root), "library", NOW)
+    scan.scan(db, root_id, str(root), NOW)
+    file_id = db.execute("SELECT id FROM file").fetchone()[0]
+
+    def throwing(self):
+        raise OSError("the EXIF block is damaged")
+
+    monkeypatch.setattr(ImageModule.Image, "getexif", throwing)
+    raw = containers.load_raw(str(root / "picture.png"))
+    assert raw is not None, "the file still opens; only the EXIF read failed"
+    assert raw.exif_state == "failed", "a read that threw must not be recorded as 'no EXIF here'"
+
+    opened: list[str] = []
+    real = capture.read
+    monkeypatch.setattr(capture, "read", lambda path, **kw: (opened.append(str(path)), real(path, **kw))[1])
+    ingest.one(db, file_id, str(root / "picture.png"), NOW)
+    assert opened, "a failed EXIF read must still reach the camera reader"
+    db.close()
+
+
 # --- facts that live in columns rather than in the long tail ----------------
 
 

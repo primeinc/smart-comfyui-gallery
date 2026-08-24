@@ -73,9 +73,15 @@ class RawMetadata:
     maker_note: str | None = None
     xmp: str | None = None
     gif_comment: str | None = None
-    #: Whether the file carried ANY EXIF, so a caller that would only
-    #: re-open it to look does not have to.
-    has_exif: bool = False
+    #: What happened when EXIF was looked for: "present", "absent", or
+    #: "failed". Three states and not a bool, because only ONE of them
+    #: lets a caller skip re-opening the file, and a bool would have to
+    #: fold "there is none" together with "the read threw" -- which reads
+    #: a damaged file as a clean one carrying nothing.
+    #:
+    #: "failed" is the default so a RawMetadata built anywhere else never
+    #: licenses a skip it has not earned.
+    exif_state: str = "failed"
     _stealth_text: str | None = None
     _stealth_checked: bool = False
     _img: object = None  # open PIL image, only while inside load_raw()
@@ -152,7 +158,9 @@ def load_raw(filepath: str, want_stealth: bool = False, image=None) -> RawMetada
             except Exception:
                 _logger.debug("handled a failure in load_raw", exc_info=True)
                 exif = None
-            raw.has_exif = bool(exif)
+                raw.exif_state = "failed"
+            else:
+                raw.exif_state = "present" if exif else "absent"
             if exif:
                 raw.exif_make = _as_text(exif.get(_TAG_MAKE))
                 raw.exif_model = _as_text(exif.get(_TAG_MODEL))

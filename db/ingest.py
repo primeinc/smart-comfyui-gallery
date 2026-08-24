@@ -649,15 +649,17 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
         # The header this file already opened, when there is one. Opening
         # a generated PNG again to look for EXIF it does not have was 41%
         # of ingest on this library.
-        # Skipped outright when the load above already looked and found
-        # no EXIF. `capture.read` opens the file a second time and then
+        # Skipped outright when the load above LOOKED AND FOUND NONE.
+        # Only that state earns it: a read that threw is not a file
+        # without camera tags, and treating the two alike would report a
+        # damaged photograph as a clean one carrying nothing. `capture.read` opens the file a second time and then
         # returns an empty Capture the moment `getexif()` is falsey
         # (db/capture.py _read_image), and opening a generated PNG costs
         # about 23 ms because Pillow parses its workflow graph out of the
         # text chunks during `open`. That second open was 41% of ingest on
         # this library, spent looking for camera tags in files a camera
         # never touched.
-        if kind != "video" and held is not None and not held.has_exif:
+        if kind != "video" and held is not None and held.exif_state == "absent":
             found = capture_module.Capture()
         elif kind != "video":
             found = capture_module.read(path)
