@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ws/jobs/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** JobFrames */
+        get: operations["WsJobsFramesJobFrames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/i/{slug}": {
         parameters: {
             query?: never;
@@ -2013,6 +2030,20 @@ export interface components {
             items: components["schemas"]["InspectedItem"][];
             next_after: number | null;
         };
+        /** JobDeltaFrame */
+        JobDeltaFrame: {
+            /** @constant */
+            type: "delta";
+            job: number;
+            /** @enum {string} */
+            kind: "scan" | "hash" | "embed" | "detect_faces" | "cluster_faces" | "sample_frames" | "annotate" | "remix" | "zip" | "context" | "events" | "story_plan" | "embed_prompts";
+            /** @enum {string} */
+            state: "queued" | "running" | "done" | "failed" | "cancelled";
+            done: number;
+            total: number | null;
+            cancel_requested: boolean;
+            derive: string | null;
+        };
         /** JobDetail */
         JobDetail: {
             id: number;
@@ -2089,6 +2120,12 @@ export interface components {
             id: number;
             kind: string | null;
             slug: string | null;
+        };
+        /** JobsSnapshotFrame */
+        JobsSnapshotFrame: {
+            /** @constant */
+            type: "snapshot";
+            jobs: components["schemas"]["JobListed"][];
         };
         /** LedgerHealth */
         LedgerHealth: {
@@ -2494,6 +2531,347 @@ export interface components {
             state: "unevaluated";
             rule: components["schemas"]["RuleView"] | null;
         };
+        /** TimelineAt */
+        TimelineAt: {
+            slug: string;
+            moment: number;
+            spelled: string;
+        };
+        /** TimelineBin */
+        TimelineBin: {
+            at: number;
+            pictures: number;
+            wall: number;
+            instant: number;
+            origin: components["schemas"]["TimelineOrigin"];
+            samples: string[];
+            qs: string;
+            spelled: string;
+            finest: boolean;
+            href: string;
+            x: number;
+            w: number;
+            h: number;
+            wall_h: number;
+        };
+        /** TimelineBrush */
+        TimelineBrush: {
+            x: number;
+            w: number;
+        };
+        /** TimelineCalendarDay */
+        TimelineCalendarDay: {
+            n: number;
+            pictures: number;
+            hero: string | null;
+            qs: string | null;
+            spelled: string;
+            today: boolean;
+        };
+        /** TimelineCompany */
+        TimelineCompany: {
+            named: components["schemas"]["TimelinePerson"][];
+            others: number;
+        };
+        /** TimelineCoverage */
+        TimelineCoverage: {
+            interpreted: number;
+            present: number;
+            contested: number;
+            events_current: boolean;
+            contested_qs: string;
+            policy_version: number;
+            complete: boolean;
+        };
+        /** TimelineDay */
+        TimelineDay: {
+            key: string;
+            day: number;
+            title: string;
+            weekday: string;
+            weekend: boolean;
+            month_cap: components["schemas"]["TimelineMonthCap"] | null;
+            pictures: number;
+            silent_days: number;
+            silence: number;
+            groups: components["schemas"]["TimelineGroup"][];
+        };
+        /** TimelineExtent */
+        TimelineExtent: {
+            start: number;
+            end: number;
+            pictures: number;
+        };
+        /** TimelineGroup */
+        TimelineGroup: {
+            t: number;
+            end: number;
+            session: components["schemas"]["TimelineSession"] | null;
+            bin: components["schemas"]["TimelineBin"] | null;
+            qs: string;
+            pictures: components["schemas"]["TimelinePicture"][];
+            clock: string;
+            lasted: string;
+            lead: components["schemas"]["TimelinePicture"];
+            leads: components["schemas"]["TimelinePicture"][];
+        };
+        /** TimelineHero */
+        TimelineHero: {
+            name: string;
+            thumbnail: string | null;
+        };
+        /** TimelineMoment */
+        TimelineMoment: {
+            slug: string;
+            moment: number;
+        };
+        /** TimelineMonthCap */
+        TimelineMonthCap: {
+            year: number;
+            month: string;
+        };
+        /** TimelineMonthSheet */
+        TimelineMonthSheet: {
+            year: number;
+            month: string;
+            lead: number;
+            pictures: number;
+            days: components["schemas"]["TimelineCalendarDay"][];
+        };
+        /** TimelineNth */
+        TimelineNth: {
+            slug: string;
+            moment: number;
+            k: number;
+            of: number;
+            spelled: string;
+        };
+        /** TimelineOrigin */
+        TimelineOrigin: {
+            captured: number;
+            generated: number;
+            mixed: number;
+            imported: number;
+        };
+        /** TimelineOverview */
+        TimelineOverview: {
+            start: number;
+            end: number;
+            bin_seconds: number;
+            bars: components["schemas"]["TimelineOverviewBar"][];
+            brush: components["schemas"]["TimelineBrush"];
+            years: components["schemas"]["TimelineOverviewYear"][];
+        };
+        /** TimelineOverviewBar */
+        TimelineOverviewBar: {
+            at: number;
+            pictures: number;
+            spelled: string;
+            x: number;
+            w: number;
+            h: number;
+        };
+        /** TimelineOverviewYear */
+        TimelineOverviewYear: {
+            year: number;
+            x: number;
+        };
+        /** TimelinePerson */
+        TimelinePerson: {
+            slug: string;
+            name: string | null;
+            href: string;
+            pictures: number;
+        };
+        /** TimelinePicture */
+        TimelinePicture: {
+            slug: string;
+            name: string;
+            kind: string;
+            width: number | null;
+            height: number | null;
+            faces: number;
+            ratio: number;
+            moment: number;
+            precision: string;
+            origin: string | null;
+            /** @enum {string} */
+            domain: "wall" | "instant";
+            sessions: number[];
+            href: string;
+            clock: string;
+        };
+        /** TimelinePictures */
+        TimelinePictures: {
+            start: number;
+            end: number;
+            scope: components["schemas"]["TimelineScope"] | null;
+            qs: string;
+            total: number;
+            pictures: components["schemas"]["TimelinePicture"][];
+        };
+        /** TimelinePlace */
+        TimelinePlace: {
+            id: number;
+            name: string | null;
+            slug: string | null;
+            qs: string;
+        };
+        /** TimelinePreset */
+        TimelinePreset: {
+            name: string;
+            start: number;
+            end: number;
+            href: string;
+            current: boolean;
+        };
+        /** TimelineScope */
+        TimelineScope: {
+            qs: string;
+            parts: components["schemas"]["TimelineScopePart"][];
+        };
+        /** TimelineScopePart */
+        TimelineScopePart: {
+            key: string;
+            value: unknown;
+            spelled?: string | null;
+        };
+        /** TimelineScrubber */
+        TimelineScrubber: {
+            unit: string;
+            bin_seconds: number;
+            segments: components["schemas"]["TimelineSegment"][];
+            brush: components["schemas"]["TimelineScrubberBrush"];
+        };
+        /** TimelineScrubberBrush */
+        TimelineScrubberBrush: {
+            y: number;
+            h: number;
+        };
+        /** TimelineSegment */
+        TimelineSegment: {
+            at: number;
+            end: number;
+            window_start: number;
+            year: number;
+            label: string;
+            pictures: number;
+            face: string | null;
+            strip: string[];
+            y: number;
+            h: number;
+            year_label: boolean;
+            href: string;
+        };
+        /** TimelineSession */
+        TimelineSession: {
+            id: number;
+            kind: string;
+            /** @enum {string} */
+            domain: "wall" | "instant";
+            start: number;
+            end: number;
+            pictures: number;
+            in_scope: number;
+            snapshot_id: number | null;
+            story: components["schemas"]["TimelineStoryCard"] | null;
+            place: components["schemas"]["TimelinePlace"] | null;
+            qs: string;
+            planner: string | null;
+            tellable: boolean;
+            samples: string[];
+            people: components["schemas"]["TimelinePerson"][];
+            people_total: number;
+            when: string;
+            happened: string;
+            title: string;
+            lasted: string;
+            company: components["schemas"]["TimelineCompany"];
+            x: number;
+            w: number;
+            drawn_pictures: components["schemas"]["TimelinePicture"][];
+            drawn_lead: components["schemas"]["TimelinePicture"] | null;
+            drawn_leads: components["schemas"]["TimelinePicture"][];
+        };
+        /** TimelineSpan */
+        TimelineSpan: {
+            start: number;
+            end: number;
+            precision: string;
+            pictures: number;
+            spelled: string;
+            x: number;
+            w: number;
+        };
+        /** TimelineSpread */
+        TimelineSpread: {
+            pictures: components["schemas"]["TimelineMoment"][];
+        };
+        /** TimelineStoryCard */
+        TimelineStoryCard: {
+            id: number;
+            href: string;
+            evolution: string;
+            title: string;
+            dek: string;
+            heroes: components["schemas"]["TimelineHero"][];
+        };
+        /** TimelineSurface */
+        TimelineSurface: {
+            bin: string;
+            bin_seconds: number | null;
+            start: number | null;
+            end: number | null;
+            start_spelled: string;
+            end_spelled: string;
+            window_spelled: string;
+            unit: string;
+            scope: components["schemas"]["TimelineScope"] | null;
+            extent: components["schemas"]["TimelineExtent"] | null;
+            overview: components["schemas"]["TimelineOverview"] | null;
+            presets: components["schemas"]["TimelinePreset"][];
+            coverage: components["schemas"]["TimelineCoverage"];
+            sampled: boolean;
+            bins: components["schemas"]["TimelineBin"][];
+            spans: components["schemas"]["TimelineSpan"][];
+            note: string;
+            sessions: components["schemas"]["TimelineSession"][];
+            sessions_total: number;
+            sessions_sampled: boolean;
+            /** @enum {string} */
+            composition: "river" | "calendar" | "years";
+            ticks: components["schemas"]["TimelineTick"][];
+            now_x: number | null;
+            pictures_total: number;
+            pictures_drawn: number;
+            groups: components["schemas"]["TimelineGroup"][];
+            river: components["schemas"]["TimelineDay"][];
+            calendar: components["schemas"]["TimelineMonthSheet"][];
+            years: components["schemas"]["TimelineYearRow"][];
+            listed: components["schemas"]["TimelineSession"][];
+            scrubber: components["schemas"]["TimelineScrubber"] | null;
+        };
+        /** TimelineTick */
+        TimelineTick: {
+            x: number;
+            label: string;
+            major: boolean;
+        };
+        /** TimelineYearCell */
+        TimelineYearCell: {
+            month: string;
+            pictures: number;
+            hero: string | null;
+            qs: string | null;
+            href: string;
+            outside: boolean;
+        };
+        /** TimelineYearRow */
+        TimelineYearRow: {
+            year: number;
+            pictures: number;
+            months: components["schemas"]["TimelineYearCell"][];
+        };
         /** Where */
         Where: {
             id: number;
@@ -2582,6 +2960,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventFrame"] | components["schemas"]["PendingFrame"] | components["schemas"]["BacklogFrame"];
+                };
+            };
+        };
+    };
+    WsJobsFramesJobFrames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobsSnapshotFrame"] | components["schemas"]["JobDeltaFrame"];
                 };
             };
         };
@@ -3771,13 +4169,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description The timeline at one window: the same surface the page and the fragment render */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TimelineSurface"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -3825,7 +4223,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["TimelineSurface"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -3872,7 +4270,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["TimelinePictures"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -3919,7 +4317,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["TimelineSpread"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -3964,7 +4362,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["TimelineAt"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
@@ -4011,7 +4409,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["TimelineNth"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

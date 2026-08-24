@@ -78,6 +78,33 @@
                 "deprecated": false
             }
         },
+        "/ws/jobs/frames": {
+            "get": {
+                "summary": "JobFrames",
+                "operationId": "WsJobsFramesJobFrames",
+                "responses": {
+                    "200": {
+                        "description": "Request fulfilled, document follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "oneOf": [
+                                        {
+                                            "$ref": "#/components/schemas/JobsSnapshotFrame"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/JobDeltaFrame"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/i/{slug}": {
             "get": {
                 "summary": "MediaPage",
@@ -2610,11 +2637,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "The timeline at one window: the same surface the page and the fragment render",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "$ref": "#/components/schemas/TimelineSurface"
+                                }
                             }
                         }
                     },
@@ -2886,7 +2914,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/TimelineSurface"
                                 }
                             }
                         }
@@ -3127,7 +3155,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/TimelinePictures"
                                 }
                             }
                         }
@@ -3367,7 +3395,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/TimelineSpread"
                                 }
                             }
                         }
@@ -3585,7 +3613,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/TimelineAt"
                                 }
                             }
                         }
@@ -3825,7 +3853,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/TimelineNth"
                                 }
                             }
                         }
@@ -11080,6 +11108,84 @@
                 ],
                 "title": "ItemPage"
             },
+            "JobDeltaFrame": {
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "const": "delta"
+                    },
+                    "job": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "scan",
+                            "hash",
+                            "embed",
+                            "detect_faces",
+                            "cluster_faces",
+                            "sample_frames",
+                            "annotate",
+                            "remix",
+                            "zip",
+                            "context",
+                            "events",
+                            "story_plan",
+                            "embed_prompts"
+                        ]
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "queued",
+                            "running",
+                            "done",
+                            "failed",
+                            "cancelled"
+                        ]
+                    },
+                    "done": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "cancel_requested": {
+                        "type": "boolean"
+                    },
+                    "derive": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "cancel_requested",
+                    "derive",
+                    "done",
+                    "job",
+                    "kind",
+                    "state",
+                    "total",
+                    "type"
+                ],
+                "title": "JobDeltaFrame"
+            },
             "JobDetail": {
                 "properties": {
                     "id": {
@@ -11567,6 +11673,27 @@
                     "slug"
                 ],
                 "title": "JobTarget"
+            },
+            "JobsSnapshotFrame": {
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "const": "snapshot"
+                    },
+                    "jobs": {
+                        "items": {
+                            "$ref": "#/components/schemas/JobListed"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "jobs",
+                    "type"
+                ],
+                "title": "JobsSnapshotFrame"
             },
             "LedgerHealth": {
                 "properties": {
@@ -13723,6 +13850,1560 @@
                     "updated_by"
                 ],
                 "title": "SmartUnevaluated"
+            },
+            "TimelineAt": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "moment": {
+                        "type": "number"
+                    },
+                    "spelled": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "moment",
+                    "slug",
+                    "spelled"
+                ],
+                "title": "TimelineAt"
+            },
+            "TimelineBin": {
+                "properties": {
+                    "at": {
+                        "type": "number"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "wall": {
+                        "type": "integer"
+                    },
+                    "instant": {
+                        "type": "integer"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/TimelineOrigin"
+                    },
+                    "samples": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "spelled": {
+                        "type": "string"
+                    },
+                    "finest": {
+                        "type": "boolean"
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "x": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    },
+                    "h": {
+                        "type": "number"
+                    },
+                    "wall_h": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "finest",
+                    "h",
+                    "href",
+                    "instant",
+                    "origin",
+                    "pictures",
+                    "qs",
+                    "samples",
+                    "spelled",
+                    "w",
+                    "wall",
+                    "wall_h",
+                    "x"
+                ],
+                "title": "TimelineBin"
+            },
+            "TimelineBrush": {
+                "properties": {
+                    "x": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "w",
+                    "x"
+                ],
+                "title": "TimelineBrush"
+            },
+            "TimelineCalendarDay": {
+                "properties": {
+                    "n": {
+                        "type": "integer"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "hero": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "qs": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "spelled": {
+                        "type": "string"
+                    },
+                    "today": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "hero",
+                    "n",
+                    "pictures",
+                    "qs",
+                    "spelled",
+                    "today"
+                ],
+                "title": "TimelineCalendarDay"
+            },
+            "TimelineCompany": {
+                "properties": {
+                    "named": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePerson"
+                        },
+                        "type": "array"
+                    },
+                    "others": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "named",
+                    "others"
+                ],
+                "title": "TimelineCompany"
+            },
+            "TimelineCoverage": {
+                "properties": {
+                    "interpreted": {
+                        "type": "integer"
+                    },
+                    "present": {
+                        "type": "integer"
+                    },
+                    "contested": {
+                        "type": "integer"
+                    },
+                    "events_current": {
+                        "type": "boolean"
+                    },
+                    "contested_qs": {
+                        "type": "string"
+                    },
+                    "policy_version": {
+                        "type": "integer"
+                    },
+                    "complete": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "complete",
+                    "contested",
+                    "contested_qs",
+                    "events_current",
+                    "interpreted",
+                    "policy_version",
+                    "present"
+                ],
+                "title": "TimelineCoverage"
+            },
+            "TimelineDay": {
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "day": {
+                        "type": "integer"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "weekday": {
+                        "type": "string"
+                    },
+                    "weekend": {
+                        "type": "boolean"
+                    },
+                    "month_cap": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineMonthCap"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "silent_days": {
+                        "type": "integer"
+                    },
+                    "silence": {
+                        "type": "integer"
+                    },
+                    "groups": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineGroup"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "day",
+                    "groups",
+                    "key",
+                    "month_cap",
+                    "pictures",
+                    "silence",
+                    "silent_days",
+                    "title",
+                    "weekday",
+                    "weekend"
+                ],
+                "title": "TimelineDay"
+            },
+            "TimelineExtent": {
+                "properties": {
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "end",
+                    "pictures",
+                    "start"
+                ],
+                "title": "TimelineExtent"
+            },
+            "TimelineGroup": {
+                "properties": {
+                    "t": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "session": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineSession"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "bin": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineBin"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePicture"
+                        },
+                        "type": "array"
+                    },
+                    "clock": {
+                        "type": "string"
+                    },
+                    "lasted": {
+                        "type": "string"
+                    },
+                    "lead": {
+                        "$ref": "#/components/schemas/TimelinePicture"
+                    },
+                    "leads": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePicture"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "bin",
+                    "clock",
+                    "end",
+                    "lasted",
+                    "lead",
+                    "leads",
+                    "pictures",
+                    "qs",
+                    "session",
+                    "t"
+                ],
+                "title": "TimelineGroup"
+            },
+            "TimelineHero": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "thumbnail": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "thumbnail"
+                ],
+                "title": "TimelineHero"
+            },
+            "TimelineMoment": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "moment": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "moment",
+                    "slug"
+                ],
+                "title": "TimelineMoment"
+            },
+            "TimelineMonthCap": {
+                "properties": {
+                    "year": {
+                        "type": "integer"
+                    },
+                    "month": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "month",
+                    "year"
+                ],
+                "title": "TimelineMonthCap"
+            },
+            "TimelineMonthSheet": {
+                "properties": {
+                    "year": {
+                        "type": "integer"
+                    },
+                    "month": {
+                        "type": "string"
+                    },
+                    "lead": {
+                        "type": "integer"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "days": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineCalendarDay"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "days",
+                    "lead",
+                    "month",
+                    "pictures",
+                    "year"
+                ],
+                "title": "TimelineMonthSheet"
+            },
+            "TimelineNth": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "moment": {
+                        "type": "number"
+                    },
+                    "k": {
+                        "type": "integer"
+                    },
+                    "of": {
+                        "type": "integer"
+                    },
+                    "spelled": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "k",
+                    "moment",
+                    "of",
+                    "slug",
+                    "spelled"
+                ],
+                "title": "TimelineNth"
+            },
+            "TimelineOrigin": {
+                "properties": {
+                    "captured": {
+                        "type": "integer"
+                    },
+                    "generated": {
+                        "type": "integer"
+                    },
+                    "mixed": {
+                        "type": "integer"
+                    },
+                    "imported": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "captured",
+                    "generated",
+                    "imported",
+                    "mixed"
+                ],
+                "title": "TimelineOrigin"
+            },
+            "TimelineOverview": {
+                "properties": {
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "bin_seconds": {
+                        "type": "integer"
+                    },
+                    "bars": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineOverviewBar"
+                        },
+                        "type": "array"
+                    },
+                    "brush": {
+                        "$ref": "#/components/schemas/TimelineBrush"
+                    },
+                    "years": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineOverviewYear"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "bars",
+                    "bin_seconds",
+                    "brush",
+                    "end",
+                    "start",
+                    "years"
+                ],
+                "title": "TimelineOverview"
+            },
+            "TimelineOverviewBar": {
+                "properties": {
+                    "at": {
+                        "type": "number"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "spelled": {
+                        "type": "string"
+                    },
+                    "x": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    },
+                    "h": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "h",
+                    "pictures",
+                    "spelled",
+                    "w",
+                    "x"
+                ],
+                "title": "TimelineOverviewBar"
+            },
+            "TimelineOverviewYear": {
+                "properties": {
+                    "year": {
+                        "type": "integer"
+                    },
+                    "x": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "x",
+                    "year"
+                ],
+                "title": "TimelineOverviewYear"
+            },
+            "TimelinePerson": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "href",
+                    "name",
+                    "pictures",
+                    "slug"
+                ],
+                "title": "TimelinePerson"
+            },
+            "TimelinePicture": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "width": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "height": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "faces": {
+                        "type": "integer"
+                    },
+                    "ratio": {
+                        "type": "number"
+                    },
+                    "moment": {
+                        "type": "number"
+                    },
+                    "precision": {
+                        "type": "string"
+                    },
+                    "origin": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "domain": {
+                        "type": "string",
+                        "enum": [
+                            "wall",
+                            "instant"
+                        ]
+                    },
+                    "sessions": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array"
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "clock": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "clock",
+                    "domain",
+                    "faces",
+                    "height",
+                    "href",
+                    "kind",
+                    "moment",
+                    "name",
+                    "origin",
+                    "precision",
+                    "ratio",
+                    "sessions",
+                    "slug",
+                    "width"
+                ],
+                "title": "TimelinePicture"
+            },
+            "TimelinePictures": {
+                "properties": {
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "scope": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineScope"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "pictures": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePicture"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "end",
+                    "pictures",
+                    "qs",
+                    "scope",
+                    "start",
+                    "total"
+                ],
+                "title": "TimelinePictures"
+            },
+            "TimelinePlace": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "slug": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "qs": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "qs",
+                    "slug"
+                ],
+                "title": "TimelinePlace"
+            },
+            "TimelinePreset": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "current": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "current",
+                    "end",
+                    "href",
+                    "name",
+                    "start"
+                ],
+                "title": "TimelinePreset"
+            },
+            "TimelineScope": {
+                "properties": {
+                    "qs": {
+                        "type": "string"
+                    },
+                    "parts": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineScopePart"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "parts",
+                    "qs"
+                ],
+                "title": "TimelineScope"
+            },
+            "TimelineScopePart": {
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {},
+                    "spelled": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "key",
+                    "value"
+                ],
+                "title": "TimelineScopePart"
+            },
+            "TimelineScrubber": {
+                "properties": {
+                    "unit": {
+                        "type": "string"
+                    },
+                    "bin_seconds": {
+                        "type": "integer"
+                    },
+                    "segments": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineSegment"
+                        },
+                        "type": "array"
+                    },
+                    "brush": {
+                        "$ref": "#/components/schemas/TimelineScrubberBrush"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "bin_seconds",
+                    "brush",
+                    "segments",
+                    "unit"
+                ],
+                "title": "TimelineScrubber"
+            },
+            "TimelineScrubberBrush": {
+                "properties": {
+                    "y": {
+                        "type": "number"
+                    },
+                    "h": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "h",
+                    "y"
+                ],
+                "title": "TimelineScrubberBrush"
+            },
+            "TimelineSegment": {
+                "properties": {
+                    "at": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "window_start": {
+                        "type": "integer"
+                    },
+                    "year": {
+                        "type": "integer"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "face": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "strip": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "y": {
+                        "type": "number"
+                    },
+                    "h": {
+                        "type": "number"
+                    },
+                    "year_label": {
+                        "type": "boolean"
+                    },
+                    "href": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "end",
+                    "face",
+                    "h",
+                    "href",
+                    "label",
+                    "pictures",
+                    "strip",
+                    "window_start",
+                    "y",
+                    "year",
+                    "year_label"
+                ],
+                "title": "TimelineSegment"
+            },
+            "TimelineSession": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "enum": [
+                            "wall",
+                            "instant"
+                        ]
+                    },
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "in_scope": {
+                        "type": "integer"
+                    },
+                    "snapshot_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "story": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineStoryCard"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "place": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelinePlace"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "planner": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "tellable": {
+                        "type": "boolean"
+                    },
+                    "samples": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "people": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePerson"
+                        },
+                        "type": "array"
+                    },
+                    "people_total": {
+                        "type": "integer"
+                    },
+                    "when": {
+                        "type": "string"
+                    },
+                    "happened": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "lasted": {
+                        "type": "string"
+                    },
+                    "company": {
+                        "$ref": "#/components/schemas/TimelineCompany"
+                    },
+                    "x": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    },
+                    "drawn_pictures": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePicture"
+                        },
+                        "type": "array"
+                    },
+                    "drawn_lead": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelinePicture"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "drawn_leads": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePicture"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "company",
+                    "domain",
+                    "drawn_lead",
+                    "drawn_leads",
+                    "drawn_pictures",
+                    "end",
+                    "happened",
+                    "id",
+                    "in_scope",
+                    "kind",
+                    "lasted",
+                    "people",
+                    "people_total",
+                    "pictures",
+                    "place",
+                    "planner",
+                    "qs",
+                    "samples",
+                    "snapshot_id",
+                    "start",
+                    "story",
+                    "tellable",
+                    "title",
+                    "w",
+                    "when",
+                    "x"
+                ],
+                "title": "TimelineSession"
+            },
+            "TimelineSpan": {
+                "properties": {
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "precision": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "spelled": {
+                        "type": "string"
+                    },
+                    "x": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "end",
+                    "pictures",
+                    "precision",
+                    "spelled",
+                    "start",
+                    "w",
+                    "x"
+                ],
+                "title": "TimelineSpan"
+            },
+            "TimelineSpread": {
+                "properties": {
+                    "pictures": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineMoment"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "pictures"
+                ],
+                "title": "TimelineSpread"
+            },
+            "TimelineStoryCard": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "evolution": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "dek": {
+                        "type": "string"
+                    },
+                    "heroes": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineHero"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "dek",
+                    "evolution",
+                    "heroes",
+                    "href",
+                    "id",
+                    "title"
+                ],
+                "title": "TimelineStoryCard"
+            },
+            "TimelineSurface": {
+                "properties": {
+                    "bin": {
+                        "type": "string"
+                    },
+                    "bin_seconds": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "start": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "end": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "start_spelled": {
+                        "type": "string"
+                    },
+                    "end_spelled": {
+                        "type": "string"
+                    },
+                    "window_spelled": {
+                        "type": "string"
+                    },
+                    "unit": {
+                        "type": "string"
+                    },
+                    "scope": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineScope"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "extent": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineExtent"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "overview": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineOverview"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "presets": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelinePreset"
+                        },
+                        "type": "array"
+                    },
+                    "coverage": {
+                        "$ref": "#/components/schemas/TimelineCoverage"
+                    },
+                    "sampled": {
+                        "type": "boolean"
+                    },
+                    "bins": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineBin"
+                        },
+                        "type": "array"
+                    },
+                    "spans": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineSpan"
+                        },
+                        "type": "array"
+                    },
+                    "note": {
+                        "type": "string"
+                    },
+                    "sessions": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineSession"
+                        },
+                        "type": "array"
+                    },
+                    "sessions_total": {
+                        "type": "integer"
+                    },
+                    "sessions_sampled": {
+                        "type": "boolean"
+                    },
+                    "composition": {
+                        "type": "string",
+                        "enum": [
+                            "river",
+                            "calendar",
+                            "years"
+                        ]
+                    },
+                    "ticks": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineTick"
+                        },
+                        "type": "array"
+                    },
+                    "now_x": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "pictures_total": {
+                        "type": "integer"
+                    },
+                    "pictures_drawn": {
+                        "type": "integer"
+                    },
+                    "groups": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineGroup"
+                        },
+                        "type": "array"
+                    },
+                    "river": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineDay"
+                        },
+                        "type": "array"
+                    },
+                    "calendar": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineMonthSheet"
+                        },
+                        "type": "array"
+                    },
+                    "years": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineYearRow"
+                        },
+                        "type": "array"
+                    },
+                    "listed": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineSession"
+                        },
+                        "type": "array"
+                    },
+                    "scrubber": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/TimelineScrubber"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "bin",
+                    "bin_seconds",
+                    "bins",
+                    "calendar",
+                    "composition",
+                    "coverage",
+                    "end",
+                    "end_spelled",
+                    "extent",
+                    "groups",
+                    "listed",
+                    "note",
+                    "now_x",
+                    "overview",
+                    "pictures_drawn",
+                    "pictures_total",
+                    "presets",
+                    "river",
+                    "sampled",
+                    "scope",
+                    "scrubber",
+                    "sessions",
+                    "sessions_sampled",
+                    "sessions_total",
+                    "spans",
+                    "start",
+                    "start_spelled",
+                    "ticks",
+                    "unit",
+                    "window_spelled",
+                    "years"
+                ],
+                "title": "TimelineSurface"
+            },
+            "TimelineTick": {
+                "properties": {
+                    "x": {
+                        "type": "number"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "major": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "label",
+                    "major",
+                    "x"
+                ],
+                "title": "TimelineTick"
+            },
+            "TimelineYearCell": {
+                "properties": {
+                    "month": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "hero": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "qs": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "outside": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "hero",
+                    "href",
+                    "month",
+                    "outside",
+                    "pictures",
+                    "qs"
+                ],
+                "title": "TimelineYearCell"
+            },
+            "TimelineYearRow": {
+                "properties": {
+                    "year": {
+                        "type": "integer"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "months": {
+                        "items": {
+                            "$ref": "#/components/schemas/TimelineYearCell"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "months",
+                    "pictures",
+                    "year"
+                ],
+                "title": "TimelineYearRow"
             },
             "Where": {
                 "properties": {

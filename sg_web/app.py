@@ -267,6 +267,80 @@ class JobSnapshot(JobListed):
     failed_count: int
 
 
+class JobsSnapshotFrame(Wire):
+    """Every unsettled job, read from the rows, sent first on connect.
+
+    A client renders from this and applies deltas onto it, so it can never
+    show a state the rows did not hold. The channel stores nothing: a
+    reconnect starts from the rows again.
+    """
+
+    type: Literal["snapshot"]
+    jobs: list[JobListed]
+
+
+class JobDeltaFrame(Wire):
+    """One observable change to one job, as the worker and the request
+    routes publish it (db/runner.py spoke, sg_web/submitting.py announce).
+
+    `cancel_requested` rides every delta so a subscriber that saw the
+    cancel asked for keeps seeing it asked for until the job settles. The
+    row stores it as 0 or 1 and the contract promises a boolean; the
+    translating happens where the frame is built, once, for both
+    publishers.
+    """
+
+    type: Literal["delta"]
+    job: int
+    kind: JobKind
+    state: JobState
+    done: int
+    total: int | None
+    cancel_requested: bool
+    derive: str | None
+
+
+#: What arrives on /ws/jobs. Discriminated on `type` -- not `frame`,
+#: which is what /ws/events uses: there an event row already HAS a `type`
+#: column and the discriminant needed another name. A job delta does not,
+#: so the plain word is free here. Narrowing works the same, and a browser
+#: narrows to the arm it is handling and cannot read a job list off a
+#: delta.
+#:
+#: Not an OpenAPI path -- a socket has none -- so this is carried into the
+#: contract by job_frames() below. The browser's type is generated from
+#: that, never written twice.
+JobFrame = JobsSnapshotFrame | JobDeltaFrame
+
+
+@get("/ws/jobs/frames", sync_to_thread=False)
+def job_frames() -> JobFrame:
+    """Every frame /ws/jobs sends, carried into the document.
+
+    The same seam as console.socket_frames(): a route is the only way a
+    shape with no path reaches `components.schemas`, because the document
+    assigns that dict from what the routes generated
+    (litestar-org/litestar@v2.24.0 litestar/_openapi/plugin.py:90). It
+    answers an empty snapshot rather than raising -- a route a generator
+    reads is still a route somebody can request.
+    """
+    return JobsSnapshotFrame(type="snapshot", jobs=[])
+
+
+def _job_delta(told: Mapping[str, Any]) -> JobDeltaFrame:
+    """One channel payload as the contract states it."""
+    return JobDeltaFrame(
+        type="delta",
+        job=told["job"],
+        kind=told["kind"],
+        state=told["state"],
+        done=told["done"],
+        total=told["total"],
+        cancel_requested=bool(told["cancel_requested"]),
+        derive=told.get("derive"),
+    )
+
+
 def _job_listed(row: Mapping[str, Any]) -> JobListed:
     """A `job` row as the wire carries it. `cancel_requested` is the one
     translation: SQLite stores the flag as 0 or 1, the contract promises a
@@ -848,10 +922,11 @@ def cancel_job(state: State, job_id: FromPath[int]) -> dict:
         connect.close(conn)
 
 
-def _active_jobs_of(db_path: str) -> list[dict]:
+def _jobs_snapshot_of(db_path: str) -> JobsSnapshotFrame:
+    """Every unsettled job as one frame -- what the feed opens with."""
     conn = _connect(db_path)
     try:
-        return jobs.active(conn)
+        return JobsSnapshotFrame(type="snapshot", jobs=[_job_listed(row) for row in jobs.active(conn)])
     finally:
         connect.close(conn)
 
@@ -907,9 +982,22 @@ async def jobs_feed(socket: WebSocket, channels: NamedDependency[ChannelsPlugin]
 
             deliver = relay
         else:
-            rows = await to_thread.run_sync(_active_jobs_of, state.db_path)
-            await socket.send_json({"type": "snapshot", "jobs": rows})
-            deliver = socket.send_text
+            snapshot = await to_thread.run_sync(_jobs_snapshot_of, state.db_path)
+            await socket.send_json(snapshot.model_dump(mode="json"))
+
+            async def send_delta(raw: bytes) -> None:
+                """One channel payload as the frame the contract describes.
+
+                The channel carries what the publishers put on it -- a row's
+                own columns, `cancel_requested` among them as the 0 or 1
+                SQLite holds. Building the frame HERE is what makes the
+                translating happen once for both publishers, and what stops
+                the socket from being the one surface that forwards storage
+                straight to a browser.
+                """
+                await socket.send_json(_job_delta(json.loads(raw)).model_dump(mode="json"))
+
+            deliver = send_delta
         async with subscriber.run_in_background(deliver):
             while (await socket.receive())["type"] != "websocket.disconnect":
                 continue
@@ -1226,9 +1314,10 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         route_handlers=[
             health,
             front,
-            # The socket's frames, declared so the generated types carry
+            # The sockets' frames, declared so the generated types carry
             # them: a WebSocket has no path OpenAPI can describe.
             console.socket_frames,
+            job_frames,
             media_view.media_page,
             media_authored.set_favorite,
             media_authored.set_rating,

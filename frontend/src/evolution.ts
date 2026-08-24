@@ -7,7 +7,7 @@
 // (/stories/plans/{id}/evolution, by Accept), typed from the application's
 // own contract. It is not serialized into the HTML for this file to parse
 // back out: there is one document and one description of it.
-import { api } from "./api";
+import { api, refusal } from "./api";
 import { closestFrom, everyElement, requireData, requireElement } from "./dom";
 import type { components } from "./generated/api";
 
@@ -42,6 +42,9 @@ const ENTITIES: Readonly<Record<string, string>> = {
 const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"']/g, (c) => ENTITIES[c] ?? c);
 const pct = (v: number | null): string => (v === null ? "—" : `${Math.round(v * 100)}%`);
 
+/** One row of the sequence table: what to call it, and how to read it. */
+type MetricRow = readonly [label: string, get: (t: Transition) => number | null, why: (t: Transition) => string | null];
+
 /** A generation fact as one cell: a list joined, a missing value a dash. */
 function spell(value: Generation[keyof Generation]): string {
   if (Array.isArray(value)) return esc(value.join(", "));
@@ -63,9 +66,10 @@ function spell(value: Generation[keyof Generation]): string {
     .GET("/stories/plans/{plan_id}/evolution", {
       params: { path: { plan_id: planId }, query: space === null ? {} : { space } },
     })
-    .then(({ data }) => {
+    .then(({ data, error }) => {
       if (data === undefined) {
-        main.textContent = "the plan's measurements could not be read";
+        // what the server said about it, not a line this file made up
+        main.textContent = refusal(error, "the plan's measurements could not be read");
         return;
       }
       explore(data);
@@ -120,16 +124,17 @@ function spell(value: Generation[keyof Generation]): string {
       // a file or capture session carries no prompt and no generator
       // parameters: only the rows its evidence can fill are drawn
       const generated = view.snapshot.subject === "generation_session";
-      const rows: [string, (t: Transition) => number | null, (t: Transition) => string | null][] = [
-        ...(generated
-          ? ([["prompt vs previous", (t) => t.prompt_cosine, (t) => t.prompt_cosine_unavailable ?? null]] as [
-              string,
-              (t: Transition) => number | null,
-              (t: Transition) => string | null,
-            ][])
-          : []),
-        ["image vs previous", (t) => t.visual_cosine, (t) => t.visual_cosine_unavailable ?? null],
+      const prompts: MetricRow = [
+        "prompt vs previous",
+        (t) => t.prompt_cosine,
+        (t) => t.prompt_cosine_unavailable ?? null,
       ];
+      const images: MetricRow = [
+        "image vs previous",
+        (t) => t.visual_cosine,
+        (t) => t.visual_cosine_unavailable ?? null,
+      ];
+      const rows: MetricRow[] = generated ? [prompts, images] : [images];
       const head = `<tr><th></th>${view.members.map((m) => `<th>${esc(m.ref.replace("member-", ""))}</th>`).join("")}</tr>`;
       const body = rows
         .map(([label, get, why]) => {

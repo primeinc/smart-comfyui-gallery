@@ -27,7 +27,7 @@
       <span class="session-line">{{ s.when }} · {{ s.lasted }}{% if s.story or s.in_scope != s.pictures %} · {% if s.in_scope != s.pictures %}{{ s.in_scope }} of {% endif %}{{ "{:,}".format(s.pictures) }} {{ s.happened }}{% endif %}</span>
     </a>
   </div>
-  {% if s.place or s.people_total %}<p class="session-with">{% if s.place %}<a href="/g?{{ s.place.qs }}" data-session-place="{{ s.place.id }}">{{ s.place.name }}</a>{% endif %}{% if s.place and s.people_total %} · {% endif %}{% if s.people_total %}<span data-session-people="{{ s.people | length }}">{% for p in s.with.named %}{% if not loop.first %}, {% endif %}<a href="{{ p.href }}" title="in {{ p.pictures }} of these">{{ p.name }}</a>{% endfor %}{% if s.with.others %}{% if s.with.named %} and {% endif %}{{ s.with.others }} {% if s.with.named %}others{% else %}people{% endif %}{% endif %}</span>{% endif %}</p>{% endif %}
+  {% if s.place or s.people_total %}<p class="session-with">{% if s.place %}<a href="/g?{{ s.place.qs }}" data-session-place="{{ s.place.id }}">{{ s.place.name }}</a>{% endif %}{% if s.place and s.people_total %} · {% endif %}{% if s.people_total %}<span data-session-people="{{ s.people | length }}">{% for p in s.company.named %}{% if not loop.first %}, {% endif %}<a href="{{ p.href }}" title="in {{ p.pictures }} of these">{{ p.name }}</a>{% endfor %}{% if s.company.others %}{% if s.company.named %} and {% endif %}{{ s.company.others }} {% if s.company.named %}others{% else %}people{% endif %}{% endif %}</span>{% endif %}</p>{% endif %}
   {%- set shown = leads_of | map(attribute="slug") | list -%}
   <div class="session-strip">{% if pictures | length > shown | length %}{{ rows(pictures | rejectattr("slug", "in", shown) | list) }}{% elif not pictures and s.samples | length > 1 %}<div class="rows">{% for slug in s.samples[1:] %}<a class="surface-sample" href="/g?{{ s.qs }}" style="--r:1"><img src="/thumb/{{ slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% endif %}</div>
 </article>
@@ -50,7 +50,7 @@
       {% for tk in surface.ticks %}<g class="tick{% if tk.major %} major{% endif %}"><line x1="{{ tk.x }}" x2="{{ tk.x }}" y1="0" y2="200"/></g>{% endfor %}
       {% for held in surface.spans %}<rect class="band" x="{{ held.x }}" y="194" width="{{ held.w }}" height="6"><title>{{ held.pictures }} pictures dated only to {{ held.spelled }}</title></rect>{% endfor %}
       {% for b in surface.bins %}
-      <a class="bin" data-bin-at="{{ b.at }}" href="{{ b.href }}" role="listitem"{% if b.finest %} data-bin-gallery{% else %} data-bin-window{% endif %}>
+      <a class="bin" data-bin-at="{{ b.at | int }}" href="{{ b.href }}" role="listitem"{% if b.finest %} data-bin-gallery{% else %} data-bin-window{% endif %}>
         <rect class="bar" x="{{ b.x }}" y="{{ 200 - b.h * 0.34 }}" width="{{ b.w }}" height="{{ b.h * 0.34 }}"></rect>
         <title>{{ b.spelled }} · {{ "{:,}".format(b.pictures) }} pictures · {% if b.finest %}see them{% else %}open this {{ surface.unit }}{% endif %}</title>
       </a>
@@ -62,7 +62,7 @@
       {% for s in surface.sessions %}<a class="frame" data-frame="{{ s.id }}" href="#session-{{ s.id }}" style="left:{{ s.x / 10 }}%;width:{{ s.w / 10 }}%" title="{{ s.title }} · {{ s.when }}"><span class="frame-strip">{% for slug in s.samples[:4] %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}</span><span class="frame-label">{{ s.title }}</span></a>{% endfor %}
     </div>
     <div class="axis-samples" data-samples data-state="shown">
-      {% for b in surface.bins if b.samples %}<a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · see all {{ "{:,}".format(b.pictures) }}" data-bin-at="{{ b.at }}" style="left:{{ b.x / 10 }}%">{% for slug in b.samples[:1] %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}</a>{% endfor %}
+      {% for b in surface.bins if b.samples %}<a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · see all {{ "{:,}".format(b.pictures) }}" data-bin-at="{{ b.at | int }}" style="left:{{ b.x / 10 }}%">{% for slug in b.samples[:1] %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}</a>{% endfor %}
     </div>
   </div>
 

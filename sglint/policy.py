@@ -333,12 +333,6 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/story_view.py:render_document",
         "sg_web/story_view.py:snapshot_document",
         "sg_web/story_view.py:stories_index",
-        "sg_web/timeline_view.py:at",
-        "sg_web/timeline_view.py:density",
-        "sg_web/timeline_view.py:nth",
-        "sg_web/timeline_view.py:pictures",
-        "sg_web/timeline_view.py:spread",
-        "sg_web/timeline_view.py:timeline",
     }
 )
 

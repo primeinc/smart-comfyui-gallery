@@ -20,18 +20,20 @@ import datetime
 import pathlib
 import time
 import urllib.parse
-from typing import Annotated
+from typing import Annotated, Literal
 
-from litestar import Request, get
+from litestar import MediaType, Request, get
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromQuery, QueryParameter
 from litestar.response import Redirect, Response, Template
 
 from db import connect, context, facets, pages, planning, rendering, resultset, settings
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
-from sg_web.presenting import VARIES, presented
+from sg_web.presenting import VARIES, wants_json
+from sg_web.wire import Wire
 
 #: The surface's scope is a gallery question (db/resultset.py scope_of):
 #: its scopes and facets in the live spelling, unsorted, unpaged. The
@@ -865,7 +867,7 @@ def _surface(
         one["title"] = one["story"]["title"] if one["story"] else f"{one['pictures']:,} {one['happened']}"
         named = [p for p in one["people"] if p["name"]]
         others = one["people_total"] - len(named)
-        one["with"] = {"named": named, "others": others}
+        one["company"] = {"named": named, "others": others}
         one["lasted"] = _lasted(one["end"] - one["start"])
         # the session's frame on the axis, clipped to the window
         x0 = max(0.0, ((one["start"] - lo) / span) * _W)
@@ -1019,6 +1021,497 @@ def _surface(
     }
 
 
+# --- the timeline's contract -------------------------------------------------
+#
+# These do not restate `_surface`; they DESCRIBE it, and the description is
+# executable. `TimelineSurface(**told)` validates the whole tree at the seam:
+# `extra="forbid"` means a key the builder grows and this does not name is a
+# refusal here rather than an undescribed field on the wire, and strict mode
+# means a count that turned into a string, or an int where the contract
+# promised a boolean, is caught in the same call. A dict is accepted for a
+# model field and a list of dicts for a list of models, so the builder goes on
+# building dicts and this stays the one place that says what they are.
+#
+# Both what a person reads (`spelled`, `label`, `title`, `note`) and what a
+# browser draws with (`x`, `w`, `h`, `y`) are here on purpose: the server
+# decides how the surface reads AND how it is laid out, and the browser puts
+# that on screen rather than recomputing it.
+
+
+class TimelineScopePart(Wire):
+    """One scope or facet the surface is narrowed by, said out loud."""
+
+    key: str
+    value: object
+    #: only a facet is spelled; a scope's value is its own address
+    spelled: str | None = None
+
+
+class TimelineScope(Wire):
+    """What the page says it is scoped to. Null for the whole library."""
+
+    qs: str
+    parts: list[TimelineScopePart]
+
+
+class TimelineCoverage(Wire):
+    """How much of the library the timeline can actually place, and the
+    remedy when that is not all of it -- never an empty surface with no
+    reason given."""
+
+    interpreted: int
+    present: int
+    contested: int
+    #: a session run answers only at the current interpretation; false
+    #: means the groups are stale and the page says so
+    events_current: bool
+    contested_qs: str
+    policy_version: int
+    complete: bool
+
+
+class TimelinePicture(Wire):
+    """One picture ON the axis: its shape, its moment and how precisely
+    that is known, which clock domain it is in, and the sessions holding
+    it."""
+
+    slug: str
+    name: str
+    kind: str
+    width: int | None
+    height: int | None
+    faces: int
+    ratio: float
+    moment: float
+    precision: str
+    origin: str | None
+    domain: Literal["wall", "instant"]
+    sessions: list[int]
+    href: str
+    clock: str
+
+
+class TimelineHero(Wire):
+    """A picture a story names, addressed as the story page addresses it.
+    `thumbnail` is null once the file has left the library."""
+
+    name: str
+    thumbnail: str | None
+
+
+class TimelineStoryCard(Wire):
+    """What a card says of one story. Null on a session whose render no
+    longer verifies: a card shows nothing it cannot prove."""
+
+    id: int
+    href: str
+    evolution: str
+    title: str
+    dek: str
+    heroes: list[TimelineHero]
+
+
+class TimelinePlace(Wire):
+    """Where a session happened: the one place its placed members agree
+    on, with its gallery link."""
+
+    id: int
+    name: str | None
+    slug: str | None
+    qs: str
+
+
+class TimelinePerson(Wire):
+    """One person in a session, and how many of its pictures hold them."""
+
+    slug: str
+    name: str | None
+    href: str
+    pictures: int
+
+
+class TimelineCompany(Wire):
+    """Who was there: those with names, and how many more there were."""
+
+    named: list[TimelinePerson]
+    others: int
+
+
+class TimelineSession(Wire):
+    """One session touching the window, in its own clock domain.
+
+    `pictures` is how many it holds and `in_scope` how many of those the
+    surface's scope keeps, so a scoped page never claims the whole
+    session. `x` and `w` are its frame on the axis, clipped to the window.
+    """
+
+    id: int
+    kind: str
+    domain: Literal["wall", "instant"]
+    start: float
+    end: float
+    pictures: int
+    in_scope: int
+    snapshot_id: int | None
+    story: TimelineStoryCard | None
+    place: TimelinePlace | None
+    qs: str
+    #: which planner tells this kind of session's story, and whether the
+    #: application actually has it
+    planner: str | None
+    tellable: bool
+    samples: list[str]
+    people: list[TimelinePerson]
+    people_total: int
+    when: str
+    happened: str
+    title: str
+    lasted: str
+    company: TimelineCompany
+    x: float
+    w: float
+    #: the members the window holds; a session whose members all sit
+    #: outside it shows its samples instead
+    drawn_pictures: list[TimelinePicture]
+    drawn_lead: TimelinePicture | None
+    drawn_leads: list[TimelinePicture]
+
+
+class TimelineTick(Wire):
+    """One step of the axis's furniture, major at the calendar boundary
+    above it (midnight, the 1st, January)."""
+
+    x: float
+    label: str
+    major: bool
+
+
+class TimelineOrigin(Wire):
+    """A bin's pictures by where they came from."""
+
+    captured: int
+    generated: int
+    mixed: int
+    imported: int
+
+
+class TimelineBin(Wire):
+    """One bar: its pictures split by clock domain and by origin, a
+    thumbnail sample, and the link into the gallery it carries."""
+
+    at: float
+    pictures: int
+    #: of those, how many are claimed on a wall clock rather than an
+    #: instant -- `wall_h` is that share of the bar's height
+    wall: int
+    instant: int
+    origin: TimelineOrigin
+    samples: list[str]
+    qs: str
+    spelled: str
+    #: at the finest zoom a bar IS its pictures, so it links to them;
+    #: otherwise it links to its own narrower window
+    finest: bool
+    href: str
+    x: float
+    w: float
+    h: float
+    wall_h: float
+
+
+class TimelineSpan(Wire):
+    """A claim too coarse for the bin, drawn as a band over the time it
+    could be rather than a bar at a moment it is not."""
+
+    start: float
+    end: float
+    precision: str
+    pictures: int
+    spelled: str
+    x: float
+    w: float
+
+
+class TimelineGroup(Wire):
+    """The window's pictures in one group: a listed session's members, or
+    the pictures of one bin. `lead` is the picture it is shown by -- the
+    one with the most faces, never simply the first, which in a burst is
+    the frame before anyone was ready."""
+
+    t: float
+    end: float
+    session: TimelineSession | None
+    bin: TimelineBin | None
+    qs: str
+    pictures: list[TimelinePicture]
+    clock: str
+    lasted: str
+    lead: TimelinePicture
+    leads: list[TimelinePicture]
+
+
+class TimelineMonthCap(Wire):
+    """The month a day opens, named once at the top of it."""
+
+    year: int
+    month: str
+
+
+class TimelineDay(Wire):
+    """One day of the river, with the silence above it: the days of
+    nothing between it and the newer day, and the height that draws at."""
+
+    key: str
+    day: int
+    title: str
+    weekday: str
+    weekend: bool
+    month_cap: TimelineMonthCap | None
+    pictures: int
+    silent_days: int
+    silence: int
+    groups: list[TimelineGroup]
+
+
+class TimelineCalendarDay(Wire):
+    """One cell of a month sheet. `qs` is null on a day holding nothing:
+    an empty day is not a link to an empty gallery."""
+
+    n: int
+    pictures: int
+    hero: str | None
+    qs: str | None
+    spelled: str
+    today: bool
+
+
+class TimelineMonthSheet(Wire):
+    """One month sheet. `lead` is the weekday the 1st falls on, so the
+    cells start in the right column."""
+
+    year: int
+    month: str
+    lead: int
+    pictures: int
+    days: list[TimelineCalendarDay]
+
+
+class TimelineYearCell(Wire):
+    """One month of a year row. `outside` marks a month the window does
+    not reach: drawn, so the year keeps its shape, but not lit."""
+
+    month: str
+    pictures: int
+    hero: str | None
+    qs: str | None
+    href: str
+    outside: bool
+
+
+class TimelineYearRow(Wire):
+    """One year, twelve cells."""
+
+    year: int
+    pictures: int
+    months: list[TimelineYearCell]
+
+
+class TimelineOverviewBar(Wire):
+    """One week of the whole extent. A week of a decade-long library is a
+    sliver, so a burst is drawn at a floor width rather than vanishing."""
+
+    at: float
+    pictures: int
+    spelled: str
+    x: float
+    w: float
+    h: float
+
+
+class TimelineBrush(Wire):
+    """The window's frame on the overview."""
+
+    x: float
+    w: float
+
+
+class TimelineOverviewYear(Wire):
+    """Where a year begins along the overview strip, so a decade of
+    library reads as years rather than as one undivided smear."""
+
+    year: int
+    x: float
+
+
+class TimelineOverview(Wire):
+    """The whole extent at week resolution -- the strip the brush rides."""
+
+    start: float
+    end: float
+    bin_seconds: int
+    bars: list[TimelineOverviewBar]
+    brush: TimelineBrush
+    years: list[TimelineOverviewYear]
+
+
+class TimelineSegment(Wire):
+    """One band of the scrubber: a bin that holds pictures, or a run of
+    empty ones as ONE short band saying how long it was.
+
+    A band's height is its share of the library's pictures and never less
+    than a thumb can grab. `strip` is as many of its pictures as that
+    height shows; the picture under the pointer comes from /timeline/nth,
+    by rank, so a burst spreads over the whole band.
+    """
+
+    at: float
+    end: float
+    #: the link's window, clipped to the library
+    window_start: int
+    year: int
+    label: str
+    pictures: int
+    face: str | None
+    strip: list[str]
+    y: float
+    h: float
+    #: the year is named where it changes, far enough from the last name
+    year_label: bool
+    href: str
+
+
+class TimelineScrubberBrush(Wire):
+    """The window's mark down the scrubber."""
+
+    y: float
+    h: float
+
+
+class TimelineScrubber(Wire):
+    """The library top to bottom, newest first, in the unit its own
+    spread earns: five minutes of pictures scrub by the minute, five
+    centuries by the year."""
+
+    unit: str
+    bin_seconds: int
+    segments: list[TimelineSegment]
+    brush: TimelineScrubberBrush
+
+
+class TimelineExtent(Wire):
+    """Everything the scope holds, however far outside the window."""
+
+    start: float
+    end: float
+    pictures: int
+
+
+class TimelinePreset(Wire):
+    """One window offered beside the surface, each ending at the newest
+    picture."""
+
+    name: str
+    start: float
+    end: float
+    href: str
+    current: bool
+
+
+class TimelineSurface(Wire):
+    """The timeline at one window.
+
+    Null `start`, `end`, `extent`, `overview` and `scrubber` together mean
+    the scope holds nothing placeable -- and `coverage` then says why and
+    what to run about it, which is the whole reason an empty surface is
+    still an answer.
+    """
+
+    #: the zoom, and how wide one bar is in seconds
+    bin: str
+    bin_seconds: int | None
+    start: float | None
+    end: float | None
+    start_spelled: str
+    end_spelled: str
+    window_spelled: str
+    #: the bar's unit as a person says it
+    unit: str
+    scope: TimelineScope | None
+    extent: TimelineExtent | None
+    overview: TimelineOverview | None
+    presets: list[TimelinePreset]
+    coverage: TimelineCoverage
+    #: every bin carries thumbnails; false when only the busiest do
+    sampled: bool
+    bins: list[TimelineBin]
+    spans: list[TimelineSpan]
+    #: what the surface says of itself, in one line
+    note: str
+    sessions: list[TimelineSession]
+    sessions_total: int
+    sessions_sampled: bool
+    #: which body the window earns: the river of days, month sheets, or
+    #: year rows
+    composition: Literal["river", "calendar", "years"]
+    ticks: list[TimelineTick]
+    now_x: float | None
+    pictures_total: int
+    pictures_drawn: int
+    groups: list[TimelineGroup]
+    river: list[TimelineDay]
+    calendar: list[TimelineMonthSheet]
+    years: list[TimelineYearRow]
+    #: the cards the body lists on its own: every session under the
+    #: sheets; in the river only those no day of it placed
+    listed: list[TimelineSession]
+    scrubber: TimelineScrubber | None
+
+
+class TimelineMoment(Wire):
+    """A picture and when it is: the smallest thing the timeline answers."""
+
+    slug: str
+    moment: float
+
+
+class TimelineSpread(Wire):
+    """Pictures of a range, spread evenly through it."""
+
+    pictures: list[TimelineMoment]
+
+
+class TimelineAt(Wire):
+    """The picture a hand over a moment is pointing at."""
+
+    slug: str
+    moment: float
+    spelled: str
+
+
+class TimelineNth(Wire):
+    """The k-th picture of a range in moment order, of the `of` it holds
+    -- what a hand k/n of the way along a segment points at."""
+
+    slug: str
+    moment: float
+    k: int
+    of: int
+    spelled: str
+
+
+class TimelinePictures(Wire):
+    """Every picture of a window in moment order, bounded by the request's
+    limit. `total` says how many the window holds, so a page that drew
+    fewer knows it and can say so."""
+
+    start: float
+    end: float
+    scope: TimelineScope | None
+    qs: str
+    total: int
+    pictures: list[TimelinePicture]
+
+
 @get("/timeline/density", sync_to_thread=True)
 def density(
     state: State,
@@ -1034,7 +1527,7 @@ def density(
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
     lean: FromQuery[bool] = False,
-) -> Response:
+) -> Response[TimelineSurface]:
     """The surface as JSON (`_surface`): the same answer `/timeline`
     gives a machine, with `bin` as an explicit zoom when asked and the
     whole extent when no window is -- the machine's spelling."""
@@ -1050,7 +1543,7 @@ def density(
         told = _surface(conn, state, asked, start, end, bin_name=bin_name, lean=lean)
     finally:
         connect.close(conn)
-    return Response(told, headers=VARIES)
+    return Response(TimelineSurface.model_validate(told), headers=VARIES)
 
 
 @get("/timeline/pictures", sync_to_thread=True)
@@ -1067,7 +1560,7 @@ def pictures(
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
     limit: FromQuery[int] = PICTURES_MOST,
-) -> Response:
+) -> Response[TimelinePictures]:
     """Every picture of [start, end) in the scope, in moment order, each
     with its shape, its moment and precision, and the sessions it is in:
     what a surface needs to draw pictures ON time rather than beside
@@ -1084,14 +1577,16 @@ def pictures(
         connect.close(conn)
     qs = resultset.canonical(dataclasses.replace(held, sort="moment"))
     return Response(
-        {
-            "start": start,
-            "end": end,
-            "scope": _scope_told(held),
-            "qs": qs,
-            "total": total,
-            "pictures": [_picture(row, qs) for row in rows],
-        },
+        TimelinePictures.model_validate(
+            {
+                "start": start,
+                "end": end,
+                "scope": _scope_told(held),
+                "qs": qs,
+                "total": total,
+                "pictures": [_picture(row, qs) for row in rows],
+            }
+        ),
         headers=VARIES,
     )
 
@@ -1110,7 +1605,7 @@ def spread(
     favorite: FromQuery[str | None] = None,
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[TimelineSpread]:
     """Up to `n` pictures of [start, end) spread evenly through it: what
     a surface that can show n pictures of a range asks for, whatever
     the range holds."""
@@ -1123,7 +1618,10 @@ def spread(
         rows = pages.timeline_spread(conn, start, end, max(1, min(n, SPREAD_MOST)), scope)
     finally:
         connect.close(conn)
-    return Response({"pictures": [{"slug": slug, "moment": moment} for slug, moment in rows]}, headers=VARIES)
+    return Response(
+        TimelineSpread(pictures=[TimelineMoment(slug=slug, moment=moment) for slug, moment in rows]),
+        headers=VARIES,
+    )
 
 
 @get("/timeline/nth", sync_to_thread=True)
@@ -1140,7 +1638,7 @@ def nth(
     favorite: FromQuery[str | None] = None,
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[TimelineNth]:
     """The k-th picture of [start, end) in moment order, of the n it
     holds -- what a hand k/n of the way along a segment points at. By
     rank, so a burst spreads across the segment's whole height. 404
@@ -1158,7 +1656,7 @@ def nth(
         raise NotFoundException("no picture in this range")
     slug, moment = found
     return Response(
-        {"slug": slug, "moment": moment, "k": min(max(0, k), n - 1), "of": n, "spelled": _spell(moment, "minute")},
+        TimelineNth(slug=slug, moment=moment, k=min(max(0, k), n - 1), of=n, spelled=_spell(moment, "minute")),
         headers=VARIES,
     )
 
@@ -1175,7 +1673,7 @@ def at(
     favorite: FromQuery[str | None] = None,
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
-) -> Response:
+) -> Response[TimelineAt]:
     """The picture a hand over moment `t` is pointing at: the nearest in
     time, either side; 404 when the scope holds none."""
     asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
@@ -1188,10 +1686,24 @@ def at(
     if found is None:
         raise NotFoundException("no pictures match these filters in this range")
     slug, moment = found
-    return Response({"slug": slug, "moment": moment, "spelled": _spell(moment, "minute")}, headers=VARIES)
+    return Response(TimelineAt(slug=slug, moment=moment, spelled=_spell(moment, "minute")), headers=VARIES)
 
 
-@get("/timeline", sync_to_thread=True)
+@get(
+    "/timeline",
+    # The route negotiates three ways, and a union that mixes a page with a
+    # JSON answer reaches OpenAPI as the empty schema however precisely the
+    # arms are written (litestar v2.24.0). The JSON answer is declared here.
+    responses={
+        200: ResponseSpec(
+            data_container=TimelineSurface,
+            description="The timeline at one window: the same surface the page and the fragment render",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+    sync_to_thread=True,
+)
 def timeline(
     state: State,
     request: Request,
@@ -1207,7 +1719,7 @@ def timeline(
     rating_min: FromQuery[int | None] = None,
     f: FromQuery[list[str] | None] = None,
     snap: FromQuery[bool] = False,
-) -> Template | Response:
+) -> Template | Response[TimelineSurface] | Redirect:
     """The timeline at one window: JSON to a machine, the surface fragment
     to htmx (what a brush or scrubber move fetches), the page to a
     browser -- one builder, one renderer. `bin` is accepted from older
@@ -1228,4 +1740,12 @@ def timeline(
         told = _surface(conn, state, asked, start, end, snap=snap)
     finally:
         connect.close(conn)
-    return presented(request, told, page="timeline.html", fragment="_timeline_surface.html", name="surface")
+    # The same answer either way, stated once: the machine gets the model
+    # and the templates render from what it validated, so the page and the
+    # contract cannot describe different surfaces.
+    surface = TimelineSurface.model_validate(told)
+    if wants_json(request):
+        return Response(surface, headers=VARIES)
+    drawn = surface.model_dump(mode="json")
+    template = "_timeline_surface.html" if request.headers.get("hx-request") == "true" else "timeline.html"
+    return Template(template_name=template, context={"surface": drawn}, headers=VARIES)

@@ -256,9 +256,12 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         page = client.get("/timeline", params={"folder": "deep"}, headers={"accept": "text/html"}).text
         assert 'data-timeline-scope="folder=deep"' in page
         assert client.get("/timeline/density", params={"bin": "day", "folder": "nowhere"}).status_code == 404
+        # a scope's value is its own address, so it carries no spelling --
+        # the field is there and null rather than absent, because a reader
+        # should not have to branch on which keys a part happens to have
         assert client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()[
             "scope"
-        ]["parts"] == [{"key": "kind", "value": "image"}]
+        ]["parts"] == [{"key": "kind", "value": "image", "spelled": None}]
         smart = client.post("/albums/smart", json={"name": "Deep Ones", "folder": "deep"})
         assert smart.status_code == 201, smart.text
         ruled = client.get(
