@@ -38,3 +38,9 @@ clip-batch *args:
 # rather than inferred from a total.
 clip-transfer *args:
     @"$python" benchmarks/openclip_transfer.py "$@"
+
+# Whether batching changes what a SEARCH returns, over distinct pictures
+# and real queries: benchmarks/results/openclip_retrieval.json. Vector
+# drift is not the question; ranking is.
+clip-retrieval *args:
+    @"$python" benchmarks/openclip_retrieval.py "$@"
