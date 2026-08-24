@@ -9,7 +9,13 @@
    facts (source pixels, what the preview delivers, whether the original
    has more to give) instead of measuring the DOM and guessing. Single
    quotes because Jinja's tojson escapes < > & ' for exactly this. #}
+{# `data-made` says what this picture IS, so the inspector can lead with
+   how a generated image was made and with where a photograph was taken --
+   until somebody decides otherwise, after which their arrangement wins on
+   every kind. The template states the fact; the choice is the browser's
+   (frontend/src/workspace.ts). #}
 <div class="viewer" data-viewer data-chrome="visible" data-inspector="closed"
+     data-made="{{ 'generated' if item.creation and item.creation.prompt else 'captured' }}"
      data-wheel-modifier="{{ item.viewing.wheel_modifier }}">
 
   <header class="viewer-chrome" data-chrome-bar>

@@ -286,6 +286,77 @@ def test_no_keystroke_means_two_things_at_once(page: Page, live: Live, where, op
     page.wait_for_function("() => document.querySelector('[data-fav]').getAttribute('aria-pressed') === 'false'")
 
 
+def test_the_inspector_stays_as_it_was_arranged(page: Page, live: Live, unbroken):
+    """Configure it once; it is still that way twenty pictures later.
+
+    The viewer is remounted on every walk, so before this each picture
+    reopened the template's guesses -- panel shut, `about` disclosed
+    because the markup said `open` -- and somebody who set it up once set
+    it up again for every picture they looked at.
+
+    Zoom and pan are deliberately NOT in this: they are how a person is
+    looking at ONE picture and carrying them onward would be restoring
+    something nobody arranged (frontend/src/workspace.ts).
+    """
+    _open_page(page, live, "a_big.png")
+    page.evaluate("() => localStorage.removeItem('sg.workspace.v1')")
+    page.reload()
+    page.wait_for_selector("[data-viewer]")
+
+    page.keyboard.press("i")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+    # An arrangement nothing defaults to: `technical` open, `about` shut.
+    for panel, want in (("technical", True), ("about", False)):
+        held = page.locator(f'[data-panel="{panel}"]')
+        if held.evaluate("d => d.open") != want:
+            held.locator("summary").click()
+            page.wait_for_function(
+                "([p, w]) => document.querySelector(`[data-panel='${p}']`).open === w", arg=[panel, want]
+            )
+
+    for _ in range(3):
+        page.keyboard.press("ArrowRight")
+        page.wait_for_selector("[data-viewer]")
+        page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+        assert page.locator('[data-panel="technical"]').evaluate("d => d.open") is True, "the walk reset a section"
+        assert page.locator('[data-panel="about"]').evaluate("d => d.open") is False, "the walk reopened about"
+
+    # and across a whole reload, which is where "remembered" is decided
+    page.reload()
+    page.wait_for_selector("[data-viewer]")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+    assert page.locator('[data-panel="technical"]').evaluate("d => d.open") is True
+    assert page.locator('[data-panel="about"]').evaluate("d => d.open") is False
+
+
+def test_the_filmstrip_spans_the_whole_viewer(page: Page, live: Live, unbroken):
+    """The strip under the picture is as wide as the viewer, open or shut.
+
+    The grid says so -- `"filmstrip filmstrip"` across both columns
+    (gallery.css) -- so anything narrower is the layout not doing what it
+    declares, which is a thing only a browser can report.
+    """
+    _open_page(page, live, "a_big.png")
+    page.wait_for_selector("[data-filmstrip]")
+
+    def widths():
+        return page.evaluate(
+            "() => { const v = document.querySelector('[data-viewer]').getBoundingClientRect();"
+            " const f = document.querySelector('[data-filmstrip]').getBoundingClientRect();"
+            " return {viewer: v.width, strip: f.width}; }"
+        )
+
+    shut = widths()
+    assert shut["strip"] == pytest.approx(shut["viewer"], abs=2), f"inspector closed: {shut}"
+
+    page.keyboard.press("i")
+    page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
+    open_wide = widths()
+    assert open_wide["strip"] == pytest.approx(open_wide["viewer"], abs=2), (
+        f"inspector open, the strip stopped at the stage instead of crossing the inspector: {open_wide}"
+    )
+
+
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
 def test_every_inspector_section_opens_by_pointer_and_by_keyboard(page: Page, live: Live, where, open_it, unbroken):
     """A heading with `cursor: pointer` and nothing listening is a control

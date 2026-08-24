@@ -29,6 +29,7 @@ import { closestFrom, everyElement, findElement, requireData } from "./dom";
 import type { components } from "./generated/api";
 import { register } from "./keys";
 import { isPlainClick } from "./overlay";
+import { panelState, remember, rememberPanel, workspace } from "./workspace";
 
 type Stage = components["schemas"]["MediaSurface"]["stage"];
 type Pixels = components["schemas"]["Pixels"];
@@ -294,12 +295,18 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   // the PANEL, not the root's data-inspector state attribute
   const inspector = findElement(root, "[data-inspector-panel]", HTMLElement);
 
-  const showInspector = (open: boolean) => {
+  const showInspector = (open: boolean, arranged = true) => {
     if (!inspector) return;
     root.dataset.inspector = open ? "open" : "closed";
     for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
       button.setAttribute("aria-expanded", String(open));
     }
+    // `arranged` separates a person's decision from the viewer restoring
+    // one. Recording a restore would be harmless here and wrong in
+    // principle: only what somebody chose is worth keeping, and a
+    // surface that writes its own defaults back can never tell the two
+    // apart afterwards.
+    if (arranged) remember({ inspector: open ? "open" : "closed" });
   };
 
   /**
@@ -532,6 +539,29 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   // only the first would leave whichever came second inert.
   for (const button of everyElement(root, "[data-focus]", HTMLElement)) {
     onElement(button, "click", focus);
+  }
+
+  // --- what this person arranged, restored ----------------------------------
+  //
+  // The viewer is remounted on every walk, so without this each picture
+  // reopened the template's guesses: the panel shut, `about` disclosed
+  // because the markup says `open`, and a person who had set it up once
+  // set it up again nineteen more times.
+  //
+  // Defaults still exist, and they differ by what the picture IS -- a
+  // generated image leads with how it was made, a photograph with where
+  // and when. They apply only until somebody decides; after that the
+  // decision wins on every picture of every kind.
+  if (inspector) {
+    const kept = workspace();
+    const generated = inspector.querySelector("[data-panel='creation']") !== null && root.dataset.made === "generated";
+    showInspector(kept.inspector ? kept.inspector === "open" : false, false);
+    for (const section of everyElement(inspector, "[data-panel]", HTMLDetailsElement)) {
+      const named = section.dataset.panel ?? "";
+      const said = panelState(named);
+      section.open = said ?? (generated ? named === "creation" : named === "about");
+      onElement(section, "toggle", () => rememberPanel(named, section.open));
+    }
   }
 
   root.dataset.inspector = root.dataset.inspector ?? "closed";

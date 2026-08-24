@@ -18,7 +18,10 @@
     <button type="button" class="viewer-act" data-inspector-toggle aria-label="close information">&times;</button>
   </header>
 
-  <details class="panel" data-panel="about" open>
+  {# No `open` here. Which sections start disclosed is a decision that
+   belongs to whoever is looking, kept across pictures and reloads; a
+   hard-coded `open` overrode that on every walk. #}
+  <details class="panel" data-panel="about">
     <summary>about</summary>
     <dl>
       {% if item.when %}

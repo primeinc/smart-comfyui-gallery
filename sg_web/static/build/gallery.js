@@ -670,6 +670,33 @@
     return { root, open, close };
   }
 
+  // src/workspace.ts
+  var VERSION = 1;
+  var KEY = `sg.workspace.v${VERSION}`;
+  function workspace() {
+    try {
+      const held = localStorage.getItem(KEY);
+      if (!held) return {};
+      const parsed = JSON.parse(held);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch {
+      return {};
+    }
+  }
+  function remember(change) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ ...workspace(), ...change }));
+    } catch {
+    }
+  }
+  function panelState(name) {
+    return workspace().panels?.[name];
+  }
+  function rememberPanel(name, open) {
+    remember({ panels: { ...workspace().panels ?? {}, [name]: open } });
+  }
+
   // src/viewer.ts
   var FIT = { framing: "fit", scale: 1, x: 0, y: 0 };
   function isStill(stage) {
@@ -791,12 +818,13 @@
       if (root.dataset.chrome === "visible") wake();
     };
     const inspector = findElement(root, "[data-inspector-panel]", HTMLElement);
-    const showInspector = (open) => {
+    const showInspector = (open, arranged = true) => {
       if (!inspector) return;
       root.dataset.inspector = open ? "open" : "closed";
       for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
         button.setAttribute("aria-expanded", String(open));
       }
+      if (arranged) remember({ inspector: open ? "open" : "closed" });
     };
     const panel = (named) => {
       if (!inspector) return;
@@ -914,6 +942,17 @@
     }
     for (const button of everyElement(root, "[data-focus]", HTMLElement)) {
       onElement(button, "click", focus);
+    }
+    if (inspector) {
+      const kept = workspace();
+      const generated = inspector.querySelector("[data-panel='creation']") !== null && root.dataset.made === "generated";
+      showInspector(kept.inspector ? kept.inspector === "open" : false, false);
+      for (const section of everyElement(inspector, "[data-panel]", HTMLDetailsElement)) {
+        const named = section.dataset.panel ?? "";
+        const said = panelState(named);
+        section.open = said ?? (generated ? named === "creation" : named === "about");
+        onElement(section, "toggle", () => rememberPanel(named, section.open));
+      }
     }
     root.dataset.inspector = root.dataset.inspector ?? "closed";
     root.dataset.chrome = "visible";
