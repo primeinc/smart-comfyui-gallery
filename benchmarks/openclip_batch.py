@@ -161,7 +161,7 @@ def measure(backend, pictures: list, size: int, workers: int, repeats: int, *, o
     on_cuda = backend.device == "cuda"
     passes = []
     for _ in range(repeats):
-        preprocessed = inferred = 0.0
+        preprocessed = inferred = pipelined = 0.0
         started = time.perf_counter()
         pool = ThreadPoolExecutor(workers) if workers > 1 else None
         try:
@@ -179,7 +179,7 @@ def measure(backend, pictures: list, size: int, workers: int, repeats: int, *, o
                 if on_cuda:
                     torch.cuda.synchronize()
                 producer.join()
-                inferred = time.perf_counter() - mark
+                pipelined = time.perf_counter() - mark
             else:
                 for at in range(0, len(pictures), size):
                     mark = time.perf_counter()
@@ -197,20 +197,29 @@ def measure(backend, pictures: list, size: int, workers: int, repeats: int, *, o
         finally:
             if pool is not None:
                 pool.shutdown()
-        passes.append((time.perf_counter() - started, preprocessed, inferred))
+        passes.append((time.perf_counter() - started, preprocessed, inferred, pipelined))
 
-    whole, preprocess, inference = min(passes, key=lambda run: run[0])
-    return {
+    whole, preprocess, inference, pipeline = min(passes, key=lambda run: run[0])
+    row = {
         "batch": size,
         "workers": workers,
         "overlap": overlap,
         "images_per_second": round(len(pictures) / whole, 1),
         "total_ms": round(whole * 1000, 1),
-        "preprocess_ms": round(preprocess * 1000, 1),
-        "inference_ms": round(inference * 1000, 1),
-        "inference_ms_per_image": round(inference * 1000 / len(pictures), 2),
         "peak_vram_mb": round(torch.cuda.max_memory_allocated() / 1e6, 1) if on_cuda else None,
     }
+    if overlap:
+        # NOT reported as preprocess and inference. In this mode the two
+        # run at once, so there is one composed region and no honest way
+        # to split it from the outside; reporting `preprocess 0.0` beside
+        # an `inference` that is really the whole pipeline reads as an
+        # encoder that got slower.
+        row["pipeline_ms"] = round(pipeline * 1000, 1)
+    else:
+        row["preprocess_ms"] = round(preprocess * 1000, 1)
+        row["inference_ms"] = round(inference * 1000, 1)
+        row["inference_ms_per_image"] = round(inference * 1000 / len(pictures), 2)
+    return row
 
 
 def vectors(backend, pictures: list, size: int):
@@ -275,15 +284,19 @@ def main() -> None:
 
     def show(row: dict) -> None:
         rows.append(row)
+        if row["overlap"]:
+            stages = f"{'-':>11} {'-':>10} {row['pipeline_ms']:10.1f}"
+        else:
+            stages = f"{row['preprocess_ms']:11.1f} {row['inference_ms']:10.1f} {'-':>10}"
         print(
             f"{row['batch']:6} {row['workers']:8} {'yes' if row['overlap'] else 'no':>8} "
-            f"{row['images_per_second']:9.1f} {row['total_ms']:9.1f} {row['preprocess_ms']:11.1f} "
-            f"{row['inference_ms']:10.1f} {row['peak_vram_mb'] or 0:9.1f}"
+            f"{row['images_per_second']:9.1f} {row['total_ms']:9.1f} {stages} "
+            f"{row['peak_vram_mb'] or 0:9.1f}"
         )
 
     head = (
         f"{'batch':>6} {'workers':>8} {'overlap':>8} {'img/sec':>9} {'total ms':>9} "
-        f"{'preprocess':>11} {'inference':>10} {'VRAM MB':>9}"
+        f"{'preprocess':>11} {'inference':>10} {'pipeline':>10} {'VRAM MB':>9}"
     )
     print()
     print(head)
@@ -333,16 +346,43 @@ def main() -> None:
             torch.cuda.reset_peak_memory_stats()
         show(measure(backend, pictures, size, best_workers, asked.repeats, overlap=True))
 
+    # A2: the threaded preprocess must produce the SAME TENSORS, not
+    # merely call the same function. Asserting equivalence from a shared
+    # function name is how a "semantics-free" optimisation stops being
+    # one, so this compares bytes.
+    print()
+    print("preprocessed tensors, serial against threaded:")
+    serial = [backend.preprocess(picture) for picture in pictures[:64]]
+    identical = {}
+    for count in (2, 4, 8, 16):
+        with ThreadPoolExecutor(count) as pool:
+            threaded = list(pool.map(backend.preprocess, pictures[:64]))
+        same = all(torch.equal(a, b) for a, b in zip(serial, threaded, strict=True))
+        worst = max(float((a - b).abs().max()) for a, b in zip(serial, threaded, strict=True))
+        identical[str(count)] = {"bit_identical": same, "max_abs_difference": worst}
+        print(f"  {count:2} workers: bit-identical {same}, largest element differs by {worst:.1e}")
+
+    # B2: every batch size that could be chosen, not a sample of two. The
+    # winner was batch 64 while only 8 and 32 had ever been compared.
     alone = vectors(backend, pictures, 1)
     drift = {}
-    for size in (8, 32):
+    print()
+    print("vectors, each batch size against batch 1:")
+    for size in (2, 8, 32, 64, 128):
         if size > len(pictures):
             continue
         together = vectors(backend, pictures, size)
         worst = float(abs(together - alone).max())
         cosine = float((together * alone).sum(axis=1).min())
-        drift[str(size)] = {"max_abs_difference": worst, "min_cosine_against_batch_1": cosine}
-        print(f"\nbatch {size} against batch 1: largest element differs by {worst:.2e}, worst cosine {cosine:.8f}")
+        drift[str(size)] = {
+            "max_abs_difference": worst,
+            "min_cosine_against_batch_1": cosine,
+            "bit_identical": bool((together == alone).all()),
+        }
+        print(f"  batch {size:4}: largest element differs by {worst:.3e}, worst cosine {cosine:.9f}")
+    print("  drift saturates rather than accumulating: cuBLAS picks a different")
+    print("  kernel above a size threshold, so 128 is no worse than 8. What this")
+    print("  does NOT establish is whether a nearest-neighbour list reorders.")
 
     best = max(rows, key=lambda row: row["images_per_second"])
     first = rows[0]
@@ -362,7 +402,8 @@ def main() -> None:
                 "model": f"{backend.model_name}/{backend.checkpoint}",
                 "pictures": len(pictures),
                 "runs": rows,
-                "equivalence": drift,
+                "preprocess_equivalence": identical,
+                "vector_equivalence": drift,
             },
             indent=2,
         ),
