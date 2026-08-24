@@ -101,50 +101,73 @@ def corpus(db: pathlib.Path, per_group: int) -> list[tuple[int, str, pathlib.Pat
 def measure_shipped(path: pathlib.Path, kind: str, orientation: int | None, staging: pathlib.Path, method: int) -> dict:
     """The same seven phases through the code that actually ships.
 
-    `decode.open_bounded`, `oriented.upright` and `thumbs.fit` are the
-    production functions, not a copy of them here: a benchmark that
-    reimplements the thing it measures can report an improvement the
-    application does not have.
+    It makes the SAME routing decision production makes -- libvips first
+    through `derive.opened`, Pillow when that returns None -- because a
+    lane that always takes one branch reports a pipeline nobody runs. The
+    `decoder` field says which one answered, so a row can be read without
+    guessing.
 
-    `method` overrides `thumbs.METHOD` so the encoder dial can be swept
-    without editing production; passing thumbs.METHOD measures what runs.
+    Everything here is a production function. A benchmark that
+    reimplements what it measures can report an improvement the
+    application does not have; this one measured 3.3x that way once, and
+    2.8x once it called the real thing.
+
+    `method` overrides thumbs.METHOD so the encoder dial can be swept
+    without editing production; the default is what runs.
     """
     from db import oriented
-    from vision import decode, thumbs
+    from vision import decode, derive, thumbs
 
     preview_edge, thumb_edge = thumbs.EDGES["preview"], thumbs.EDGES["thumb"]
     clock = Clock()
+    decoder = "libvips"
     try:
         with clock.time("decode"):
-            if kind == "video":
-                poster = decode.poster(path)
-                if poster is None:
-                    return {"path": str(path), "error": "no poster frame"}
-                opened = poster
-            else:
-                opened = decode.open_bounded(path, preview_edge)
-                opened.load()
-            source = opened.size
+            frame = None if kind == "video" else derive.opened(path, preview_edge, orientation)
+            if frame is None:
+                decoder = "pyav" if kind == "video" else "pillow"
+                picture = (
+                    decode.poster(path)
+                    if kind == "video"
+                    else oriented.for_derivatives(path, preview_edge, orientation)
+                )
+                if picture is None:
+                    return {"path": str(path), "error": "no decodable frame"}
+                frame = picture
+            source = frame.size if decoder != "libvips" else (frame.width, frame.height)
 
         with clock.time("orient"):
-            frame = oriented.upright(opened, orientation)
+            pass  # applied inside the decode step by both routes
 
-        with clock.time("resize_preview"):
-            preview = thumbs.fit(frame, preview_edge)
-        with clock.time("encode_preview"):
-            preview_bytes = io.BytesIO()
-            preview.save(preview_bytes, format="WEBP", quality=thumbs.QUALITY, method=method)
-
-        with clock.time("resize_thumb"):
-            thumb = thumbs.fit(preview, thumb_edge)
-        with clock.time("encode_thumb"):
-            thumb_bytes = io.BytesIO()
-            thumb.save(thumb_bytes, format="WEBP", quality=thumbs.QUALITY, method=method)
+        if decoder == "libvips":
+            with clock.time("resize_preview"):
+                preview = derive.fit(frame, preview_edge)
+            with clock.time("encode_preview"):
+                preview_bytes = preview.webpsave_buffer(Q=thumbs.QUALITY, effort=method)
+            with clock.time("resize_thumb"):
+                thumb = derive.fit(preview, thumb_edge)
+            with clock.time("encode_thumb"):
+                thumb_bytes = thumb.webpsave_buffer(Q=thumbs.QUALITY, effort=method)
+            preview_size, thumb_size = [preview.width, preview.height], [thumb.width, thumb.height]
+        else:
+            with clock.time("resize_preview"):
+                preview = thumbs.fit(frame, preview_edge)
+            with clock.time("encode_preview"):
+                held = io.BytesIO()
+                preview.save(held, format="WEBP", quality=thumbs.QUALITY, method=method)
+                preview_bytes = held.getvalue()
+            with clock.time("resize_thumb"):
+                thumb = thumbs.fit(preview, thumb_edge)
+            with clock.time("encode_thumb"):
+                held = io.BytesIO()
+                thumb.save(held, format="WEBP", quality=thumbs.QUALITY, method=method)
+                thumb_bytes = held.getvalue()
+            preview_size, thumb_size = list(preview.size), list(thumb.size)
 
         with clock.time("write"):
-            for name, buffer in (("p.webp", preview_bytes), ("t.webp", thumb_bytes)):
+            for name, blob in (("p.webp", preview_bytes), ("t.webp", thumb_bytes)):
                 staging_file = staging / f"{name}.tmp"
-                staging_file.write_bytes(buffer.getvalue())
+                staging_file.write_bytes(blob)
                 os.replace(staging_file, staging / name)
     except (OSError, ValueError, MemoryError, RuntimeError) as why:
         return {"path": str(path), "error": f"{type(why).__name__}: {why}"}
@@ -153,12 +176,13 @@ def measure_shipped(path: pathlib.Path, kind: str, orientation: int | None, stag
         "path": str(path),
         "kind": kind,
         "suffix": path.suffix.lower().lstrip("."),
+        "decoder": decoder,
         "megapixels": round(source[0] * source[1] / 1e6, 2),
         "source_bytes": path.stat().st_size,
-        "preview_bytes": len(preview_bytes.getvalue()),
-        "thumb_bytes": len(thumb_bytes.getvalue()),
-        "preview_size": list(preview.size),
-        "thumb_size": list(thumb.size),
+        "preview_bytes": len(preview_bytes),
+        "thumb_bytes": len(thumb_bytes),
+        "preview_size": preview_size,
+        "thumb_size": thumb_size,
         "total": round(sum(clock.spans.values()), 2),
         **{phase: round(clock.spans.get(phase, 0.0), 2) for phase in PHASES},
     }

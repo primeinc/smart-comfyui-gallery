@@ -10,6 +10,7 @@ jinja2  # the gallery templates; litestar's Jinja engine needs it installed
 uvicorn  # the server behind `python -m sg_web`
 websockets  # uvicorn's WebSocket protocol implementation for /ws/jobs
 Pillow
+pyvips[binary]>=3.1.1  # libvips: the thumbnail decoder, 1.6x Pillow on PNG for the same bytes
 opencv-python<5  # 5.x ORT engine needs dynamic-dims ONNX; deployed YuNet is static-shape
 numpy # needed for opencv-python
 defusedxml  # XMP is parsed out of files the gallery did not write

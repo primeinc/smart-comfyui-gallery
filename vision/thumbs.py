@@ -15,26 +15,21 @@ Thumb and preview are keyed on `content_sha256`, so the same bytes never
 render twice, a moved or renamed file keeps its cache, and the whole
 directory is safe to delete -- it holds nothing that cannot be recomputed.
 
-Two producers write into it, because decoding is the expensive part and
-throwing decoded pixels away to re-decode them later makes no sense:
-
-- Jobs that already hold a decoded frame (face detection decodes every
-  picture and sampled video frame) cache on the way past, gated by the
-  `thumbnail_precache` setting.
-- The serving layer caches a frame it decoded on first request, for
-  files no job has touched yet.
+This module is the Pillow half, and takes callers who ALREADY HOLD
+decoded pixels: face detection decodes every picture and sampled video
+frame, so it caches on the way past rather than throwing them away for
+something else to decode again. Rendering from a path is vision/derive.py,
+which reaches libvips first and falls back here.
 
 Writes are atomic -- a temp file in the same directory, then `os.replace`
 -- so a killed process leaves no half-written image a browser would
 receive as a broken picture forever.
 
-`ImageOps.contain` is the resize: aspect-preserving to the box's longest
-side in both directions (python-pillow/Pillow@bb1d8e8 src/PIL/ImageOps.py:
-272-300), so a tiny source is enlarged to grid size rather than rendered
-as a speck. `ImageOps.fit` squares the avatar (:518-563, crop to aspect
-then resize). The WebP writer converts whatever mode arrives
-(src/PIL/WebPImagePlugin.py:152-155, 297), so palette, CMYK and 16-bit
-frames need no handling here.
+`fit` is the resize and never enlarges; what that cost is in its own
+docstring. `ImageOps.fit` squares the avatar (python-pillow/Pillow@bb1d8e8
+src/PIL/ImageOps.py:518-563, crop to aspect then resize). The WebP writer
+converts whatever mode arrives (src/PIL/WebPImagePlugin.py:152-155, 297),
+so palette, CMYK and 16-bit frames need no handling here.
 """
 
 from __future__ import annotations
@@ -129,7 +124,7 @@ def put(cache_dir: pathlib.Path, sha: str, image: Image.Image, kind: str = "thum
     target = path_for(cache_dir, sha, kind)
     if target.exists():
         return target
-    return _write(target, fit(image, EDGES[kind]))
+    return write(target, fit(image, EDGES[kind]))
 
 
 def put_all(cache_dir: pathlib.Path, sha: str, image: Image.Image) -> None:
@@ -147,7 +142,7 @@ def put_all(cache_dir: pathlib.Path, sha: str, image: Image.Image) -> None:
         frame = fit(frame, EDGES[kind])
         target = path_for(cache_dir, sha, kind)
         if not target.exists():
-            _write(target, frame)
+            write(target, frame)
 
 
 def put_avatar(
@@ -172,10 +167,21 @@ def put_avatar(
     right = min(width, round(centre_x + side / 2))
     bottom = min(height, round(centre_y + side / 2))
     face = image.crop((left, top, right, bottom))
-    return _write(target, ImageOps.fit(face, (AVATAR, AVATAR)))
+    return write(target, ImageOps.fit(face, (AVATAR, AVATAR)))
 
 
-def _write(target: pathlib.Path, small: Image.Image) -> pathlib.Path:
+def write(target: pathlib.Path, small: Image.Image) -> pathlib.Path:
+    """One already-sized Pillow image, encoded and published atomically."""
+    return _publish(target, lambda staging: small.save(staging, format="WEBP", quality=QUALITY, method=METHOD))
+
+
+def write_bytes(target: pathlib.Path, blob: bytes) -> pathlib.Path:
+    """The same, for an encoder that hands back bytes rather than writing
+    them -- libvips does (vision/derive.py)."""
+    return _publish(target, lambda staging: staging.write_bytes(blob))
+
+
+def _publish(target: pathlib.Path, put) -> pathlib.Path:
     """Atomic, and safe under concurrent writers: the staging name is
     per-thread, so two requests racing to fill the same miss each write
     their own bytes and the second `os.replace` is a no-op in effect."""
@@ -183,6 +189,6 @@ def _write(target: pathlib.Path, small: Image.Image) -> pathlib.Path:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.parent / f"{target.name}.{os.getpid()}-{threading.get_ident()}.tmp"
-    small.save(staging, format="WEBP", quality=QUALITY, method=METHOD)
+    put(staging)
     os.replace(staging, target)
     return target

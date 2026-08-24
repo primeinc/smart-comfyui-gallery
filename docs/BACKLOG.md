@@ -6,8 +6,8 @@ not a history.
 
 ## Performance
 
-- **Thumbnails are still serial.** 5.00 files/sec over the real library
-  (`just bench thumbs-phases`), up from 1.76, but one worker renders one
+- **Thumbnails are still serial.** 6.76 files/sec over the real library
+  (`just bench thumbs-phases`), up from 1.80, but one worker renders one
   file at a time. `run_next()` loops over every pending item, so a 20,000
   file precache owns the only background worker for an hour. Decode,
   resize and encode are all per-file work with nothing shared, so this is

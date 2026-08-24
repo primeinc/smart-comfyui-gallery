@@ -110,6 +110,42 @@ def test_a_bounded_open_asks_the_decoder_for_the_right_shape(tmp_path):
         assert thumbs.fit(bounded, 1440).size == (1440, 720), "and the picture survives the shortcut"
 
 
+@pytest.mark.parametrize("tag", [1, 2, 3, 4, 5, 6, 7, 8])
+def test_libvips_and_pillow_turn_a_picture_the_same_way(tmp_path, tag):
+    """The two orientation tables must agree, tag for tag.
+
+    There are now two of them -- db/oriented.TURNS for Pillow and
+    vision/derive.TURNS for libvips -- because the same eight EXIF values
+    need different operations in each: libvips `rot` angles are clockwise
+    where Pillow's ROTATE_* are counter-clockwise, so 6 and 8 swap. That
+    is exactly the kind of hand-written mapping that is wrong in one cell
+    and silently serves a picture upside down.
+
+    Proven on pixels: the fixture has a different colour in each corner,
+    so a wrong turn moves one and no assertion about size would notice.
+    """
+    from db import oriented
+    from vision import derive
+
+    source = tmp_path / f"corners_{tag}.png"
+    canvas = Image.new("RGB", (64, 32), (0, 0, 0))
+    canvas.paste(Image.new("RGB", (16, 8), (255, 0, 0)), (0, 0))
+    canvas.paste(Image.new("RGB", (16, 8), (0, 255, 0)), (48, 0))
+    canvas.paste(Image.new("RGB", (16, 8), (0, 0, 255)), (0, 24))
+    canvas.save(source)
+
+    with decode.open_still(source) as opened:
+        opened.load()
+        by_pillow = oriented.upright(opened, tag).convert("RGB")
+
+    turned = derive.opened(source, 512, tag)
+    assert turned is not None, "libvips reads PNG; if it stopped, this test is no longer proving anything"
+    by_vips = Image.frombuffer("RGB", (turned.width, turned.height), turned.write_to_memory(), "raw", "RGB", 0, 1)
+
+    assert by_vips.size == by_pillow.size, f"tag {tag}: the two libraries disagree on shape"
+    assert by_vips.tobytes() == by_pillow.tobytes(), f"tag {tag}: same shape, different picture"
+
+
 def test_an_unknown_variant_is_refused(tmp_path):
     with pytest.raises(ValueError, match="not a variant"):
         thumbs.path_for(tmp_path, SHA, "poster")

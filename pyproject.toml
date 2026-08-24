@@ -28,6 +28,14 @@ dependencies = [
     # without one it downgrades /ws/jobs to a silent 404 at the server.
     "websockets",
     "Pillow",
+    # The thumbnail decoder for whatever it can read; Pillow stays for the
+    # rest and for callers that already hold pixels. PNG is what a
+    # generator writes, and Pillow has no shrink-on-load for it: measured
+    # over 40 real ComfyUI PNGs, 141.7 ms per file against libvips' 88.4
+    # for byte-identical output (138.2 KiB against 137.8). [binary] is the
+    # prebuilt libvips wheel, so this needs no system library and no
+    # compiler. See vision/derive.py.
+    "pyvips[binary]>=3.1.1",
     "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; the shipped YuNet 2023mar is static-shape
     "numpy",
     # XMP is parsed out of image files the gallery did not write; expat

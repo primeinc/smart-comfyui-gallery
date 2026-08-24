@@ -788,7 +788,7 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
     the fallback for files no job has touched. Kinds with no picture to
     take -- audio, documents -- are told so rather than given a favicon.
     """
-    from vision import decode, thumbs
+    from vision import derive, thumbs
 
     conn = _connect(state.db_path)
     try:
@@ -809,11 +809,7 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         if not target.exists():
             # A browser asking for one variant needs only that one's
             # pixels; the precache job is the caller that renders both.
-            want = thumbs.EDGES[variant]
-            frame = decode.poster(path) if kind == "video" else oriented.for_derivatives(conn, file_id, path, want)
-            if frame is None:
-                raise NotFoundException(f"{where}/{slug} has no decodable frame")
-            thumbs.put(cache, sha, frame, variant)
+            derive.put_one(cache, sha, pathlib.Path(path), kind, oriented.orientation_of(conn, file_id), variant)
     finally:
         connect.close(conn)
     return Response(content=target.read_bytes(), media_type="image/webp")

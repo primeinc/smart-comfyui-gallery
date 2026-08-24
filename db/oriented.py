@@ -107,8 +107,8 @@ def for_model(conn, file_id: int, path) -> Image.Image:
     return open_upright(path, orientation_of(conn, file_id))
 
 
-def for_derivatives(conn, file_id: int, path, want: int) -> Image.Image:
-    """Upright, using the stored tag, and never larger than `want`.
+def for_derivatives(path, want: int, orientation: int | None) -> Image.Image:
+    """Upright, using the tag it is given, and never larger than `want`.
 
     What a thumbnailer should call. `for_model` is the other contract and
     stays the other contract: a detector or an embedder is owed the real
@@ -122,6 +122,11 @@ def for_derivatives(conn, file_id: int, path, want: int) -> Image.Image:
     every smaller one comes off it (vision/thumbs.put_all), so one decode
     at 1440 serves both the preview and the 512 thumb.
 
+    The tag is a parameter rather than a lookup because the caller who
+    knows the path already read it once (`orientation_of`), and libvips
+    needs the same number for the same file (vision/derive.py). Passing it
+    keeps one answer where two queries would be two chances to disagree.
+
     The handle goes with the `with`, exactly as `open_upright` does it,
     and for the same reason: `load()` closes it only for formats whose
     plugin allows, so what comes back is always memory.
@@ -130,7 +135,7 @@ def for_derivatives(conn, file_id: int, path, want: int) -> Image.Image:
 
     with decode.open_bounded(path, want) as opened:
         opened.load()
-        turned = upright(opened, orientation_of(conn, file_id))
+        turned = upright(opened, orientation)
         return turned if turned is not opened else opened.copy()
 
 
