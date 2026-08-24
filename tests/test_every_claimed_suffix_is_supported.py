@@ -385,6 +385,50 @@ def test_a_portrait_raw_is_turned_once():
     assert decode.dimensions(PORTRAIT_CR2, "image") == stored, "dimensions speak of the stored frame"
 
 
+@pytest.mark.skipif(not PORTRAIT_CR2.exists(), reason="the 5D Mark III sample set is not on this machine")
+def test_a_raws_embedded_preview_is_the_same_picture_as_its_development():
+    """The shortcut `open_bounded` takes for RAW, checked against the long
+    way round, on the file most likely to expose it.
+
+    Developing this sensor costs 1398 ms; decoding the JPEG the camera
+    embedded costs 47 -- but only if the preview is the same picture. The
+    danger is orientation: `open_still` passes `user_flip=0` so the frame
+    arrives as stored and db/oriented turns it exactly once, and a preview
+    written already-rotated would be turned a second time. It is not --
+    the preview is stored the same way round as the sensor frame, so the
+    identical tag applies to both.
+
+    Checked on pixels, not dimensions: a mirrored preview would have
+    matching dimensions and be the wrong picture. Correlation against the
+    development is 0.94; against a horizontally flipped copy of itself,
+    0.40. That gap is what tells the two cases apart.
+
+    They are not identical, and are not asserted to be. The camera's
+    rendering is not LibRaw's neutral one -- around 35/255 mean absolute
+    difference in tone and white balance -- so a raw thumbnail now looks
+    like the camera's JPEG. For a cache of what a picture looks like that
+    is the better answer.
+    """
+    import numpy as np
+
+    from vision import thumbs
+
+    developed = oriented.upright(decode.open_still(PORTRAIT_CR2), 8)
+    bounded = decode.open_bounded(PORTRAIT_CR2, 1440)
+    bounded.load()
+    assert bounded.size != developed.size, "the shortcut developed the sensor after all"
+    shortcut = oriented.upright(bounded, 8)
+    assert shortcut.height > shortcut.width, "turned once, like the development"
+
+    long_way = np.asarray(thumbs.fit(developed, 256).convert("RGB"), dtype=np.float64)
+    short_way = np.asarray(thumbs.fit(shortcut, 256).convert("RGB"), dtype=np.float64)
+    assert long_way.shape == short_way.shape
+    upright_match = np.corrcoef(long_way.ravel(), short_way.ravel())[0, 1]
+    mirrored_match = np.corrcoef(long_way.ravel(), short_way[:, ::-1, :].ravel())[0, 1]
+    assert upright_match > 0.9, f"the embedded preview is not this picture ({upright_match:.2f})"
+    assert upright_match > mirrored_match + 0.3, "a mirrored preview would pass a dimensions-only check"
+
+
 def _library_of(root):
     conn = fresh_schema()
     root_id = library.add_root(conn, str(root), "library", 0.0)

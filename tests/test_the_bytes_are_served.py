@@ -260,16 +260,24 @@ def test_a_sideways_phone_photo_is_thumbnailed_upright(served):
     assert small.height > small.width, "the EXIF turn was dropped on the way to the grid"
 
 
-def test_a_video_thumbnail_is_a_frame_and_a_preview_is_bigger(served):
+def test_a_video_thumbnail_is_a_poster_frame_at_the_clips_own_size(served):
+    """This clip is 320x180, under both derivative edges, so both are the
+    poster frame as decoded.
+
+    They used to be enlarged to 512 and 1440. Nothing asked for that --
+    the grid is `object-fit: cover` and the lightbox `object-fit:
+    contain` -- and encoding the invented pixels was the most expensive
+    phase in the pipeline for small sources.
+    """
     client, slugs, _ = served
 
     slug = slugs["clip.mp4"]
     thumb = decode.open_bytes(client.get(f"/thumb/{slug}").content)
-    assert thumb.size == (512, 288)
-    centre = _rgb(thumb, (256, 144))
+    assert thumb.size == (320, 180)
+    centre = _rgb(thumb, (160, 90))
     assert centre[2] > centre[0], "the poster frame is not the clip's pixels"
     preview = decode.open_bytes(client.get(f"/preview/{slug}").content)
-    assert preview.size == (1440, 810)
+    assert preview.size == (320, 180)
 
 
 def test_what_has_no_picture_says_so(served):

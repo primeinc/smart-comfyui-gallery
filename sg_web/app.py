@@ -807,7 +807,10 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         cache = home.thumbs_dir(pathlib.Path(state.home))
         target = thumbs.path_for(cache, sha, variant)
         if not target.exists():
-            frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+            # A browser asking for one variant needs only that one's
+            # pixels; the precache job is the caller that renders both.
+            want = thumbs.EDGES[variant]
+            frame = decode.poster(path) if kind == "video" else oriented.for_derivatives(conn, file_id, path, want)
             if frame is None:
                 raise NotFoundException(f"{where}/{slug} has no decodable frame")
             thumbs.put(cache, sha, frame, variant)

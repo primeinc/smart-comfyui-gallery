@@ -310,7 +310,10 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
         told.observe("already-cached")
         return
     told.phase("decoding", kind=kind)
-    frame = decode.poster(path) if kind == "video" else oriented.for_model(conn, file_id, path)
+    # Bounded by the largest variant: put_all derives every smaller one
+    # from it, so nothing here decodes pixels no derivative will contain.
+    want = max(thumbs.EDGES.values())
+    frame = decode.poster(path) if kind == "video" else oriented.for_derivatives(conn, file_id, path, want)
     if frame is None:
         raise ValueError(f"file {file_id} has no decodable frame to thumbnail")
     told.phase("rendering-thumbnails", variants=len(thumbs.EDGES))

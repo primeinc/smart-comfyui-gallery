@@ -40,10 +40,46 @@ def test_thumb_and_preview_are_contained_to_their_edges(tmp_path):
     assert _size(thumbs.path_for(tmp_path, SHA, "preview")) == (1440, 720)
 
 
-def test_a_tiny_source_is_enlarged_to_grid_size(tmp_path):
+def test_a_tiny_source_is_cached_at_its_own_size(tmp_path):
+    """It used to be enlarged to 512, and that was the most expensive
+    thing the pipeline did to small files.
+
+    Encoding is priced by the pixels handed to the encoder, not by the
+    source, so blowing a 200x150 animation up to 1440 cost 173 ms per
+    file to store detail that was never in it. Nothing needed the
+    enlargement: every grid cell is `object-fit: cover` and the lightbox
+    is `object-fit: contain` (gallery.css:97-100), so the browser scales
+    a small picture to its cell for free.
+    """
     speck = Image.new("RGB", (64, 32), (10, 200, 30))
     thumbs.put(tmp_path, SHA, speck)
-    assert _size(thumbs.path_for(tmp_path, SHA)) == (512, 256)
+    assert _size(thumbs.path_for(tmp_path, SHA)) == (64, 32)
+
+
+def test_the_thumb_comes_off_the_preview_not_the_original(tmp_path):
+    """`put_all` decodes once and steps down through the variants.
+
+    Proven by geometry rather than by timing: a source whose longest side
+    exceeds both edges must land on exactly the two edges, which is only
+    true if each step resized the one above it rather than the original.
+    Resizing 22 megapixels straight to 512 costs 111 ms; resizing the
+    1440 preview to 512 costs 14.
+    """
+    big = Image.new("RGB", (4000, 3000), (10, 200, 30))
+    thumbs.put_all(tmp_path, SHA, big)
+    assert _size(thumbs.path_for(tmp_path, SHA, "preview")) == (1440, 1080)
+    assert _size(thumbs.path_for(tmp_path, SHA, "thumb")) == (512, 384)
+
+
+def test_fit_returns_the_same_image_when_nothing_needs_doing(tmp_path):
+    """The negative control for `fit`: no allocation, no resample, and
+    no silent enlargement of a picture that already fits."""
+    small = Image.new("RGB", (100, 80), (10, 200, 30))
+    assert thumbs.fit(small, 512) is small
+    assert thumbs.fit(small, 100) is small
+    shrunk = thumbs.fit(small, 50)
+    assert shrunk is not small
+    assert shrunk.size == (50, 40)
 
 
 def test_an_unknown_variant_is_refused(tmp_path):
@@ -55,7 +91,8 @@ def test_a_cache_hit_never_rerenders(tmp_path):
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (255, 0, 0)))
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (0, 0, 255)))
     with decode.open_still(thumbs.path_for(tmp_path, SHA)) as kept:
-        r, _, b = _rgb(kept, (128, 128))
+        assert kept.size == (100, 100), "a source under the edge is cached as it is"
+        r, _, b = _rgb(kept, (50, 50))
     assert r > b, "the second render overwrote a cache that was already warm"
 
 
@@ -150,7 +187,10 @@ def test_detection_caches_every_variant_as_a_byproduct(tmp_path):
     cache = tmp_path / "thumbs"
     detect.harvest(conn, StubFaceBackend(_always_one_face), file_id, media_path, 0.0, thumbs_dir=str(cache))
     assert _size(thumbs.path_for(cache, sha)) == (512, 228)
-    assert _size(thumbs.path_for(cache, sha, "preview")) == (1440, 640)
+    # 900x400 already fits inside the 1440 preview edge, so the preview
+    # is the frame itself. Enlarging it would cost an encode and add no
+    # detail; every surface that shows it scales with object-fit.
+    assert _size(thumbs.path_for(cache, sha, "preview")) == (900, 400)
     conn.close()
 
 
@@ -173,7 +213,10 @@ def test_the_thumbs_job_fills_only_what_the_cache_lacks(tmp_path):
     assert job_id is not None
     assert runner.run_next(conn, "w1", 1.0) == {"job": job_id, "state": "done", "did": 1, "failed": 0}
     assert _size(thumbs.path_for(cache, sha)) == (512, 228)
-    assert _size(thumbs.path_for(cache, sha, "preview")) == (1440, 640)
+    # 900x400 already fits inside the 1440 preview edge, so the preview
+    # is the frame itself. Enlarging it would cost an encode and add no
+    # detail; every surface that shows it scales with object-fit.
+    assert _size(thumbs.path_for(cache, sha, "preview")) == (900, 400)
     assert runner.submit_thumbs(conn, 2.0, thumbs_dir=str(cache)) is None, "a warm cache queued a job"
     unchanged = scan.ScanResult(matched=1, replaced=0, added=0, ambiguous=0, missing=0, hashed=0)
     thumbs.path_for(cache, sha).unlink()

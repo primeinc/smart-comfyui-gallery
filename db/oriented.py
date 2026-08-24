@@ -107,12 +107,39 @@ def for_model(conn, file_id: int, path) -> Image.Image:
     return open_upright(path, orientation_of(conn, file_id))
 
 
+def for_derivatives(conn, file_id: int, path, want: int) -> Image.Image:
+    """Upright, using the stored tag, and never larger than `want`.
+
+    What a thumbnailer should call. `for_model` is the other contract and
+    stays the other contract: a detector or an embedder is owed the real
+    pixels, because changing what a model sees changes what it records,
+    and a vector taken from a cheaper decode is not the same measurement
+    as the ones already in the store. A derivative has no such duty -- it
+    is a cache of something regenerable, and the only question is the
+    cheapest correct route to a picture of that size.
+
+    `want` is the LARGEST derivative being rendered, not the smallest:
+    every smaller one comes off it (vision/thumbs.put_all), so one decode
+    at 1440 serves both the preview and the 512 thumb.
+
+    The handle goes with the `with`, exactly as `open_upright` does it,
+    and for the same reason: `load()` closes it only for formats whose
+    plugin allows, so what comes back is always memory.
+    """
+    from vision import decode
+
+    with decode.open_bounded(path, want) as opened:
+        opened.load()
+        turned = upright(opened, orientation_of(conn, file_id))
+        return turned if turned is not opened else opened.copy()
+
+
 def is_turned(orientation: int | None) -> bool:
     """Whether this orientation changes which way up the picture is."""
     return int(orientation or 1) in TURNS
 
 
-__all__ = ["TURNS", "for_model", "is_turned", "open_upright", "orientation_of", "upright"]
+__all__ = ["TURNS", "for_derivatives", "for_model", "is_turned", "open_upright", "orientation_of", "upright"]
 # ImageOps is imported for the reference in the module docstring's comparison
 # and to keep the dependency explicit for anyone reaching for it instead.
 _ = ImageOps

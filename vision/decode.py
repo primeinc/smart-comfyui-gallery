@@ -128,6 +128,84 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     return Image.open(path)
 
 
+def open_bounded(path: str | os.PathLike[str], want: int) -> Image.Image:
+    """A still no larger than `want` on its longest side, decoded cheaply.
+
+    The same picture `open_still` returns, except that nothing here ever
+    owns more pixels than the caller said it needs. That is a different
+    contract from `oriented.for_model`, which owes a model the real
+    pixels, and the two must not be collapsed: a thumbnailer discarding
+    97% of a decode and an embedder measuring it are not the same job,
+    and changing what a model sees changes what it records.
+
+    Two shortcuts, both the decoder's own:
+
+    JPEG carries its image at several scales, so asking before `load()`
+    lets libjpeg return a smaller one -- `draft` configures the reader,
+    and it is a no-op once the reader is configured or the format has no
+    such trick (python-pillow/Pillow src/PIL/Image.py:2899-2904, which is
+    how `thumbnail()` uses it). Measured on 22-megapixel JPEGs: 107 ms of
+    decode became 74, and every later phase then works on 5.5 megapixels
+    instead of 22.
+
+    RAW files carry a full JPEG preview so the camera's own screen has
+    something to show. `postprocess()` develops the sensor instead, which
+    is right for a model and absurd for a thumbnail: 1398 ms against 47.
+    The preview is used only when it is at least as large as the biggest
+    derivative asked for, so a shortcut never costs a worse picture, and
+    development remains the fallback.
+
+    Orientation is NOT applied here. Every still leaves this module as
+    stored, turned once by db/oriented.py from the tag ingest recorded --
+    the same rule `open_still` states, for the same reason.
+    """
+    ensure_decoders()
+    if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
+        preview = _raw_preview(path, want)
+        if preview is not None:
+            return preview
+        return open_still(path)
+    opened = Image.open(path)
+    opened.draft(None, (want, want))
+    return opened
+
+
+def _raw_preview(path: str | os.PathLike[str], want: int) -> Image.Image | None:
+    """A RAW file's embedded JPEG preview, or None to develop it instead.
+
+    None covers every case where the shortcut is not honestly available:
+    no preview, a preview LibRaw cannot hand over, a bitmap rather than
+    JPEG, or one too small to serve the derivative being asked for.
+    """
+    import rawpy
+
+    # rawpy re-exports these unmarked; the stub defines them here, which
+    # is why `dimensions` imports LibRawError from the same place.
+    from rawpy._rawpy import (
+        LibRawError,
+        LibRawNoThumbnailError,
+        LibRawUnsupportedThumbnailError,
+        ThumbFormat,
+    )
+
+    try:
+        with rawpy.imread(os.fspath(path)) as raw:
+            found = raw.extract_thumb()
+    except (LibRawNoThumbnailError, LibRawUnsupportedThumbnailError, LibRawError, OSError, ValueError) as why:
+        _logger.debug("%s: no embedded preview, developing instead: %s", path, why)
+        return None
+    if found.format != ThumbFormat.JPEG or not isinstance(found.data, bytes):
+        return None
+    preview = open_bytes(found.data)
+    preview.draft(None, (want, want))
+    preview.load()
+    if max(preview.size) < want:
+        # Smaller than what was asked for. Enlarging a preview is not a
+        # shortcut, it is a worse picture, so pay for the development.
+        return None
+    return preview
+
+
 def open_header(path: str | os.PathLike[str]) -> Image.Image:
     """The file as its container presents it -- format, EXIF, size --
     with no RAW development: a CR2 opens as the TIFF it is, so its

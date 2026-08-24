@@ -66,6 +66,22 @@ AVATAR_CONTEXT = 2.0
 #: bytes, not appearance.
 QUALITY = 82
 
+#: libwebp's speed/size dial, 0 fastest to 6 smallest. Pillow's default
+#: for stills is 4 (python-pillow/Pillow src/PIL/WebPImagePlugin.py:294),
+#: which on this workload is the single most expensive phase there is --
+#: encoding cost the same 200-280 ms whether the source was 22 megapixels
+#: or 0.03, because it depends on the encoder's effort and not on the
+#: picture. Measured over the real library, `just bench thumbs-phases`:
+#:
+#:     method 0   171 ms/file   5.83 files/sec   132.5 KiB cached
+#:     method 2   215 ms/file   4.65 files/sec   102.8 KiB
+#:     method 4   368 ms/file   2.72 files/sec    99.4 KiB
+#:
+#: 2 buys 1.7x the throughput for 3.4% more disk. 0 buys a further 1.25x
+#: for 29% more, which is the wrong trade for a cache that is written
+#: once and read forever.
+METHOD = 2
+
 
 def path_for(cache_dir: pathlib.Path, sha: str, kind: str = "thumb") -> pathlib.Path:
     """Where this content's `kind` variant lives, existing or not. Fanned
@@ -80,22 +96,58 @@ def avatar_path(cache_dir: pathlib.Path, face_id: int) -> pathlib.Path:
     return cache_dir / "avatar" / f"{face_id}.webp"
 
 
+def fit(image: Image.Image, edge: int) -> Image.Image:
+    """The image no larger than `edge` on its longest side.
+
+    It never enlarges. `ImageOps.contain` does, and that cost more than
+    anything else in the pipeline for small sources: a 200x150 animated
+    WebP was blown up to 1440x1080 and encoded at 1.5 megapixels, 173 ms
+    to invent pixels that were never in the file. The grid does not need
+    them -- every cell is `object-fit: cover` (gallery.css:97-100), so the
+    browser scales a small picture to fill its cell for free, and the
+    lightbox is `object-fit: contain`.
+
+    Returns the image itself when it already fits, so a caller can see
+    that nothing was allocated. `reducing_gap=3.0` is Pillow's two-step
+    resize -- an integer `reduce` then a resample -- documented as
+    indistinguishable from fair resampling in most cases (Image.py
+    :2352-2363).
+    """
+    if max(image.size) <= edge:
+        return image
+    scale = edge / max(image.size)
+    size = (max(1, round(image.size[0] * scale)), max(1, round(image.size[1] * scale)))
+    return image.resize(size, Image.Resampling.LANCZOS, reducing_gap=3.0)
+
+
 def put(cache_dir: pathlib.Path, sha: str, image: Image.Image, kind: str = "thumb") -> pathlib.Path:
     """Cache one variant from already-decoded pixels; a hit costs a stat.
 
-    The caller's image is not touched -- `contain` returns a new image.
+    The caller's image is not touched: `fit` either returns a new image
+    or the same one, and this only reads it.
     """
     target = path_for(cache_dir, sha, kind)
     if target.exists():
         return target
-    return _write(target, ImageOps.contain(image, (EDGES[kind], EDGES[kind])))
+    return _write(target, fit(image, EDGES[kind]))
 
 
 def put_all(cache_dir: pathlib.Path, sha: str, image: Image.Image) -> None:
     """Every content-keyed variant at once -- the byproduct call, for a
-    producer holding pixels it would otherwise discard."""
-    for kind in EDGES:
-        put(cache_dir, sha, image, kind)
+    producer holding pixels it would otherwise discard.
+
+    The thumb comes off the PREVIEW, not off the caller's image a second
+    time. Resizing 22 megapixels down to 512 costs 111 ms; resizing the
+    1440 preview down to 512 costs 14 ms, and at 512 the difference
+    between the two results is not visible. Reading EDGES largest-first
+    is what makes that ordering a fact rather than a coincidence.
+    """
+    frame = image
+    for kind in sorted(EDGES, key=lambda name: -EDGES[name]):
+        frame = fit(frame, EDGES[kind])
+        target = path_for(cache_dir, sha, kind)
+        if not target.exists():
+            _write(target, frame)
 
 
 def put_avatar(
@@ -131,6 +183,6 @@ def _write(target: pathlib.Path, small: Image.Image) -> pathlib.Path:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.parent / f"{target.name}.{os.getpid()}-{threading.get_ident()}.tmp"
-    small.save(staging, format="WEBP", quality=QUALITY)
+    small.save(staging, format="WEBP", quality=QUALITY, method=METHOD)
     os.replace(staging, target)
     return target

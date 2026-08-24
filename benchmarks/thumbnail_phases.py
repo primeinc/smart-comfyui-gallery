@@ -5,16 +5,17 @@ production path -- `vision/decode.open_still`, `db/oriented.upright`,
 `vision/thumbs` -- split into the steps that can be optimised separately,
 so a change can be judged by which phase it moved.
 
-The phases are what the current code does, in order:
+Two lanes over the same files, so a change is judged against the shape
+it replaced rather than against a memory:
 
-    decode          open the file and get real pixels
-    orient          apply the EXIF tag, plus the full-size copy the
-                    current path makes when the tag is 1
-    resize_preview  original -> 1440
-    encode_preview  that preview -> WebP bytes
-    resize_thumb    original -> 512, again from the original today
-    encode_thumb    that thumb -> WebP bytes
-    write           both files to disk
+    before    the pipeline as it stood: full decode, a full-resolution
+              copy, and both derivatives resized from the original
+    shipped   the production functions themselves -- decode.open_bounded,
+              oriented.upright, thumbs.fit -- never a copy of them, so
+              this cannot report an improvement the application lacks
+
+Seven phases each: decode, orient, resize_preview, encode_preview,
+resize_thumb, encode_thumb, write.
 
 Reported per (kind, extension) as p50 and p95 milliseconds. One average
 over a library holding 0.3 MP JPEGs and 22 MP raws describes nothing in
@@ -97,12 +98,79 @@ def corpus(db: pathlib.Path, per_group: int) -> list[tuple[int, str, pathlib.Pat
     return [item for members in grouped.values() for item in members]
 
 
-def measure(path: pathlib.Path, kind: str, orientation: int | None, staging: pathlib.Path) -> dict:
-    """One file through the current pipeline, phase by phase.
+def measure_shipped(path: pathlib.Path, kind: str, orientation: int | None, staging: pathlib.Path, method: int) -> dict:
+    """The same seven phases through the code that actually ships.
 
-    Deliberately not calling `oriented.for_model`: that needs a database
-    connection per file and hides the copy inside it. These are the same
-    steps, spelled out so each one can be timed.
+    `decode.open_bounded`, `oriented.upright` and `thumbs.fit` are the
+    production functions, not a copy of them here: a benchmark that
+    reimplements the thing it measures can report an improvement the
+    application does not have.
+
+    `method` overrides `thumbs.METHOD` so the encoder dial can be swept
+    without editing production; passing thumbs.METHOD measures what runs.
+    """
+    from db import oriented
+    from vision import decode, thumbs
+
+    preview_edge, thumb_edge = thumbs.EDGES["preview"], thumbs.EDGES["thumb"]
+    clock = Clock()
+    try:
+        with clock.time("decode"):
+            if kind == "video":
+                poster = decode.poster(path)
+                if poster is None:
+                    return {"path": str(path), "error": "no poster frame"}
+                opened = poster
+            else:
+                opened = decode.open_bounded(path, preview_edge)
+                opened.load()
+            source = opened.size
+
+        with clock.time("orient"):
+            frame = oriented.upright(opened, orientation)
+
+        with clock.time("resize_preview"):
+            preview = thumbs.fit(frame, preview_edge)
+        with clock.time("encode_preview"):
+            preview_bytes = io.BytesIO()
+            preview.save(preview_bytes, format="WEBP", quality=thumbs.QUALITY, method=method)
+
+        with clock.time("resize_thumb"):
+            thumb = thumbs.fit(preview, thumb_edge)
+        with clock.time("encode_thumb"):
+            thumb_bytes = io.BytesIO()
+            thumb.save(thumb_bytes, format="WEBP", quality=thumbs.QUALITY, method=method)
+
+        with clock.time("write"):
+            for name, buffer in (("p.webp", preview_bytes), ("t.webp", thumb_bytes)):
+                staging_file = staging / f"{name}.tmp"
+                staging_file.write_bytes(buffer.getvalue())
+                os.replace(staging_file, staging / name)
+    except (OSError, ValueError, MemoryError, RuntimeError) as why:
+        return {"path": str(path), "error": f"{type(why).__name__}: {why}"}
+
+    return {
+        "path": str(path),
+        "kind": kind,
+        "suffix": path.suffix.lower().lstrip("."),
+        "megapixels": round(source[0] * source[1] / 1e6, 2),
+        "source_bytes": path.stat().st_size,
+        "preview_bytes": len(preview_bytes.getvalue()),
+        "thumb_bytes": len(thumb_bytes.getvalue()),
+        "preview_size": list(preview.size),
+        "thumb_size": list(thumb.size),
+        "total": round(sum(clock.spans.values()), 2),
+        **{phase: round(clock.spans.get(phase, 0.0), 2) for phase in PHASES},
+    }
+
+
+def measure(path: pathlib.Path, kind: str, orientation: int | None, staging: pathlib.Path) -> dict:
+    """One file through the pipeline AS IT WAS, phase by phase.
+
+    Kept so the shipped lane has something to be measured against. This
+    is deliberately a frozen copy of the old shape rather than a call
+    into production -- production no longer does any of it, and a
+    baseline that moves is not a baseline.
     """
     from PIL import ImageOps
 
@@ -184,7 +252,7 @@ def report(measured: list[dict]) -> dict:
     print(f"\n\n{len(good)} files measured, {len(bad)} failed\n")
     head = (
         f"{'group':17} {'n':>3} {'MP':>6} {'decode':>8} {'orient':>7} {'rszP':>6} "
-        f"{'encP':>6} {'rszT':>6} {'encT':>6} {'write':>6} {'p50':>8} {'p95':>8} {'/sec':>6}"
+        f"{'encP':>6} {'rszT':>6} {'encT':>6} {'write':>6} {'p50':>8} {'p95':>8} {'/sec':>6} {'cacheKB':>8}"
     )
     print(head)
     print("-" * len(head))
@@ -196,11 +264,14 @@ def report(measured: list[dict]) -> dict:
         med = {phase: statistics.median([r[phase] for r in rows]) for phase in PHASES}
         mp = statistics.median([r["megapixels"] for r in rows])
         middle = statistics.median(totals)
+        # What the two derivatives cost on disk. Encoder speed is bought
+        # with bytes, so the dial cannot be judged on time alone.
+        cache = statistics.median([r["preview_bytes"] + r["thumb_bytes"] for r in rows]) / 1024.0
         print(
             f"{name:17} {len(rows):3} {mp:6.1f} {med['decode']:8.1f} {med['orient']:7.1f} "
             f"{med['resize_preview']:6.1f} {med['encode_preview']:6.1f} {med['resize_thumb']:6.1f} "
             f"{med['encode_thumb']:6.1f} {med['write']:6.1f} {middle:8.1f} {p95(totals):8.1f} "
-            f"{1000.0 / middle if middle else 0:6.1f}"
+            f"{1000.0 / middle if middle else 0:6.1f} {cache:8.1f}"
         )
         summary[name] = {
             "n": len(rows),
@@ -209,12 +280,14 @@ def report(measured: list[dict]) -> dict:
             "total_p50_ms": round(middle, 2),
             "total_p95_ms": round(p95(totals), 2),
             "files_per_second_p50": round(1000.0 / middle, 2) if middle else None,
+            "cache_kib_p50": round(cache, 1),
         }
 
     if good:
         whole = [r["total"] for r in good]
         middle = statistics.median(whole)
-        print(f"\nwhole corpus: p50 {middle:.1f} ms   p95 {p95(whole):.1f} ms")
+        bytes_each = statistics.median([r["preview_bytes"] + r["thumb_bytes"] for r in good]) / 1024.0
+        print(f"\nwhole corpus: p50 {middle:.1f} ms   p95 {p95(whole):.1f} ms   cache {bytes_each:.1f} KiB/file")
         print(f"serial throughput at p50: {1000.0 / middle:.2f} files/sec")
     for row in bad:
         print(f"  FAILED {row['path']}: {row['error']}")
@@ -226,6 +299,12 @@ def main() -> None:
     parser.add_argument("--db", default=str(pathlib.Path.home() / ".smartgallery" / "gallery.db"))
     parser.add_argument("--per-group", type=int, default=25, help="files per (kind, extension)")
     parser.add_argument("--out", default=str(REPO / "benchmarks" / "results" / "thumbnail_phases.json"))
+    parser.add_argument(
+        "--webp-method",
+        type=int,
+        default=None,
+        help="override vision.thumbs.METHOD, libwebp's 0-fastest to 6-smallest dial",
+    )
     asked = parser.parse_args()
 
     db = pathlib.Path(asked.db)
@@ -237,18 +316,45 @@ def main() -> None:
     files = corpus(db, asked.per_group)
     print(f"corpus: {len(files)} files from {db}")
 
-    measured = []
+    from vision import thumbs
+
+    method = thumbs.METHOD if asked.webp_method is None else asked.webp_method
+    print(f"webp method: {method}" + ("" if asked.webp_method is None else f" (thumbs.METHOD is {thumbs.METHOD})"))
+
+    runs: dict[str, list[dict]] = {}
     with tempfile.TemporaryDirectory(prefix="thumbnail_phases-") as scratch:
         staging = pathlib.Path(scratch)
         with connect.connect(db, read_only=True) as conn:
-            for index, (file_id, kind, path) in enumerate(files, 1):
-                measured.append(measure(path, kind, oriented.orientation_of(conn, file_id), staging))
-                print(f"\r  {index}/{len(files)}  {path.name[:50]:50}", end="", flush=True)
+            tags = [(file_id, kind, path, oriented.orientation_of(conn, file_id)) for file_id, kind, path in files]
+        for name, run in (
+            ("before", lambda path, kind, tag: measure(path, kind, tag, staging)),
+            ("shipped", lambda path, kind, tag: measure_shipped(path, kind, tag, staging, method)),
+        ):
+            print(f"\n{name}:")
+            measured = []
+            for index, (_file_id, kind, path, tag) in enumerate(tags, 1):
+                measured.append(run(path, kind, tag))
+                print(f"\r  {index}/{len(tags)}  {path.name[:50]:50}", end="", flush=True)
+            runs[name] = measured
 
-    written = report(measured)
+    written = {}
+    for name, measured in runs.items():
+        print(f"\n\n===== {name} =====")
+        written[name] = report(measured)
+
+    before = [r["total"] for r in runs["before"] if "error" not in r]
+    after = [r["total"] for r in runs["shipped"] if "error" not in r]
+    if before and after:
+        was, now = statistics.median(before), statistics.median(after)
+        print(f"\np50 {was:.1f} ms -> {now:.1f} ms   ({was / now:.1f}x)")
+        print(f"serial throughput {1000.0 / was:.2f} -> {1000.0 / now:.2f} files/sec")
+
     out = pathlib.Path(asked.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"per_file": measured, **written}, indent=2), encoding="utf-8")
+    out.write_text(
+        json.dumps({"webp_method": method, "per_file": runs, "summary": written}, indent=2),
+        encoding="utf-8",
+    )
     print(f"wrote {out}")
 
 
