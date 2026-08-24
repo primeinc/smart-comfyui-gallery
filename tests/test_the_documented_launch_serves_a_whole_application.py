@@ -6,16 +6,28 @@
 and only after a prerequisite nothing in the Python asked for was silently
 satisfied.
 
-The README's Run section documents `uv sync` and `uv run python -m sg_web`
-and nothing else. On a checkout that has never run npm, that path started
-a server whose every page loaded a script returning 404: the pictures
-rendered, and nothing about them worked. One missing bundle wearing as
-many hats as there are surfaces.
+The bundles are committed now, so the documented path no longer needs
+npm and the refusal is no longer the fresh checkout's normal state. It is
+still the tree's only guard: an entry point whose output was never
+committed, or a build directory somebody deleted, serves pages that
+render and scripts that 404 -- the pictures arrive and nothing about them
+works. One missing bundle wearing as many hats as there are surfaces.
 
-So this module asks the two questions the others cannot:
+The launcher's other refusal is about the interpreter rather than the
+tree, and has the opposite shape: it does not refuse, it hands the
+command to `.venv` and waits. `python -m sg_web` from a PATH whose python
+is a shim used to die on `import uvicorn`.
 
-    does the documented launcher refuse to serve a brainless application?
+So this module asks what the others cannot:
+
+    does the launcher refuse to serve a brainless application?
+    does an interpreter that cannot serve hand off to one that can?
     does every asset a rendered page asks for actually resolve?
+
+What it does NOT do is prove the documented bootstrap on a cold
+checkout -- no .venv, no build directory, README commands only, a real
+process answering a real socket. That is a lane outside pytest, and this
+suite must not be read as standing in for it.
 """
 
 from __future__ import annotations
@@ -86,8 +98,12 @@ def test_the_documented_launcher_refuses_to_serve_without_its_bundles(tmp_path, 
 
     monkeypatch.setattr(launcher, "HERE", hollow)
     monkeypatch.setattr(sys, "argv", ["sg_web"])
-    # uvicorn.run would serve; reaching it at all is the failure
-    monkeypatch.setattr(launcher.uvicorn, "run", _never_served)
+    # uvicorn.run would serve; reaching it at all is the failure. Patched
+    # by dotted path rather than through the launcher, which no longer
+    # holds the name: `main` imports uvicorn itself, after the handover,
+    # so that an interpreter without one gets handed to the environment
+    # that has it instead of a traceback at module import.
+    monkeypatch.setattr("uvicorn.run", _never_served)
 
     with pytest.raises(SystemExit) as refused:
         launcher.main()
@@ -101,6 +117,124 @@ def test_the_documented_launcher_refuses_to_serve_without_its_bundles(tmp_path, 
 
 def _never_served(*args, **kwargs):
     raise AssertionError(f"the launcher served an application with no bundles: {args} {kwargs}")
+
+
+def test_this_interpreter_serves_without_a_handover(monkeypatch):
+    """The `uv run` path. Nothing is missing, so nothing is spawned.
+
+    Named first because a handover that fires when it should not is the
+    expensive failure: every start would pay for a second interpreter.
+    """
+    monkeypatch.setattr(launcher.subprocess, "Popen", _never_spawned)
+    assert launcher.missing() is None, "the test environment is the one that serves"
+    launcher.handover()  # returns, or _never_spawned raises
+
+
+def test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it(monkeypatch):
+    """The defect this exists for.
+
+    `python -m sg_web` finds whatever python a PATH offers -- a shim, an
+    IDE's run button, a shortcut made months ago. That interpreter could
+    read the source and not import a server, so the documented command
+    died on `import uvicorn` while the environment holding uvicorn sat
+    one known path away, unused.
+
+    Measured, before the handover existed:
+
+        File "sg_web\\__main__.py", line 35, in <module>
+            import uvicorn
+        ModuleNotFoundError: No module named 'uvicorn'
+    """
+    monkeypatch.setattr(launcher, "missing", lambda: "uvicorn")
+    monkeypatch.setattr(sys, "argv", ["sg_web", "--port", "8791"])
+    monkeypatch.delenv(launcher._HANDED_OVER, raising=False)
+    handed = {}
+
+    def _spawn(argv, env):
+        handed.update(argv=argv, env=env)
+        return _Waited(7)
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", _spawn)
+
+    with pytest.raises(SystemExit) as ended:
+        launcher.handover()
+
+    assert ended.value.code == 7, "the child's exit status is this command's"
+    assert handed["argv"][0] == str(launcher.interpreter()), "the venv's python, not this one"
+    assert handed["argv"][1:3] == ["-m", "sg_web"], "the same command"
+    assert handed["argv"][3:] == ["--port", "8791"], "carrying the argv it was given"
+    assert handed["env"][launcher._HANDED_OVER] == "1", "and marked, so the child cannot repeat it"
+
+
+def test_a_handover_never_hands_over_again(monkeypatch):
+    """The termination proof.
+
+    A child that still cannot import has a broken environment, not the
+    wrong one. Without the flag it would spawn a grandchild with the same
+    complaint, forever, and the person would meet a fork bomb instead of
+    an error message.
+    """
+    monkeypatch.setattr(launcher, "missing", lambda: "uvicorn")
+    monkeypatch.setenv(launcher._HANDED_OVER, "1")
+    monkeypatch.setattr(launcher.subprocess, "Popen", _never_spawned)
+    launcher.handover()  # returns, so `main` goes on to refuse and say why
+
+
+def test_without_an_environment_to_hand_to_it_refuses_and_names_the_command(monkeypatch, capsys):
+    """No `.venv`: the one case where a person must be told something.
+
+    The refusal names the interpreter, the directory that was not an
+    environment, and `uv sync`. A bare ModuleNotFoundError names the
+    package and nothing about the environment that would have had it.
+    """
+    monkeypatch.setattr(launcher, "missing", lambda: "uvicorn")
+    monkeypatch.setattr(launcher, "interpreter", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["sg_web"])
+    monkeypatch.setattr(launcher.subprocess, "Popen", _never_spawned)
+
+    with pytest.raises(SystemExit) as refused:
+        launcher.main()
+
+    assert refused.value.code == 2
+    said = capsys.readouterr().err
+    assert "uvicorn" in said, "the refusal names what is missing"
+    assert ".venv" in said, "and the environment that was not there"
+    assert launcher.RUN_COMMAND in said, "and what to run about it"
+
+
+def test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets(monkeypatch):
+    """The negative control for `interpreter()`.
+
+    Without it the handover tests would pass against a function that
+    returned a path to nothing. This asserts the lookup finds the very
+    interpreter running these lines.
+    """
+    found = launcher.interpreter()
+    assert found is not None, "`uv sync` made a .venv and this suite is running inside it"
+    assert found.is_file()
+    assert found.resolve() == pathlib.Path(sys.executable).resolve()
+
+    monkeypatch.setattr(launcher, "HERE", pathlib.Path(REPO.anchor) / "nowhere" / "sg_web")
+    assert launcher.interpreter() is None, "and reports absence rather than a path that is not there"
+
+
+def _never_spawned(*args, **kwargs):
+    raise AssertionError(f"the launcher spawned an interpreter it did not need: {args} {kwargs}")
+
+
+class _Waited:
+    """A child that has already finished, standing in for Popen.
+
+    A real one would be a second interpreter serving a real socket, which
+    is the thing a test does not start (sglint SG006). What the launcher
+    owes its caller is the child's status, so that is what this carries.
+    """
+
+    def __init__(self, ended: int) -> None:
+        self._ended = ended
+
+    def wait(self) -> int:
+        return self._ended
 
 
 @pytest.fixture(scope="module")
