@@ -534,6 +534,14 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     from vision import decode as _decode
     from vision import sniff as sniff_module
 
+    from .runner import report
+
+    # Imported here rather than at module scope: the runner imports this
+    # module inside its handler, and a link back at import time would
+    # close the loop. Outside a job `report()` is the silent one, so this
+    # costs nothing and needs no branch.
+    told = report()
+
     _decode.ensure_decoders()
 
     out = Ingested()
@@ -548,6 +556,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # 512-byte read (vision/sniff.py, patterns from whatwg/mimesniff@39aa535);
     # the reader that follows is the proof.
     suffix_claimed = None
+    told.phase("sniffing")
     sniffed = sniff_module.sniff_path(path)
     if sniffed is not None:
         family, token = sniffed
@@ -560,6 +569,13 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             kind = "image" if family == "image" else family
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
 
+    # Named on its own because it is the step that reads what MADE the
+    # picture -- a generator's whole workflow, embedded in the file's own
+    # text chunks -- and that is a parse whose cost tracks the size of the
+    # recipe rather than the size of the image. Without the name it was
+    # billed to `sniffing`, which is a 512-byte read and could not
+    # honestly have cost 48 ms.
+    told.phase("reading-generation", kind=kind)
     generation(conn, file_id, path, now, out)
 
     # Written AFTER generation(), which retracts the whole 'container'
@@ -569,6 +585,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     if suffix_claimed is not None:
         _param(conn, file_id, "container", "SuffixClaimed", suffix_claimed)
 
+    told.phase("probing", kind=kind)
     if kind in _PROBED:
         container = probe_module.read(path)
         probe_module.store(conn, file_id, container, now)

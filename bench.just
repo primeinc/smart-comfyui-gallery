@@ -45,8 +45,9 @@ clip-transfer *args:
 clip-retrieval *args:
     @"$python" benchmarks/openclip_retrieval.py "$@"
 
-# What the embed job actually achieves end to end -- decode, database,
-# ledger and all -- against the encoder's ceiling over the same files:
-# benchmarks/results/embed_job.json. Scans into a TEMPORARY database.
-embed-job *args:
-    @"$python" benchmarks/embed_job.py "$@"
+# What a JOB achieves end to end and where its time goes, read off the
+# runner's own phase durations: benchmarks/results/job_<name>.json.
+# `--job scan|embed|hash|context`, `--under <root>` to pick a population.
+# Scans into a TEMPORARY database, never a real run's.
+job-phases *args:
+    @"$python" benchmarks/job_phases.py "$@"

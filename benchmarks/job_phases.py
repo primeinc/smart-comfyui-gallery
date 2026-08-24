@@ -1,15 +1,14 @@
-"""What the embed job actually achieves, end to end.
+"""What a job actually achieves, end to end, and where its time goes.
 
-`openclip_batch.py` measures the encoder with the pictures already
-decoded and no database in sight. That number is a ceiling and was never
-job throughput; this is the job.
+A model benchmark measures a model. This measures the JOB: claiming it,
+resolving each file's path, doing the work, writing the result, and
+committing each item's completion to the ledger. The two are not the same
+number and the difference is the point -- the encoder reaches 594 img/sec
+with pictures already decoded while the embed job it serves reached 28.
 
-Everything the runner really does is in here: claiming the job, resolving
-each file's path, decoding and orienting it, preprocessing, the transfer,
-inference, writing the vector, updating similarity, and committing each
-item's completion to the ledger. The gap between this and the encoder
-ceiling is what the application costs around the model, and it decides
-whether faster encoding is worth anything.
+`--job` picks which. Every kind the runner has a submit for is available,
+so "why is this one slow" is asked the same way whatever the answer turns
+out to be.
 
 Per-item timings come from the runner's own event stream rather than from
 instrumentation added here: `item.started` and `item.done` are already
@@ -143,13 +142,27 @@ class Watching:
         }
 
 
-def run(conn, models_dir: str, owner: str) -> dict:
-    """One embed job, timed, with the runner's own per-item stamps."""
+#: job name -> how the runner submits it. Each takes (conn, now) and
+#: whatever else it needs; the lambdas supply the rest so the caller only
+#: names a job.
+SUBMITTERS = {
+    "embed": lambda runner, conn, home, models: runner.submit_embed(conn, 0.0, models_dir=models),
+    "scan": lambda runner, conn, home, models: runner.submit_ingest(conn, 0.0),
+    "hash": lambda runner, conn, home, models: runner.submit_verify(conn, 0.0),
+    "context": lambda runner, conn, home, models: runner.submit_context(conn, 0.0),
+}
+
+
+def run(conn, models_dir: str, owner: str, job: str, home: pathlib.Path) -> dict:
+    """One job, timed, with the runner's own per-item stamps."""
     from db import runner
 
-    made = runner.submit_embed(conn, 0.0, models_dir=models_dir)
+    submit = SUBMITTERS[job]
+    made = submit(runner, conn, home, models_dir)
+    if isinstance(made, int):
+        made = [made]
     if not made:
-        raise SystemExit("nothing to embed; the cache already covers this corpus")
+        raise SystemExit(f"the {job} job had nothing to do on this corpus")
     started: dict[int, float] = {}
     latencies: list[float] = []
     settled: list[tuple[int, float]] = []
@@ -264,9 +277,10 @@ def main() -> None:
     parser.add_argument("--db", default=str(pathlib.Path.home() / ".smartgallery" / "gallery.db"))
     parser.add_argument("--models-dir", default=str(pathlib.Path.home() / ".smartgallery" / "models"))
     parser.add_argument("--under", default=None, help="only roots whose path contains this")
-    parser.add_argument("--count", type=int, default=200, help="pictures in the job")
+    parser.add_argument("--count", type=int, default=200, help="files in the job")
+    parser.add_argument("--job", default="embed", choices=sorted(SUBMITTERS), help="which job to measure")
     parser.add_argument("--batch", type=int, default=64, help="batch for the encoder-ceiling comparison")
-    parser.add_argument("--out", default=str(REPO / "benchmarks" / "results" / "embed_job.json"))
+    parser.add_argument("--out", default=None, help="default: benchmarks/results/job_<name>.json")
     asked = parser.parse_args()
 
     from db import connect
@@ -283,22 +297,26 @@ def main() -> None:
         raise SystemExit("no readable roots matched")
     print(f"roots: {', '.join(root.name for root in roots)}")
 
-    with tempfile.TemporaryDirectory(prefix="embed_job-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="job_phases-") as scratch:
         home = pathlib.Path(scratch)
         conn, files = staged(home, roots, asked.count)
-        print(f"staged {len(files)} pictures into a temporary database")
+        print(f"staged {len(files)} files into a temporary database")
         if not files:
             raise SystemExit("nothing scanned")
 
-        limit = ceiling(conn, files, asked.models_dir, asked.batch)
-        print(
-            f"\nencoder ceiling over the same files:"
-            f"\n  decode {limit['decode_ms']:.0f} ms   encode at batch {asked.batch} {limit['encode_ms']:.0f} ms"
-            f"\n  {len(files) / ((limit['decode_ms'] + limit['encode_ms']) / 1000):.1f} pictures/sec"
-        )
+        limit = None
+        if asked.job == "embed":
+            # Only this job has a model to be held against a ceiling. For
+            # the others it would be a decode nothing performs.
+            limit = ceiling(conn, files, asked.models_dir, asked.batch)
+            print(
+                f"\nencoder ceiling over the same files:"
+                f"\n  decode {limit['decode_ms']:.0f} ms   encode at batch {asked.batch} {limit['encode_ms']:.0f} ms"
+                f"\n  {len(files) / ((limit['decode_ms'] + limit['encode_ms']) / 1000):.1f} pictures/sec"
+            )
 
-        print("\nrunning the job:")
-        found = run(conn, asked.models_dir, "bench")
+        print(f"\nrunning the {asked.job} job:")
+        found = run(conn, asked.models_dir, "bench", asked.job, home)
         conn.close()
 
     summary = found["job"]
@@ -339,8 +357,10 @@ def main() -> None:
                 f"p50 {held['p50_ms']:7.2f} ms  {share:4.0f}%"
             )
 
-    inside = limit["decode_ms"] + limit["encode_ms"]
-    if found["wall_ms"] > inside:
+    inside = None if limit is None else limit["decode_ms"] + limit["encode_ms"]
+    if inside is None:
+        pass  # no model to hold this job against; the phase table is the whole story
+    elif found["wall_ms"] > inside:
         print(
             f"\n  the job spends {found['wall_ms']:.0f} ms where decode and encode alone are {inside:.0f} ms:"
             f" {found['wall_ms'] - inside:.0f} ms is the application around the model"
@@ -358,13 +378,14 @@ def main() -> None:
             f" this comparison has stopped being the useful one."
         )
 
-    out = pathlib.Path(asked.out)
+    out = pathlib.Path(asked.out or REPO / "benchmarks" / "results" / f"job_{asked.job}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(
             {
-                "pictures": len(files),
-                "batch_for_ceiling": asked.batch,
+                "files": len(files),
+                "kind": asked.job,
+                "batch_for_ceiling": asked.batch if limit is not None else None,
                 "job": summary,
                 "wall_ms": round(found["wall_ms"], 1),
                 "items_per_second": round(per_second, 2),
@@ -375,7 +396,7 @@ def main() -> None:
                     else None,
                     "max": round(latencies[-1], 1) if latencies else None,
                 },
-                "ceiling": {key: round(value, 1) for key, value in limit.items()},
+                "ceiling": None if limit is None else {key: round(value, 1) for key, value in limit.items()},
                 "cores_busy": round(found["cores_busy"], 2),
                 "cpu_count": os.cpu_count(),
                 "gpu": found["gpu"],
