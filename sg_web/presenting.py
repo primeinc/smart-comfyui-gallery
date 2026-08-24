@@ -40,7 +40,7 @@ def wants_json(request: Request) -> bool:
     return request.headers.get("hx-request") != "true" and "text/html" not in accept
 
 
-def presented(request: Request, told: dict, *, page: str, fragment: str, name: str) -> Template | Response:
+def presented(request: Request, told: Any, *, page: str, fragment: str, name: str) -> Template | Response:
     """The view, in whichever representation the request negotiated.
     `name` is the template context key the page and fragment share."""
     if wants_json(request):

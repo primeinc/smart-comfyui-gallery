@@ -16,41 +16,44 @@
   </header>
   <main class="detail">
     <figure class="detail-media">
-      {% if item.kind == "video" %}
-      <video src="/media/{{ item.slug }}" controls playsinline></video>
-      {% elif item.kind == "animated_image" %}
-      <img src="/media/{{ item.slug }}" alt="{{ item.name }}">
-      {% elif item.kind == "image" %}
-      <img src="/preview/{{ item.slug }}" alt="{{ item.name }}">
-      {% elif item.kind == "audio" %}
-      <audio src="/media/{{ item.slug }}" controls></audio>
+      {% if item.stage.kind == "video" %}
+      <video src="{{ item.stage.src }}" controls playsinline></video>
+      {% elif item.stage.kind == "animated_image" %}
+      <img src="{{ item.stage.src }}" alt="{{ item.name }}">
+      {% elif item.stage.kind == "image" %}
+      <img src="{{ item.stage.src }}" alt="{{ item.name }}">
+      {% elif item.stage.kind == "audio" %}
+      <audio src="{{ item.stage.src }}" controls></audio>
       {% else %}
-      <a href="/media/{{ item.slug }}">download {{ item.name }}</a>
+      <a href="{{ item.stage.original }}">download {{ item.name }}</a>
       {% endif %}
       {% if not item.present %}<figcaption class="warn">this file is not on disk right now</figcaption>{% endif %}
     </figure>
     {% include "_media_authored.html" %}
     <nav class="detail-walk">
-      {% if item.previous %}
-      <a rel="prev" href="/i/{{ item.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&larr; previous</a>
+      {% if item.context.previous %}
+      <a rel="prev" href="/i/{{ item.context.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&larr; previous</a>
       {% endif %}
-      {% if item.next %}
-      <a rel="next" href="/i/{{ item.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">next &rarr;</a>
+      {% if item.context.next %}
+      <a rel="next" href="/i/{{ item.context.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">next &rarr;</a>
       {% endif %}
     </nav>
     <section class="detail-facts">
       <h1>{{ item.name }}</h1>
       <dl>
-        <dt>folder</dt><dd>{{ item.folder }}</dd>
-        <dt>kind</dt><dd>{{ item.kind.replace("_", " ") }}</dd>
-        {% if item.width %}<dt>pixels</dt><dd>{{ item.width }}&times;{{ item.height }}</dd>{% endif %}
-        {% if item.duration %}<dt>length</dt><dd>{{ "%.1f"|format(item.duration) }}s</dd>{% endif %}
-        {% if item.checkpoint %}<dt>checkpoint</dt><dd>{{ item.checkpoint }}</dd>{% endif %}
-        {% if item.seed is not none %}<dt>seed</dt><dd>{{ item.seed }}</dd>{% endif %}
-        {% if item.loras %}<dt>loras</dt><dd>{{ item.loras|join(", ") }}</dd>{% endif %}
-        <dt>metadata</dt><dd data-read="{{ item.read }}">{% if item.read == "current" %}read from these bytes{% elif item.read == "stale" %}<span class="warn">read from older bytes</span> — <a href="/operations">run the ingest job</a>{% else %}not read yet — <a href="/operations">run the ingest job</a>{% endif %}</dd>
+        <dt>folder</dt><dd>{{ item.file.folder }}</dd>
+        <dt>kind</dt><dd>{{ item.stage.kind.replace("_", " ") }}</dd>
+        {# only the arms that carry them: the stage is a union, and the
+           environment is StrictUndefined, so asking an ImageStage for a
+           duration is a render error rather than a silent blank #}
+        {% if item.stage.kind in ("image", "animated_image", "video") and item.stage.source %}<dt>pixels</dt><dd>{{ item.stage.source.width }}&times;{{ item.stage.source.height }}</dd>{% endif %}
+        {% if item.stage.kind in ("video", "audio") and item.stage.duration %}<dt>length</dt><dd>{{ "%.1f"|format(item.stage.duration) }}s</dd>{% endif %}
+        {% if item.creation and item.creation.checkpoint %}<dt>checkpoint</dt><dd>{{ item.creation.checkpoint }}</dd>{% endif %}
+        {% if item.creation and item.creation.seed is not none %}<dt>seed</dt><dd>{{ item.creation.seed }}</dd>{% endif %}
+        {% if item.creation and item.creation.loras %}<dt>loras</dt><dd>{{ item.creation.loras|join(", ") }}</dd>{% endif %}
+        <dt>metadata</dt><dd data-read="{{ item.file.read }}">{% if item.file.read == "current" %}read from these bytes{% elif item.file.read == "stale" %}<span class="warn">read from older bytes</span> — <a href="/operations">run the ingest job</a>{% else %}not read yet — <a href="/operations">run the ingest job</a>{% endif %}</dd>
       </dl>
-      {% if item.prompt %}<p class="detail-prompt">{{ item.prompt }}</p>{% endif %}
+      {% if item.creation and item.creation.prompt %}<p class="detail-prompt">{{ item.creation.prompt }}</p>{% endif %}
       <h2>when</h2>
       {% if item.when %}
       <dl data-when data-domain="{{ item.when.domain }}">
@@ -79,15 +82,15 @@
       <form class="ask where-form" data-place-form data-slug="{{ item.slug }}">
         <input name="name" list="places-named" placeholder="where did this happen?" aria-label="place name" value="{{ item.where.name if item.where and item.where.basis == "authored" else "" }}">
         <select name="kind" aria-label="kind of place">
-          {% for k in item.place_kinds %}<option value="{{ k }}"{% if item.where and item.where.kind == k %} selected{% elif not item.where and k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+          {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if item.where and item.where.kind == k %} selected{% elif not item.where and k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
         </select>
         <input name="within" list="places-named" placeholder="within (optional)" aria-label="within" value="{{ item.where.chain[1] if item.where and item.where.chain | length > 1 else "" }}">
         <select name="within_kind" aria-label="kind of the place it is within">
-          {% for k in item.place_kinds %}<option value="{{ k }}"{% if k == "country" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+          {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if k == "country" %} selected{% endif %}>{{ k }}</option>{% endfor %}
         </select>
         <button type="submit">say where</button>
         {% if item.where and item.where.basis == "authored" %}<button type="button" data-place-clear>withdraw</button>{% endif %}
-        <datalist id="places-named">{% for p in item.places %}<option value="{{ p.name }}">{{ p.kind }}</option>{% endfor %}</datalist>
+        <datalist id="places-named">{% for p in item.place_choices.named %}<option value="{{ p.name }}">{{ p.kind }}</option>{% endfor %}</datalist>
       </form>
       <h2>who is here</h2>
       {% if item.faces.people %}
@@ -112,19 +115,19 @@
       {% else %}
       <p class="detail-note" data-said-missing>no caption yet — <a href="/operations">run the annotate job</a>.</p>
       {% endif %}
-      {% if item.copies %}
+      {% if item.lineage.copies %}
       <h2>other bodies of this picture</h2>
       <ul>
-        {% for copy in item.copies %}
+        {% for copy in item.lineage.copies %}
         <li><a href="/i/{{ copy.slug }}">{{ copy.name }}</a>{% if copy.is_best %} &middot; best{% endif %}</li>
         {% endfor %}
       </ul>
       {% endif %}
-      {% if item.parents or item.children %}
+      {% if item.lineage.parents or item.lineage.children %}
       <h2>lineage</h2>
       <ul>
-        {% for parent in item.parents %}<li>from <a href="/i/{{ parent.slug }}">{{ parent.name }}</a> ({{ parent.kind }})</li>{% endfor %}
-        {% for child in item.children %}<li>made <a href="/i/{{ child.slug }}">{{ child.name }}</a> ({{ child.kind }})</li>{% endfor %}
+        {% for parent in item.lineage.parents %}<li>from <a href="/i/{{ parent.slug }}">{{ parent.name }}</a> ({{ parent.kind }})</li>{% endfor %}
+        {% for child in item.lineage.children %}<li>made <a href="/i/{{ child.slug }}">{{ child.name }}</a> ({{ child.kind }})</li>{% endfor %}
       </ul>
       {% endif %}
       {% if item.params %}

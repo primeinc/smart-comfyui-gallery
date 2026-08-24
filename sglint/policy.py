@@ -262,8 +262,14 @@ MUST_CONTAIN: dict[str, tuple[str, ...]] = {
     # worker would be a second channel and half the subscribers would
     # never hear a job move (sg_web/__main__.py starts no workers).
     "sg_web/app.py": ("collections.set_membership", "MemoryChannelsBackend()"),
-    "sg_web/templates/media.html": ("video", "animated_image", "image", "audio", "/media/"),
-    "sg_web/templates/_media_lightbox.html": ("video", "animated_image", "image", "audio", "/media/"),
+    # Both presentations answer for every kind the schema admits. The
+    # addresses themselves are no longer spelled here: the stage mints
+    # them once (sg_web/media_view.py `_stage`), so a template that wants
+    # the bytes asks the view for them.
+    "sg_web/templates/media.html": ("video", "animated_image", "image", "audio", "item.stage"),
+    "sg_web/templates/_media_lightbox.html": ("video", "animated_image", "image", "audio", "item.stage"),
+    # ...and this is where they are spelled, exactly once each.
+    "sg_web/media_view.py": ("/media/", "/preview/"),
     # the grouping input IS the occurrence interface, named out loud
     "db/events.py": ("context.occurrences(",),
 }
@@ -366,7 +372,6 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/artifact_view.py:workflows_index",
         "sg_web/folder_view.py:folder_page",
         "sg_web/folder_view.py:folders_index",
-        "sg_web/media_view.py:media_page",
         "sg_web/person_view.py:people_index",
         "sg_web/person_view.py:person_page",
         "sg_web/place_view.py:places_index",

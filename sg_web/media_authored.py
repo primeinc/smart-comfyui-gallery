@@ -28,6 +28,7 @@ from litestar.response import Response
 
 from db import authored, collections, connect, context, naming, pages, places
 from sg_web import media_view
+from sg_web.media_view import AuthoredState, CollectionSummary
 from sg_web.presenting import VARIES
 from sg_web.wire import Wire
 
@@ -39,26 +40,6 @@ def _resolved(conn, kind: str, slug: str, where: str) -> int:
     if found is None:
         raise NotFoundException(f"no {kind} at {where}/{slug}")
     return found[0]
-
-
-class CollectionSummary(Wire):
-    """One collection a file is filed in: its address and its name."""
-
-    slug: str
-    name: str
-
-
-class AuthoredState(Wire):
-    """What this actor has written down about one file.
-
-    db/authored.py's MediaAuthoredState says `collections: tuple[dict, ...]`
-    with the keys in a comment. This is the same fact with the comment
-    promoted into the type, because the browser is given this one.
-    """
-
-    favorite: bool
-    rating: int | None
-    collections: list[CollectionSummary]
 
 
 class AuthoredAnswer(Wire):

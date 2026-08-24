@@ -66,7 +66,7 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         a, b, c = _slugs(client)
         before = client.get(f"/i/{a}", headers=AS_MACHINE).json()
         assert before["where"] is None
-        assert before["places"] == []
+        assert before["place_choices"]["named"] == []
         page = client.get(f"/i/{a}", headers={"accept": "text/html"}).text
         assert "data-where-missing" in page
         assert "data-place-form" in page
@@ -78,7 +78,7 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         assert where["qs"] == f"place.id%3Aeq%3A{where['id']}".replace("place.id%3Aeq", "f=place.id%3Aeq")
         told = client.get(f"/i/{a}", headers=AS_MACHINE).json()
         assert told["where"]["id"] == where["id"]
-        assert told["places"] == [{"name": "Lisbon", "kind": "city"}]
+        assert told["place_choices"]["named"] == [{"name": "Lisbon", "kind": "city"}]
         page = client.get(f"/i/{a}", headers={"accept": "text/html"}).text
         assert f'data-where="{where["id"]}"' in page
         assert "said by a person" in page

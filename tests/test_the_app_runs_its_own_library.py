@@ -131,15 +131,19 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert client.get(f"/m/{camera_slug[1]}").status_code == 404
 
         pic = client.get("/i/helm-1").json()
-        assert (pic["name"], pic["checkpoint"], pic["seed"]) == ("helm_1.png", "dreamshaper_8", 4242)
-        assert pic["prompt"].startswith("a brass diving helmet")
-        assert pic["loras"] == ["filmGrain"]
+        assert (pic["name"], pic["creation"]["checkpoint"], pic["creation"]["seed"]) == (
+            "helm_1.png",
+            "dreamshaper_8",
+            4242,
+        )
+        assert pic["creation"]["prompt"].startswith("a brass diving helmet")
+        assert pic["creation"]["loras"] == ["filmGrain"]
         assert pic["params"], "the parsed fields are rows, not a blob"
-        assert {pic["previous"], pic["next"]} == {None, "helm-2"}, (
+        assert {pic["context"]["previous"], pic["context"]["next"]} == {None, "helm-2"}, (
             "neighbours walk the answer: the default ResultSet, newest first"
         )
-        assert pic["parents"] == [], "no lineage yet, said honestly"
-        assert pic["children"] == []
+        assert pic["lineage"]["parents"] == [], "no lineage yet, said honestly"
+        assert pic["lineage"]["children"] == []
 
         folder = client.get("/f/lib").json()
         assert sorted(f["name"] for f in folder["files"]) == ["helm_1.png", "helm_2.png"]
@@ -181,7 +185,7 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
         assert first["failed_count"] == 1, "junk bytes must be a failed item, never quiet success"
         before = client.get("/i/good").json()
         assert before["params"], "the good file ingested"
-        assert before["checkpoint"] == "dreamshaper_8"
+        assert before["creation"]["checkpoint"] == "dreamshaper_8"
 
         # The library rots behind the app's back: one corrupted, one deleted.
         (root / "good.png").write_bytes(b"\x89PNG-now-junk")
@@ -193,7 +197,7 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
         assert second["failed_count"] == 2, "both rotten files must land on their items"
         after = client.get("/i/good").json()
         assert after["params"] == before["params"], "a failed re-read destroyed the recipe it could not replace"
-        assert after["checkpoint"] == before["checkpoint"]
+        assert after["creation"]["checkpoint"] == before["creation"]["checkpoint"]
 
 
 def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
@@ -299,10 +303,10 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
         )
 
         page = client.get("/i/castle-small").json()
-        assert sorted(copy["name"] for copy in page["copies"]) == ["castle.png", "castle_web.webp"]
-        best = [copy for copy in page["copies"] if copy["is_best"]]
+        assert sorted(copy["name"] for copy in page["lineage"]["copies"]) == ["castle.png", "castle_web.webp"]
+        best = [copy for copy in page["lineage"]["copies"] if copy["is_best"]]
         assert [copy["name"] for copy in best] == ["castle.png"], "the largest body is the picture's face"
-        assert client.get("/i/meadow").json()["copies"] == [], "a distinct picture stays alone"
+        assert client.get("/i/meadow").json()["lineage"]["copies"] == [], "a distinct picture stays alone"
 
         # the threshold is a live setting, refused when meaningless
         assert client.post("/settings/dupe_threshold", json={"value": "6"}).status_code < 300

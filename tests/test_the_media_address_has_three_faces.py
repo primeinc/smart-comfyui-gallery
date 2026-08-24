@@ -50,7 +50,7 @@ def test_the_three_faces_come_from_one_view_and_declare_vary(address):
         assert answer.headers["vary"] == "Accept, HX-Request"
     body = told.json()
     assert body["name"] == "m_3.png"
-    assert body["kind"] == "image"
+    assert body["stage"]["kind"] == "image"
     assert '<link rel="canonical" href="/i/m-3">' in page.text, "the canonical address is the BARE entity URL"
     assert "<html" in page.text
     assert "<html" not in part.text, "a fragment mounts into a page, never a page into a page"
@@ -72,13 +72,13 @@ def test_a_machine_with_no_browser_accept_still_gets_json(address):
 def test_previous_and_next_walk_the_resultset_the_url_names(address):
     # Default context: whole library, newest first -- m_5 leads.
     bare = address.get("/i/m-3").json()
-    assert (bare["previous"], bare["next"]) == ("m-4", "m-2")
+    assert (bare["context"]["previous"], bare["context"]["next"]) == ("m-4", "m-2")
     assert bare["context"]["in_answer"] is True
     assert bare["context"]["qs"] == ""
     assert bare["context"]["return_url"] == "/g"
     # The SAME address under the reversed walk swaps the arrows.
     oldest = address.get("/i/m-3", params={"sort": "oldest"}).json()
-    assert (oldest["previous"], oldest["next"]) == ("m-2", "m-4")
+    assert (oldest["context"]["previous"], oldest["context"]["next"]) == ("m-2", "m-4")
     assert oldest["context"]["qs"] == "sort=oldest"
     # A paging context computes the return page.
     paged = address.get("/i/m-0", params={"sort": "oldest", "size": 2}).json()
@@ -100,8 +100,8 @@ def test_a_scope_the_item_is_outside_says_so_instead_of_inventing_arrows(address
     conn.close()
     outside = address.get("/i/m-5", params={"album": "two"}).json()
     assert outside["context"]["in_answer"] is False
-    assert outside["previous"] is None
-    assert outside["next"] is None
+    assert outside["context"]["previous"] is None
+    assert outside["context"]["next"] is None
 
 
 def test_a_retired_slug_301s_with_its_context_intact(address):

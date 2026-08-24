@@ -197,7 +197,7 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
         # The walk carries the judgement: arrows walk MY favorites.
         walked = client.get("/i/pic-0", params={"favorite": "1"}, headers=AS_MACHINE).json()
         assert walked["context"]["total"] == 2
-        assert walked["previous"] == "pic-2"
+        assert walked["context"]["previous"] == "pic-2"
         assert walked["context"]["qs"] == "favorite=1"
 
         # The actor lives in the projection identity, not the spelling:

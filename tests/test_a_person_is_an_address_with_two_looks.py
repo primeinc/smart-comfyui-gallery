@@ -330,8 +330,8 @@ def test_an_item_under_the_person_context_walks_the_person(faces):
     walked = faces.get(f"/i/{first}", params={"person": "ana"}).json()
 
     assert walked["context"]["total"] == 2
-    assert walked["next"] == second
-    assert walked["previous"] is None
+    assert walked["context"]["next"] == second
+    assert walked["context"]["previous"] is None
     assert walked["context"]["return_url"] == "/g?person=ana"
 
 

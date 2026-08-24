@@ -88,7 +88,7 @@ def test_the_page_says_whether_its_metadata_was_read_from_these_bytes(client):
     from db import ingest
 
     file_id, slug = _slug(client, "ana_2.png")
-    assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["read"] == "never"
+    assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["file"]["read"] == "never"
     page = client.get(f"/i/{slug}", headers=AS_BROWSER).text
     assert 'data-read="never"' in page
     conn = connect.connect(client.app.state.db_path)
@@ -97,13 +97,13 @@ def test_the_page_says_whether_its_metadata_was_read_from_these_bytes(client):
 
         ingest.one(conn, file_id, detect.path_of(conn, file_id), 5.0)
         conn.commit()
-        assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["read"] == "current"
+        assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["file"]["read"] == "current"
         assert 'data-read="current"' in client.get(f"/i/{slug}", headers=AS_BROWSER).text
         conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("d" * 64, file_id))
         conn.commit()
     finally:
         connect.close(conn)
-    assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["read"] == "stale"
+    assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["file"]["read"] == "stale"
     assert "read from older bytes" in client.get(f"/i/{slug}", headers=AS_BROWSER).text
 
 

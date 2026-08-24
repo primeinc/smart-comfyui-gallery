@@ -5,22 +5,22 @@
      role="dialog" aria-label="{{ item.name }}">
   <button class="lightbox-close" data-close aria-label="close">&times;</button>
   <figure class="lightbox-media">
-    {% if item.kind == "video" %}
-    <video src="/media/{{ item.slug }}" controls autoplay playsinline></video>
-    {% elif item.kind == "animated_image" %}
-    <img src="/media/{{ item.slug }}" alt="{{ item.name }}">
-    {% elif item.kind == "image" %}
-    <img src="/preview/{{ item.slug }}" alt="{{ item.name }}">
-    {% elif item.kind == "audio" %}
-    <audio src="/media/{{ item.slug }}" controls autoplay></audio>
+    {% if item.stage.kind == "video" %}
+    <video src="{{ item.stage.src }}" controls autoplay playsinline></video>
+    {% elif item.stage.kind == "animated_image" %}
+    <img src="{{ item.stage.src }}" alt="{{ item.name }}">
+    {% elif item.stage.kind == "image" %}
+    <img src="{{ item.stage.src }}" alt="{{ item.name }}">
+    {% elif item.stage.kind == "audio" %}
+    <audio src="{{ item.stage.src }}" controls autoplay></audio>
     {% else %}
-    <a href="/media/{{ item.slug }}">download {{ item.name }}</a>
+    <a href="{{ item.stage.original }}">download {{ item.name }}</a>
     {% endif %}
   </figure>
   <div class="lightbox-bar">
-    {% if item.previous %}
+    {% if item.context.previous %}
     <a data-nav="previous" rel="prev"
-       href="/i/{{ item.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&larr;</a>
+       href="/i/{{ item.context.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&larr;</a>
     {% else %}<span class="lightbox-end">&larr;</span>{% endif %}
     <span class="lightbox-label">
       {{ item.name }}{% if item.context.in_answer %} &middot; {{ item.context.ordinal }} of {{ item.context.total }}{% endif %}
@@ -30,9 +30,9 @@
       {% if item.faces.people %}&middot; <span class="lightbox-people" data-lightbox-people>with {% for who in item.faces.people %}<a href="{{ who.href }}">{{ who.name or who.slug }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
       {% if item.said_first %}&middot; <span class="lightbox-said" data-lightbox-said>&ldquo;{{ item.said_first }}&rdquo;</span>{% endif %}
     </span>
-    {% if item.next %}
+    {% if item.context.next %}
     <a data-nav="next" rel="next"
-       href="/i/{{ item.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rarr;</a>
+       href="/i/{{ item.context.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rarr;</a>
     {% else %}<span class="lightbox-end">&rarr;</span>{% endif %}
   </div>
   {% include "_media_authored.html" %}

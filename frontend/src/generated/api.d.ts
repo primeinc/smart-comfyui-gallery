@@ -1580,6 +1580,15 @@ export interface components {
         AlbumEntry: {
             file: string;
         };
+        /** AnimatedStage */
+        AnimatedStage: {
+            /** @constant */
+            kind: "animated_image";
+            src: string;
+            original: string;
+            poster: string;
+            source: components["schemas"]["Pixels"] | null;
+        };
         /** AnswerAfter */
         AnswerAfter: {
             answer: string;
@@ -1613,6 +1622,19 @@ export interface components {
             events: components["schemas"]["Event"][];
             after: number;
             last_id: number;
+        };
+        /** BrowsingContext */
+        BrowsingContext: {
+            qs: string;
+            in_answer: boolean;
+            return_url: string;
+            currency: string;
+            answer: string;
+            ordinal: number | null;
+            page: number | null;
+            total: number | null;
+            previous: string | null;
+            next: string | null;
         };
         /** BulkFlag */
         BulkFlag: {
@@ -1701,6 +1723,13 @@ export interface components {
             expected_rev: number;
             media_kind?: string | null;
         };
+        /** Copy */
+        Copy: {
+            slug: string;
+            name: string;
+            distance: number;
+            is_best: boolean;
+        };
         /** Coverage */
         Coverage: {
             files: number;
@@ -1710,6 +1739,14 @@ export interface components {
             embed_spaces?: {
                 [key: string]: number;
             } | null;
+        };
+        /** Creation */
+        Creation: {
+            prompt: string | null;
+            checkpoint: string | null;
+            seed: number | null;
+            loras: string[];
+            asked_for_width: number | null;
         };
         /** Curated */
         Curated: {
@@ -1754,6 +1791,12 @@ export interface components {
         /** DesiredRating */
         DesiredRating: {
             value?: number | null;
+        };
+        /** DocumentStage */
+        DocumentStage: {
+            /** @constant */
+            kind: "document";
+            original: string;
         };
         /** EarlierEvents */
         EarlierEvents: {
@@ -1993,12 +2036,31 @@ export interface components {
             lineage: components["schemas"]["EvolutionEdge"][];
             links: components["schemas"]["EvolutionLinks"];
         };
+        /** FaceScan */
+        FaceScan: {
+            model_id: string;
+            model_version: string;
+            faces: number;
+            at: number;
+        };
+        /** Faces */
+        Faces: {
+            people: components["schemas"]["Person"][];
+            looked: components["schemas"]["FaceScan"][];
+        };
         /** FailedItem */
         FailedItem: {
             id: number;
             name: string | null;
             href: string | null;
             error: string | null;
+        };
+        /** FileFacts */
+        FileFacts: {
+            folder: string;
+            /** @enum {string} */
+            read: "current" | "stale" | "never";
+            fields: number;
         };
         /** FiledPicture */
         FiledPicture: {
@@ -2015,6 +2077,16 @@ export interface components {
             total: number;
             pages: number;
             qs: string;
+        };
+        /** ImageStage */
+        ImageStage: {
+            /** @constant */
+            kind: "image";
+            src: string;
+            original: string;
+            source: components["schemas"]["Pixels"] | null;
+            shown: components["schemas"]["Pixels"] | null;
+            promotable: boolean;
         };
         /** InspectedItem */
         InspectedItem: {
@@ -2147,6 +2219,12 @@ export interface components {
             lease_remaining: number | null;
             lease_expired: boolean;
         };
+        /** Lineage */
+        Lineage: {
+            copies: components["schemas"]["Copy"][];
+            parents: components["schemas"]["Relative"][];
+            children: components["schemas"]["Relative"][];
+        };
         /** ListedCollection */
         ListedCollection: {
             slug: string;
@@ -2235,6 +2313,25 @@ export interface components {
             what: string;
             live: components["schemas"]["LiveReport"] | null;
         };
+        /** MediaSurface */
+        MediaSurface: {
+            slug: string;
+            name: string;
+            present: boolean;
+            stage: components["schemas"]["ImageStage"] | components["schemas"]["AnimatedStage"] | components["schemas"]["VideoStage"] | components["schemas"]["SoundStage"] | components["schemas"]["DocumentStage"];
+            context: components["schemas"]["BrowsingContext"];
+            when: components["schemas"]["When"] | null;
+            where: components["schemas"]["Where"] | null;
+            faces: components["schemas"]["Faces"];
+            said: components["schemas"]["Said"][];
+            said_first: string | null;
+            creation: components["schemas"]["Creation"] | null;
+            file: components["schemas"]["FileFacts"];
+            lineage: components["schemas"]["Lineage"];
+            params: components["schemas"]["ParamRow"][];
+            place_choices: components["schemas"]["PlaceChoices"];
+            authored: components["schemas"]["AuthoredState"];
+        };
         /** NamedItem */
         NamedItem: {
             id: number;
@@ -2307,6 +2404,12 @@ export interface components {
             queue: components["schemas"]["QueueHealth"];
             ledger: components["schemas"]["LedgerHealth"];
         };
+        /** ParamRow */
+        ParamRow: {
+            source: string;
+            key: string;
+            value: string;
+        };
         /** PeekView */
         PeekView: {
             page: number;
@@ -2337,10 +2440,27 @@ export interface components {
             /** @constant */
             frame: "pending";
         };
+        /** Person */
+        Person: {
+            slug: string;
+            name: string | null;
+            href: string;
+            faces: number;
+        };
+        /** Pixels */
+        Pixels: {
+            width: number;
+            height: number;
+        };
         /** PlaceAnswer */
         PlaceAnswer: {
             slug: string | null;
             where: components["schemas"]["Where"] | null;
+        };
+        /** PlaceChoices */
+        PlaceChoices: {
+            named: components["schemas"]["PlaceNamed"][];
+            kinds: ("country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi")[];
         };
         /** PlaceInCollection */
         PlaceInCollection: {
@@ -2351,6 +2471,12 @@ export interface components {
             kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
             pictures: number;
             qs: string;
+        };
+        /** PlaceNamed */
+        PlaceNamed: {
+            name: string;
+            /** @enum {string} */
+            kind: "country" | "region" | "island" | "county" | "city" | "locality" | "neighborhood" | "poi";
         };
         /** PlanRequest */
         PlanRequest: {
@@ -2375,6 +2501,12 @@ export interface components {
             settled_24h: {
                 [key: string]: number;
             };
+        };
+        /** Relative */
+        Relative: {
+            slug: string;
+            name: string;
+            kind: string;
         };
         /** RenderRequest */
         RenderRequest: {
@@ -2421,6 +2553,20 @@ export interface components {
         RuleView: {
             sql: string | null;
             nl: string | null;
+        };
+        /** Said */
+        Said: {
+            id: number;
+            /** @enum {string} */
+            kind: "caption" | "description" | "alt_text" | "tag" | "ocr" | "title";
+            text: string;
+            confidence: number | null;
+            model_id: string;
+            model_version: string;
+            region_id: number | null;
+            sample_id: number | null;
+            offset_ms: number | null;
+            stale: boolean;
         };
         /** SettingChange */
         SettingChange: {
@@ -2530,6 +2676,14 @@ export interface components {
             /** @constant */
             state: "unevaluated";
             rule: components["schemas"]["RuleView"] | null;
+        };
+        /** SoundStage */
+        SoundStage: {
+            /** @constant */
+            kind: "audio";
+            src: string;
+            original: string;
+            duration: number | null;
         };
         /** TimelineAt */
         TimelineAt: {
@@ -2872,6 +3026,46 @@ export interface components {
             pictures: number;
             months: components["schemas"]["TimelineYearCell"][];
         };
+        /** VideoStage */
+        VideoStage: {
+            /** @constant */
+            kind: "video";
+            src: string;
+            original: string;
+            poster: string;
+            source: components["schemas"]["Pixels"] | null;
+            duration: number | null;
+        };
+        /** When */
+        When: {
+            moment: number;
+            local_at: number | null;
+            instant_at: number | null;
+            tz_offset_min: number | null;
+            /** @enum {string} */
+            domain: "wall" | "instant";
+            precision: string;
+            basis: string;
+            certainty: number;
+            supports: string[];
+            conflicts: string[];
+            origin: string;
+            local_day: string;
+            day_qs: string;
+            timeline: string;
+            sessions: components["schemas"]["WhenSession"][];
+        };
+        /** WhenSession */
+        WhenSession: {
+            id: number;
+            kind: string;
+            start: number;
+            end: number;
+            pictures: number;
+            qs: string;
+            story: string | null;
+            timeline: string;
+        };
         /** Where */
         Where: {
             id: number;
@@ -3007,13 +3201,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description the media surface, for a machine or the browser's viewer */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MediaSurface"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

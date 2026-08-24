@@ -323,11 +323,12 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "the media surface, for a machine or the browser's viewer",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "$ref": "#/components/schemas/MediaSurface"
+                                }
                             }
                         }
                     },
@@ -8740,6 +8741,43 @@
                 ],
                 "title": "AlbumEntry"
             },
+            "AnimatedStage": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "const": "animated_image"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "original": {
+                        "type": "string"
+                    },
+                    "poster": {
+                        "type": "string"
+                    },
+                    "source": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Pixels"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "original",
+                    "poster",
+                    "source",
+                    "src"
+                ],
+                "title": "AnimatedStage"
+            },
             "AnswerAfter": {
                 "properties": {
                     "answer": {
@@ -8892,6 +8930,90 @@
                     "last_id"
                 ],
                 "title": "BacklogFrame"
+            },
+            "BrowsingContext": {
+                "properties": {
+                    "qs": {
+                        "type": "string"
+                    },
+                    "in_answer": {
+                        "type": "boolean"
+                    },
+                    "return_url": {
+                        "type": "string"
+                    },
+                    "currency": {
+                        "type": "string"
+                    },
+                    "answer": {
+                        "type": "string"
+                    },
+                    "ordinal": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "page": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "total": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "previous": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "next": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "answer",
+                    "currency",
+                    "in_answer",
+                    "next",
+                    "ordinal",
+                    "page",
+                    "previous",
+                    "qs",
+                    "return_url",
+                    "total"
+                ],
+                "title": "BrowsingContext"
             },
             "BulkFlag": {
                 "properties": {
@@ -9298,6 +9420,31 @@
                 ],
                 "title": "ConvertToSmart"
             },
+            "Copy": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "distance": {
+                        "type": "integer"
+                    },
+                    "is_best": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "distance",
+                    "is_best",
+                    "name",
+                    "slug"
+                ],
+                "title": "Copy"
+            },
             "Coverage": {
                 "properties": {
                     "files": {
@@ -9330,6 +9477,66 @@
                     "missing"
                 ],
                 "title": "Coverage"
+            },
+            "Creation": {
+                "properties": {
+                    "prompt": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "checkpoint": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "seed": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "loras": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "asked_for_width": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "asked_for_width",
+                    "checkpoint",
+                    "loras",
+                    "prompt",
+                    "seed"
+                ],
+                "title": "Creation"
             },
             "Curated": {
                 "properties": {
@@ -9527,6 +9734,24 @@
                 "type": "object",
                 "required": [],
                 "title": "DesiredRating"
+            },
+            "DocumentStage": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "const": "document"
+                    },
+                    "original": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "original"
+                ],
+                "title": "DocumentStage"
             },
             "EarlierEvents": {
                 "properties": {
@@ -10922,6 +11147,54 @@
                 ],
                 "title": "EvolutionView"
             },
+            "FaceScan": {
+                "properties": {
+                    "model_id": {
+                        "type": "string"
+                    },
+                    "model_version": {
+                        "type": "string"
+                    },
+                    "faces": {
+                        "type": "integer"
+                    },
+                    "at": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "at",
+                    "faces",
+                    "model_id",
+                    "model_version"
+                ],
+                "title": "FaceScan"
+            },
+            "Faces": {
+                "properties": {
+                    "people": {
+                        "items": {
+                            "$ref": "#/components/schemas/Person"
+                        },
+                        "type": "array"
+                    },
+                    "looked": {
+                        "items": {
+                            "$ref": "#/components/schemas/FaceScan"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "looked",
+                    "people"
+                ],
+                "title": "Faces"
+            },
             "FailedItem": {
                 "properties": {
                     "id": {
@@ -10967,6 +11240,32 @@
                     "name"
                 ],
                 "title": "FailedItem"
+            },
+            "FileFacts": {
+                "properties": {
+                    "folder": {
+                        "type": "string"
+                    },
+                    "read": {
+                        "type": "string",
+                        "enum": [
+                            "current",
+                            "stale",
+                            "never"
+                        ]
+                    },
+                    "fields": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "fields",
+                    "folder",
+                    "read"
+                ],
+                "title": "FileFacts"
             },
             "FiledPicture": {
                 "properties": {
@@ -11025,6 +11324,54 @@
                     "total"
                 ],
                 "title": "GalleryPage"
+            },
+            "ImageStage": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "const": "image"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "original": {
+                        "type": "string"
+                    },
+                    "source": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Pixels"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "shown": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Pixels"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "promotable": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "original",
+                    "promotable",
+                    "shown",
+                    "source",
+                    "src"
+                ],
+                "title": "ImageStage"
             },
             "InspectedItem": {
                 "properties": {
@@ -11819,6 +12166,36 @@
                 ],
                 "title": "Lifecycle"
             },
+            "Lineage": {
+                "properties": {
+                    "copies": {
+                        "items": {
+                            "$ref": "#/components/schemas/Copy"
+                        },
+                        "type": "array"
+                    },
+                    "parents": {
+                        "items": {
+                            "$ref": "#/components/schemas/Relative"
+                        },
+                        "type": "array"
+                    },
+                    "children": {
+                        "items": {
+                            "$ref": "#/components/schemas/Relative"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "children",
+                    "copies",
+                    "parents"
+                ],
+                "title": "Lineage"
+            },
             "ListedCollection": {
                 "properties": {
                     "slug": {
@@ -12339,6 +12716,129 @@
                 ],
                 "title": "MatrixRow"
             },
+            "MediaSurface": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "present": {
+                        "type": "boolean"
+                    },
+                    "stage": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/ImageStage"
+                            },
+                            {
+                                "$ref": "#/components/schemas/AnimatedStage"
+                            },
+                            {
+                                "$ref": "#/components/schemas/VideoStage"
+                            },
+                            {
+                                "$ref": "#/components/schemas/SoundStage"
+                            },
+                            {
+                                "$ref": "#/components/schemas/DocumentStage"
+                            }
+                        ]
+                    },
+                    "context": {
+                        "$ref": "#/components/schemas/BrowsingContext"
+                    },
+                    "when": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/When"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "where": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Where"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "faces": {
+                        "$ref": "#/components/schemas/Faces"
+                    },
+                    "said": {
+                        "items": {
+                            "$ref": "#/components/schemas/Said"
+                        },
+                        "type": "array"
+                    },
+                    "said_first": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "creation": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Creation"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "file": {
+                        "$ref": "#/components/schemas/FileFacts"
+                    },
+                    "lineage": {
+                        "$ref": "#/components/schemas/Lineage"
+                    },
+                    "params": {
+                        "items": {
+                            "$ref": "#/components/schemas/ParamRow"
+                        },
+                        "type": "array"
+                    },
+                    "place_choices": {
+                        "$ref": "#/components/schemas/PlaceChoices"
+                    },
+                    "authored": {
+                        "$ref": "#/components/schemas/AuthoredState"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "authored",
+                    "context",
+                    "creation",
+                    "faces",
+                    "file",
+                    "lineage",
+                    "name",
+                    "params",
+                    "place_choices",
+                    "present",
+                    "said",
+                    "said_first",
+                    "slug",
+                    "stage",
+                    "when",
+                    "where"
+                ],
+                "title": "MediaSurface"
+            },
             "NamedItem": {
                 "properties": {
                     "id": {
@@ -12693,6 +13193,27 @@
                 ],
                 "title": "Overview"
             },
+            "ParamRow": {
+                "properties": {
+                    "source": {
+                        "type": "string"
+                    },
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "key",
+                    "source",
+                    "value"
+                ],
+                "title": "ParamRow"
+            },
             "PeekView": {
                 "properties": {
                     "page": {
@@ -12851,6 +13372,55 @@
                 ],
                 "title": "PendingFrame"
             },
+            "Person": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "faces": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "faces",
+                    "href",
+                    "name",
+                    "slug"
+                ],
+                "title": "Person"
+            },
+            "Pixels": {
+                "properties": {
+                    "width": {
+                        "type": "integer"
+                    },
+                    "height": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "height",
+                    "width"
+                ],
+                "title": "Pixels"
+            },
             "PlaceAnswer": {
                 "properties": {
                     "slug": {
@@ -12881,6 +13451,39 @@
                     "where"
                 ],
                 "title": "PlaceAnswer"
+            },
+            "PlaceChoices": {
+                "properties": {
+                    "named": {
+                        "items": {
+                            "$ref": "#/components/schemas/PlaceNamed"
+                        },
+                        "type": "array"
+                    },
+                    "kinds": {
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "country",
+                                "region",
+                                "island",
+                                "county",
+                                "city",
+                                "locality",
+                                "neighborhood",
+                                "poi"
+                            ]
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kinds",
+                    "named"
+                ],
+                "title": "PlaceChoices"
             },
             "PlaceInCollection": {
                 "properties": {
@@ -12924,6 +13527,33 @@
                     "slug"
                 ],
                 "title": "PlaceInCollection"
+            },
+            "PlaceNamed": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "country",
+                            "region",
+                            "island",
+                            "county",
+                            "city",
+                            "locality",
+                            "neighborhood",
+                            "poi"
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name"
+                ],
+                "title": "PlaceNamed"
             },
             "PlanRequest": {
                 "properties": {
@@ -13007,6 +13637,27 @@
                     "settled_24h"
                 ],
                 "title": "QueueHealth"
+            },
+            "Relative": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "slug"
+                ],
+                "title": "Relative"
             },
             "RenderRequest": {
                 "properties": {
@@ -13243,6 +13894,91 @@
                     "sql"
                 ],
                 "title": "RuleView"
+            },
+            "Said": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "caption",
+                            "description",
+                            "alt_text",
+                            "tag",
+                            "ocr",
+                            "title"
+                        ]
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "confidence": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "model_id": {
+                        "type": "string"
+                    },
+                    "model_version": {
+                        "type": "string"
+                    },
+                    "region_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "sample_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "offset_ms": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "stale": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "confidence",
+                    "id",
+                    "kind",
+                    "model_id",
+                    "model_version",
+                    "offset_ms",
+                    "region_id",
+                    "sample_id",
+                    "stale",
+                    "text"
+                ],
+                "title": "Said"
             },
             "SettingChange": {
                 "properties": {
@@ -13850,6 +14586,39 @@
                     "updated_by"
                 ],
                 "title": "SmartUnevaluated"
+            },
+            "SoundStage": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "const": "audio"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "original": {
+                        "type": "string"
+                    },
+                    "duration": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "duration",
+                    "kind",
+                    "original",
+                    "src"
+                ],
+                "title": "SoundStage"
             },
             "TimelineAt": {
                 "properties": {
@@ -15404,6 +16173,205 @@
                     "year"
                 ],
                 "title": "TimelineYearRow"
+            },
+            "VideoStage": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "const": "video"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "original": {
+                        "type": "string"
+                    },
+                    "poster": {
+                        "type": "string"
+                    },
+                    "source": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Pixels"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "duration": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "duration",
+                    "kind",
+                    "original",
+                    "poster",
+                    "source",
+                    "src"
+                ],
+                "title": "VideoStage"
+            },
+            "When": {
+                "properties": {
+                    "moment": {
+                        "type": "number"
+                    },
+                    "local_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "instant_at": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "tz_offset_min": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "domain": {
+                        "type": "string",
+                        "enum": [
+                            "wall",
+                            "instant"
+                        ]
+                    },
+                    "precision": {
+                        "type": "string"
+                    },
+                    "basis": {
+                        "type": "string"
+                    },
+                    "certainty": {
+                        "type": "number"
+                    },
+                    "supports": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "conflicts": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "origin": {
+                        "type": "string"
+                    },
+                    "local_day": {
+                        "type": "string"
+                    },
+                    "day_qs": {
+                        "type": "string"
+                    },
+                    "timeline": {
+                        "type": "string"
+                    },
+                    "sessions": {
+                        "items": {
+                            "$ref": "#/components/schemas/WhenSession"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "basis",
+                    "certainty",
+                    "conflicts",
+                    "day_qs",
+                    "domain",
+                    "instant_at",
+                    "local_at",
+                    "local_day",
+                    "moment",
+                    "origin",
+                    "precision",
+                    "sessions",
+                    "supports",
+                    "timeline",
+                    "tz_offset_min"
+                ],
+                "title": "When"
+            },
+            "WhenSession": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "qs": {
+                        "type": "string"
+                    },
+                    "story": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "timeline": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "end",
+                    "id",
+                    "kind",
+                    "pictures",
+                    "qs",
+                    "start",
+                    "story",
+                    "timeline"
+                ],
+                "title": "WhenSession"
             },
             "Where": {
                 "properties": {

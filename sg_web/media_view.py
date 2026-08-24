@@ -13,10 +13,10 @@ The presentations of that one address, negotiated deterministically
 (and declared with `Vary: Accept, HX-Request`, because caches punish
 ambiguity):
 
-    Accept names application/json      -> the MediaView itself
+    Accept names application/json      -> the MediaSurface itself
     else HX-Request: true              -> the lightbox fragment
     else Accept names text/html        -> the full detail page
-    else (wildcard, machine default)   -> the MediaView itself
+    else (wildcard, machine default)   -> the MediaSurface itself
 
 All from ONE view assembly. There is no /lightbox/ URL and no second
 definition of the item.
@@ -35,14 +35,14 @@ swapped under the gallery still on screen.
 
 from __future__ import annotations
 
-import dataclasses
 import pathlib
 import time
 from typing import Literal
 
-from litestar import Request, get
+from litestar import MediaType, Request, get
 from litestar.datastructures import State
 from litestar.exceptions import HTTPException, NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath, FromQuery
 from litestar.response import Redirect, Response, Template
 
@@ -56,11 +56,9 @@ from sg_web.wire import Wire
 
 def view(
     conn, models_dir: str, file_id: int, slug: str, query: resultset.GalleryQuery, now: float, actor_id: int
-) -> dict:
-    """The MediaView: everything every presentation shows, assembled
-    once, inside ONE database snapshot. Keys carried by the old JSON
-    page keep their names, so the machine consumers keep their
-    assertions.
+) -> MediaSurface:
+    """The MediaSurface: everything every presentation shows, assembled
+    once, inside ONE database snapshot.
 
     Ordering inside the snapshot is load-bearing: the ResultSet context
     comes FIRST, because its currency read (the monitor connection)
@@ -82,64 +80,83 @@ def view(
         told = pages.picture(conn, file_id)
         if told is None:
             raise NotFoundException(f"/i/{slug} has no file row")
-        made = _assembled(conn, file_id, slug, found, generation, asked, told)
-        made["context"]["answer"] = answer
-        # The actor's authored facts ride the SAME snapshot as everything
-        # else -- a favorite committed mid-request must not appear under
-        # the metadata of the generation before it.
-        made["authored"] = dataclasses.asdict(authored.media_state(conn, file_id, actor_id))
-        return made
+        return _assembled(conn, file_id, slug, found, generation, asked, answer, told, actor_id)
 
 
-def _assembled(conn, file_id: int, slug: str, found, generation: str, asked: str, told) -> dict:
+def _assembled(
+    conn, file_id: int, slug: str, found, generation: str, asked: str, answer: str, told, actor_id: int
+) -> MediaSurface:
     name, folder, width, height, duration, asked_w, checkpoint, missing_since, prompt, seed, fields, kind, read = told
     back = f"/g?{asked}" if asked else "/g"
     if found is not None and found["page"] > 1:
         back += ("&" if asked else "?") + f"page={found['page']}"
-    context = {
-        "qs": asked,
-        "in_answer": found is not None,
-        "return_url": back,
-        "currency": generation,
-        **({k: found[k] for k in ("ordinal", "page", "total")} if found else {}),
-    }
-    return {
-        "slug": slug,
-        "name": name,
-        "folder": folder,
-        "kind": kind,
-        "present": missing_since is None,
-        "width": width,
-        "height": height,
-        "duration": duration,
-        "asked_for_width": asked_w,
-        "checkpoint": checkpoint,
-        #: whether the metadata here was read from the CURRENT bytes:
-        #: 'current', 'stale' (a scan recorded new bytes since) or 'never'
-        "read": read,
-        "loras": pages.file_loras(conn, file_id),
-        "prompt": prompt,
-        "seed": seed,
-        "fields": fields,
-        "params": [
-            {"source": source, "key": key, "value": value} for source, key, value in pages.fields_of(conn, file_id)
-        ],
-        "copies": [
-            {"slug": s, "name": n, "distance": d, "is_best": bool(b)} for s, n, d, b in pages.dupe_copies(conn, file_id)
-        ],
-        "previous": found["previous"] if found else None,
-        "next": found["next"] if found else None,
-        "parents": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.parents(conn, file_id)],
-        "children": [{"slug": s, "name": n, "kind": k} for s, n, k in pages.children(conn, file_id)],
-        "when": _when(conn, file_id),
-        "said": derived.said_about(conn, file_id),
-        "said_first": derived.said_first(conn, [file_id], prefer=settings.value(conn, "caption_model")).get(file_id),
-        "faces": _faces(conn, file_id),
-        "where": where_of(conn, file_id),
-        "places": [{"name": name, "kind": kind} for name, kind in pages.places_named(conn)],
-        "place_kinds": list(places.KINDS),
-        "context": context,
-    }
+    loras = pages.file_loras(conn, file_id)
+    # A recipe is the reason there is a Creation at all: a photograph was
+    # taken, and giving it an empty prompt/checkpoint/seed block would be
+    # a section the page renders for every picture that has none.
+    made = prompt is not None or checkpoint is not None or seed is not None or bool(loras) or asked_w is not None
+    return MediaSurface(
+        slug=slug,
+        name=name,
+        present=missing_since is None,
+        stage=_stage(slug, kind, width, height, duration),
+        context=BrowsingContext(
+            qs=asked,
+            in_answer=found is not None,
+            return_url=back,
+            currency=generation,
+            answer=answer,
+            ordinal=found["ordinal"] if found else None,
+            page=found["page"] if found else None,
+            total=found["total"] if found else None,
+            previous=found["previous"] if found else None,
+            next=found["next"] if found else None,
+        ),
+        when=_when(conn, file_id),
+        where=where_of(conn, file_id),
+        faces=_faces(conn, file_id),
+        said=_said(conn, file_id),
+        said_first=derived.said_first(conn, [file_id], prefer=settings.value(conn, "caption_model")).get(file_id),
+        creation=(
+            Creation(prompt=prompt, checkpoint=checkpoint, seed=seed, loras=loras, asked_for_width=asked_w)
+            if made
+            else None
+        ),
+        file=FileFacts(folder=folder, read=read, fields=fields),
+        lineage=Lineage(
+            copies=[
+                Copy(slug=s, name=n, distance=d, is_best=bool(b)) for s, n, d, b in pages.dupe_copies(conn, file_id)
+            ],
+            parents=[Relative(slug=s, name=n, kind=k) for s, n, k in pages.parents(conn, file_id)],
+            children=[Relative(slug=s, name=n, kind=k) for s, n, k in pages.children(conn, file_id)],
+        ),
+        params=[ParamRow(source=source, key=key, value=value) for source, key, value in pages.fields_of(conn, file_id)],
+        place_choices=PlaceChoices(
+            named=[PlaceNamed(name=name, kind=kind) for name, kind in pages.places_named(conn)],
+            kinds=list(places.KINDS),
+        ),
+        # The actor's authored facts ride the SAME snapshot as everything
+        # else -- a favorite committed mid-request must not appear under
+        # the metadata of the generation before it.
+        authored=_authored(conn, file_id, actor_id),
+    )
+
+
+def _authored(conn, file_id: int, actor_id: int) -> AuthoredState:
+    """This actor's own facts about this picture.
+
+    Spelled field by field rather than validated from `asdict`: the
+    dataclass holds its collections as a TUPLE (immutable state nobody
+    edits in place), and the seam is strict, so the translation from
+    storage's shape to the wire's is a line of Python somebody can read
+    -- which is what sg_web/wire.py asks for.
+    """
+    held = authored.media_state(conn, file_id, actor_id)
+    return AuthoredState(
+        favorite=held.favorite,
+        rating=held.rating,
+        collections=[CollectionSummary(slug=one["slug"], name=one["name"]) for one in held.collections],
+    )
 
 
 #: The place vocabulary is the schema's: db/schema.sql constrains place.kind
@@ -191,23 +208,416 @@ def where_of(conn, file_id: int) -> Where | None:
     )
 
 
-def _faces(conn, file_id: int) -> dict:
+#: What a file can be. db/schema.sql:185 constrains `file.kind` to exactly
+#: this list, and sglint SG709 holds the two together, so the browser
+#: narrows on a closed set rather than on `string`.
+MediaKind = Literal["image", "animated_image", "video", "audio", "document"]
+
+
+class Pixels(Wire):
+    """A size in real pixels, as the picture is SEEN."""
+
+    width: int
+    height: int
+
+
+def _source(width: int | None, height: int | None) -> Pixels | None:
+    """The source's pixels, as displayed. Recorded upright already.
+
+    NOT turned again here. A phone stores its sensor's frame with a tag
+    saying which quarter turn it needs, and ingest resolves that ONCE at
+    the point of record: db/ingest.py, `if found.orientation in
+    TRANSPOSED: UPDATE file SET width = height, height = width`. Every
+    renderer downstream agrees with the row -- the preview is rendered
+    from `oriented.for_model` (sg_web/app.py:810), and a browser turns
+    the original itself because `image-orientation: from-image` is the
+    initial value. A swap here would be the second one, and would file
+    every portrait photograph as landscape again.
+
+    None when nothing recorded a size -- video, whose dimensions wait on
+    the same probe `duration` does, and anything ingest has not read.
+    """
+    if not width or not height:
+        return None
+    return Pixels(width=width, height=height)
+
+
+def _contained(source: Pixels, edge: int) -> Pixels:
+    """What `ImageOps.contain` makes of this size against a square box.
+
+    The renderer's own arithmetic, restated so the server can say what
+    the browser will receive instead of the browser measuring it
+    (python-pillow/Pillow@bb1d8e8 src/PIL/ImageOps.py:272-299). Note that
+    `contain` RESIZES rather than shrinks: it computes the fitted size
+    and calls `resize` unconditionally, so a 400x300 source becomes a
+    1440x1080 preview. A viewer that promoted to the original on
+    "displayed pixels exceed the preview's" would fetch FEWER pixels for
+    every small picture in the library; `promotable` below is the
+    comparison that actually holds.
+    """
+    if source.width >= source.height:
+        return Pixels(width=edge, height=round(source.height / source.width * edge))
+    return Pixels(width=round(source.width / source.height * edge), height=edge)
+
+
+class ImageStage(Wire):
+    """A still picture: the one kind a viewer zooms into.
+
+    `src` is painted first because it is small and cached; `original` is
+    the file itself. Both are rendered upright by the browser, so both
+    agree with `source`.
+    """
+
+    kind: Literal["image"]
+    #: the derived preview -- fast, cached, and what the grid already warmed
+    src: str
+    #: the bytes on disk, promoted to when the source has more to give
+    original: str
+    #: the file's own pixels, upright; None when ingest has not read it
+    source: Pixels | None
+    #: what `src` delivers -- stated, not measured (see `_contained`)
+    shown: Pixels | None
+    #: whether `original` holds more pixels than `src`. False for a source
+    #: smaller than the preview box, which the preview UPSCALED.
+    promotable: bool
+
+
+class AnimatedStage(Wire):
+    """A picture that moves: painted from the original, because a preview
+    is one frame of it. Its poster is that frame, for a strip or a card."""
+
+    kind: Literal["animated_image"]
+    src: str
+    original: str
+    poster: str
+    source: Pixels | None
+
+
+class VideoStage(Wire):
+    """A clip: the element seeks over the original through Range, so the
+    preview is only ever its poster."""
+
+    kind: Literal["video"]
+    src: str
+    original: str
+    poster: str
+    source: Pixels | None
+    #: seconds, when the container states one
+    duration: float | None
+
+
+class SoundStage(Wire):
+    """Audio: nothing to show, something to play."""
+
+    kind: Literal["audio"]
+    src: str
+    original: str
+    duration: float | None
+
+
+class DocumentStage(Wire):
+    """Everything else: an address to fetch, and no picture to take
+    (sg_web/app.py `_variant_bytes` says so rather than serving a favicon)."""
+
+    kind: Literal["document"]
+    original: str
+
+
+#: What the viewer paints, per kind.
+#:
+#: A plain union, as CollectionDocument is: litestar builds a union's schema
+#: itself and never asks pydantic, so `Field(discriminator=...)` would be an
+#: annotation lying about the document. Every arm states `kind` as a
+#: single-valued Literal, which is what the browser narrows on -- and what
+#: makes `source`, `shown` and `promotable` reachable ONLY where they mean
+#: something, with no assertion at the call site.
+Stage = ImageStage | AnimatedStage | VideoStage | SoundStage | DocumentStage
+
+
+def _stage(slug: str, kind: MediaKind, width, height, duration) -> Stage:
+    """The display facts for one file, from the row already read.
+
+    No query of its own: everything here is arithmetic over the picture
+    row and the variant policy, so a viewer never measures what the
+    server can state.
+    """
+    from vision import thumbs
+
+    source = _source(width, height)
+    original, poster, preview = f"/media/{slug}", f"/preview/{slug}", f"/preview/{slug}"
+    if kind == "image":
+        shown = _contained(source, thumbs.EDGES["preview"]) if source else None
+        return ImageStage(
+            kind="image",
+            src=preview,
+            original=original,
+            source=source,
+            shown=shown,
+            promotable=bool(source and shown and source.width > shown.width),
+        )
+    if kind == "animated_image":
+        return AnimatedStage(kind="animated_image", src=original, original=original, poster=poster, source=source)
+    if kind == "video":
+        return VideoStage(
+            kind="video", src=original, original=original, poster=poster, source=source, duration=duration
+        )
+    if kind == "audio":
+        return SoundStage(kind="audio", src=original, original=original, duration=duration)
+    return DocumentStage(kind="document", original=original)
+
+
+class Person(Wire):
+    """Somebody the primary clustering puts in this picture."""
+
+    slug: str
+    name: str | None
+    href: str
+    #: how many detected faces here are theirs
+    faces: int
+
+
+class FaceScan(Wire):
+    """One detector's pass over these bytes -- so "nobody here" is
+    distinguishable from "nobody looked"."""
+
+    model_id: str
+    model_version: str
+    faces: int
+    at: float
+
+
+class Faces(Wire):
+    people: list[Person]
+    looked: list[FaceScan]
+
+
+#: What a model can say about a picture. db/schema.sql:1468 constrains
+#: derived_annotation.kind to exactly this list.
+SaidKind = Literal["caption", "description", "alt_text", "tag", "ocr", "title"]
+
+
+class Said(Wire):
+    """One thing a model said, with the evidence to weigh it by."""
+
+    id: int
+    kind: SaidKind
+    text: str
+    confidence: float | None
+    model_id: str
+    model_version: str
+    region_id: int | None
+    sample_id: int | None
+    #: where in a clip it was said, when it was said of a frame
+    offset_ms: int | None
+    #: said of bytes this file no longer has
+    stale: bool
+
+
+class WhenSession(Wire):
+    """A session this picture belongs to, and the ways in to it."""
+
+    id: int
+    kind: str
+    start: float
+    end: float
+    pictures: int
+    qs: str
+    story: str | None
+    timeline: str
+
+
+class When(Wire):
+    """The picture's place on the human timeline, with its evidence.
+
+    Two clock domains, never fused: a wall clock when that is what was
+    claimed, an instant only when one is knowable (`domain` says which).
+    """
+
+    moment: float
+    local_at: float | None
+    instant_at: float | None
+    tz_offset_min: int | None
+    domain: Literal["wall", "instant"]
+    precision: str
+    basis: str
+    certainty: float
+    supports: list[str]
+    conflicts: list[str]
+    origin: str
+    local_day: str
+    day_qs: str
+    timeline: str
+    sessions: list[WhenSession]
+
+
+class Copy(Wire):
+    """Another body of the same picture."""
+
+    slug: str
+    name: str
+    distance: int
+    is_best: bool
+
+
+class Relative(Wire):
+    """A picture this one came from, or made."""
+
+    slug: str
+    name: str
+    kind: str
+
+
+class Lineage(Wire):
+    """Where this picture sits among its own copies and derivations."""
+
+    copies: list[Copy]
+    parents: list[Relative]
+    children: list[Relative]
+
+
+class ParamRow(Wire):
+    """One parsed field, exactly as it was read."""
+
+    source: str
+    key: str
+    value: str
+
+
+class Creation(Wire):
+    """How the picture was MADE, when a recipe was recorded. None on a
+    photograph, which was taken rather than generated."""
+
+    prompt: str | None
+    checkpoint: str | None
+    seed: int | None
+    loras: list[str]
+    #: what the recipe ASKED for, which the file need not have obeyed
+    #: (db/schema.sql: generation.width is the request, file.width the fact)
+    asked_for_width: int | None
+
+
+class FileFacts(Wire):
+    """The file as a file."""
+
+    folder: str
+    #: whether this metadata was read from the CURRENT bytes
+    read: Literal["current", "stale", "never"]
+    #: how many parsed fields there are, before anybody asks for them
+    fields: int
+
+
+class BrowsingContext(Wire):
+    """The walk this address was opened inside.
+
+    The ResultSet's, never a folder's: the arrows mean what the grid
+    meant, and the currency is the concurrency evidence a mounted
+    overlay is checked against.
+    """
+
+    qs: str
+    in_answer: bool
+    return_url: str
+    currency: str
+    answer: str
+    #: present only when the item is IN the answer being walked
+    ordinal: int | None
+    page: int | None
+    total: int | None
+    previous: str | None
+    next: str | None
+
+
+class PlaceNamed(Wire):
+    name: str
+    kind: PlaceKind
+
+
+class PlaceChoices(Wire):
+    """What the "where did this happen?" form offers: the places already
+    named in this library, and the whole closed vocabulary of kinds."""
+
+    named: list[PlaceNamed]
+    kinds: list[PlaceKind]
+
+
+class CollectionSummary(Wire):
+    """One collection a file is filed in: its address and its name."""
+
+    slug: str
+    name: str
+
+
+class AuthoredState(Wire):
+    """What this actor has written down about one file, as opposed to
+    what was derived from it.
+
+    db/authored.py's MediaAuthoredState says `collections: tuple[dict,
+    ...]` with the keys in a comment. This is the same fact with the
+    comment promoted into the type, because the browser is given this
+    one. Lives here rather than beside the write routes because the
+    surface carries it too, and sg_web/media_authored.py already depends
+    on this module for Where and PlaceKind -- one owner, and the arrow
+    already pointed this way.
+    """
+
+    favorite: bool
+    rating: int | None
+    collections: list[CollectionSummary]
+
+
+class MediaSurface(Wire):
+    """One media item, as every presentation of `/i/{slug}` reads it.
+
+    Grouped by what a reader is looking FOR, not by which table a column
+    came from: the stage is what to paint, `when`/`where`/`faces`/`said`
+    are the human context that changes what the picture MEANS, and
+    creation, file, lineage and params are the provenance behind it.
+    """
+
+    slug: str
+    name: str
+    #: whether the bytes are on disk right now
+    present: bool
+    stage: Stage
+    context: BrowsingContext
+    when: When | None
+    where: Where | None
+    faces: Faces
+    said: list[Said]
+    #: the one caption a strip or a bar shows, by the preferred model
+    said_first: str | None
+    creation: Creation | None
+    file: FileFacts
+    lineage: Lineage
+    params: list[ParamRow]
+    place_choices: PlaceChoices
+    authored: AuthoredState
+
+
+def _faces(conn, file_id: int) -> Faces:
     """Who is in the picture, by the primary clustering, and whether any
     detector has looked at its current bytes -- so the page can tell
     "nobody here" from "nobody looked"."""
-    return {
-        "people": [
-            {"slug": slug, "name": name, "href": f"/p/{slug}", "faces": int(count)}
+    return Faces(
+        people=[
+            Person(slug=slug, name=name, href=f"/p/{slug}", faces=int(count))
             for slug, name, count in pages.media_people(conn, file_id)
         ],
-        "looked": [
-            {"model_id": model_id, "model_version": version, "faces": int(faces), "at": at}
+        looked=[
+            FaceScan(model_id=model_id, model_version=version, faces=int(faces), at=at)
             for model_id, version, faces, at in pages.media_face_scans(conn, file_id)
         ],
-    }
+    )
 
 
-def _when(conn, file_id: int) -> dict | None:
+def _said(conn, file_id: int) -> list[Said]:
+    """What models have said, translated at the seam: SQLite answers the
+    staleness comparison with 0 or 1, and the browser is promised a
+    boolean (sg_web/wire.py)."""
+    return [Said.model_validate({**row, "stale": bool(row["stale"])}) for row in derived.said_about(conn, file_id)]
+
+
+def _when(conn, file_id: int) -> When | None:
     """The picture's place on the human timeline, with the evidence
     behind it (db/pages.py MEDIA_WHEN), and the current sessions it
     belongs to -- each a link to the timeline, the day, the session's
@@ -224,48 +634,61 @@ def _when(conn, file_id: int) -> dict | None:
     day_qs = urllib.parse.urlencode(
         [("f", facets.spell(facets.facet("context.local_day", "eq", local_day))), ("sort", "moment")]
     )
-    return {
-        "moment": moment,
-        "local_at": local_at,
-        "instant_at": instant_at,
-        "tz_offset_min": tz,
-        "domain": "wall" if local_at is not None else "instant",
-        "precision": precision,
-        "basis": basis,
-        "certainty": certainty,
-        "supports": json.loads(supports) if supports else [],
-        "conflicts": json.loads(conflicts) if conflicts else [],
-        "origin": origin,
-        "local_day": local_day,
-        "day_qs": day_qs,
-        "timeline": "/timeline?"
+    return When(
+        moment=moment,
+        local_at=local_at,
+        instant_at=instant_at,
+        tz_offset_min=tz,
+        domain="wall" if local_at is not None else "instant",
+        precision=precision,
+        basis=basis,
+        certainty=certainty,
+        supports=json.loads(supports) if supports else [],
+        conflicts=json.loads(conflicts) if conflicts else [],
+        origin=origin,
+        local_day=local_day,
+        day_qs=day_qs,
+        timeline="/timeline?"
         + urllib.parse.urlencode(
             {"bin": "hour", "start": int(moment // 86400) * 86400, "end": int(moment // 86400) * 86400 + 86400}
         ),
-        "sessions": [
-            {
-                "id": event_id,
-                "kind": kind,
-                "start": start,
-                "end": end,
-                "pictures": pictures,
-                "qs": urllib.parse.urlencode(
+        sessions=[
+            WhenSession(
+                id=event_id,
+                kind=kind,
+                start=start,
+                end=end,
+                pictures=pictures,
+                qs=urllib.parse.urlencode(
                     [("f", facets.spell(facets.facet("event.id", "eq", str(event_id)))), ("sort", "moment")]
                 ),
-                "story": f"/stories/renders/{render_id}" if render_id is not None else None,
+                story=f"/stories/renders/{render_id}" if render_id is not None else None,
                 # the session's hour window on the timeline: where its
                 # story is told (the timeline owns the tell button)
-                "timeline": "/timeline?"
+                timeline="/timeline?"
                 + urllib.parse.urlencode(
                     {"bin": "hour", "start": int(start // 3600) * 3600, "end": int(end // 3600) * 3600 + 3600}
                 ),
-            }
+            )
             for event_id, kind, start, end, pictures, render_id in pages.media_sessions(conn, file_id)
         ],
-    }
+    )
 
 
-@get("/i/{slug:str}", sync_to_thread=True)
+@get(
+    "/i/{slug:str}",
+    sync_to_thread=True,
+    responses={
+        200: ResponseSpec(
+            data_container=MediaSurface,
+            media_type=MediaType.JSON,
+            description="the media surface, for a machine or the browser's viewer",
+            # deterministic, and a page of them doubles the document for
+            # nothing the generated types read
+            generate_examples=False,
+        )
+    },
+)
 def media_page(
     state: State,
     request: Request,
@@ -323,7 +746,7 @@ def media_page(
         # otherwise pass a pre-assembly check and hand back arrows from
         # a newer answer under the old mounted gallery.
         expected = request.headers.get("x-sg-expect")
-        if expected is not None and told["context"]["currency"] != expected:
+        if expected is not None and told.context.currency != expected:
             raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")
     finally:
         connect.close(conn)
