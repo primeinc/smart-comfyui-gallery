@@ -295,11 +295,26 @@ def _fill_from_graph(typed, recipe) -> None:
         ]
 
 
-def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
-    """The recipe: tool, prompt, weights, sampler settings, and the long tail."""
+def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -> None:
+    """The recipe: tool, prompt, weights, sampler settings, and the long tail.
+
+    `held` is a RawMetadata a caller has already loaded. Loading it costs
+    about 23 ms on a generated PNG -- Pillow parses the workflow graph out
+    of the text chunks during `open` -- so a caller that needs it twice
+    should load it once.
+    """
     retract(conn, file_id, "generation")
-    parsed = metaparse.parse_file(path)
-    raw = load_raw(path)
+    # Loaded ONCE. `parse_file` is `load_raw` followed by `parse_raw`
+    # (metaparse/adapters.py:730-743), so calling it and then loading the
+    # same file again read every text chunk twice -- and on a generated
+    # PNG those chunks are the whole workflow, which is why each read
+    # cost 23 ms and this step was 61% of ingest.
+    #
+    # `allow_stealth` is not passed, exactly as `parse_file(path)` did not
+    # pass it: the LSB pixel scan is for detail views, never bulk
+    # indexing, and skipping it is what keeps this off the pixels.
+    raw = load_raw(path) if held is None else held
+    parsed = metaparse.parse_raw(raw) if raw is not None else None
 
     reader = f"metaparse/{parsed.tool}" if parsed is not None else None
     # The text the adapter actually read, so the claim is about this carrier
@@ -459,8 +474,8 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     # The sections, read with this tool's grammar (pure, microseconds):
     # every main-section text is a prompt row from the moment the file
     # is read, so a planner or a search finds a vector to hang on it.
-    for held in prompts_module.roles(conn, file_id).values():
-        prompts_module.sections(conn, held["id"], prompts_module.grammar_for(typed.tool), now)
+    for role in prompts_module.roles(conn, file_id).values():
+        prompts_module.sections(conn, role["id"], prompts_module.grammar_for(typed.tool), now)
 
     tail = dict(typed.extra)
     if typed.version:
@@ -576,7 +591,8 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # billed to `sniffing`, which is a 512-byte read and could not
     # honestly have cost 48 ms.
     told.phase("reading-generation", kind=kind)
-    generation(conn, file_id, path, now, out)
+    held = load_raw(path)
+    generation(conn, file_id, path, now, out, held=held)
 
     # Written AFTER generation(), which retracts the whole 'container'
     # source before re-parsing -- facts written before it were deleted by it.
@@ -585,8 +601,14 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     if suffix_claimed is not None:
         _param(conn, file_id, "container", "SuffixClaimed", suffix_claimed)
 
-    told.phase("probing", kind=kind)
+    # Inside the branch, not before it. Opened before, this phase stayed
+    # open through everything that follows for a still -- which never
+    # probes -- and reported 24 ms of "probing" for files that do not
+    # reach a container reader at all. The same mistake `sniffing` made
+    # one step earlier and `encoding` made in the embed job: a phase
+    # opened outside the work it names bills whatever comes next.
     if kind in _PROBED:
+        told.phase("probing", kind=kind)
         container = probe_module.read(path)
         probe_module.store(conn, file_id, container, now)
         out.params += len(container.params)
@@ -614,6 +636,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # of them -- true, uninteresting, and it buried the message from the
     # reader that could.
     if kind in ("image", "animated_image"):
+        told.phase("checking-animation")
         # The suffix guessed; the decoded file answers. An animated WebP,
         # AVIF or PNG wears a still suffix, and a single-frame GIF wears an
         # animated one -- n_frames is the fact, so the row records it.
@@ -622,7 +645,24 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             kind = "animated_image" if moving else "image"
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
     if kind in ("image", "animated_image", "video"):
-        found = capture_module.read(path) if kind != "video" else capture_module.read_video(path)
+        told.phase("reading-camera", kind=kind)
+        # The header this file already opened, when there is one. Opening
+        # a generated PNG again to look for EXIF it does not have was 41%
+        # of ingest on this library.
+        # Skipped outright when the load above already looked and found
+        # no EXIF. `capture.read` opens the file a second time and then
+        # returns an empty Capture the moment `getexif()` is falsey
+        # (db/capture.py _read_image), and opening a generated PNG costs
+        # about 23 ms because Pillow parses its workflow graph out of the
+        # text chunks during `open`. That second open was 41% of ingest on
+        # this library, spent looking for camera tags in files a camera
+        # never touched.
+        if kind != "video" and held is not None and not held.has_exif:
+            found = capture_module.Capture()
+        elif kind != "video":
+            found = capture_module.read(path)
+        else:
+            found = capture_module.read_video(path)
         # First complaint stands: an animated image was already probed
         # above, and the capture read's silence must not erase why the
         # container reader could not read it -- duration would stay NULL

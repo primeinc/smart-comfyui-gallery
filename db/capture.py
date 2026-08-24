@@ -380,8 +380,14 @@ def _tag_value(tag, value) -> Held | None:
     return None
 
 
-def read(path) -> Capture:
+def read(path, image: Image.Image | None = None) -> Capture:
     """Every camera tag in one file, as columns plus a long tail.
+
+    `image` is an already-open header a caller happens to be holding. It
+    is not a micro-optimisation: opening a generated PNG costs about 23
+    ms, because Pillow parses its text chunks -- a whole workflow graph --
+    during `open`, and ingest was paying that twice on a file that turns
+    out to have no EXIF at all. The pixels are never touched either way.
 
     A file that cannot be opened is reported, not raised. One truncated JPEG
     in a library used to end the whole ingest pass: `Image.open` raises
@@ -392,6 +398,8 @@ def read(path) -> Capture:
     """
     out = Capture()
     try:
+        if image is not None:
+            return _read_image(image, path, out)
         return _read(path, out)
     except (OSError, ValueError, Image.DecompressionBombError) as problem:
         out.unreadable = f"{type(problem).__name__}: {problem}"

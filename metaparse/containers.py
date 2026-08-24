@@ -4,6 +4,7 @@ One Image.open per file; every adapter then works off the same RawMetadata
 snapshot, so detection never re-reads the file.
 """
 
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -72,6 +73,9 @@ class RawMetadata:
     maker_note: str | None = None
     xmp: str | None = None
     gif_comment: str | None = None
+    #: Whether the file carried ANY EXIF, so a caller that would only
+    #: re-open it to look does not have to.
+    has_exif: bool = False
     _stealth_text: str | None = None
     _stealth_checked: bool = False
     _img: object = None  # open PIL image, only while inside load_raw()
@@ -109,14 +113,22 @@ def _as_text(value) -> str | None:
     return None
 
 
-def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
+def load_raw(filepath: str, want_stealth: bool = False, image=None) -> RawMetadata | None:
     """Open an image and snapshot every metadata container we know about.
 
     When want_stealth is False the pixel data is never touched, so this stays
     cheap enough for bulk indexing.
+
+    `image` is an already-open header, for a caller that needs to read the
+    same file twice. This module's whole premise is one `Image.open` per
+    file, and the cost is not theoretical: a generated PNG carries its
+    workflow graph in its text chunks and Pillow parses them during
+    `open`, so each one costs about 23 ms. A caller holding the image
+    passes it rather than paying that again. The handle stays the
+    caller's -- it is not closed here.
     """
     try:
-        with decode.open_header(filepath) as img:
+        with contextlib.nullcontext(image) if image is not None else decode.open_header(filepath) as img:
             raw = RawMetadata(
                 path=filepath,
                 format=img.format or "",
@@ -140,6 +152,7 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
             except Exception:
                 _logger.debug("handled a failure in load_raw", exc_info=True)
                 exif = None
+            raw.has_exif = bool(exif)
             if exif:
                 raw.exif_make = _as_text(exif.get(_TAG_MAKE))
                 raw.exif_model = _as_text(exif.get(_TAG_MODEL))
