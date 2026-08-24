@@ -50,9 +50,47 @@ not a history.
   hashes and captions. Otherwise the store quietly mixes vectors from two
   different pipelines.
 
-- **Batch size 1 on the GPU.** `run_next()` processes job items one at a
-  time, so every accelerator-backed adapter encodes a single image per
-  pass.
+- **The embed job runs at 29 items/sec, and the encoder is not the
+  reason.** Measured end to end (`just bench embed-job`, 400 pictures
+  across every root), per item:
+
+  | | ms/item | share |
+  |---|---|---|
+  | decode and orient | 14.4 | 42% |
+  | encode at batch 64 | 7.3 | 21% |
+  | everything else: per-item commit, ledger, similarity | 12.5 | 37% |
+
+  p50 14.9 ms, p95 91.2 ms, max 343.2 ms — the spread is the corpus,
+  0.04 MP portraits beside 22 MP raws.
+
+  The encoder alone reaches 594 img/sec with pictures already decoded
+  (`just bench clip-batch`): thread the preprocess 4.45×, batch the GPU
+  6×, overlap them 1.55×, all bit-identically or near enough. But in the
+  job the GPU is **idle 76% of the time** and the process already keeps
+  **7.27 of 16 cores** busy, so neither the device nor the spare cores
+  are what it is waiting for. An encoder that cost nothing would take
+  the job from 29 to about 47 items/sec.
+
+  Ranked by what the measurements actually support:
+
+  1. **Decode is the biggest line, and it is the pixel seam.**
+     `oriented.for_model` returns a full-resolution frame so torchvision
+     can resize it to 224. Unlike batching, this changes what the model
+     sees, so it needs the retrieval test batching has now had
+     (`just bench clip-retrieval`).
+  2. **The 37% around the model is per-item bookkeeping.** A batched
+     executor amortises it as much as it amortises kernel launches, and
+     that — not the GPU — is the argument for touching the runner.
+  3. **GPU batching last.** Real, proven, low risk, and worth the least
+     of the three here.
+
+- **Batching changes about half a percent of nearest-neighbour answers.**
+  Text search is identical at top-1, top-5 and top-20 over 800 distinct
+  pictures. Image similarity is not: 3 of 800 best matches change at
+  batch 64, 5 of 800 in a mixed old/new index, maximum rank move 2
+  places. A product decision, not a defect — the two candidates are
+  within 2.3e-03 of cosine and either is defensible — but it is not zero
+  and should be decided before a library is re-embedded.
 
 ## Surfaces
 
