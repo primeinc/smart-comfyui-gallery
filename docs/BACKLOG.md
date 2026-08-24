@@ -66,70 +66,45 @@ consequences the architecture should keep room for, not work.
 
 ## Performance
 
-- **Every page rebuilds the whole answer while any job runs, and the
-  cost is the library.** The biggest one measured so far, and the reason
-  the application feels slow on a large library rather than a small one.
+- **A page still rebuilds the whole answer during an INGEST.** Half of
+  this shipped: `answer_generation` (db/schema.sql) moves for every
+  table except `job`, `job_item` and `job_event`, so the job that runs
+  for hours -- a precache, which writes nothing but the ledger -- no
+  longer discards anything. Measured (`just bench answer-currency`) at
+  80,000 files:
 
-  The ResultSet materialises the ordered answer once and pages it by
-  slicing. A projection is valid for one (question, data currency) pair,
-  and currency is `PRAGMA data_version` -- which bumps when ANY other
-  connection commits ANYTHING. That is what the pragma measures, so a
-  thumbnail row landing in `derived_thumbnail` invalidates a projection
-  over `file` ordering, which cannot have changed. Jobs commit per item
-  (db/runner.py `committed`, nine call sites, several inside the item
-  loop), so the invalidation is continuous for the length of a job --
-  and a precache over 80,000 files at 6.76 files/sec runs for hours.
+      at rest              0.179 ms
+      a ledger commit      0.233 ms      1.3x
+      an answer commit    37.930 ms    211.8x
 
-  Measured (`just bench answer-currency`,
-  benchmarks/results/answer_currency.json), one page of the default
-  question, quiet versus a second connection committing one row between
-  every request:
+  The second number was the whole problem and is gone. The third is
+  unchanged ON PURPOSE -- an answer that can have changed must be
+  rebuilt -- but it means ingest, embed and context still give a person
+  38 ms pages for as long as they run, because those jobs really do
+  write tables answers are built from.
 
-      files    quiet     while writing    factor
-      1,000    0.19 ms       0.64 ms        3.4x
-     10,000    0.18 ms       4.29 ms       23.8x
-     40,000    0.18 ms      19.04 ms      105.9x
-     80,000    0.18 ms      38.26 ms      214.4x
+  Two ways on from here, and the second is more interesting:
 
-  The quiet cost is flat and the busy cost is linear, because the
-  rebuild is O(library) and the slice is O(page). Nothing here is a
-  constant factor to tune away.
+  - **Per-answer dependencies.** A timed gallery page does not read
+    `derived_embedding`, so an embed job should not discard it.
+    db/vocabulary.py already knows which dimensions read what. More
+    counters, more precision, same absolute-prevention posture.
 
-  Currency has to stay part of validity -- serving an answer computed
-  before a commit under a currency taken after one is the exact
-  mislabelling the contract exists to prevent. What is wrong is its
-  GRANULARITY: "the database changed" stands in for "this answer
-  changed".
+  - **Best effort on the READ path.** Worth asking whether absolute
+    prevention is buying anything here. Serving a slightly stale
+    ordering costs a person a picture appearing one page late.
+    Mutating against a stale ordering costs them data -- and that is
+    already guarded independently: `resultset.AnswerChanged`
+    (resultset.py:1166, curating.py:106) refuses a selection made
+    against a generation the answer no longer has, with a 409. So the
+    destructive path has its own hard gate, and the read path is
+    paying full price to protect a DISPLAY.
 
-  Traced per table, which makes the target much narrower than it looks.
-  A thumbs job over 12 files writes:
-
-      job_event  89 inserts
-      job        54 updates,  1 insert
-      job_item   24 updates, 12 inserts
-
-  180 writes, every one of them the LEDGER, and not one able to change
-  any answer. That is the job that runs for hours over a large library.
-  An ingest job by contrast writes `file_param`, `file`, `capture`,
-  `derived_media_context` and more, and must keep invalidating.
-
-  So the question is not "which tables affect an answer" -- getting that
-  list wrong serves stale answers, the one failure this contract exists
-  to prevent -- but the safe inverse: which tables provably cannot.
-  `job`, `job_item` and `job_event` are the whole set, and they are the
-  noisy ones.
-
-  Two shapes, both defensible:
-
-  - A counter bumped by triggers on every NON-ledger table, generated
-    from `sqlite_master` rather than hand-listed, with a schema test
-    asserting each such table has them -- so a table added later cannot
-    silently stop invalidating. Costs a trigger on every write, which
-    wants measuring against the ingest path before it ships.
-  - Move the ledger into its own attached database, so `data_version`
-    on the main file is untouched by ledger writes and nothing else
-    changes at all. Cleaner conceptually -- the ledger IS a separate
-    concern -- and a bigger migration.
+    If reads served the cached answer and revalidated behind the
+    request, the 211x would go too, for every job rather than only the
+    ledger-only ones. What needs deciding first is what a person is
+    owed: a page that is right, or a page that is quick and cannot
+    hurt them. The machinery for the second already exists.
 
 - **Thumbnails are still serial.** 6.76 files/sec over the real library
   (`just bench thumbs-phases`), up from 1.80, but one worker renders one

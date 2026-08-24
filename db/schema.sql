@@ -2031,8 +2031,210 @@ BEGIN
   SELECT RAISE(ABORT,'a story render is immutable; render again under a new policy');
 END;
 
+-- The generation of everything an ANSWER can be computed from.
+--
+-- db/resultset.py caches the whole ordered answer and pages it by
+-- slicing, valid for one (question, library state) pair. That state was
+-- `PRAGMA data_version`, which bumps when any connection commits
+-- anything -- the same mechanism FTS5 uses for its own structure cache
+-- (sqlite/sqlite ext/fts5/fts5_index.c fts5IndexDataVersion). FTS5 can
+-- afford it because the thing it re-reads is one small record. Ours is
+-- the whole library, so at 80,000 files a page cost 0.18 ms at rest and
+-- 38 ms while anything wrote -- 214x -- and jobs commit per item.
+--
+-- Traced, the job that runs for hours writes ONLY the ledger: a thumbs
+-- pass over 12 files made 180 writes, all of them `job`, `job_item` and
+-- `job_event`, none able to change any answer.
+--
+-- So this counter moves for every table EXCEPT those three. Stated that
+-- way round on purpose: a table wrongly included costs a little speed,
+-- a table wrongly excluded serves a stale answer, which is the one
+-- failure the currency contract exists to prevent. The FTS tables are
+-- absent because a virtual table cannot carry a trigger and its rows
+-- only change when `file` or `folder` do, which are here.
+--
+-- tests/test_an_answer_knows_when_it_is_stale.py holds the coverage, so
+-- a table added later without its triggers fails the gate rather than
+-- quietly stopping invalidation. Measured cost on the ingest path:
+-- 1.02x over 20,000 inserts.
+CREATE TABLE answer_generation (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL
+) STRICT;
+INSERT INTO answer_generation(id, value) VALUES(1, 0);
+
+CREATE TRIGGER answer_moved_artifact_ins AFTER INSERT ON artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_artifact_upd AFTER UPDATE ON artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_artifact_del AFTER DELETE ON artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_blob_ins AFTER INSERT ON blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_blob_upd AFTER UPDATE ON blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_blob_del AFTER DELETE ON blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_capture_ins AFTER INSERT ON capture BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_capture_upd AFTER UPDATE ON capture BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_capture_del AFTER DELETE ON capture BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_ins AFTER INSERT ON collection BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_upd AFTER UPDATE ON collection BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_del AFTER DELETE ON collection BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_file_ins AFTER INSERT ON collection_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_file_upd AFTER UPDATE ON collection_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_file_del AFTER DELETE ON collection_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_rule_ins AFTER INSERT ON collection_rule BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_rule_upd AFTER UPDATE ON collection_rule BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_rule_del AFTER DELETE ON collection_rule BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_comment_ins AFTER INSERT ON comment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_comment_upd AFTER UPDATE ON comment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_comment_del AFTER DELETE ON comment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derivation_intent_ins AFTER INSERT ON derivation_intent BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derivation_intent_upd AFTER UPDATE ON derivation_intent BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derivation_intent_del AFTER DELETE ON derivation_intent BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_annotation_ins AFTER INSERT ON derived_annotation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_annotation_upd AFTER UPDATE ON derived_annotation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_annotation_del AFTER DELETE ON derived_annotation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_context_state_ins AFTER INSERT ON derived_context_state BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_context_state_upd AFTER UPDATE ON derived_context_state BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_context_state_del AFTER DELETE ON derived_context_state BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_dupe_group_ins AFTER INSERT ON derived_dupe_group BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_dupe_group_upd AFTER UPDATE ON derived_dupe_group BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_dupe_group_del AFTER DELETE ON derived_dupe_group BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_embedding_ins AFTER INSERT ON derived_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_embedding_upd AFTER UPDATE ON derived_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_embedding_del AFTER DELETE ON derived_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_ins AFTER INSERT ON derived_event BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_upd AFTER UPDATE ON derived_event BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_del AFTER DELETE ON derived_event BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_file_ins AFTER INSERT ON derived_event_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_file_upd AFTER UPDATE ON derived_event_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_file_del AFTER DELETE ON derived_event_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_run_ins AFTER INSERT ON derived_event_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_run_upd AFTER UPDATE ON derived_event_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_run_del AFTER DELETE ON derived_event_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_cluster_ins AFTER INSERT ON derived_face_cluster BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_cluster_upd AFTER UPDATE ON derived_face_cluster BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_cluster_del AFTER DELETE ON derived_face_cluster BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_instance_ins AFTER INSERT ON derived_face_instance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_instance_upd AFTER UPDATE ON derived_face_instance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_instance_del AFTER DELETE ON derived_face_instance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_membership_ins AFTER INSERT ON derived_face_membership BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_membership_upd AFTER UPDATE ON derived_face_membership BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_membership_del AFTER DELETE ON derived_face_membership BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_run_ins AFTER INSERT ON derived_face_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_run_upd AFTER UPDATE ON derived_face_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_run_del AFTER DELETE ON derived_face_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_scan_ins AFTER INSERT ON derived_face_scan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_scan_upd AFTER UPDATE ON derived_face_scan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_scan_del AFTER DELETE ON derived_face_scan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_hash_ins AFTER INSERT ON derived_file_hash BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_hash_upd AFTER UPDATE ON derived_file_hash BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_hash_del AFTER DELETE ON derived_file_hash BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_person_ins AFTER INSERT ON derived_file_person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_person_upd AFTER UPDATE ON derived_file_person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_person_del AFTER DELETE ON derived_file_person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_context_ins AFTER INSERT ON derived_media_context BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_context_upd AFTER UPDATE ON derived_media_context BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_context_del AFTER DELETE ON derived_media_context BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_occurrence_ins AFTER INSERT ON derived_media_occurrence BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_occurrence_upd AFTER UPDATE ON derived_media_occurrence BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_occurrence_del AFTER DELETE ON derived_media_occurrence BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_sample_ins AFTER INSERT ON derived_media_sample BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_sample_upd AFTER UPDATE ON derived_media_sample BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_sample_del AFTER DELETE ON derived_media_sample BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_embedding_ins AFTER INSERT ON derived_prompt_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_embedding_upd AFTER UPDATE ON derived_prompt_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_embedding_del AFTER DELETE ON derived_prompt_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_section_ins AFTER INSERT ON derived_prompt_section BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_section_upd AFTER UPDATE ON derived_prompt_section BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_section_del AFTER DELETE ON derived_prompt_section BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_entity_ins AFTER INSERT ON entity BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_entity_upd AFTER UPDATE ON entity BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_entity_del AFTER DELETE ON entity BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_favorite_ins AFTER INSERT ON favorite BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_favorite_upd AFTER UPDATE ON favorite BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_favorite_del AFTER DELETE ON favorite BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_feedback_ins AFTER INSERT ON feedback BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_feedback_upd AFTER UPDATE ON feedback BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_feedback_del AFTER DELETE ON feedback BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_ins AFTER INSERT ON file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_upd AFTER UPDATE ON file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_del AFTER DELETE ON file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_artifact_ins AFTER INSERT ON file_artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_artifact_upd AFTER UPDATE ON file_artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_artifact_del AFTER DELETE ON file_artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_blob_ins AFTER INSERT ON file_blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_blob_upd AFTER UPDATE ON file_blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_blob_del AFTER DELETE ON file_blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_derivation_ins AFTER INSERT ON file_derivation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_derivation_upd AFTER UPDATE ON file_derivation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_derivation_del AFTER DELETE ON file_derivation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_param_ins AFTER INSERT ON file_param BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_param_upd AFTER UPDATE ON file_param BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_param_del AFTER DELETE ON file_param BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_place_ins AFTER INSERT ON file_place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_place_upd AFTER UPDATE ON file_place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_place_del AFTER DELETE ON file_place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_relation_ins AFTER INSERT ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_relation_upd AFTER UPDATE ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_relation_del AFTER DELETE ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_folder_ins AFTER INSERT ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_folder_upd AFTER UPDATE ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_folder_del AFTER DELETE ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_ins AFTER INSERT ON generation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_upd AFTER UPDATE ON generation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_del AFTER DELETE ON generation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_prompt_ins AFTER INSERT ON generation_prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_prompt_upd AFTER UPDATE ON generation_prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_prompt_del AFTER DELETE ON generation_prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_param_key_ins AFTER INSERT ON param_key BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_param_key_upd AFTER UPDATE ON param_key BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_param_key_del AFTER DELETE ON param_key BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_ins AFTER INSERT ON person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_upd AFTER UPDATE ON person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_del AFTER DELETE ON person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_assertion_ins AFTER INSERT ON person_assertion BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_assertion_upd AFTER UPDATE ON person_assertion BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_assertion_del AFTER DELETE ON person_assertion BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_place_ins AFTER INSERT ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_place_upd AFTER UPDATE ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_place_del AFTER DELETE ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_prompt_ins AFTER INSERT ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_prompt_upd AFTER UPDATE ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_prompt_del AFTER DELETE ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_rating_ins AFTER INSERT ON rating BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_rating_upd AFTER UPDATE ON rating BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_rating_del AFTER DELETE ON rating BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_region_ins AFTER INSERT ON region BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_region_upd AFTER UPDATE ON region BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_region_del AFTER DELETE ON region BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_root_ins AFTER INSERT ON root BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_root_upd AFTER UPDATE ON root BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_root_del AFTER DELETE ON root BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_setting_ins AFTER INSERT ON setting BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_setting_upd AFTER UPDATE ON setting BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_setting_del AFTER DELETE ON setting BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_similarity_space_ins AFTER INSERT ON similarity_space BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_similarity_space_upd AFTER UPDATE ON similarity_space BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_similarity_space_del AFTER DELETE ON similarity_space BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_slug_history_ins AFTER INSERT ON slug_history BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_slug_history_upd AFTER UPDATE ON slug_history BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_slug_history_del AFTER DELETE ON slug_history BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_plan_ins AFTER INSERT ON story_plan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_plan_upd AFTER UPDATE ON story_plan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_plan_del AFTER DELETE ON story_plan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_render_ins AFTER INSERT ON story_render BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_render_upd AFTER UPDATE ON story_render BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_render_del AFTER DELETE ON story_render BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_snapshot_ins AFTER INSERT ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_snapshot_upd AFTER UPDATE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_snapshot_del AFTER DELETE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_user_ins AFTER INSERT ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_user_upd AFTER UPDATE ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_user_del AFTER DELETE ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_watched_folder_ins AFTER INSERT ON watched_folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_watched_folder_upd AFTER UPDATE ON watched_folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+
+
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 31;
+PRAGMA user_version   = 32;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

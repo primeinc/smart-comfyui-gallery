@@ -498,6 +498,22 @@ def _binary_sibling_indexes(conn) -> None:
     conn.execute("CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL")
 
 
+def _pre_v32_answer_generation(conn) -> None:
+    """v32's change, inverted: no `answer_generation` and none of its
+    triggers.
+
+    Every database here is today's build stepped backwards, so a table
+    added in schema.sql has to be removed for the fixture to be the
+    version it claims -- otherwise step 31 creates it a second time and
+    the migration dies on `table answer_generation already exists`.
+    """
+    for (name,) in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'answer_moved_%'"
+    ).fetchall():
+        conn.execute(f"DROP TRIGGER {name}")
+    conn.execute("DROP TABLE IF EXISTS answer_generation")
+
+
 def _pre_v31_identifier(conn) -> None:
     """v31's change, inverted: `fs_id TEXT` back to `inode`.
 
@@ -535,6 +551,7 @@ def v1_database(tmp_path):
         conn.execute(f"DROP TRIGGER {trigger}")
     _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted
+    _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 1")
     conn.close()
@@ -640,6 +657,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, ?, ?, 0)",
             (twin, root_id, top, name),
         )
+    _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 4")
     conn.close()
@@ -959,6 +977,7 @@ END""")
             (fid, sid, vec.tobytes(), NOW),
         )
     conn.commit()
+    _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 3")
     conn.close()
@@ -1033,6 +1052,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
         "INSERT INTO collection_rule(collection_id, source_text, created_at, updated_at) VALUES(?, 'x', ?, ?)",
         (album, NOW, NOW),
     )
+    _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 7")
     conn.close()
@@ -1084,7 +1104,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    assert migrate.migrate(path) == list(range(21, connect.USER_VERSION + 1))
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
@@ -1125,11 +1145,12 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
+    _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 25")
     conn.close()
 
-    assert migrate.migrate(path) == [26, 27, 28, 29, 30, 31]
+    assert migrate.migrate(path) == list(range(26, connect.USER_VERSION + 1))
     assert build.drift(path) == []
     ro = connect.connect(path, read_only=True)
     try:
@@ -1177,6 +1198,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
             derived.record_faces(conn, file_id, "m", "1", sha, NOW, faces)
             derived.record_face_scan(conn, file_id, "m", "1", sha, NOW, 1)
             derived.record_hash(conn, file_id, sha, NOW, phash64=1)
+        _pre_v32_answer_generation(conn)  # v32's change, inverted
         _pre_v31_identifier(conn)  # v31's change, inverted
         conn.execute("PRAGMA user_version = 29")
     finally:
@@ -1185,7 +1207,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
     for sha in ("b" * 64, "c" * 64, "d" * 64):
         thumbs.put_all(cache, sha, Image.new("RGB", (40, 30), (9, 9, 9)))
 
-    assert migrate.migrate(path) == [30, 31]
+    assert migrate.migrate(path) == list(range(30, connect.USER_VERSION + 1))
     assert not any(thumbs.path_for(cache, "b" * 64, kind).exists() for kind in thumbs.EDGES), "the portrait RAW's go"
     for sha in ("c" * 64, "d" * 64):
         assert all(thumbs.path_for(cache, sha, kind).exists() for kind in thumbs.EDGES), "the others keep theirs"
@@ -1223,6 +1245,7 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
+    _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 26")
     conn.close()

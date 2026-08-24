@@ -51,6 +51,12 @@ SQL_STRUCTURE: dict[str, str] = {
     "table": "identifier",
     "column": "identifier",
     "name": "identifier",
+    # db/migrate.py, the step that installs the answer-generation
+    # triggers: both come from a literal tuple in the step itself
+    # (("INSERT", "ins"), ("UPDATE", "upd"), ("DELETE", "del")), and a
+    # trigger's name and its event are structure -- neither can be bound.
+    "verb": "keyword",
+    "short": "identifier",
     # db/jobs.py: the one module-literal column list the active and recent
     # reads share, so both rows carry the same shape
     "_LISTED": "identifier",

@@ -292,17 +292,33 @@ def currency(conn) -> str:
     that holds it, so its own `total_changes` (monotonic per DML row,
     python/cpython Doc/library/sqlite3.rst Connection.total_changes)
     carries the same meaning.
+
+    `answer_generation`, not `PRAGMA data_version`. The pragma is the
+    obvious answer and is what FTS5 uses for its own structure cache
+    (sqlite/sqlite ext/fts5/fts5_index.c fts5IndexDataVersion), but it
+    means "somebody committed something", and what is cached here is the
+    WHOLE ORDERED ANSWER. Jobs commit per item, so at 80,000 files a
+    page cost 0.18 ms at rest and 38.26 ms while a job ran -- 214x --
+    and the job that runs for hours writes nothing but the ledger.
+
+    The counter moves for every table except `job`, `job_item` and
+    `job_event` (db/schema.sql), so a ledger commit no longer discards
+    an answer and every other commit still does.
     """
     from . import connect
 
     where = _database_file(conn)
     if not where:
+        # One connection, so its own row counter is the whole story --
+        # and it counts LEDGER rows too, which the file path now
+        # ignores. Harmless: an in-memory database is a test or a probe,
+        # never a run somebody is browsing while a job writes.
         return f"mem{id(conn)}.{conn.total_changes}"
     with _MONITOR_LOCK:
         monitor = _MONITORS.get(where)
         if monitor is None:
             monitor = _MONITORS[where] = connect.connect(where, read_only=True, cross_thread=True)
-        return f"v{monitor.execute('PRAGMA data_version').fetchone()[0]}"
+        return f"g{monitor.execute('SELECT value FROM answer_generation').fetchone()[0]}"
 
 
 # --- the projection ---------------------------------------------------------

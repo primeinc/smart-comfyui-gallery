@@ -5,17 +5,21 @@ slicing, and a projection is valid for one (question, data currency)
 pair. Currency is `PRAGMA data_version`, which bumps when ANY other
 connection commits ANYTHING -- that is what the pragma measures.
 
-So a thumbnail row landing in `derived_thumbnail` invalidates a
-projection over `file` ordering, which cannot have changed. The next
-page view rebuilds the whole answer. Jobs commit per item (db/runner.py
-`committed`), so during a precache the invalidation is continuous, and
-a precache over a large library runs for hours.
+It was `PRAGMA data_version`, which bumps when ANY connection commits
+ANYTHING -- so a ledger row landing in `job_event` discarded a
+projection over `file` ordering, which cannot have changed. Jobs commit
+per item (db/runner.py `committed`) and a precache over a large library
+runs for hours, so the invalidation was continuous for hours.
 
-This measures the same page twice: with nothing writing, and with a
-second connection committing a row between every request. The ratio is
-what a person browsing during a job actually experiences, and it grows
-with the library because the rebuild is O(library) while the slice is
-O(page).
+It is now `answer_generation` (db/schema.sql), moved by every table
+except `job`, `job_item` and `job_event`.
+
+This measures the same page three ways: with nothing writing, with a
+second connection committing a LEDGER row between every request (the
+job that runs for hours), and with one committing a row an answer is
+actually built from. The first two should agree and the third should
+not -- an answer that can have changed must still be rebuilt, which is
+the contract, and only the invalidation's granularity was ever wrong.
 
 Rows are synthesised rather than scanned: this is about the ORDERED
 ANSWER's cost, which depends on how many rows there are and nothing
@@ -93,25 +97,47 @@ def measure(count: int, rounds: int = ROUNDS) -> dict:
                 resultset.page(conn, "", asked, 5, time.time())
                 quiet.append((time.perf_counter() - started) * 1000)
 
-            busy = []
+            # A LEDGER commit: what the job running for hours does.
+            # Nothing here can change an answer, so nothing should be
+            # discarded.
+            writer.execute("INSERT INTO job(kind, state, created_at) VALUES('hash','queued',0)")
+            writer.commit()
+            job = writer.execute("SELECT id FROM job").fetchone()[0]
+            ledger = []
             for i in range(rounds):
-                # one row, in a table the answer does not read
-                writer.execute("UPDATE file SET last_seen_at = ? WHERE id = 2", (i,))
+                writer.execute(
+                    "INSERT INTO job_event(job_id, at, type, severity) VALUES(?, ?, 'item.done', 'info')",
+                    (job, i),
+                )
                 writer.commit()
                 started = time.perf_counter()
                 resultset.page(conn, "", asked, 5, time.time())
-                busy.append((time.perf_counter() - started) * 1000)
+                ledger.append((time.perf_counter() - started) * 1000)
+
+            # A commit that CAN change the answer. This must still cost
+            # the rebuild, or the fix has broken the contract instead of
+            # sharpening it.
+            real = []
+            for _ in range(rounds):
+                writer.execute("UPDATE file SET mtime = mtime + 1 WHERE id = 2")
+                writer.commit()
+                started = time.perf_counter()
+                resultset.page(conn, "", asked, 5, time.time())
+                real.append((time.perf_counter() - started) * 1000)
         finally:
             connect.close(writer)
             connect.close(conn)
 
         still = statistics.median(quiet)
-        moving = statistics.median(busy)
+        during_job = statistics.median(ledger)
+        after_change = statistics.median(real)
         return {
             "files": count,
             "quiet_ms": round(still, 3),
-            "while_writing_ms": round(moving, 2),
-            "factor": round(moving / still, 1) if still else None,
+            "ledger_commit_ms": round(during_job, 3),
+            "answer_commit_ms": round(after_change, 2),
+            "ledger_factor": round(during_job / still, 1) if still else None,
+            "answer_factor": round(after_change / still, 1) if still else None,
         }
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -124,12 +150,15 @@ def main() -> None:
     parser.add_argument("--out", default=str(REPO / "benchmarks" / "results" / "answer_currency.json"))
     asked = parser.parse_args()
 
-    print(f"{'files':>8} {'quiet ms':>10} {'writing ms':>12} {'factor':>8}")
+    print(f"{'files':>8} {'at rest':>9} {'ledger':>9} {'answer':>9} {'ledger x':>9} {'answer x':>9}")
     rows = []
     for count in [int(one) for one in asked.sizes.split(",") if one.strip()]:
         row = measure(count, asked.rounds)
         rows.append(row)
-        print(f"{row['files']:>8} {row['quiet_ms']:>10.3f} {row['while_writing_ms']:>12.2f} {row['factor']:>7.1f}x")
+        print(
+            f"{row['files']:>8} {row['quiet_ms']:>9.3f} {row['ledger_commit_ms']:>9.3f} "
+            f"{row['answer_commit_ms']:>9.2f} {row['ledger_factor']:>8.1f}x {row['answer_factor']:>8.1f}x"
+        )
 
     out = pathlib.Path(asked.out)
     out.parent.mkdir(parents=True, exist_ok=True)

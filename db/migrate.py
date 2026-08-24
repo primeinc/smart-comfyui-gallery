@@ -2876,3 +2876,52 @@ END"""
     SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
 END"""
     )
+
+
+@step(31)
+def _an_answer_is_stale_only_when_an_answer_could_have_changed(conn: sqlite3.Connection) -> None:
+    """v31 -> v32: `answer_generation`, moved by every table an answer
+    can be computed from.
+
+    db/resultset.py caches the whole ordered answer, valid for one
+    (question, library state) pair, and library state was `PRAGMA
+    data_version` -- "somebody committed something". Jobs commit per
+    item, so at 80,000 files a page cost 0.18 ms at rest and 38.26 ms
+    while a job ran, a factor of 214, and the job that runs for hours
+    writes nothing but the ledger.
+
+    The counter is built here the same way schema.sql builds it, from
+    the tables this database actually has: everything except `job`,
+    `job_item` and `job_event`, minus the FTS virtual tables (a virtual
+    table cannot carry a trigger, and its rows only change when `file`
+    or `folder` do). Read from sqlite_master rather than listed, so a
+    database migrating from any version gets triggers for exactly its
+    own tables and the drift check has something to agree with.
+    """
+    ledger = {"job", "job_item", "job_event"}
+    virtual = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL%'")
+    }
+    shadow = tuple(f"{one}_" for one in virtual)
+    conn.execute(
+        """CREATE TABLE answer_generation (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL
+) STRICT"""
+    )
+    conn.execute("INSERT INTO answer_generation(id, value) VALUES(1, 0)")
+    named = [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+    ]
+    for name in named:
+        if name in ledger or name in virtual or name.startswith(shadow) or name == "answer_generation":
+            continue
+        for verb, short in (("INSERT", "ins"), ("UPDATE", "upd"), ("DELETE", "del")):
+            conn.execute(
+                f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
+                f" BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
+            )
