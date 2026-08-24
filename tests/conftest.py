@@ -1,6 +1,13 @@
 """Shared pytest behaviour for the greenfield suite.
 
-Two fixtures and no hooks. One closes every in-memory database a test
+One hook and two fixtures. The hook marks EVERY test slow: `just test`
+and `just check` are each held to ten seconds, and there is no test here
+that fits -- the cheapest one opens a database, and the rest serve the
+application or drive a browser. A fast lane holding a handful of them
+would be a lane whose green says nothing about the suite, so the fast
+lane holds nothing and `just test-slow` holds the suite.
+
+Of the fixtures, one closes every in-memory database a test
 opened. The other, `live`, is the browser tests' server: the application
 in a subprocess through Litestar's own runner, over a library the test
 module writes, with pytest-playwright's `page` pointed at it through
@@ -26,6 +33,18 @@ from db import connect
 from tests import staging
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+
+
+def pytest_collection_modifyitems(items):
+    """Every collected test is slow, whatever its module says.
+
+    Written here rather than as `pytestmark` in sixty files: "how long
+    may a lane take" is one repository-wide policy, and sixty copies of
+    it are sixty chances for a new module to be born into the wrong
+    lane by saying nothing.
+    """
+    for item in items:
+        item.add_marker(pytest.mark.slow)
 
 
 @pytest.fixture(autouse=True)
