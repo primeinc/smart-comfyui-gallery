@@ -387,6 +387,157 @@ def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False)
     return made
 
 
+#: How many source megapixels one batch may decode. The count alone is
+#: not a bound: 64 pictures is 66 megapixels of generated PNG and 1400 of
+#: camera raw, and only one of those fits in memory or in a reasonable
+#: wait. Set so a batch of ordinary 1-2 MP generated images fills on
+#: count while a batch of raws fills on size, and the item leading either
+#: one stays responsive to a cancel.
+BATCH_MEGAPIXELS = 160.0
+
+
+class _Ahead:
+    """Vectors computed for items the job has not reached yet.
+
+    The runner works one item at a time and must keep doing so: an item
+    is started, committed, worked, and settled on its own, which is what
+    makes a job resumable, cancellable at a boundary, and able to fail
+    one picture without losing the rest. None of that changes here.
+
+    What changes is WHEN the arithmetic happens. An encoder given one
+    picture at a time was measured leaving the GPU idle 74% of a real
+    job while paying a kernel launch and a copy back per picture. So
+    when an item finds no vector waiting, it takes the next `BATCH` of
+    the job's own pending items, encodes them together, and keeps the
+    rest here. The item it was asked about commits exactly as before;
+    the others are simply already done when their turn comes.
+
+    Nothing durable is written ahead. A cancelled or paused job discards
+    whatever is held, which costs the encode and nothing else -- vectors
+    are recomputable by definition, which is why this is safe to do
+    speculatively and a database write would not be.
+
+    Keyed by space as well as job because one library can embed into
+    several spaces, and a vector from one is not a vector for another.
+    """
+
+    def __init__(self) -> None:
+        self._held: dict[tuple[int, str], dict[int, object]] = {}
+
+    def take(self, space, file_id: int):
+        for key, vectors in self._held.items():
+            if key[1] == space.key and file_id in vectors:
+                return vectors.pop(file_id)
+        return None
+
+    def forget(self, job_id: int) -> None:
+        """Drop everything held for a job that has stopped."""
+        for key in [key for key in self._held if key[0] == job_id]:
+            del self._held[key]
+
+    def fill(self, conn, told, encoder, space, file_id: int, media):
+        """Encode this item, and as many upcoming ones as fit in a batch.
+
+        Falls back to the single-picture path whenever a batch cannot be
+        formed or an adapter has no batched entry point. It also falls
+        back when a batch RAISES: a failure inside a group of pictures
+        says nothing about which one was bad, and the runner's contract
+        is that a failure is a verdict on the item it was reported for.
+        Encoding this one alone either reproduces the failure -- and it
+        is then honestly this item's -- or succeeds, and the bad picture
+        is met on its own turn.
+        """
+        from . import detect, oriented
+
+        batch = getattr(encoder, "encode_many", None)
+        together = []
+        # Video's representative frame is a seek and a decode of a
+        # different shape, so a video item never leads a batch and never
+        # joins one; it stays on the single path.
+        if batch is not None and media.kind != "video":
+            # Resolved HERE, on the connection's own thread. sqlite
+            # refuses cross-thread use, so the workers are handed paths
+            # and orientation tags and never a cursor. Including the
+            # TRIGGERING item's: handing `media.frame` to a worker looks
+            # right and is not, because that closure reads `capture` for
+            # the orientation tag.
+            upcoming = [item for item in jobs.pending(conn, told.job_id) if item != file_id]
+            budget = BATCH_MEGAPIXELS
+            for item in upcoming[: openclip_batch() - 1]:
+                row = conn.execute("SELECT kind, width, height FROM file WHERE id = ?", (item,)).fetchone()
+                if row is None or row[0] == "video":
+                    continue
+                # Bounded by PIXELS as well as by count. Sixty-four
+                # 22-megapixel raws is a gigabyte and a half of decode
+                # inside one item, and the item that leads a batch pays
+                # for all of it: cancellation is checked BETWEEN items,
+                # so an unbounded batch is also an unbounded wait for
+                # somebody who asked the job to stop.
+                budget -= (row[1] or 0) * (row[2] or 0) / 1e6 or 1.0
+                if budget < 0 and together:
+                    break
+                together.append((item, detect.path_of(conn, item), oriented.orientation_of(conn, item)))
+
+        if batch is None or not together:
+            told.phase("encoding", kind=media.kind)
+            return encoder.encode_media(media)
+
+        def framer_for(path, orientation):
+            return lambda: oriented.open_upright(path, orientation)
+
+        mine = framer_for(media.path, oriented.orientation_of(conn, file_id))
+        framers = [mine, *[framer_for(path, tag) for _item, path, tag in together]]
+        # Reported ONCE, against the item that triggered it, and named so
+        # it cannot be read as that item's own cost: `pictures` says how
+        # many it covered. The other items in the batch report no encode
+        # phase at all, which is true -- they performed none.
+        #
+        # The alternative, writing the batch's duration against all 64
+        # item ledgers, would attribute 64 x 50 ms to a kernel that took
+        # 50 ms. This project has already produced one 184%-of-wall-clock
+        # table by double-counting; a second would be a choice.
+        told.phase("batch-encoding", pictures=len(framers))
+        try:
+            vectors = batch(framers)
+        except (OSError, ValueError) as why:
+            # Narrower than ITEM_FAILURES on purpose. What a batch may
+            # legitimately fail with is what a bad PICTURE raises -- an
+            # unreadable file, a corrupt image -- and the honest response
+            # is to encode this one alone so the failure is attributed to
+            # whichever item actually owns it.
+            #
+            # ITEM_FAILURES includes sqlite3.Error, and catching that
+            # here turned a threading DEFECT into a silent fallback:
+            # every batch raised ProgrammingError, every batch was
+            # discarded, every item was then encoded alone, and the job
+            # ran four times slower than before with nothing in the log
+            # above INFO. A defect must propagate and take the turn down,
+            # which is the rule this module states at the top.
+            _logger.warning(
+                "job #%d: a batch of %d failed (%s); encoding this item alone",
+                told.job_id,
+                len(framers),
+                why,
+            )
+            told.phase("encoding", kind=media.kind)
+            return encoder.encode_media(media)
+
+        held = self._held.setdefault((told.job_id, space.key), {})
+        for (item, _path, _tag), vector in zip(together, vectors[1:], strict=True):
+            held[item] = vector
+        return vectors[0]
+
+
+def openclip_batch() -> int:
+    from vision.semantic import openclip
+
+    return openclip.BATCH
+
+
+#: Per process. A job's held vectors are dropped when its turn ends.
+_ahead = _Ahead()
+
+
 def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     import functools
 
@@ -432,10 +583,13 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     provider, model, checkpoint = payload["choice"]
     told.phase("loading-encoder", provider=provider, model=model)
     encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)
-    told.phase("encoding", kind=kind)
-    vector = encoder.encode_media(media)
-    told.phase("recording", space=str(encoder.space()))
-    derived.record_embedding(conn, file_id, encoder.space(), vector, sha, now)
+    space = encoder.space()
+
+    vector = _ahead.take(space, file_id)
+    if vector is None:
+        vector = _ahead.fill(conn, told, encoder, space, file_id, media)
+    told.phase("recording", space=str(space))
+    derived.record_embedding(conn, file_id, space, vector, sha, now)
 
 
 def submit_dupes(conn, now: float) -> int:
@@ -1117,6 +1271,12 @@ def run_next(
     if claimed is None:
         return None
     job_id, fence = claimed
+
+    # Anything a previous turn of this job computed ahead is dropped: the
+    # items it covered may have been worked by another worker since, and
+    # a vector held across a lease lapse is a guess about a file nobody
+    # has looked at recently. Recomputing is the cheap half of this.
+    _ahead.forget(job_id)
 
     kind, raw, attempt, lease_until = conn.execute(
         "SELECT kind, payload, attempt, lease_until FROM job WHERE id = ?", (job_id,)

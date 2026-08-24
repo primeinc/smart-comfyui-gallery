@@ -468,6 +468,99 @@ def test_the_embed_job_fills_the_joint_space_with_provenance(db, tmp_path, monke
     assert preprocess == "open_clip.transforms"
 
 
+def test_one_encoder_pass_covers_many_items_and_each_keeps_its_own_vector(db, tmp_path, monkeypatch):
+    """An adapter that can encode a group is given one, and the items it
+    covered commit exactly as if they had been encoded alone.
+
+    The durable contract does not move: every item is still started,
+    worked and settled on its own row, so the job stays resumable,
+    cancellable at a boundary, and able to lose one picture without the
+    rest. What changes is only WHEN the arithmetic happened.
+
+    The vectors are checked per file, not merely counted. A group encode
+    hands back a list, and a list zipped against the wrong items would
+    give every picture a plausible vector belonging to its neighbour --
+    a defect no count, and no assertion about dimensions, would catch.
+    """
+    from db import detect, oriented, similarity
+    from vision import semantic
+
+    calls: list[int] = []
+
+    class Grouping:
+        dimensions = 4
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+
+        def _vector(self, frame):
+            # The mean pixel is enough to tell these fixtures apart, and
+            # it is a property of the PICTURE, so a misplaced vector is
+            # visible rather than merely different.
+            mean = float(np.asarray(frame.convert("RGB"), dtype=np.float64).mean())
+            v = np.array([mean, 1.0, 0.0, 0.0], dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+        def encode_media(self, media):
+            calls.append(1)
+            return self._vector(media.frame())
+
+        def encode_many(self, framers):
+            calls.append(len(framers))
+            return [self._vector(framer()) for framer in framers]
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Grouping())
+    files = _pictures(db, tmp_path, {f"p{i}.png": i for i in range(6)})
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 6, "failed": 0}
+
+    assert max(calls) > 1, "the adapter was never handed a group"
+    assert sum(calls) == len(files), f"pictures were encoded more than once: {calls}"
+
+    # every item settled on its own row, as before
+    states = [row[0] for row in db.execute("SELECT state FROM job_item WHERE job_id = ?", (job_id,))]
+    assert states == ["done"] * len(files)
+
+    # and every file kept ITS OWN vector
+    backend = Grouping()
+    for name, file_id in files.items():
+        blob = db.execute("SELECT vector FROM derived_embedding WHERE file_id = ?", (file_id,)).fetchone()
+        assert blob is not None, f"{name} recorded nothing"
+        stored = np.frombuffer(blob[0], dtype=np.float32)
+        want = backend._vector(oriented.for_model(db, file_id, detect.path_of(db, file_id)))
+        assert np.allclose(stored, want), f"{name} was given another picture's vector"
+
+
+def test_an_adapter_without_a_group_encoder_is_still_called_one_at_a_time(db, tmp_path, monkeypatch):
+    """The fallback is not a special case, it is the older path intact.
+
+    Qwen has no `encode_many`, and a provider added tomorrow will not
+    have one either until somebody writes it. Nothing about the job may
+    depend on it existing.
+    """
+    from db import similarity
+    from vision import semantic
+
+    seen: list[int] = []
+
+    class Single:
+        dimensions = 4
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+
+        def encode_media(self, media):
+            seen.append(1)
+            v = np.ones(4, dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Single())
+    files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 1, "c.png": 2})
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 3, "failed": 0}
+    assert len(seen) == len(files), "an adapter with no group encoder must be called once per picture"
+
+
 def test_the_embed_sweep_queues_only_pictures_without_a_current_vector(db, tmp_path, monkeypatch):
     """A second sweep over an embedded library has nothing to do and
     queues no job; new bytes put a picture back; `everything` puts them

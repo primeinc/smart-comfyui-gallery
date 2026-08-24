@@ -51,6 +51,15 @@ from vision import thumbs
 
 _logger = logging.getLogger(__name__)
 
+# pyvips narrates every operation at INFO -- "reducev: 15 point mask",
+# "threadpool completed with 3 workers" -- which is a dozen lines per
+# thumbnail and drowns the application's own log the moment a precache
+# job starts. It is a library's debugging channel, not this program's
+# news, so it is raised to WARNING here: anything that actually goes
+# wrong still arrives, and turning it back down is one line for whoever
+# is debugging libvips itself.
+logging.getLogger("pyvips").setLevel(logging.WARNING)
+
 #: A libvips image. Deliberately not `pyvips.Image`: pyvips builds every
 #: operation at runtime from libvips' own introspection, and the package
 #: ships neither stubs nor py.typed, so `rot`, `thumbnail_image` and

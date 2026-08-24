@@ -34,6 +34,19 @@ PROVIDER = "openclip"
 MODEL = "ViT-B-32"
 CHECKPOINT = "laion2b_s34b_b79k"
 
+#: Pictures per encoder pass. Throughput plateaus here: measured over 512
+#: generated PNGs, batch 64 through 256 sit within 5% of each other while
+#: peak VRAM climbs 775 -> 1246 MB, so past this the memory is spent for
+#: nothing (`just bench clip-batch`).
+BATCH = 64
+
+#: Threads for the CLIP transform inside one batch. It plateaus at 8 on a
+#: 16-core machine -- 8.13 ms per image serially, 1.83 at 8 workers, 1.80
+#: at 16 -- and the job already keeps about 7 cores busy on its own, so
+#: asking for all of them would be taking them from the decoders. Capped
+#: rather than scaled to the machine for that reason.
+BATCH_WORKERS = 8
+
 
 def parse(reference: str) -> tuple[str, str]:
     """One `semantic_model` reference in this provider's own grammar:
@@ -215,22 +228,72 @@ class ClipBackend:
         tensor = self.preprocess(media.frame().convert("RGB")).unsqueeze(0)
         media.phase("to-device")
         tensor = tensor.to(self.device)
-        if self.device == "cuda":
-            # The copy is asynchronous, so without this the wait for it
-            # is billed to whatever runs next -- here, inference.
-            torch.cuda.synchronize()
         media.phase("inference", batch=1)
         with torch.no_grad():
             features = self.model.encode_image(tensor, normalize=True)
-        if self.device == "cuda":
-            # Kernel launches return immediately, so without this the
-            # wait for the GPU lands in whatever is timed next. It was
-            # landing in `from-device`, which then read 12% of the job
-            # for copying 512 floats back -- a number that is obviously
-            # not bandwidth and was measuring this instead.
-            torch.cuda.synchronize()
+        # `from-device` is where this program actually waits for the GPU:
+        # `.cpu()` blocks until the result exists. The phase boundaries
+        # above are host time, which is what a phase boundary can honestly
+        # be without changing the program.
+        #
+        # An earlier version put `torch.cuda.synchronize()` at each
+        # boundary so every phase would read as its own GPU cost. It gave
+        # a tidier table and a slower encoder: synchronize waits for ALL
+        # kernels in ALL streams on the device, so it fences exactly the
+        # overlap that batching exists to create. Measuring by preventing
+        # the thing being measured. Per-kernel GPU time, if it is ever
+        # wanted, is torch.cuda.Event with enable_timing -- it timestamps
+        # on the stream and is resolved when something waits anyway.
         media.phase("from-device")
         return features[0].cpu().float().numpy()
+
+    def encode_many(self, framers):
+        """Many pictures to many unit-length vectors, in one pass.
+
+        `framers` are zero-argument callables that each produce one PIL
+        frame -- not the frames themselves. Decoding is what makes a
+        batch expensive to hold: sixty-four 22-megapixel frames is four
+        gigabytes, while sixty-four preprocessed tensors is thirty-eight
+        megabytes. Each worker therefore decodes ITS picture and shrinks
+        it immediately, so what accumulates is the small thing and what
+        exists at once is one frame per thread.
+
+        Measured against calling encode_media in a loop, per image:
+
+            preprocess    8.13 ms  ->  1.83 ms   threads, bit-identical
+            inference     7.00 ms  ->  1.17 ms   batch 64
+            copy back     one per image -> one per batch
+
+        Threads help because PIL's resize and torch's normalise both drop
+        the GIL, and the tensors they produce are identical to the serial
+        ones -- checked, not assumed. Batch 64 is where throughput
+        plateaus on this hardware; 128 and 256 are within 5% and cost
+        VRAM (`just bench clip-batch`).
+
+        Nothing is pinned and no second stream is used. Both are needed
+        together to overlap a copy with a kernel, and there is nothing
+        here to overlap WITH: one batch goes over, one batch comes back.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        import torch
+
+        if not framers:
+            return []
+
+        def prepared(framer):
+            with framer() as frame:
+                return self.preprocess(frame.convert("RGB"))
+
+        if len(framers) == 1:
+            stacked = torch.stack([prepared(framers[0])])
+        else:
+            with ThreadPoolExecutor(min(BATCH_WORKERS, len(framers))) as pool:
+                stacked = torch.stack(list(pool.map(prepared, framers)))
+        with torch.no_grad():
+            features = self.model.encode_image(stacked.to(self.device), normalize=True)
+        # One copy back for the whole batch rather than one per picture.
+        return list(features.cpu().float().numpy())
 
     def encode_query(self, text: str):
         """One phrase to one unit-length vector, in the same space."""

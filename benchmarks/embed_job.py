@@ -340,11 +340,23 @@ def main() -> None:
             )
 
     inside = limit["decode_ms"] + limit["encode_ms"]
-    print(
-        f"\n  the job spends {found['wall_ms']:.0f} ms where decode and encode alone are {inside:.0f} ms:"
-        f" {found['wall_ms'] - inside:.0f} ms is the application around the model"
-        f" ({(found['wall_ms'] - inside) / found['wall_ms'] * 100:.0f}%)"
-    )
+    if found["wall_ms"] > inside:
+        print(
+            f"\n  the job spends {found['wall_ms']:.0f} ms where decode and encode alone are {inside:.0f} ms:"
+            f" {found['wall_ms'] - inside:.0f} ms is the application around the model"
+            f" ({(found['wall_ms'] - inside) / found['wall_ms'] * 100:.0f}%)"
+        )
+    else:
+        # The ceiling is measured one picture at a time. A job that beats
+        # it is not doing less work, it is doing the same work on more
+        # than one thread -- so the subtraction stops meaning "overhead"
+        # and printing it as a negative percentage would be worse than
+        # saying nothing.
+        print(
+            f"\n  the job takes {found['wall_ms']:.0f} ms where the same decode and encode measured ONE"
+            f" AT A TIME take {inside:.0f} ms. The difference is not overhead; it is parallelism, and"
+            f" this comparison has stopped being the useful one."
+        )
 
     out = pathlib.Path(asked.out)
     out.parent.mkdir(parents=True, exist_ok=True)
