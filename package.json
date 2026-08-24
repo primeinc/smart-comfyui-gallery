@@ -16,7 +16,9 @@
     "build-web": "node frontend/build.ts",
     "watch-web": "node frontend/build.ts --watch",
     "api-types": "npm --silent --prefix frontend/codegen run generate",
-    "api-types-check": "npm --silent --prefix frontend/codegen run check"
+    "api-types-check": "npm --silent --prefix frontend/codegen run check",
+    "test-web": "node --test frontend/src/*.test.ts",
+    "types-test": "tsc -p frontend/tsconfig.test.json"
   },
   "dependencies": {
     "openapi-fetch": "0.17.0"

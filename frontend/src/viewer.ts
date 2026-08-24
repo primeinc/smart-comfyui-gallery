@@ -10,15 +10,15 @@
 // are combinations of them the viewer arrives at by itself:
 //
 //   chrome      visible -> auto-hidden while the pointer rests -> hidden by
-//               F, restored by the next movement
+//               L (lights out), restored by the next movement
 //   inspector   closed | open (I). WHERE it sits is geometry's business:
 //               CSS docks it beside a wide stage and sheets it under a
 //               narrow one, so nothing here knows which
-//   filmstrip   present when the walk has neighbours and there is room, and
-//               it recedes while zoomed in, because pixels matter more than
-//               neighbours once somebody is inspecting them
 //   zoom/pan    fit | fill | 1:1 | anywhere between, with pan
 //   quality     preview -> original, decided by arithmetic, never by a button
+//
+// The walk recedes while zoomed in, because pixels matter more than
+// neighbours once somebody is inspecting them.
 //
 // Nothing here is persisted. Zoom, pan, which panel is open and whether the
 // chrome is hidden are what the person is doing RIGHT NOW; the moment they
@@ -136,7 +136,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   // The fitted size is what CSS laid the picture out at, divided back out of
   // whatever scale is currently applied -- never recomputed from the source's
   // aspect against the stage. The stage's size is the stylesheet's business
-  // and changes with the inspector, the filmstrip and the window; deriving it
+  // and changes with the inspector and the window; deriving it
   // here would be a second layout engine, free to disagree with the real one.
   const fitted = (): { width: number; height: number } => {
     const rect = (media ?? stageBox).getBoundingClientRect();
@@ -470,9 +470,13 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   // A long before this file existed, and a viewer that took F and 1 back was
   // rating photographs while somebody looked at them.
   //
-  //   Z  fit <-> actual pixels     L  lights out (focus)
-  //   I  information               T  filmstrip
-  //   + -  zoom about the middle   arrows  walk
+  //   Z  fit <-> actual pixels     L  lights out
+  //   I  information               + -  zoom about the middle
+  //   arrows  walk
+  //
+  // There is no T. It toggled a filmstrip nothing renders -- a key that
+  // advertises a feature the viewer does not have is fake UI, and this
+  // repo spends its effort deleting those. It comes back with the strip.
   const stepping = (wanted: string) => () => {
     const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
     if (step) walk(step.href); // an end of the walk is an answer, not a step
@@ -483,13 +487,6 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
       { key: "z", by: "viewer: fit/actual", run: () => frame(look.framing === "actual" ? "fit" : "actual") },
       { key: "l", by: "viewer: focus", run: focus },
       { key: "i", by: "viewer: inspector", run: () => showInspector(root.dataset.inspector !== "open") },
-      {
-        key: "t",
-        by: "viewer: filmstrip",
-        run: () => {
-          root.dataset.filmstrip = root.dataset.filmstrip === "hidden" ? "shown" : "hidden";
-        },
-      },
       { key: "+", by: "viewer: zoom in", run: middle(1.3) },
       { key: "=", by: "viewer: zoom in", run: middle(1.3) },
       { key: "-", by: "viewer: zoom out", run: middle(1 / 1.3) },
@@ -513,7 +510,6 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   if (focusButton) onElement(focusButton, "click", focus);
 
   root.dataset.inspector = root.dataset.inspector ?? "closed";
-  root.dataset.filmstrip = root.dataset.filmstrip ?? "shown";
   root.dataset.chrome = "visible";
   stageBox.dataset.quality = "preview";
   paint();

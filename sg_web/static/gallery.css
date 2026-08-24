@@ -245,7 +245,7 @@ body {
 
 /* --- the viewer ------------------------------------------------------
    One viewer, two containers, and NO mode. The axes below are independent
-   -- chrome, inspector, filmstrip, framing -- and the shapes a design
+   -- chrome, inspector, framing -- and the shapes a design
    sketch calls "minimal", "sidebar", "focus" or "bottom sheet" are
    combinations of them the viewer arrives at from what somebody is doing.
    There is no .viewer-minimal to select. */

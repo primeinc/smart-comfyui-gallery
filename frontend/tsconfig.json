@@ -28,5 +28,8 @@
     "allowJs": false
   },
 
-  "include": ["src/**/*.ts"]
+  // A *.test.ts is run by node, not bundled for a browser, so it is the
+  // node project's (tsconfig.node.json) -- same split, same reason.
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }
