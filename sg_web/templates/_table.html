@@ -44,7 +44,11 @@
       <tr data-row="{{ row.slug }}" data-kind="{{ row.kind }}">
         <td class="answer-thumb">
           <a href="/i/{{ row.slug }}{% if qs %}?{{ qs }}{% endif %}" data-slug="{{ row.slug }}" data-kind="{{ row.kind }}">
+            {% if row.thumb %}
             <img src="{{ row.thumb }}" alt="{{ row.name }}" loading="lazy" decoding="async">
+            {% else %}
+            <span class="cell-kind" aria-hidden="true">{{ "audio" if row.kind == "audio" else "doc" }}</span>
+            {% endif %}
           </a>
         </td>
         <td class="answer-name"><a href="/i/{{ row.slug }}{% if qs %}?{{ qs }}{% endif %}">{{ row.name }}</a></td>

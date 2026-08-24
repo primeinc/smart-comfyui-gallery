@@ -12,7 +12,7 @@ which copies the committed state WAL included (cpython
 Doc/library/sqlite3.rst:1187-1193).
 
 The library directory is part of the world. The scanner's identity for a
-file is (size, mtime, inode) (db/scan.py observe_tree), and an inode
+file is (size, mtime, fs_id) (db/scan.py observe_tree), and a filesystem id
 cannot be put back by copying -- so a test that deleted or rewrote media
 leaves a world that cannot be restored, and the next test gets a rebuilt
 one. A test that only read, or only wrote the database, costs nothing.

@@ -1771,6 +1771,14 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
       popLabel.textContent = `page ${told.page} of ${told.pages} \xB7 ${told.first_ordinal}\u2013${told.last_ordinal} of ${told.total}`;
       popGrid.replaceChildren(
         ...told.items.map((item) => {
+          if (!item.thumb) {
+            const said = document.createElement("span");
+            said.className = "cell-kind";
+            said.dataset.cellKind = item.kind;
+            said.textContent = item.kind === "audio" ? "audio" : "doc";
+            said.title = item.name;
+            return said;
+          }
           const img = new Image();
           img.src = item.thumb;
           img.alt = item.name;

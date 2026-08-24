@@ -1063,7 +1063,11 @@ def neighborhood(
         told = _located(conn, bound, held, position)
         take = min(max(1, int(count)), NEIGHBORHOOD_MOST)
         start = max(0, min(position - take // 2, max(0, len(held.ids) - take)))
-        items = _named(conn, held.ids[start : start + take], start, held.relevance)
+        # No caption: `FilmstripItem` renders a 64-pixel square and says
+        # in its own docstring that it carries neither a uuid nor a
+        # model caption. Hydrating one to throw it away is a join per
+        # walk step.
+        items = _named(conn, held.ids[start : start + take], start, held.relevance, said=False)
         return {
             **told,
             "first_ordinal": start + 1 if items else 0,
@@ -1161,7 +1165,17 @@ def prove_subset(
         return SelectionProof(currency=held.currency, answer=held.answer, ids=tuple(ids))
 
 
-def _named(conn, ids, start: int, relevance: dict[int, float] | None = None) -> list[dict]:
+def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, said: bool = True) -> list[dict]:
+    """One page of members, named.
+
+    `said` off skips the caption read for callers that do not render
+    one. The filmstrip is fifteen 64-pixel squares and `FilmstripItem`
+    carries neither a uuid nor a caption by design; running
+    `derived.said_first` for it is a join over the annotation tables
+    whose entire result is discarded. The uuid comes from the same row
+    as the slug and costs nothing extra, so only the caption is
+    optional.
+    """
     if not ids:
         return []
     marks = ",".join("?" for _ in ids)
@@ -1185,8 +1199,9 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None) -> 
         }
         for row in conn.execute(NAMED.format(marks=marks), list(ids))
     }
-    for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():
-        held[file_id]["said"] = text
+    if said:
+        for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():
+            held[file_id]["said"] = text
     told = []
     for offset, file_id in enumerate(ids):
         row = held.get(file_id)

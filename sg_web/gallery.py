@@ -130,7 +130,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         )
         if listed:
             for row in listed:
-                row["thumb"] = thumbs.asset_url(row.get("sha"), row["slug"])
+                row["thumb"] = thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"])
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -142,7 +142,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
     # is arithmetic rather than a query -- and it is what stops sixty
     # cells being sixty connections (vision/thumbs.py `asset_url`).
     for item in shape["items"]:
-        item["thumb"] = thumbs.asset_url(item.get("sha"), item["slug"])
+        item["thumb"] = thumbs.asset_url(item.get("sha"), item["slug"], medium=item["kind"])
     return {
         "items": shape["items"],
         "page": shape["page"],
@@ -552,10 +552,11 @@ class ResultItem(Wire):
     #: position in the whole answer, 1-based -- not within the page
     ordinal: int
     #: Where to point an `<img>`: the content-addressed asset when the
-    #: bytes have been hashed, the slug route when they have not.
+    #: bytes have been hashed, the slug route when they have not, and
+    #: None when the kind has no picture to take -- audio, documents.
     #: RESOLVED ONCE, here, for the whole page -- which is the entire
     #: point (vision/thumbs.py `asset_url`).
-    thumb: str
+    thumb: str | None
 
 
 def result_items(rows: list[dict]) -> list[ResultItem]:
@@ -570,7 +571,7 @@ def result_items(rows: list[dict]) -> list[ResultItem]:
             uuid=row["uuid"],
             said=row["said"],
             ordinal=row["ordinal"],
-            thumb=thumbs.asset_url(row.get("sha"), row["slug"]),
+            thumb=thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"]),
         )
         for row in rows
     ]

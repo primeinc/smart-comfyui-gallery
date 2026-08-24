@@ -2576,3 +2576,303 @@ def analyze(conn: sqlite3.Connection) -> None:
     benchmark that leaves the cache at its default is measuring the default.
     """
     conn.execute("PRAGMA optimize=0x10012")
+
+
+@step(30)
+def _a_filesystem_identifier_is_opaque_text(conn: sqlite3.Connection) -> None:
+    """v30 -> v31: `folder.inode` and `file.inode` become `fs_id TEXT`.
+
+    The column was an INTEGER holding an identifier nothing does
+    arithmetic on. Since Python 3.12 Windows reports `st_ino` "up to 128
+    bits, depending on the file system" (cpython Doc/library/os.rst) and
+    SQLite's INTEGER is signed 64-bit (sqlite/sqlite src/sqliteInt.h:1031
+    LARGEST_INT64), so on ReFS, a Dev Drive or some network shares the
+    first directory the walk reached ended the entire scan:
+
+        OverflowError: Python int too large to convert to SQLite INTEGER
+          db/scan.py ensure_folder
+          SELECT id, parent_id, name FROM folder WHERE root_id = ? AND inode = ?
+
+    TEXT and not an INTEGER column holding a string, because affinity is
+    a conversion rule rather than a constraint: an INTEGER-affinity
+    column silently stores '340282366920938463463374607431768211455' as
+    the REAL 3.402823669209385e+38 -- the wrong identity, arrived at
+    without an error, in the code whose one job is to avoid exactly that.
+    Renamed because on the stated platform it was never an inode; the
+    schema comment always described an opaque filesystem-native hint.
+
+    `CAST(inode AS TEXT)` is lossless for every value that fit: SQLite
+    renders an INTEGER as its decimal spelling, which is what `str()`
+    produces on the way in, so a library scanned before this keeps the
+    identifiers it recorded and no folder looks new on the next pass.
+    Rows are rebuilt rather than altered because ALTER TABLE cannot
+    change a column's type, and rebuilt under the FINAL name directly so
+    sqlite_master holds unquoted DDL the drift check recognises.
+    """
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE folder RENAME TO folder_v30")
+    conn.execute("ALTER TABLE file RENAME TO file_v30")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+
+    conn.execute(
+        """CREATE TABLE folder (
+    id        INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    root_id   INTEGER NOT NULL    REFERENCES root(id)   ON DELETE CASCADE,
+    parent_id INTEGER             REFERENCES folder(id) ON DELETE CASCADE,
+    name      TEXT    NOT NULL,
+    -- Distance from the root, which is itself 0. Maintained by trigger, so
+    -- no caller computes it and no two callers can disagree about the base.
+    depth     INTEGER NOT NULL,
+    -- The filesystem's own id for the directory (NTFS FileID via st_ino),
+    -- which survives a rename and a move within the volume while a copy gets
+    -- a fresh one. A file proves continuity by its bytes; a directory has no
+    -- bytes, so without this a folder rename mints a new folder, the old
+    -- entity is orphaned and its URL rots.
+    --
+    -- A HINT, never identity: it is volume-scoped, lost on copy or restore,
+    -- and absent on filesystems that do not report one. Matched only when
+    -- present and unique, and name matching still has to work on its own.
+    --
+    -- TEXT, and the decimal spelling of the identifier, because the value is
+    -- OPAQUE: nothing does arithmetic on it, only equality. Since Python 3.12
+    -- Windows reports `st_ino` "up to 128 bits, depending on the file system"
+    -- (cpython Doc/library/os.rst), SQLite's INTEGER is signed 64-bit
+    -- (sqlite/sqlite src/sqliteInt.h:1031 LARGEST_INT64), and binding a
+    -- larger one raised `OverflowError: Python int too large to convert to
+    -- SQLite INTEGER` -- killing the scan on the first ReFS directory. TEXT
+    -- rather than an INTEGER column holding a string: affinity is not a
+    -- constraint, and an INTEGER-affinity column silently converts
+    -- '340282366920938463463374607431768211455' to the REAL
+    -- 3.402823669209385e+38, which is the wrong identity rather than a
+    -- refusal. Named `fs_id` and not `inode` because on the stated platform
+    -- it is not one.
+    fs_id     TEXT,
+    -- Set when the directory was not found where it was last seen. Presence
+    -- is a state here for the same reason it is one on `file`: without it,
+    -- "gone" and "the drive is unplugged" are the same row, and the only way
+    -- to make room for a new directory taking an old one's name is to delete
+    -- the old one and everything hanging off it.
+    missing_since REAL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO folder(id, root_id, parent_id, name, depth, fs_id, missing_since)"
+        " SELECT id, root_id, parent_id, name, depth,"
+        "        CASE WHEN inode IS NULL THEN NULL ELSE CAST(inode AS TEXT) END,"
+        "        missing_since FROM folder_v30"
+    )
+    conn.execute("DROP TABLE folder_v30")
+    conn.execute(
+        """CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name COLLATE NOCASE)
+    WHERE parent_id IS NULL AND missing_since IS NULL"""
+    )
+    conn.execute(
+        """CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name COLLATE NOCASE)
+    WHERE parent_id IS NOT NULL AND missing_since IS NULL"""
+    )
+    conn.execute("""CREATE UNIQUE INDEX folder_fs_id ON folder(root_id, fs_id) WHERE fs_id IS NOT NULL""")
+
+    conn.execute(
+        """CREATE TABLE file (
+    id             INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    folder_id      INTEGER NOT NULL REFERENCES folder(id) ON DELETE CASCADE,
+    name           TEXT    NOT NULL,
+    kind           TEXT    NOT NULL CHECK (kind IN
+                     ('image','animated_image','video','audio','document')),
+    size           INTEGER NOT NULL,
+    mtime          REAL    NOT NULL,
+    -- filesystem birth time where the platform reports it. Distinct from mtime,
+    -- which a copy or a sync client rewrites, and from capture.captured_at,
+    -- which is when the shutter actually opened.
+    btime          REAL,
+    -- The filesystem's own id for the file, kept only so a scan can tell
+    -- "this path still holds the same file" from "this path now holds a
+    -- different one". Size and mtime alone cannot: renaming two same-sized
+    -- files onto each other's names changes neither, and the scan then
+    -- skipped hashing and left every rating on the path instead of on the
+    -- bytes -- the defect this schema exists to remove.
+    --
+    -- A HINT for change detection, never identity and never a matcher:
+    -- content is what proves continuity. Absent where the filesystem
+    -- reports none, and different after a copy or a restore.
+    --
+    -- TEXT for the reason `folder.fs_id` is: the value is opaque, only ever
+    -- compared for equality, and on Windows can exceed what an INTEGER holds.
+    fs_id          TEXT,
+    content_sha256 TEXT,
+    -- The pixels actually on disk, not what any recipe asked for; see
+    -- `generation.width`, which is the request and may differ. Written by
+    -- ingest from the container it already opens to read the metadata, so
+    -- they cost nothing extra -- and NULL on a video, whose dimensions need
+    -- the same probe `duration` is waiting on.
+    --
+    -- Both were NULL for everything until the sweep that was supposed to
+    -- catch that stopped being a word search: `width` and `height` appear all
+    -- over db/ingest.py as attributes of the parsed recipe, so the column
+    -- read as produced while the disagreement this schema exists to expose
+    -- was unobservable in one direction.
+    width          INTEGER,
+    height         INTEGER,
+    -- Seconds, from the container. NULL on a still picture, which has no
+    -- length, and on a video whose container does not state one.
+    duration       REAL,
+    first_seen_at  REAL    NOT NULL,
+    last_seen_at   REAL    NOT NULL,
+    -- NULL while the bytes are present. Set when a scan cannot find them, or
+    -- when a content match was ambiguous. Deletion is then a deliberate act
+    -- rather than a scan side effect: unreachable is not the same as deleted.
+    missing_since  REAL
+, ingested_sha256 TEXT) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, btime, fs_id, content_sha256,"
+        " width, height, duration, first_seen_at, last_seen_at, missing_since, ingested_sha256)"
+        " SELECT id, folder_id, name, kind, size, mtime, btime,"
+        "        CASE WHEN inode IS NULL THEN NULL ELSE CAST(inode AS TEXT) END,"
+        "        content_sha256, width, height, duration, first_seen_at, last_seen_at,"
+        "        missing_since, ingested_sha256 FROM file_v30"
+    )
+    conn.execute("DROP TABLE file_v30")
+    conn.execute(
+        """CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)
+    WHERE missing_since IS NULL"""
+    )
+    conn.execute("""CREATE INDEX file_recent ON file(mtime DESC, id DESC) WHERE missing_since IS NULL""")
+    conn.execute(
+        """CREATE INDEX file_in_folder_by_time ON file(folder_id, mtime, id)
+    WHERE missing_since IS NULL"""
+    )
+    conn.execute("""CREATE INDEX file_added  ON file(first_seen_at DESC) WHERE missing_since IS NULL""")
+    conn.execute("""CREATE INDEX file_sha  ON file(content_sha256)""")
+    conn.execute("""CREATE INDEX file_kind ON file(kind)""")
+
+    # The triggers go with the dropped tables, so both sets are recreated
+    # from schema.sql's text -- AFTER the copy, deliberately: the name_fts
+    # insert triggers would otherwise fire per copied row and index every
+    # name twice, and DROP TABLE fires no delete trigger, so the FTS rows
+    # for these files were never removed in the first place.
+    conn.execute(
+        """CREATE TRIGGER folder_depth_ins AFTER INSERT ON folder BEGIN
+  UPDATE folder
+     SET depth = COALESCE((SELECT depth + 1 FROM folder WHERE id = NEW.parent_id), 0)
+   WHERE id = NEW.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_depth_upd AFTER UPDATE OF parent_id ON folder BEGIN
+  UPDATE folder
+     SET depth = COALESCE((SELECT p.depth + 1 FROM folder p WHERE p.id = NEW.parent_id), 0)
+               + (WITH RECURSIVE below(id, distance) AS (
+                    SELECT NEW.id, 0
+                    UNION ALL
+                    SELECT f.id, below.distance + 1
+                      FROM folder f JOIN below ON f.parent_id = below.id)
+                  SELECT distance FROM below WHERE below.id = folder.id)
+   WHERE id IN (WITH RECURSIVE below(id) AS (
+                  SELECT NEW.id
+                  UNION ALL
+                  SELECT f.id FROM folder f JOIN below ON f.parent_id = below.id)
+                SELECT id FROM below);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_kind_agrees BEFORE INSERT ON folder BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match folder')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'folder';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_kind_keeps_agreeing BEFORE UPDATE OF id ON folder BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match folder')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'folder';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_no_cycle BEFORE UPDATE OF parent_id ON folder
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'folder parent cycle') WHERE NEW.id IN (
+    WITH RECURSIVE up(id) AS (
+      SELECT NEW.parent_id
+      UNION SELECT f.parent_id FROM folder f JOIN up ON f.id = up.id
+        WHERE f.parent_id IS NOT NULL)
+    SELECT id FROM up);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_no_self_parent BEFORE INSERT ON folder
+WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
+  SELECT RAISE(ABORT,'folder parent cycle');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_root_consistent_ins BEFORE INSERT ON folder
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'folder root mismatch')
+  WHERE (SELECT root_id FROM folder WHERE id = NEW.parent_id) <> NEW.root_id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_root_consistent_upd BEFORE UPDATE OF root_id, parent_id ON folder
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'folder root mismatch')
+  WHERE (SELECT root_id FROM folder WHERE id = NEW.parent_id) <> NEW.root_id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_takes_its_entity AFTER DELETE ON folder BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_folder_del AFTER DELETE ON folder BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_folder_ins AFTER INSERT ON folder
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_folder_upd AFTER UPDATE OF name ON folder BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER file_kind_agrees BEFORE INSERT ON file BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match file')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'file';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER file_kind_keeps_agreeing BEFORE UPDATE OF id ON file BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match file')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'file';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER file_takes_its_entity AFTER DELETE ON file BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_file_del AFTER DELETE ON file BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_file_ins AFTER INSERT ON file
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_file_upd AFTER UPDATE OF name ON file BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )

@@ -2128,7 +2128,7 @@ export interface components {
             kind: "image" | "animated_image" | "video" | "audio" | "document";
             ordinal: number;
             href: string;
-            thumb: string;
+            thumb: string | null;
         };
         /** FilterOption */
         FilterOption: {
@@ -2624,7 +2624,7 @@ export interface components {
             uuid: string;
             said: string | null;
             ordinal: number;
-            thumb: string;
+            thumb: string | null;
         };
         /** RootForm */
         RootForm: {

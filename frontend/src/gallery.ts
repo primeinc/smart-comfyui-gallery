@@ -284,6 +284,18 @@ const asked = (spelled: string, take: number | null): Rule => {
     popLabel.textContent = `page ${told.page} of ${told.pages} · ${told.first_ordinal}–${told.last_ordinal} of ${told.total}`;
     popGrid.replaceChildren(
       ...told.items.map((item) => {
+        // No picture to take -- audio, a document. The raster routes
+        // refuse those kinds, so an <img> here would ask for a 404 and
+        // draw it broken. The member is still in the answer, so the
+        // preview says its kind rather than dropping it.
+        if (!item.thumb) {
+          const said = document.createElement("span");
+          said.className = "cell-kind";
+          said.dataset.cellKind = item.kind;
+          said.textContent = item.kind === "audio" ? "audio" : "doc";
+          said.title = item.name;
+          return said;
+        }
         const img = new Image();
         // The URL the ANSWER resolved, not one assembled here: the
         // ResultSet already knows the content hash, and a preview

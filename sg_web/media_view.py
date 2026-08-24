@@ -188,6 +188,8 @@ def _filmstrip(found: dict, asked: str) -> Filmstrip:
     would be asking it to rebuild browsing state from parts, which is
     how a second, disagreeing ordering gets born.
     """
+    from vision import thumbs
+
     return Filmstrip(
         first_ordinal=found["first_ordinal"],
         last_ordinal=found["last_ordinal"],
@@ -199,7 +201,13 @@ def _filmstrip(found: dict, asked: str) -> Filmstrip:
                 kind=near["kind"],
                 ordinal=near["ordinal"],
                 href=f"/i/{near['slug']}" + (f"?{asked}" if asked else ""),
-                thumb=f"/thumb/{near['slug']}",
+                # None for a kind with no picture to take. The raster
+                # routes refuse audio and documents outright
+                # (`_variant_bytes`: "a {kind} has no {variant}"), so a
+                # walk through a mixed library used to emit a 404 for
+                # every such member and draw a broken image where one
+                # was. The strip says the kind instead.
+                thumb=thumbs.asset_url(near["sha"], near["slug"], medium=near["kind"]),
             )
             for near in found["items"]
         ],
@@ -634,7 +642,11 @@ class FilmstripItem(Wire):
     #: position in the WHOLE answer, not in this window
     ordinal: int
     href: str
-    thumb: str
+    #: None for a kind with no picture to take -- audio, documents. The
+    #: strip is still a walk through THIS answer, and those files are
+    #: members of it, so the cell is drawn saying its kind rather than
+    #: dropped: a walk that skips its own members is a different walk.
+    thumb: str | None
 
 
 class Filmstrip(Wire):

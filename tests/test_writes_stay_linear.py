@@ -188,7 +188,7 @@ def _rescan_unchanged(conn, n, sample):
     from db import scan
 
     observed = {
-        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image")
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, fs_id=None, kind="image")
         for i in range(2, n + 2)
     }
     scan.apply_scan(conn, observed, 1.0, roots={1})
@@ -201,11 +201,11 @@ def _rescan_with_one_new_file(conn, n, sample):
     from db import scan
 
     observed = {
-        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image")
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, fs_id=None, kind="image")
         for i in range(2, n + 2)
     }
     scan.apply_scan(conn, observed, 1.0, roots={1})
-    observed[(1, "BRAND_NEW.jpg")] = scan.Found(sha="sha-new", size=1, mtime=0, btime=None, inode=None, kind="image")
+    observed[(1, "BRAND_NEW.jpg")] = scan.Found(sha="sha-new", size=1, mtime=0, btime=None, fs_id=None, kind="image")
     result = scan.apply_scan(conn, observed, 2.0, roots={1})
     assert result.added == 1, result
     return n

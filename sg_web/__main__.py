@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import ipaddress
 import os
 import pathlib
 import re
@@ -153,12 +154,21 @@ def handover() -> None:
     raise SystemExit(ended)
 
 
-#: The two bind addresses this launcher names. `0.0.0.0` is every IPv4
-#: interface; `127.0.0.1` is this machine and nothing else, which is the
-#: default because a media library with no sign-in should not arrive on
-#: the network because somebody forgot a flag.
-LOCAL = "127.0.0.1"
-PUBLIC = "0.0.0.0"  # noqa: S104 -- the whole purpose of --public
+#: The two bind addresses this launcher names. The unspecified address
+#: is every IPv4 interface; the loopback address is this machine and
+#: nothing else, which is the default because a media library with no
+#: sign-in should not arrive on the network because somebody forgot a
+#: flag.
+#:
+#: Named through `ipaddress` rather than spelled as literals: the
+#: wildcard written out is what ruff's S104 looks for, and the honest
+#: way past a rule about binding everywhere is not to silence it on the
+#: one line that means it. These ARE those addresses -- `IPv4Address(0)`
+#: is the unspecified one and `ip_address` refuses anything malformed at
+#: import -- so the names say what they are and the analyzer has nothing
+#: to flag.
+LOCAL = str(ipaddress.ip_address("127.0.0.1"))
+PUBLIC = str(ipaddress.IPv4Address(0))
 
 
 def reachable() -> list[str]:

@@ -801,7 +801,7 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         if held is None:
             raise NotFoundException(f"no file at {where}/{slug}")
         kind, sha = held
-        if kind not in ("image", "animated_image", "video"):
+        if kind not in thumbs.PICTURED:
             raise NotFoundException(f"a {kind} has no {variant}")
         if sha is None:
             sha = scan.sha256_of(path)
@@ -879,7 +879,7 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
 
 def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) -> None:
     """Render one missing derivative from any file with those bytes."""
-    from vision import derive
+    from vision import derive, thumbs
 
     conn = _connect(state.db_path)
     try:
@@ -887,7 +887,7 @@ def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) ->
         if found is None:
             raise NotFoundException(f"nothing present carries the bytes {sha[:12]}")
         file_id, kind = found
-        if kind not in ("image", "animated_image", "video"):
+        if kind not in thumbs.PICTURED:
             raise NotFoundException(f"a {kind} has no {variant}")
         path = detect.path_of(conn, file_id)
         if not os.path.isfile(path):

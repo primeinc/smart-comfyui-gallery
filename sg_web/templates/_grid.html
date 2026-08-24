@@ -33,7 +33,15 @@
       <a class="cell" href="/i/{{ item.slug }}{% if qs %}?{{ qs }}{% endif %}"
          data-slug="{{ item.slug }}" data-kind="{{ item.kind }}" data-ordinal="{{ item.ordinal }}"
          {%- if item.relevance is not none %} data-relevance="{{ "%.4f"|format(item.relevance) }}"{% endif %}>
+        {% if item.thumb %}
         <img src="{{ item.thumb }}" alt="{{ item.name }}" loading="lazy"{% if item.said %} title="{{ item.said }}" data-said{% endif %}>
+        {% else %}
+        {# Audio and documents have no picture to take and the raster
+           routes refuse them, so an unconditional <img> here made three
+           of eight cells 404 over a mixed library. The cell says its
+           kind; the file is still a member of the answer. #}
+        <span class="cell-kind" data-cell-kind="{{ item.kind }}" aria-hidden="true">{{ "audio" if item.kind == "audio" else "doc" }}</span>
+        {% endif %}
         <span class="cell-name">{{ item.name }}</span>
         {# How far this file stood above the middle of what a space said.
            A bar rather than a number: the useful reading is where in the

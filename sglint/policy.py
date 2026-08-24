@@ -201,7 +201,16 @@ MUST_IMPORT: dict[str, tuple[str, str]] = {
 }
 #: Words a source file must not contain at all.
 MUST_NOT_CONTAIN: dict[str, tuple[str, ...]] = {
-    "sg_web/media_view.py": ("neighbour",),
+    # No entry for `sg_web/media_view.py: "neighbour"`. What it meant to
+    # hold is that the viewer takes its walk from `resultset.neighborhood`
+    # and never from `pages.neighbour` -- a second opinion about what
+    # "next" means -- and MUST_NOT_CALL_QUALIFIED above states exactly
+    # that, over the AST, where a call is a call. The substring form
+    # added nothing and could not work: `pages.neighbour` is a live
+    # function (db/pages.py), the word appears 51 times across this tree
+    # including the route `/prompts/{id}/neighbours`, and SG406 announced
+    # it as "deleted on purpose" -- which was never true. It fired on a
+    # comment.
     "db/pages.py": ("ARTIFACT_FILES", "WORKFLOW_FILES", "def artifact_files", "def workflow_files"),
     "sg_web/app.py": ("add_to_collection", "remove_from_collection"),
     # uvicorn workers > 1 splits the in-memory feed across processes
@@ -455,6 +464,14 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("derived_file_person", "model_id"),
         ("derived_face_run", "model_id"),
         ("job_item", "item_id"),
+        # The filesystem's own identifier for a directory or a file --
+        # NTFS FileID, an ReFS FileId128 -- kept as its exact decimal
+        # spelling. It names a row in no table of ours and there is
+        # nothing to reference: it is minted by the volume, is lost on a
+        # copy or a restore, and is absent entirely on filesystems that
+        # report none.
+        ("folder", "fs_id"),
+        ("file", "fs_id"),
         ("job_event", "id"),
         # the unit a job's handler was given, an integer the job interprets
         ("job_event", "item_id"),

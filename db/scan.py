@@ -248,7 +248,7 @@ class Found(NamedTuple):
     size: int
     mtime: float
     btime: float | None
-    inode: int | None
+    fs_id: str | None
     kind: str
 
 
@@ -308,7 +308,7 @@ def ensure_folder(
     root_id: int,
     parent_id: int | None,
     name: str,
-    inode: int | None = None,
+    fs_id: str | None = None,
     *,
     now: float | None = None,
 ) -> int:
@@ -324,10 +324,10 @@ def ensure_folder(
     case-insensitive because the stated platform is, so `Portraits` and
     `portraits` are one folder rather than half a library each.
     """
-    if inode is not None:
+    if fs_id is not None:
         row = conn.execute(
-            "SELECT id, parent_id, name FROM folder WHERE root_id = ? AND inode = ?",
-            (root_id, inode),
+            "SELECT id, parent_id, name FROM folder WHERE root_id = ? AND fs_id = ?",
+            (root_id, fs_id),
         ).fetchone()
         if row:
             if (row[1], row[2]) != (parent_id, name):
@@ -343,17 +343,17 @@ def ensure_folder(
 
     if parent_id is None:
         row = conn.execute(
-            "SELECT id, inode FROM folder WHERE root_id = ? AND parent_id IS NULL"
+            "SELECT id, fs_id FROM folder WHERE root_id = ? AND parent_id IS NULL"
             " AND name = ? COLLATE NOCASE AND missing_since IS NULL",
             (root_id, name),
         ).fetchone()
     else:
         row = conn.execute(
-            "SELECT id, inode FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE AND missing_since IS NULL",
+            "SELECT id, fs_id FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE AND missing_since IS NULL",
             (parent_id, name),
         ).fetchone()
     taken_over = False
-    if row and inode is not None and row[1] is not None and row[1] != inode:
+    if row and fs_id is not None and row[1] is not None and row[1] != fs_id:
         # The name matches and the filesystem says these are different
         # directories. Rename `Archive` to `Zoo` and create a fresh
         # `Archive`, and os.walk hands us the new one first (it sorts), so
@@ -363,7 +363,7 @@ def ensure_folder(
         #
         # So the old row stands aside rather than being overwritten. It is
         # marked missing, which frees the name; if it is met further along
-        # under its new name, the inode branch above claims it back and
+        # under its new name, the fs_id branch above claims it back and
         # clears the mark.
         conn.execute(
             "UPDATE folder SET missing_since = COALESCE(?, unixepoch()) WHERE id = ?",
@@ -379,13 +379,13 @@ def ensure_folder(
         # new directory the row it just stood aside.
         if parent_id is None:
             row = conn.execute(
-                "SELECT id, inode FROM folder WHERE root_id = ? AND parent_id IS NULL"
+                "SELECT id, fs_id FROM folder WHERE root_id = ? AND parent_id IS NULL"
                 " AND name = ? COLLATE NOCASE AND missing_since IS NOT NULL",
                 (root_id, name),
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT id, inode FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE"
+                "SELECT id, fs_id FROM folder WHERE parent_id = ? AND name = ? COLLATE NOCASE"
                 " AND missing_since IS NOT NULL",
                 (parent_id, name),
             ).fetchone()
@@ -393,29 +393,50 @@ def ensure_folder(
             conn.execute("UPDATE folder SET missing_since = NULL WHERE id = ?", (row[0],))
 
     if row:
-        if inode is not None:
-            conn.execute("UPDATE folder SET inode = ? WHERE id = ?", (inode, row[0]))
+        if fs_id is not None:
+            conn.execute("UPDATE folder SET fs_id = ? WHERE id = ?", (fs_id, row[0]))
         return row[0]
 
     folder_id = mint(conn, "folder", name)
     # depth is set by the folder_depth_ins trigger, so it is never computed
     # by two callers that could disagree.
     conn.execute(
-        "INSERT INTO folder(id, root_id, parent_id, name, depth, inode) VALUES(?, ?, ?, ?, 0, ?)",
-        (folder_id, root_id, parent_id, name, inode),
+        "INSERT INTO folder(id, root_id, parent_id, name, depth, fs_id) VALUES(?, ?, ?, ?, 0, ?)",
+        (folder_id, root_id, parent_id, name, fs_id),
     )
     return folder_id
 
 
-def _inode_of(path) -> int | None:
-    """The filesystem's id for a directory, or None where there isn't one.
+def fs_id(value: int) -> str | None:
+    """The filesystem's own identifier for a file or directory, as stored.
 
-    Zero is treated as absent: filesystems that do not implement the concept
-    report it for every entry, and one shared value would collapse every
-    folder in the library onto a single row.
+    Opaque on purpose. Nothing does arithmetic on this -- it is compared
+    for equality and nothing else -- so the honest representation is the
+    exact one, and the exact one is text.
+
+    Since Python 3.12 Windows reports `st_ino` "up to 128 bits, depending
+    on the file system" (cpython Doc/library/os.rst); SQLite's INTEGER is
+    signed 64-bit (sqlite/sqlite src/sqliteInt.h:1031 LARGEST_INT64). A
+    larger value bound to the old INTEGER column raised
+
+        OverflowError: Python int too large to convert to SQLite INTEGER
+
+    and ended the scan on the first ReFS directory it walked. Folding or
+    masking it to fit would have turned an exact identifier into a
+    lossy one inside the code whose whole job is to avoid assigning the
+    wrong identity, so the column changed instead.
+
+    Zero is absent: filesystems that do not implement the concept report
+    it for every entry, and one shared value would collapse every folder
+    in the library onto a single row.
     """
+    return str(value) if value else None
+
+
+def _fs_id_of(path) -> str | None:
+    """The filesystem's id for a directory, or None where there isn't one."""
     try:
-        return os.stat(path).st_ino or None
+        return fs_id(os.stat(path).st_ino)
     except OSError:
         return None
 
@@ -442,9 +463,9 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
     # whole `file` table here held every row in the library in memory to answer
     # questions about one drive -- twice per scan, counting resolve_scan.
     stored = {
-        (folder_id, name): (size, mtime, inode, sha)
-        for folder_id, name, size, mtime, inode, sha in conn.execute(
-            "SELECT f.folder_id, f.name, f.size, f.mtime, f.inode, f.content_sha256"
+        (folder_id, name): (size, mtime, identifier, sha)
+        for folder_id, name, size, mtime, identifier, sha in conn.execute(
+            "SELECT f.folder_id, f.name, f.size, f.mtime, f.fs_id, f.content_sha256"
             "  FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?",
             (root_id,),
         )
@@ -457,7 +478,7 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
         root_id,
         None,
         os.path.basename(root_path) or root_path,
-        _inode_of(root_path),
+        _fs_id_of(root_path),
         now=now,
     )
     folder_ids = {os.path.normcase(root_path): root_folder}
@@ -477,7 +498,7 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
         for name in subdirs:
             child = os.path.join(current, name)
             folder_ids[os.path.normcase(child)] = ensure_folder(
-                conn, root_id, folder_id, name, _inode_of(child), now=now
+                conn, root_id, folder_id, name, _fs_id_of(child), now=now
             )
         for name in kept:
             kind = KIND_BY_SUFFIX.get(os.path.splitext(name)[1].lower())
@@ -491,18 +512,17 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
                 # as absent would make a transient lock look like a deletion,
                 # so it is simply not observed on this pass.
                 continue
-            inode = info.st_ino or None
+            # Same hazard as a directory's: a FILE on ReFS or a network
+            # share reports a 128-bit identifier too, and this one reaches
+            # an INSERT rather than a SELECT.
+            held = fs_id(info.st_ino)
             previous = stored.get((folder_id, name))
             # `previous[3] is not None` is part of the test: a row that has
             # never been hashed has nothing to reuse, and returning its NULL
             # here is what made the missing hash permanent -- the shortcut
-            # kept handing back NULL for as long as size, mtime and inode
+            # kept handing back NULL for as long as size, mtime and fs_id
             # held still, which for an untouched file is forever.
-            if (
-                previous is not None
-                and previous[3] is not None
-                and previous[:3] == (info.st_size, info.st_mtime, inode)
-            ):
+            if previous is not None and previous[3] is not None and previous[:3] == (info.st_size, info.st_mtime, held):
                 sha = previous[3]
             else:
                 try:
@@ -517,7 +537,7 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
                 size=info.st_size,
                 mtime=info.st_mtime,
                 btime=getattr(info, "st_birthtime", None),
-                inode=inode,
+                fs_id=held,
                 kind=kind,
             )
 
@@ -621,7 +641,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     was = {
         row[0]: row[1:]
         for row in conn.execute(
-            "SELECT id, folder_id, name, size, mtime, btime, inode, content_sha256, missing_since FROM file"
+            "SELECT id, folder_id, name, size, mtime, btime, fs_id, content_sha256, missing_since FROM file"
         )
     }
 
@@ -639,7 +659,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
             found.size,
             found.mtime,
             found.btime,
-            found.inode,
+            found.fs_id,
             found.sha,
             None,
         )
@@ -668,7 +688,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         context_module.stale(conn, file_id)
         conn.execute(
             "UPDATE file SET folder_id = ?, name = ?, size = ?, mtime = ?,"
-            " btime = ?, inode = ?, content_sha256 = ?, last_seen_at = ?,"
+            " btime = ?, fs_id = ?, content_sha256 = ?, last_seen_at = ?,"
             " missing_since = NULL WHERE id = ?",
             (
                 folder_id,
@@ -676,7 +696,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
                 found.size,
                 found.mtime,
                 found.btime,
-                found.inode,
+                found.fs_id,
                 found.sha,
                 now,
                 file_id,
@@ -708,7 +728,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         file_id = mint(conn, "file", os.path.splitext(name)[0])
         conn.execute(
             "INSERT INTO file(id, folder_id, name, kind, size, mtime, btime,"
-            " inode, content_sha256, first_seen_at, last_seen_at)"
+            " fs_id, content_sha256, first_seen_at, last_seen_at)"
             " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 file_id,
@@ -718,7 +738,7 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
                 found.size,
                 found.mtime,
                 found.btime,
-                found.inode,
+                found.fs_id,
                 found.sha,
                 now,
                 now,

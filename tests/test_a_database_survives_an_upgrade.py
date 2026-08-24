@@ -498,6 +498,23 @@ def _binary_sibling_indexes(conn) -> None:
     conn.execute("CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL")
 
 
+def _pre_v31_identifier(conn) -> None:
+    """v31's change, inverted: `fs_id TEXT` back to `inode`.
+
+    Every database here is today's build stepped backwards, so a column
+    renamed in schema.sql has to be un-renamed for the fixture to be the
+    version it claims. The declared type is left alone -- SQLite stores
+    what it is given, these fixtures give integers, and step 30's
+    `CAST(inode AS TEXT)` reads them the same either way. The INDEX has
+    to go with it: the forward step creates `folder_fs_id`, and a
+    fixture still carrying one under that name would collide.
+    """
+    conn.execute("DROP INDEX IF EXISTS folder_fs_id")
+    conn.execute("ALTER TABLE folder RENAME COLUMN fs_id TO inode")
+    conn.execute("ALTER TABLE file RENAME COLUMN fs_id TO inode")
+    conn.execute("CREATE UNIQUE INDEX folder_inode ON folder(root_id, inode) WHERE inode IS NOT NULL")
+
+
 def v1_database(tmp_path):
     """Today's build, taken back to v1 by inverting the shipped steps."""
     path = tmp_path / "gallery.db"
@@ -518,6 +535,7 @@ def v1_database(tmp_path):
         conn.execute(f"DROP TRIGGER {trigger}")
     _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted
+    _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 1")
     conn.close()
     return path
@@ -527,7 +545,14 @@ def a_file_row(conn):
     root = int(
         conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
     )
-    folder = scan.ensure_folder(conn, root, None, "x")
+    # Straight INSERT, not `scan.ensure_folder`: this row goes into a
+    # database that has been stepped BACK to an older shape, and the
+    # scanner speaks today's column names.
+    folder = scan.mint(conn, "folder", "x")
+    conn.execute(
+        "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)",
+        (folder, root),
+    )
     file_id = scan.mint(conn, "file", "dusk")
     conn.execute(
         "INSERT INTO file(id, folder_id, name, kind, size, mtime, first_seen_at, last_seen_at)"
@@ -615,6 +640,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, ?, ?, 0)",
             (twin, root_id, top, name),
         )
+    _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 4")
     conn.close()
 
@@ -679,7 +705,7 @@ def rebuild_the_file_table(conn):
         " kind TEXT NOT NULL CHECK (kind IN"
         "   ('image','animated_image','video','audio','document')),"
         " size INTEGER NOT NULL, mtime REAL NOT NULL, btime REAL,"
-        " inode INTEGER, content_sha256 TEXT,"
+        " fs_id TEXT, content_sha256 TEXT,"
         " width INTEGER, height INTEGER, duration REAL,"
         # the change: a column that did not exist before
         " starred INTEGER NOT NULL DEFAULT 0 CHECK (starred IN (0,1)),"
@@ -688,10 +714,10 @@ def rebuild_the_file_table(conn):
         ") STRICT"
     )
     conn.execute(
-        "INSERT INTO file_new(id, folder_id, name, kind, size, mtime, btime, inode,"
+        "INSERT INTO file_new(id, folder_id, name, kind, size, mtime, btime, fs_id,"
         " content_sha256, width, height, duration, first_seen_at, last_seen_at,"
         " missing_since)"
-        " SELECT id, folder_id, name, kind, size, mtime, btime, inode,"
+        " SELECT id, folder_id, name, kind, size, mtime, btime, fs_id,"
         " content_sha256, width, height, duration, first_seen_at, last_seen_at,"
         " missing_since FROM file"
     )
@@ -933,6 +959,7 @@ END""")
             (fid, sid, vec.tobytes(), NOW),
         )
     conn.commit()
+    _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 3")
     conn.close()
     return path, files, spec, sid
@@ -959,7 +986,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == list(range(4, 31))
+    assert migrate.migrate(path) == list(range(4, connect.USER_VERSION + 1))
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -1006,6 +1033,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
         "INSERT INTO collection_rule(collection_id, source_text, created_at, updated_at) VALUES(?, 'x', ?, ?)",
         (album, NOW, NOW),
     )
+    _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 7")
     conn.close()
 
@@ -1056,7 +1084,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    assert migrate.migrate(path) == [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
@@ -1097,10 +1125,11 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
+    _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 25")
     conn.close()
 
-    assert migrate.migrate(path) == [26, 27, 28, 29, 30]
+    assert migrate.migrate(path) == [26, 27, 28, 29, 30, 31]
     assert build.drift(path) == []
     ro = connect.connect(path, read_only=True)
     try:
@@ -1148,6 +1177,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
             derived.record_faces(conn, file_id, "m", "1", sha, NOW, faces)
             derived.record_face_scan(conn, file_id, "m", "1", sha, NOW, 1)
             derived.record_hash(conn, file_id, sha, NOW, phash64=1)
+        _pre_v31_identifier(conn)  # v31's change, inverted
         conn.execute("PRAGMA user_version = 29")
     finally:
         conn.close()
@@ -1155,7 +1185,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
     for sha in ("b" * 64, "c" * 64, "d" * 64):
         thumbs.put_all(cache, sha, Image.new("RGB", (40, 30), (9, 9, 9)))
 
-    assert migrate.migrate(path) == [30]
+    assert migrate.migrate(path) == [30, 31]
     assert not any(thumbs.path_for(cache, "b" * 64, kind).exists() for kind in thumbs.EDGES), "the portrait RAW's go"
     for sha in ("c" * 64, "d" * 64):
         assert all(thumbs.path_for(cache, sha, kind).exists() for kind in thumbs.EDGES), "the others keep theirs"
@@ -1193,6 +1223,7 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
+    _pre_v31_identifier(conn)  # v31's change, inverted
     conn.execute("PRAGMA user_version = 26")
     conn.close()
 

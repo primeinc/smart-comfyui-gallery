@@ -51,6 +51,7 @@ def test_the_asset_url_mirrors_the_cache_on_disk(tmp_path):
     or some of them go on paying for a round trip nobody can see."""
     sha = "b" * 64
     url = thumbs.asset_url(sha, "some-slug")
+    assert url is not None
     found = _HEX64.match(url)
     assert found is not None, url
     assert found.group(1) == sha[:2], "the shard is the path on disk, so the route is a path join"
@@ -58,7 +59,9 @@ def test_the_asset_url_mirrors_the_cache_on_disk(tmp_path):
     # and it IS the path on disk, not merely similar to it
     on_disk = thumbs.path_for(tmp_path, sha, "thumb")
     assert url.endswith(f"{on_disk.parent.name}/{on_disk.name}")
-    assert thumbs.asset_url(sha, "s", "preview").endswith(thumbs.path_for(tmp_path, sha, "preview").name)
+    preview = thumbs.asset_url(sha, "s", "preview")
+    assert preview is not None
+    assert preview.endswith(thumbs.path_for(tmp_path, sha, "preview").name)
 
 
 def test_a_file_nobody_has_hashed_yet_still_has_somewhere_to_point(tmp_path):
@@ -67,6 +70,22 @@ def test_a_file_nobody_has_hashed_yet_still_has_somewhere_to_point(tmp_path):
     is the right trade for a file nobody has finished reading."""
     assert thumbs.asset_url(None, "not-hashed") == "/thumb/not-hashed"
     assert thumbs.asset_url("", "not-hashed") == "/thumb/not-hashed"
+
+
+def test_a_kind_with_no_picture_is_pointed_nowhere(tmp_path):
+    """Hashing is what mints an asset address, and audio and documents
+    get hashed like everything else -- so an address existed for them
+    and the route behind it refused. Over a mixed eight-file library
+    three of eight grid cells answered 404. Asking here is how a surface
+    finds out before it points."""
+    sha = "d" * 64
+    assert thumbs.asset_url(sha, "a-song", medium="audio") is None
+    assert thumbs.asset_url(sha, "a-paper", medium="document") is None
+    for medium in thumbs.PICTURED:
+        assert thumbs.asset_url(sha, "s", medium=medium) is not None, medium
+    # unsaid stays unjudged: a caller that knows it holds a picture
+    # need not say so
+    assert thumbs.asset_url(sha, "s") is not None
 
 
 def test_it_refuses_a_variant_that_is_not_one(tmp_path):
@@ -102,7 +121,9 @@ def test_the_answer_carries_the_content_hash(library):
     assert shape["items"], "the library has members"
     for item in shape["items"]:
         assert item["sha"], f"{item['name']} was ingested and has no content hash"
-        assert _HEX64.match(thumbs.asset_url(item["sha"], item["slug"])) is not None
+        pointed = thumbs.asset_url(item["sha"], item["slug"], medium=item["kind"])
+        assert pointed is not None, item
+        assert _HEX64.match(pointed) is not None, pointed
 
 
 # --- served: the claims a unit test cannot see ------------------------------

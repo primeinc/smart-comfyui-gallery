@@ -118,7 +118,21 @@ CREATE TABLE folder (
     -- A HINT, never identity: it is volume-scoped, lost on copy or restore,
     -- and absent on filesystems that do not report one. Matched only when
     -- present and unique, and name matching still has to work on its own.
-    inode     INTEGER,
+    --
+    -- TEXT, and the decimal spelling of the identifier, because the value is
+    -- OPAQUE: nothing does arithmetic on it, only equality. Since Python 3.12
+    -- Windows reports `st_ino` "up to 128 bits, depending on the file system"
+    -- (cpython Doc/library/os.rst), SQLite's INTEGER is signed 64-bit
+    -- (sqlite/sqlite src/sqliteInt.h:1031 LARGEST_INT64), and binding a
+    -- larger one raised `OverflowError: Python int too large to convert to
+    -- SQLite INTEGER` -- killing the scan on the first ReFS directory. TEXT
+    -- rather than an INTEGER column holding a string: affinity is not a
+    -- constraint, and an INTEGER-affinity column silently converts
+    -- '340282366920938463463374607431768211455' to the REAL
+    -- 3.402823669209385e+38, which is the wrong identity rather than a
+    -- refusal. Named `fs_id` and not `inode` because on the stated platform
+    -- it is not one.
+    fs_id     TEXT,
     -- Set when the directory was not found where it was last seen. Presence
     -- is a state here for the same reason it is one on `file`: without it,
     -- "gone" and "the drive is unplugged" are the same row, and the only way
@@ -142,7 +156,7 @@ CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name COLLATE NOCASE
 -- No index on parent_id alone. folder_child_unique leads on it, and although
 -- that index is partial the planner does use it for `parent_id = ?`, which is
 -- the shape the foreign key runs on every delete -- checked, not assumed.
-CREATE UNIQUE INDEX folder_inode ON folder(root_id, inode) WHERE inode IS NOT NULL;
+CREATE UNIQUE INDEX folder_fs_id ON folder(root_id, fs_id) WHERE fs_id IS NOT NULL;
 
 -- Both guards cover INSERT and UPDATE. INSERT-only was bypassable: a row
 -- naming itself as its own parent satisfies the foreign key, because the row
@@ -200,7 +214,10 @@ CREATE TABLE file (
     -- A HINT for change detection, never identity and never a matcher:
     -- content is what proves continuity. Absent where the filesystem
     -- reports none, and different after a copy or a restore.
-    inode          INTEGER,
+    --
+    -- TEXT for the reason `folder.fs_id` is: the value is opaque, only ever
+    -- compared for equality, and on Windows can exceed what an INTEGER holds.
+    fs_id          TEXT,
     content_sha256 TEXT,
     -- The pixels actually on disk, not what any recipe asked for; see
     -- `generation.width`, which is the request and may differ. Written by
@@ -2015,7 +2032,7 @@ BEGIN
 END;
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 30;
+PRAGMA user_version   = 31;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

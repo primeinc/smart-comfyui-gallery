@@ -195,6 +195,44 @@ consequences the architecture should keep room for, not work.
   and asks you to type one back. The cutoff prompt is gone (the answer
   supplies it); these two want a real control.
 
+- **A root can be added and never removed.** `sg_web/app.py` has
+  `GET /roots`, `POST /roots` and `POST /roots/{id}/scan` and no delete.
+  Whatever you point at the application is pointed at forever.
+
+  This one needs the deletion doctrine applied rather than a route
+  bolted on, because "remove this root" is at least three different
+  wishes and only the first is safe by default:
+
+  - **Stop watching it.** The files are not gone -- nothing on disk
+    changed -- so they must NOT be marked missing, which is the same
+    reasoning `online` already encodes for an unplugged drive. The root
+    goes quiet; its rows stay.
+  - **Forget what I learned about it.** Ratings, names, places,
+    collection memberships for files under that root. Destructive, and
+    the export story should exist before this does, or the only way out
+    of a mistake is a backup.
+  - **It is really gone.** The bytes were deleted outside the
+    application. That is already what a scan of a present-but-empty
+    root says, and it is deliberately NOT what an unreadable root says.
+
+  The first is the one to build. It also wants the answer to "what
+  happens to a file that is in two roots", which content identity
+  already has an opinion about.
+
+- **`library` and `mount` are the same thing.** `root.kind` admits
+  `library`, `mount` and `trash`, and nothing anywhere branches on the
+  first two: `db/pages.py:276` selects `kind IN ('library','mount')`
+  and `sg_web/folder_view.py:55` probes `kinds=("library","mount")`.
+  Only `trash` is load-bearing, and the schema says why -- it is a real
+  location, not a state, so views exclude that subtree by ancestry.
+
+  The distinction `mount` was reaching for -- "this one is not always
+  attached" -- is already carried by `root.online`, which is per-root,
+  set by probing, and is what the whole deletion doctrine rests on. So
+  either give `mount` a behaviour it alone has, or collapse it: one
+  media kind and `trash`. Two names for one thing is a decision
+  everybody reading the schema has to make again.
+
 - **Benchmarks in the UI.** `just bench thumbs-phases` and the other
   benchmark recipes write JSON that only a terminal ever sees. The
   operations console is where a run's own facts already live; these

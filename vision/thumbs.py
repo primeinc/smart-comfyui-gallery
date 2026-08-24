@@ -44,6 +44,14 @@ from PIL import Image, ImageOps
 #: lightbox on ordinary displays without shipping originals.
 EDGES = {"thumb": 512, "preview": 1440}
 
+#: The file kinds a raster variant can be MADE from. Audio and documents
+#: have no picture to take, and the routes that serve variants refuse
+#: them outright -- so a surface that asks for one anyway gets a 404 and
+#: draws a broken image. Named here, beside what a derivative IS, so a
+#: surface can ask before pointing at one instead of finding out from
+#: the network.
+PICTURED = ("image", "animated_image", "video")
+
 #: The cache's directory under a run's home (sg_web/home.py thumbs_dir);
 #: named here so a migration that must reach the cache finds it by the
 #: same word.
@@ -194,8 +202,8 @@ def _publish(target: pathlib.Path, put) -> pathlib.Path:
     return target
 
 
-def asset_url(sha: str | None, slug: str, kind: str = "thumb") -> str:
-    """Where a surface should point a picture's `src`.
+def asset_url(sha: str | None, slug: str, variant: str = "thumb", medium: str | None = None) -> str | None:
+    """Where a surface should point a picture's `src`, or None.
 
     The content-addressed asset when the bytes have been hashed, and the
     slug route when they have not.
@@ -210,13 +218,29 @@ def asset_url(sha: str | None, slug: str, kind: str = "thumb") -> str:
     route that serves it is a path join with no query, no slug and no
     connection. The address names the BYTES, so it can be cached for a
     year -- the same bargain PhotoPrism and Immich make.
+
+    **None when the file's medium has no picture to take.** `medium` is
+    the file's kind -- image, video, audio, document -- and the two
+    unpictured ones are why this returns an option rather than a string.
+    Hashing is what mints an asset address, and audio and documents get
+    hashed like everything else, so an address existed for them and the
+    routes behind it refused: measured over a mixed eight-file library,
+    three of eight grid cells answered 404 -- as UNCAUGHT exceptions with
+    tracebacks, because rendering is where the kind was finally
+    consulted. A surface must be able to ask before it points, and this
+    is where the question is answered for all of them at once.
+
+    `medium` is optional only so a caller that already knows it holds a
+    picture need not say so. Passing it is the safe default.
     """
-    if kind not in EDGES:
-        raise ValueError(f"{kind!r} is not a variant; EDGES in vision/thumbs.py is the vocabulary")
+    if variant not in EDGES:
+        raise ValueError(f"{variant!r} is not a variant; EDGES in vision/thumbs.py is the vocabulary")
+    if medium is not None and medium not in PICTURED:
+        return None
     if not sha:
         # Not yet hashed -- ingest has not reached it. The slug route can
         # still answer, at the cost this exists to avoid, which is the
         # right trade for a file nobody has finished reading.
-        return f"/{kind}/{slug}"
-    suffix = "" if kind == "thumb" else f".{kind}"
+        return f"/{variant}/{slug}"
+    suffix = "" if variant == "thumb" else f".{variant}"
     return f"/thumbs/{sha[:2]}/{sha}{suffix}.webp"

@@ -108,7 +108,16 @@
          aria-label="{{ near.ordinal }} of {{ item.context.total }}: {{ near.name }}">
         {# alt is empty on purpose: the link already carries the name, and
            a second copy would be read out twice #}
+        {% if near.thumb %}
         <img src="{{ near.thumb }}" alt="" loading="lazy" decoding="async">
+        {% else %}
+        {# Audio and documents have no picture to take, and the raster
+           routes refuse them. The cell says the kind rather than
+           requesting a 404 and drawing a broken image. #}
+        <span class="viewer-filmstrip-kind" data-filmstrip-kind="{{ near.kind }}" aria-hidden="true">
+          {{ "audio" if near.kind == "audio" else "doc" }}
+        </span>
+        {% endif %}
       </a>
       {% endfor %}
     </div>
