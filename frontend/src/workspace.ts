@@ -44,6 +44,15 @@ export interface Workspace {
   /** The media viewer's information panel. */
   inspector?: "open" | "closed";
   /**
+   * The gallery's filter drawer.
+   *
+   * Whether the drawer is open is furniture. WHICH FILTERS ARE HELD is
+   * never here: that is the question, it lives in the URL, and a filter
+   * that outlived its URL would mean one link answering differently for
+   * two people.
+   */
+  filters?: "open" | "closed";
+  /**
    * Which inspector sections are disclosed, by their `data-panel` name.
    * Absent means "this person has never said", which is what lets a
    * generated picture and a photograph open different sections until

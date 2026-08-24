@@ -32,12 +32,12 @@ class Facet:
 
     key: str
     op: str
-    value: int | str
+    value: int | float | str
 
 
 @dataclasses.dataclass(frozen=True)
 class _Spec:
-    value_kind: str  # 'int' | 'text' | 'date'
+    value_kind: str  # 'int' | 'num' | 'text' | 'date'
     ops: tuple[str, ...]
     #: The predicate over the ResultSet's file alias `f`, with {op}
     #: substituted from _OP_SQL -- structure from this closed registry,
@@ -139,9 +139,161 @@ REGISTRY: dict[str, _Spec] = {
         " AND r.context_generation = (SELECT generation FROM derived_context_state)"
         " AND r.context_policy_version = {policy})",
     ),
+    #: WAS THIS MADE BY A MODEL. Deliberately not `context.origin` --
+    #: origin is the interpretation's verdict and has a fourth value,
+    #: `mixed`, for a file carrying BOTH capture and generation
+    #: evidence. Asking "AI generated" and getting `origin=generated`
+    #: silently drops every mixed file, and because repeated facets are
+    #: ANDed there is no way to spell "generated OR mixed" either. This
+    #: asks the fact instead: is there a generation row. Origin stays
+    #: for the forensic question of what the evidence adds up to.
+    #:
+    #: It also answers before the context job has run, which origin
+    #: cannot: the generation row is written by ingest.
+    "has.generation": _Spec(
+        "int",
+        ("eq",),
+        "(EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id)) {op} ?",
+    ),
+    #: The same question for a camera: is there EXIF from a capture.
+    "has.capture": _Spec(
+        "int",
+        ("eq",),
+        "(EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id)) {op} ?",
+    ),
+    #: Whether anybody is attributed in it, under the PRIMARY clustering
+    #: -- the same run the `person` scope means, so "has people" and
+    #: "has Hannah" cannot disagree about which answer they are reading.
+    "has.people": _Spec(
+        "int",
+        ("eq",),
+        "(EXISTS (SELECT 1 FROM derived_file_person fp"
+        " JOIN derived_face_run fr ON fr.id = fp.run_id AND fr.is_primary = 1"
+        " WHERE fp.file_id = f.id)) {op} ?",
+    ),
+    #: Whether the interpretation put it anywhere.
+    "has.place": _Spec(
+        "int",
+        ("eq",),
+        "(EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
+        " AND mc.policy_version = {policy} AND mc.place_id IS NOT NULL)) {op} ?",
+    ),
+    # --- the resources, by role ----------------------------------------
+    #: An artifact BY ROLE, as a repeatable facet, because the `artifact`
+    #: scope holds exactly one and "this checkpoint with that LoRA" is
+    #: the ordinary question. The value is the artifact's entity id: the
+    #: stable identity, since renaming a model is a thing people do and
+    #: a bookmark must survive it. The chip says the name
+    #: (db/vocabulary.py), never the number.
+    #:
+    #: Repeating one key ANDs, so two LoRAs mean "both were applied".
+    "generation.checkpoint": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
+        " AND fa.role = 'checkpoint' AND fa.artifact_id {op} ?)",
+    ),
+    "generation.lora": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
+        " AND fa.role = 'lora' AND fa.artifact_id {op} ?)",
+    ),
+    #: A workflow hangs off the generation row rather than file_artifact
+    #: -- the one place an artifact's own kind changes its relation.
+    "generation.workflow": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.workflow_id {op} ?)",
+    ),
+    "capture.camera": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
+        " AND fa.role = 'captured_with' AND fa.artifact_id {op} ?)",
+    ),
+    "capture.lens": _Spec(
+        "int",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
+        " AND fa.role = 'mounted_lens' AND fa.artifact_id {op} ?)",
+    ),
+    # --- the recipe, by its numbers ------------------------------------
+    "generation.tool": _Spec(
+        "text",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.tool {op} ?)",
+    ),
+    "generation.scheduler": _Spec(
+        "text",
+        ("eq",),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.scheduler {op} ?)",
+    ),
+    "generation.steps": _Spec(
+        "int",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.steps {op} ?)",
+    ),
+    "generation.cfg": _Spec(
+        "num",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.cfg {op} ?)",
+    ),
+    "generation.denoise": _Spec(
+        "num",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.denoise {op} ?)",
+    ),
+    "generation.clip_skip": _Spec(
+        "int",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id AND gen.clip_skip {op} ?)",
+    ),
+    # --- the camera, by its numbers ------------------------------------
+    "capture.f_number": _Spec(
+        "num",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.f_number {op} ?)",
+    ),
+    "capture.focal_length": _Spec(
+        "num",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.focal_length {op} ?)",
+    ),
+    "capture.exposure_time": _Spec(
+        "num",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.exposure_time {op} ?)",
+    ),
+    # --- the bytes, which every medium has -----------------------------
+    #: `file.width`/`file.height` are the PIXELS ON DISK, never what a
+    #: recipe asked for (that is `generation.width`, and the two
+    #: differing is the interesting part -- db/schema.sql says so at the
+    #: column).
+    "media.width": _Spec(
+        "int",
+        ("eq", "gte", "lte"),
+        "f.width {op} ?",
+    ),
+    "media.height": _Spec(
+        "int",
+        ("eq", "gte", "lte"),
+        "f.height {op} ?",
+    ),
+    #: Seconds. A still picture has none and is not a member of any
+    #: duration question, which is the honest answer rather than zero.
+    "media.duration": _Spec(
+        "num",
+        ("gte", "lte"),
+        "f.duration {op} ?",
+    ),
 }
 
 _INT = re.compile(r"-?\d+")
+#: A real number, written plainly. CFG is 7 and it is also 7.5; a
+#: vocabulary that took only integers would refuse half the library's
+#: own recipes.
+_NUM = re.compile(r"-?\d+(\.\d+)?")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -161,6 +313,13 @@ def facet(key: str, op: str, raw: str) -> Facet:
         if _INT.fullmatch(raw) is None:
             raise ValueError(f"{key} takes an integer, not {raw!r}")
         return Facet(key, op, int(raw))
+    if spec.value_kind == "num":
+        if _NUM.fullmatch(raw) is None:
+            raise ValueError(f"{key} takes a number, not {raw!r}")
+        # int where it is one, so `cfg:eq:7` and `cfg:eq:7.0` are not two
+        # spellings of one question with two fingerprints
+        made = float(raw)
+        return Facet(key, op, int(made) if made.is_integer() else made)
     if spec.value_kind == "date":
         if _DATE.fullmatch(raw) is None:
             raise ValueError(f"{key} takes a date written YYYY-MM-DD, not {raw!r}")
@@ -213,7 +372,7 @@ def conjunction(held) -> tuple[str, list]:
     return ("".join(" AND " + part for part in parts), values)
 
 
-def predicate(held: Facet) -> tuple[str, int | str]:
+def predicate(held: Facet) -> tuple[str, int | float | str]:
     """The registered SQL for one facet -- structure from the closed
     registry, the value bound."""
     spec = REGISTRY[held.key]

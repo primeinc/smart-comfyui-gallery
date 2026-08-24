@@ -80,9 +80,16 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
         {"collection_rules", "collections", "connect", "facets", "naming", "pages", "resultset", "settings"}
     ),
     "sg_web/artifact_view.py": frozenset({"connect", "naming", "pages", "resultset", "settings"}),
-    # facets is vocabulary, not a query path: it parses and spells the
-    # closed registry and never touches a connection
-    "sg_web/gallery.py": frozenset({"connect", "facets", "naming", "places", "resultset", "settings"}),
+    # facets and vocabulary are VOCABULARY, not query paths: they parse
+    # and spell the closed registry and describe what its keys are
+    # called, and neither touches a connection. `discovery` does read
+    # one -- but only to count what one dimension's values would leave,
+    # and it takes that count through resultset.scope_of rather than
+    # writing membership SQL of its own, which is the whole point of it
+    # existing beside the ResultSet instead of inside this adapter.
+    "sg_web/gallery.py": frozenset(
+        {"connect", "discovery", "facets", "naming", "places", "resultset", "settings", "vocabulary"}
+    ),
     "sg_web/media_authored.py": frozenset(
         {"authored", "collections", "connect", "context", "naming", "pages", "places"}
     ),

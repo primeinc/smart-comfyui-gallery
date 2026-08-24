@@ -510,14 +510,302 @@
     return found instanceof type ? found : null;
   }
   function requireData(node, key) {
-    const held = node.dataset[key];
-    if (held === void 0) {
+    const held2 = node.dataset[key];
+    if (held2 === void 0) {
       throw new Error(`expected a data-${key} on ${node.tagName.toLowerCase()}`);
     }
-    return held;
+    return held2;
   }
   function describe(found) {
     return found === null ? "nothing" : found.constructor.name;
+  }
+
+  // src/workspace.ts
+  var VERSION = 1;
+  var KEY = `sg.workspace.v${VERSION}`;
+  function workspace() {
+    try {
+      const held2 = localStorage.getItem(KEY);
+      if (!held2) return {};
+      const parsed = JSON.parse(held2);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch {
+      return {};
+    }
+  }
+  function remember(change) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ ...workspace(), ...change }));
+    } catch {
+    }
+  }
+  function panelState(name) {
+    return workspace().panels?.[name];
+  }
+  function rememberPanel(name, open) {
+    remember({ panels: { ...workspace().panels ?? {}, [name]: open } });
+  }
+
+  // src/filters.ts
+  var NOT_THE_QUESTION = /* @__PURE__ */ new Set(["page"]);
+  var EDITING = "sg.filters.editing";
+  function question() {
+    const held2 = new URLSearchParams(window.location.search);
+    for (const name of NOT_THE_QUESTION) held2.delete(name);
+    return held2;
+  }
+  function go(held2) {
+    const spelled2 = held2.toString();
+    const url = spelled2 ? `${window.location.pathname}?${spelled2}` : window.location.pathname;
+    let editing = false;
+    try {
+      editing = sessionStorage.getItem(EDITING) === "1";
+      sessionStorage.setItem(EDITING, "1");
+    } catch {
+    }
+    if (editing) window.location.replace(url);
+    else window.location.assign(url);
+  }
+  function endSession() {
+    try {
+      sessionStorage.removeItem(EDITING);
+    } catch {
+    }
+  }
+  function held(key, carried) {
+    const asked4 = question();
+    if (carried === "scope") {
+      const value = asked4.get(key);
+      return new Set(value ? [value] : []);
+    }
+    const found = /* @__PURE__ */ new Set();
+    for (const spelled2 of asked4.getAll("f")) {
+      const parts = spelled2.split(":");
+      if (parts.length >= 3 && parts[0] === key) found.add(parts.slice(2).join(":"));
+    }
+    return found;
+  }
+  function toggled(key, carried, op, value, on) {
+    const asked4 = question();
+    if (carried === "scope") {
+      if (on) asked4.set(key, value);
+      else asked4.delete(key);
+      return asked4;
+    }
+    const spelled2 = `${key}:${op}:${value}`;
+    const rest = asked4.getAll("f").filter((one) => one !== spelled2);
+    asked4.delete("f");
+    for (const one of rest) asked4.append("f", one);
+    if (on) asked4.append("f", spelled2);
+    return asked4;
+  }
+  function onlyClause(key, carried, op, value) {
+    const asked4 = question();
+    if (carried === "scope") {
+      if (value === null) asked4.delete(key);
+      else asked4.set(key, value);
+      return asked4;
+    }
+    const rest = asked4.getAll("f").filter((one) => !one.startsWith(`${key}:`));
+    asked4.delete("f");
+    for (const one of rest) asked4.append("f", one);
+    if (value !== null) asked4.append("f", `${key}:${op}:${value}`);
+    return asked4;
+  }
+  function counted(n) {
+    return n.toLocaleString();
+  }
+  function drawList(body, told, carried) {
+    body.replaceChildren();
+    if (!told.options.length) {
+      const empty = document.createElement("p");
+      empty.className = "filter-note";
+      empty.textContent = "nothing here answers this yet";
+      body.append(empty);
+      return;
+    }
+    if (told.options.length > 12 || told.more > 0) {
+      const find = document.createElement("input");
+      find.type = "search";
+      find.className = "filter-find";
+      find.placeholder = `search ${told.label}`;
+      find.setAttribute("aria-label", `search ${told.label}`);
+      find.addEventListener("input", () => {
+        const wanted = find.value.trim().toLowerCase();
+        for (const row of everyElement(body, "[data-option]", HTMLElement)) {
+          row.hidden = wanted !== "" && !(row.dataset.label ?? "").toLowerCase().includes(wanted);
+        }
+      });
+      body.append(find);
+    }
+    const list = document.createElement("ul");
+    list.className = "filter-list";
+    for (const one of told.options) {
+      const row = document.createElement("li");
+      row.dataset.option = one.value;
+      row.dataset.label = one.label;
+      const pick = document.createElement("button");
+      pick.type = "button";
+      pick.className = "filter-option";
+      pick.dataset.chosen = one.chosen ? "true" : "false";
+      pick.setAttribute("aria-pressed", one.chosen ? "true" : "false");
+      const name = document.createElement("span");
+      name.className = "filter-option-label";
+      name.textContent = one.label;
+      const tally = document.createElement("span");
+      tally.className = "filter-option-count";
+      tally.textContent = counted(one.count);
+      pick.append(name, tally);
+      if (one.count === 0 && !one.chosen) pick.disabled = true;
+      pick.addEventListener("click", () => {
+        go(toggled(told.key, carried, told.ops[0] ?? "eq", one.value, !one.chosen));
+      });
+      row.append(pick);
+      list.append(row);
+    }
+    body.append(list);
+    if (told.more > 0) {
+      const rest = document.createElement("p");
+      rest.className = "filter-note";
+      rest.textContent = `${counted(told.more)} more \u2014 search to narrow`;
+      body.append(rest);
+    }
+  }
+  function drawRange(body, key, carried, kind, ops) {
+    body.replaceChildren();
+    const now = held(key, carried);
+    const form = document.createElement("form");
+    form.className = "filter-range";
+    const fields = [];
+    for (const op of ops) {
+      if (op !== "gte" && op !== "lte" && op !== "eq") continue;
+      const wrap = document.createElement("label");
+      wrap.className = "filter-range-field";
+      const said = document.createElement("span");
+      said.textContent = op === "gte" ? "from" : op === "lte" ? "to" : "exactly";
+      const input = document.createElement("input");
+      input.type = kind === "date" ? "date" : "number";
+      if (kind === "num") input.step = "any";
+      input.name = op;
+      input.setAttribute("aria-label", `${key} ${said.textContent}`);
+      for (const spelled2 of question().getAll("f")) {
+        const parts = spelled2.split(":");
+        if (parts[0] === key && parts[1] === op) input.value = parts.slice(2).join(":");
+      }
+      if (carried === "scope" && op === ops[0]) {
+        const value = [...now][0];
+        if (value) input.value = value;
+      }
+      wrap.append(said, input);
+      form.append(wrap);
+      fields.push({ op, input });
+    }
+    const apply = document.createElement("button");
+    apply.type = "submit";
+    apply.textContent = "apply";
+    form.append(apply);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      let asked4 = question();
+      for (const { op, input } of fields) {
+        const value = input.value.trim();
+        if (carried === "scope") {
+          asked4 = onlyClause(key, carried, op, value === "" ? null : value);
+          continue;
+        }
+        const rest = asked4.getAll("f").filter((one) => !one.startsWith(`${key}:${op}:`));
+        asked4.delete("f");
+        for (const one of rest) asked4.append("f", one);
+        if (value !== "") asked4.append("f", `${key}:${op}:${value}`);
+      }
+      go(asked4);
+    });
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "filter-range-clear";
+    clear.textContent = "clear";
+    clear.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", null)));
+    form.append(clear);
+    body.append(form);
+  }
+  async function fill(section) {
+    const body = findElement(section, "[data-filter-body]", HTMLElement);
+    const key = section.dataset.filter;
+    if (!body || !key) return;
+    const carried = section.dataset.carried ?? "facet";
+    const ops = (section.dataset.ops ?? "eq").split(",").filter(Boolean);
+    if (section.dataset.listable !== "1") {
+      drawRange(body, key, carried, section.dataset.valueKind ?? "int", ops);
+      body.dataset.state = "ready";
+      return;
+    }
+    body.dataset.state = "counting";
+    body.replaceChildren();
+    const waiting = document.createElement("p");
+    waiting.className = "filter-note";
+    waiting.textContent = "counting\u2026";
+    body.append(waiting);
+    const asked4 = question();
+    asked4.set("key", key);
+    try {
+      const answered2 = await fetch(`/g/options?${asked4.toString()}`, { headers: { accept: "application/json" } });
+      if (!answered2.ok) throw new Error(`${answered2.status}`);
+      drawList(body, await answered2.json(), carried);
+      body.dataset.state = "ready";
+    } catch {
+      body.replaceChildren();
+      const failed = document.createElement("p");
+      failed.className = "filter-note warn";
+      failed.textContent = "could not count these";
+      body.append(failed);
+      body.dataset.state = "failed";
+    }
+  }
+  function mountFilters(root) {
+    const drawer = findElement(root, "[data-filters-panel]", HTMLElement);
+    const open = findElement(root, "[data-filters-open]", HTMLElement);
+    if (!drawer || !open) return;
+    const show = (on, arranged = true) => {
+      drawer.hidden = !on;
+      root.dataset.filters = on ? "open" : "closed";
+      open.setAttribute("aria-expanded", on ? "true" : "false");
+      if (arranged) remember({ filters: on ? "open" : "closed" });
+      if (!on) endSession();
+    };
+    open.addEventListener("click", () => show(drawer.hidden !== false));
+    const close = findElement(drawer, "[data-filters-close]", HTMLElement);
+    if (close) close.addEventListener("click", () => show(false));
+    for (const section of everyElement(drawer, "[data-filter]", HTMLDetailsElement)) {
+      const key = section.dataset.filter ?? "";
+      const said = panelState(`filter:${key}`);
+      if (said) section.open = true;
+      section.addEventListener("toggle", () => {
+        rememberPanel(`filter:${key}`, section.open);
+        if (section.open && !section.dataset.filled) {
+          section.dataset.filled = "1";
+          void fill(section);
+        }
+      });
+      if (section.open) {
+        section.dataset.filled = "1";
+        void fill(section);
+      }
+    }
+    for (const chip of everyElement(root, "[data-chip-edit]", HTMLElement)) {
+      chip.addEventListener("click", () => {
+        const key = chip.dataset.chipEdit ?? "";
+        const section = findElement(drawer, `[data-filter="${key}"]`, HTMLDetailsElement);
+        show(true);
+        if (!section) return;
+        section.open = true;
+        section.scrollIntoView({ block: "nearest" });
+      });
+    }
+    for (const clear of everyElement(root, "[data-filters-clear], [data-chips-clear]", HTMLElement)) {
+      clear.addEventListener("click", endSession);
+    }
+    show(workspace().filters === "open", false);
   }
 
   // src/keys.ts
@@ -752,33 +1040,6 @@
     refit();
   }
 
-  // src/workspace.ts
-  var VERSION = 1;
-  var KEY = `sg.workspace.v${VERSION}`;
-  function workspace() {
-    try {
-      const held = localStorage.getItem(KEY);
-      if (!held) return {};
-      const parsed = JSON.parse(held);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-      return parsed;
-    } catch {
-      return {};
-    }
-  }
-  function remember(change) {
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ ...workspace(), ...change }));
-    } catch {
-    }
-  }
-  function panelState(name) {
-    return workspace().panels?.[name];
-  }
-  function rememberPanel(name, open) {
-    remember({ panels: { ...workspace().panels ?? {}, [name]: open } });
-  }
-
   // src/viewer.ts
   var FIT = { framing: "fit", scale: 1, x: 0, y: 0 };
   function isStill(stage) {
@@ -869,8 +1130,8 @@
       const px = clientX - (box.left + box.width / 2);
       const py = clientY - (box.top + box.height / 2);
       const ratio = next / look.scale;
-      const held = tethered(px - (px - look.x) * ratio, py - (py - look.y) * ratio, next);
-      look = { framing: "free", scale: next, ...held };
+      const held2 = tethered(px - (px - look.x) * ratio, py - (py - look.y) * ratio, next);
+      look = { framing: "free", scale: next, ...held2 };
       paint();
       promote();
     };
@@ -971,8 +1232,8 @@
       });
       onElement(stageBox, "pointermove", (event) => {
         if (dragging !== event.pointerId) return;
-        const held = tethered(from.ox + (event.clientX - from.x), from.oy + (event.clientY - from.y), look.scale);
-        look = { framing: "free", scale: look.scale, ...held };
+        const held2 = tethered(from.ox + (event.clientX - from.x), from.oy + (event.clientY - from.y), look.scale);
+        look = { framing: "free", scale: look.scale, ...held2 };
         paint();
       });
       const release = (event) => {
@@ -1077,11 +1338,11 @@
 
   // src/gallery.ts
   var asked = (spelled2, take) => {
-    const question = new URLSearchParams(spelled2);
-    const one = (name) => question.get(name);
-    const counted = (name) => {
-      const held = question.get(name);
-      return held === null ? null : Number(held);
+    const question2 = new URLSearchParams(spelled2);
+    const one = (name) => question2.get(name);
+    const counted2 = (name) => {
+      const held2 = question2.get(name);
+      return held2 === null ? null : Number(held2);
     };
     return {
       take,
@@ -1090,13 +1351,14 @@
       artifact: one("artifact"),
       kind: one("kind"),
       favorite: one("favorite"),
-      rating_min: counted("rating_min"),
+      rating_min: counted2("rating_min"),
       q: one("q"),
       sort: one("sort"),
-      f: question.getAll("f")
+      f: question2.getAll("f")
     };
   };
   (() => {
+    mountFilters(document.body);
     const ask = findElement(document, "[data-ask]", HTMLFormElement);
     if (ask) {
       const fields = () => [
@@ -1119,16 +1381,16 @@
     const grid = () => findElement(document, "[data-grid]", HTMLElement);
     const spelling = () => {
       const mounted2 = grid();
-      const held = mounted2 ? requireData(mounted2, "qbase").replace(/&$/, "") : window.location.search;
-      const question = new URLSearchParams(held);
-      question.delete("page");
-      question.delete("size");
-      return question.toString();
+      const held2 = mounted2 ? requireData(mounted2, "qbase").replace(/&$/, "") : window.location.search;
+      const question2 = new URLSearchParams(held2);
+      question2.delete("page");
+      question2.delete("size");
+      return question2.toString();
     };
     const cutoff = (spelled2) => {
       if (!new URLSearchParams(spelled2).get("q")) return null;
-      const held = window.prompt("how many top results belong to it?", "100");
-      return held === null ? void 0 : Number(held);
+      const held2 = window.prompt("how many top results belong to it?", "100");
+      return held2 === null ? void 0 : Number(held2);
     };
     const saver = findElement(document, "[data-save-smart]", HTMLElement);
     saver?.addEventListener("click", async () => {
@@ -1147,7 +1409,7 @@
     const replacer = findElement(document, "[data-replace-smart]", HTMLElement);
     replacer?.addEventListener("click", async () => {
       const shelf = await api.GET("/albums", { headers: { accept: "application/json" } });
-      const smarts = (shelf.data ?? []).filter((held) => held.kind === "smart");
+      const smarts = (shelf.data ?? []).filter((held2) => held2.kind === "smart");
       const first = smarts[0];
       if (first === void 0) {
         window.alert("no smart collection exists yet -- save the view as a new one instead");
@@ -1155,7 +1417,7 @@
       }
       const named = window.prompt(
         `replace the rule of which smart collection?
-${smarts.map((held) => held.slug).join(", ")}`,
+${smarts.map((held2) => held2.slug).join(", ")}`,
         first.slug
       );
       if (!named) return;
@@ -1217,22 +1479,22 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     const peeked = /* @__PURE__ */ new Map();
     const peek = async (page, s) => {
       const key = `${s.answer}:${page}`;
-      const held = peeked.get(key);
-      if (held) return held;
-      const question = new URLSearchParams(s.qbase);
+      const held2 = peeked.get(key);
+      if (held2) return held2;
+      const question2 = new URLSearchParams(s.qbase);
       const { data } = await api.GET("/g/peek", {
         params: {
           query: {
-            folder: question.get("folder"),
-            album: question.get("album"),
-            person: question.get("person"),
-            artifact: question.get("artifact"),
-            kind: question.get("kind"),
-            favorite: question.get("favorite"),
-            rating_min: question.get("rating_min") === null ? null : Number(question.get("rating_min")),
-            q: question.get("q"),
-            sort: question.get("sort"),
-            f: question.getAll("f"),
+            folder: question2.get("folder"),
+            album: question2.get("album"),
+            person: question2.get("person"),
+            artifact: question2.get("artifact"),
+            kind: question2.get("kind"),
+            favorite: question2.get("favorite"),
+            rating_min: question2.get("rating_min") === null ? null : Number(question2.get("rating_min")),
+            q: question2.get("q"),
+            sort: question2.get("sort"),
+            f: question2.getAll("f"),
             page,
             count: 9
           }
@@ -1303,13 +1565,13 @@ ${smarts.map((held) => held.slug).join(", ")}`,
       dismiss: () => viewer?.unwind() ?? false,
       mounted: (mounted2) => {
         viewer?.release();
-        const held = mounted2 && findElement(mounted2, "[data-viewer]", HTMLElement);
-        viewer = held ? mountViewer(held, (href) => void lightbox?.open(href, "replace")) : null;
+        const held2 = mounted2 && findElement(mounted2, "[data-viewer]", HTMLElement);
+        viewer = held2 ? mountViewer(held2, (href) => void lightbox?.open(href, "replace")) : null;
       },
       generation: () => {
         const shown = findElement(document, "[data-lightbox]", HTMLElement);
-        const held = shown?.dataset.currency;
-        if (held) return held;
+        const held2 = shown?.dataset.currency;
+        if (held2) return held2;
         const s = shape();
         return s ? s.currency : "";
       },
@@ -1324,22 +1586,22 @@ ${smarts.map((held) => held.slug).join(", ")}`,
         const mounted2 = shown?.dataset.answer || grid()?.dataset.answer || "";
         const slug = shown?.dataset.slug;
         if (!mounted2 || !slug) return false;
-        const question = new URLSearchParams(window.location.search);
+        const question2 = new URLSearchParams(window.location.search);
         const { data } = await api.GET("/g/locate/{slug}", {
           params: {
             path: { slug },
             query: {
-              folder: question.get("folder"),
-              album: question.get("album"),
-              person: question.get("person"),
-              artifact: question.get("artifact"),
-              kind: question.get("kind"),
-              favorite: question.get("favorite"),
-              rating_min: question.get("rating_min") === null ? null : Number(question.get("rating_min")),
-              q: question.get("q"),
-              sort: question.get("sort"),
-              size: question.get("size") === null ? null : Number(question.get("size")),
-              f: question.getAll("f")
+              folder: question2.get("folder"),
+              album: question2.get("album"),
+              person: question2.get("person"),
+              artifact: question2.get("artifact"),
+              kind: question2.get("kind"),
+              favorite: question2.get("favorite"),
+              rating_min: question2.get("rating_min") === null ? null : Number(question2.get("rating_min")),
+              q: question2.get("q"),
+              sort: question2.get("sort"),
+              size: question2.get("size") === null ? null : Number(question2.get("size")),
+              f: question2.getAll("f")
             }
           }
         });
@@ -1377,10 +1639,10 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     }
     const albums = requireElement(root, "[data-albums]", HTMLElement);
     albums.replaceChildren(
-      ...authored.collections.map((held) => {
+      ...authored.collections.map((held2) => {
         const link = document.createElement("a");
-        link.href = `/t/${held.slug}`;
-        link.textContent = held.name;
+        link.href = `/t/${held2.slug}`;
+        link.textContent = held2.name;
         return link;
       })
     );
@@ -1389,11 +1651,11 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     (one) => one !== null
   );
   var asked2 = (qs) => {
-    const question = new URLSearchParams(qs ?? "");
-    const one = (name) => question.get(name);
-    const counted = (name) => {
-      const held = question.get(name);
-      return held === null ? null : Number(held);
+    const question2 = new URLSearchParams(qs ?? "");
+    const one = (name) => question2.get(name);
+    const counted2 = (name) => {
+      const held2 = question2.get(name);
+      return held2 === null ? null : Number(held2);
     };
     return {
       folder: one("folder"),
@@ -1402,11 +1664,11 @@ ${smarts.map((held) => held.slug).join(", ")}`,
       artifact: one("artifact"),
       kind: one("kind"),
       favorite: one("favorite"),
-      rating_min: counted("rating_min"),
+      rating_min: counted2("rating_min"),
       q: one("q"),
-      f: question.getAll("f"),
+      f: question2.getAll("f"),
       sort: one("sort"),
-      size: counted("size")
+      size: counted2("size")
     };
   };
   var settle = async (root) => {
@@ -1419,8 +1681,8 @@ ${smarts.map((held) => held.slug).join(", ")}`,
       window.location.reload();
       return;
     }
-    const held = surfaces[0]?.dataset.answer ?? "";
-    if (!data.in_answer || held && data.answer !== held) {
+    const held2 = surfaces[0]?.dataset.answer ?? "";
+    if (!data.in_answer || held2 && data.answer !== held2) {
       window.location.reload();
       return;
     }
@@ -1543,11 +1805,11 @@ ${smarts.map((held) => held.slug).join(", ")}`,
 
   // src/selection.ts
   var asked3 = () => {
-    const question = new URLSearchParams(window.location.search);
-    const one = (name) => question.get(name);
-    const counted = (name) => {
-      const held = question.get(name);
-      return held === null ? null : Number(held);
+    const question2 = new URLSearchParams(window.location.search);
+    const one = (name) => question2.get(name);
+    const counted2 = (name) => {
+      const held2 = question2.get(name);
+      return held2 === null ? null : Number(held2);
     };
     return {
       folder: one("folder"),
@@ -1556,11 +1818,11 @@ ${smarts.map((held) => held.slug).join(", ")}`,
       artifact: one("artifact"),
       kind: one("kind"),
       favorite: one("favorite"),
-      rating_min: counted("rating_min"),
+      rating_min: counted2("rating_min"),
       q: one("q"),
       sort: one("sort"),
-      size: counted("size"),
-      f: question.getAll("f")
+      size: counted2("size"),
+      f: question2.getAll("f")
     };
   };
   (() => {
@@ -1582,9 +1844,9 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     const sync = () => {
       const mounted2 = grid();
       if (!mounted2) return;
-      const held = requireData(mounted2, "answer");
-      if (answer !== held) {
-        answer = held;
+      const held2 = requireData(mounted2, "answer");
+      if (answer !== held2) {
+        answer = held2;
         selected.clear();
       }
       draw2();
@@ -1699,10 +1961,10 @@ ${smarts.map((held) => held.slug).join(", ")}`,
     document.body.addEventListener("htmx:afterSwap", sync);
     sync();
   })();
-  function asPlaceKind(held) {
+  function asPlaceKind(held2) {
     const known = ["country", "region", "island", "county", "city", "locality", "neighborhood", "poi"];
-    const found = known.find((one) => one === held);
-    if (found === void 0) throw new Error(`the place picker offered ${held}, which is not a place kind`);
+    const found = known.find((one) => one === held2);
+    if (found === void 0) throw new Error(`the place picker offered ${held2}, which is not a place kind`);
     return found;
   }
 })();

@@ -14,6 +14,7 @@ on hover -- and answer from the same query the shell was drawn from.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 import time
 from typing import Literal
@@ -24,7 +25,7 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.params import FromPath, FromQuery
 from litestar.response import Template
 
-from db import connect, naming, places, resultset, settings
+from db import connect, discovery, naming, places, resultset, settings, vocabulary
 from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
@@ -42,10 +43,8 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()  # a semantic answer may have minted registry rows
-        # a place facet's chip says the place's name, not its id
-        spelled_places = {
-            int(one.value): places.label(conn, int(one.value)) for one in query.facets if one.key == "place.id"
-        }
+        # an id-valued chip says the name, not the number
+        named = discovery.labels(conn, query)
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -64,7 +63,6 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "missing_spaces": provenance.get("missing") or {},
         "captions_unmatched": unmatched,
         "answered_by": provenance.get("contributors") or [],
-        "place_kinds": list(places.KINDS),
         "q": query.text or "",
         "folder": query.folder or "",
         "album": query.album or "",
@@ -74,74 +72,70 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int) -> dic
         "favorite": "" if query.favorite is None else ("1" if query.favorite else "0"),
         "rating_min": query.rating_min or "",
         "facets": [facets_module.spell(held) for held in query.facets],
-        "chips": _chips(query, spelled_places),
+        "place_kinds": list(places.KINDS),
+        "chips": _chips(query, named),
         "qs": shape["qs"],
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
+        # the filter surface, drawn from the one vocabulary: the
+        # sections and their dimensions, and how many clauses the
+        # question already carries per dimension. The VALUES are not
+        # here -- counting thirty dimensions to draw a closed drawer
+        # is thirty queries nobody asked for; each section fetches its
+        # own from /g/options when somebody opens it.
+        "filter_groups": [
+            {"name": name, "label": label, "dimensions": held} for name, label, held in vocabulary.grouped(query.kind)
+        ],
+        "filter_counts": discovery.counts(query),
+        "filters_held": sum(discovery.counts(query).values()),
     }
 
 
-def _chips(query: resultset.GalleryQuery, spelled_places: dict[int, str | None] | None = None) -> list[dict]:
-    """Every facet the question carries, as a chip with the question
-    that remains when it is removed -- spelled by the ResultSet, so the
-    chip's link is the same canonical state the URL holds."""
-    import dataclasses
+def _chips(query: resultset.GalleryQuery, named: dict[str, dict[int, str]] | None = None) -> list[dict]:
+    """Every clause the question carries, as a chip that reads as words
+    and carries the question that remains when it is removed.
 
+    Both halves come from elsewhere on purpose. What a clause is CALLED
+    is db/vocabulary.py's -- this module used to hold a private dict of
+    labels beside the registry that held the predicates, and the two
+    drifted, which is how a chip ends up printing a key. What "the
+    question without this" MEANS is db/discovery.py's `without`, the
+    same function that decides what a dimension's own option counts are
+    taken against, so a remove link and a count cannot disagree.
+    """
     made = []
-    # the scopes and filters the URL carries as their own parameters, each
-    # a chip whose removal is the question without it
-    for field, label in _SCOPES:
-        value = getattr(query, field)
-        if value is None:
+    for one in vocabulary.DIMENSIONS:
+        held = discovery.chosen_values(query, one.key)
+        if not held:
             continue
-        rest = dataclasses.replace(query, **{field: None})
-        if field == "rating_min":
-            spelled = f"{label} {value}+"
-        elif field == "favorite":
-            spelled = "favorites" if value else "not favorited"
-        else:
-            spelled = f"{label} {value}"
-        made.append({"spelled": f"{field}={value}", "label": spelled, "remove_qs": resultset.canonical(rest)})
-    for held in query.facets:
-        rest = dataclasses.replace(query, facets=tuple(one for one in query.facets if one != held))
-        made.append(
-            {
-                "spelled": facets_module.spell(held),
-                "label": _chip_label(held, spelled_places or {}),
-                "remove_qs": resultset.canonical(rest),
-            }
-        )
+        if one.carried == "scope":
+            rest = discovery.without(query, one.key)
+            value = getattr(query, one.key)
+            op = one.ops[0]
+            made.append(
+                {
+                    "key": one.key,
+                    "spelled": f"{one.key}={held[0]}",
+                    "label": vocabulary.chip(one, op, value, named and named.get(one.key)),
+                    "remove_qs": resultset.canonical(rest),
+                }
+            )
+            continue
+        # A facet may appear more than once -- two LoRAs are two clauses
+        # -- so each is its own chip and each removes only itself.
+        for facet in query.facets:
+            if facet.key != one.key:
+                continue
+            rest = dataclasses.replace(query, facets=tuple(other for other in query.facets if other != facet))
+            made.append(
+                {
+                    "key": one.key,
+                    "spelled": facets_module.spell(facet),
+                    "label": vocabulary.chip(one, facet.op, facet.value, named and named.get(one.key)),
+                    "remove_qs": resultset.canonical(rest),
+                }
+            )
     return made
-
-
-_SCOPES = (
-    ("folder", "folder"),
-    ("album", "album"),
-    ("person", "person"),
-    ("artifact", "artifact"),
-    ("kind", "kind"),
-    ("favorite", "favorite"),
-    ("rating_min", "rated"),
-)
-
-
-_OPS = {"eq": "", "gte": "from ", "lte": "to "}
-_KEYS = {
-    "context.local_day": "day",
-    "context.moment": "moment",
-    "event.id": "session",
-    "context.origin": "origin",
-    "context.disputed": "disputed",
-    "context.granule": "claimed within",
-    "place.id": "place",
-}
-
-
-def _chip_label(held, spelled_places: dict[int, str | None]) -> str:
-    if held.key == "place.id":
-        name = spelled_places.get(int(held.value))
-        return f"place {name}" if name else f"place #{held.value} (no such place)"
-    return f"{_KEYS.get(held.key, held.key)} {_OPS.get(held.op, held.op)}{held.value}"
 
 
 @get("/g", sync_to_thread=True)
@@ -208,6 +202,105 @@ def grid_fragment(
         facets=f,
     )
     return Template(template_name="_grid.html", context=_grid_context(state, query, page))
+
+
+class FilterOption(Wire):
+    """One value a dimension could take, and what it would leave."""
+
+    #: as the URL spells it
+    value: str
+    #: as a person reads it
+    label: str
+    #: how many media it would leave, FROM THE REST OF THIS QUESTION --
+    #: this dimension's own clauses removed first, so the list can
+    #: broaden the question and not only narrow it
+    count: int
+    #: whether the question already carries it
+    chosen: bool
+
+
+class FilterOptions(Wire):
+    """One dimension's list, ready to draw."""
+
+    key: str
+    label: str
+    #: what it means, where the label alone would mislead
+    note: str
+    value_kind: str
+    ops: list[str]
+    options: list[FilterOption]
+    #: how many values were not returned. Never silently zero: a
+    #: truncated list that does not say so reads as a complete one, and
+    #: then a model that IS in the library looks absent.
+    more: int
+
+
+@get("/g/options", sync_to_thread=True)
+def filter_options(
+    state: State,
+    key: FromQuery[str],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    search: FromQuery[str | None] = None,
+) -> FilterOptions:
+    """What one dimension could be narrowed to from here, counted.
+
+    Counted through db/resultset.py `scope_of`, so this and the grid
+    cannot come to disagree about which media the question holds; and
+    counted with THIS dimension's own clauses removed, so opening the
+    list a person came to change their mind with can widen it.
+    """
+    query = _asked(
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
+    )
+    one = vocabulary.dimension(key)
+    if one is None:
+        raise NotFoundException(f"there is no filter named {key!r}")
+    conn = connect.connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            told = discovery.options(
+                conn, query, key, actor_id=state.actor_id, models_dir=weights, now=time.time(), search=search
+            )
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return FilterOptions(
+        key=told.key,
+        label=told.label,
+        note=one.note,
+        value_kind=one.value_kind,
+        ops=list(one.ops),
+        options=[
+            FilterOption(value=each.value, label=each.label, count=each.count, chosen=each.chosen)
+            for each in told.options
+        ],
+        more=told.more,
+    )
 
 
 @get("/g/peek", sync_to_thread=True)

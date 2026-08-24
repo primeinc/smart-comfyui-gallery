@@ -4,6 +4,7 @@
 // attributes, never style classes.
 import { api, refusal } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
+import { mountFilters } from "./filters";
 import type { components } from "./generated/api";
 import { addressableOverlay, isPlainClick } from "./overlay";
 import { type Viewer, mountViewer } from "./viewer";
@@ -49,6 +50,10 @@ const asked = (spelled: string, take: number | null): Rule => {
 };
 
 (() => {
+  // The filter surface: the question's own controls, drawn from the
+  // vocabulary the server registered them in.
+  mountFilters(document.body);
+
   // The form must ask a question the server can answer: a phrase orders
   // by similarity (the seam refuses the contradiction), and empty fields
   // have no place in a canonical URL.

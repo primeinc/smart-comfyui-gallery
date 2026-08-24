@@ -1,0 +1,384 @@
+"""Asking, in a browser: the filter surface as a person meets it.
+
+The vocabulary and the counting are proved without a browser
+(test_the_query_vocabulary_is_one_module.py). What needs one is
+everything that decides whether a person can actually USE them:
+
+  * that the door is VISIBLE. A filter surface reachable only by knowing
+    a keyboard shortcut is a filter surface for whoever wrote it, and no
+    unit test can tell the difference.
+  * that the URL stays the question. Reload, a pasted link and Back are
+    claims about the browser, and they are the difference between a
+    shared link and a screenshot.
+  * that filtering is ONE editing session. "Back goes to what I was
+    looking at" cannot be asserted anywhere but a real history stack.
+  * that what is REMEMBERED is the furniture and never the question --
+    the drawer stays open, the filters do not follow you home.
+
+The library is mixed on purpose: generated stills of two recipes, a
+photograph, and a real video. A filter surface proved only on generated
+images is a surface that will surprise somebody the first time they ask
+about a clip.
+"""
+
+from __future__ import annotations
+
+import time
+
+import numpy as np
+import pytest
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
+from playwright.sync_api import Page
+
+from tests.conftest import Live
+
+pytestmark = pytest.mark.slow
+
+#: Four of one recipe and two of another, so a wrong count is visible.
+#: With one of each, every wrong answer is still 1.
+MADE = [
+    *[("dreamshaper_8", "filmGrain", "Euler a")] * 4,
+    *[("juggernautXL", "detailTweaker", "DPM++ 2M")] * 2,
+]
+
+
+def _recipe(checkpoint: str, lora: str, sampler: str) -> str:
+    return (
+        f"a brass diving helmet at dusk <lora:{lora}:0.35>\n"
+        "Negative prompt: blurry\n"
+        f"Steps: 28, Sampler: {sampler}, CFG scale: 7, Seed: 4242, Size: 832x1216, "
+        f"Model: {checkpoint}"
+    )
+
+
+def write_library(root) -> None:
+    for i, (checkpoint, lora, sampler) in enumerate(MADE):
+        info = PngInfo()
+        info.add_text("parameters", _recipe(checkpoint, lora, sampler))
+        Image.new("RGB", (64, 48), (20 + i * 7, 60, 90)).save(root / f"made_{i:02d}.png", pnginfo=info)
+    Image.new("RGB", (64, 48), (10, 120, 10)).save(root / "taken.png")
+
+    import av
+
+    with av.open(str(root / "clip.mp4"), "w") as container:
+        stream = container.add_stream("h264", rate=5)
+        stream.width, stream.height = 320, 180
+        stream.pix_fmt = "yuv420p"
+        for _ in range(5):
+            frame = av.VideoFrame.from_ndarray(np.full((180, 320, 3), (0, 0, 255), dtype=np.uint8), format="rgb24")
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+
+
+#: Everything the library holds: the recipes, the photograph, the clip.
+WHOLE = len(MADE) + 2
+
+
+def prepare(api, root) -> None:
+    made = api.post("/roots", json={"path": str(root)}).json()
+    swept = api.post(f"/roots/{made['id']}/scan").json()
+    assert swept["added"] == WHOLE
+    api.post("/jobs/ingest")
+    _drained(api)
+
+
+def _drained(api, timeout=90.0) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        running = [j["id"] for j in api.get("/jobs").json() if j["state"] in ("queued", "running")]
+        if not running:
+            return
+        assert time.monotonic() < deadline, f"jobs still running: {running}"
+        time.sleep(0.05)
+
+
+# --- reading the surface ----------------------------------------------------
+
+
+def _open_gallery(page: Page) -> None:
+    page.goto("/g")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+
+
+def _open_filters(page: Page) -> None:
+    if page.get_attribute("[data-filters-open]", "aria-expanded") != "true":
+        page.click("[data-filters-open]")
+    page.wait_for_selector("[data-filters-panel]:not([hidden])", timeout=5_000)
+
+
+def _open_dimension(page: Page, key: str) -> None:
+    """Disclose one filter and wait for its counted values."""
+    _open_filters(page)
+    section = page.locator(f'[data-filter="{key}"]')
+    if not section.evaluate("s => s.open"):
+        section.locator("summary").click()
+    # on `state`, not on the absence of the word "counting": right after
+    # the click the body is still EMPTY, which also contains no such word,
+    # and waiting on that returned before the fetch had begun
+    page.wait_for_function(
+        "key => document.querySelector(`[data-filter=\"${key}\"] [data-filter-body]`)?.dataset.state === 'ready'",
+        arg=key,
+        timeout=10_000,
+    )
+
+
+def _values(page: Page, key: str) -> dict[str, int]:
+    return page.evaluate(
+        'key => Object.fromEntries([...document.querySelectorAll(`[data-filter="${key}"] [data-option]`)]'
+        ".map(row => [row.dataset.label, Number(row.querySelector('.filter-option-count').textContent"
+        ".replace(/[^0-9]/g, ''))]))",
+        key,
+    )
+
+
+def _cells(page: Page) -> int:
+    return page.evaluate("() => document.querySelectorAll('[data-grid] a.cell').length")
+
+
+def _chips(page: Page) -> list[str]:
+    return page.evaluate("() => [...document.querySelectorAll('[data-chip-edit]')].map(c => c.textContent.trim())")
+
+
+def _pick(page: Page, key: str, label: str) -> None:
+    _open_dimension(page, key)
+    page.click(
+        f'[data-filter="{key}"] [data-option="{label}"] .filter-option, '
+        f'[data-filter="{key}"] [data-label="{label}"] .filter-option'
+    )
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+
+
+# --- the door is visible ----------------------------------------------------
+
+
+def test_the_filters_door_is_always_there_and_says_how_many(page: Page, live: Live, unbroken):
+    """Discoverability first, shortcut second. The control is visible on
+    a page nobody has configured, and it carries the count."""
+    _open_gallery(page)
+    door = page.locator("[data-filters-open]")
+    assert door.is_visible(), "the way into filtering must not be a keyboard secret"
+    assert door.get_attribute("aria-expanded") == "false"
+    assert page.locator("[data-filters-held]").count() == 0, "no filters held, so no badge"
+
+    _open_filters(page)
+    assert page.locator("[data-filters-panel]").is_visible()
+    # the sections come from the vocabulary, not from the template
+    groups = page.evaluate(
+        "() => [...document.querySelectorAll('[data-filter-group]')].map(g => g.dataset.filterGroup)"
+    )
+    assert {"mine", "media", "generation", "camera", "time"} <= set(groups), groups
+
+
+def test_the_surface_offers_far_more_than_the_header_ever_did(page: Page, live: Live, unbroken):
+    """The header carried three questions out of a registry of thirty.
+    This is the number that changed."""
+    _open_gallery(page)
+    _open_filters(page)
+    offered = page.evaluate("() => [...document.querySelectorAll('[data-filter]')].map(d => d.dataset.filter)")
+    assert len(offered) >= 20, f"only {len(offered)} filters reached the surface"
+    for key in ("has.generation", "generation.checkpoint", "generation.lora", "kind", "capture.iso"):
+        assert key in offered, f"{key} is answerable and was not offered"
+    # and the machine's own links are described but never listed
+    assert "context.moment" not in offered
+    assert "event.id" not in offered
+
+
+# --- counts, and what they mean ---------------------------------------------
+
+
+def test_the_values_are_counted_and_the_counts_are_real(page: Page, live: Live, unbroken):
+    _open_gallery(page)
+    assert _cells(page) == WHOLE
+    assert _values(page, "generation.checkpoint") == {}  # not opened yet
+    _open_dimension(page, "generation.checkpoint")
+    assert _values(page, "generation.checkpoint") == {"dreamshaper_8": 4, "juggernautXL": 2}
+
+    _open_dimension(page, "kind")
+    assert _values(page, "kind") == {"image": WHOLE - 1, "video": 1}
+
+
+def test_choosing_a_value_narrows_the_answer_and_says_so(page: Page, live: Live, unbroken):
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+
+    assert _cells(page) == 4
+    assert _chips(page) == ["checkpoint dreamshaper_8"], "the chip reads as words, not as a key"
+    assert "f=generation.checkpoint" in page.url, page.url
+    assert "4 results" in page.inner_text("[data-total-count]")
+    assert page.inner_text("[data-filters-held]").strip() == "1"
+
+
+def test_a_checkpoint_and_a_lora_compose(page: Page, live: Live, unbroken):
+    """The `artifact` scope holds exactly one, so "this checkpoint with
+    that LoRA" was unaskable from any surface. Two chips, one answer."""
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    _pick(page, "generation.lora", "filmGrain")
+
+    assert sorted(_chips(page)) == ["LoRA filmGrain", "checkpoint dreamshaper_8"]
+    assert _cells(page) == 4
+    assert page.inner_text("[data-filters-held]").strip() == "2"
+
+
+def test_a_dimensions_own_list_still_offers_what_it_would_give(page: Page, live: Live, unbroken):
+    """Disjunctive faceting, where a person can see it.
+
+    Counted against the whole question, choosing dreamshaper would leave
+    juggernaut reading 0 and the list a person opened to change their
+    mind could only agree with them.
+    """
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    assert _values(page, "generation.checkpoint") == {"dreamshaper_8": 4, "juggernautXL": 2}, (
+        "the other checkpoint must still say what it would give"
+    )
+    # and a different dimension IS narrowed by the choice
+    _open_dimension(page, "generation.sampler")
+    assert _values(page, "generation.sampler") == {"Euler a": 4}
+
+
+def test_choosing_the_held_value_again_takes_it_off(page: Page, live: Live, unbroken):
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    assert _cells(page) == 4
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    assert _cells(page) == WHOLE
+    assert _chips(page) == []
+
+
+# --- cross-media ------------------------------------------------------------
+
+
+def test_the_surface_is_not_a_feature_for_one_file_type(page: Page, live: Live, unbroken):
+    """A video is as filterable as a picture, and the sections offered
+    follow the medium being asked about."""
+    _open_gallery(page)
+    _pick(page, "kind", "video")
+    assert _cells(page) == 1
+    assert _chips(page) == ["kind video"]
+
+    _open_filters(page)
+    offered = page.evaluate("() => [...document.querySelectorAll('[data-filter]')].map(d => d.dataset.filter)")
+    assert "media.duration" in offered, "a clip has a length and it is askable"
+
+    page.goto("/g?kind=image")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    _open_filters(page)
+    stills = page.evaluate("() => [...document.querySelectorAll('[data-filter]')].map(d => d.dataset.filter)")
+    assert "media.duration" not in stills, "a still picture has no length; offering it offers an empty answer"
+    assert "media.width" in stills
+
+
+def test_ai_generated_is_asked_of_the_fact_not_the_interpretation(page: Page, live: Live, unbroken):
+    """`has.generation` answers before any context job has run, which is
+    the state this library is in and the state a fresh one is in."""
+    _open_gallery(page)
+    _pick(page, "has.generation", "yes")
+    assert _cells(page) == len(MADE)
+    assert _chips(page) == ["AI generated yes"]
+
+    page.goto("/g")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    _pick(page, "has.generation", "no")
+    assert _cells(page) == 2, "the photograph and the clip"
+
+
+# --- the URL is the question ------------------------------------------------
+
+
+def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Live, unbroken):
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    _pick(page, "generation.lora", "filmGrain")
+    asked, cells, chips = page.url, _cells(page), sorted(_chips(page))
+
+    page.reload()
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    assert (_cells(page), sorted(_chips(page))) == (cells, chips)
+
+    # a different browsing context entirely: the link is the question
+    fresh = page.context.browser.new_context(base_url=live.url) if page.context.browser else None
+    assert fresh is not None
+    try:
+        other = fresh.new_page()
+        other.goto(asked)
+        other.wait_for_selector("[data-grid]", timeout=15_000)
+        assert other.evaluate("() => document.querySelectorAll('[data-grid] a.cell').length") == cells
+        theirs = other.evaluate(
+            "() => [...document.querySelectorAll('[data-chip-edit]')].map(c => c.textContent.trim())"
+        )
+        assert sorted(theirs) == chips
+    finally:
+        fresh.close()
+
+
+def test_removing_a_chip_widens_the_answer(page: Page, live: Live, unbroken):
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    _pick(page, "generation.lora", "filmGrain")
+    assert _cells(page) == 4
+
+    page.click('.chip:has([data-chip-edit="generation.lora"]) [data-chip-remove]')
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    assert _cells(page) >= 4
+    assert len(_chips(page)) == 1
+
+
+def test_a_chip_opens_the_filter_that_made_it(page: Page, live: Live, unbroken):
+    """The relationship between a chip and its filter is something a
+    person can see, rather than something they have to be told."""
+    _open_gallery(page)
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    page.click("[data-filters-close]")
+    page.wait_for_selector("[data-filters-panel]", state="hidden", timeout=5_000)
+
+    page.click('[data-chip-edit="generation.checkpoint"]')
+    page.wait_for_selector("[data-filters-panel]:not([hidden])", timeout=5_000)
+    assert page.locator('[data-filter="generation.checkpoint"]').evaluate("s => s.open")
+
+
+# --- what is remembered, and what is not ------------------------------------
+
+
+def test_the_drawer_is_remembered_and_the_filters_are_not(page: Page, live: Live, unbroken):
+    """The furniture is workspace state. The question is the URL's, and
+    a filter that outlived its URL would mean one link answering
+    differently for two people."""
+    _open_gallery(page)
+    _open_filters(page)
+    _open_dimension(page, "generation.checkpoint")
+
+    page.goto("/g")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    assert page.locator("[data-filters-panel]").is_visible(), "the drawer stays how it was left"
+    assert page.locator('[data-filter="generation.checkpoint"]').evaluate("s => s.open"), (
+        "and so does the section that was disclosed"
+    )
+    assert _chips(page) == [], "but no filter followed the person to a bare /g"
+    assert _cells(page) == WHOLE
+
+    page.click("[data-filters-close]")
+    page.goto("/g")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    assert not page.locator("[data-filters-panel]").is_visible()
+
+
+def test_filtering_is_one_editing_session_not_fourteen(page: Page, live: Live, unbroken):
+    """Back means "the question I had before I started filtering", not
+    six presses of undo-one-clause."""
+    page.goto("/g?kind=image")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    was = page.url
+
+    _pick(page, "generation.checkpoint", "dreamshaper_8")
+    _pick(page, "generation.lora", "filmGrain")
+    _pick(page, "generation.sampler", "Euler a")
+    assert _cells(page) == 4
+
+    page.go_back()
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    assert page.url.endswith("/g?kind=image"), f"Back landed on {page.url}, not {was}"
+    assert _cells(page) == WHOLE - 1, "every still picture, which is where the filtering began"

@@ -1283,6 +1283,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/g/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FilterOptions */
+        get: operations["GOptionsFilterOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/g/peek": {
         parameters: {
             query?: never;
@@ -2095,6 +2112,23 @@ export interface components {
             ordinal: number;
             href: string;
             thumb: string;
+        };
+        /** FilterOption */
+        FilterOption: {
+            value: string;
+            label: string;
+            count: number;
+            chosen: boolean;
+        };
+        /** FilterOptions */
+        FilterOptions: {
+            key: string;
+            label: string;
+            note: string;
+            value_kind: string;
+            ops: string[];
+            options: components["schemas"]["FilterOption"][];
+            more: number;
         };
         /** FreezeRequest */
         FreezeRequest: {
@@ -5815,6 +5849,55 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    GOptionsFilterOptions: {
+        parameters: {
+            query: {
+                key: string;
+                folder?: string | null;
+                album?: string | null;
+                person?: string | null;
+                artifact?: string | null;
+                kind?: string | null;
+                favorite?: string | null;
+                rating_min?: number | null;
+                q?: string | null;
+                f?: string[] | null;
+                sort?: string | null;
+                size?: number | null;
+                search?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilterOptions"];
                 };
             };
             /** @description Bad request syntax or unsupported method */
