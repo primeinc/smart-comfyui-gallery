@@ -165,7 +165,7 @@ ADAPTER_MUST_CALL: dict[str, frozenset[str]] = {
 MUST_CALL_QUALIFIED: dict[str, frozenset[str]] = {
     "sg_web/gallery.py": frozenset({"resultset.page", "resultset.peek", "resultset.locate"}),
     "sg_web/asking.py": frozenset({"resultset.parse"}),
-    "sg_web/media_view.py": frozenset({"resultset.locate"}),
+    "sg_web/media_view.py": frozenset({"resultset.neighborhood"}),
 }
 #: Qualified calls a module must never make.
 MUST_NOT_CALL_QUALIFIED: dict[str, frozenset[str]] = {

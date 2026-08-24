@@ -261,12 +261,14 @@ body {
   display: grid;
   /* the inspector is a COLUMN that is zero wide until it is open: the
      stage grows back into the space when it closes, with no reflow of
-     anything else */
+     anything else. The filmstrip is a row under both, auto-height, so a
+     walk with no neighbours costs no space at all. */
   grid-template-columns: 1fr 0;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   grid-template-areas:
     "chrome chrome"
-    "stage inspector";
+    "stage inspector"
+    "filmstrip filmstrip";
   background: var(--ground);
 }
 
@@ -466,6 +468,82 @@ body {
   gap: 6px;
 }
 
+/* --- the filmstrip: the local neighbourhood of the walk -------------- */
+
+.viewer-filmstrip {
+  grid-area: filmstrip;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  /* A grid item's min-width is `auto`, so without this the strip grows to
+     its fifteen thumbnails and takes the whole viewer wider than the
+     window: the PAGE scrolls sideways instead of the strip, and the
+     current picture can never be centred because nothing overflows. */
+  min-width: 0;
+}
+
+/* Native horizontal scrolling, and `pan-x` so a finger dragged across the
+   strip is the browser's business -- it is outside the stage and must
+   never enter the picture's own pointer handling. */
+.viewer-filmstrip-track {
+  display: flex;
+  gap: 5px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+.viewer-filmstrip-track::-webkit-scrollbar {
+  display: none;
+}
+
+.viewer-filmstrip-item {
+  flex: 0 0 auto;
+  width: 64px;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  overflow: hidden;
+  opacity: 0.7;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  transition: opacity 120ms ease;
+}
+.viewer-filmstrip-item img {
+  width: 100%;
+  height: 100%;
+  /* recognition at this size, not composition: a square crop reads faster
+     than fifteen different letterboxed shapes */
+  object-fit: cover;
+  display: block;
+  background: var(--panel);
+}
+.viewer-filmstrip-item:hover,
+.viewer-filmstrip-item:focus-visible {
+  opacity: 1;
+}
+/* the one strong treatment in the row */
+.viewer-filmstrip-item[aria-current="true"] {
+  opacity: 1;
+  outline-color: var(--accent);
+}
+
+/* The strip is context for BROWSING. Once somebody is inspecting pixels
+   it is not what they are looking at, and lights-out means the
+   photograph alone. `data-absorbed` is already the viewer's word for
+   "zoomed past browsing" (frontend/src/viewer.ts).
+
+   `visibility`, not `display`, and for the same reason the chrome bar
+   above fades rather than unmounting: a strip that took its height with
+   it would make the stage taller, which changes the fitted size, which
+   changes the scale `actual` and `fill` were computed from -- and the
+   ResizeObserver would recompute them from a stage the zoom itself had
+   just resized. Zoom must not be able to move the thing it is measured
+   against. */
+.viewer[data-absorbed="true"] .viewer-filmstrip,
+.viewer[data-chrome="focus"] .viewer-filmstrip {
+  visibility: hidden;
+}
+
 /* --- the inspector --------------------------------------------------- */
 
 .inspector {
@@ -566,16 +644,26 @@ body {
   .viewer,
   .viewer[data-inspector="open"] {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr auto auto;
     grid-template-areas:
       "chrome"
       "stage"
+      "filmstrip"
       "inspector";
   }
   .inspector {
     border-left: none;
     border-top: 1px solid var(--line);
     max-height: 45vh;
+  }
+  .viewer-filmstrip-item {
+    width: 52px;
+  }
+  /* a picture, a strip and a sheet stacked on a phone is three things
+     competing for one screen: the sheet is what was asked for, so the
+     strip stands down while it is open */
+  .viewer[data-inspector="open"] .viewer-filmstrip {
+    display: none;
   }
 }
 

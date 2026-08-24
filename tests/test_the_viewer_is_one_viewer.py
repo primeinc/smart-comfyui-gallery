@@ -136,12 +136,117 @@ def _walk(page: Page) -> dict:
     )
 
 
+#: `visibility`, not display: the strip keeps its space so hiding it
+#: cannot resize the stage the zoom is measured against.
+_STRIP_SEEN = "document.querySelector('[data-filmstrip]').checkVisibility({visibilityProperty: true})"
+
+
+def _strip_shown(page: Page) -> None:
+    page.wait_for_function(f"() => {_STRIP_SEEN}", timeout=5_000)
+
+
+def _strip_hidden(page: Page) -> None:
+    page.wait_for_function(f"() => !{_STRIP_SEEN}", timeout=5_000)
+
+
 def _actual(page: Page) -> None:
     page.keyboard.press("z")
     page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'actual'")
 
 
 # --- what the viewer does ---------------------------------------------------
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_filmstrip_shows_the_walk_and_marks_where_you_are(page: Page, live: Live, where, open_it, unbroken):
+    """Rendered by the server, in answer order, one of them current.
+
+    Nothing in the browser sorts or pages it: the assertion is that the
+    DOM order IS the ordinals the server sent, ascending, with no gaps
+    invented between them.
+    """
+    open_it(page, live, "a_big.png")
+    strip = page.evaluate(
+        "() => [...document.querySelectorAll('[data-filmstrip-item]')].map(a => ({"
+        " ordinal: Number(a.dataset.ordinal), href: a.getAttribute('href'),"
+        " current: a.getAttribute('aria-current') === 'true' }))"
+    )
+    assert strip, f"{where}: a library of two has a neighbourhood"
+    assert [one["ordinal"] for one in strip] == sorted(one["ordinal"] for one in strip)
+    assert [one["ordinal"] for one in strip] == list(range(strip[0]["ordinal"], strip[0]["ordinal"] + len(strip)))
+    assert [one["current"] for one in strip].count(True) == 1, "exactly one item is where you are"
+    for one in strip:
+        assert one["href"].startswith("/i/"), f"{where}: the strip is addresses, not client state"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_clicking_the_filmstrip_walks_the_way_the_arrows_do(page: Page, live: Live, where, open_it, unbroken):
+    """One Walk adapter, so the overlay REPLACES its mount and the page
+    navigates -- and fifty strip steps stay one Back out of the gallery,
+    exactly as fifty arrow presses do."""
+    open_it(page, live, "a_big.png")
+    depth = page.evaluate("() => history.length")
+    was = page.evaluate("() => location.pathname")
+    other = page.evaluate(
+        "(here) => [...document.querySelectorAll('[data-filmstrip-item]')]"
+        ".find(a => a.getAttribute('aria-current') !== 'true')?.getAttribute('href')",
+        was,
+    )
+    assert other, f"{where}: a library of two offers a neighbour to click"
+
+    page.click("[data-filmstrip-item]:not([aria-current='true'])")
+    page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
+    _painted(page)
+
+    assert page.evaluate("() => location.pathname") == other.split("?")[0]
+    assert page.is_visible("[data-viewer]"), f"{where}: the strip lost the viewer"
+    if where == "overlay":
+        assert page.evaluate("() => history.length") == depth, (
+            "an overlay step REPLACES: fifty of them are still one Back out of the gallery"
+        )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_filmstrip_stands_down_while_the_picture_is_being_inspected(
+    page: Page, live: Live, where, open_it, unbroken
+):
+    """Local context is for browsing. Zoomed in, the neighbours are not
+    what anybody is looking at; lights-out means the photograph alone."""
+    open_it(page, live, "a_big.png")
+    assert page.is_visible("[data-filmstrip]"), f"{where}: it is there while browsing"
+
+    _actual(page)
+    _strip_hidden(page)
+    page.keyboard.press("Escape")  # back to fit
+    _strip_shown(page)
+
+    page.keyboard.press("l")
+    _strip_hidden(page)
+    page.keyboard.press("l")
+    _strip_shown(page)
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_dragging_across_the_filmstrip_leaves_the_photograph_alone(page: Page, live: Live, where, open_it, unbroken):
+    """The strip is outside the stage and scrolls natively. A finger or a
+    pointer dragged along it must not reach the picture's own pan/zoom."""
+    open_it(page, live, "a_big.png")
+    _actual(page)
+    page.keyboard.press("Escape")
+    page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'fit'")
+    before = _box(page)
+    held = _zoom(page)
+
+    box = page.evaluate("() => document.querySelector('[data-filmstrip-track]').getBoundingClientRect().toJSON()")
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2, steps=8)
+    page.mouse.up()
+    page.mouse.wheel(0, -300)
+    page.wait_for_timeout(150)
+
+    assert _zoom(page) == held, f"{where}: a wheel over the strip zoomed the picture"
+    assert _box(page) == before, f"{where}: dragging the strip moved the picture"
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)

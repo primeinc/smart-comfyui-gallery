@@ -21,7 +21,9 @@ ambiguity):
 All from ONE view assembly. There is no /lightbox/ URL and no second
 definition of the item.
 
-Previous and next come from `resultset.locate` -- position in the
+Previous and next come from `resultset.neighborhood` -- locate plus
+the window around it, so the arrows and the strip beneath the picture
+are one read of one answer. Position in the
 answer being walked, never a folder walk: a bare `/i/{slug}` uses the
 default GalleryQuery (the whole library, newest first), so the arrows
 always mean something and always mean what the grid meant. The context
@@ -67,11 +69,15 @@ def view(
     taken, and a commit in the gap would label pre-commit data with a
     post-commit currency: exactly the mislabeling the caller's 409
     comparison exists to catch. The context's currency is therefore
-    always present -- from `locate` when the item is in the answer,
+    always present -- from `neighborhood` when the item is in the answer,
     from `describe` (same projection, same snapshot) when it is not.
     """
     with resultset.snapshot(conn):
-        found = resultset.locate(conn, models_dir, query, file_id, now, actor_id=actor_id)
+        # `neighborhood` IS locate plus the window around it, from one
+        # projection: the ordinal, the arrows and the strip beneath the
+        # picture are then the same answer at the same generation. Two
+        # calls would be two chances to describe two different walks.
+        found = resultset.neighborhood(conn, models_dir, query, file_id, now, actor_id=actor_id)
         if found is not None:
             generation, asked, answer = found["currency"], found["qs"], found["answer"]
         else:
@@ -111,6 +117,7 @@ def _assembled(
             total=found["total"] if found else None,
             previous=found["previous"] if found else None,
             next=found["next"] if found else None,
+            filmstrip=_filmstrip(found, asked) if found else None,
         ),
         when=_when(conn, file_id),
         where=where_of(conn, file_id),
@@ -140,6 +147,32 @@ def _assembled(
         # the metadata of the generation before it.
         authored=_authored(conn, file_id, actor_id),
         viewing=_viewing(conn),
+    )
+
+
+def _filmstrip(found: dict, asked: str) -> Filmstrip:
+    """The window the ResultSet returned, as addresses.
+
+    Every href carries the walked question, spelled by the server that
+    already knows its canonical form. A strip handing the browser slugs
+    would be asking it to rebuild browsing state from parts, which is
+    how a second, disagreeing ordering gets born.
+    """
+    return Filmstrip(
+        first_ordinal=found["first_ordinal"],
+        last_ordinal=found["last_ordinal"],
+        total=found["total"],
+        items=[
+            FilmstripItem(
+                slug=near["slug"],
+                name=near["name"],
+                kind=near["kind"],
+                ordinal=near["ordinal"],
+                href=f"/i/{near['slug']}" + (f"?{asked}" if asked else ""),
+                thumb=f"/thumb/{near['slug']}",
+            )
+            for near in found["items"]
+        ],
     )
 
 
@@ -522,6 +555,42 @@ class FileFacts(Wire):
     fields: int
 
 
+class FilmstripItem(Wire):
+    """One member of the walk near the picture on screen, as an address.
+
+    Deliberately not the gallery's ResultItem: that carries a uuid for
+    selection and a model caption for the grid's hover, and a strip of
+    64px squares needs neither. `href` arrives whole, carrying the walked
+    question, because reconstructing a browsing URL from a slug is the
+    one thing the browser must never be asked to do here.
+    """
+
+    slug: str
+    name: str
+    kind: MediaKind
+    #: position in the WHOLE answer, not in this window
+    ordinal: int
+    href: str
+    thumb: str
+
+
+class Filmstrip(Wire):
+    """The local stretch of the walk, in answer order.
+
+    A window around the current item, not a second gallery: the rail on
+    the results page already owns long-distance travel through the same
+    answer, and this owns the few pictures either side of the one being
+    looked at. It knows nothing about pages -- a window straddling a page
+    boundary is not a special case here (db/resultset.py neighborhood),
+    and it is the ANSWER's order, never a folder's.
+    """
+
+    first_ordinal: int
+    last_ordinal: int
+    total: int
+    items: list[FilmstripItem]
+
+
 class BrowsingContext(Wire):
     """The walk this address was opened inside.
 
@@ -541,6 +610,10 @@ class BrowsingContext(Wire):
     total: int | None
     previous: str | None
     next: str | None
+    #: the few members either side of this one, or None when the item is
+    #: not in the answer being walked -- the query defines the walk, and
+    #: there is no other stretch of walk to invent for it
+    filmstrip: Filmstrip | None
 
 
 class PlaceNamed(Wire):

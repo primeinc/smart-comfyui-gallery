@@ -24,9 +24,10 @@
 // chrome is hidden are what the person is doing RIGHT NOW; the moment they
 // become a setting is the moment somebody has to be asked a question about
 // a photograph they were looking at.
-import { everyElement, findElement, requireData } from "./dom";
+import { closestFrom, everyElement, findElement, requireData } from "./dom";
 import type { components } from "./generated/api";
 import { register } from "./keys";
+import { isPlainClick } from "./overlay";
 
 type Stage = components["schemas"]["MediaSurface"]["stage"];
 type Pixels = components["schemas"]["Pixels"];
@@ -496,6 +497,25 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   );
 
   onDocument("pointermove", wake);
+
+  // --- the filmstrip ---------------------------------------------------------
+  // Rendered by the server in answer order, with the walked question
+  // already on every href. Nothing here sorts, pages or invents a member:
+  // the only two jobs are putting the current one where the eye expects
+  // it, and making a click mean the same thing an arrow key means.
+  const strip = findElement(root, "[data-filmstrip-track]", HTMLElement);
+  if (strip) {
+    const here = findElement(strip, "[data-filmstrip-item][aria-current='true']", HTMLElement);
+    // no smooth: on mount it should simply already be there
+    here?.scrollIntoView({ block: "nearest", inline: "center" });
+
+    onElement(strip, "click", (event) => {
+      const near = closestFrom(event.target, "[data-filmstrip-item]", HTMLAnchorElement);
+      if (!near || !isPlainClick(event, near)) return; // a modified click is the browser's
+      event.preventDefault();
+      walk(near.href);
+    });
+  }
 
   for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
     onElement(button, "click", () => showInspector(root.dataset.inspector !== "open"));

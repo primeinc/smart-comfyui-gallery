@@ -923,6 +923,28 @@ def peek(
         }
 
 
+def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
+    """Where a position sits in an answer, from one projection.
+
+    Shared rather than repeated: `locate` and `neighborhood` answer the
+    same question about the same walk, and two spellings of "previous"
+    are two chances for the arrows and the strip beneath them to
+    disagree about what comes next.
+    """
+    neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
+    named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
+    return {
+        "ordinal": position + 1,
+        "page": position // bound.query.size + 1,
+        "total": len(held.ids),
+        "currency": held.currency,
+        "answer": held.answer,
+        "qs": canonical(bound.query),
+        "previous": named.get(neighbours[0]),
+        "next": named.get(neighbours[1]),
+    }
+
+
 def locate(
     conn, models_dir: str, query: GalleryQuery, file_id: int, now: float, *, actor_id: int | None = None
 ) -> dict | None:
@@ -933,19 +955,57 @@ def locate(
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         position = held.ordinal.get(int(file_id))
+        return None if position is None else _located(conn, bound, held, position)
+
+
+#: The widest neighborhood a caller may ask for. A bound, so an absurd
+#: `count` is refused rather than answered with a page of thumbnails.
+NEIGHBORHOOD_MOST = 51
+
+
+def neighborhood(
+    conn,
+    models_dir: str,
+    query: GalleryQuery,
+    file_id: int,
+    now: float,
+    count: int = 15,
+    *,
+    actor_id: int | None = None,
+) -> dict | None:
+    """What SURROUNDS one member of this answer, in answer order.
+
+    A different question from `peek`, which answers "the first few
+    members of page N" for the rail's long-distance jumps. This one
+    knows nothing about pages: it is a window around a POSITION, so a
+    window that happens to straddle a page boundary is not a special
+    case and is not stitched from two reads. `page` in the result is
+    only the located file's own, carried for the return-to-results URL.
+
+    The window slides at the edges rather than being padded: an item
+    near the start of the answer sits near the left of a FULL window,
+    not centred with blanks beside it. Everything comes from the one
+    `_current` inside one snapshot, so the ordinal, the arrows and the
+    window are the same answer at the same generation -- three reads
+    would be three chances to describe two.
+
+    None when the file is not in this answer at all. The query defines
+    the walk; there is no fallback neighborhood to invent.
+    """
+    with snapshot(conn):
+        bound, held = _current(conn, models_dir, query, now, actor_id)
+        position = held.ordinal.get(int(file_id))
         if position is None:
             return None
-        neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
-        named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
+        told = _located(conn, bound, held, position)
+        take = min(max(1, int(count)), NEIGHBORHOOD_MOST)
+        start = max(0, min(position - take // 2, max(0, len(held.ids) - take)))
+        items = _named(conn, held.ids[start : start + take], start)
         return {
-            "ordinal": position + 1,
-            "page": position // bound.query.size + 1,
-            "total": len(held.ids),
-            "currency": held.currency,
-            "answer": held.answer,
-            "qs": canonical(bound.query),
-            "previous": named.get(neighbours[0]),
-            "next": named.get(neighbours[1]),
+            **told,
+            "first_ordinal": start + 1 if items else 0,
+            "last_ordinal": start + len(items),
+            "items": items,
         }
 
 

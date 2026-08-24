@@ -1635,6 +1635,7 @@ export interface components {
             total: number | null;
             previous: string | null;
             next: string | null;
+            filmstrip: components["schemas"]["Filmstrip"] | null;
         };
         /** BulkFlag */
         BulkFlag: {
@@ -2066,6 +2067,23 @@ export interface components {
         FiledPicture: {
             slug: string;
             name: string;
+        };
+        /** Filmstrip */
+        Filmstrip: {
+            first_ordinal: number;
+            last_ordinal: number;
+            total: number;
+            items: components["schemas"]["FilmstripItem"][];
+        };
+        /** FilmstripItem */
+        FilmstripItem: {
+            slug: string;
+            name: string;
+            /** @enum {string} */
+            kind: "image" | "animated_image" | "video" | "audio" | "document";
+            ordinal: number;
+            href: string;
+            thumb: string;
         };
         /** FreezeRequest */
         FreezeRequest: {

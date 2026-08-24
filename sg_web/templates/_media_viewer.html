@@ -78,5 +78,27 @@
     </div>
   </div>
 
+  {# The local neighbourhood of the walk: real addresses, in the server's
+     answer order, with the walked question already on them. The results
+     page's rail owns long-distance travel through the same answer; this
+     owns the few pictures either side of this one. There is no strip
+     when the item is not in the answer -- the query defines the walk. #}
+  {% if item.context.filmstrip %}
+  <nav class="viewer-filmstrip" data-filmstrip aria-label="nearby">
+    <div class="viewer-filmstrip-track" data-filmstrip-track>
+      {% for near in item.context.filmstrip.items %}
+      <a class="viewer-filmstrip-item" data-filmstrip-item data-ordinal="{{ near.ordinal }}"
+         href="{{ near.href }}"
+         {% if near.slug == item.slug %}aria-current="true" data-current{% endif %}
+         aria-label="{{ near.ordinal }} of {{ item.context.total }}: {{ near.name }}">
+        {# alt is empty on purpose: the link already carries the name, and
+           a second copy would be read out twice #}
+        <img src="{{ near.thumb }}" alt="" loading="lazy" decoding="async">
+      </a>
+      {% endfor %}
+    </div>
+  </nav>
+  {% endif %}
+
   {% include "_media_inspector.html" %}
 </div>

@@ -103,6 +103,98 @@ def test_page_peek_and_locate_agree(shelves):
     assert found["next"] == third["items"][3]["slug"]
 
 
+def test_a_neighborhood_is_a_window_on_the_answer_not_on_a_page(shelves):
+    """The filmstrip's question, and the one thing it must never know.
+
+    `peek` answers "the first few members of page N" for the rail's
+    long-distance jumps. This answers "what surrounds THIS member", and
+    a window that straddles a page boundary is not a special case -- it
+    is the same slice of the same ordered answer. If the result can be
+    explained by a page, the abstraction has leaked.
+    """
+    conn = shelves["conn"]
+    q = _q(size=5)  # 23 items, so pages break at 5, 10, 15, 20
+
+    whole = resultset.page(conn, "", q, 1, NOW)["items"] + resultset.page(conn, "", q, 2, NOW)["items"]
+    whole += resultset.page(conn, "", q, 3, NOW)["items"] + resultset.page(conn, "", q, 4, NOW)["items"]
+    whole += resultset.page(conn, "", q, 5, NOW)["items"]
+    assert [row["ordinal"] for row in whole] == list(range(1, 24))
+
+    # ordinal 11 is the FIRST item of page 3; a strip that thought in
+    # pages would start there or stitch two of them
+    on_a_boundary = whole[10]
+    told = resultset.neighborhood(conn, "", q, on_a_boundary["id"], NOW, count=7)
+    assert told is not None
+    assert [row["ordinal"] for row in told["items"]] == [8, 9, 10, 11, 12, 13, 14]
+    assert told["ordinal"] == 11
+    assert (told["first_ordinal"], told["last_ordinal"]) == (8, 14)
+    assert [row["slug"] for row in told["items"]] == [row["slug"] for row in whole[7:14]]
+
+
+def test_a_neighborhood_slides_at_the_edges_rather_than_padding(shelves):
+    """Near an end the window stays FULL and moves, so fifteen cells are
+    fifteen pictures rather than seven blanks and eight photographs."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    whole = [row for number in range(1, 6) for row in resultset.page(conn, "", q, number, NOW)["items"]]
+
+    first = resultset.neighborhood(conn, "", q, whole[0]["id"], NOW, count=7)
+    assert first is not None
+    assert [row["ordinal"] for row in first["items"]] == [1, 2, 3, 4, 5, 6, 7]
+    assert first["ordinal"] == 1, "the current item sits at the left, not in a padded middle"
+
+    last = resultset.neighborhood(conn, "", q, whole[-1]["id"], NOW, count=7)
+    assert last is not None
+    assert [row["ordinal"] for row in last["items"]] == [17, 18, 19, 20, 21, 22, 23]
+    assert last["ordinal"] == 23
+
+
+def test_a_neighborhood_agrees_with_locate_about_the_walk(shelves):
+    """One projection, one answer. The arrows under the picture and the
+    strip beneath them are the same read, so they cannot disagree about
+    what comes next."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    middle = resultset.page(conn, "", q, 3, NOW)["items"][2]
+
+    found = resultset.locate(conn, "", q, middle["id"], NOW)
+    told = resultset.neighborhood(conn, "", q, middle["id"], NOW, count=9)
+    assert found is not None
+    assert told is not None
+    for fact in ("ordinal", "page", "total", "currency", "answer", "qs", "previous", "next"):
+        assert told[fact] == found[fact], fact
+
+    # and the window's own order IS the walk: the item before the current
+    # one is `previous`, the one after is `next`
+    slugs = [row["slug"] for row in told["items"]]
+    here = slugs.index(middle["slug"])
+    assert slugs[here - 1] == found["previous"]
+    assert slugs[here + 1] == found["next"]
+
+
+def test_a_file_outside_the_answer_has_no_neighborhood(shelves):
+    """The query defines the walk. There is no other neighborhood to
+    invent for an item the question does not contain."""
+    conn = shelves["conn"]
+    only = resultset.page(conn, "", _q(size=5), 1, NOW)["items"][0]
+    assert only["kind"] == "image"
+    # a question this picture is not an answer to
+    elsewhere = _q(kind="video")
+    assert resultset.describe(conn, "", elsewhere, NOW)["total"] == 0
+    assert resultset.neighborhood(conn, "", elsewhere, only["id"], NOW) is None
+
+
+def test_a_neighborhood_is_bounded(shelves):
+    """An absurd `count` is refused rather than answered."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    only = resultset.page(conn, "", q, 1, NOW)["items"][0]
+    told = resultset.neighborhood(conn, "", q, only["id"], NOW, count=10_000)
+    assert told is not None
+    assert len(told["items"]) == 23, "an answer of 23 cannot yield more than 23"
+    assert resultset.NEIGHBORHOOD_MOST < 10_000
+
+
 def test_the_last_page_is_short_and_a_number_past_the_end_answers_it(shelves):
     conn = shelves["conn"]
     q = _q(size=5)

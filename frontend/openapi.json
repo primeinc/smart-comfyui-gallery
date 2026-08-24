@@ -8997,6 +8997,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "filmstrip": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Filmstrip"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,
@@ -9004,6 +9014,7 @@
                 "required": [
                     "answer",
                     "currency",
+                    "filmstrip",
                     "in_answer",
                     "next",
                     "ordinal",
@@ -11283,6 +11294,74 @@
                     "slug"
                 ],
                 "title": "FiledPicture"
+            },
+            "Filmstrip": {
+                "properties": {
+                    "first_ordinal": {
+                        "type": "integer"
+                    },
+                    "last_ordinal": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/FilmstripItem"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "first_ordinal",
+                    "items",
+                    "last_ordinal",
+                    "total"
+                ],
+                "title": "Filmstrip"
+            },
+            "FilmstripItem": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "image",
+                            "animated_image",
+                            "video",
+                            "audio",
+                            "document"
+                        ]
+                    },
+                    "ordinal": {
+                        "type": "integer"
+                    },
+                    "href": {
+                        "type": "string"
+                    },
+                    "thumb": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "href",
+                    "kind",
+                    "name",
+                    "ordinal",
+                    "slug",
+                    "thumb"
+                ],
+                "title": "FilmstripItem"
             },
             "FreezeRequest": {
                 "properties": {
