@@ -1614,3 +1614,76 @@ def parents(conn, file_id: int):
 
 def children(conn, file_id: int):
     return conn.execute(CHILDREN, (file_id,)).fetchall()
+
+
+#: Everything a TABLE row says about one file, in one read.
+#:
+#: A table is the presentation for looking at facts rather than at
+#: pictures, so it carries what a grid cell deliberately does not: the
+#: pixels on disk, the length, the recipe's numbers, the camera's. All of
+#: it LEFT JOINed, because the table is cross-media by construction -- a
+#: sound has no width, a photograph has no sampler, and a row that
+#: dropped out for lacking one would make the table lie about what the
+#: answer holds.
+TABLE_ROWS = (
+    "SELECT f.id, e.slug, f.name, f.kind, f.size, f.mtime, f.width, f.height, f.duration,"
+    " g.tool, g.seed, g.steps, g.cfg, g.sampler,"
+    " ck.name, cam.name,"
+    " cap.iso, cap.f_number, cap.focal_length,"
+    " r.rating, fav.file_id IS NOT NULL"
+    " FROM file f"
+    " JOIN entity e ON e.id = f.id"
+    " LEFT JOIN generation g ON g.file_id = f.id"
+    " LEFT JOIN file_artifact fck ON fck.file_id = f.id AND fck.role = 'checkpoint' AND fck.ordinal = 0"
+    " LEFT JOIN artifact ck ON ck.id = fck.artifact_id"
+    " LEFT JOIN file_artifact fcam ON fcam.file_id = f.id AND fcam.role = 'captured_with' AND fcam.ordinal = 0"
+    " LEFT JOIN artifact cam ON cam.id = fcam.artifact_id"
+    " LEFT JOIN capture cap ON cap.file_id = f.id"
+    " LEFT JOIN rating r ON r.file_id = f.id AND r.user_id = ?"
+    " LEFT JOIN favorite fav ON fav.file_id = f.id AND fav.user_id = ?"
+    " WHERE f.id IN (SELECT value FROM json_each(?))"
+)
+
+#: The column names TABLE_ROWS returns, in order.
+TABLE_COLUMNS = (
+    "id",
+    "slug",
+    "name",
+    "kind",
+    "size",
+    "mtime",
+    "width",
+    "height",
+    "duration",
+    "tool",
+    "seed",
+    "steps",
+    "cfg",
+    "sampler",
+    "checkpoint",
+    "camera",
+    "iso",
+    "f_number",
+    "focal_length",
+    "rating",
+    "favorite",
+)
+
+
+def table_of(conn, file_ids, actor_id: int | None = None) -> list[dict]:
+    """One row per file, in the ORDER GIVEN.
+
+    SQLite returns a set; the answer is a sequence, and the sequence is
+    the whole point of a ResultSet. So the rows are put back into the
+    caller's order here rather than sorted by anything of this query's
+    own -- a table that quietly reordered the answer would be a second
+    opinion about it.
+    """
+    import json
+
+    held = list(file_ids)
+    if not held:
+        return []
+    rows = conn.execute(TABLE_ROWS, (actor_id, actor_id, json.dumps(held)))
+    made = {row[0]: dict(zip(TABLE_COLUMNS, row, strict=True)) for row in rows}
+    return [made[one] for one in held if one in made]

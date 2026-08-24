@@ -267,3 +267,69 @@ def test_describing_a_medium_with_nothing_to_say_says_nothing(page: Page, live: 
     assert page.locator("[data-analyze-loras]").count() == 0
     # what it CAN say about a clip, it says
     assert _bars(page, "kind") == {"video": 1}
+
+
+# --- the third presentation: the same answer as facts ------------------------
+
+
+def _table(page: Page, question: str = "") -> None:
+    page.goto(f"/g?{question}&view=table" if question else "/g?view=table")
+    page.wait_for_selector("[data-table]", timeout=15_000)
+
+
+def test_the_table_shows_the_same_members_as_the_grid(page: Page, live: Live, unbroken):
+    """Three presentations, one membership. `view` never reaches the
+    GalleryQuery, so all three have to agree about the total."""
+    page.goto("/g?f=has.generation%3Aeq%3A1")
+    page.wait_for_selector("[data-grid]", timeout=15_000)
+    was = _total(page)
+
+    page.click('[data-view="table"]')
+    page.wait_for_selector("[data-table]", timeout=15_000)
+    assert _total(page) == was
+    rows = page.evaluate("() => document.querySelectorAll('[data-table] tbody tr').length")
+    assert rows == len(MADE)
+
+    page.click('[data-view="analyze"]')
+    page.wait_for_selector("[data-analyze]", timeout=15_000)
+    assert _total(page) == was, "and the third agrees with the other two"
+
+
+def test_the_table_carries_what_a_grid_cell_deliberately_does_not(page: Page, live: Live, unbroken):
+    _table(page, "f=has.generation%3Aeq%3A1")
+    first = page.evaluate(
+        "() => Object.fromEntries([...document.querySelectorAll('[data-table] thead th')]"
+        ".map((th, i) => [th.textContent.trim(),"
+        " document.querySelector('[data-table] tbody tr').children[i].textContent.trim()]))"
+    )
+    assert first["checkpoint"] in {"dreamshaper_8", "juggernautXL"}, first
+    assert first["steps"] == "28"
+    assert first["seed"] == "4242"
+    assert first["pixels"], "the pixels on disk, which a cell never says"
+
+
+def test_the_answer_decides_which_columns_exist(page: Page, live: Live, unbroken):
+    """Asking about photographs must not produce eight empty recipe
+    columns, and asking about generated pictures must not produce four
+    empty camera ones."""
+    _table(page, "f=has.generation%3Aeq%3A1")
+    generated = page.evaluate(
+        "() => [...document.querySelectorAll('[data-table] thead th')].map(th => th.textContent.trim())"
+    )
+    assert "sampler" in generated
+    assert "camera" not in generated, "nothing in this answer came from a camera"
+    assert "length" not in generated, "and nothing in it has a length"
+
+    _table(page, "kind=video")
+    clips = page.evaluate(
+        "() => [...document.querySelectorAll('[data-table] thead th')].map(th => th.textContent.trim())"
+    )
+    assert "length" in clips, "a clip has one"
+
+
+def test_a_row_is_a_way_into_the_picture(page: Page, live: Live, unbroken):
+    """A table of facts about pictures still has to get you to one."""
+    _table(page)
+    page.click("[data-table] tbody tr:first-child .answer-name a")
+    page.wait_for_selector("[data-viewer]", timeout=15_000)
+    assert "/i/" in page.url

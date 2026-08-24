@@ -3301,3 +3301,64 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .detail,
 body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
   padding-bottom: 48px;
 }
+
+/* --- the table: the same answer, as facts --------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+}
+.answer-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+.answer-table th {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  padding: 0 10px 6px 0;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  background: var(--ground);
+  z-index: 1;
+}
+.answer-table td {
+  border-top: 1px solid var(--line);
+  padding: 4px 10px 4px 0;
+  vertical-align: middle;
+}
+.answer-table tbody tr:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.answer-thumb {
+  padding-right: 10px;
+  width: 1%;
+}
+.answer-thumb img {
+  border-radius: 3px;
+  display: block;
+  height: 34px;
+  object-fit: cover;
+  width: 46px;
+}
+.answer-name {
+  overflow-wrap: anywhere;
+}
+.answer-name a {
+  color: var(--ink);
+}
+.answer-name a:hover {
+  color: var(--accent);
+}
+.answer-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+/* A seed is a long number nobody reads and everybody copies. */
+.answer-seed {
+  user-select: all;
+}

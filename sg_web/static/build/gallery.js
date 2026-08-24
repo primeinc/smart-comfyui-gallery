@@ -758,6 +758,37 @@
     );
   }
 
+  // src/keys.ts
+  var claimed = /* @__PURE__ */ new Map();
+  var spelled = (key) => key.length === 1 ? key.toLowerCase() : key;
+  function register(commands) {
+    const wanted = /* @__PURE__ */ new Map();
+    for (const command of commands) {
+      const key = spelled(command.key);
+      const mine = wanted.get(key);
+      if (mine) throw new Error(`${command.by} and ${mine.by} both claim "${key}" in one registration`);
+      const already = claimed.get(key);
+      if (already) throw new Error(`${command.by} claims "${key}", which ${already.by} already answers to`);
+      wanted.set(key, command);
+    }
+    for (const [key, command] of wanted) claimed.set(key, command);
+    return () => {
+      for (const command of commands) {
+        const key = spelled(command.key);
+        if (claimed.get(key) === command) claimed.delete(key);
+      }
+    };
+  }
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const command = claimed.get(spelled(event.key));
+    if (!command) return;
+    event.preventDefault();
+    command.run();
+  });
+
   // src/workspace.ts
   var VERSION = 1;
   var KEY = `sg.workspace.v${VERSION}`;
@@ -1043,39 +1074,21 @@
     for (const clear of everyElement(root, "[data-filters-clear], [data-chips-clear]", HTMLElement)) {
       clear.addEventListener("click", endSession);
     }
+    const search = findElement(root, '[data-ask] input[type="search"]', HTMLInputElement);
+    if (search) {
+      register([
+        {
+          key: "/",
+          by: "gallery: search",
+          run: () => {
+            search.focus();
+            search.select();
+          }
+        }
+      ]);
+    }
     show(workspace().filters === "open", false);
   }
-
-  // src/keys.ts
-  var claimed = /* @__PURE__ */ new Map();
-  var spelled = (key) => key.length === 1 ? key.toLowerCase() : key;
-  function register(commands) {
-    const wanted = /* @__PURE__ */ new Map();
-    for (const command of commands) {
-      const key = spelled(command.key);
-      const mine = wanted.get(key);
-      if (mine) throw new Error(`${command.by} and ${mine.by} both claim "${key}" in one registration`);
-      const already = claimed.get(key);
-      if (already) throw new Error(`${command.by} claims "${key}", which ${already.by} already answers to`);
-      wanted.set(key, command);
-    }
-    for (const [key, command] of wanted) claimed.set(key, command);
-    return () => {
-      for (const command of commands) {
-        const key = spelled(command.key);
-        if (claimed.get(key) === command) claimed.delete(key);
-      }
-    };
-  }
-  document.addEventListener("keydown", (event) => {
-    const target = event.target;
-    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    const command = claimed.get(spelled(event.key));
-    if (!command) return;
-    event.preventDefault();
-    command.run();
-  });
 
   // src/overlay.ts
   function isPlainClick(event, link) {

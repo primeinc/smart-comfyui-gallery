@@ -25,7 +25,7 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.params import FromPath, FromQuery
 from litestar.response import Template
 
-from db import analysis, connect, discovery, naming, places, resultset, settings, vocabulary
+from db import analysis, connect, discovery, naming, pages, places, resultset, settings, vocabulary
 from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
@@ -35,7 +35,7 @@ from sg_web.wire import Wire
 #: it never reaches the GalleryQuery, never moves the fingerprint, and
 #: switching between them must leave the membership and the total exactly
 #: where they were. It rides the URL so a link to an analysis is a link.
-VIEWS = ("gallery", "analyze")
+VIEWS = ("gallery", "table", "analyze")
 
 
 def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str) -> str:
@@ -120,6 +120,12 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         # only when asked: an analysis is a dozen aggregates, and
         # nobody drawing a grid is waiting for them
         described = _analysis(conn, query, shape["total"], weights, view) if view == "analyze" else None
+        # The same members the grid would show, as facts rather than
+        # pictures. One read over the ids the ResultSet already
+        # returned -- never a second query about which files those are.
+        listed = (
+            pages.table_of(conn, [item["id"] for item in shape["items"]], state.actor_id) if view == "table" else None
+        )
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -153,6 +159,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "view": view,
         "views": VIEWS,
         "analysis": described,
+        "table": listed,
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
         # the filter surface, drawn from the one vocabulary: the

@@ -90,8 +90,22 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     # `analysis` is the other presentation of one answer: it aggregates
     # over the SAME membership, taken through resultset.scope_of, and
     # writes no WHERE clause of its own about which media are included.
+    # `pages` for the TABLE presentation only: one read of the columns a
+    # grid cell deliberately does not carry, over the ids the ResultSet
+    # already returned. It never asks which files those are.
     "sg_web/gallery.py": frozenset(
-        {"analysis", "connect", "discovery", "facets", "naming", "places", "resultset", "settings", "vocabulary"}
+        {
+            "analysis",
+            "connect",
+            "discovery",
+            "facets",
+            "naming",
+            "pages",
+            "places",
+            "resultset",
+            "settings",
+            "vocabulary",
+        }
     ),
     "sg_web/media_authored.py": frozenset(
         {"authored", "collections", "connect", "context", "naming", "pages", "places"}

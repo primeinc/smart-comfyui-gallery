@@ -30,16 +30,38 @@ test-slow: web::build
     {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile
 
 # Ruff over the Python, Biome over the browser source (biome.json: the
-# first-party JS and CSS, never the vendored htmx), then this repository's
-# own structural rules (sglint)
-lint:
+# first-party JS and CSS, never the vendored htmx), and this repository's
+# own structural rules (sglint).
+#
+# Three separate programs reading three separate things, so they run
+# together: serially they were 0.2 + 1.5 + 4.1 = 5.8s of the gate's ten,
+# and the gate went over its budget the day the vocabulary work landed.
+# In parallel the lane costs whatever sglint costs.
+[parallel]
+lint: lint-python lint-web lint-structure
+
+[private]
+lint-python:
     {{ python }} -m ruff check .
+
+[private]
+lint-web:
     npm run --silent lint
+
+[private]
+lint-structure:
     {{ python }} -m sglint
 
 # Ruff and Biome format in report-only mode; never rewrites
-fmt-check:
+[parallel]
+fmt-check: fmt-python fmt-web
+
+[private]
+fmt-python:
     {{ python }} -m ruff format --check .
+
+[private]
+fmt-web:
     npm run --silent format-check
 
 # The cross-module inference neither ruff nor esbuild can do.

@@ -382,3 +382,19 @@ def test_filtering_is_one_editing_session_not_fourteen(page: Page, live: Live, u
     page.wait_for_selector("[data-grid]", timeout=15_000)
     assert page.url.endswith("/g?kind=image"), f"Back landed on {page.url}, not {was}"
     assert _cells(page) == WHOLE - 1, "every still picture, which is where the filtering began"
+
+
+def test_slash_puts_the_caret_in_the_search_box(page: Page, live: Live, unbroken):
+    """What `/` does everywhere. The BUTTON is the way into filtering and
+    it is always visible; this is a convenience on top of it, never
+    instead of it -- and deliberately not a letter, because `f` has been
+    favourite since authored.ts claimed it and one keystroke has one
+    meaning."""
+    _open_gallery(page)
+    page.keyboard.press("/")
+    focused = page.evaluate("() => document.activeElement?.getAttribute('type')")
+    assert focused == "search", focused
+    # and typing into it does not fire commands: a search for "focus"
+    # must not turn the lights out on the way past the l
+    page.keyboard.type("lantern")
+    assert page.input_value('[data-ask] input[type="search"]') == "lantern"

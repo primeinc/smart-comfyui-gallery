@@ -1,0 +1,80 @@
+{# The same members the grid would show, as FACTS rather than pictures.
+
+   Cross-media by construction: a sound has no width, a photograph has no
+   sampler, a clip has no aperture. Every column is a LEFT JOIN and an
+   empty cell is an honest "this medium does not have one" -- a table that
+   dropped a row for lacking a column would misreport what the answer
+   holds, and one that showed 0 would invent a fact.
+
+   Only the columns SOMETHING in this answer fills are drawn, so asking
+   about photographs does not produce eight empty recipe columns and
+   asking about generated pictures does not produce four empty camera
+   ones. The answer decides its own shape. #}
+{% set has_recipe = table | selectattr("tool") | list | length > 0 %}
+{% set has_camera = table | selectattr("camera") | list | length > 0 or table | selectattr("iso") | list | length > 0 %}
+{% set has_length = table | selectattr("duration") | list | length > 0 %}
+<div class="table-scroll">
+  <table class="answer-table" data-table>
+    <thead>
+      <tr>
+        <th scope="col">picture</th>
+        <th scope="col">name</th>
+        <th scope="col">kind</th>
+        <th scope="col" class="answer-num">pixels</th>
+        {% if has_length %}<th scope="col" class="answer-num">length</th>{% endif %}
+        <th scope="col" class="answer-num">size</th>
+        {% if has_recipe %}
+        <th scope="col">checkpoint</th>
+        <th scope="col">sampler</th>
+        <th scope="col" class="answer-num">steps</th>
+        <th scope="col" class="answer-num">cfg</th>
+        <th scope="col" class="answer-num">seed</th>
+        {% endif %}
+        {% if has_camera %}
+        <th scope="col">camera</th>
+        <th scope="col" class="answer-num">iso</th>
+        <th scope="col" class="answer-num">f</th>
+        <th scope="col" class="answer-num">mm</th>
+        {% endif %}
+        <th scope="col" class="answer-num">&starf;</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in table %}
+      <tr data-row="{{ row.slug }}" data-kind="{{ row.kind }}">
+        <td class="answer-thumb">
+          <a href="/i/{{ row.slug }}{% if qs %}?{{ qs }}{% endif %}" data-slug="{{ row.slug }}" data-kind="{{ row.kind }}">
+            <img src="/thumb/{{ row.slug }}" alt="{{ row.name }}" loading="lazy" decoding="async">
+          </a>
+        </td>
+        <td class="answer-name"><a href="/i/{{ row.slug }}{% if qs %}?{{ qs }}{% endif %}">{{ row.name }}</a></td>
+        <td>{{ row.kind.replace("_", " ") }}</td>
+        <td class="answer-num">{% if row.width and row.height %}{{ row.width }}&times;{{ row.height }}{% endif %}</td>
+        {% if has_length %}<td class="answer-num">{% if row.duration %}{{ "%.1f"|format(row.duration) }}s{% endif %}</td>{% endif %}
+        <td class="answer-num">{{ (row.size / 1048576) | round(1) }} MB</td>
+        {% if has_recipe %}
+        <td>{{ row.checkpoint or "" }}</td>
+        <td>{{ row.sampler or "" }}</td>
+        <td class="answer-num">{{ row.steps if row.steps is not none else "" }}</td>
+        <td class="answer-num">{{ row.cfg if row.cfg is not none else "" }}</td>
+        <td class="answer-num answer-seed">{{ row.seed if row.seed is not none else "" }}</td>
+        {% endif %}
+        {% if has_camera %}
+        <td>{{ row.camera or "" }}</td>
+        <td class="answer-num">{{ row.iso if row.iso is not none else "" }}</td>
+        <td class="answer-num">{% if row.f_number %}&fnof;/{{ row.f_number }}{% endif %}</td>
+        <td class="answer-num">{% if row.focal_length %}{{ row.focal_length | round | int }}{% endif %}</td>
+        {% endif %}
+        <td class="answer-num">{% if row.favorite %}&hearts;{% endif %}{% if row.rating %}{{ row.rating }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if not table %}<p class="empty">no pictures match these filters.</p>{% endif %}
+<nav class="pager" data-pager aria-label="pages">
+  {% set qbase = qs + "&" if qs else "" %}
+  {% if page > 1 %}<a href="/g?{{ qbase }}page={{ page - 1 }}&view=table" rel="prev">previous</a>{% endif %}
+  <span class="pager-where">page {{ page }} of {{ pages }} &middot; {{ total }} results</span>
+  {% if page < pages %}<a href="/g?{{ qbase }}page={{ page + 1 }}&view=table" rel="next">next</a>{% endif %}
+</nav>

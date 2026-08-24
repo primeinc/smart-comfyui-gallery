@@ -30,6 +30,7 @@
  */
 
 import { everyElement, findElement } from "./dom";
+import { register } from "./keys";
 import { panelState, remember, rememberPanel, workspace } from "./workspace";
 
 /** The query parameters that are the QUESTION, not the position in it. */
@@ -395,6 +396,26 @@ export function mountFilters(root: HTMLElement): void {
   // fresh history entry rather than replacing this one.
   for (const clear of everyElement(root, "[data-filters-clear], [data-chips-clear]", HTMLElement)) {
     clear.addEventListener("click", endSession);
+  }
+
+  // `/` puts the caret in the search box, which is what `/` does
+  // everywhere. Deliberately not a letter for the drawer: `f` has been
+  // favourite since authored.ts claimed it, and the registry refuses a
+  // second claim rather than letting one keystroke rate a picture AND
+  // open a panel. The button is the way in, and it is always visible --
+  // which was the requirement; the shortcut is a convenience on top.
+  const search = findElement(root, '[data-ask] input[type="search"]', HTMLInputElement);
+  if (search) {
+    register([
+      {
+        key: "/",
+        by: "gallery: search",
+        run: () => {
+          search.focus();
+          search.select();
+        },
+      },
+    ]);
   }
 
   // The state restored is the FURNITURE. Which filters are held is the

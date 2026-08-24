@@ -183,3 +183,47 @@ not a history.
   `db/planning.py:1367` `|` on `int | frozenset[str]`). Triage those and
   ty restores type checking to the fast gate. It was installed, measured
   and removed rather than left in the tree unwired.
+
+## The query workspace, as far as it got
+
+Built: the query vocabulary (db/vocabulary.py), filter discovery
+(db/discovery.py), answer analysis (db/analysis.py), the filter drawer,
+Gallery/Table/Analyze, the compare tray, endless browsing, and reading
+generation metadata out of video containers. What is NOT built:
+
+- **Within a dimension, multi-select is AND, never OR.** Repeated facets
+  conjoin, which is right for "this checkpoint with that LoRA" and wrong
+  for "image or video". Every dimension whose values are mutually
+  exclusive (kind, sampler, checkpoint) therefore offers a list where
+  choosing a second value gives zero. The UI does not pretend otherwise
+  -- the count says 0 before you click -- but the honest fix is an `in`
+  operator in db/facets.py taking a list, and an Any/All control on the
+  dimensions where both readings are meaningful (people, LoRAs).
+
+- **`context.origin` is not offered as a multi-select either**, for the
+  same reason, which is why `has.generation` exists beside it.
+
+- **No `folder`/`album`/`person` value lists.** Those dimensions are
+  `slug`-carried scopes with no `discover` statement, so the drawer shows
+  them with no options. They need a name-to-slug listing each; the
+  vocabulary has the field (`discover`) and they have no value for it.
+
+- **Advanced metadata has no door.** `file_param` holds every key any
+  tool emitted and `param_key` registers them; the plan was a section
+  that lets somebody ask `generation.foo >= 17` by key. Nothing is built:
+  the vocabulary is deliberately curated and the long tail is
+  unreachable from any surface.
+
+- **The analysis has no prompt-term view.** Exact prompt identity is
+  built and counted. Recurring TERMS across an answer -- which is a
+  different claim with a different error mode -- is not, and is
+  deliberately absent rather than quietly mixed into the exact counts.
+
+- **The table cannot be sorted by its columns.** Order is the
+  ResultSet's, which is correct; clicking a column heading would have to
+  become a `sort` the ResultSet understands, not a client-side reorder of
+  one page.
+
+- **The compare tray has no two-up A/B mode.** It shows everything kept,
+  side by side, in tray order. Two is the common case and works; naming
+  one A and one B and flipping between them is not built.
