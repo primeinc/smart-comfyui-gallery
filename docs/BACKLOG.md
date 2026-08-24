@@ -6,22 +6,28 @@ not a history.
 
 ## Performance
 
-- **Thumbnail pipeline.** Measured at 1.73 files/sec serial over the real
-  library (`just bench thumbs-phases`). The costs, per phase, are in
-  `benchmarks/results/thumbnail_phases.json`. Known waste: sources are
-  upscaled to 1440 and encoded at that size even when the original is
-  0.03 MP; the 512 thumb is resized from the original instead of from the
-  1440 preview; RAW is fully demosaiced rather than using its embedded
-  preview; JPEG is fully decoded because `load()` runs before anything can
-  call `draft()`; orientation 1 still pays a full-resolution copy.
+- **Thumbnails are still serial.** 5.00 files/sec over the real library
+  (`just bench thumbs-phases`), up from 1.76, but one worker renders one
+  file at a time. `run_next()` loops over every pending item, so a 20,000
+  file precache owns the only background worker for an hour. Decode,
+  resize and encode are all per-file work with nothing shared, so this is
+  the next win: claim a bounded batch, render a few concurrently, keep
+  the database worker as the thing that commits. Benchmark 1/2/4/8 in
+  flight rather than picking a number.
 
-- **One raster serves every consumer.** `oriented.for_model()` returns a
-  full-resolution frame to the thumbnailer, the perceptual hash, face
-  detection, OpenCLIP, BLIP and Qwen. Their real input contracts differ by
-  orders of magnitude — the perceptual hash reduces to 32x32, YuNet caps
-  at 1600 — so most of that decode is discarded. A raster request should
-  state the size it needs and let the source adapter find the cheapest
-  correct way to produce it.
+  Interactive work should also outrank precache — a browser waiting on
+  `/thumb/x` is real work and a speculative queue is not — and two
+  requests for the same missing key currently render it twice.
+
+- **One raster serves every OTHER consumer.** Thumbnails now ask for what
+  they need (`decode.open_bounded`, `oriented.for_derivatives`), but
+  `oriented.for_model()` still returns a full-resolution frame to the
+  perceptual hash, face detection, OpenCLIP, BLIP and Qwen. Their real
+  input contracts differ by orders of magnitude — the perceptual hash
+  reduces to 32x32, YuNet caps at 1600 — so most of that decode is
+  discarded. Each should ask for the size it needs and let the source
+  adapter find the cheapest correct way to produce it, the way the
+  thumbnailer now does.
 
   Changing the pixels a model sees changes its output, so any such change
   has to become part of the recorded producer identity for embeddings,
