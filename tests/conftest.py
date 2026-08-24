@@ -116,6 +116,26 @@ def live(request, tmp_path_factory):
                 os.environ[key] = value
 
 
+@pytest.fixture(autouse=True)
+def _unbroken_unless_excused(request):
+    """`unbroken` for every browser test, without each one asking.
+
+    It used to be opt-in, and nine of a hundred browser tests had simply
+    not opted -- including four over the timeline, which is the surface
+    the backlog says still points at a raster route that 404s. A check
+    an author has to remember is a check that measures who remembered.
+
+    Only for tests that drive a browser (`page` among their fixtures);
+    everything else must not pay for a served application. A test that
+    means to provoke a refusal says so with
+    `@pytest.mark.expects_broken`, which is a sentence in the test
+    rather than an omission nobody can see.
+    """
+    if "page" not in request.fixturenames or request.node.get_closest_marker("expects_broken"):
+        return
+    request.getfixturevalue("unbroken")
+
+
 @pytest.fixture
 def unbroken(page, live: Live):
     """Nothing the browser itself calls broken, for the duration of a test.
@@ -125,8 +145,9 @@ def unbroken(page, live: Live):
     and every browser test passed, because they watched for 500s and
     uncaught exceptions and a missing script is neither.
 
-    Requested by name rather than autouse: a test that means to provoke a
-    refusal says so by not asking for this.
+    Still requestable by name, because a test that wants to READ what
+    the browser reported -- rather than only fail on it -- takes the
+    list this yields.
     """
     found: list[str] = []
 
