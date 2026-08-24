@@ -6,11 +6,11 @@
     "node": ">=24.12"
   },
   "scripts": {
-    "lint": "biome lint . --error-on-warnings",
-    "format-check": "biome format .",
-    "format": "biome format . --write",
-    "check": "biome ci . --error-on-warnings",
-    "fix": "biome check . --write",
+    "lint": "biome lint frontend/src sg_web/static --error-on-warnings",
+    "format-check": "biome format frontend/src sg_web/static",
+    "format": "biome format frontend/src sg_web/static --write",
+    "check": "biome ci frontend/src sg_web/static --error-on-warnings",
+    "fix": "biome check frontend/src sg_web/static --write",
     "types-source": "tsc -p frontend",
     "types-build": "tsc -p frontend/tsconfig.node.json",
     "build-web": "node frontend/build.ts",

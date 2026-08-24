@@ -17,8 +17,11 @@ python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { '.
 #
 # pytest exits 5 when it collects nothing, which is the expected
 # outcome here and not a failure. The suite is `just test-slow`.
+# No xdist: sixteen workers importing sixty test modules to collect
+# nothing cost 13.4s of the lane's 18.8s. One process collects the same
+# nothing in a third of that.
 test: web::build
-    {{ python }} -m pytest tests/ -m "not slow" -n auto --dist loadfile || [ $? -eq 5 ]
+    {{ python }} -m pytest tests/ -m "not slow" || [ $? -eq 5 ]
 
 # The suite. All of it: real sample libraries, real browsers, real
 # migration chains. Minutes, not seconds -- which is why it is not in
@@ -39,12 +42,24 @@ fmt-check:
     {{ python }} -m ruff format --check .
     npm run --silent format-check
 
-# Pyright over the Python and tsc over the browser source: the cross-module
-# inference neither ruff nor esbuild can do. Part of the gate.
+# The cross-module inference neither ruff nor esbuild can do.
 #
-# Both halves always run. As a dependency with a body, the body was skipped
-# whenever the dependency failed, so a red browser source meant no Python was
-# type checked at all -- which during a migration is every single run.
+# SPLIT BY COST, not by importance. tsc over the browser source is ~2s and
+# stays in the ten-second gate; pyright over the Python is 137s and cannot
+# be in it.
+#
+# Measured, whole tree, 170 files: pyright 137.5s. `--threads` makes it
+# WORSE (181s). The cost is one import: vision/semantic/openclip.py,
+# vision/semantic/qwen_vl.py and vision/captions.py each take ~90s ALONE,
+# and what they share is `torch`. torch and transformers both ship
+# py.typed, so pyright reads their inline annotations from source and
+# `useLibraryCodeForTypes = false` does not skip them. There is no setting
+# that keeps torch's types and avoids parsing torch.
+#
+# Both halves always run where they run. As a dependency with a body, the
+# body was skipped whenever the dependency failed, so a red browser source
+# meant no Python was type checked at all -- which during a migration is
+# every single run.
 [parallel]
 types: web::types types-python
 
@@ -58,14 +73,57 @@ types-python:
 repo-check:
     {{ python }} -m sglint --repo
 
-# The gate: lint, format, types, repo hygiene, and the real database's
-# version held against this build -- a schema bump with no step from the
-# version in the home directory fails here, in under a second, before any
-# commit. No tests -- `just test` is its own step
-check: web::fresh api::check lint fmt-check types web::unit repo-check db-check
+# THE GATE, AND IT IS HELD TO TEN SECONDS.
+#
+# Ten seconds is the budget, `just budget` is what proves it, and what
+# does not fit is not quietly kept -- it moves to `check-deep` and says so.
+# A gate nobody waits for is a gate people commit around.
+#
+# `web::fresh` runs FIRST and alone: it deletes and rebuilds
+# sg_web/static/build, which biome would otherwise be walking at the same
+# moment. Everything after it is independent and runs together.
+[doc('The gate. Held to ten seconds; `just budget` proves it')]
+check: web::fresh gates
 
-# The gate, both test lanes, and the real run walked
-check-all: check test test-slow smoke
+[parallel]
+[private]
+gates: api::check lint fmt-check web::types web::unit db-check
+
+# What could not be made to fit ten seconds. Not less important -- pyright
+# is the only cross-module inference this project has over its Python, and
+# repo-check is what keeps a clone honest. Measured: pyright 137s (torch;
+# see `types` above), repo-check 9.3s (two full `git checkout-index -a`
+# into temporary trees plus a scratch repository, on a platform where each
+# git spawn costs about 200ms).
+[doc('What cannot fit ten seconds: pyright over the Python, repo hygiene')]
+[parallel]
+check-deep: types-python repo-check
+
+# Everything: the gate, the deep gate, the suite, and the real run walked.
+[doc('Everything: both gates, the suite, and the real run walked')]
+check-all: check check-deep test-slow smoke
+
+# The budget, enforced rather than promised.
+#
+# `just check` and `just test` are each allowed ten seconds. This runs
+# them and fails on the clock, so the day something slow is added to
+# either lane is the day this says so, by name, with the number.
+[doc('Prove `just check` and `just test` each stay inside ten seconds')]
+[script]
+budget:
+    over=0
+    for lane in check test; do
+      start=$(date +%s%N)
+      just "$lane"
+      spent=$(( ($(date +%s%N) - start) / 1000000 ))
+      if [ "$spent" -gt 10000 ]; then
+        echo "just $lane took ${spent}ms -- OVER THE TEN SECONDS"
+        over=1
+      else
+        echo "just $lane took ${spent}ms -- ok"
+      fi
+    done
+    exit "$over"
 
 # The home directory's database against this build: every version between
 # the file's and USER_VERSION must have a migration step; a newer file

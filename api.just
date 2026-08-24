@@ -19,9 +19,15 @@ export PYTHON := if os_family() == 'windows' { './.venv/Scripts/python.exe' } el
 # _generate_openapi_schema): its serializer, its formatting. Built over a
 # throwaway home, so the document describes the application and never what
 # happens to be in ~/.smartgallery.
+#
+# The destination is an environment variable rather than a hard-coded
+# path, because the gate needs the same document written somewhere it can
+# compare WITHOUT overwriting the committed one.
+[private]
 [script]
-schema:
+write-schema:
     "$PYTHON" - <<'PY'
+    import os
     import pathlib
     import tempfile
 
@@ -36,26 +42,46 @@ schema:
         document = msgspec.json.format(
             encode_json(app.openapi_schema.to_schema(), serializer=serializer), indent=4
         )
-    pathlib.Path("frontend/openapi.json").write_bytes(document + b"\n")
+    pathlib.Path(os.environ["SCHEMA_OUT"]).write_bytes(document + b"\n")
     PY
+
+# The document, into the tree, for `just api types`.
+schema:
+    SCHEMA_OUT=frontend/openapi.json just api write-schema
 
 # The browser's view of that document. Generated, never edited.
 types: schema
     npm run --silent api-types
 
-# The gate, in two halves that together pin the whole chain.
+# The gate, in two halves that together pin the whole chain, and they run
+# TOGETHER.
 #
-# The document is regenerated from the running application and compared with
-# the committed one, so a handler whose model changed without this being run
-# fails here. The types are then checked with openapi-typescript's own
-# `--check`, which compares without rewriting: the browser cannot be typed
-# against a contract the server stopped honouring, and a passing check leaves
-# the tree exactly as it found it.
+# The document is regenerated from the running application and compared
+# with the committed one, so a handler whose model changed without this
+# being run fails here. The types are checked with openapi-typescript's
+# own `--check`, which compares without rewriting: the browser cannot be
+# typed against a contract the server stopped honouring, and a passing
+# check leaves the tree exactly as it found it.
+#
+# The halves were serial for one reason: the first REWROTE the file the
+# second reads, so running them together raced on a truncated document.
+# Writing to a temporary file removes the reason, halves the wall clock,
+# and means the gate no longer edits the tree it is judging.
+[parallel]
+check: schema-fresh types-fresh
+
+[private]
 [script]
-check: schema
-    if ! git diff --quiet -- frontend/openapi.json; then
+schema-fresh:
+    scratch="$(mktemp -d)"
+    trap 'rm -rf "$scratch"' EXIT
+    SCHEMA_OUT="$scratch/openapi.json" just api write-schema
+    if ! cmp -s "$scratch/openapi.json" frontend/openapi.json; then
       echo 'the OpenAPI document is stale: run `just api types` and commit the result' >&2
-      git --no-pager diff --stat -- frontend/openapi.json >&2
+      diff --unified=2 frontend/openapi.json "$scratch/openapi.json" >&2 || true
       exit 1
     fi
+
+[private]
+types-fresh:
     npm run --silent api-types-check

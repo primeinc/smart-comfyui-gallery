@@ -161,3 +161,25 @@ not a history.
 - **`viewer.ts` imports `isPlainClick` from `overlay.ts`.** The viewer
   core is meant to be container-independent and the overlay is the
   container. A generic click predicate belongs in a neutral module.
+
+## The gate's remaining hole
+
+- **The ten-second gate has no Python type check.** `just check` is held
+  to ten seconds (`just budget` proves it) and pyright cannot fit: 137.5s
+  over 170 files, `--threads` makes it 181s. The cost is one import --
+  `vision/semantic/openclip.py`, `vision/semantic/qwen_vl.py` and
+  `vision/captions.py` each take ~90s ALONE and share `torch`. torch and
+  transformers both ship `py.typed`, so pyright reads their inline
+  annotations from source and `useLibraryCodeForTypes = false` does not
+  skip them; no setting keeps torch's types and avoids parsing torch. So
+  pyright moved to `just check-deep` and the fast gate lost cross-module
+  Python inference entirely.
+
+  The lead: **ty 0.0.74 checks the same tree in 4.6s** -- 30x -- and
+  `pyproject.toml` has carried `[tool.ty.src]` and `[tool.ty.analysis]`
+  since before this. It reported **74 diagnostics** on a tree pyright
+  calls clean (real ones among them: `db/capture.py:101` `_CLAIMED |=
+  _GPS_CLAIMED` between `set[Base]` and `set[GPS | IFD]`;
+  `db/planning.py:1367` `|` on `int | frozenset[str]`). Triage those and
+  ty restores type checking to the fast gate. It was installed, measured
+  and removed rather than left in the tree unwired.
