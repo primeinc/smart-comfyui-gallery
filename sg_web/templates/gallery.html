@@ -60,7 +60,8 @@
      Clicking the body of a chip opens the drawer AT that filter, so the
      relationship between the two is something a person can see rather
      than something they have to be told. #}
-  <div class="chips" data-chips{% if not chips %} hidden{% endif %}>
+  {% if chips %}
+  <div class="chips" data-chips>
     {% for chip in chips %}
     <span class="chip" data-chip="{{ chip.spelled }}">
       <button type="button" class="chip-edit" data-chip-edit="{{ chip.key }}"
@@ -69,8 +70,9 @@
          aria-label="remove {{ chip.label }}" data-chip-remove>&times;</a>
     </span>
     {% endfor %}
-    {% if chips %}<a class="chip-clear" href="/g" data-chips-clear>clear all</a>{% endif %}
+    <a class="chip-clear" href="/g" data-chips-clear>clear all</a>
   </div>
+  {% endif %}
   {# The filter surface. Sections and their dimensions are drawn from
      db/vocabulary.py -- the same registry that names a chip and the
      same one the ResultSet's predicates are registered beside -- so a

@@ -227,3 +227,24 @@ generation metadata out of video containers. What is NOT built:
 - **The compare tray has no two-up A/B mode.** It shows everything kept,
   side by side, in tray order. Two is the common case and works; naming
   one A and one B and flipping between them is not built.
+
+## Two flakes in the suite, characterised and not fixed
+
+- **`test_writes_stay_linear.py` fails near its own tolerance.** The
+  ratio gate is `< 2.0` and the measurements sit on it: across four runs
+  it failed three times on three DIFFERENT cases (`writing a parsed
+  field` 2.0019, `rescanning an unchanged library` 2.1, `renaming a file`
+  2.4) and passed twice clean. Different case each time is the signature
+  of machine-load sensitivity, not of one path that regressed. It needs
+  either a bigger gap between SMALL and LARGE so the ratio is not
+  measuring noise, or repeated timings with a median. Ignoring it is
+  worse than either: a gate that fails one run in three teaches people
+  to re-run it.
+
+- **`test_the_bytes_are_served.py` fails only under xdist.** `rc=0` in
+  isolation; under `-n 4` one case raises `asyncio.run() cannot be called
+  from a running event loop` and the next errors in setup. The trigger is
+  an unawaited-coroutine RuntimeWarning surfacing inside another test's
+  setup — `filterwarnings = error` turns it into a failure wherever the
+  garbage collector happens to run it. The test drives the ASGI app with
+  `asyncio.run` inside a worker that already has a loop.

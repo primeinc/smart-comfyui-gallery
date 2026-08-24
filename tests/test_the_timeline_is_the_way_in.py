@@ -95,7 +95,7 @@ def test_the_gallery_shows_its_facets_as_chips_that_can_go(links):
     assert 'data-chip="context.local_day:eq:2023-06-10"' in page
     assert "day 2023-06-10" in page
     assert "origin imported" in page
-    removes = re.findall(r'data-chip="([^"]+)">[^<]*<a href="([^"]+)"', page)
+    removes = re.findall(r'data-chip="([^"]+)"[\s\S]*?<a href="([^"]+)"[^>]*data-chip-remove', page)
     assert removes == [
         ("context.local_day:eq:2023-06-10", "/g?f=context.origin%3Aeq%3Aimported&amp;sort=moment"),
         ("context.origin:eq:imported", "/g?f=context.local_day%3Aeq%3A2023-06-10&amp;sort=moment"),
@@ -281,7 +281,9 @@ def test_the_contested_count_is_a_link_onto_exactly_the_disputed(links):
         "every interpreted picture is one or the other"
     )
     page = links.get("/g?f=context.disputed%3Aeq%3A1").text
-    assert "disputed 1" in page or coverage["contested"] == 0
+    # "date disputed yes", not "disputed 1": the chip reads as a person
+    # says it now, from the one vocabulary (db/vocabulary.py)
+    assert "date disputed yes" in page or coverage["contested"] == 0
 
 
 def test_every_scope_page_opens_its_pictures_in_time_order(links):

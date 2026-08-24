@@ -1059,7 +1059,7 @@ def test_the_gallery_chips_the_person_scope_too(faces):
     assert 'data-chip="kind=image"' in page
     import re
 
-    removes = dict(re.findall(r'data-chip="([^"]+)">[^<]*<a href="([^"]+)"', page))
+    removes = dict(re.findall(r'data-chip="([^"]+)"[\s\S]*?<a href="([^"]+)"[^>]*data-chip-remove', page))
     assert removes["person=ana"] == "/g?kind=image"
     assert removes["kind=image"] == "/g?person=ana"
 
