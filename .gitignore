@@ -92,6 +92,12 @@ benchmarks/results/*
 !benchmarks/results/browser/
 benchmarks/results/browser/*
 !benchmarks/results/browser/manifest.json
+# Same rule for the workspace captures: the manifest says what was
+# photographed and at which widths, the images are reproduced by
+# `just bench workspace` rather than carried in the repository.
+!benchmarks/results/workspace/
+benchmarks/results/workspace/*
+!benchmarks/results/workspace/manifest.json
 
 # Personal launch scripts. The README has every user make these by copying
 # the sample_run_* files and filling in their own paths, passwords and

@@ -1,0 +1,299 @@
+[
+  {
+    "name": "gallery--wide",
+    "surface": "gallery",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "gallery--wide.png",
+    "caption": "The gallery, nothing asked.",
+    "url": "/g"
+  },
+  {
+    "name": "filters-open--wide",
+    "surface": "filters-open",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "filters-open--wide.png",
+    "caption": "The filter drawer, with Generation and Media disclosed and their values counted.",
+    "url": "/g"
+  },
+  {
+    "name": "filtered--wide",
+    "surface": "filtered",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "filtered--wide.png",
+    "caption": "Two clauses held: the chips, the count, the badge.",
+    "url": "/g?f=has.generation%3Aeq%3A1&f=generation.checkpoint%3Aeq%3A28"
+  },
+  {
+    "name": "analyze-generated--wide",
+    "surface": "analyze-generated",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "analyze-generated--wide.png",
+    "caption": "Analyze over generated media: prompts, LoRAs, and the recipe broken down.",
+    "url": "/g?view=analyze&f=has.generation%3Aeq%3A1"
+  },
+  {
+    "name": "analyze-photos--wide",
+    "surface": "analyze-photos",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "analyze-photos--wide.png",
+    "caption": "Analyze over photographs -- the SAME surface, different dimensions.",
+    "url": "/g?view=analyze&f=has.capture%3Aeq%3A1"
+  },
+  {
+    "name": "analyze-everything--wide",
+    "surface": "analyze-everything",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "analyze-everything--wide.png",
+    "caption": "Analyze over the whole mixed library.",
+    "url": "/g?view=analyze"
+  },
+  {
+    "name": "table--wide",
+    "surface": "table",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "table--wide.png",
+    "caption": "The table over mixed media.",
+    "url": "/g?view=table"
+  },
+  {
+    "name": "table-generated--wide",
+    "surface": "table-generated",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "table-generated--wide.png",
+    "caption": "The table over generated media only: the recipe columns appear.",
+    "url": "/g?view=table&f=has.generation%3Aeq%3A1"
+  },
+  {
+    "name": "viewer--wide",
+    "surface": "viewer",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "viewer--wide.png",
+    "caption": "The viewer with the recipe panel open.",
+    "url": "/i/made-18"
+  },
+  {
+    "name": "compare-tray--wide",
+    "surface": "compare-tray",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "compare-tray--wide.png",
+    "caption": "Three kept in the compare tray.",
+    "url": "/g"
+  },
+  {
+    "name": "comparing--wide",
+    "surface": "comparing",
+    "width": "wide",
+    "px": "1920x1080",
+    "file": "comparing--wide.png",
+    "caption": "The comparison itself, above everything.",
+    "url": "/g"
+  },
+  {
+    "name": "gallery--laptop",
+    "surface": "gallery",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "gallery--laptop.png",
+    "caption": "The gallery, nothing asked.",
+    "url": "/g"
+  },
+  {
+    "name": "filters-open--laptop",
+    "surface": "filters-open",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "filters-open--laptop.png",
+    "caption": "The filter drawer, with Generation and Media disclosed and their values counted.",
+    "url": "/g"
+  },
+  {
+    "name": "filtered--laptop",
+    "surface": "filtered",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "filtered--laptop.png",
+    "caption": "Two clauses held: the chips, the count, the badge.",
+    "url": "/g?f=has.generation%3Aeq%3A1&f=generation.checkpoint%3Aeq%3A28"
+  },
+  {
+    "name": "analyze-generated--laptop",
+    "surface": "analyze-generated",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "analyze-generated--laptop.png",
+    "caption": "Analyze over generated media: prompts, LoRAs, and the recipe broken down.",
+    "url": "/g?view=analyze&f=has.generation%3Aeq%3A1"
+  },
+  {
+    "name": "analyze-photos--laptop",
+    "surface": "analyze-photos",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "analyze-photos--laptop.png",
+    "caption": "Analyze over photographs -- the SAME surface, different dimensions.",
+    "url": "/g?view=analyze&f=has.capture%3Aeq%3A1"
+  },
+  {
+    "name": "analyze-everything--laptop",
+    "surface": "analyze-everything",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "analyze-everything--laptop.png",
+    "caption": "Analyze over the whole mixed library.",
+    "url": "/g?view=analyze"
+  },
+  {
+    "name": "table--laptop",
+    "surface": "table",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "table--laptop.png",
+    "caption": "The table over mixed media.",
+    "url": "/g?view=table"
+  },
+  {
+    "name": "table-generated--laptop",
+    "surface": "table-generated",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "table-generated--laptop.png",
+    "caption": "The table over generated media only: the recipe columns appear.",
+    "url": "/g?view=table&f=has.generation%3Aeq%3A1"
+  },
+  {
+    "name": "viewer--laptop",
+    "surface": "viewer",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "viewer--laptop.png",
+    "caption": "The viewer with the recipe panel open.",
+    "url": "/i/made-18"
+  },
+  {
+    "name": "compare-tray--laptop",
+    "surface": "compare-tray",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "compare-tray--laptop.png",
+    "caption": "Three kept in the compare tray.",
+    "url": "/g"
+  },
+  {
+    "name": "comparing--laptop",
+    "surface": "comparing",
+    "width": "laptop",
+    "px": "1440x900",
+    "file": "comparing--laptop.png",
+    "caption": "The comparison itself, above everything.",
+    "url": "/g"
+  },
+  {
+    "name": "gallery--phone",
+    "surface": "gallery",
+    "width": "phone",
+    "px": "390x844",
+    "file": "gallery--phone.png",
+    "caption": "The gallery, nothing asked.",
+    "url": "/g"
+  },
+  {
+    "name": "filters-open--phone",
+    "surface": "filters-open",
+    "width": "phone",
+    "px": "390x844",
+    "file": "filters-open--phone.png",
+    "caption": "The filter drawer, with Generation and Media disclosed and their values counted.",
+    "url": "/g"
+  },
+  {
+    "name": "filtered--phone",
+    "surface": "filtered",
+    "width": "phone",
+    "px": "390x844",
+    "file": "filtered--phone.png",
+    "caption": "Two clauses held: the chips, the count, the badge.",
+    "url": "/g?f=has.generation%3Aeq%3A1&f=generation.checkpoint%3Aeq%3A28"
+  },
+  {
+    "name": "analyze-generated--phone",
+    "surface": "analyze-generated",
+    "width": "phone",
+    "px": "390x844",
+    "file": "analyze-generated--phone.png",
+    "caption": "Analyze over generated media: prompts, LoRAs, and the recipe broken down.",
+    "url": "/g?view=analyze&f=has.generation%3Aeq%3A1"
+  },
+  {
+    "name": "analyze-photos--phone",
+    "surface": "analyze-photos",
+    "width": "phone",
+    "px": "390x844",
+    "file": "analyze-photos--phone.png",
+    "caption": "Analyze over photographs -- the SAME surface, different dimensions.",
+    "url": "/g?view=analyze&f=has.capture%3Aeq%3A1"
+  },
+  {
+    "name": "analyze-everything--phone",
+    "surface": "analyze-everything",
+    "width": "phone",
+    "px": "390x844",
+    "file": "analyze-everything--phone.png",
+    "caption": "Analyze over the whole mixed library.",
+    "url": "/g?view=analyze"
+  },
+  {
+    "name": "table--phone",
+    "surface": "table",
+    "width": "phone",
+    "px": "390x844",
+    "file": "table--phone.png",
+    "caption": "The table over mixed media.",
+    "url": "/g?view=table"
+  },
+  {
+    "name": "table-generated--phone",
+    "surface": "table-generated",
+    "width": "phone",
+    "px": "390x844",
+    "file": "table-generated--phone.png",
+    "caption": "The table over generated media only: the recipe columns appear.",
+    "url": "/g?view=table&f=has.generation%3Aeq%3A1"
+  },
+  {
+    "name": "viewer--phone",
+    "surface": "viewer",
+    "width": "phone",
+    "px": "390x844",
+    "file": "viewer--phone.png",
+    "caption": "The viewer with the recipe panel open.",
+    "url": "/i/made-18"
+  },
+  {
+    "name": "compare-tray--phone",
+    "surface": "compare-tray",
+    "width": "phone",
+    "px": "390x844",
+    "file": "compare-tray--phone.png",
+    "caption": "Three kept in the compare tray.",
+    "url": "/g"
+  },
+  {
+    "name": "comparing--phone",
+    "surface": "comparing",
+    "width": "phone",
+    "px": "390x844",
+    "file": "comparing--phone.png",
+    "caption": "The comparison itself, above everything.",
+    "url": "/g"
+  }
+]

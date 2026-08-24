@@ -1271,13 +1271,16 @@
       const column = document.createElement("figure");
       column.className = "compare-column";
       column.dataset.compareColumn = one.slug;
+      const frame = document.createElement("div");
+      frame.className = "compare-frame";
       const shown = playable(one);
+      frame.append(shown);
       const label = document.createElement("figcaption");
       const link = document.createElement("a");
       link.href = `/i/${one.slug}`;
       link.textContent = one.name;
       label.append(link);
-      column.append(shown, label);
+      column.append(frame, label);
       strip.append(column);
     }
     sheet.append(bar, strip);

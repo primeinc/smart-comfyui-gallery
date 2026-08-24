@@ -54,7 +54,10 @@ BREAKDOWNS: tuple[str, ...] = (
     "kind",
     "has.generation",
     "generation.checkpoint",
-    "generation.lora",
+    # NOT `generation.lora`: LoRAs have their own panel, with the weight
+    # each was applied at, which is a strictly better telling of the same
+    # fact. Two panels counting one thing side by side is not twice the
+    # information, it is a reader wondering which one is wrong.
     "generation.tool",
     "generation.sampler",
     "generation.scheduler",
@@ -256,6 +259,13 @@ def analyze(
             continue
         held = discovery.breakdown(conn, query, key, actor_id=actor_id, models_dir=models_dir, now=now, most=MOST)
         if not held.options:
+            continue
+        # A breakdown with ONE value covering the whole answer says
+        # nothing: asking `has.generation=1` and being shown "AI
+        # generated: yes, 100%" is the question read back as an answer.
+        # It is dropped rather than drawn, which is also what stops a
+        # filtered analysis being half bars at 100%.
+        if len(held.options) == 1 and held.options[0].count >= total:
             continue
         # How many members carry this dimension AT ALL. Not the answer's
         # total: "18 of 684 have a camera" and "18 of 18 are a Canon" are

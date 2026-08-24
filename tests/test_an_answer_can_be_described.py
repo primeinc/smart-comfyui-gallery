@@ -258,15 +258,29 @@ def test_an_answer_of_mixed_media_is_described_as_one(page: Page, live: Live, un
 
 
 def test_describing_a_medium_with_nothing_to_say_says_nothing(page: Page, live: Live, unbroken):
-    """A clip in this library carries no recipe, because nothing reads
-    generation metadata out of a video container yet. The analysis of
-    one is honestly empty rather than a page of zeroes."""
+    """An honest empty, rather than a page of bars at 100%.
+
+    The clip in THIS library carries no ComfyUI tags, so it has no
+    recipe to describe -- and a one-member answer has nothing to break
+    down either: every dimension it does carry would read "video, 1,
+    100%", which is the question repeated back as an answer.
+
+    Both halves are deliberate. A breakdown whose single value covers
+    the whole answer is dropped, so a narrow question does not produce a
+    wall of full bars saying what the chips already say.
+    """
     _analyze(page, "kind=video")
     assert _total(page) == "1 result"
     assert _prompts(page) == {}
     assert page.locator("[data-analyze-loras]").count() == 0
-    # what it CAN say about a clip, it says
-    assert _bars(page, "kind") == {"video": 1}
+    assert _bars(page, "kind") == {}, "one video, described as 'video, 100%', is the question read back"
+    assert page.locator(".analyze-bar").count() == 0
+
+    # the control: the SAME surface over an answer that does hold a
+    # spread has plenty to say, so the emptiness above is about this
+    # answer and not about the analysis being broken
+    _analyze(page)
+    assert page.locator(".analyze-bar").count() > 0
 
 
 # --- the third presentation: the same answer as facts ------------------------

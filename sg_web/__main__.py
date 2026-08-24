@@ -153,6 +153,43 @@ def handover() -> None:
     raise SystemExit(ended)
 
 
+#: The two bind addresses this launcher names. `0.0.0.0` is every IPv4
+#: interface; `127.0.0.1` is this machine and nothing else, which is the
+#: default because a media library with no sign-in should not arrive on
+#: the network because somebody forgot a flag.
+LOCAL = "127.0.0.1"
+PUBLIC = "0.0.0.0"  # noqa: S104 -- the whole purpose of --public
+
+
+def reachable() -> list[str]:
+    """The addresses another machine could actually use.
+
+    Best effort and deliberately quiet about failure: this is printed to
+    help somebody type a URL on their phone, and a launcher that refused
+    to start because it could not enumerate interfaces would be trading a
+    working server for a nicety.
+    """
+    import socket
+
+    found: list[str] = []
+    try:
+        # The address that would be used to reach the outside world --
+        # which is the one a phone on the same network wants. No packet
+        # is sent; a connected UDP socket only fixes the local end.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("10.255.255.255", 1))
+            found.append(probe.getsockname()[0])
+    except OSError:
+        pass
+    try:
+        for one in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if one not in found and not one.startswith("127."):
+                found.append(one)
+    except OSError:
+        pass
+    return found or [LOCAL]
+
+
 def main() -> None:
     handover()
     absent_package = missing()
@@ -171,9 +208,26 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(prog="sg_web", description="Serve the gallery.")
     parser.add_argument("--home", default=None, help="the run's directory (default ~/.smartgallery)")
-    parser.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
+    parser.add_argument("--host", default=None, help="bind address (default 127.0.0.1, this machine only)")
     parser.add_argument("--port", type=int, default=8777, help="bind port (default 8777)")
+    parser.add_argument(
+        "--public",
+        action="store_true",
+        help="bind every interface, so other machines on the network can reach it",
+    )
     asked = parser.parse_args()
+    # `--host` and `--public` are two ways to say the same thing, so
+    # saying both differently is refused rather than silently resolved.
+    # A launcher that quietly picked one would be a launcher that binds
+    # somewhere the person did not ask for -- which for this flag is the
+    # difference between their own machine and their whole network.
+    if asked.public and asked.host is not None and asked.host != PUBLIC:
+        print(
+            f"--public means --host {PUBLIC}; you also asked for --host {asked.host}.\nchoose one.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    host = PUBLIC if asked.public else (asked.host or LOCAL)
     absent = unbuilt(HERE / "templates", HERE / "static")
     if absent:
         print(
@@ -183,7 +237,19 @@ def main() -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
-    uvicorn.run(build_app(asked.home), host=asked.host, port=asked.port)
+    if host == PUBLIC:
+        # Said out loud, once, because it is a real change in who can
+        # reach the library and there is no password on any of it. Not a
+        # refusal: it was asked for on purpose.
+        print(
+            f"serving on EVERY interface, port {asked.port}.\n"
+            "anyone who can reach this machine can browse and change this library;\n"
+            "there is no sign-in. reachable at:",
+            file=sys.stderr,
+        )
+        for address in reachable():
+            print(f"    http://{address}:{asked.port}", file=sys.stderr)
+    uvicorn.run(build_app(asked.home), host=host, port=asked.port)
 
 
 if __name__ == "__main__":

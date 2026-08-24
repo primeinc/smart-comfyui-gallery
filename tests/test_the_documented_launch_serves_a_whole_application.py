@@ -289,3 +289,76 @@ def test_the_media_page_loads_the_bundle_that_makes_it_a_viewer(served):
     page = served.get(f"/i/{slug}", headers={"accept": "text/html"})
     assert "/static/build/media.js" in page.text
     assert served.get("/static/build/media.js").status_code == 200
+
+
+# --- where it binds ---------------------------------------------------------
+#
+# A media library with no sign-in must not arrive on the network because
+# somebody forgot a flag, and must arrive on it when somebody asks. Both
+# halves are asserted on the address actually handed to the server.
+
+
+def _bound(monkeypatch, argv: list[str]) -> dict:
+    """Run the launcher far enough to see where it would bind."""
+    held: dict = {}
+
+    def _remember(app, host, port):
+        held["host"] = host
+        held["port"] = port
+
+    monkeypatch.setattr(sys, "argv", ["sg_web", *argv])
+    monkeypatch.setattr(launcher, "missing", lambda: None)
+    monkeypatch.setattr(launcher, "unbuilt", lambda *_: [])
+    monkeypatch.setattr(launcher, "build_app", lambda home: home, raising=False)
+    monkeypatch.setattr("uvicorn.run", _remember)
+    monkeypatch.setattr("sg_web.app.build_app", lambda home: home)
+    launcher.main()
+    return held
+
+
+def test_by_default_it_binds_this_machine_and_nothing_else(monkeypatch):
+    assert _bound(monkeypatch, [])["host"] == launcher.LOCAL
+
+
+def test_public_binds_every_interface(monkeypatch):
+    held = _bound(monkeypatch, ["--public", "--port", "9123"])
+    assert held["host"] == launcher.PUBLIC
+    assert held["port"] == 9123
+
+
+def test_a_named_host_is_still_honoured(monkeypatch):
+    assert _bound(monkeypatch, ["--host", "192.168.1.5"])["host"] == "192.168.1.5"
+
+
+def test_asking_for_both_differently_is_refused_rather_than_resolved(monkeypatch, capsys):
+    """Two ways to say one thing, said differently. A launcher that
+    quietly picked one would bind somewhere nobody asked for -- and for
+    this flag that is the difference between one machine and a whole
+    network."""
+    monkeypatch.setattr(sys, "argv", ["sg_web", "--public", "--host", "192.168.1.5"])
+    monkeypatch.setattr(launcher, "missing", lambda: None)
+    monkeypatch.setattr("uvicorn.run", _never_served)
+    with pytest.raises(SystemExit) as refused:
+        launcher.main()
+    assert refused.value.code == 2
+    said = capsys.readouterr().err
+    assert "--public" in said
+    assert "192.168.1.5" in said
+
+
+def test_going_public_says_so_and_says_where(monkeypatch, capsys):
+    """It is a real change in who can reach the library, and there is no
+    password on any of it -- so it is said out loud. Not refused: it was
+    asked for on purpose."""
+    _bound(monkeypatch, ["--public", "--port", "9123"])
+    said = capsys.readouterr().err
+    assert "EVERY interface" in said
+    assert "no sign-in" in said
+    assert "9123" in said, "the addresses printed are ones a person can actually type"
+
+
+def test_the_addresses_it_prints_are_real_ones(monkeypatch):
+    found = launcher.reachable()
+    assert found, "always at least one, so the notice never prints an empty list"
+    for one in found:
+        assert re.fullmatch(r"\d+\.\d+\.\d+\.\d+", one), one

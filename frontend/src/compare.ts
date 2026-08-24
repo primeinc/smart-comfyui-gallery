@@ -184,13 +184,22 @@ function showComparison(held: Kept[]): void {
     const column = document.createElement("figure");
     column.className = "compare-column";
     column.dataset.compareColumn = one.slug;
+    // The media sits in a FRAME rather than directly in the column.
+    // The frame is what takes the column's share of the height, so
+    // every column is the same height and the pictures line up; the
+    // media is centred inside its own frame at its own shape, so a
+    // clip's controls stay attached to the clip instead of stranded
+    // three hundred pixels below it.
+    const frame = document.createElement("div");
+    frame.className = "compare-frame";
     const shown = playable(one);
+    frame.append(shown);
     const label = document.createElement("figcaption");
     const link = document.createElement("a");
     link.href = `/i/${one.slug}`;
     link.textContent = one.name;
     label.append(link);
-    column.append(shown, label);
+    column.append(frame, label);
     strip.append(column);
   }
   sheet.append(bar, strip);

@@ -21,6 +21,17 @@ faces-validate *args:
 browser-report *args:
     @"$python" benchmarks/browser_report.py "$@"
 
+# The query workspace at a wide desktop, a laptop and a phone, over a
+# real mixed library the application scanned and ingested itself:
+# benchmarks/results/workspace/contact-sheet.html
+#
+# Behaviour has browser tests. This is the other half: whether a panel
+# overlaps a heading, a column runs off the screen, or a section is a
+# wall of empty rows -- none of which an assertion about clickability
+# can see.
+workspace *args:
+    @"$python" benchmarks/workspace_shots.py "$@"
+
 # Where thumbnail time goes, per phase and media kind, over a run's own
 # library: benchmarks/results/thumbnail_phases.json
 thumbs-phases *args:

@@ -51,7 +51,10 @@
         <td>{{ row.kind.replace("_", " ") }}</td>
         <td class="answer-num">{% if row.width and row.height %}{{ row.width }}&times;{{ row.height }}{% endif %}</td>
         {% if has_length %}<td class="answer-num">{% if row.duration %}{{ "%.1f"|format(row.duration) }}s{% endif %}</td>{% endif %}
-        <td class="answer-num">{{ (row.size / 1048576) | round(1) }} MB</td>
+        {# Adaptive, because a column that reads "0.0 MB" for every row is
+           a column that looks broken. A thumbnail-sized PNG is 40 KB and
+           saying so is the whole point of showing the size. #}
+        <td class="answer-num">{% if row.size >= 1048576 %}{{ (row.size / 1048576) | round(1) }} MB{% else %}{{ (row.size / 1024) | round | int }} KB{% endif %}</td>
         {% if has_recipe %}
         <td>{{ row.checkpoint or "" }}</td>
         <td>{{ row.sampler or "" }}</td>

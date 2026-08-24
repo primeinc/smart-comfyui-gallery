@@ -170,7 +170,8 @@ audit: repo-check
     {{ python }} -m pytest -q tests/test_sglint_has_teeth.py
 
 # The application, served. Flags pass through: `just serve --port 9000`,
-# `just serve --home D:/runs/two` -- everything else is a settings row
+# `just serve --home D:/runs/two`, `just serve --public` to let other
+# machines on the network reach it -- everything else is a settings row
 # changed in the running app.
 [doc('Serve the gallery (python -m sg_web)')]
 serve *ARGS: web::build

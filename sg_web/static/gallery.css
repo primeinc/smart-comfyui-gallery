@@ -2703,6 +2703,11 @@ body {
   margin-left: 6px;
   padding: 0 7px;
 }
+/* It sits in a row of buttons, so it is dressed as one. An underlined
+   link among five bordered controls reads as a mistake. */
+a.ask-save {
+  text-decoration: none;
+}
 .ask-total {
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
@@ -2722,6 +2727,13 @@ body {
    moves over -- the header and the chips as much as the grid. Shifting
    only the grid left the drawer sitting on top of the search bar and
    the chips, where their controls were visible and unclickable. */
+/* EVERYTHING beside the drawer moves over, and "everything" includes
+   the application's own navigation. Shifting only the gallery's own
+   furniture left the drawer sitting on top of the brand and the shell
+   links -- visible, unclickable, and the first thing a screenshot
+   shows. */
+body[data-filters="open"] .shell,
+body[data-filters="open"] .shell-notice,
 body[data-filters="open"] .bar,
 body[data-filters="open"] .chips,
 body[data-filters="open"] .stage {
@@ -2924,9 +2936,16 @@ body[data-filters="open"] .stage {
 }
 
 @media (max-width: 760px) {
+  /* A SHEET, not a drawer. At 340px of a 390px window the panel was
+     neither: it covered the surface it was filtering while leaving a
+     useless sliver of it visible down one side, so nothing was readable
+     and nothing was dismissible by looking at it. Full width, with the
+     close button that was always in its header. */
   .filters:not([hidden]) {
-    width: min(92vw, 340px);
+    width: 100%;
   }
+  body[data-filters="open"] .shell,
+  body[data-filters="open"] .shell-notice,
   body[data-filters="open"] .bar,
   body[data-filters="open"] .chips,
   body[data-filters="open"] .stage {
@@ -2956,11 +2975,17 @@ body[data-filters="open"] .stage {
   color: var(--ground);
 }
 
+/* `auto-fill` with a CAP, not `auto-fit` with `1fr`.
+   Stretched to the full width, four panels of five rows each became
+   four very wide panels of five very short bars, with a bar's label at
+   one end of the screen and its count at the other. Capped, they pack
+   from the left at a readable width and the eye reads them as a set. */
 .analyze {
+  align-items: start;
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 440px));
+  justify-content: start;
 }
 .analyze-panel {
   background: var(--panel);
@@ -3013,8 +3038,13 @@ body[data-filters="open"] .stage {
   color: var(--accent);
   font-weight: 600;
 }
+/* `break-word`, not `anywhere`: a checkpoint called
+   `wan2_1_t2v.safetensors` was being split as `wan2_1_t2v.saf` /
+   `etensors` in the middle of a word that had somewhere sensible to
+   break. Long unbroken names still wrap rather than overflowing. */
 .analyze-bar-label {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .analyze-bar-track {
   background: color-mix(in srgb, var(--ink) 10%, transparent);
@@ -3222,7 +3252,7 @@ body[data-filters="open"] .stage {
 
 /* Above everything, because a comparison is the thing being done. */
 .compare-view {
-  background: rgb(0 0 0 / 92%);
+  background: rgb(0 0 0 / 97%);
   display: flex;
   flex-direction: column;
   inset: 0;
@@ -3247,39 +3277,55 @@ body[data-filters="open"] .stage {
   line-height: 1;
   padding: 0 6px;
 }
+/* Equal cells, media centred inside them.
+   Two wrong answers were tried first. STRETCHED columns with the media
+   as a flex child made every column the sheet's full height and
+   `object-fit: contain` letterboxed each picture into a band in the
+   middle -- correct geometry, hundreds of pixels of black, and a clip's
+   controls three hundred pixels below its own picture. CENTRED columns
+   sized to their own media fixed the controls and broke the
+   comparison: three aspect ratios meant three different heights and
+   nothing lined up.
+   The frame is the answer. It takes the column's share of the height so
+   every column is identical and the pictures line up; the media is
+   centred inside its own frame at its own shape, so the controls stay
+   on the thing they control. */
 .compare-view-strip {
+  align-items: stretch;
   display: flex;
   flex: 1;
   gap: 2px;
+  justify-content: center;
   min-height: 0;
   overflow-x: auto;
   padding: 0 8px 14px;
 }
-/* Equal columns and `contain`: the whole value of a comparison is that
-   the pictures are shown the same way, so nothing here crops one, scales
-   one to another, or picks a primary. */
 .compare-column {
   display: flex;
-  flex: 1 0 0;
+  flex: 1 1 0;
   flex-direction: column;
   margin: 0;
-  min-width: 220px;
+  min-height: 0;
+  min-width: 0;
+}
+.compare-frame {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
 }
 .compare-column img,
 .compare-column video {
-  flex: 1;
+  height: auto;
+  max-height: 100%;
   min-height: 0;
   object-fit: contain;
   width: 100%;
 }
-/* A sound has no picture; it gets the height its controls need and no
-   column of empty black pretending to be one. */
-.compare-column audio {
-  align-self: center;
-  width: 100%;
-}
 .compare-column figcaption {
   color: var(--ink-muted);
+  flex: none;
   font-size: 12px;
   overflow-wrap: anywhere;
   padding-top: 6px;

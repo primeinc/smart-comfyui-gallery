@@ -15,7 +15,14 @@ surface is a server-rendered shell over them. Expect change.
 uv sync
 uv run python -m sg_web            # http://127.0.0.1:8777
 uv run python -m sg_web --home D:/runs/two --port 8000
+uv run python -m sg_web --public   # other machines on the network too
 ```
+
+`--public` binds every interface and prints the addresses to type on a
+phone. There is no sign-in on any of it, so anyone who can reach the
+machine can browse and change the library; the default binds this
+machine alone, deliberately, so a library never arrives on a network
+because somebody forgot a flag.
 
 No Node, no npm. The browser bundles are committed, because running this
 should not require a second toolchain to look at your own photographs.
