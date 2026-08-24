@@ -359,7 +359,11 @@ def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
     import html
 
     for bar in told["bins"]:
-        assert f'data-bin-at="{bar["at"]}"' in fragment
+        # the attribute is spelled the way the window its own link opens is
+        # spelled -- whole seconds; the contract carries the moment as a
+        # number, and the two must not disagree about the same bar
+        assert f'data-bin-at="{int(bar["at"])}"' in fragment
+        assert f"start={int(bar['at'])}" in bar["href"] or "context.moment" in bar["href"]
         assert html.escape(bar["href"], quote=False) in fragment
     assert "too many" not in page
     # a window the URL names is the window the page shows, at the zoom its width earns

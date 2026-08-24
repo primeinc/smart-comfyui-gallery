@@ -6,6 +6,7 @@ the session as its title."""
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -171,3 +172,60 @@ def test_a_page_of_dates_stays_alive_under_people_js(page: Page, live: Live):
     )
     page.wait_for_timeout(200)
     assert page.evaluate("document.body.lastChild.textContent") == "2023-06-12", "a later date is spelled too"
+
+
+def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, live: Live):
+    """The job feed's snapshot is a resynchronisation boundary.
+
+    A delta says what just happened; a SNAPSHOT says only which jobs are
+    still unsettled. So a job that settled while the page was not
+    listening -- a dropped socket, a lost frame -- appears in neither: not
+    in the delta the page never got, and not in the snapshot, because by
+    then it is finished. A page that ignores snapshots and waits for a
+    terminal delta that already happened waits forever.
+
+    Here the first socket is made deaf and dropped at the exact moment the
+    relevant job settles, so the page is never told. The second socket's
+    snapshot is the only thing that arrives -- and it must be enough to
+    make the page read the rows again.
+    """
+    api = live.api
+    sockets: dict = {"n": 0, "lost": None}
+
+    def route(ws) -> None:
+        sockets["n"] += 1
+        mine = sockets["n"]
+        server = ws.connect_to_server()
+
+        def from_server(message) -> None:
+            if mine > 1:
+                ws.send(message)
+                return
+            # deaf: the page is told nothing on this connection, and the
+            # connection is dropped the moment the job it cares about
+            # settles -- so that terminal delta is lost for good
+            held = json.loads(message) if isinstance(message, str) else {}
+            settled = held.get("type") == "delta" and held.get("state") in ("done", "failed", "cancelled")
+            if settled and held.get("kind") == "events":
+                sockets["lost"] = held["job"]
+                ws.close()
+
+        server.on_message(from_server)
+
+    page.route_web_socket("**/ws/jobs", route)
+    page.goto(f"/timeline?start={DAY}&end={DAY + 86400}")
+    page.wait_for_selector("[data-strip] .bin", timeout=10_000)
+    # mark the surface on screen; a re-read replaces the node with a fresh
+    # one, and nothing else on this page removes the mark
+    page.evaluate("() => { document.querySelector('[data-surface]').dataset.stale = 'yes'; }")
+
+    job_id = api.post("/jobs/events").json()["id"]
+    assert _settled(api, job_id) == "done"
+
+    # the reconnect backs off two seconds, so this waits longer than that
+    page.wait_for_function(
+        "() => document.querySelector('[data-surface]')?.dataset.stale === undefined", timeout=30_000
+    )
+    assert sockets["lost"] == job_id, "the terminal delta was never withheld; the test proved nothing"
+    assert sockets["n"] >= 2, "the page never reconnected"
+    page.wait_for_selector("[data-strip] .bin", timeout=10_000)
