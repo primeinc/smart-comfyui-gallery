@@ -2331,6 +2331,7 @@ export interface components {
             params: components["schemas"]["ParamRow"][];
             place_choices: components["schemas"]["PlaceChoices"];
             authored: components["schemas"]["AuthoredState"];
+            viewing: components["schemas"]["Viewing"];
         };
         /** NamedItem */
         NamedItem: {
@@ -3035,6 +3036,11 @@ export interface components {
             poster: string;
             source: components["schemas"]["Pixels"] | null;
             duration: number | null;
+        };
+        /** Viewing */
+        Viewing: {
+            /** @enum {string} */
+            wheel_modifier: "alt" | "shift" | "ctrl" | "none";
         };
         /** When */
         When: {

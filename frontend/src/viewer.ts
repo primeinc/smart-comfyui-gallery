@@ -263,22 +263,97 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     }
   };
 
-  // --- the pointer ----------------------------------------------------------
-  if (still && media) {
-    onElement(
-      stageBox,
-      "wheel",
-      (event) => {
-        event.preventDefault();
-        // deltaMode 1 is lines, 2 is pages: a trackpad and a wheel must not
-        // mean different amounts of picture
-        const lines = event.deltaMode === 0 ? event.deltaY : event.deltaY * 16;
-        zoomAbout(Math.exp(-lines / 400), event.clientX, event.clientY);
-      },
-      // not passive: the page must not scroll out from under a zoom
-      { passive: false },
-    );
+  // --- the walk, on the wheel -----------------------------------------------
 
+  /**
+   * Whether the key that walks the library is down for this event.
+   *
+   * The run's answer, rendered onto the root (db/settings.py
+   * `viewer_wheel_modifier`). An unknown word -- or "none" -- means no
+   * modifier walks, and the wheel only ever zooms; that is the setting
+   * doing its job, not a failure to read it.
+   */
+  const held = (event: WheelEvent): boolean => {
+    const asked = root.dataset.wheelModifier;
+    if (asked === "alt") return event.altKey;
+    if (asked === "shift") return event.shiftKey;
+    if (asked === "ctrl") return event.ctrlKey;
+    return false;
+  };
+
+  /** One wheel notch, roughly, on the platforms that disagree about size. */
+  const NOTCH = 90;
+  /** A fling is one gesture; a picture per event would cross the library. */
+  const SETTLE_MS = 320;
+  let rolled = 0;
+  // NOT 0: `performance.now()` counts from the page's load, so zero would
+  // mean "stepped at load" and the cooldown would swallow the first flick
+  // of anyone who opened a picture and immediately reached for the wheel.
+  let lastStep = Number.NEGATIVE_INFINITY;
+
+  /**
+   * Step the walk once a gesture has actually asked for it.
+   *
+   * A wheel does not emit one event per notch -- a trackpad emits dozens
+   * of small ones for a single flick -- so the deltas are accumulated to
+   * a notch's worth and the counter is reset on each step. The cooldown
+   * is the second half: a hard fling arrives as one burst, and without it
+   * a single gesture would walk past everything it crossed. Reversing
+   * direction drops whatever was accumulated the other way, so a
+   * correction is immediate rather than having to undo itself first.
+   */
+  const stepped = (by: number) => {
+    if (by === 0) return;
+    if (rolled !== 0 && Math.sign(by) !== Math.sign(rolled)) rolled = 0;
+    rolled += by;
+    if (Math.abs(rolled) < NOTCH) return;
+    const now = performance.now();
+    if (now - lastStep < SETTLE_MS) return;
+    const wanted = rolled > 0 ? "next" : "previous";
+    rolled = 0;
+    const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
+    if (!step) return; // an end of the walk is an answer, not a thing to force
+    lastStep = now;
+    walk(step.href);
+  };
+
+  // --- the pointer ----------------------------------------------------------
+
+  // The wheel is bound for EVERY kind, not only the ones that zoom: a clip
+  // and a sound file sit in the same walk as a photograph, and stepping
+  // past them is the whole point of putting the walk on the wheel.
+  onElement(
+    stageBox,
+    "wheel",
+    (event) => {
+      // Always: a wheel over the stage is the viewer's, so the page never
+      // scrolls out from under a zoom and ctrl never reaches the browser's
+      // own page zoom.
+      event.preventDefault();
+      // deltaMode 1 is lines, 2 is pages: a trackpad and a wheel must not
+      // mean different amounts of picture
+      const pixels = (delta: number) => (event.deltaMode === 0 ? delta : delta * 16);
+
+      // The chosen modifier turns the wheel into the WALK: the next
+      // picture, the previous one. Exactly ONE key does this, named by the
+      // run's setting, so the other two keep whatever the browser does
+      // with them and nobody has to remember three answers. Some browsers
+      // move a shifted wheel's amount into deltaX, so both axes are read
+      // rather than either being trusted.
+      if (held(event)) {
+        stepped(pixels(event.deltaY || event.deltaX));
+        return;
+      }
+
+      // and without it, the wheel zooms -- which a stage with nothing to
+      // zoom simply declines
+      zoomAbout(Math.exp(-pixels(event.deltaY) / 400), event.clientX, event.clientY);
+    },
+    // not passive: the page must not scroll out from under a zoom
+    { passive: false },
+  );
+
+  if (still && media) {
     onElement(stageBox, "dblclick", (event) => {
       event.preventDefault();
       frame(look.framing === "actual" ? "fit" : "actual");

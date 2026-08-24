@@ -13,6 +13,25 @@ setting that sits in the table and configures nothing.
 
 from __future__ import annotations
 
+import typing
+
+#: Which held key turns the viewer's wheel into a step through the walk
+#: rather than a zoom. ONE of them, chosen here, because a modifier that
+#: means two things depending on which one you grabbed is worse than one
+#: that means nothing: the other two keep whatever the browser does with
+#: them. "none" leaves the wheel to zoom alone.
+#:
+#: `alt` leads because it is the only one nothing else has already taken:
+#: a browser reads shift+wheel as horizontal scroll and ctrl+wheel as its
+#: own page zoom, so choosing either means the viewer must swallow a
+#: gesture the person may have meant for the browser.
+#:
+#: Spelled as a Literal so the browser is typed against the same closed
+#: set the registry validates writes with -- one vocabulary, two readers,
+#: the way db/ledger.py owns the event types.
+WheelModifier = typing.Literal["alt", "shift", "ctrl", "none"]
+WHEEL_MODIFIERS: tuple[WheelModifier, ...] = typing.get_args(WheelModifier)
+
 #: Every setting this application has, with its default and, where the
 #: value is an enumeration, the choices. A None choice set means free text.
 REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
@@ -74,6 +93,11 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # positive pHash proposes (144 of 183 at pHash radius 16).
     # Validated at submit, 0..63.
     "dupe_dhash_verify": ("8", None),
+    # Which held key makes the viewer's wheel walk to the next picture
+    # instead of zooming (WheelModifier above). Read when a media page or
+    # its overlay fragment is rendered, so a change applies to the next
+    # picture opened -- no restart, no reload of the one on screen.
+    "viewer_wheel_modifier": ("alt", WHEEL_MODIFIERS),
 }
 
 

@@ -127,6 +127,15 @@ def _placement(page: Page):
     )
 
 
+def _walk(page: Page) -> dict:
+    """Whichever ends of the walk this picture has, read without waiting --
+    "there is no next" is an answer, not a slow yes."""
+    return page.evaluate(
+        "() => Object.fromEntries([...document.querySelectorAll('[data-nav]')]"
+        ".map(a => [a.dataset.nav, a.getAttribute('href')]))"
+    )
+
+
 def _actual(page: Page) -> None:
     page.keyboard.press("1")
     page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'actual'")
@@ -180,6 +189,93 @@ def test_the_wheel_zooms_around_the_pointer(page: Page, live: Live, where, open_
     now_y = (at_y - after["y"]) / after["h"]
     assert abs(now_x - held_x) < 0.02, f"{where}: the point under the cursor moved horizontally"
     assert abs(now_y - held_y) < 0.02, f"{where}: the point under the cursor moved vertically"
+
+
+def _wheel(page: Page, modifier: str | None, amount: float) -> None:
+    """A wheel gesture over the middle of the picture."""
+    at = _box(page)
+    page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
+    if modifier:
+        page.keyboard.down(modifier)
+    page.mouse.wheel(0, amount)
+    if modifier:
+        page.keyboard.up(modifier)
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_chosen_modifier_walks_the_library_on_the_wheel(page: Page, live: Live, where, open_it):
+    """Alt+wheel steps to the next picture instead of zooming.
+
+    The default, and the reason it is alt: a browser already reads
+    shift+wheel as horizontal scroll and ctrl+wheel as its own page zoom,
+    so alt is the only one nothing else has taken.
+    """
+    open_it(page, live, "a_big.png")
+    assert page.get_attribute("[data-viewer]", "data-wheel-modifier") == "alt", (
+        f"{where}: the run's chosen key reaches the viewer"
+    )
+    walk = _walk(page)
+    assert walk, f"{where}: a library of two offers a step"
+    was = page.evaluate("() => location.pathname")
+    held = _zoom(page)
+
+    _wheel(page, "Alt", 300 if "next" in walk else -300)
+    try:
+        page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
+    except Exception as never:
+        # the zoom is the discriminator: unchanged means the modifier WAS
+        # honoured and the step itself failed; changed means the modifier
+        # never reached the viewer and the wheel fell through to zooming
+        raise AssertionError(
+            f"{where}: alt+wheel did not walk from {was}; zoom {held} -> {_zoom(page)}, walk {walk}"
+        ) from never
+    _painted(page)
+
+    assert _zoom(page) == held, f"{where}: the walk zoomed on its way past"
+    assert page.is_visible("[data-viewer]"), f"{where}: walking on the wheel lost the viewer"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_a_modifier_nobody_chose_still_zooms(page: Page, live: Live, where, open_it):
+    """ONE key walks. The control that says so: with alt chosen, shift is
+    not a second answer -- it falls through to the zoom, exactly as no
+    modifier would. A viewer where every modifier walked would pass the
+    test above and still be wrong."""
+    open_it(page, live, "a_big.png")
+    was = page.evaluate("() => location.pathname")
+
+    _wheel(page, "Shift", -300)
+    page.wait_for_function("(from) => Number(document.querySelector('[data-viewer]').dataset.zoom) > from", arg=100)
+    assert page.evaluate("() => location.pathname") == was, f"{where}: shift walked when alt was the chosen key"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, open_it):
+    """A wheel emits many events per gesture -- a trackpad, dozens. Left
+    ungoverned, one flick crosses the whole library. This library holds
+    two, so a second step would come back to where it started, which is
+    what the ordinal here is watching for."""
+    open_it(page, live, "a_big.png")
+    walk = _walk(page)
+    assert walk, f"{where}: a library of two offers a step"
+    was = page.evaluate("() => location.pathname")
+
+    # positioned ONCE and then flicked: re-reading the picture's box
+    # between events would evaluate into a navigation already in flight
+    at = _box(page)
+    page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
+    forward = 300 if "next" in walk else -300
+    page.keyboard.down("Alt")
+    for _ in range(6):  # one gesture's worth of events, all at once
+        page.mouse.wheel(0, forward)
+    page.keyboard.up("Alt")
+    page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
+    landed = page.evaluate("() => location.pathname")
+
+    page.wait_for_timeout(600)  # long enough for a second step to land
+    assert page.evaluate("() => location.pathname") == landed, (
+        f"{where}: one flick walked more than one picture ({was} -> {landed} -> onwards)"
+    )
 
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
@@ -324,12 +420,7 @@ def test_the_walk_is_the_servers_and_the_viewer_survives_it(page: Page, live: Li
     """Next means what the ResultSet says it means: the arrows are the
     server's addresses, and the viewer never computes an ordering."""
     open_it(page, live, "a_big.png")
-    # whichever end of the walk this picture sits at -- read without waiting,
-    # because "there is no next" is an answer, not a slow yes
-    walk = page.evaluate(
-        "() => Object.fromEntries([...document.querySelectorAll('[data-nav]')]"
-        ".map(a => [a.dataset.nav, a.getAttribute('href')]))"
-    )
+    walk = _walk(page)
     assert walk, f"{where}: a library of two offers a step in one direction"
     for href in walk.values():
         assert href.startswith("/i/"), f"{where}: the walk is addresses, not client state"

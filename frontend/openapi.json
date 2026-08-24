@@ -12815,6 +12815,9 @@
                     },
                     "authored": {
                         "$ref": "#/components/schemas/AuthoredState"
+                    },
+                    "viewing": {
+                        "$ref": "#/components/schemas/Viewing"
                     }
                 },
                 "additionalProperties": false,
@@ -12834,6 +12837,7 @@
                     "said_first",
                     "slug",
                     "stage",
+                    "viewing",
                     "when",
                     "where"
                 ],
@@ -16221,6 +16225,25 @@
                     "src"
                 ],
                 "title": "VideoStage"
+            },
+            "Viewing": {
+                "properties": {
+                    "wheel_modifier": {
+                        "type": "string",
+                        "enum": [
+                            "alt",
+                            "shift",
+                            "ctrl",
+                            "none"
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "wheel_modifier"
+                ],
+                "title": "Viewing"
             },
             "When": {
                 "properties": {

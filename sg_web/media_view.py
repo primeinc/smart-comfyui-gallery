@@ -139,7 +139,23 @@ def _assembled(
         # else -- a favorite committed mid-request must not appear under
         # the metadata of the generation before it.
         authored=_authored(conn, file_id, actor_id),
+        viewing=_viewing(conn),
     )
+
+
+def _viewing(conn) -> Viewing:
+    """The run's viewer preferences, read on the same snapshot as the rest.
+
+    Validated rather than trusted: `settings.put` refuses a value outside
+    the registry's choices, so the column cannot hold anything else -- but
+    a database edited by hand can, and the seam is where a bad value
+    becomes a 500 here instead of a modifier that silently does nothing in
+    somebody's browser.
+    """
+    held = settings.value(conn, "viewer_wheel_modifier")
+    if held not in settings.WHEEL_MODIFIERS:
+        raise ValueError(f"viewer_wheel_modifier is {held!r}, not one of {', '.join(settings.WHEEL_MODIFIERS)}")
+    return Viewing(wheel_modifier=held)
 
 
 def _authored(conn, file_id: int, actor_id: int) -> AuthoredState:
@@ -565,6 +581,20 @@ class AuthoredState(Wire):
     collections: list[CollectionSummary]
 
 
+class Viewing(Wire):
+    """How this run has asked the viewer to behave.
+
+    NOT a fact about the picture -- a fact about the person looking at
+    it, and the only one the viewer cannot decide for itself. Everything
+    else it does (zoom, pan, which panel is open, whether the chrome is
+    hidden) is what somebody is doing right now and is never stored;
+    this is here because "which key walks the library" has three
+    still-valid answers and no way to derive one.
+    """
+
+    wheel_modifier: settings.WheelModifier
+
+
 class MediaSurface(Wire):
     """One media item, as every presentation of `/i/{slug}` reads it.
 
@@ -592,6 +622,7 @@ class MediaSurface(Wire):
     params: list[ParamRow]
     place_choices: PlaceChoices
     authored: AuthoredState
+    viewing: Viewing
 
 
 def _faces(conn, file_id: int) -> Faces:
