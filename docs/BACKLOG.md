@@ -71,18 +71,31 @@ not a history.
   are what it is waiting for. An encoder that cost nothing would take
   the job from 29 to about 47 items/sec.
 
-  Ranked by what the measurements actually support:
+  The job records its own phases now, so the split is a query rather
+  than a benchmark:
 
-  1. **Decode is the biggest line, and it is the pixel seam.**
-     `oriented.for_model` returns a full-resolution frame so torchvision
-     can resize it to 224. Unlike batching, this changes what the model
-     sees, so it needs the retrieval test batching has now had
-     (`just bench clip-retrieval`).
-  2. **The 37% around the model is per-item bookkeeping.** A batched
-     executor amortises it as much as it amortises kernel launches, and
-     that — not the GPU — is the argument for touching the runner.
-  3. **GPU batching last.** Real, proven, low risk, and worth the least
-     of the three here.
+  | phase | ms/400 items | share |
+  |---|---|---|
+  | decoding | 5844 | 39% |
+  | inference | 4306 | 29% |
+  | preprocess | 2462 | 17% |
+  | recording | 854 | 6% |
+  | from-device | 791 | 5% |
+  | to-device | 122 | 1% |
+
+  Ranked by removable wall time **and** by semantic risk:
+
+  1. **Batch and thread the encoder.** Reaches inference, preprocess and
+     the copy back — 51% of the job — and neither changes the pixels:
+     threaded preprocess is bit-identical, and batching costs 3 of 800
+     nearest-neighbour answers. Batching also amortises the per-item
+     copy back and part of the bookkeeping, which is the argument for
+     touching the runner; the GPU sitting idle is not.
+  2. **Bounded raster for the model path.** Reaches decoding, 39%, and
+     changes what the model sees, so it needs its own retrieval gate
+     (`just bench clip-retrieval`) before it can ship.
+  3. **Per-item bookkeeping**, 6% for recording plus whatever the runner
+     spends outside any phase.
 
 - **Batching changes about half a percent of nearest-neighbour answers.**
   Text search is identical at top-1, top-5 and top-20 over 800 distinct
