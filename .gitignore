@@ -112,8 +112,18 @@ db/*.backup
 # contract generator has its own tree (frontend/codegen) because it needs a
 # TypeScript the application does not; `node_modules/` matches at any depth.
 node_modules/
-# esbuild's output. Generated from frontend/src by `just web build`, which
-# every recipe that serves or tests the app depends on. The Python `build/`
-# rule above already covers this path by accident; say it on purpose here, so
-# tidying that rule cannot start committing bundles.
-sg_web/static/build/
+# esbuild's output is COMMITTED, deliberately, and this is the one place
+# generated code is. Running this application is `uv sync` and one command;
+# it is not a Node project and nobody should need npm to look at their own
+# photographs. The bundles exist because a browser cannot resolve a bare
+# specifier like "openapi-fetch" -- that is the toolchain's problem, not the
+# person's, so the toolchain's answer ships with the repository.
+#
+# `just web build` rewrites them; the gate rebuilds and fails on a diff, so a
+# committed bundle can never drift from the source it was made from.
+#
+# The sourcemaps are NOT committed: they are three quarters of the weight and
+# only a developer with the source open wants them, who can rebuild.
+!sg_web/static/build/
+!sg_web/static/build/*.js
+sg_web/static/build/*.map

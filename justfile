@@ -54,7 +54,7 @@ repo-check:
 # version held against this build -- a schema bump with no step from the
 # version in the home directory fails here, in under a second, before any
 # commit. No tests -- `just test` is its own step
-check: web::build api::check lint fmt-check types web::unit repo-check db-check
+check: web::fresh api::check lint fmt-check types web::unit repo-check db-check
 
 # The gate, both test lanes, and the real run walked
 check-all: check test test-slow smoke

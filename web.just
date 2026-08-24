@@ -49,6 +49,18 @@ types-build:
 types-test:
     npm run --silent types-test
 
+# The committed bundles against the source they were made from. They ship
+# with the repository so running the app needs no Node at all, and the only
+# way that is safe is if a stale one cannot survive the gate: build, then
+# ask git whether anything moved.
+[script]
+fresh: build
+    if ! git diff --quiet -- sg_web/static/build; then
+      echo 'the committed bundles are stale: run `just web build` and commit the result' >&2
+      git --no-pager diff --stat -- sg_web/static/build >&2
+      exit 1
+    fi
+
 # Bundle every surface. The output directory is removed first because esbuild
 # does not clear it ("it will not be cleared if it already contains some
 # files", esbuild.github.io/api/#outdir): a renamed or deleted surface would

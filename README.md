@@ -12,18 +12,14 @@ surface is a server-rendered shell over them. Expect change.
 ## Run
 
 ```
-uv sync                            # the Python half
-npm ci && npm run build-web        # the browser half: esbuild writes sg_web/static/build
+uv sync
 uv run python -m sg_web            # http://127.0.0.1:8777
 uv run python -m sg_web --home D:/runs/two --port 8000
 ```
 
-Both halves, because the pages load bundles esbuild writes and the
-repository does not carry generated output. `python -m sg_web` refuses to
-start when they are missing rather than serving pages whose scripts 404 --
-a surface that renders and does nothing is worse than one that says why.
-Working on it: `just serve` builds first, as every recipe that serves or
-tests this does.
+No Node, no npm. The browser bundles are committed, because running this
+should not require a second toolchain to look at your own photographs.
+Only changing `frontend/src` needs one: `npm ci && just web build`.
 
 A run lives wholly in its home directory (`~/.smartgallery` by default):
 the database, model weights, the thumbnail cache. Delete the directory,
