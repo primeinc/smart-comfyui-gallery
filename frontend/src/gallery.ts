@@ -5,6 +5,7 @@
 import { api, refusal } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
 import { mountAnalyze } from "./analyze";
+import { mountEndless } from "./endless";
 import { mountFilters } from "./filters";
 import type { components } from "./generated/api";
 import { addressableOverlay, isPlainClick } from "./overlay";
@@ -56,6 +57,8 @@ const asked = (spelled: string, take: number | null): Rule => {
   mountFilters(document.body);
   // the analysis, when this answer is being described rather than shown
   mountAnalyze(document.body);
+  // and browsing: the next page arrives because you kept going
+  mountEndless(document.body);
 
   // The form must ask a question the server can answer: a phrase orders
   // by similarity (the seam refuses the contradiction), and empty fields

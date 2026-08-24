@@ -614,6 +614,150 @@
     }
   }
 
+  // src/endless.ts
+  var WINDOW = 6;
+  var REACH = 600;
+  function mountEndless(root) {
+    const grid = findElement(root, "[data-grid]", HTMLElement);
+    if (!grid) return;
+    const cells = findElement(grid, "[data-cells]", HTMLElement);
+    const pager = findElement(grid, "[data-pager]", HTMLElement);
+    if (!cells || !pager) return;
+    const pages = Number(requireData(grid, "pages"));
+    const first = Number(requireData(grid, "page"));
+    const qbase = grid.dataset.qbase ?? "";
+    if (!Number.isFinite(pages) || !Number.isFinite(first)) return;
+    for (const cell of cells.children) {
+      if (cell instanceof HTMLElement) cell.dataset.page = String(first);
+    }
+    let lowest = first;
+    let highest = first;
+    let busy = false;
+    const dropped = /* @__PURE__ */ new Map();
+    const cellsOf = (page) => [...cells.children].filter(
+      (one) => one instanceof HTMLElement && one.dataset.page === String(page)
+    );
+    const spanOf = (held2) => {
+      if (!held2.length) return 0;
+      const top = Math.min(...held2.map((one) => one.getBoundingClientRect().top));
+      const bottom = Math.max(...held2.map((one) => one.getBoundingClientRect().bottom));
+      return bottom - top;
+    };
+    const padding = () => Number.parseFloat(cells.style.paddingTop || "0") || 0;
+    const dropOldest = () => {
+      const held2 = cellsOf(lowest);
+      if (!held2.length) return;
+      const height = spanOf(held2);
+      for (const one of held2) one.remove();
+      dropped.set(lowest, { height });
+      cells.style.paddingTop = `${padding() + height}px`;
+      lowest += 1;
+    };
+    const fetchPage = async (page) => {
+      const answered2 = await fetch(`/g/grid?${qbase}page=${page}`, { headers: { accept: "text/html" } });
+      if (!answered2.ok) return null;
+      const parsed = new DOMParser().parseFromString(await answered2.text(), "text/html");
+      const fresh = parsed.querySelector("[data-cells]");
+      if (!fresh) return null;
+      const made = [];
+      for (const one of [...fresh.children]) {
+        if (!(one instanceof HTMLElement)) continue;
+        one.dataset.page = String(page);
+        made.push(one);
+      }
+      return made;
+    };
+    const extend = async () => {
+      if (highest >= pages) return;
+      grid.dataset.loading = "true";
+      try {
+        const made = await fetchPage(highest + 1);
+        if (made) {
+          cells.append(...made);
+          highest += 1;
+          while (highest - lowest + 1 > WINDOW) dropOldest();
+        }
+      } catch {
+      } finally {
+        delete grid.dataset.loading;
+      }
+    };
+    const pump = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        while (highest < pages) {
+          if (pager.getBoundingClientRect().top > window.innerHeight + REACH) break;
+          const before = highest;
+          await extend();
+          if (highest === before) break;
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    const restore = async () => {
+      if (busy || lowest <= 1 || !dropped.has(lowest - 1)) return;
+      busy = true;
+      try {
+        const page = lowest - 1;
+        const made = await fetchPage(page);
+        if (made) {
+          cells.prepend(...made);
+          const held2 = dropped.get(page);
+          dropped.delete(page);
+          cells.style.paddingTop = `${Math.max(0, padding() - (held2?.height ?? 0))}px`;
+          lowest = page;
+          while (highest - lowest + 1 > WINDOW) {
+            const last = cellsOf(highest);
+            if (!last.length) break;
+            for (const one of last) one.remove();
+            highest -= 1;
+          }
+        }
+      } catch {
+      } finally {
+        busy = false;
+      }
+    };
+    const watchDown = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((one) => one.isIntersecting)) void pump();
+      },
+      { rootMargin: `${REACH}px 0px` }
+    );
+    watchDown.observe(pager);
+    let shown = first;
+    let waiting = 0;
+    const follow = () => {
+      waiting = 0;
+      if (window.scrollY < REACH) void restore();
+      const top = [...cells.children].find(
+        (one) => one instanceof HTMLElement && one.getBoundingClientRect().bottom > 0
+      );
+      const page = Number(top?.dataset.page);
+      if (!Number.isFinite(page) || page === shown) return;
+      shown = page;
+      grid.dataset.page = String(page);
+      const held2 = new URLSearchParams(window.location.search);
+      if (page > 1) held2.set("page", String(page));
+      else held2.delete("page");
+      const spelled2 = held2.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        spelled2 ? `${window.location.pathname}?${spelled2}` : window.location.pathname
+      );
+    };
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (!waiting) waiting = window.requestAnimationFrame(follow);
+      },
+      { passive: true }
+    );
+  }
+
   // src/workspace.ts
   var VERSION = 1;
   var KEY = `sg.workspace.v${VERSION}`;
@@ -1379,6 +1523,7 @@
   (() => {
     mountFilters(document.body);
     mountAnalyze(document.body);
+    mountEndless(document.body);
     const ask = findElement(document, "[data-ask]", HTMLFormElement);
     if (ask) {
       const fields = () => [
