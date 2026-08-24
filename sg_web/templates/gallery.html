@@ -37,7 +37,7 @@
     </form>
     <button type="button" class="ask-filters" data-filters-open
             aria-expanded="false" aria-controls="filters"
-            title="filter this question (F)">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
+            title="filter this question">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
     <span class="ask-total" data-total-count>{{ "{:,}".format(total) }} result{{ "" if total == 1 else "s" }}</span>
     {# One answer, two presentations. `view` is not part of the question:
        switching leaves membership and total exactly where they were,

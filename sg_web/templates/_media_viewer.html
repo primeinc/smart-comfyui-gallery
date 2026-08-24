@@ -16,6 +16,7 @@
    (frontend/src/workspace.ts). #}
 <div class="viewer" data-viewer data-chrome="visible" data-inspector="closed"
      data-made="{{ 'generated' if item.creation and item.creation.prompt else 'captured' }}"
+     data-slug="{{ item.slug }}" data-name="{{ item.name }}" data-kind="{{ item.stage.kind }}"
      data-wheel-modifier="{{ item.viewing.wheel_modifier }}">
 
   <header class="viewer-chrome" data-chrome-bar>

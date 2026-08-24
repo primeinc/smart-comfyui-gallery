@@ -3,3 +3,5 @@
 // and wires only the rename.
 import "../media";
 import "../people";
+// the compare tray: kept across every surface, until dismissed
+import "../compare-mount";

@@ -4,3 +4,5 @@
 import "../gallery";
 import "../authored";
 import "../selection";
+// the compare tray: kept across every surface, until dismissed
+import "../compare-mount";

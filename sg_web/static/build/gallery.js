@@ -1299,9 +1299,9 @@
       onElement(button, "click", focus);
     }
     if (inspector) {
-      const kept = workspace();
+      const kept2 = workspace();
       const generated = inspector.querySelector("[data-panel='creation']") !== null && root.dataset.made === "generated";
-      showInspector(kept.inspector ? kept.inspector === "open" : false, false);
+      showInspector(kept2.inspector ? kept2.inspector === "open" : false, false);
       for (const section of everyElement(inspector, "[data-panel]", HTMLDetailsElement)) {
         const named = section.dataset.panel ?? "";
         const said = panelState(named);
@@ -1434,11 +1434,11 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
         first.slug
       );
       if (!named) return;
-      const current = await api.GET("/t/{slug}", {
+      const current2 = await api.GET("/t/{slug}", {
         params: { path: { slug: named } },
         headers: { accept: "application/json" }
       });
-      if (!current.data) {
+      if (!current2.data) {
         window.alert(`no collection at /t/${named}`);
         return;
       }
@@ -1447,7 +1447,7 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
       if (take === void 0) return;
       const { data, error } = await api.PUT("/t/{slug}/rule", {
         params: { path: { slug: named } },
-        body: { expected_rev: current.data.definition_rev, ...asked(spelled2, take) }
+        body: { expected_rev: current2.data.definition_rev, ...asked(spelled2, take) }
       });
       if (!data) {
         window.alert(refusal(error, "the rule could not be replaced"));
@@ -1980,5 +1980,227 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
     if (found === void 0) throw new Error(`the place picker offered ${held2}, which is not a place kind`);
     return found;
   }
+
+  // src/compare.ts
+  var MOST = 8;
+  function kept() {
+    const held2 = workspace().compare;
+    return Array.isArray(held2) ? held2.filter((one) => one && typeof one.slug === "string") : [];
+  }
+  function keep(held2) {
+    remember({ compare: held2.slice(-MOST) });
+  }
+  function current(root) {
+    const lightbox = findElement(root, "[data-lightbox][data-slug]", HTMLElement);
+    if (lightbox) {
+      const named = findElement(lightbox, "[data-viewer][data-slug]", HTMLElement) ?? lightbox;
+      const slug = named.dataset.slug ?? lightbox.dataset.slug;
+      if (slug) return { slug, name: named.dataset.name ?? slug, kind: named.dataset.kind ?? "" };
+    }
+    const viewer = findElement(root, "[data-viewer][data-slug]", HTMLElement);
+    if (viewer?.dataset.slug) {
+      return {
+        slug: viewer.dataset.slug,
+        name: viewer.dataset.name ?? viewer.dataset.slug,
+        kind: viewer.dataset.kind ?? ""
+      };
+    }
+    const under = root.querySelector("a.cell[data-slug]:hover");
+    const focused = document.activeElement?.closest?.("a.cell[data-slug]") ?? null;
+    const cell = under ?? focused;
+    if (cell?.dataset.slug) {
+      const shown = cell.querySelector("img");
+      return {
+        slug: cell.dataset.slug,
+        name: shown?.getAttribute("alt") || cell.dataset.slug,
+        kind: cell.dataset.kind ?? ""
+      };
+    }
+    return null;
+  }
+  function playable(one) {
+    if (one.kind === "video" || one.kind === "animated_image") {
+      const clip = document.createElement("video");
+      clip.src = `/media/${one.slug}`;
+      clip.poster = `/preview/${one.slug}`;
+      clip.controls = true;
+      clip.loop = true;
+      clip.playsInline = true;
+      clip.setAttribute("aria-label", one.name);
+      return clip;
+    }
+    if (one.kind === "audio") {
+      const sound = document.createElement("audio");
+      sound.src = `/media/${one.slug}`;
+      sound.controls = true;
+      sound.setAttribute("aria-label", one.name);
+      return sound;
+    }
+    const shown = document.createElement("img");
+    shown.src = `/preview/${one.slug}`;
+    shown.alt = one.name;
+    return shown;
+  }
+  function showComparison(held2) {
+    const old = document.querySelector("[data-compare-view]");
+    if (old) old.remove();
+    if (held2.length < 2) return;
+    const sheet = document.createElement("div");
+    sheet.className = "compare-view";
+    sheet.dataset.compareView = "";
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-label", "comparing");
+    const bar = document.createElement("header");
+    bar.className = "compare-view-bar";
+    const said = document.createElement("span");
+    said.textContent = `${held2.length} side by side`;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "compare-view-close";
+    close.dataset.compareViewClose = "";
+    close.setAttribute("aria-label", "stop comparing");
+    close.textContent = "\xD7";
+    bar.append(said, close);
+    const strip2 = document.createElement("div");
+    strip2.className = "compare-view-strip";
+    for (const one of held2) {
+      const column = document.createElement("figure");
+      column.className = "compare-column";
+      column.dataset.compareColumn = one.slug;
+      const shown = playable(one);
+      const label = document.createElement("figcaption");
+      const link = document.createElement("a");
+      link.href = `/i/${one.slug}`;
+      link.textContent = one.name;
+      label.append(link);
+      column.append(shown, label);
+      strip2.append(column);
+    }
+    sheet.append(bar, strip2);
+    document.body.append(sheet);
+    const dismiss = () => sheet.remove();
+    close.addEventListener("click", dismiss);
+    sheet.addEventListener("click", (event) => {
+      if (event.target === sheet) dismiss();
+    });
+    sheet.tabIndex = -1;
+    sheet.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") dismiss();
+    });
+    sheet.focus();
+  }
+  function drawTray(tray) {
+    const held2 = kept();
+    const open = workspace().tray !== "closed";
+    tray.hidden = held2.length === 0;
+    tray.dataset.tray = open ? "open" : "closed";
+    const count = findElement(tray, "[data-compare-count]", HTMLElement);
+    if (count) count.textContent = String(held2.length);
+    const compare = findElement(tray, "[data-compare-open]", HTMLButtonElement);
+    if (compare) compare.disabled = held2.length < 2;
+    const list = findElement(tray, "[data-compare-items]", HTMLElement);
+    if (!list) return;
+    list.replaceChildren();
+    for (const [at, one] of held2.entries()) {
+      const item = document.createElement("li");
+      item.className = "tray-item";
+      item.draggable = true;
+      item.dataset.compareSlug = one.slug;
+      item.dataset.at = String(at);
+      const shown = document.createElement("img");
+      shown.src = `/thumb/${one.slug}`;
+      shown.alt = one.name;
+      shown.title = one.name;
+      const drop = document.createElement("button");
+      drop.type = "button";
+      drop.className = "tray-drop";
+      drop.dataset.compareRemove = one.slug;
+      drop.setAttribute("aria-label", `stop keeping ${one.name}`);
+      drop.textContent = "\xD7";
+      item.append(shown, drop);
+      list.append(item);
+    }
+    for (const drop of everyElement(list, "[data-compare-remove]", HTMLElement)) {
+      drop.addEventListener("click", () => {
+        keep(kept().filter((one) => one.slug !== drop.dataset.compareRemove));
+        drawTray(tray);
+      });
+    }
+    let from = null;
+    for (const item of everyElement(list, "[data-compare-slug]", HTMLElement)) {
+      item.addEventListener("dragstart", (event) => {
+        from = Number(item.dataset.at);
+        event.dataTransfer?.setData("text/plain", item.dataset.compareSlug ?? "");
+        item.dataset.dragging = "true";
+      });
+      item.addEventListener("dragend", () => {
+        delete item.dataset.dragging;
+      });
+      item.addEventListener("dragover", (event) => event.preventDefault());
+      item.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const to = Number(item.dataset.at);
+        if (from === null || from === to) return;
+        const order = kept();
+        const [moved] = order.splice(from, 1);
+        if (moved) order.splice(to, 0, moved);
+        keep(order);
+        from = null;
+        drawTray(tray);
+      });
+    }
+  }
+  function build() {
+    const tray = document.createElement("aside");
+    tray.className = "tray";
+    tray.dataset.compareTray = "";
+    tray.hidden = true;
+    tray.setAttribute("aria-label", "kept to compare");
+    tray.innerHTML = [
+      '<header class="tray-bar">',
+      '<button type="button" class="tray-tab" data-compare-collapse aria-label="show or hide what is kept">',
+      "kept <b data-compare-count>0</b>",
+      "</button>",
+      '<button type="button" class="tray-act" data-compare-open>compare</button>',
+      '<button type="button" class="tray-act" data-compare-clear>clear</button>',
+      "</header>",
+      '<ol class="tray-items" data-compare-items></ol>'
+    ].join("");
+    return tray;
+  }
+  function mountCompare(root) {
+    if (document.querySelector("[data-compare-tray]")) return;
+    const tray = build();
+    document.body.append(tray);
+    const collapse = findElement(tray, "[data-compare-collapse]", HTMLElement);
+    if (collapse) {
+      collapse.addEventListener("click", () => {
+        remember({ tray: workspace().tray === "closed" ? "open" : "closed" });
+        drawTray(tray);
+      });
+    }
+    const open = findElement(tray, "[data-compare-open]", HTMLElement);
+    if (open) open.addEventListener("click", () => showComparison(kept()));
+    const clear = findElement(tray, "[data-compare-clear]", HTMLElement);
+    if (clear) {
+      clear.addEventListener("click", () => {
+        keep([]);
+        drawTray(tray);
+      });
+    }
+    const add = () => {
+      const one = current(root);
+      if (!one) return;
+      const held2 = kept();
+      keep(held2.some((each) => each.slug === one.slug) ? held2.filter((each) => each.slug !== one.slug) : [...held2, one]);
+      remember({ tray: "open" });
+      drawTray(tray);
+    };
+    register([{ key: "c", by: "compare: keep this", run: add }]);
+    drawTray(tray);
+  }
+
+  // src/compare-mount.ts
+  mountCompare(document.body);
 })();
 //# sourceMappingURL=gallery.js.map

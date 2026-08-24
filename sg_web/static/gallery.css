@@ -3088,3 +3088,190 @@ body[data-filters="open"] .stage {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+/* --- the compare tray ------------------------------------------------- */
+
+/* A strip along the bottom, not a page: the point is to gather while
+   carrying on browsing, and a surface you have to navigate TO cannot be
+   filled that way. Collapsed it is still a tab, because a tray that
+   vanished would take the count with it. */
+.tray {
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  box-shadow: 0 -6px 18px rgb(0 0 0 / 35%);
+  left: 0;
+  position: fixed;
+  right: 0;
+  z-index: 5;
+}
+.tray-bar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.tray-tab {
+  background: none;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 2px 0;
+  text-transform: uppercase;
+}
+.tray-tab b {
+  background: var(--accent);
+  border-radius: 999px;
+  color: var(--ground);
+  margin-left: 6px;
+  padding: 0 7px;
+}
+.tray-act {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+}
+.tray-act:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tray-act:disabled {
+  color: var(--ink-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+.tray-act[data-compare-open] {
+  margin-left: auto;
+}
+.tray-items {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0 12px 10px;
+}
+.tray[data-tray="closed"] .tray-items {
+  display: none;
+}
+.tray-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  flex: none;
+  overflow: hidden;
+  position: relative;
+}
+.tray-item[data-dragging="true"] {
+  opacity: 0.4;
+}
+.tray-item img {
+  display: block;
+  height: 66px;
+  object-fit: cover;
+  width: 88px;
+}
+.tray-drop {
+  background: rgb(0 0 0 / 55%);
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 1px 5px;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+.tray-drop:hover {
+  color: var(--danger);
+}
+
+/* Above everything, because a comparison is the thing being done. */
+.compare-view {
+  background: rgb(0 0 0 / 92%);
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  position: fixed;
+  z-index: 10;
+}
+.compare-view-bar {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+.compare-view-close {
+  background: none;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0 6px;
+}
+.compare-view-strip {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  min-height: 0;
+  overflow-x: auto;
+  padding: 0 8px 14px;
+}
+/* Equal columns and `contain`: the whole value of a comparison is that
+   the pictures are shown the same way, so nothing here crops one, scales
+   one to another, or picks a primary. */
+.compare-column {
+  display: flex;
+  flex: 1 0 0;
+  flex-direction: column;
+  margin: 0;
+  min-width: 220px;
+}
+.compare-column img,
+.compare-column video {
+  flex: 1;
+  min-height: 0;
+  object-fit: contain;
+  width: 100%;
+}
+/* A sound has no picture; it gets the height its controls need and no
+   column of empty black pretending to be one. */
+.compare-column audio {
+  align-self: center;
+  width: 100%;
+}
+.compare-column figcaption {
+  color: var(--ink-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding-top: 6px;
+  text-align: center;
+}
+.compare-column figcaption a {
+  color: var(--accent);
+}
+
+/* The tray sits over the bottom of every surface, so give the page back
+   the room it takes rather than hiding the last row of a grid under it. */
+body:has(.tray:not([hidden])) .stage,
+body:has(.tray:not([hidden])) .detail,
+body:has(.tray:not([hidden])) .person-grid {
+  padding-bottom: 120px;
+}
+body:has(.tray[data-tray="closed"]:not([hidden])) .stage,
+body:has(.tray[data-tray="closed"]:not([hidden])) .detail,
+body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
+  padding-bottom: 48px;
+}

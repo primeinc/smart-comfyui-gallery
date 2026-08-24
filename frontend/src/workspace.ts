@@ -53,6 +53,21 @@ export interface Workspace {
    */
   filters?: "open" | "closed";
   /**
+   * What has been KEPT to compare, in the order it will be shown.
+   *
+   * Workspace state in the fullest sense: a person put these here on
+   * purpose, one at a time, from several surfaces, and the whole point
+   * is that walking away and coming back does not lose them. It empties
+   * when they empty it and at no other moment.
+   *
+   * The name rides along with the slug because the surface that added
+   * one knew it, and asking the server to say it again for a strip of
+   * five thumbnails would be five round trips for text already on screen.
+   */
+  compare?: Array<{ slug: string; name: string }>;
+  /** Whether the compare tray is open or collapsed to its tab. */
+  tray?: "open" | "closed";
+  /**
    * Which inspector sections are disclosed, by their `data-panel` name.
    * Absent means "this person has never said", which is what lets a
    * generated picture and a photograph open different sections until
