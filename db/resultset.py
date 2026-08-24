@@ -49,6 +49,7 @@ when its effect on page boundaries is defined, not before.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import dataclasses
 import hashlib
@@ -220,6 +221,38 @@ def fingerprint(query: GalleryQuery) -> str:
 #: per-request one.
 _MONITORS: dict[str, sqlite3.Connection] = {}
 _MONITOR_LOCK = threading.Lock()
+
+
+def close_monitors() -> int:
+    """Close every monitor and forget it; returns how many there were.
+
+    The other half of a process-lifetime cache. Nothing may close a
+    monitor per request -- `data_version` is comparable only across reads
+    on the SAME connection, so a replaced monitor silently restarts the
+    numbering the projection cache is keyed on -- but a handle held for
+    the life of the process still has to be given up when the process
+    ends. Left to the interpreter, the dict's globals are torn down and
+    every monitor is deleted without close(), which is a
+    `ResourceWarning: unclosed database` per open database file
+    (python/cpython Doc/library/sqlite3.rst: Connection warns if close()
+    was not called before it is deleted).
+
+    A caller that reads `currency` again after this simply gets a fresh
+    monitor: the cache is a cache.
+    """
+    with _MONITOR_LOCK:
+        held = list(_MONITORS.values())
+        _MONITORS.clear()
+    for monitor in held:
+        monitor.close()
+    return len(held)
+
+
+# The PROCESS owns these, not an application instance: `_MONITORS` is
+# module state, so two Litestar apps in one process share it and a
+# shutdown hook on either would close the other's monitors. atexit is the
+# lifetime that actually matches.
+atexit.register(close_monitors)
 
 
 def _database_file(conn) -> str:

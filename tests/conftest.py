@@ -46,9 +46,11 @@ def _close_memory_databases(monkeypatch):
 
     monkeypatch.setattr(connect, "memory", recording)
     yield
-    kept = {id(conn) for conn in staging._MASTERS.values()} | staging.LONG_LIVED
     for conn in opened:
-        if id(conn) not in kept:
+        # by identity: an id() is unique only among live objects, and a
+        # kept connection its owner has already closed leaves its address
+        # free for the next one (tests/staging.py keep)
+        if not staging.is_kept(conn):
             conn.close()
 
 

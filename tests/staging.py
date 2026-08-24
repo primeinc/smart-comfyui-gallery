@@ -46,13 +46,37 @@ _MASTERS: dict[str, sqlite3.Connection] = {}
 #: Connections that outlive the test that opened them on purpose -- a
 #: module's master built inside a function-scoped fixture. conftest closes
 #: every other in-memory connection when its test ends.
-LONG_LIVED: set[int] = set()
+#:
+#: The CONNECTIONS, not their id()s. See `keep`.
+LONG_LIVED: list[sqlite3.Connection] = []
 
 
 def keep(conn: sqlite3.Connection) -> sqlite3.Connection:
-    """Mark a connection as outliving its test; the owner closes it."""
-    LONG_LIVED.add(id(conn))
+    """Mark a connection as outliving its test; the owner closes it.
+
+    The connection itself is held. This was a set of `id(conn)`, and an
+    id is unique only among LIVE objects: a kept master is closed and
+    dropped by its owner in the ordinary course of things -- the pages
+    fixture rebuilds its master inside a test, and closes it again at
+    module teardown -- and the moment that object dies its address is
+    free. CPython handed the very next `connect.memory()` the same
+    address (measured: reused on the first allocation), conftest read
+    that live, unrelated connection as long-lived, and never closed it.
+    It reached the collector still open as `ResourceWarning: unclosed
+    database`, blamed on whichever test was running by then.
+
+    Holding the object is what makes the mark mean one connection: while
+    it stands the object cannot die, so its address cannot be handed to
+    anything else.
+    """
+    LONG_LIVED.append(conn)
     return conn
+
+
+def is_kept(conn: sqlite3.Connection) -> bool:
+    """Whether this exact connection outlives its test -- a schema master
+    or something `keep` was given. Compared by identity, never by id()."""
+    return any(conn is one for one in (*_MASTERS.values(), *LONG_LIVED))
 
 
 def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
