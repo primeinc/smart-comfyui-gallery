@@ -416,6 +416,21 @@ body {
   will-change: transform;
 }
 
+/* A picture being examined belongs on top of the furniture around it:
+   zoomed, the stage is the thing being done and the filmstrip and the
+   inspector are in its way.
+
+   `overflow` and a layer only -- the stage's BOX does not move. The
+   fitted size is measured from that box and the scale `actual` promises
+   is computed from the fitted size, so a zoom that resized the thing it
+   is measured against would chase itself, and the ResizeObserver would
+   recompute the scale from a stage the zoom had just changed. The same
+   reason the filmstrip hides with `visibility` rather than `display`. */
+.viewer[data-magnified="true"] .viewer-stage {
+  overflow: visible;
+  z-index: 3;
+}
+
 /* Only a picture past fit can be dragged, and only then does it say so. */
 .viewer-stage[data-framing="fit"] [data-stage-media] {
   cursor: default;
@@ -519,6 +534,14 @@ body {
 .viewer-filmstrip-track {
   display: flex;
   gap: 5px;
+  /* Centred, because a neighbourhood is fifteen pictures whatever the
+     window is: left-aligned on a wide screen that is a thousand pixels
+     of thumbnails and fifteen hundred of nothing, which reads as a strip
+     that failed to load rather than one that is simply short. Centring
+     only bites when the strip does NOT overflow -- once it does, the
+     scroll position is what centres the current picture, and this has no
+     effect on it. */
+  justify-content: center;
   padding: 8px 10px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -531,7 +554,10 @@ body {
 
 .viewer-filmstrip-item {
   flex: 0 0 auto;
-  width: 64px;
+  /* Grows with the window and stops: 64px is the floor where a thumbnail
+     is still recognisable, and past ~110px fifteen of them are a second
+     gallery rather than a strip under the one picture being looked at. */
+  width: clamp(64px, 5.5vw, 110px);
   aspect-ratio: 1;
   border-radius: 3px;
   overflow: hidden;

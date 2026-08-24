@@ -169,6 +169,21 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     };
   };
 
+  /** Whether any part of the picture is off the stage's edge. */
+  const canPan = (): boolean => {
+    const size = fitted();
+    const box = stageBox.getBoundingClientRect();
+    return size.width * look.scale > box.width + 1 || size.height * look.scale > box.height + 1;
+  };
+
+  /**
+   * Whether the picture is currently bigger than the stage fits it at.
+   *
+   * The question every toggle should ask, because it is about the state
+   * and not about which of four words the state was last given.
+   */
+  const zoomedIn = (): boolean => look.scale > 1 || canPan();
+
   const paint = () => {
     if (!media) return;
     media.style.transform = `translate(${look.x}px, ${look.y}px) scale(${look.scale})`;
@@ -177,6 +192,12 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     // browsed. A class would hide the state; the attribute IS the state.
     root.dataset.absorbed = look.scale > ABSORBED ? "true" : "false";
     root.dataset.zoom = String(Math.round(look.scale * 100));
+    // A picture being examined belongs ON TOP of the furniture around
+    // it. Fitted, the stage sits in the layout like any other panel;
+    // zoomed, it is the thing being done, and the chrome, the filmstrip
+    // and the inspector are in its way. The attribute IS the state and
+    // the stylesheet decides what rising looks like.
+    root.dataset.magnified = zoomedIn() ? "true" : "false";
   };
 
   // --- quality --------------------------------------------------------------
@@ -435,16 +456,32 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   );
 
   if (still && media) {
+    // Double-click goes IN from fit, and OUT from anywhere else.
+    //
+    // It used to ask `framing === "actual"`, which is the LABEL rather
+    // than the state -- and panning sets the label to "free". So a
+    // person who went to 1:1 and then dragged the picture (the whole
+    // reason to be at 1:1) could double-click as often as they liked and
+    // never get back to fit: it saw "free", decided that meant "not
+    // zoomed", and re-applied `actual` on top of itself. The question
+    // that matters is whether the picture is currently bigger than its
+    // fitted size, and that is a number, not a name.
     onElement(stageBox, "dblclick", (event) => {
       event.preventDefault();
-      frame(look.framing === "actual" ? "fit" : "actual");
+      frame(zoomedIn() ? "fit" : "actual");
     });
 
     let dragging: number | null = null;
     let from = { x: 0, y: 0, ox: 0, oy: 0 };
 
     onElement(stageBox, "pointerdown", (event) => {
-      if (event.button !== 0 || look.scale <= 1) return;
+      // Whenever there is something off the edge to drag TO, not merely
+      // when the scale reads above 1. A picture at "actual" that is
+      // wider than the stage but shorter than it has real overhang on
+      // one axis at a scale below 1, and refusing the drag there left a
+      // person looking at the middle of a panorama with no way to reach
+      // its ends.
+      if (event.button !== 0 || !canPan()) return;
       // Capture, so the pan owns the pointer until it is released. Without
       // it a drag that ends outside the picture lands on the overlay's
       // backdrop, whose click IS dismissal -- and panning would close the
@@ -494,7 +531,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   const middle = (by: number) => () => zoomAbout(by, window.innerWidth / 2, window.innerHeight / 2);
   bound.push(
     register([
-      { key: "z", by: "viewer: fit/actual", run: () => frame(look.framing === "actual" ? "fit" : "actual") },
+      { key: "z", by: "viewer: fit/actual", run: () => frame(zoomedIn() ? "fit" : "actual") },
       { key: "l", by: "viewer: focus", run: focus },
       { key: "i", by: "viewer: inspector", run: () => showInspector(root.dataset.inspector !== "open") },
       { key: "+", by: "viewer: zoom in", run: middle(1.3) },

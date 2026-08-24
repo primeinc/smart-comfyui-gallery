@@ -825,12 +825,19 @@
         y: Math.min(down, Math.max(-down, y))
       };
     };
+    const canPan = () => {
+      const size = fitted();
+      const box = stageBox.getBoundingClientRect();
+      return size.width * look.scale > box.width + 1 || size.height * look.scale > box.height + 1;
+    };
+    const zoomedIn = () => look.scale > 1 || canPan();
     const paint = () => {
       if (!media) return;
       media.style.transform = `translate(${look.x}px, ${look.y}px) scale(${look.scale})`;
       stageBox.dataset.framing = look.framing;
       root.dataset.absorbed = look.scale > ABSORBED ? "true" : "false";
       root.dataset.zoom = String(Math.round(look.scale * 100));
+      root.dataset.magnified = zoomedIn() ? "true" : "false";
     };
     const promote = () => {
       if (!still || promoted || !still.promotable || !still.shown) return;
@@ -954,12 +961,12 @@
     if (still && media) {
       onElement(stageBox, "dblclick", (event) => {
         event.preventDefault();
-        frame(look.framing === "actual" ? "fit" : "actual");
+        frame(zoomedIn() ? "fit" : "actual");
       });
       let dragging = null;
       let from = { x: 0, y: 0, ox: 0, oy: 0 };
       onElement(stageBox, "pointerdown", (event) => {
-        if (event.button !== 0 || look.scale <= 1) return;
+        if (event.button !== 0 || !canPan()) return;
         stageBox.setPointerCapture(event.pointerId);
         dragging = event.pointerId;
         from = { x: event.clientX, y: event.clientY, ox: look.x, oy: look.y };
@@ -987,7 +994,7 @@
     const middle = (by) => () => zoomAbout(by, window.innerWidth / 2, window.innerHeight / 2);
     bound.push(
       register([
-        { key: "z", by: "viewer: fit/actual", run: () => frame(look.framing === "actual" ? "fit" : "actual") },
+        { key: "z", by: "viewer: fit/actual", run: () => frame(zoomedIn() ? "fit" : "actual") },
         { key: "l", by: "viewer: focus", run: focus },
         { key: "i", by: "viewer: inspector", run: () => showInspector(root.dataset.inspector !== "open") },
         { key: "+", by: "viewer: zoom in", run: middle(1.3) },

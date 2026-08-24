@@ -839,3 +839,122 @@ def test_the_walk_is_the_servers_and_the_viewer_survives_it(page: Page, live: Li
     assert page.get_attribute("[data-stage]", "data-framing") == "fit", (
         f"{where}: the next picture opens fitted, not under the last one's zoom"
     )
+
+
+# --- the three complaints about looking closely -----------------------------
+
+
+def _framing(page: Page) -> str:
+    return page.get_attribute("[data-stage]", "data-framing") or ""
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_double_click_goes_back_to_fit_after_the_picture_has_been_dragged(
+    page: Page, live: Live, where, open_it, unbroken
+):
+    """The bug: it asked the framing's NAME, and panning renames it.
+
+    Double-click to 1:1, drag the picture -- which is the entire reason
+    to be at 1:1 -- and the framing is now "free". The toggle read that
+    as "not zoomed" and re-applied `actual` on top of itself, so no
+    number of double-clicks ever came back to fit. It now asks whether
+    the picture IS bigger than its fitted size, which is a number.
+    """
+    open_it(page, live, "a_big.png")
+    box = _box(page)
+    page.mouse.dblclick(box["x"] + box["w"] / 2, box["y"] + box["h"] / 2)
+    page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'actual'")
+
+    # drag it, exactly as somebody at 1:1 would
+    page.mouse.move(box["x"] + box["w"] / 2, box["y"] + box["h"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["w"] / 2 - 120, box["y"] + box["h"] / 2 - 60, steps=8)
+    page.mouse.up()
+    assert _framing(page) == "free", f"{where}: dragging is what renamed the framing"
+
+    page.mouse.dblclick(box["x"] + box["w"] / 2, box["y"] + box["h"] / 2)
+    page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'fit'")
+    assert _zoom(page) == 100, f"{where}: one double-click, back to fit"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_a_zoomed_picture_can_be_dragged_and_stays_within_its_own_edges(
+    page: Page, live: Live, where, open_it, unbroken
+):
+    """Dragging is offered exactly when there is something off the edge
+    to drag to."""
+    open_it(page, live, "a_big.png")
+    _actual(page)
+    before = _box(page)
+    page.mouse.move(before["x"] + before["w"] / 2, before["y"] + before["h"] / 2)
+    page.mouse.down()
+    page.mouse.move(before["x"] + before["w"] / 2 - 150, before["y"] + before["h"] / 2, steps=10)
+    page.mouse.up()
+    after = _box(page)
+    assert after["x"] < before["x"], f"{where}: the picture moved with the pointer"
+    # and not off the screen: the tether is the overhang, so an edge is
+    # reachable and nothing beyond it is
+    page.mouse.move(after["x"] + 10, after["y"] + 10)
+    page.mouse.down()
+    page.mouse.move(after["x"] - 4000, after["y"], steps=6)
+    page.mouse.up()
+    flung = _box(page)
+    assert flung["x"] + flung["w"] >= page.evaluate("() => document.querySelector('[data-stage]').clientWidth") - 2, (
+        f"{where}: a long drag must stop at the picture's own edge, not fling it off the stage"
+    )
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_a_zoomed_picture_is_on_top_of_the_furniture(page: Page, live: Live, where, open_it, unbroken):
+    """Fitted, the stage sits in the layout like any other panel. Zoomed,
+    it is the thing being done."""
+    open_it(page, live, "a_big.png")
+    assert page.get_attribute("[data-viewer]", "data-magnified") == "false"
+    clipped = page.evaluate("() => getComputedStyle(document.querySelector('[data-stage]')).overflow")
+    assert clipped == "hidden", f"{where}: at fit the stage clips, like any other panel"
+
+    _actual(page)
+    assert page.get_attribute("[data-viewer]", "data-magnified") == "true"
+    over = page.evaluate(
+        "() => { const s = getComputedStyle(document.querySelector('[data-stage]'));"
+        " const strip = document.querySelector('[data-filmstrip]');"
+        " return {overflow: s.overflow, layer: Number(s.zIndex),"
+        "  under: strip ? Number(getComputedStyle(strip).zIndex) || 0 : 0}; }"
+    )
+    assert over["overflow"] == "visible", f"{where}: zoomed, the picture is allowed past the stage's edge"
+    assert over["layer"] > over["under"], f"{where}: and above what it is standing in front of"
+
+    # the stage's BOX must not have moved: the fitted size is measured
+    # from it and `actual`'s scale is computed from the fitted size, so a
+    # zoom that resized its own reference would chase itself
+    page.keyboard.press("z")
+    page.wait_for_function("() => document.querySelector('[data-stage]').dataset.framing === 'fit'")
+    assert _zoom(page) == 100, f"{where}: and fit is still exactly fit afterwards"
+
+
+@pytest.mark.parametrize(("where", "open_it"), OPENERS)
+def test_the_filmstrip_uses_the_width_it_is_given(page: Page, live: Live, where, open_it, unbroken):
+    """A neighbourhood is fifteen pictures whatever the window is.
+    Left-aligned on a wide screen that is a strip of thumbnails and a
+    wide band of nothing, which reads as one that failed to load."""
+    page.set_viewport_size({"width": 1600, "height": 900})
+    open_it(page, live, "a_big.png")
+    _strip_shown(page)
+    measured = page.evaluate(
+        "() => { const track = document.querySelector('[data-filmstrip] .viewer-filmstrip-track')"
+        "   ?? document.querySelector('[data-filmstrip]');"
+        " const items = [...document.querySelectorAll('[data-filmstrip-item]')];"
+        " if (!items.length) return null;"
+        " const left = Math.min(...items.map(i => i.getBoundingClientRect().left));"
+        " const right = Math.max(...items.map(i => i.getBoundingClientRect().right));"
+        " const box = track.getBoundingClientRect();"
+        " return {used: right - left, band: box.width, gapLeft: left - box.left, gapRight: box.right - right}; }"
+    )
+    assert measured is not None
+    # either the thumbnails fill the band, or what is left over is shared
+    # evenly -- what must not happen is all of it piled on one side
+    slack = measured["band"] - measured["used"]
+    if slack > 40:
+        assert abs(measured["gapLeft"] - measured["gapRight"]) < 40, (
+            f"{where}: the strip is off to one side with {slack:.0f}px of empty band: {measured}"
+        )
