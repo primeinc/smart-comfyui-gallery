@@ -470,12 +470,57 @@ consequences the architecture should keep room for, not work.
 
   The lead: **ty 0.0.74 checks the same tree in 4.6s** -- 30x -- and
   `pyproject.toml` has carried `[tool.ty.src]` and `[tool.ty.analysis]`
-  since before this. It reported **74 diagnostics** on a tree pyright
-  calls clean (real ones among them: `db/capture.py:101` `_CLAIMED |=
-  _GPS_CLAIMED` between `set[Base]` and `set[GPS | IFD]`;
-  `db/planning.py:1367` `|` on `int | frozenset[str]`). Triage those and
-  ty restores type checking to the fast gate. It was installed, measured
-  and removed rather than left in the tree unwired.
+  since before this.
+
+  Triaged 2026-08-25, and the count in this entry was the wrong unit.
+  ty reported 89 diagnostics, but many are one call site reported once
+  per overload: `test_the_resultset_is_authoritative.py:276` is eleven
+  of them. **48 distinct sites** was the real number, now **32**.
+
+  Two were the real bugs this entry named, and one of them is fixed:
+
+  - `db/capture.py:101` -- FIXED. `_CLAIMED` was inferred `set[Base]`
+    and the very next statement unioned `set[GPS | IFD]` into it. Right
+    at runtime, since these are all IntEnum and are tested against the
+    raw integer keys of an EXIF dict; wrong as a claim. Both membership
+    sets say `set[int]` now, which is what they hold.
+  - `db/planning.py:1367` and `:1375` -- NOT fixed, and it is not the
+    quick one it looks like. `STORY_PLAN_V3["claims"] | frozenset(...)`
+    fails because the plan dicts are heterogeneous, so every key infers
+    as `int | frozenset[str]`. The code is correct; the type is
+    invisible. Fixing it means a TypedDict over a structure whose own
+    comments say FROZEN, and `respect-type-ignore-comments = false`
+    means this tree does not get to silence it instead.
+
+  **Almost all of the rest is one pattern**, not 32 separate defects: a
+  dict literal holding an int, a str, a None and a list infers every key
+  as the union of those, so `held["pictures"].append(...)` is `.append`
+  on `int | None | ...`. The fix is a TypedDict per shape, and it is
+  worth doing for its own sake -- the checker found two annotations that
+  were simply wrong while this was being written, `_drawn` returning
+  thumbnail ADDRESSES where the shape said picture rows.
+
+  `sg_web/timeline_view.py` is done as the worked example: 12 sites to
+  0, four shapes spelled out (`_Segment`, `_Cell`, `_Bin`, `_Group`).
+  Annotated dict literals rather than constructor calls, so the readable
+  form and the checkable one are the same thing.
+
+  Where the remaining 32 sit:
+
+      tests/                          15 sites, in 9 files
+      db/stories.py                    1 site, 9 diagnostics (json.dumps overloads)
+      db/planning.py                   4
+      sg_web/app.py                    5
+      vision/                          5
+      db/pages.py                      2   -- a real annotation mismatch
+      metaparse/adapters.py            1   -- .rsplit on a possible None
+      sg_web/collection_view.py        1
+      benchmarks/                      3
+
+  `db/pages.py:1403-1404` is worth doing next: the declared return is
+  `dict[int, list[tuple[str, str | None, str]]]` and the code builds
+  `dict[int, list[str]]`. One of those two is a lie about what callers
+  receive.
 
 ## The query workspace, as far as it got
 

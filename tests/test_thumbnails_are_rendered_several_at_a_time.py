@@ -119,6 +119,7 @@ def test_the_first_item_renders_more_than_its_own_picture(tmp_path):
     conn, cache = _library(tmp_path, 12)
     try:
         job = runner.submit_thumbs(conn, 1.0, thumbs_dir=str(cache))
+        assert job is not None
         told = runner.run_next(conn, "w1", 2.0, budget=1)
         assert told is not None
         assert told["did"] == 1, told
@@ -188,6 +189,7 @@ def test_a_budget_still_stops_the_turn_where_it_says(tmp_path):
     conn, cache = _library(tmp_path, 12)
     try:
         job = runner.submit_thumbs(conn, 1.0, thumbs_dir=str(cache))
+        assert job is not None
         told = runner.run_next(conn, "w1", 2.0, budget=3)
         assert told is not None
         assert told["did"] == 3, told
@@ -206,17 +208,17 @@ def test_the_number_in_flight_never_turns_the_feature_off(tmp_path):
     assert runner.thumbs_in_flight() <= 8, "past the measured knee the two thread pools fight"
 
 
-def test_a_warm_cache_still_costs_nothing(tmp_path):
+def test_a_warm_cache_still_costs_nothing(tmp_path, monkeypatch):
     """The `already-cached` return is what the pictures rendered ahead
     take when their turn comes, so it has to keep working -- and a second
     run over a warm cache must decode nothing at all."""
+    from vision import derive
+
     conn, cache = _library(tmp_path, 8)
     try:
         runner.submit_thumbs(conn, 1.0, thumbs_dir=str(cache))
         _drain(conn)
         assert _cached(conn, cache) == 8
-
-        from vision import derive
 
         rendered: list[str] = []
         real = derive.put_all
@@ -225,12 +227,12 @@ def test_a_warm_cache_still_costs_nothing(tmp_path):
             rendered.append(sha)
             return real(cache_dir, sha, path, kind, orientation)
 
-        derive.put_all = counted
-        try:
-            again = runner.submit_thumbs(conn, 3.0, thumbs_dir=str(cache))
-            assert again is None, "a warm cache queued a job"
-        finally:
-            derive.put_all = real
+        # `monkeypatch` rather than assigning the module attribute back in
+        # a finally: it restores on failure too, and rebinding a module's
+        # `def` is not an assignment a type checker will take.
+        monkeypatch.setattr(derive, "put_all", counted)
+        again = runner.submit_thumbs(conn, 3.0, thumbs_dir=str(cache))
+        assert again is None, "a warm cache queued a job"
         assert rendered == []
     finally:
         connect.close(conn)

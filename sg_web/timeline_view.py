@@ -20,7 +20,7 @@ import datetime
 import pathlib
 import time
 import urllib.parse
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 from litestar import MediaType, Request, get
 from litestar.datastructures import State
@@ -456,16 +456,86 @@ def _picture(row, qs: str) -> dict:
     }
 
 
-def _grouped(pictures: list[dict], sessions: list[dict], bins: list[dict], width: int, window_qs: str) -> list[dict]:
+class _Segment(TypedDict):
+    """One band of the scrubber: a stretch of time and how it is drawn."""
+
+    at: int
+    end: int
+    #: the link's window, clipped to the library, spelled as the URL spells it
+    window_start: int
+    year: int
+    label: str
+    pictures: int
+    face: str | None
+    strip: list[str]
+    y: float
+    h: float
+    year_label: bool
+    href: str
+
+
+class _Cell(TypedDict):
+    """One month of the year grid."""
+
+    month: str
+    pictures: int
+    hero: dict | None
+    qs: str | None
+    href: str
+    outside: bool
+
+
+class _Bin(TypedDict):
+    """One bar of the histogram."""
+
+    at: int
+    pictures: int
+    wall: int
+    instant: int
+    origin: dict
+    samples: list[str]
+    qs: str
+    spelled: str
+    finest: bool
+    href: str
+    x: float
+    w: float
+    h: float
+    wall_h: float
+
+
+class _Group(TypedDict):
+    """One row of the window: a listed session, or the pictures that fell
+    in one bin.
+
+    Spelled out because a dict literal holding an int, a dict, a None, a
+    str and a list infers as the UNION of those for every key, so
+    `group["pictures"].append(...)` is `.append` on `int | None | ...`
+    and nothing downstream can be checked at all. The four keys added
+    after it is built are `NotRequired` -- which is what they are.
+    """
+
+    t: int
+    end: int
+    session: dict | None
+    bin: _Bin | None
+    qs: str
+    pictures: list[dict]
+    clock: NotRequired[str]
+    lasted: NotRequired[str]
+    lead: NotRequired[dict]
+    leads: NotRequired[list[dict]]
+
+
+def _grouped(pictures: list[dict], sessions: list[dict], bins: list[_Bin], width: int, window_qs: str) -> list[_Group]:
     """The window's pictures in groups, oldest first: each listed session
     holds its members; the rest gather by the bin they fall in. A
     picture in two listed sessions is drawn in the first."""
-    by_session = {
-        s["id"]: {"t": s["start"], "end": s["end"], "session": s, "bin": None, "qs": s["qs"], "pictures": []}
-        for s in sessions
+    by_session: dict[int, _Group] = {
+        s["id"]: _Group(t=s["start"], end=s["end"], session=s, bin=None, qs=s["qs"], pictures=[]) for s in sessions
     }
     by_bin = {b["at"]: b for b in bins}
-    loose: dict[int, dict] = {}
+    loose: dict[int, _Group] = {}
     for p in pictures:
         sid = next((one for one in p["sessions"] if one in by_session), None)
         if sid is not None:
@@ -475,14 +545,14 @@ def _grouped(pictures: list[dict], sessions: list[dict], bins: list[dict], width
         held = loose.get(at)
         if held is None:
             b = by_bin.get(at)
-            held = loose[at] = {
-                "t": at,
-                "end": at + width,
-                "session": None,
-                "bin": b,
-                "qs": b["qs"] if b else window_qs,
-                "pictures": [],
-            }
+            held = loose[at] = _Group(
+                t=at,
+                end=at + width,
+                session=None,
+                bin=b,
+                qs=b["qs"] if b else window_qs,
+                pictures=[],
+            )
         held["pictures"].append(p)
     groups = [g for g in (*by_session.values(), *loose.values()) if g["pictures"]]
     groups.sort(key=lambda g: -g["t"])
@@ -535,7 +605,7 @@ def _lasted(seconds: float) -> str:
     return f"{round(seconds / 86_400)} days"
 
 
-def _river(groups: list[dict]) -> list[dict]:
+def _river(groups: list[_Group]) -> list[dict]:
     """Days, newest first, each with its groups; a day carries the month
     cap when it opens one, and the silence above it -- the days of
     nothing between it and the newer day -- as the height the page draws
@@ -651,7 +721,7 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
     gap_h = min(GAP_H, least)
     room = max(0.0, _H - least * held - gap_h * gaps)
     y = 0.0
-    segments = []
+    segments: list[_Segment] = []
     last_year = None
     labelled_at = -1e9
     unit = UNIT[name]
@@ -664,23 +734,22 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
             labelled_at = y + h
         strip = _drawn(faces.get(int(at)) or [])
         label = _spell(at, name) if n else f"{u['units']} {unit}{'s' if u['units'] > 1 else ''} without pictures"
-        segments.append(
-            {
-                "at": at,
-                "end": end,
-                #: the link's window, clipped to the library, spelled as the URL spells it
-                "window_start": int(max(whole_lo, at)),
-                "year": year,
-                "label": label,
-                "pictures": n,
-                "face": strip[0] if strip else None,
-                "strip": strip,
-                "y": round(y, 2),
-                "h": round(h, 2),
-                "year_label": named,
-                "href": _window_url(question, max(whole_lo, at), min(whole_hi, end)),
-            }
-        )
+        segment: _Segment = {
+            "at": at,
+            "end": end,
+            #: the link's window, clipped to the library, spelled as the URL spells it
+            "window_start": int(max(whole_lo, at)),
+            "year": year,
+            "label": label,
+            "pictures": n,
+            "face": strip[0] if strip else None,
+            "strip": strip,
+            "y": round(y, 2),
+            "h": round(h, 2),
+            "year_label": named,
+            "href": _window_url(question, max(whole_lo, at), min(whole_hi, end)),
+        }
+        segments.append(segment)
         if n:
             last_year = year
         y += h
@@ -743,7 +812,7 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
 SHEETS_WIDEST = 2 * 366 * 86_400
 
 
-def _years(told_bins: list[dict], lo: float, hi: float, question: resultset.GalleryQuery) -> list[dict]:
+def _years(told_bins: list[_Bin], lo: float, hi: float, question: resultset.GalleryQuery) -> list[dict]:
     """Year rows, newest first, each twelve month cells with the count
     and first picture -- from the window's week bins, a week counted in
     the month it starts in."""
@@ -756,7 +825,7 @@ def _years(told_bins: list[dict], lo: float, hi: float, question: resultset.Gall
             held["hero"] = b["samples"][0]
     years = []
     for y in range(_utc(lo).year, _utc(max(lo, hi - 1)).year + 1):
-        cells = []
+        cells: list[_Cell] = []
         for m in range(1, 13):
             start = datetime.datetime(y, m, 1, tzinfo=datetime.UTC)
             end = _next_month(start)
@@ -766,16 +835,15 @@ def _years(told_bins: list[dict], lo: float, hi: float, question: resultset.Gall
                 facets.facet("context.moment", "gte", str(int(start.timestamp()))),
                 facets.facet("context.moment", "lt", str(int(end.timestamp()))),
             )
-            cells.append(
-                {
-                    "month": _MONTHS[m - 1][:3].upper(),
-                    "pictures": held["pictures"],
-                    "hero": held["hero"],
-                    "qs": link if held["pictures"] else None,
-                    "href": _window_url(question, start.timestamp(), end.timestamp()),
-                    "outside": end.timestamp() <= lo or start.timestamp() >= hi,
-                }
-            )
+            cell: _Cell = {
+                "month": _MONTHS[m - 1][:3].upper(),
+                "pictures": held["pictures"],
+                "hero": held["hero"],
+                "qs": link if held["pictures"] else None,
+                "href": _window_url(question, start.timestamp(), end.timestamp()),
+                "outside": end.timestamp() <= lo or start.timestamp() >= hi,
+            }
+            cells.append(cell)
         years.append({"year": y, "pictures": sum(c["pictures"] for c in cells), "months": cells})
     years.reverse()
     return years
@@ -908,27 +976,26 @@ def _surface(
     most = max([1, *(pictures for _, pictures, *_ in bins)])
     bar_w = max(1.0, (width / span) * _W - 0.5)
     finest = bin_name == "minute"
-    told_bins = []
+    told_bins: list[_Bin] = []
     for at, pictures, wall, instant, captured, generated, mixed, imported in bins:
         h = _height(pictures, most, 100)
-        told_bins.append(
-            {
-                "at": at,
-                "pictures": pictures,
-                "wall": wall,
-                "instant": instant,
-                "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
-                "samples": _drawn(samples.get(int(at), [])),
-                "qs": _bin_link(at, width, held),
-                "spelled": _spell(at, bin_name),
-                "finest": finest,
-                "href": f"/g?{_bin_link(at, width, held)}" if finest else _window_url(held, at, at + width),
-                "x": round(((at - lo) / span) * _W, 2),
-                "w": round(bar_w, 2),
-                "h": round(h, 2),
-                "wall_h": round((wall / pictures) * h, 2) if pictures else 0,
-            }
-        )
+        told: _Bin = {
+            "at": at,
+            "pictures": pictures,
+            "wall": wall,
+            "instant": instant,
+            "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
+            "samples": _drawn(samples.get(int(at), [])),
+            "qs": _bin_link(at, width, held),
+            "spelled": _spell(at, bin_name),
+            "finest": finest,
+            "href": f"/g?{_bin_link(at, width, held)}" if finest else _window_url(held, at, at + width),
+            "x": round(((at - lo) / span) * _W, 2),
+            "w": round(bar_w, 2),
+            "h": round(h, 2),
+            "wall_h": round((wall / pictures) * h, 2) if pictures else 0,
+        }
+        told_bins.append(told)
     whole_span = max(1.0, whole_hi - whole_lo)
     overview_most = max([1, *(pictures for _, pictures, *_ in overview_bins)])
     overview = {

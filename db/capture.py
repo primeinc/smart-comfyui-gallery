@@ -66,7 +66,12 @@ from vision import decode
 from .exif_labels import label_for
 
 #: Tags that become columns on `capture`, so they are not also long tail.
-_CLAIMED = {
+#:
+#: INT rather than the enum it is spelled with. These are tested against
+#: the raw integer keys of an EXIF dict, and the set really does hold
+#: Base, GPS and IFD members together -- inferred as `set[Base]` it was
+#: a claim the very next statement broke.
+_CLAIMED: set[int] = {
     ExifTags.Base.DateTimeOriginal,
     ExifTags.Base.OffsetTimeOriginal,
     ExifTags.Base.SubsecTimeOriginal,
@@ -84,7 +89,7 @@ _CLAIMED = {
     ExifTags.Base.LensModel,
 }
 
-_GPS_CLAIMED = {
+_GPS_CLAIMED: set[int] = {
     ExifTags.GPS.GPSLatitude,
     ExifTags.GPS.GPSLatitudeRef,
     ExifTags.GPS.GPSLongitude,
