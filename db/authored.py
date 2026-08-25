@@ -315,17 +315,26 @@ def feedback(
     annotation_kind=None,
     note=None,
     user_id=None,
+    model_id=None,
+    model_version=None,
 ) -> int:
     """A person's verdict on a derived claim.
 
     The one authored table whose subject is disposable, so its pointers are
     ON DELETE SET NULL rather than CASCADE: dropping the derived namespace
     must leave the judgement standing with a nulled target, not delete it.
+
+    `model_id`/`model_version` are the producer that was judged, COPIED
+    rather than referenced -- for the same reason `annotation_kind` is a
+    column rather than an annotation id. Without them a rebuild leaves a
+    table that knows a caption was wrong and not which model wrote it,
+    and "this model gets 12% of my library wrong" is the reason to
+    collect verdicts at all.
     """
     cursor = conn.execute(
         "INSERT INTO feedback(target_kind, file_id, other_file_id, person_id,"
-        " annotation_kind, verdict, note, user_id, created_at)"
-        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " annotation_kind, verdict, note, user_id, model_id, model_version, created_at)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             target_kind,
             file_id,
@@ -335,7 +344,50 @@ def feedback(
             verdict,
             note,
             user_id,
+            model_id,
+            model_version,
             now,
         ),
     )
     return int(cursor.lastrowid or 0)
+
+
+#: One actor's standing verdict on one producer's claim about one file.
+#: The newest wins: a person who changes their mind has changed it, and
+#: the older row stays as what they thought before -- this table is a
+#: record of judgements, not a settings store.
+_STANDING = (
+    "SELECT verdict FROM feedback"
+    " WHERE target_kind = 'annotation' AND file_id = ? AND annotation_kind = ?"
+    "   AND model_id IS ? AND model_version IS ?"
+    "   AND user_id IS ?"
+    " ORDER BY created_at DESC, id DESC LIMIT 1"
+)
+
+
+def standing_verdict(conn, file_id: int, annotation_kind: str, model_id, model_version, user_id) -> str | None:
+    """What this actor last said about this claim, or None.
+
+    `IS`, not `=`: a verdict from before the producer columns existed
+    holds NULL there, and `= NULL` is never true -- so an old judgement
+    would be invisible and the control would open blank over one that
+    exists.
+    """
+    row = conn.execute(_STANDING, (file_id, annotation_kind, model_id, model_version, user_id)).fetchone()
+    return None if row is None else str(row[0])
+
+
+def retract_feedback(conn, file_id: int, annotation_kind: str, model_id, model_version, user_id) -> int:
+    """Take back this actor's verdicts on one claim; returns how many.
+
+    Clicking the thumb that is already lit means "I take that back", and
+    the honest record of taking something back is that the row is gone --
+    a `verdict` of "none" would be a third opinion nobody expressed.
+    """
+    cursor = conn.execute(
+        "DELETE FROM feedback"
+        " WHERE target_kind = 'annotation' AND file_id = ? AND annotation_kind = ?"
+        "   AND model_id IS ? AND model_version IS ? AND user_id IS ?",
+        (file_id, annotation_kind, model_id, model_version, user_id),
+    )
+    return int(cursor.rowcount or 0)

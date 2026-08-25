@@ -1133,6 +1133,38 @@
         void video.play();
       });
     }
+    const judged = findElement(document, "[data-viewer]", HTMLElement);
+    if (judged) {
+      const slug = requireData(judged, "slug");
+      for (const box of everyElement(document, "[data-said-judge]", HTMLElement)) {
+        const line = box.closest("[data-said-kind]");
+        if (!(line instanceof HTMLElement)) continue;
+        for (const thumb of everyElement(box, "[data-said-verdict-set]", HTMLElement)) {
+          thumb.addEventListener("click", async () => {
+            const wanted = requireData(thumb, "saidVerdictSet");
+            const held = line.dataset.saidVerdict;
+            const { data, error } = await api.POST("/i/{slug}/said/verdict", {
+              params: { path: { slug } },
+              body: {
+                kind: requireData(line, "saidKind"),
+                model_id: requireData(line, "saidModel"),
+                model_version: requireData(line, "saidVersion"),
+                verdict: held === wanted ? null : wanted
+              }
+            });
+            if (!data) {
+              await say(refusal(error, "that verdict was not recorded"));
+              return;
+            }
+            if (data.verdict) line.dataset.saidVerdict = data.verdict;
+            else delete line.dataset.saidVerdict;
+            for (const one of everyElement(box, "[data-said-verdict-set]", HTMLElement)) {
+              one.setAttribute("aria-pressed", String(one.dataset.saidVerdictSet === data.verdict));
+            }
+          });
+        }
+      }
+    }
     const placeForm = findElement(document, "[data-place-form]", HTMLFormElement);
     if (placeForm) {
       const slug = requireData(placeForm, "slug");

@@ -55,7 +55,13 @@
       <dt>said</dt>
       <dd data-said>
         {% for a in item.said %}
-        <p data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }}</p>
+        {#- The thumb sits WHERE THE CLAIM IS SHOWN. A review queue is a
+            chore nobody does; this is where somebody is already reading
+            the sentence and already knows whether it is right. One
+            click, no dialog, and clicking the lit one takes it back. -#}
+        <p data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}
+           data-said-model="{{ a.model_id }}" data-said-version="{{ a.model_version }}"
+           {% if a.verdict %}data-said-verdict="{{ a.verdict }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }}<span class="said-verdict" data-said-judge>{% for one, mark, why in [("right", "&#128077;", "right"), ("wrong", "&#128078;", "wrong")] %}<button type="button" class="said-thumb" data-said-verdict-set="{{ one }}" aria-pressed="{{ "true" if a.verdict == one else "false" }}" title="this caption is {{ why }}" aria-label="this caption is {{ why }}">{{ mark|safe }}</button>{% endfor %}</span></p>
         {% endfor %}
       </dd>
       {% endif %}

@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/i/{slug}/said/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** JudgeSaid */
+        post: operations["ISlugSaidVerdictJudgeSaid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/i/{slug}/rating": {
         parameters: {
             query?: never;
@@ -2376,6 +2393,16 @@ export interface components {
             type: "snapshot";
             jobs: components["schemas"]["JobListed"][];
         };
+        /** Judged */
+        Judged: {
+            /** @enum {string} */
+            kind: "caption" | "description" | "alt_text" | "tag" | "ocr" | "title";
+            model_id: string;
+            model_version: string;
+            /** @enum {null|string} */
+            verdict?: "right" | "wrong" | "unsure" | null;
+            note?: string | null;
+        };
         /** LedgerHealth */
         LedgerHealth: {
             last_id: number;
@@ -2762,6 +2789,8 @@ export interface components {
             region_id: number | null;
             sample_id: number | null;
             offset_ms: number | null;
+            /** @enum {null|string} */
+            verdict?: "right" | "wrong" | "unsure" | null;
             stale: boolean;
         };
         /** SettingChange */
@@ -3225,6 +3254,13 @@ export interface components {
             pictures: number;
             months: components["schemas"]["TimelineYearCell"][];
         };
+        /** Verdict */
+        Verdict: {
+            kind: string;
+            model_id: string;
+            model_version: string;
+            verdict: string | null;
+        };
         /** VideoStage */
         VideoStage: {
             /** @constant */
@@ -3458,6 +3494,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthoredAnswer"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ISlugSaidVerdictJudgeSaid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Judged"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Verdict"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

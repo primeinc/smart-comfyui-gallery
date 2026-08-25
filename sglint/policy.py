@@ -473,6 +473,15 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("derived_face_instance", "id"),
         ("derived_annotation", "id"),
         ("region", "id"),
+        # A verdict names the producer it judged, and must NOT reference
+        # it: the derived layer is disposable and a judgement has to
+        # outlive being rebuilt. A foreign key with any ON DELETE is
+        # wrong in both directions here -- CASCADE deletes the human's
+        # words with the machine's, SET NULL erases which model was
+        # judged, which is the only thing that makes the verdict
+        # aggregable afterwards. Copied text, on purpose.
+        ("feedback", "model_id"),
+        ("feedback", "model_version"),
         # backend identity strings ("insightface", "qwen-vl"), not rows
         ("derived_embedding", "model_id"),
         ("derived_face_cluster", "model_id"),

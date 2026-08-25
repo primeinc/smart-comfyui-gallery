@@ -2994,3 +2994,25 @@ def _the_walk_becomes_a_job(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE job_v33")
     conn.execute("""CREATE INDEX job_state ON job(state)""")
     conn.execute("""CREATE INDEX job_target ON job(target_id)""")
+
+
+@step(33)
+def _a_verdict_names_what_it_judged(conn: sqlite3.Connection) -> None:
+    """v34 -> v35: `feedback` carries the producer it judged.
+
+    The table records `annotation_kind` rather than the annotation's row
+    on purpose -- the derived layer is disposable and the judgement has
+    to outlive being rebuilt. But that left it unable to say WHICH model
+    produced the thing judged, so after the next rebuild no verdict
+    could be attributed to the producer it was about, and "this caption
+    model gets 12% of my library wrong" was unanswerable from a table
+    built to answer it.
+
+    Copied at judgement time, nullable, and never a foreign key: the row
+    it names will be deleted by a rebuild, which is the whole point.
+    Null for the verdicts that are not about a model at all -- a person
+    judgement names a person.
+    """
+    conn.execute("ALTER TABLE feedback ADD COLUMN model_id TEXT")
+    conn.execute("ALTER TABLE feedback ADD COLUMN model_version TEXT")
+    conn.execute("""CREATE INDEX feedback_producer ON feedback(model_id, model_version, annotation_kind)""")

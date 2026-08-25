@@ -19,6 +19,7 @@ these routes' business.
 from __future__ import annotations
 
 import time
+from typing import Literal
 
 from litestar import get, post
 from litestar.datastructures import State
@@ -202,3 +203,75 @@ def collection_choices(state: State, slug: FromPath[str]) -> Response[list[Colle
     finally:
         connect.close(conn)
     return Response(told, headers=VARIES)
+
+
+class Judged(Wire):
+    """The body of POST /i/{slug}/said/verdict: a thumb on one caption.
+
+    The claim is named by what it IS -- the kind of annotation and the
+    producer that made it -- never by the annotation's row id. The
+    derived layer is disposable and this judgement has to outlive being
+    rebuilt; an id would be a pointer to something a re-run deletes.
+    """
+
+    #: which kind of thing the model said (db/schema.sql derived_annotation)
+    kind: media_view.SaidKind
+    model_id: str
+    model_version: str
+    #: `null` retracts: clicking the lit thumb means "I take that back",
+    #: and the honest record of taking something back is no row -- a
+    #: verdict of "none" would be a third opinion nobody expressed.
+    verdict: Literal["right", "wrong", "unsure"] | None = None
+    note: str | None = None
+
+
+class Verdict(Wire):
+    """What this actor now says about that claim, after the write."""
+
+    kind: str
+    model_id: str
+    model_version: str
+    verdict: str | None
+
+
+@post("/i/{slug:str}/said/verdict", sync_to_thread=True)
+def judge_said(state: State, slug: FromPath[str], data: Judged) -> Response[Verdict]:
+    """Say whether a caption is right, in one click, where it is shown.
+
+    A review queue is a chore nobody does; the inspector is where
+    somebody is already looking at the sentence and already knows the
+    answer. So the gesture costs nothing to ignore and one click to use,
+    and clicking the lit thumb takes it back.
+
+    Only the ANNOTATION arm is built. `feedback` also models verdicts on
+    a similarity, a duplicate and a person, and shipping a general
+    endpoint whose other three arms nothing exercises would be three
+    contracts nobody has tested.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        file_id = _resolved(conn, "file", slug, "/i")
+        # Retract first either way: a person changing yes to no has one
+        # standing opinion, not two rows fighting over which is newest.
+        authored.retract_feedback(conn, file_id, data.kind, data.model_id, data.model_version, state.actor_id)
+        if data.verdict is not None:
+            authored.feedback(
+                conn,
+                "annotation",
+                data.verdict,
+                time.time(),
+                file_id=file_id,
+                annotation_kind=data.kind,
+                note=data.note,
+                user_id=state.actor_id,
+                model_id=data.model_id,
+                model_version=data.model_version,
+            )
+        conn.commit()
+        held = authored.standing_verdict(conn, file_id, data.kind, data.model_id, data.model_version, state.actor_id)
+        return Response(
+            Verdict(kind=data.kind, model_id=data.model_id, model_version=data.model_version, verdict=held),
+            headers=VARIES,
+        )
+    finally:
+        connect.close(conn)

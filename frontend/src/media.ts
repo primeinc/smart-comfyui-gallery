@@ -48,6 +48,52 @@ const asPlaceKind = (held: string): PlaceKind => {
     });
   }
 
+  // A thumb on what a model said, where the sentence is shown.
+  //
+  // The claim is named by WHAT IT IS -- the kind of annotation and the
+  // producer that made it -- never by the annotation's row id: the
+  // derived layer is disposable and this judgement has to outlive being
+  // rebuilt, so an id would point at something a re-run deletes.
+  //
+  // Clicking the lit thumb sends `null`, which retracts. "I take that
+  // back" is no row, not a third verdict nobody expressed.
+  const judged = findElement(document, "[data-viewer]", HTMLElement);
+  if (judged) {
+    const slug = requireData(judged, "slug");
+    for (const box of everyElement(document, "[data-said-judge]", HTMLElement)) {
+      const line = box.closest("[data-said-kind]");
+      if (!(line instanceof HTMLElement)) continue;
+      for (const thumb of everyElement(box, "[data-said-verdict-set]", HTMLElement)) {
+        thumb.addEventListener("click", async () => {
+          const wanted = requireData(thumb, "saidVerdictSet");
+          const held = line.dataset.saidVerdict;
+          const { data, error } = await api.POST("/i/{slug}/said/verdict", {
+            params: { path: { slug } },
+            body: {
+              kind: requireData(line, "saidKind") as "caption",
+              model_id: requireData(line, "saidModel"),
+              model_version: requireData(line, "saidVersion"),
+              verdict: held === wanted ? null : (wanted as "right" | "wrong"),
+            },
+          });
+          if (!data) {
+            await say(refusal(error, "that verdict was not recorded"));
+            return;
+          }
+          // Drawn from what the SERVER says it now holds, never from
+          // what was clicked: the two differ on a retraction, and a
+          // control that lies about its own state is worse than one
+          // that does nothing.
+          if (data.verdict) line.dataset.saidVerdict = data.verdict;
+          else delete line.dataset.saidVerdict;
+          for (const one of everyElement(box, "[data-said-verdict-set]", HTMLElement)) {
+            one.setAttribute("aria-pressed", String(one.dataset.saidVerdictSet === data.verdict));
+          }
+        });
+      }
+    }
+  }
+
   // where it happened: one POST of desired state, then the page re-reads
   const placeForm = findElement(document, "[data-place-form]", HTMLFormElement);
   if (placeForm) {

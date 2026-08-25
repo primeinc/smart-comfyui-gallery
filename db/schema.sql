@@ -1594,12 +1594,27 @@ CREATE TABLE feedback (
     verdict        TEXT NOT NULL CHECK (verdict IN ('right','wrong','unsure')),
     note           TEXT,
     user_id        INTEGER REFERENCES user(id) ON DELETE SET NULL,
-    created_at     REAL NOT NULL,
+    created_at     REAL NOT NULL, model_id TEXT, model_version TEXT,
     CHECK (other_file_id IS NULL OR other_file_id <> file_id)
 ) STRICT;
+-- feedback.model_id / model_version: WHICH producer was judged, copied at
+-- judgement time. Not a foreign key, and deliberately not the annotation's
+-- row -- the derived layer is disposable and a judgement has to outlive
+-- being rebuilt, which is why `annotation_kind` is a column here rather
+-- than an id. Without these two the table could say a caption was wrong and
+-- never which model wrote it, so "this model gets 12% of my library wrong"
+-- -- the reason to collect verdicts at all -- was unanswerable the moment
+-- the layer was rebuilt. Null where a verdict is not about a model: a
+-- person judgement names a person.
+--
+-- Spelled exactly as SQLite stores an ALTER TABLE ADD COLUMN on the v33
+-- text -- inside the parenthesis, after the table constraint, no comment --
+-- so a migrated file's DDL reads equal to a fresh build's (db/build.py
+-- drift). The same reason file.ingested_sha256 is written that way.
 -- Enforced at write, not as a row invariant: ON DELETE SET NULL must be able
 -- to detach a judged target without the row becoming illegal. Losing the
 -- pointer is acceptable; losing the human judgement is not.
+CREATE INDEX feedback_producer ON feedback(model_id, model_version, annotation_kind);
 CREATE TRIGGER feedback_names_a_target BEFORE INSERT ON feedback BEGIN
   SELECT RAISE(ABORT,'feedback must name what it judges')
   WHERE NOT (
@@ -2241,7 +2256,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 33;
+PRAGMA user_version   = 34;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

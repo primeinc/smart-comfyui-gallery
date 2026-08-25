@@ -1587,6 +1587,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             job_frames,
             media_view.media_page,
             media_authored.set_favorite,
+            media_authored.judge_said,
             media_authored.set_rating,
             media_authored.set_place,
             media_authored.set_membership,

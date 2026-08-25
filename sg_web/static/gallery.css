@@ -3838,3 +3838,35 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A thumb on what a model said. It sits with the sentence, small and
+   quiet: the gesture must cost nothing to ignore, or it becomes another
+   thing on the page asking to be dealt with. */
+.said-verdict {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.said-thumb {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  filter: grayscale(1);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.45;
+  padding: 2px 4px;
+}
+.said-thumb:hover,
+.said-thumb:focus-visible {
+  filter: none;
+  opacity: 1;
+  outline: none;
+}
+.said-thumb[aria-pressed="true"] {
+  border-color: var(--line);
+  filter: none;
+  opacity: 1;
+}

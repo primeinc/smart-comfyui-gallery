@@ -137,7 +137,7 @@ def _assembled(
         when=_when(conn, file_id),
         where=where_of(conn, file_id),
         faces=_faces(conn, file_id),
-        said=_said(conn, file_id),
+        said=_said(conn, file_id, actor_id),
         said_first=derived.said_first(conn, [file_id], prefer=settings.value(conn, "caption_model")).get(file_id),
         creation=(
             Creation(
@@ -498,6 +498,11 @@ class Said(Wire):
     sample_id: int | None
     #: where in a clip it was said, when it was said of a frame
     offset_ms: int | None
+    #: what THIS actor said about it: right, wrong, unsure, or nothing.
+    #: Never a machine's confidence -- `confidence` above is that, and
+    #: the two being one field is how a model's certainty and a person's
+    #: judgement come to be averaged together.
+    verdict: Literal["right", "wrong", "unsure"] | None = None
     #: said of bytes this file no longer has
     stale: bool
 
@@ -797,11 +802,28 @@ def _faces(conn, file_id: int) -> Faces:
     )
 
 
-def _said(conn, file_id: int) -> list[Said]:
-    """What models have said, translated at the seam: SQLite answers the
-    staleness comparison with 0 or 1, and the browser is promised a
-    boolean (sg_web/wire.py)."""
-    return [Said.model_validate({**row, "stale": bool(row["stale"])}) for row in derived.said_about(conn, file_id)]
+def _said(conn, file_id: int, actor_id: int | None = None) -> list[Said]:
+    """What models have said, and what this actor said back.
+
+    Translated at the seam: SQLite answers the staleness comparison with
+    0 or 1, and the browser is promised a boolean (sg_web/wire.py).
+
+    `verdict` rides along because a control that opens blank over a
+    judgement somebody already made asks them to make it again -- and
+    the second click would then be read as a change of mind.
+    """
+    return [
+        Said.model_validate(
+            {
+                **row,
+                "stale": bool(row["stale"]),
+                "verdict": authored.standing_verdict(
+                    conn, file_id, row["kind"], row["model_id"], row["model_version"], actor_id
+                ),
+            }
+        )
+        for row in derived.said_about(conn, file_id)
+    ]
 
 
 def _when(conn, file_id: int) -> When | None:
