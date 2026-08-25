@@ -1,6 +1,6 @@
 """The Operations Console is a data contract, held at every seam.
 
-The job row is current truth (db/jobs.py); the ledger is historical
+The job row is current state (db/jobs.py); the ledger is historical
 observation (db/ledger.py); the channel is transport (/ws/events). The
 console (db/inspecting.py, sg_web/console.py, /operations) exposes what
 the backend knows, renders every event type in words, and never
@@ -508,7 +508,7 @@ def test_a_cancel_is_spoken_on_both_feeds_and_settles_cooperatively(served):
 
 def test_the_phase_inside_a_running_item_survives_a_reconnect(served):
     """A handler's report lands in the ledger only when its item settles;
-    between, the inspector answers it from the process's live memory, so
+    between, the inspector returns it from the process's live memory, so
     a console that reconnects mid-item sees the phase instead of
     "waiting". A committed row that settles the item clears it."""
     client = served
@@ -575,7 +575,7 @@ def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
     """The console shows what a job does AND the schema's name for it.
     A kind the schema admits but the console cannot word is a row that
     reads as its identifier. The vocabulary is read from db/jobs.py, the
-    one place it is spelled -- sglint SG709 holds that equal to the
+    one place it is defined -- sglint SG709 holds that equal to the
     schema's CHECK, so this file never parses the DDL to learn it."""
     assert set(console.KINDS) == set(typing.get_args(jobs.JobKind))
     assert console.describe_kind("hash") == "verify every file's bytes"

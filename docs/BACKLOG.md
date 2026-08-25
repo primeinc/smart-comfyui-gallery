@@ -88,7 +88,7 @@ not a history.
   1. **Batch and thread the encoder.** Reaches inference, preprocess and
      the copy back — 51% of the job — and neither changes the pixels:
      threaded preprocess is bit-identical, and batching costs 3 of 800
-     nearest-neighbour answers. Batching also amortises the per-item
+     nearest-neighbour results. Batching also amortises the per-item
      copy back and part of the bookkeeping, which is the argument for
      touching the runner; the GPU sitting idle is not.
   2. **Bounded raster for the model path.** Reaches decoding, 39%, and
@@ -97,7 +97,7 @@ not a history.
   3. **Per-item bookkeeping**, 6% for recording plus whatever the runner
      spends outside any phase.
 
-- **Batching changes about half a percent of nearest-neighbour answers.**
+- **Batching changes about half a percent of nearest-neighbour results.**
   Text search is identical at top-1, top-5 and top-20 over 800 distinct
   pictures. Image similarity is not: 3 of 800 best matches change at
   batch 64, 5 of 800 in a mixed old/new index, maximum rank move 2
@@ -187,7 +187,7 @@ not a history.
 ## The query workspace, as far as it got
 
 Built: the query vocabulary (db/vocabulary.py), filter discovery
-(db/discovery.py), answer analysis (db/analysis.py), the filter drawer,
+(db/discovery.py), result-set analysis (db/analysis.py), the filter drawer,
 Gallery/Table/Analyze, the compare tray, endless browsing, and reading
 generation metadata out of video containers. What is NOT built:
 
@@ -208,14 +208,14 @@ generation metadata out of video containers. What is NOT built:
   them with no options. They need a name-to-slug listing each; the
   vocabulary has the field (`discover`) and they have no value for it.
 
-- **Advanced metadata has no door.** `file_param` holds every key any
+- **Advanced metadata has no entry point in the interface.** `file_param` holds every key any
   tool emitted and `param_key` registers them; the plan was a section
   that lets somebody ask `generation.foo >= 17` by key. Nothing is built:
   the vocabulary is deliberately curated and the long tail is
   unreachable from any surface.
 
 - **The analysis has no prompt-term view.** Exact prompt identity is
-  built and counted. Recurring TERMS across an answer -- which is a
+  built and counted. Recurring TERMS across a result set -- which is a
   different claim with a different error mode -- is not, and is
   deliberately absent rather than quietly mixed into the exact counts.
 
@@ -261,7 +261,7 @@ served with no database at all. Measured over one 60-cell page
     cacheable responses              0/60  -> 60/60
     fan-out                        285.8ms -> 178.4ms
 
-These surfaces still spell `/thumb/<slug>` and still pay a connection
+These surfaces still use the `/thumb/<slug>` form and still pay a connection
 per picture. Each needs the content hash carried on the row its page
 already reads, then the same `thumbs.asset_url` call:
 
@@ -276,7 +276,7 @@ Also not done:
 
 - **Nothing is served by anything but Litestar.** The point of a
   content-addressed immutable path is that a static server or a cache
-  in front can answer it without the application running at all;
+  in front can respond to it without the application running at all;
   `create_static_files_router` over the thumbs directory, or a Caddy
   rule, would take even the ASGI dispatch out. Worth measuring before
   assuming it matters at this scale.

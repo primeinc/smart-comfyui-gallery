@@ -1,9 +1,9 @@
 """A folder and an album say when their pictures are from.
 
-The folders and albums shelves carry the span of human moments their
+The folders and albums index pages carry the span of human moments their
 present pictures were interpreted to -- the earliest and the latest,
 descendants and members included -- the same way the people index
-says when a face was seen. A shelf nothing has interpreted says
+says when a face was seen. An index page nothing has interpreted says
 nothing rather than a made-up date.
 """
 

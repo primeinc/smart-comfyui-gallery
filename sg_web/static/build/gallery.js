@@ -1830,12 +1830,13 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
         const s = shape();
         return s ? s.currency : "";
       },
-      // A 409'd arrow proves the generation moved, not that THIS answer did
-      // -- a favorite, a background job's bookkeeping, any commit at all
-      // moves data_version. Ask locate for the walked context's (currency,
-      // answer): the same answer identity means the mounted walk is still
-      // true, so adopt the fresh currency and let the shell retry once. A
-      // changed or vanished answer stays a full redraw.
+      // A 409'd arrow proves the generation moved, not that THIS result set
+      // did -- a favorite, a background job's bookkeeping, any commit at all
+      // moves data_version. Ask locate for the walked context's (data
+      // version, result set): the same result set identity means the
+      // mounted walk is still true, so adopt the fresh data version and let
+      // the shell retry once. A changed or vanished result set stays a
+      // full redraw.
       recover: async () => {
         const shown = findElement(document, "[data-lightbox]", HTMLElement);
         const mounted2 = shown?.dataset.answer || grid()?.dataset.answer || "";

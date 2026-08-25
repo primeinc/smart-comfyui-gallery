@@ -220,9 +220,9 @@ def test_a_raw_latin1_range_octet_is_answered_not_crashed(served):
 
 
 def test_head_answers_what_get_would_say_without_the_body(served):
-    """RFC 9110: a resource that answers GET answers HEAD with the same
-    headers -- it is how a player learns length and seekability before
-    asking for a single byte."""
+    """RFC 9110: a resource that responds to GET responds to HEAD with the
+    same headers -- it is how a player learns length and seekability
+    before asking for a single byte."""
     client, slugs, root = served
     slug = slugs["clip.mp4"]
     told = client.head(f"/media/{slug}")

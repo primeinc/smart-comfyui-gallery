@@ -3,15 +3,15 @@
 `/f/{slug}` is the folder's only address, with the 301 contract every
 entity address carries. The FolderView owns IDENTITY and HIERARCHY --
 the name, the breadcrumb walked by parent, the immediate child folders,
-the presence state -- and never the media answer: the pictures are ONE
+the presence state -- and never the media result set: the pictures are ONE
 ResultSet page of the folder-faceted GalleryQuery, the same membership
 `/g?folder=` serves, so order, paging, arrows and semantics cannot fork
 between the entity page and the gallery.
 
 `folder=` means the folder ITSELF -- direct children only, exactly the
 predicate db/resultset.py runs. Subfolders are listed as entities to
-navigate into, never silently folded into the answer; a recursive
-subtree question would be its own spelled facet with its own semantics.
+navigate into, never silently folded into the result set; a recursive
+subtree query would be its own encoded facet with its own semantics.
 
 Presence is a state, never an inference: a folder whose directory was
 not found where it was last seen renders and says "missing"; a folder
@@ -40,11 +40,12 @@ from sg_web.presenting import presented_page, wants_json
 
 @get("/folders", sync_to_thread=True)
 def folders_index(state: State, request: Request) -> Template | Response:
-    """Where physical navigation enters: each NAVIGABLE root as a shelf
-    -- its kind, whether it is reachable RIGHT NOW, and its depth-0
-    folder entities to walk into. Trash is a storage location, never a
-    shelf. No root ids and no host paths: addresses are slugs, and the
-    operational /roots route keeps the management shape.
+    """Where physical navigation enters: each NAVIGABLE root as an index
+    section -- its kind, whether it is reachable RIGHT NOW, and its
+    depth-0 folder entities to walk into. Trash is a storage location,
+    never part of the index. No root ids and no host paths: addresses
+    are slugs, and the operational /roots route keeps the management
+    shape.
 
     A browsing GET observes and writes nothing: the reachability comes
     from db/library.py probe_roots (marker-verified, no SQL writes), the
@@ -82,7 +83,8 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
     """The FolderView, assembled inside ONE database snapshot -- a scan
     or a move committing between the reads must not hand back a grid
     from one generation under the hierarchy of another. The ResultSet
-    page comes FIRST, so its currency is read before the snapshot pins.
+    page comes FIRST, so its data version is read before the snapshot
+    pins.
 
     The unbounded legacy `files` list is the machine Adapter's shape
     only; the rendered page never enumerates a directory to draw a

@@ -8,20 +8,20 @@
 // compile errors here rather than a 404 or an `undefined` a user finds first.
 //
 // `data` is present only on a 2XX and `error` only on a 4XX/5XX, so a call
-// site has to say what it does about refusal before it can reach the answer.
+// site has to say what it does about refusal before it can reach the response.
 import createClient from "openapi-fetch";
 import type { paths } from "./generated/api";
 
 export const api = createClient<paths>();
 
 /**
- * An answer, or what the server said instead.
+ * A response, or what the server said instead.
  *
  * openapi-fetch hands back `{ data, error }` where each is present only in
  * its own case, which a caller can quietly destructure down to `{ data }` --
  * and then a refused write is `undefined` and the click looks like it did
  * nothing. Narrowing on `ok` makes the refusal impossible to skip past: the
- * answer is not reachable until the caller has dealt with the alternative.
+ * response is not reachable until the caller has dealt with the alternative.
  *
  * Deliberately not an exception. A server refusing a rating of nine is the
  * system working, not the program failing, and throwing would put ordinary

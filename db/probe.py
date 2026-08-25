@@ -10,7 +10,7 @@ PyAV is the reader: FFmpeg's own libavformat, shipped inside the `av` wheel,
 so probing needs no external binary and "ffprobe is not installed" stopped
 being a state this application can be in. Opening carries a timeout for the
 same reason the old subprocess did -- a truncated file or network storage
-that stops answering costs the one file, never the scan around it
+that stops responding costs the one file, never the scan around it
 (`av.open(timeout=...)`, PyAV-Org/PyAV@040da79, av.open docstring).
 
 **A file that will not open is a fact, not an error.** `av.FFmpegError` --
@@ -23,7 +23,7 @@ matrix on the decoded frame as `VideoFrame.rotation`
 (PyAV-Org/PyAV@040da79 av/video/frame.py:677-684), so the first frame is
 decoded here and the stored width and height are swapped when it asks for a
 quarter turn -- the same defect as ignoring EXIF orientation, one medium
-over. The decode also proves the stream's codec actually answers, which a
+over. The decode also proves the stream's codec actually decodes, which a
 header parse never could.
 """
 
@@ -182,7 +182,8 @@ def document(path) -> Probed:
 
     out.params.append(("Pages", str(count), float(count)))
     # The first page's size, in PDF points, because "how big is this
-    # document" is the same question a picture answers with its pixels.
+    # document" is the same fact a picture already reports through its
+    # pixel dimensions.
     if count:
         try:
             box = reader.pages[0].mediabox
@@ -210,8 +211,8 @@ def pages_of(conn, file_id: int, found: Probed):
     """Record one page sample per page, so a document has moments the way a
     video has moments -- somewhere for a caption or a piece of OCR to point.
 
-    Takes the reading rather than the path: opening a PDF twice to answer one
-    question is the sort of thing that is free on a fixture and costs a
+    Takes the reading rather than the path: opening a PDF twice to learn one
+    fact is the sort of thing that is free on a fixture and costs a
     second per document on a real library.
 
     Returns the sample ids in page order. Idempotent, as frame sampling is:

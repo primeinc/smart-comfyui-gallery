@@ -38,7 +38,7 @@ def overview_box(page: Page) -> FloatRect:
 
     This page replaces its content through htmx, so `[data-overview]` can
     be torn out and rebuilt between two calls: the locator then points at
-    a detached node and `bounding_box()` answers None. Playwright will
+    a detached node and `bounding_box()` returns None. Playwright will
     happily have reported the element visible a moment earlier, which is
     what makes the failure read as impossible and is the tell that the
     element under the box is not the one that was checked.

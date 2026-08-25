@@ -1,4 +1,4 @@
-"""How small a picture OpenCLIP can be given before its answers move.
+"""How small a picture OpenCLIP can be given before its results move.
 
 The embed job spends 39% of an item decoding, and it decodes at full
 resolution so that a transform can immediately reduce the shortest side
@@ -13,7 +13,7 @@ whole:
 
     decode ms        what the bound saves
     max |delta|      how far the vectors moved
-    top-1 / top-20   whether the ANSWERS moved, text and image queries
+    top-1 / top-20   whether the RESULTS moved, text and image queries
 
 The shortest side is what matters, not the longest. open_clip resizes the
 short edge to 224 and centre-crops (`Resize(224, shortest)` then
@@ -155,7 +155,7 @@ def agreement(base, other, queries, depths):
 
 
 def neighbours_agree(whole, bounded, depths):
-    """Each index asked with ITS OWN vectors: do the neighbours match?
+    """Each index queried with ITS OWN vectors: do the neighbours match?
 
     Leave-one-out on both sides, because a picture is always its own best
     match and counting that would report an agreement neither index has.

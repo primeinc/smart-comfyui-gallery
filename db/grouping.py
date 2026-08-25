@@ -1,6 +1,6 @@
 """Ways of turning faces into people, and a way of combining them.
 
-There is no settled answer to "which faces are one person". A threshold that
+There is no settled criterion for "which faces are one person". A threshold that
 welds strangers together on one library splits one person into four on
 another, and the only way to find out is to run more than one and look at
 both -- which is why a clustering RUN is (embedder, version, method,
@@ -115,9 +115,9 @@ def spherical_kmeans(
     unit = similarity.normalise(vectors)
     n = unit.shape[0]
     if people is None:
-        # No count given: take the one the graph implies, so k-means answers
-        # the same question the graph methods were asked rather than a
-        # different one nobody chose.
+        # No count given: take the one the graph implies, so k-means solves
+        # the same clustering problem the graph methods were given, rather
+        # than a different one nobody chose.
         #
         # Groups of two or more, NOT every distinct label. A face nothing
         # matched is a singleton, and counting those made k almost equal to

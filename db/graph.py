@@ -19,14 +19,14 @@ A workflow routinely holds several samplers -- a base and a refiner, a
 generate and an upscale pass -- and the one that made the file is the one
 whose latent reaches the node that saved it. Taking the first sampler found
 reports the settings of a pass whose output was thrown away, which is worse
-than reporting nothing because it looks like an answer.
+than reporting nothing because it looks like a result.
 
 Node names come from the nodes themselves, not from memory:
 CheckpointLoaderSimple takes `ckpt_name` (nodes.py:616-623), UNETLoader takes
 `unet_name` (:982-987), LoraLoader takes `lora_name`, `strength_model` and
 `strength_clip` (:709-725), KSampler takes seed/steps/cfg/sampler_name/
 scheduler/positive/negative/latent_image/denoise (:1596-1611), KSamplerAdvanced
-spells its seed `noise_seed` (:1625-1641), EmptyLatentImage takes width and
+names its seed `noise_seed` (:1625-1641), EmptyLatentImage takes width and
 height (:1245-1254), SaveImage takes `images` (:1659-1672) and VAEDecode takes
 `samples` (:316-330).
 """
@@ -39,8 +39,8 @@ from dataclasses import dataclass, field
 #: Nodes that end a workflow by writing or showing the picture.
 _OUTPUTS = ("SaveImage", "PreviewImage", "SaveAnimatedWEBP", "SaveAnimatedPNG", "SaveWEBM")
 
-#: How each sampler spells its seed. Everything else it carries is spelled
-#: the same across them.
+#: How each sampler names its seed input. Everything else it carries is
+#: named the same across them.
 _SEED_INPUT = ("seed", "noise_seed")
 
 #: Where a checkpoint or diffusion model names itself.
@@ -188,7 +188,7 @@ def _final_sampler(graph: _Graph) -> str | None:
 
     A workflow with a refiner or an upscale pass holds several. Reporting the
     first one found describes a pass whose output was discarded, which is
-    worse than reporting nothing because it looks like an answer.
+    worse than reporting nothing because it looks like a result.
     """
     for node_id in graph.nodes:
         if graph.kind(node_id) in _OUTPUTS:

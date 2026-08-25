@@ -12,12 +12,12 @@ The rule this module is held to: a fact the backend knows and this view
 does not expose is a fact the implementer has to justify. Every column
 of `job` is here (payload REDACTED, db/ledger.py redacted). The one
 deliberate omission is the full item list inlined on the detail -- a
-22,000-item job is paged through `items`, never folded into one answer.
+22,000-item job is paged through `items`, never folded into one result.
 
 Derived numbers say what they are derived FROM. `rate` is items settled
 per second since `started_at`; `eta` is pending items at that rate --
 both None when the job has not run long enough to say, never 0 dressed
-as an answer. A phase inside a running item is known only to the live
+as a result. A phase inside a running item is known only to the live
 feed (db/runner.py Report): `current.phase` here is what the LEDGER
 holds, which is the last phase the last SETTLED item reached.
 """
@@ -125,7 +125,7 @@ def _embed_missing(conn, models_dir: str) -> dict[str, int]:
 
 def coverage(conn, models_dir: str | None = None) -> dict:
     """Present files, and how many each missing-only sweep still has to
-    do -- the console's answer to "is the library done". `embed` is the
+    do -- the console's response to "is the library done". `embed` is the
     most any one space still lacks; `embed_spaces` says which."""
     from . import context, similarity
 

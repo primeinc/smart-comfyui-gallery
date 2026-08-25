@@ -17,7 +17,7 @@
   {% endif %}
   {% if missing_spaces %}
   <p class="degraded" data-degraded>
-    degraded answer &mdash; not every configured model contributed:
+    degraded results &mdash; not every configured model contributed:
     {% for space, why in missing_spaces.items() %}
     <span class="degraded-space" title="{{ why }}">{{ space }}</span>{% if not loop.last %}, {% endif %}
     {% endfor %}

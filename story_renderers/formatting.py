@@ -1,11 +1,11 @@
-"""How a value is spelled for a human -- decided once, here, so five
+"""How a value is formatted for display -- decided once, here, so five
 templates never each choose between "July 18", "18 July" and "07/18".
 
 Pure functions over frozen values. A wall-clock epoch (the snapshot's
-`local_at` spelling of what a clock on the wall read) is rendered as
+`local_at` encoding of what a clock on the wall read) is rendered as
 that wall clock, never shifted: the seconds are already the human's
-own day. Locale-ready by construction: every spelling passes through
-one place.
+own day. Locale-ready by construction: every formatted value passes
+through one place.
 """
 
 from __future__ import annotations

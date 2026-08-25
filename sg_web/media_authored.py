@@ -6,14 +6,14 @@ where the person already put it, where a toggle retried would land on
 the opposite. The rules live in db/authored.py (idempotence, rating
 bounds, smart-collection refusal, per-actor keys); these routes only
 resolve addresses, call that one Implementation, commit exactly once,
-and answer with the authoritative post-commit state.
+and return the authoritative post-commit state.
 
-The answer carries the LIVE file slug and the actor's whole
+The response carries the LIVE file slug and the actor's whole
 MediaAuthoredState, so the strip that asked can redraw itself from the
 response instead of trusting its own click. Deciding whether the
 MOUNTED gallery is still current after the commit is the client's
-coherence check against /g/locate's (currency, answer) pair -- not
-these routes' business.
+coherence check against /g/locate's (data version, result-set identity)
+pair -- not these routes' business.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from sg_web.wire import Wire
 
 
 def _resolved(conn, kind: str, slug: str, where: str) -> int:
-    """The entity id for an address, retired spellings included -- a
+    """The entity id for an address, retired slugs included -- a
     write through an old bookmark still means the same entity."""
     found = naming.resolve(conn, kind, slug)
     if found is None:
@@ -61,7 +61,7 @@ class CollectionChoice(Wire):
 
 
 def _answered(conn, file_id: int, actor_id: int) -> Response[AuthoredAnswer]:
-    """The answer every desired-state route gives.
+    """The response every desired-state route gives.
 
     Built field by field rather than by asdict: the translation from the
     database's value to the browser's contract is the seam's work, and
@@ -118,7 +118,7 @@ class DesiredPlace(Wire):
 
 
 class PlaceAnswer(Wire):
-    """The authoritative post-commit answer of POST /i/{slug}/place: the
+    """The authoritative post-commit response of POST /i/{slug}/place: the
     LIVE slug and where the picture now says it happened, or null where
     the claim was withdrawn."""
 

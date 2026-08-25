@@ -1,4 +1,4 @@
-"""The places shelf: everywhere a person has said a picture happened.
+"""The places index: everywhere a person has said a picture happened.
 
 Read-only over what the context holds (db/pages.py PLACES_SHELF); a
 place's link is the gallery's `place.id` facet. Saying where happens on

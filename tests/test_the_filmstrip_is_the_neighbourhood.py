@@ -5,7 +5,7 @@ that decide whether this is a neighbourhood or a second gallery hiding
 under the first:
 
     the current picture is where the eye expects it, not at one end;
-    the window is a slice of the ANSWER, so a page boundary in the middle
+    the window is a slice of the RESULT SET, so a page boundary in the middle
     of it is not an event.
 
 `size=5` puts a boundary every five, and the picture opened here sits on
@@ -58,7 +58,7 @@ def _ordinals(page: Page) -> list[int]:
 
 
 def _at(api, ordinal: int) -> str:
-    """The slug at one whole-answer ordinal, by the server's own count."""
+    """The slug at one ordinal in the whole result set, by the server's own count."""
     listed = api.get("/g/peek", params={**WALK, "page": (ordinal - 1) // 5 + 1, "count": 5}).json()["items"]
     for row in listed:
         if row["ordinal"] == ordinal:

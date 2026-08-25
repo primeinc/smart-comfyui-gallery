@@ -26,7 +26,7 @@ So this module asks what the others cannot:
 
 What it does NOT do is prove the documented bootstrap on a cold
 checkout -- no .venv, no build directory, README commands only, a real
-process answering a real socket. That is a lane outside pytest, and this
+process responding on a real socket. That is a lane outside pytest, and this
 suite must not be read as standing in for it.
 """
 

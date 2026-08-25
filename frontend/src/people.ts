@@ -8,14 +8,14 @@ import { api, refusal } from "./api";
 import { closestFrom, everyElement, requireData, requireElement } from "./dom";
 import { addressableOverlay } from "./overlay";
 
-// days on the cards and in the drawer, spelled for the reader
+// days on the cards and in the drawer, formatted for the reader
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /**
- * Spell every epoch not yet spelled.
+ * Format every epoch not yet formatted.
  *
  * Only nodes without `data-spelled`: the observer below fires on this very
- * write, and spelling an already-spelled node again would loop forever.
+ * write, and formatting an already-formatted node again would loop forever.
  */
 const spellDays = (root: ParentNode) => {
   for (const node of everyElement(root, "time[data-epoch]:not([data-spelled])", HTMLTimeElement)) {

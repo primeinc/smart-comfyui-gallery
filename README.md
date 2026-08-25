@@ -55,15 +55,15 @@ live over `/ws/jobs`. Nothing expensive runs by itself. The ingest, phash,
 faces, embed, annotate and context sweeps queue only what is still
 missing -- a file already read, fingerprinted, looked at for faces,
 embedded, captioned or interpreted for its current bytes is not an item
-again -- and answer 204 when nothing is left (embed, one job per
-space, answers an empty list instead); `?everything=true` on the route (or
+again -- and return 204 when nothing is left (embed, one job per
+space, returns an empty list instead); `?everything=true` on the route (or
 `{"everything": true}` in the faces and annotate bodies), or the
 console's **again** button beside the sweep, redoes all of it.
 
 ## Addresses
 
 ```
-/g                  the gallery: one question, one ordered answer
+/g                  the gallery: one query, one ordered result set
 /i/<slug>           a picture, a video, a document
 /p/<slug>           a person           /people
 /places             everywhere a person said a picture happened; each a link into the gallery
@@ -72,7 +72,7 @@ console's **again** button beside the sweep, redoes all of it.
 /m/<slug> /l/<slug> /w/<slug>   a model, a LoRA, a workflow
 /timeline           the library on its human axis: one window (?start=&end=, opening on the last month), an overview
                     with a brush and presets, every bar and session a link; stories told from sessions;
-                    any gallery question scopes it (?folder= ?person= ?f=place.id:eq:N ...)
+                    any gallery query scopes it (?folder= ?person= ?f=place.id:eq:N ...)
 /stories            every story told, newest first
 /stories/renders/N  a story: frozen evidence, a plan, words the plan supports; /stories/plans/N/evolution beside it
 /search?q=          by meaning, across the configured spaces
@@ -80,16 +80,16 @@ console's **again** button beside the sweep, redoes all of it.
 ```
 
 Every entity address (`/g`, `/i`, `/p`, `/t`, `/f`, `/m /l /w`,
-`/timeline`, `/stories`, `/operations`) answers JSON to a machine, a
+`/timeline`, `/stories`, `/operations`) returns JSON to a machine, a
 fragment to htmx, and a page to a browser (`Vary: Accept, HX-Request`);
-the index and job routes answer JSON only. A renamed thing 301s from
+the index and job routes return JSON only. A renamed thing 301s from
 its old slug forever.
 
 Writes, bytes and machine reads:
 
 ```
 POST /i/<slug>/{favorite,rating,place,collections/<t>}      one picture's authored state
-POST /g/selection/{favorite,rating,place,collections/<t>}   a selection, proved against the answer it was made on (409 on a race)
+POST /g/selection/{favorite,rating,place,collections/<t>}   a selection, proved against the result set it was made on (409 on a race)
 POST /albums  POST /albums/smart  PATCH /t/<slug>  PUT /t/<slug>/rule  POST /t/<slug>/convert  POST /t/<slug>/{add,remove}
 POST /jobs/<kind>  POST /jobs/N/cancel       GET /jobs  /jobs/N
 POST /stories/snapshots  /stories/plans  /stories/renders    GET the same, and /N

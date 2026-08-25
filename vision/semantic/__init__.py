@@ -113,7 +113,7 @@ def space(provider: str, model: str, checkpoint: str, dimensions: int):
 def query_policy(provider: str, model: str, checkpoint: str) -> dict:
     """The facts that turn a text into this configuration's QUERY vector
     -- a different question from the stored-media space identity, and
-    answered by the provider."""
+    determined by the provider."""
     return provider_module(provider).query_policy(model, checkpoint)
 
 

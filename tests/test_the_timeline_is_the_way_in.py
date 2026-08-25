@@ -1,8 +1,8 @@
 """The timeline is a primary way into the library, not a probe.
 
-Every shelf and session is a link spelled by the Facet Interface; the
+Every index and session is a link encoded by the Facet Interface; the
 links open galleries ordered by the human moment; the gallery says
-which question it is answering and lets one chip go; a picture's page
+which query it is resolving and lets one chip go; a picture's page
 says when it happened, on what evidence, and which sessions it is in;
 the surface carries pictures, its weeks start on Monday, and it says how
 much of the library it can see.
@@ -58,7 +58,7 @@ def test_a_session_is_a_link_that_opens_exactly_its_members(links):
 
 
 def test_a_stale_event_refuses_with_the_remedy(links):
-    """The facet answers only for runs proven over the current
+    """The facet resolves only for runs proven over the current
     interpretation: after the contexts move on, yesterday's session id
     is refused with the job that regroups it -- never an empty room, and
     never whatever the id now means."""
@@ -204,9 +204,9 @@ def test_opening_a_session_is_telling_its_story(links):
 
 
 def test_a_range_spreads_to_what_the_asker_can_show_and_a_moment_names_its_picture(links):
-    """/timeline/spread answers n pictures of a range spread through it
+    """/timeline/spread returns n pictures of a range spread through it
     -- every k-th in moment order, never the first n -- and never more
-    than the asker asked; /timeline/at answers the picture a moment
+    than the asker asked; /timeline/at returns the picture a moment
     points at: the nearest in time, either side."""
     whole = links.get("/timeline/pictures", params={"start": JUNE_10, "end": JUNE_10 + DAY}).json()["pictures"]
     moments = [p["moment"] for p in whole]
@@ -288,8 +288,8 @@ def test_the_contested_count_is_a_link_onto_exactly_the_disputed(links):
 
 def test_every_scope_page_opens_its_pictures_in_time_order(links):
     """A folder, an album, a person: each page is a scope the gallery
-    answers, and each offers that scope in the order the timeline
-    speaks -- sort=moment on the same canonical question."""
+    resolves, and each offers that scope in the order the timeline
+    speaks -- sort=moment on the same canonical query."""
     page = links.get("/f/lib", headers={"accept": "text/html"}).text
     assert "data-in-time-order" in page
     href = re.search(r'href="(/g\?[^"]*sort=moment)" data-in-time-order', page)
@@ -375,7 +375,7 @@ def test_a_session_says_who_is_in_it(links):
 
 def test_the_surface_can_be_scoped_by_the_gallerys_facets(links):
     """`/timeline?f=place.id:eq:N` draws only the pictures in that place:
-    the bins, the samples, the sessions and the page's shelves count the
+    the bins, the samples, the sessions and the page's index pages count the
     scope, and every link carries it, so what is drawn is what opens.
     A session is a link, not a scope; a bad facet is refused."""
     from db import authored, connect, context, places
@@ -435,7 +435,7 @@ def test_every_bars_link_opens_exactly_what_the_bar_counted(links):
 def test_a_session_filter_lands_on_the_sessions_range(links):
     """The gallery's "on the timeline" link carries the gallery's
     filters, a session among them. The timeline shows every session of a
-    range, so a session filter is answered with the session's own hour
+    range, so a session filter resolves to the session's own hour
     range, the other filters kept -- never a 400 from a link a page
     emitted."""
     whole = _density(links, bin="day")
@@ -455,7 +455,7 @@ def test_a_session_filter_lands_on_the_sessions_range(links):
 def test_every_link_a_one_second_timeline_emits_lands_on_a_page(links):
     """A scope whose pictures all sit in one second: the scrubber must
     not append a gap after the last picture whose range clips to
-    nothing. Every timeline link on the page answers 200."""
+    nothing. Every timeline link on the page returns 200."""
     whole = _density(links, bin="day")
     moment = whole["bins"][0]["at"]
     one = links.get(f"/g?f=context.moment%3Agte%3A{int(moment)}&f=context.moment%3Alt%3A{int(moment) + DAY:.0f}").text

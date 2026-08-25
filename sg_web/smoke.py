@@ -1,10 +1,10 @@
 """Walk the REAL run: every surface and a handful of real pictures, over
-the database in the home directory, and say what answered what.
+the database in the home directory, and say what each route returned.
 
 `python -m sg_web.smoke [--home DIR]` -- the check a green test lane over
 fresh databases cannot make: the one file that matters, on this build.
 Exit 1 on any 5xx, any refusal the page did not ask for, or a picture
-route that does not answer bytes.
+route that does not return bytes.
 """
 
 from __future__ import annotations
@@ -68,8 +68,8 @@ def _shape(path: str) -> str:
     """A link's shape: its route with the slug or id blanked, and the
     query reduced to its keys -- a facet by its key, never its value.
     `/i/abc?f=context.moment:gte:1&sort=moment` and `/i/def` are two
-    shapes: the timeline's link onto a picture walks a different answer
-    than the gallery's, and a 500 in one is not in the other."""
+    shapes: the timeline's link onto a picture walks a different result
+    set than the gallery's, and a 500 in one is not in the other."""
     route, _, query = path.partition("?")
     parts = route.split("/")
     blanked = "/".join(

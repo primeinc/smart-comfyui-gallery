@@ -1,7 +1,7 @@
 """The operational ledger: what happened to a job, in order, forever.
 
 Three things hold the same subject and must never be confused. The job
-row (db/jobs.py) is CURRENT TRUTH -- what a page renders from cold. This
+row (db/jobs.py) is CURRENT STATE -- what a page renders from cold. This
 ledger is HISTORICAL OBSERVATION -- one append-only row per operationally
 meaningful transition, typed, with a monotonic id. The channel
 (sg_web/app.py) is TRANSPORT -- it carries rows after they commit and
@@ -12,7 +12,7 @@ Nothing here samples, compacts or ages out. A 22,000-file sweep leaves
 44,000 rows; a reader pages them (`since`, `for_job`). Rendering may
 virtualize; storage may paginate; neither may drop an event.
 
-The vocabulary is spelled once, here, as a `Literal` beside the table
+The vocabulary is defined once, here, as a `Literal` beside the table
 that stores it: the wire restates it by importing it, never by copying
 it, and sglint SG709 holds it equal to the CHECK on `job_event.type` in
 db/schema.sql. So an event the schema refuses cannot be typed, and a

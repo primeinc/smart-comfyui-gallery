@@ -359,8 +359,8 @@ def test_one_vector_per_text_space_and_policy_in_the_joint_space(library):
     is permitted -- keyed by the query policy that produced it: a
     changed instruction is a new row that coexists; its identity is
     immutable (a replacement is a new id); its length is held to the
-    space; currency is the text hash; and the two corpora never share
-    a resident index."""
+    space; validity is keyed to the text hash; and the two corpora never
+    share a resident index."""
     client, _root, names = library
     conn = connect.connect(client.app.state.db_path)
     try:

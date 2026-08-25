@@ -25,7 +25,7 @@ The upstream wrapper degrades a failed media decode into embedding the
 literal text "NULL" to keep an evaluation batch alive. This adapter
 deliberately does not: an item that cannot decode fails its job item
 loudly, because a vector of the word NULL sitting in the space is a
-picture that answers queries about nothing.
+picture that matches queries about nothing.
 """
 
 from __future__ import annotations
@@ -172,10 +172,10 @@ _SNAPSHOT_FILES = (
 def _cached_snapshot(models_dir: str, model: str, checkpoint: str) -> str | None:
     """The local snapshot directory holding this revision COMPLETE --
     weights (single-file, or a shard index plus EVERY shard it names)
-    and every file loading touches -- or None. Answered from disk
+    and every file loading touches -- or None. Determined from disk
     alone, the same doctrine as the openclip adapter's
     `_cached_checkpoint`. A shard index whose shards are half-downloaded
-    must answer None: 'provisioned' discovered mid-inference is a
+    must return None: 'provisioned' discovered mid-inference is a
     failure the degraded-search contract cannot route around."""
     import json
     import pathlib
@@ -316,7 +316,7 @@ class QwenBackend:
         self.model = PreTrainedModel.to(loaded, self.device)
         # Pin AFTER weights land, so the space this backend mints is keyed
         # by the immutable commit the download resolved to -- never by the
-        # mutable ref the configuration spelled.
+        # mutable ref the configuration named.
         self.checkpoint = pin(models_dir, model, checkpoint)
         self.dimensions = int(self.encode_query("probe").shape[0])
 
@@ -396,12 +396,12 @@ class QwenBackend:
 #: One loaded model per (models_dir, model, PINNED checkpoint) per
 #: process -- loading is seconds and GIGABYTES. The cache key pins first,
 #: because the embed job asks by the configured ref ("main") and the
-#: search path asks by the resolved commit: two spellings of the same
+#: search path asks by the resolved commit: two names for the same
 #: weights, and an unpinned key loaded the 4GB model twice in one
 #: process, which is an out-of-memory on an 8GB card, measured. After a
 #: fresh download the backend's own post-download resolution registers
 #: under the commit too, so the one first-provision process also serves
-#: both spellings from one load.
+#: both names from one load.
 _LOADED: dict[tuple, QwenBackend] = {}
 _LOCK = threading.Lock()
 

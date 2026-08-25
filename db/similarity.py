@@ -8,7 +8,7 @@ SQLite holds. No FAISS index is constructed anywhere but the manager.
 
 The numpy oracle at the bottom is exactly that -- an oracle. It computes
 every pairwise cosine with a blocked matrix product, exists so tests can
-hold the FAISS paths to an independent exact answer, and is reachable
+hold the FAISS paths to an independent exact result, and is reachable
 from tests and diagnostics only. It is not an engine and nothing in
 production falls back to it.
 """
@@ -184,7 +184,7 @@ def face_space_of(conn, model_id: str, model_version: str) -> tuple[int, SpaceSp
 def keyed(spec: SpaceSpec, sid: int, lane: str = "") -> SpaceSpec:
     """The spec as the index layer sees it: the resident key and every
     snapshot filename carry the immutable space id, so an upgraded spec
-    can never restore -- or answer for -- an older space's vectors.
+    can never restore -- or stand in for -- an older space's vectors.
 
     `lane` names a second CORPUS in the same space: prompt vectors live
     in the provider's joint space beside its media vectors (same
@@ -243,7 +243,7 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float, 
     before paying for a full build. Any mutation is checkpointed, so
     the next boot restores instead of rebuilding.
 
-    Align is the REPAIR path and digests committed truth only -- it
+    Align is the REPAIR path and digests committed state only -- it
     reconciles the resident tier after boot, crash, or drift. The live
     path is the runner's post-commit sync (`apply_pending`): producers
     note their writes, the runner applies them only after the commit
@@ -343,9 +343,9 @@ def apply_pending(conn, manager: IndexManager | None = None) -> None:
     built by align from committed rows.
 
     Failure marks the space unservable rather than pretending: a space
-    that took half a batch could answer with stale rows, so it is
+    that took half a batch could respond with stale rows, so it is
     invalidated on the spot -- resident and snapshot both -- and the
-    next align rebuilds it from committed truth. SQLite stays
+    next align rebuilds it from committed state. SQLite stays
     authoritative through every branch; the index may lag it, never
     lead it, and never quietly diverge from it."""
     import logging

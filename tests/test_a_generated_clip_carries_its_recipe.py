@@ -2,9 +2,9 @@
 
 metaparse was Pillow-only. Every AI-generated video in every library
 carried its workflow inside the file and no row anywhere recorded it, so
-"show me the generated videos" was a question the query vocabulary could
+"show me the generated videos" was a query the query vocabulary could
 express, the filter surface could offer, the analysis could break down --
-and that always, silently, answered nothing. Not because any of those
+and that always, silently, returned nothing. Not because any of those
 were wrong. Because ingest had never written the row.
 
 The fixtures here are written the way ComfyUI writes them, from its own
@@ -213,8 +213,8 @@ def test_a_clip_and_a_still_of_one_graph_are_read_identically(library):
 
 def test_the_checkpoint_is_an_artifact_a_clip_shares_with_a_picture(library):
     """The whole point of one vocabulary: a model used for a video and a
-    model used for a still are one artifact, so a question about it
-    answers across both."""
+    model used for a still are one artifact, so a query about it
+    returns results across both."""
     held = library.execute(
         "SELECT a.name, COUNT(DISTINCT fa.file_id) FROM artifact a"
         " JOIN file_artifact fa ON fa.artifact_id = a.id AND fa.role = 'checkpoint'"

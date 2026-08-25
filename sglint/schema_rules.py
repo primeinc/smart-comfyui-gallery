@@ -237,7 +237,7 @@ def _literal_members(module: ast.Module, name: str) -> frozenset[str] | None:
         if not isinstance(value, ast.Subscript):
             return None
         # `Literal[...]` and `typing.Literal[...]` are the same type, and a
-        # vocabulary spelled the second way is not a vocabulary this rule
+        # vocabulary written the second way is not a vocabulary this rule
         # may refuse to read.
         held = value.value
         named = held.id if isinstance(held, ast.Name) else held.attr if isinstance(held, ast.Attribute) else None
@@ -398,7 +398,7 @@ def rule_index_prefixes(ddl: str | None = None) -> list[Finding]:
     ?` and is not redundant at all.
 
     The predicates have to match too: an index over all rows is not
-    replaced by a partial one, which cannot answer for the rows it
+    replaced by a partial one, which cannot serve the rows it
     excludes.
     """
     text = ddl if ddl is not None else SCHEMA.read_text(encoding="utf-8")

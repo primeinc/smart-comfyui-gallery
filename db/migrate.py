@@ -283,7 +283,7 @@ def _embeddings_get_immutable_ids(conn: sqlite3.Connection) -> None:
     Under v3 the table was keyed (file_id, space_id) and the resident FAISS
     index stored file ids -- a mutable identity: re-embedding a replaced
     file changed the vector UNDER the id, and a crash between commit and
-    index sync left a snapshot answering queries with the old picture's
+    index sync left a snapshot serving queries with the old picture's
     vector. v4 gives every vector an AUTOINCREMENT id the index stores
     instead; a replacement is a NEW id and alignment sees exactly that.
 
@@ -297,7 +297,7 @@ def _embeddings_get_immutable_ids(conn: sqlite3.Connection) -> None:
     entirely; both are created empty here, and the derived_* rebuild
     contract covers what jobs regenerate. A pre-space embedding shape
     (no space_id column) cannot name what produced its vectors, so those
-    rows do not survive: an unattributable vector answering queries is
+    rows do not survive: an unattributable vector serving queries is
     worse than a re-embed.
     """
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -589,10 +589,10 @@ def _one_membership_definition_per_collection(conn: sqlite3.Connection) -> None:
 
     v7 let a listed collection carry a dormant collection_rule row and
     let a rule-carrying smart collection become listed -- two authored
-    answers waiting to disagree, exactly what the collection_file
+    results waiting to disagree, exactly what the collection_file
     guards were built to make impossible in the other direction. A v7
     library that already holds a rule on a non-smart collection cannot
-    be stamped forward without deciding which answer wins, so the step
+    be stamped forward without deciding which result wins, so the step
     refuses and NAMES them; deleting or re-kinding is the operator's
     deliberate act. Trigger DDL is schema.sql's text VERBATIM.
     """
@@ -2417,7 +2417,7 @@ def _face_scans(conn: sqlite3.Connection) -> None:
 def _the_ingest_record(conn: sqlite3.Connection) -> None:
     """v26 -> v27: `file.ingested_sha256`, the bytes the last metadata
     read was taken from (db/ingest.py one). Added in place; SQLite
-    appends the column's text to the stored DDL, and schema.sql spells
+    appends the column's text to the stored DDL, and schema.sql writes
     it last so the two agree. Existing rows start NULL: the next ingest
     sweep reads everything once and records it.
     """
@@ -2426,7 +2426,7 @@ def _the_ingest_record(conn: sqlite3.Connection) -> None:
 
 @step(27)
 def _authored_places(conn: sqlite3.Connection) -> None:
-    """v27 -> v28: `file_place`, a person's word on where a picture
+    """v27 -> v28: `file_place`, a user-supplied claim on where a picture
     happened (db/authored.py set_place); the context ladder reads it as
     the 'authored' location basis. DDL is schema.sql's text VERBATIM.
     """

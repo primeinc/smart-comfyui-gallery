@@ -14,7 +14,7 @@ stack:
   * that the document stays BOUNDED -- appending for ever is how a tab
     dies on a library of eighty thousand
   * that the URL follows by REPLACING, so reload lands where you were
-    reading and Back is still the question before this one rather than
+    reading and Back is still the query before this one rather than
     one press per sixty pictures
   * that the pager survives, because it is the sentinel, the way to
     jump, and the no-JavaScript path
@@ -107,7 +107,7 @@ def test_scrolling_to_the_end_brings_the_next_page(page: Page, live: Live, unbro
     held = _pages_held(page)
     assert held == list(range(1, held[-1] + 1)), f"the server's pages, in order, with no gap: {held}"
 
-    # and the cells really are the next ones in the answer, not a repeat
+    # and the cells really are the next ones in the result set, not a repeat
     names = page.evaluate("() => [...document.querySelectorAll('[data-cells] img')].map(i => i.alt)")
     assert len(names) == len(set(names)), "a page was appended twice"
 
@@ -222,7 +222,7 @@ def test_the_pager_is_still_there_and_still_works(page: Page, live: Live, unbrok
     assert pager.count() == 1
     assert "page 1 of" in pager.inner_text()
 
-    # jumping still renders the whole answer from the server
+    # jumping still renders the whole result set from the server
     page.goto(f"/g?size={SIZE}&page=5")
     page.wait_for_selector("[data-grid] a.cell", timeout=20_000)
     assert page.get_attribute("[data-grid]", "data-page") == "5"

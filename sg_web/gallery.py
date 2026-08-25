@@ -1,15 +1,15 @@
 """The gallery grid and its rail: presentation adapters over db/resultset.py.
 
 Every route here maps request-shaped inputs onto ONE GalleryQuery and
-reads the module's materialized answer. No SQL, no sorting, no
+reads the module's materialized result set. No SQL, no sorting, no
 membership opinions -- a route that grew any of those would be the
-second notion of truth the ResultSet contract exists to forbid.
+second definition of membership the ResultSet contract exists to forbid.
 
 The URL owns canonical query state: `/g?q=...&folder=...&sort=...&page=N`
 renders complete from cold, so reload, back, forward and bookmarks all
 work without client state. The fragments and JSON exist for the parts a
 running page swaps live -- the grid on a page change, the rail popover
-on hover -- and answer from the same query the shell was drawn from.
+on hover -- and are served from the same query the shell was drawn from.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.wire import Wire
 
-#: The presentations one answer has. `view` is NOT part of the question:
+#: The presentations one result set has. `view` is NOT part of the query:
 #: it never reaches the GalleryQuery, never moves the fingerprint, and
 #: switching between them must leave the membership and the total exactly
 #: where they were. It rides the URL so a link to an analysis is a link.
@@ -39,7 +39,7 @@ VIEWS = ("gallery", "table", "analyze")
 
 
 def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str) -> str:
-    """The question with one more clause, canonically spelled.
+    """The query with one more clause, canonically encoded.
 
     What makes an analysis navigation rather than a report. A count that
     cannot be clicked back into the query is a dashboard, and a dashboard
@@ -65,7 +65,7 @@ def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str)
 
 
 def _analysis(conn, query: resultset.GalleryQuery, total: int, weights: str, view: str) -> dict:
-    """The answer, described -- and every row carrying the question it
+    """The result set, described -- and every row carrying the query it
     would make."""
     told = analysis.analyze(conn, query, total, models_dir=weights, now=time.time())
     return {
@@ -116,7 +116,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
             raise NotFoundException(str(missing)) from missing
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
-        conn.commit()  # a semantic answer may have minted registry rows
+        conn.commit()  # evaluating a semantic query may have minted registry rows
         # an id-valued chip says the name, not the number
         named = discovery.labels(conn, query)
         # only when asked: an analysis is a dozen aggregates, and
@@ -175,13 +175,13 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "sorts": resultset.SORTS,
         # the filter surface, drawn from the one vocabulary: the
         # sections and their dimensions, and how many clauses the
-        # question already carries per dimension. The VALUES are not
+        # query already carries per dimension. The VALUES are not
         # here -- counting thirty dimensions to draw a closed drawer
         # is thirty queries nobody asked for; each section fetches its
         # own from /g/options when somebody opens it.
         "filter_groups": [
             {"name": name, "label": label, "dimensions": held}
-            # `asked_kind`, not `query.kind`: the question can say which
+            # `asked_kind`, not `query.kind`: the query can say which
             # medium in two places now -- the scope every bookmark
             # carries, and the facet the drawer writes so kinds can be
             # OR'd -- and which dimensions apply must follow both.
@@ -193,14 +193,14 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
 
 
 def _chips(query: resultset.GalleryQuery, named: dict[str, dict[int, str]] | None = None) -> list[dict]:
-    """Every clause the question carries, as a chip that reads as words
-    and carries the question that remains when it is removed.
+    """Every clause the query carries, as a chip that reads as words
+    and carries the query that remains when it is removed.
 
     Both halves come from elsewhere on purpose. What a clause is CALLED
     is db/vocabulary.py's -- this module used to hold a private dict of
     labels beside the registry that held the predicates, and the two
     drifted, which is how a chip ends up printing a key. What "the
-    question without this" MEANS is db/discovery.py's `without`, the
+    query without this" MEANS is db/discovery.py's `without`, the
     same function that decides what a dimension's own option counts are
     taken against, so a remove link and a count cannot disagree.
     """
@@ -223,10 +223,10 @@ def _chips(query: resultset.GalleryQuery, named: dict[str, dict[int, str]] | Non
             )
             continue
         held = [facet for facet in query.facets if facet.key == one.key]
-        # An OR GROUP is one thing the question says, so it is one chip
+        # An OR GROUP is one thing the query says, so it is one chip
         # that removes as one. Rendering `kind image` beside `kind video`
         # would read exactly like two ANDed clauses -- the opposite
-        # question, and one that answers nothing.
+        # query, and one that returns an empty result set.
         ored = [facet for facet in held if facet.op == facets_module.ANY]
         if ored:
             rest = dataclasses.replace(query, facets=tuple(other for other in query.facets if other not in ored))
@@ -283,10 +283,10 @@ def gallery(
     page: FromQuery[int] = 1,
     view: FromQuery[str] = "gallery",
 ) -> Template:
-    """One answer, in whichever presentation was asked for, from nothing
-    but the URL.
+    """One result set, in whichever presentation was asked for, from
+    nothing but the URL.
 
-    `view` is presentation, never the question: it does not reach the
+    `view` is presentation, never the query: it does not reach the
     GalleryQuery and does not move the fingerprint, so switching from the
     grid to the analysis and back leaves membership and total exactly
     where they were. That is the whole contract between them.
@@ -349,11 +349,11 @@ class FilterOption(Wire):
     value: str
     #: as a person reads it
     label: str
-    #: how many media it would leave, FROM THE REST OF THIS QUESTION --
+    #: how many media it would leave, FROM THE REST OF THIS QUERY --
     #: this dimension's own clauses removed first, so the list can
-    #: broaden the question and not only narrow it
+    #: broaden the query and not only narrow it
     count: int
-    #: whether the question already carries it
+    #: whether the query already carries it
     chosen: bool
 
 
@@ -398,7 +398,7 @@ def filter_options(
     """What one dimension could be narrowed to from here, counted.
 
     Counted through db/resultset.py `scope_of`, so this and the grid
-    cannot come to disagree about which media the question holds; and
+    cannot come to disagree about which media the query holds; and
     counted with THIS dimension's own clauses removed, so opening the
     list a person came to change their mind with can widen it.
     """
@@ -468,10 +468,10 @@ def rail_peek(
     """The rail popover: real members of exactly the page a jump would
     land on, never a guess from scroll height.
 
-    `expect` is the currency of the grid the rail is drawn beside. When
-    the library has moved on, a preview from the NEW ordering shown
-    beside the OLD grid would present two generations as one answer --
-    the response is 409 and the client redraws instead of pretending.
+    `expect` is the data version of the grid the rail is drawn beside.
+    When the library has moved on, a preview from the NEW ordering shown
+    beside the OLD grid would present two generations as one result set
+    -- the response is 409 and the client redraws instead of pretending.
     """
     query = _asked(
         folder,
@@ -513,7 +513,7 @@ def rail_peek(
 
 
 class ResultItem(Wire):
-    """One picture as an ordered answer names it.
+    """One picture as an ordered result set names it.
 
     The ResultSet's own vocabulary, stated here because this module owns
     that Implementation's HTTP presentation: db/resultset.py builds rows,
@@ -525,11 +525,11 @@ class ResultItem(Wire):
     slug: str
     name: str
     kind: str
-    #: the entity's uuid, hex-spelled
+    #: the entity's uuid, hex-encoded
     uuid: str
     #: the caption the configured model gave it, when it has one
     said: str | None
-    #: position in the whole answer, 1-based -- not within the page
+    #: position in the whole result set, 1-based -- not within the page
     ordinal: int
     #: Where to point an `<img>`: the content-addressed asset when the
     #: bytes have been hashed, the slug route when they have not.
@@ -558,9 +558,9 @@ def result_items(rows: list[dict]) -> list[ResultItem]:
 
 class PeekView(Wire):
     """The rail popover's preview: real members of exactly the page a jump
-    would land on, with the ordinals to say which part of the answer they
-    are, and the generation evidence to prove they belong beside the grid
-    they float over."""
+    would land on, with the ordinals to say which part of the result set
+    they are, and the generation evidence to prove they belong beside the
+    grid they float over."""
 
     page: int
     pages: int
@@ -573,24 +573,24 @@ class PeekView(Wire):
 
 
 class NotLocated(Wire):
-    """The file is not in this answer's membership at all."""
+    """The file is not in this result set's membership at all."""
 
     in_answer: Literal[False]
 
 
 class Located(Wire):
-    """Where one picture sits in this answer. `previous` and `next` are
-    addresses in ANSWER order, which is what the arrows mean while a
-    result set is being walked."""
+    """Where one picture sits in this result set. `previous` and `next`
+    are addresses in the result set's own order, which is what the
+    arrows mean while it is being walked."""
 
     in_answer: Literal[True]
     ordinal: int
     page: int
     total: int
-    #: the library generation this answer was computed at
+    #: the library generation this result set was computed at
     currency: str
-    #: the identity of the ordering itself; the same answer means the
-    #: same ordering, whatever the currency has done since
+    #: the identity of the ordering itself; the same result-set identity
+    #: means the same ordering, whatever the data version has done since
     answer: str
     qs: str
     previous: str | None
@@ -613,9 +613,9 @@ def locate_in_answer(
     sort: FromQuery[str | None] = None,
     size: FromQuery[int | None] = None,
 ) -> Located | NotLocated:
-    """Where one picture sits in this answer -- ordinal, page, and its
-    previous/next in ANSWER order, which is what the arrows mean while
-    a result set is being walked.
+    """Where one picture sits in this result set -- ordinal, page, and its
+    previous/next in the result set's own order, which is what the arrows
+    mean while it is being walked.
 
     Two shapes discriminated by `in_answer`, so a client that checks it
     has the rest of the fields and one that does not cannot reach them."""

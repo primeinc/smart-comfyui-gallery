@@ -46,7 +46,7 @@ def _window(subject: dict) -> str | None:
 
 @get("/stories", sync_to_thread=True)
 def stories_index(state: State, request: Request, kind: FromQuery[str | None] = None) -> Template | Response:
-    """Every story told, newest first -- the shelf the timeline's
+    """Every story told, newest first -- the index the timeline's
     buttons fill -- or, with `?kind=`, those of one session kind. Each
     entry is its title and dek as rendered, its heroes, its subject
     kind, its profile, and links to the render and the plan's
@@ -159,7 +159,7 @@ def plan_snapshot(state: State, data: PlanRequest) -> Response:
     """Ask for a plan. The service records the request's identity,
     reuses a finished plan or a live job for the same request, or
     queues durable work -- no weights load on this thread. 200 with a
-    plan id when the answer already exists, 202 with the job otherwise."""
+    plan id when the result already exists, 202 with the job otherwise."""
     conn = connect.connect(state.db_path)
     try:
         try:
@@ -353,9 +353,9 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
 # FROZEN THEN -- a StoryPlan at ITS OWN format version (there have been
 # seven) and a StorySnapshot as it was written. A claim's `facts` have to
 # fit its kind under the plan's vocabulary version, and db/planning.py
-# validates that seven different ways; restating the union here would be an
-# eighth spelling free to disagree with all of them. So `facts` stays open,
-# and `plan.format` says which vocabulary wrote it.
+# validates that seven different ways; restating the union here would be
+# an eighth implementation free to disagree with all of them. So `facts`
+# stays open, and `plan.format` says which vocabulary wrote it.
 #
 # The same reasoning keeps the frozen strings as strings. `media.kind` came
 # out of the library at freeze time; holding it to today's CHECK would make
@@ -459,7 +459,7 @@ class EvolutionMedia(Wire):
 class EvolutionOccurrence(Wire):
     """When the frozen evidence puts this member, and how sure it is.
 
-    `certainty` is an ordinal's fixed spelling, not a probability:
+    `certainty` is an ordinal's fixed encoding, not a probability:
     corroborated .9, claimed .6, contested .4 (db/when.py Verdict, whose
     `supports` and `conflicts` name the readings that agreed and
     disagreed) -- so a contested time says what contests it.
@@ -800,8 +800,8 @@ def evolution_document(view: dict, *, render_id: int | None) -> EvolutionView:
 @get(
     "/stories/plans/{plan_id:int}/evolution",
     # The route negotiates, and a union that mixes a page with a JSON
-    # answer reaches OpenAPI as the empty schema however precisely the arms
-    # are written (litestar v2.24.0). The JSON answer is declared here.
+    # response reaches OpenAPI as the empty schema however precisely the arms
+    # are written (litestar v2.24.0). The JSON response is declared here.
     responses={
         200: ResponseSpec(
             data_container=EvolutionView,

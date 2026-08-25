@@ -58,7 +58,7 @@ from . import context
 #: moment (the estimate inside its claim) when one exists, else its
 #: claim -- and only when that granule fits inside the gap. A bare
 #: day-fine date with nothing to refine it cannot be minutes from
-#: anything; 'insufficient temporal precision' is then the answer.
+#: anything; 'insufficient temporal precision' is then the result.
 _GRANULE = {"day": 86_400.0, "hour": 3_600.0, "minute": 60.0, "second": 1.0, "subsecond": 0.001}
 
 

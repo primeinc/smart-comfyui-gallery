@@ -4,7 +4,7 @@
 every entity address carries. The CollectionView owns AUTHORED facts --
 name, kind, color, description, the parent/child hierarchy, lifecycle
 (active or archived, the definition revision, who last defined it) and
-the rule when the kind is rule-defined -- and never the media answer:
+the rule when the kind is rule-defined -- and never the media result set:
 for `album` and `flag` the members are ONE ResultSet page of the
 album-faceted GalleryQuery, the same membership `/g?album=` serves.
 
@@ -13,9 +13,9 @@ real gallery: the ResultSet evaluates the rule to a membership set and
 orders it like any other scope. The other states stay LOUD and
 distinct -- never an empty grid pretending the rule ran:
 
-    no typed rule (migrated prose, or nothing)  -> unevaluated
-    rule references a deleted entity            -> broken
-    semantic rule nothing can answer right now  -> unavailable
+    no typed rule (migrated prose, or nothing)     -> unevaluated
+    rule references a deleted entity               -> broken
+    semantic rule that cannot be evaluated right now -> unavailable
 
 Those are conditions of the RULE, orthogonal to lifecycle: an archived
 collection can be evaluated and an active one broken.
@@ -25,8 +25,8 @@ historical JSON list for machines, a rendered card grid for a browser
 -- and it NEVER evaluates smart rules just to show counts. It shows the
 ACTIVE tree; an active child of an archived parent surfaces at the top
 level rather than vanishing with its organizer, which falls out of the
-one-statement shelf structurally: the archived parent simply is not
-among the nodes. `?state=archived` is the management shelf.
+one-statement index structurally: the archived parent simply is not
+among the nodes. `?state=archived` is the archived index.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from sg_web.wire import Wire
 class RuleView(Wire):
     """What was written down about a rule, kept as provenance whether or
     not it ever ran (db/collection_rules.py provenance). Both halves are
-    nullable columns: a rule minted from a question carries no prose, and
+    nullable columns: a rule minted from a query carries no prose, and
     preserved prose carries no typed rule."""
 
     sql: str | None
@@ -77,7 +77,7 @@ class FiledPicture(Wire):
 
 
 class PlaceInCollection(Wire):
-    """Where this collection's pictures happened, with the question that
+    """Where this collection's pictures happened, with the query that
     narrows the collection to that place."""
 
     id: int
@@ -118,7 +118,7 @@ class _Collection(Wire):
 
 
 class _Answered(_Collection):
-    """A membership that produced an answer, so there are facts about it."""
+    """A membership that produced a result set, so there are facts about it."""
 
     count: int
     first_seen: float | None
@@ -129,12 +129,13 @@ class _Answered(_Collection):
 
 
 class _Unanswered(_Collection):
-    """A rule that produced no answer.
+    """A rule that produced no result set.
 
     `count` and `gallery` are null rather than absent: a client asking how
-    many members there are gets an answer, and the answer is "no number",
-    not a missing key. The span, the timeline link and the places describe
-    an answer, and there is none, so the variants below do not declare
+    many members there are gets a response, and the response is "no
+    number", not a missing key. The span, the timeline link and the places
+    describe a result set, and there is none, so the variants below do not
+    declare
     them at all -- reaching for `timeline` on a broken rule is a type
     error in the browser rather than undefined at runtime.
     """
@@ -177,7 +178,7 @@ class SmartBroken(_Unanswered):
 
 
 class SmartUnavailable(_Unanswered):
-    """A semantic rule nothing can answer right now. It says why."""
+    """A semantic rule that cannot be evaluated right now. It says why."""
 
     kind: Literal["smart"]
     state: Literal["unavailable"]
@@ -198,10 +199,10 @@ CollectionDocument = ListedCollection | SmartEvaluated | SmartUnevaluated | Smar
 
 
 class CollectionWriteAnswer(Wire):
-    """What a lifecycle write answers.
+    """What a lifecycle write returns.
 
     The address to go to and the definition's next concurrency token, and
-    that is the whole contract. Writes used to answer with the management
+    that is the whole contract. Writes used to return the management
     view -- a ResultSet page, the spans, the places and every legal parent
     move, assembled and thrown away, because the browser reads `slug` out
     of it and nothing else.
@@ -256,7 +257,7 @@ class Facts:
     children: list[ChildCollection]
     rule: RuleView | None
     state: RuleState
-    #: why the rule could not answer, when that is a thing to say
+    #: why the rule could not be evaluated, when that is a thing to say
     reason: str | None
     answer: Answer | None
     files: list[FiledPicture]
@@ -281,10 +282,10 @@ def context_at(conn, models_dir: str, collection_id: int, slug: str, now: float)
 def _facts(conn, models_dir: str, collection_id: int, slug: str, now: float, *, files: bool, parents: bool) -> Facts:
     """Read one collection inside ONE database snapshot.
 
-    The ResultSet page is the FIRST read inside it -- its currency read
-    precedes the snapshot pin -- and a rule-defined collection is the
+    The ResultSet page is the FIRST read inside it -- its data version
+    read precedes the snapshot pin -- and a rule-defined collection is the
     ResultSet's own typed refusal, decided under the same snapshot the card
-    is then read from: a kind converted mid-request answers wholly as one
+    is then read from: a kind converted mid-request resolves wholly as one
     generation, never a static header over a smart body. (An empty
     collection CAN legally convert; the schema only refuses converting one
     that holds filed members.)
@@ -391,7 +392,7 @@ def document(held: Facts) -> CollectionDocument:
     contract.
 
     A state that cannot happen raises rather than picking something. The
-    first draft answered `reason or ""` for a broken rule that had not said
+    first draft returned `reason or ""` for a broken rule that had not said
     why, and called an unrecognised kind an album -- which would have shown
     a person an empty explanation and filed a stranger under the wrong
     kind, both silently. There is no honest default for either.
@@ -535,10 +536,10 @@ class CollectionListed(Wire):
     """One collection in the flat list `/albums` serves to machines.
 
     `first_seen` and `last_seen` are the span of the pictures filed in it.
-    The archived shelf computes no spans, so it answers null for both --
+    The archived index computes no spans, so it returns null for both --
     NOT by omitting the keys, which is what the two hand-built dict
     literals used to do and is a difference no client should have had to
-    discover. Both lists are one representation now; a shelf row carries
+    discover. Both lists are one representation now; an index row carries
     the span keys because a listed collection has them.
     """
 
@@ -649,7 +650,7 @@ async def albums_index(
 ) -> Template | Response:
     """Every active collection, alphabetically -- rendered for a
     browser, the historical JSON list for everything else.
-    `?state=archived` is the management shelf: the same negotiation,
+    `?state=archived` is the archived index: the same negotiation,
     over what was retired.
 
     Async on purpose: POST /albums shares this path, and a SYNC handler

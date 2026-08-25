@@ -17,8 +17,8 @@ operations read model and the ledger, never `jobs.active` widened -- the
 shell's list stays tiny. Live delivery is /ws/events (sg_web/app.py);
 the routes here are what a cold load and a gap-fill read.
 
-Nothing operational is offered anywhere else: the gallery header asks
-questions about media, this page runs the library.
+Nothing operational is offered anywhere else: the gallery header queries
+media, this page runs the library.
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ LAUNCHERS: dict[str, tuple[str, Launcher]] = {
 
 
 def _one(job_id: int | None) -> list[int]:
-    """A submit's answer as the launcher's list: None is "nothing to do"."""
+    """A submit's result as the launcher's list: None is "nothing to do"."""
     return [] if job_id is None else [job_id]
 
 
@@ -330,7 +330,7 @@ class LedgerHealth(Wire):
 
 
 class Overview(Wire):
-    """The health strip: the console's answer to "is anything wrong"."""
+    """The health strip: the console's read on "is anything wrong"."""
 
     now: float
     coverage: Coverage
@@ -378,7 +378,7 @@ class MatrixRow(Wire):
     id: int
     kind: jobs.JobKind
     state: jobs.JobState
-    #: has somebody asked this job to stop. SQLite stores the answer as
+    #: has somebody asked this job to stop. SQLite stores the value as
     #: 0 or 1 because it has no boolean; that is storage, not the fact,
     #: and the wire says the fact (_matrix_row does the translating).
     cancel_requested: bool
@@ -670,8 +670,8 @@ def _job_detail(state: State, told: dict) -> JobDetail:
 @get(
     "/job/{job_id:int}",
     # The route negotiates, and a union that mixes a fragment with a JSON
-    # answer reaches OpenAPI as the empty schema however precisely the
-    # arms are written (measured on litestar v2.24.0). The JSON answer is
+    # response reaches OpenAPI as the empty schema however precisely the
+    # arms are written (measured on litestar v2.24.0). The JSON response is
     # declared here, where the document reads it.
     responses={
         200: ResponseSpec(
@@ -825,7 +825,7 @@ def events_before(
 def launch(state: State, kind: FromPath[str], everything: FromQuery[bool] = False) -> Template:
     """Start one sweep from its button -- `?everything=true` from the
     "again" button of a sweep that is otherwise for what is missing. The
-    answer is the notice fragment; the job itself arrives on the
+    response is the notice fragment; the job itself arrives on the
     activity surface through the feed, as every job does, so the page
     never grows a second list of jobs."""
     found = LAUNCHERS.get(kind)
@@ -882,7 +882,7 @@ def add_root(state: State, data: URLEncodedBody[RootForm]) -> Template:
 @post("/roots/{root_id:int}/scan", sync_to_thread=True)
 def scan_root(state: State, root_id: FromPath[int]) -> Template:
     """Walk one root now. Synchronous like the JSON route: a walk is
-    cheap, and its counts are the answer the person pressed for."""
+    cheap, and its counts are the result the person pressed for."""
     conn = connect.connect(state.db_path)
     try:
         path = library.root_path(conn, root_id)

@@ -15,8 +15,8 @@ All of it was proven on real bytes before being claimed: HEIC/JXL/AVIF
 round-trip; 29 of 29 claimed video and audio containers mux and decode;
 the codecs a real 2000s library contains -- Sorenson Spark, VP6,
 Nellymoser, MS-MPEG4, WMV7/9, VC-1, SVQ, Cinepak, Indeo, RealVideo 1-4,
-RealAudio/Cook, ATRAC3 -- all answer to the decoder, and a period-correct
-Spark+MP3 FLV and an RV10 .rm both round-tripped.
+RealAudio/Cook, ATRAC3 -- all are handled by the decoder, and a
+period-correct Spark+MP3 FLV and an RV10 .rm both round-tripped.
 
 Video frames come back upright. A phone stores landscape and writes a
 display matrix; PyAV surfaces it as `VideoFrame.rotation`
@@ -37,13 +37,13 @@ from PIL import Image
 _logger = logging.getLogger(__name__)
 
 #: Seconds before an unreadable stream is a fact rather than a hang: a
-#: truncated file or network storage that stops answering costs the one
+#: truncated file or network storage that stops responding costs the one
 #: file, never the scan around it.
 TIMEOUT = 30.0
 
 #: The RAW family, decoded through LibRaw. The list is immich's
 #: (immich-app/immich@f88fb62 server/src/utils/mime-types.ts:4-35), which is
-#: LibRaw's coverage spelled as suffixes.
+#: LibRaw's coverage expressed as suffixes.
 RAW_SUFFIXES = frozenset(
     {
         ".3fr",
@@ -155,7 +155,7 @@ def open_bounded(path: str | os.PathLike[str], want: int, *, edge: str = "longes
     derivative asked for, so a shortcut never costs a worse picture, and
     development remains the fallback.
 
-    WHICH edge is bounded is the caller's, and the two answers are not
+    WHICH edge is bounded is the caller's, and the two results are not
     interchangeable. A derivative wants its LONGEST side capped: a 1440
     preview is 1440 at its widest whatever its shape. A model wants its
     SHORTEST side floored, because a transform that resizes the short
@@ -260,10 +260,10 @@ def open_bytes(data: bytes) -> Image.Image:
 
 def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | None:
     """The media's geometry from its headers alone -- no frame decoded,
-    no RAW developed. Video answers from the stream's declared size, RAW
-    from LibRaw's size block, and every still from the registered Pillow
-    opener's header -- the same readers open_still and poster use, so a
-    HEIC or JXL answers on a cold process instead of only after some
+    no RAW developed. Video's size comes from the stream's declared size,
+    RAW from LibRaw's size block, and every still from the registered
+    Pillow opener's header -- the same readers open_still and poster use,
+    so a HEIC or JXL works on a cold process instead of only after some
     unrelated decode happened to register the plugins. None when the
     file cannot say, so an unreadable member ranks last wherever
     geometry decides."""

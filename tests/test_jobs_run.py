@@ -882,7 +882,7 @@ def test_the_qwen_adapter_takes_the_native_link_for_video():
 def test_a_failed_decode_fails_the_item_and_embeds_nothing():
     """The upstream wrapper swaps a failed decode for the literal text
     "NULL" to keep an evaluation batch alive; this adapter must NOT --
-    a NULL vector in the space is a picture that answers queries about
+    a NULL vector in the space is a picture that responds to queries about
     nothing. The failure propagates and no embedding call happens."""
     from vision import semantic
     from vision.semantic import qwen_vl

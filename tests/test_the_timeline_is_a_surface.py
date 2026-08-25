@@ -1,13 +1,13 @@
 """The timeline is a SURFACE: density at the zoom's bin, from the one
 interpretation, every bin a link.
 
-`/timeline/density` answers pictures per bin (day, hour, quarter,
+`/timeline/density` returns pictures per bin (day, hour, quarter,
 minute) of the human moment over a range, in one GROUP BY; a picture
 enters a bin only when its own precision fits inside it, and the
 coarser claims come back as spans across the window they name -- the
 signal is shown at the width it has, never dropped and never narrowed.
 Each bin carries the wall-clock/instant split and a gallery link that
-answers exactly its pictures (the `context.moment` facet on the same
+returns exactly its pictures (the `context.moment` facet on the same
 axis). Sessions touching the range ride under it in their own domain,
 each a link to the story told of that membership. A range wider than
 the page can draw is refused with the remedy.
@@ -359,8 +359,8 @@ def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
     import html
 
     for bar in told["bins"]:
-        # the attribute is spelled the way the window its own link opens is
-        # spelled -- whole seconds; the contract carries the moment as a
+        # the attribute is formatted the way the window its own link opens
+        # is formatted -- whole seconds; the contract carries the moment as a
         # number, and the two must not disagree about the same bar
         assert f'data-bin-at="{int(bar["at"])}"' in fragment
         assert f"start={int(bar['at'])}" in bar["href"] or "context.moment" in bar["href"]
@@ -376,7 +376,7 @@ def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
 
 def test_an_authored_place_marks_the_sessions_stale_and_names_the_remedy(surfaced):
     """A rebuild advances the interpretation's generation; session runs
-    answer only at the generation they were computed over. The page
+    are valid only at the generation they were computed over. The page
     says the sessions need the events job instead of listing none."""
     before = surfaced.get("/timeline/density", params={"bin": "day"}, headers={"accept": "application/json"}).json()
     assert before["coverage"]["events_current"] is True
@@ -436,7 +436,7 @@ def test_the_opening_window_is_where_the_last_months_pictures_are(surfaced):
 @pytest.mark.parametrize("bin_name", ["day", "hour", "quarter", "minute"])
 def test_every_bar_at_every_zoom_opens_exactly_its_pictures(surfaced, bin_name):
     """The invariant the surface is built on, checked over the whole
-    extent at each zoom: a bar's link answers the bar's count."""
+    extent at each zoom: a bar's link returns the bar's count."""
 
     view = surfaced.get(
         "/timeline/density",

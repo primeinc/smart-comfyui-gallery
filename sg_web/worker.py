@@ -3,7 +3,7 @@
 Realtime by construction. Every observable change a turn makes -- claim,
 item, terminal state -- is pushed through `publish` the moment it commits,
 so a subscribed page renders progress as it happens and nothing anywhere
-polls. The job row stays the truth: a reload, a dropped socket or a
+polls. The job row stays the system of record: a reload, a dropped socket or a
 restart recovers by reading it back, never by replaying events.
 
 The thread crosses two boundaries that are easy to get wrong:

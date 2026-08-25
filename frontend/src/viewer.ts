@@ -192,7 +192,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     // browsed. A class would hide the state; the attribute IS the state.
     root.dataset.absorbed = look.scale > ABSORBED ? "true" : "false";
     root.dataset.zoom = String(Math.round(look.scale * 100));
-    // A picture being examined belongs ON TOP of the furniture around
+    // A picture being examined belongs ON TOP of the chrome around
     // it. Fitted, the stage sits in the layout like any other panel;
     // zoomed, it is the thing being done, and the chrome, the filmstrip
     // and the inspector are in its way. The attribute IS the state and
@@ -355,7 +355,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   /**
    * Whether Alt walks the library on this run.
    *
-   * The run's answer, rendered onto the root (db/settings.py
+   * The run's setting, rendered onto the root (db/settings.py
    * `viewer_wheel_modifier`). Alt is the ONLY modifier that can mean this:
    * ctrl+wheel is how a browser delivers a trackpad pinch, and shift+wheel
    * is its horizontal scroll, so neither is available to mean "next
@@ -545,7 +545,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   onDocument("pointermove", wake);
 
   // --- the filmstrip ---------------------------------------------------------
-  // Rendered by the server in answer order, with the walked question
+  // Rendered by the server in result-set order, with the walked query
   // already on every href. Nothing here sorts, pages or invents a member:
   // the only two jobs are putting the current one where the eye expects
   // it, and making a click mean the same thing an arrow key means.

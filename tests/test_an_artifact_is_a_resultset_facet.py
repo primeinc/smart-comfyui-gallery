@@ -1,13 +1,13 @@
-"""An artifact describes a media predicate; ResultSet owns the answer.
+"""An artifact describes a media predicate; ResultSet owns the result set.
 
 The artifact page, /g?artifact=, MediaView walking, bulk selection and
 saved smart views all consume the ONE materialized projection -- the
-same ordered ids under the same answer identity -- and no surface owns
+same ordered ids under the same result set identity -- and no surface owns
 a private artifact media list. Whether membership means file_artifact
 or generation.workflow_id is the ResultSet's private knowledge; a
 twice-stacked LoRA is one media member; counts count pictures. These
-tests pin the Interface -- two surfaces asking one question get one
-answer -- never today's helper mechanics.
+tests pin the Interface -- two surfaces asking one query get one
+result set -- never today's helper mechanics.
 """
 
 from __future__ import annotations
@@ -94,12 +94,12 @@ def _asked(client, **params) -> dict:
         connect.close(conn)
 
 
-# --- one answer, every surface ---------------------------------------------
+# --- one result set, every surface -----------------------------------------
 
 
 def test_the_artifact_page_and_the_gallery_answer_one_question(recipes):
-    """/l/{slug} and /g?artifact={slug}: same ordered ids, same answer
-    identity, and the shelf's aggregate count agrees -- no surface owns
+    """/l/{slug} and /g?artifact={slug}: same ordered ids, same result set
+    identity, and the index page's aggregate count agrees -- no surface owns
     rival arithmetic."""
     page = recipes.get("/l/lora-filmgrain").json()
     direct = _asked(recipes, artifact="lora-filmgrain")
@@ -133,7 +133,7 @@ def test_a_twice_stacked_lora_is_one_media_member(recipes):
 
 def test_the_artifact_facet_is_a_conjunction(recipes):
     """artifact composes with kind, folder and the authored facets like
-    any other predicate -- one real question, not a mode."""
+    any other predicate -- one real query, not a mode."""
     told = _asked(recipes, artifact="checkpoint-alpha")
     assert [row["slug"] for row in told["items"]] == ["pic-3", "pic-2", "pic-1", "pic-0"]
     rated = _asked(recipes, artifact="checkpoint-alpha", rating_min=4)
@@ -183,7 +183,7 @@ def test_a_semantic_artifact_question_constrains_before_fusion(recipes, monkeypa
         connect.close(conn)
 
 
-# --- identity is not spelling ----------------------------------------------
+# --- identity is not encoding ----------------------------------------------
 
 
 def test_a_retired_artifact_spelling_heals_to_the_canonical_address(recipes):
@@ -196,7 +196,7 @@ def test_a_retired_artifact_spelling_heals_to_the_canonical_address(recipes):
         conn.commit()
     finally:
         connect.close(conn)
-    after = _asked(recipes, artifact="lora-filmgrain")  # the retired spelling still binds
+    after = _asked(recipes, artifact="lora-filmgrain")  # the retired slug still binds
     assert after["answer"] == before["answer"], "identity is the entity, not the spelling"
     assert "artifact=film-grain-xl" in after["qs"], "the canonical spelling heals to the live slug"
     moved = recipes.get("/m/lora-filmgrain", follow_redirects=False)
@@ -299,7 +299,7 @@ def test_a_v1_rule_still_means_exactly_what_it_meant(recipes):
 
 def test_the_durable_shape_refuses_what_this_build_cannot_mean(recipes):
     """Versioned means versioned: exact key sets per version, exact
-    32-hex spellings before the whitespace-forgiving decoder -- every
+    32-hex encodings before the whitespace-forgiving decoder -- every
     deviation is BROKEN, never an evaluation that quietly dropped the
     part this build did not understand."""
     import json as json_module
@@ -348,9 +348,9 @@ def test_the_durable_shape_refuses_what_this_build_cannot_mean(recipes):
 
 
 def test_a_healed_question_saves_the_same_identity(recipes):
-    """The healing crosses the save Seam: a retired artifact spelling
-    whose ResultSet answer is on screen saves -- and replaces -- as the
-    SAME entity uuid the live spelling would, because durable meaning is
+    """The healing crosses the save Seam: a retired artifact slug
+    whose result set is on screen saves -- and replaces -- as the
+    SAME entity uuid the live slug would, because durable meaning is
     the identity, never the words the URL arrived with."""
     import json as json_module
 
@@ -391,7 +391,7 @@ def test_a_healed_question_saves_the_same_identity(recipes):
 
 
 def test_selection_and_the_walk_ride_the_artifact_answer(recipes):
-    """Bulk curation and MediaView walking work on an artifact answer
+    """Bulk curation and MediaView walking work on an artifact's result set
     with zero artifact-specific code -- the payoff for the facet being
     a facet."""
     direct = _asked(recipes, artifact="checkpoint-alpha")

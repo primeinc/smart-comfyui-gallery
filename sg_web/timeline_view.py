@@ -4,8 +4,8 @@ database.
 Months and days come from derived_media_context (the local wall clock
 when one was claimed, the knowable instant otherwise) and the overlay
 comes from the latest event runs. Every month, day, bin and session is
-a LINK into the gallery -- spelled by the Facet Interface, so the
-ResultSet answers the media and the timeline never grows a second
+a LINK into the gallery -- encoded by the Facet Interface, so the
+ResultSet returns the media and the timeline never grows a second
 membership engine. Nothing here writes, groups, geocodes or interprets:
 POST /jobs/context and POST /jobs/events are where the interpretation
 is refreshed, and this page renders whatever they last produced, saying
@@ -35,10 +35,10 @@ from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
 from sg_web.wire import Wire
 
-#: The surface's scope is a gallery question (db/resultset.py scope_of):
-#: its scopes and facets in the live spelling, unsorted, unpaged. The
-#: timeline never invents its own spelling of a link -- every link is
-#: that question plus the facets the link adds, ordered by moment.
+#: The surface's scope is a gallery query (db/resultset.py scope_of):
+#: its scopes and facets in the live encoding, unsorted, unpaged. The
+#: timeline never invents its own encoding of a link -- every link is
+#: that query plus the facets the link adds, ordered by moment.
 WHOLE = resultset.GalleryQuery()
 
 
@@ -112,9 +112,9 @@ def _session_range(conn, f: list[str] | None) -> tuple[list[str], int, int] | No
 
 
 def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str, list], resultset.GalleryQuery]:
-    """The question bound: (the conjunct and its values, the question in
-    its live spelling). A slug nothing lives at is a 404; a rule-defined
-    collection that cannot be answered right now is refused with why."""
+    """The query bound: (the conjunct and its values, the query in
+    its live encoding). A slug nothing lives at is a 404; a rule-defined
+    collection that cannot be evaluated right now is refused with why."""
     try:
         sql, values, live = resultset.scope_of(
             conn,
@@ -132,7 +132,7 @@ def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str
 
 def _scope_told(question: resultset.GalleryQuery) -> dict | None:
     """What the page says it is scoped to, or None for the whole library:
-    the canonical spelling and its parts, one per scope and facet."""
+    the canonical form and its parts, one per scope and facet."""
     parts = [
         {"key": key, "value": value}
         for key, value in (
@@ -161,7 +161,7 @@ PLANNER_FOR = {
 
 _SPAN = {"day": 86_400, "hour": 3_600, "minute": 60}
 
-#: Sessions one answer lists -- a whole library's extent can touch
+#: Sessions one result set lists -- a whole library's extent can touch
 #: thousands; the page lists the most recent this many, says how many
 #: more there are, and the person narrows the window. Never a silent
 #: cut. Every listed session carries its thumbnails.
@@ -201,7 +201,7 @@ def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.Gall
         "interpreted": have,
         "present": present,
         "contested": contested,
-        #: a session run answers only at the current interpretation
+        #: a session run is valid only at the current interpretation
         #: (db/pages.py TIMELINE_EVENTS); one authored place moves the
         #: generation and every session link goes dark until the events
         #: job runs again -- the page names that remedy, never an empty list
@@ -369,7 +369,7 @@ def _next_month(d: datetime.datetime) -> datetime.datetime:
 
 
 def _ticks(lo: float, hi: float) -> list[dict]:
-    """The axis's furniture: a tick per step of the zoom with its label,
+    """The axis's chrome: a tick per step of the zoom with its label,
     major at the calendar boundary above it (midnight, the 1st, January)."""
     span = hi - lo
 
@@ -561,7 +561,7 @@ SEGMENTS_MOST = 40
 _H = 1000
 SEGMENT_LEAST = 25.0
 GAP_H = 10.0
-#: The most pictures one spread answers.
+#: The most pictures one spread returns.
 SPREAD_MOST = 400
 
 
@@ -641,7 +641,7 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
             {
                 "at": at,
                 "end": end,
-                #: the link's window, clipped to the library, spelled as the URL spells it
+                #: the link's window, clipped to the library, encoded as the URL encodes it
                 "window_start": int(max(whole_lo, at)),
                 "year": year,
                 "label": label,
@@ -1043,7 +1043,7 @@ class TimelineScopePart(Wire):
 
     key: str
     value: object
-    #: only a facet is spelled; a scope's value is its own address
+    #: only a facet is encoded; a scope's value is its own address
     spelled: str | None = None
 
 
@@ -1062,7 +1062,7 @@ class TimelineCoverage(Wire):
     interpreted: int
     present: int
     contested: int
-    #: a session run answers only at the current interpretation; false
+    #: a session run is valid only at the current interpretation; false
     #: means the groups are stale and the page says so
     events_current: bool
     contested_qs: str
@@ -1178,7 +1178,7 @@ class TimelineSession(Wire):
 
 
 class TimelineTick(Wire):
-    """One step of the axis's furniture, major at the calendar boundary
+    """One step of the axis's chrome, major at the calendar boundary
     above it (midnight, the 1st, January)."""
 
     x: float
@@ -1423,7 +1423,7 @@ class TimelineSurface(Wire):
     Null `start`, `end`, `extent`, `overview` and `scrubber` together mean
     the scope holds nothing placeable -- and `coverage` then says why and
     what to run about it, which is the whole reason an empty surface is
-    still an answer.
+    still a valid result.
     """
 
     #: the zoom, and how wide one bar is in seconds
@@ -1468,7 +1468,7 @@ class TimelineSurface(Wire):
 
 
 class TimelineMoment(Wire):
-    """A picture and when it is: the smallest thing the timeline answers."""
+    """A picture and when it is: the smallest thing the timeline returns."""
 
     slug: str
     moment: float
@@ -1528,9 +1528,9 @@ def density(
     f: FromQuery[list[str] | None] = None,
     lean: FromQuery[bool] = False,
 ) -> Response[TimelineSurface]:
-    """The surface as JSON (`_surface`): the same answer `/timeline`
+    """The surface as JSON (`_surface`): the same response `/timeline`
     gives a machine, with `bin` as an explicit zoom when asked and the
-    whole extent when no window is -- the machine's spelling."""
+    whole extent when no window is -- the machine's encoding."""
     asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
     if bin_name is not None and bin_name not in pages.BINS:
         raise ClientException(f"no bin named {bin_name!r}; one of {', '.join(pages.BINS)}")
@@ -1692,8 +1692,9 @@ def at(
 @get(
     "/timeline",
     # The route negotiates three ways, and a union that mixes a page with a
-    # JSON answer reaches OpenAPI as the empty schema however precisely the
-    # arms are written (litestar v2.24.0). The JSON answer is declared here.
+    # JSON response reaches OpenAPI as the empty schema however precisely
+    # the arms are written (litestar v2.24.0). The JSON response is
+    # declared here.
     responses={
         200: ResponseSpec(
             data_container=TimelineSurface,
@@ -1740,7 +1741,7 @@ def timeline(
         told = _surface(conn, state, asked, start, end, snap=snap)
     finally:
         connect.close(conn)
-    # The same answer either way, stated once: the machine gets the model
+    # The same result either way, stated once: the machine gets the model
     # and the templates render from what it validated, so the page and the
     # contract cannot describe different surfaces.
     surface = TimelineSurface.model_validate(told)

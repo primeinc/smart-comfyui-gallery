@@ -4,7 +4,7 @@
 // fetches the address's HX fragment and PUSHES the URL once; requested
 // re-opens REPLACE it; dismissal -- close button, Escape, a click on
 // the backdrop (never on content) -- IS history Back; popstate makes
-// the screen agree with whatever the URL now names; any non-OK answer
+// the screen agree with whatever the URL now names; any non-OK response
 // falls back to full navigation, because the address always works as a
 // page.
 //
@@ -21,7 +21,7 @@
 //               "everything else" is exactly the underlay.
 //
 // The one hook is `generation`: an adapter walking an ordered ResultSet
-// supplies its view currency, sent out-of-band and compared against the
+// supplies its view data version, sent out-of-band and compared against the
 // fragment's own generation -- a mismatch redraws whole rather than
 // mounting one generation over another. Everything an adapter does
 // beyond this (media's arrows, person's rename) is its own file's
@@ -44,9 +44,9 @@ export interface OverlaySpec {
   trigger: string;
   /** The prefix the overlay's addresses share, for popstate. */
   pathPrefix: string;
-  /** The adapter's view currency, compared against the fragment's own. */
+  /** The adapter's view data version, compared against the fragment's own. */
   generation?: () => string | null;
-  /** Refresh the generation evidence; true means the mounted answer is proven unchanged. */
+  /** Refresh the generation evidence; true means the mounted content is proven unchanged. */
   recover?: () => Promise<boolean>;
   /**
    * The adapter's chance to spend a dismissal on its own state first.
@@ -110,10 +110,11 @@ export function addressableOverlay(spec: OverlaySpec): Overlay | null {
     //
     // The loop is the 409 recovery, under the SAME ticket: the
     // library generation moves on every commit, but most commits move
-    // no answer. An adapter that can PROVE its mounted answer is
-    // unchanged (spec.recover: refresh the generation evidence, true
-    // = proven) earns exactly one retry; a real change, an unprovable
-    // one, or a second refusal falls back to the whole page.
+    // nothing the adapter has mounted. An adapter that can PROVE its
+    // mounted content is unchanged (spec.recover: refresh the
+    // generation evidence, true = proven) earns exactly one retry; a
+    // real change, an unprovable one, or a second refusal falls back
+    // to the whole page.
     let mended = false;
     while (true) {
       const headers: Record<string, string> = { "HX-Request": "true" };

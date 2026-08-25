@@ -5,7 +5,7 @@ description, parent), membership definition (filed rows or a typed
 rule) and lifecycle (active or archived) are separable facts with one
 owner each: db/collections.py owns the definition and the lifecycle,
 db/collection_rules.py owns what a rule means, the ResultSet owns the
-media answer. Every definition write is desired state under an
+media result set. Every definition write is desired state under an
 optimistic revision claim; membership never bumps the revision; archive
 retires discoverability and nothing else; and no user-facing hard
 delete exists, because an address that can someday resolve to a
@@ -14,8 +14,8 @@ different entity is the lie the whole addressing doctrine forbids.
 A smart collection is a typed rule the ResultSet evaluates.
 
 The rule owns MEMBERSHIP -- durable, uuid-referenced, actor-pinned,
-never executable; the ResultSet still owns the ordered answer, so the
-outer question's facets intersect the rule's members instead of
+never executable; the ResultSet still owns the ordered result set, so the
+outer query's facets intersect the rule's members instead of
 replacing them. Every failure state stays loud: unevaluated, broken
 and unavailable are never presented as an empty collection.
 """
@@ -89,7 +89,7 @@ def _raw(client) -> sqlite3.Connection:
 def _made(client, path: str, **body) -> dict:
     """A collection created as Arrange: the write must succeed.
 
-    A write answers with the address and the definition's next revision,
+    A write returns the address and the definition's next revision,
     and the document is read back from that address. Asserting on what a
     write ECHOED never proved it was stored; asserting on what the address
     serves afterwards does.
@@ -345,7 +345,7 @@ def test_the_parents_offer_excludes_self_and_descendants(curated, hierarchy):
     The moves the database would allow are read for the browser and for
     nobody else -- no machine is offered them -- so this asserts on the
     rendered `<select name="parent">` rather than on a JSON key that only
-    ever existed because a write answered with the management view.
+    ever existed because a write returned the management view.
     """
     for name in ("Elsewhere", "Retired"):
         _made(curated, "/albums", name=name)
@@ -411,7 +411,7 @@ def test_a_stale_definition_edit_refuses_with_zero_mutation(curated, draft):
 def test_an_if_match_header_never_authorizes_a_write(curated, draft, header):
     """The concurrency interface is expected_rev in the body, nowhere
     else: a header token arrives unbound to the collection in the URL,
-    so NO header may authorize a write -- not even one spelling this
+    so NO header may authorize a write -- not even one encoding this
     collection's own current revision."""
     veiled = curated.patch(f"/t/{draft}", json={"description": "x"}, headers={"if-match": header})
 
@@ -573,11 +573,11 @@ def test_an_archived_collection_is_off_the_shelf_and_out_of_the_picker(curated, 
 
 
 def test_both_album_lists_carry_the_same_keys(curated, archived_project):
-    """`/albums` and its archived shelf are one representation.
+    """`/albums` and its archived index are one representation.
 
     The two lists are built from different statements and the archived one
-    computes no spans, so it would be easy for them to answer with different
-    key sets and for nobody to notice. They do not: a shelf row carries
+    computes no spans, so it would be easy for them to return different
+    key sets and for nobody to notice. They do not: an index row carries
     first_seen and last_seen as null, because the contract says a listed
     collection has them, not because that list happened to look them up.
     """
@@ -799,7 +799,7 @@ def test_an_invalid_rule_at_conversion_leaves_the_listed_definition_whole(curate
 
 
 def test_a_write_sends_the_browser_to_where_the_facts_landed(curated, keepers):
-    """A write answers an address and a revision, and the facts are AT
+    """A write returns an address and a revision, and the facts are AT
     that address -- the browser renders what the server read back, never
     what it hoped its click did.
 
@@ -820,7 +820,7 @@ def test_a_write_sends_the_browser_to_where_the_facts_landed(curated, keepers):
     assert (read["name"], read["color"], read["description"]) == ("Kept", "#001122", "d")
 
 
-# --- a smart collection is a saved question --------------------------------
+# --- a smart collection is a saved query -----------------------------------
 
 
 @pytest.fixture
@@ -868,7 +868,7 @@ def test_the_outer_questions_facets_intersect_the_rules_members(curated, best_st
 
 def test_the_rule_survives_renames_because_it_holds_the_entity(curated):
     """TEMPORAL SCENARIO: the rule names the folder by entity, so renaming
-    the folder changes nothing the rule answers."""
+    the folder changes nothing the rule returns."""
     slug = _made(curated, "/albums/smart", name="In the library", folder="lib")["slug"]
     before = _slugs(curated, album=slug)
     assert len(before) == 6
@@ -913,7 +913,7 @@ def test_a_semantic_rule_without_take_is_refused(curated):
 
 @pytest.fixture
 def ranked_retrieval(curated, monkeypatch):
-    """Retrieval answers every allowed file in id order, no model in the loop."""
+    """Retrieval returns every allowed file in id order, no model in the loop."""
     from db import retrieval
 
     conn = _raw(curated)
@@ -948,7 +948,7 @@ def test_a_semantic_rule_nothing_can_answer_is_unavailable_never_empty(curated, 
         raise LookupError("no space can answer")
 
     monkeypatch.setattr(retrieval, "query", refuses)
-    curated.post("/i/pic-0/favorite", json={"value": True})  # move the currency past the cached answer
+    curated.post("/i/pic-0/favorite", json={"value": True})  # move the data version past the cached result set
 
     body = _view(curated, slug)
 
@@ -1010,8 +1010,8 @@ def test_the_albums_index_never_evaluates_a_rule(curated, monkeypatch):
 
 
 def test_an_edited_rule_is_a_new_question(curated):
-    """TEMPORAL SCENARIO: the edited rule answers immediately through
-    normal currency."""
+    """TEMPORAL SCENARIO: the edited rule reflects the change immediately
+    through the normal data version check."""
     slug = _made(curated, "/albums/smart", name="Moving", rating_min=5)["slug"]
     assert _slugs(curated, album=slug) == ["pic-3"]
 
@@ -1183,7 +1183,7 @@ def test_deleting_the_rule_first_is_the_deliberate_transition(curated):
 def test_a_write_answers_where_to_go_and_nothing_else(curated):
     """A write owes the address and the definition's next revision.
 
-    It used to answer with the whole management view -- the ResultSet page
+    It used to return the whole management view -- the ResultSet page
     evaluated, the spans, the places and every legal parent move -- which
     made every rename re-run the collection's rule to build a body the
     browser reads one field out of. That was also a THIRD representation,
@@ -1199,7 +1199,7 @@ def test_a_write_answers_where_to_go_and_nothing_else(curated):
 
 
 def test_a_rule_that_ran_is_evaluated(curated):
-    """A typed rule the ResultSet could answer counted its members."""
+    """A typed rule the ResultSet could evaluate counted its members."""
     told = _view(curated, _made(curated, "/albums/smart", name="Everything")["slug"])
 
     assert told["state"] == "evaluated"
@@ -1253,7 +1253,7 @@ def test_a_rule_nothing_can_answer_is_unavailable(curated, ranked_retrieval, mon
         raise LookupError("no space can answer")
 
     monkeypatch.setattr(retrieval, "query", refuses)
-    # move the currency past the cached answer, so the rule is asked again
+    # move the data version past the cached result set, so the rule is asked again
     assert curated.post("/i/pic-0/favorite", json={"value": True}).status_code == 201
 
     told = _view(curated, slug)

@@ -1,6 +1,6 @@
 """Run what was asked for: one claimed job, item by item, off the row.
 
-The row is the truth the whole time. Progress is `done_count` moving,
+The row is the current state the whole time. Progress is `done_count` moving,
 cancellation is a flag the loop reads between items, resumption is
 `job_item` rows still pending, and a killed process leaves nothing to
 clean up -- its lease expires and the next `run_next` picks the job up
@@ -87,7 +87,7 @@ class Report:
         The duration is the point. `phase.finished` used to carry nothing,
         so anything that wanted to know where a job's time went had to
         pair the events up itself and subtract their `at` stamps -- which
-        made "what is slow" a question you could only answer by writing a
+        made "what is slow" something you could only determine by writing a
         program, and every consumer wrote a different one.
 
         Measured with `perf_counter` rather than the ledger's clock. That
@@ -185,7 +185,7 @@ def submit_faces(
     has looked at for its current bytes (derived_face_scan), as one job
     -- or, with `everything`, over all of them again; None when nothing
     is left. ANY backend's pass counts: switching backends and wanting
-    the other's answer everywhere is `everything`, said so.
+    the other's results everywhere is `everything`, said so.
 
     A face on a video is a face on a sampled frame; the handler routes by
     the file kind, and the schema already keys every face to the moment it
@@ -580,7 +580,7 @@ class _Said:
 
     Keyed by job alone, unlike vectors: one job carries one
     `caption_model` in its payload (db/runner.py `submit_annotate` reads
-    the setting once), so there is no second axis for two answers about
+    the setting once), so there is no second axis for two results about
     one file to cross on.
     """
 
@@ -794,7 +794,7 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     def _pixels(conn, row, file_id: int) -> int:
         """The member's resolution, the primary fidelity axis. The file
         row knows it once ingest has run; until then the decoder
-        answers from the media's own headers, whatever the kind -- byte
+        derives it from the media's own headers, whatever the kind -- byte
         size must NEVER stand in for it, because bytes measure
         compression: a 48px JPEG outweighs a lossless original of the
         same picture at four times the pixels."""
@@ -960,7 +960,7 @@ def submit_cluster(conn, now: float) -> int:
     spaces ride in the payload -- `job_item` holds integers, so each item
     is an index into that list, fixed at submit time. No spaces means a
     job with nothing to do, which settles `done` honestly rather than
-    being refused: "cluster an unindexed library" is an answer, not an
+    being refused: "cluster an unindexed library" is a result, not an
     error.
     """
     spaces = conn.execute(
@@ -979,7 +979,7 @@ def submit_cluster(conn, now: float) -> int:
 def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     """Cluster one embedding space and give every group a person.
 
-    The run's whole answer is replaced -- clusters, inferred appearances,
+    The run's whole result set is replaced -- clusters, inferred appearances,
     and the placeholder people minted for groups nobody has named. Names
     are never carried across by similarity: `seed_clusters_from_assertions`
     re-applies them from what a human wrote down, and only the groups
@@ -991,7 +991,7 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     told = report()
     model_id, model_version = payload["spaces"][index]
     # Method and threshold pinned once and passed to BOTH calls: recomputing
-    # the run identity from separately-spelled defaults is how a drift makes
+    # the run identity from separately-encoded defaults is how a drift makes
     # the DELETE below clear a different run's attributions.
     pinned = derived.threshold_for(model_id)
     told.phase("clustering", model_id=model_id, model_version=model_version, threshold=pinned)
@@ -1395,12 +1395,12 @@ def run_next(
 
     `on_progress` hears every observable change -- claim, each finished
     item, the terminal state -- as `{job, kind, state, done, total}`. This
-    is the delta feed the live channel publishes; the row stays the truth
-    a subscriber renders from cold. Every state change COMMITS BEFORE it
-    is spoken, terminal states included: a delta describing an uncommitted
-    write invites the subscriber to read the row and find it behind what
-    the wire just said -- caught live by a client whose snapshot read
-    'running' after its socket said 'done'.
+    is the delta feed the live channel publishes; the row stays the
+    system of record a subscriber renders from cold. Every state change
+    COMMITS BEFORE it is spoken, terminal states included: a delta
+    describing an uncommitted write invites the subscriber to read the
+    row and find it behind what the wire just said -- caught live by a
+    client whose snapshot read 'running' after its socket said 'done'.
 
     `on_event` hears the ledger (db/ledger.py): every row this turn
     appends, spoken after the commit that made it durable and carrying
@@ -1606,7 +1606,7 @@ def run_next(
         committed()
         # The commit succeeded, so the item's representation writes are
         # durable -- NOW they may reach the resident indexes. A crash in
-        # the gap is safe: the index lags committed truth until the next
+        # the gap is safe: the index lags the committed state until the next
         # align repairs it, which is the one direction the invariant
         # permits (it may lag SQLite, never lead it).
         similarity_module.apply_pending(conn)

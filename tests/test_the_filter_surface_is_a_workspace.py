@@ -1,18 +1,18 @@
-"""Asking, in a browser: the filter surface as a person meets it.
+"""Querying, in a browser: the filter surface as a person meets it.
 
 The vocabulary and the counting are proved without a browser
 (test_the_query_vocabulary_is_one_module.py). What needs one is
 everything that decides whether a person can actually USE them:
 
-  * that the door is VISIBLE. A filter surface reachable only by knowing
-    a keyboard shortcut is a filter surface for whoever wrote it, and no
-    unit test can tell the difference.
-  * that the URL stays the question. Reload, a pasted link and Back are
+  * that the entry point is VISIBLE. A filter surface reachable only by
+    knowing a keyboard shortcut is a filter surface for whoever wrote it,
+    and no unit test can tell the difference.
+  * that the URL stays the query. Reload, a pasted link and Back are
     claims about the browser, and they are the difference between a
     shared link and a screenshot.
   * that filtering is ONE editing session. "Back goes to what I was
     looking at" cannot be asserted anywhere but a real history stack.
-  * that what is REMEMBERED is the furniture and never the question --
+  * that what is REMEMBERED is presentation state and never the query --
     the drawer stays open, the filters do not follow you home.
 
 The library is mixed on purpose: generated stills of two recipes, a
@@ -151,7 +151,7 @@ def _pick(page: Page, key: str, label: str) -> None:
     page.wait_for_selector("[data-grid]", timeout=15_000)
 
 
-# --- the door is visible ----------------------------------------------------
+# --- the entry point is visible ---------------------------------------------
 
 
 def test_the_filters_door_is_always_there_and_says_how_many(page: Page, live: Live, unbroken):
@@ -173,7 +173,7 @@ def test_the_filters_door_is_always_there_and_says_how_many(page: Page, live: Li
 
 
 def test_the_surface_offers_far_more_than_the_header_ever_did(page: Page, live: Live, unbroken):
-    """The header carried three questions out of a registry of thirty.
+    """The header carried three facets out of a registry of thirty.
     This is the number that changed."""
     _open_gallery(page)
     _open_filters(page)
@@ -213,7 +213,7 @@ def test_choosing_a_value_narrows_the_answer_and_says_so(page: Page, live: Live,
 
 def test_a_checkpoint_and_a_lora_compose(page: Page, live: Live, unbroken):
     """The `artifact` scope holds exactly one, so "this checkpoint with
-    that LoRA" was unaskable from any surface. Two chips, one answer."""
+    that LoRA" could not be queried from any surface. Two chips, one result set."""
     _open_gallery(page)
     _pick(page, "generation.checkpoint", "dreamshaper_8")
     _pick(page, "generation.lora", "filmGrain")
@@ -226,7 +226,7 @@ def test_a_checkpoint_and_a_lora_compose(page: Page, live: Live, unbroken):
 def test_a_dimensions_own_list_still_offers_what_it_would_give(page: Page, live: Live, unbroken):
     """Disjunctive faceting, where a person can see it.
 
-    Counted against the whole question, choosing dreamshaper would leave
+    Counted against the whole query, choosing dreamshaper would leave
     juggernaut reading 0 and the list a person opened to change their
     mind could only agree with them.
     """
@@ -273,8 +273,8 @@ def test_the_surface_is_not_a_feature_for_one_file_type(page: Page, live: Live, 
 
 
 def test_ai_generated_is_asked_of_the_fact_not_the_interpretation(page: Page, live: Live, unbroken):
-    """`has.generation` answers before any context job has run, which is
-    the state this library is in and the state a fresh one is in."""
+    """`has.generation` can be evaluated before any context job has run,
+    which is the state this library is in and the state a fresh one is in."""
     _open_gallery(page)
     _pick(page, "has.generation", "yes")
     assert _cells(page) == len(MADE)
@@ -286,7 +286,7 @@ def test_ai_generated_is_asked_of_the_fact_not_the_interpretation(page: Page, li
     assert _cells(page) == 2, "the photograph and the clip"
 
 
-# --- the URL is the question ------------------------------------------------
+# --- the URL is the query ---------------------------------------------------
 
 
 def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Live, unbroken):
@@ -299,7 +299,7 @@ def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Li
     page.wait_for_selector("[data-grid]", timeout=15_000)
     assert (_cells(page), sorted(_chips(page))) == (cells, chips)
 
-    # a different browsing context entirely: the link is the question
+    # a different browsing context entirely: the link is the query
     fresh = page.context.browser.new_context(base_url=live.url) if page.context.browser else None
     assert fresh is not None
     try:
@@ -344,9 +344,9 @@ def test_a_chip_opens_the_filter_that_made_it(page: Page, live: Live, unbroken):
 
 
 def test_the_drawer_is_remembered_and_the_filters_are_not(page: Page, live: Live, unbroken):
-    """The furniture is workspace state. The question is the URL's, and
-    a filter that outlived its URL would mean one link answering
-    differently for two people."""
+    """The chrome's open/closed state is workspace state. The query is
+    the URL's, and a filter that outlived its URL would mean one link
+    resolving differently for two people."""
     _open_gallery(page)
     _open_filters(page)
     _open_dimension(page, "generation.checkpoint")
@@ -367,7 +367,7 @@ def test_the_drawer_is_remembered_and_the_filters_are_not(page: Page, live: Live
 
 
 def test_filtering_is_one_editing_session_not_fourteen(page: Page, live: Live, unbroken):
-    """Back means "the question I had before I started filtering", not
+    """Back means "the query I had before I started filtering", not
     six presses of undo-one-clause."""
     page.goto("/g?kind=image")
     page.wait_for_selector("[data-grid]", timeout=15_000)
@@ -404,24 +404,25 @@ def test_slash_puts_the_caret_in_the_search_box(page: Page, live: Live, unbroken
 
 
 def test_choosing_two_kinds_means_either_and_reads_as_one_chip(page: Page, live: Live, unbroken):
-    """The most ordinary multi-select there is, and it was unaskable: a
-    scope holds one value, and repeated facets ANDed -- which for a
-    dimension a file has exactly one of answers nothing, every time."""
+    """The most ordinary multi-select there is, and it could not be
+    queried: a scope holds one value, and repeated facets ANDed -- which
+    for a dimension a file has exactly one of returns an empty result set,
+    every time."""
     _open_gallery(page)
     _pick(page, "media.kind", "image")
     assert _cells(page) == WHOLE - 1
     _pick(page, "media.kind", "video")
     assert _cells(page) == WHOLE, "either kind, not both at once"
 
-    # ONE chip, because an OR group is one thing the question says.
+    # ONE chip, because an OR group is one thing the query says.
     # Two chips would read exactly like two ANDed clauses.
     assert _chips(page) == ["kind image or video"], _chips(page)
 
 
 def test_any_and_all_are_offered_only_where_both_are_real(page: Page, live: Live, unbroken):
-    """A file has one kind, so "all of these kinds" is a question that
-    answers nothing by construction and is not offered. A picture
-    carries several LoRAs, so both readings are real."""
+    """A file has one kind, so "all of these kinds" is a query that
+    returns an empty result set by construction and is not offered. A
+    picture carries several LoRAs, so both readings are real."""
     _open_gallery(page)
     _open_dimension(page, "media.kind")
     assert page.locator('[data-filter-choice="media.kind"]').count() == 0
@@ -431,7 +432,7 @@ def test_any_and_all_are_offered_only_where_both_are_real(page: Page, live: Live
 
 
 def test_switching_to_all_respells_the_clauses_already_held(page: Page, live: Live, unbroken):
-    """The switch changes the QUESTION, not merely the next click -- or
+    """The switch changes the QUERY, not merely the next click -- or
     the control would sit there disagreeing with the chips above it."""
     _open_gallery(page)
     _pick(page, "generation.lora", "filmGrain")
@@ -463,8 +464,8 @@ def test_the_advanced_door_is_there_and_asks_the_long_tail(page: Page, live: Liv
     assert offered, "the registry has keys and they are listed with counts"
     # Discovered, not curated: these are whatever the tools that made
     # this library happened to write, which is the whole point of the
-    # door. Asserting a PARTICULAR key would be asserting the parsers'
-    # current output, which is not what this surface promises.
+    # advanced section. Asserting a PARTICULAR key would be asserting the
+    # parsers' current output, which is not what this surface promises.
     picked = next(iter(offered))
     _pick(page, "param.has", picked)
     assert _cells(page) == offered[picked], f"choosing {picked!r} leaves exactly what it was counted at"
@@ -474,7 +475,7 @@ def test_the_advanced_door_is_there_and_asks_the_long_tail(page: Page, live: Liv
 def test_folder_and_album_offer_their_values_now(page: Page, live: Live, unbroken):
     """They held a slug and offered no list, so the drawer showed a
     heading with nothing under it -- a filter you can only use if you
-    already know the answer."""
+    already know the value."""
     _open_gallery(page)
     _open_dimension(page, "folder")
     assert _values(page, "folder"), "a folder list, counted"

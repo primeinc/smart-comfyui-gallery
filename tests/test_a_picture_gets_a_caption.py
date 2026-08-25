@@ -218,7 +218,7 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)
         try:
-            settings.put(conn, "caption_model", "fake/captioner")  # the model the fake answers as
+            settings.put(conn, "caption_model", "fake/captioner")  # the model the fake responds as
             conn.commit()
         finally:
             connect.close(conn)
@@ -270,7 +270,7 @@ def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatc
             conn.commit()
         finally:
             connect.close(conn)
-        # the grid says it on hover, and the machine answer carries it
+        # the grid says it on hover, and the machine response carries it
         grid = client.get("/g", headers={"accept": "text/html"}).text
         assert 'title="a green field" data-said' in grid
         conn = connect.connect(client.app.state.db_path, read_only=True)

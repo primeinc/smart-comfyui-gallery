@@ -9,10 +9,10 @@ timed AND a semantic (pre-RRF) constraint, because both ride the one
 eligibility construction. Deliberately not a predicate AST: the
 vocabulary is registered, closed, and loud about what it does not know.
 
-The URL spelling is `f=key:op:value`, split on exactly two colons so a
+The URL encoding is `f=key:op:value`, split on exactly two colons so a
 value may carry colons of its own; facets normalize -- deduplicated and
 canonically ordered -- before they enter a GalleryQuery, so ?f=A&f=B
-and ?f=B&f=A are one question with one fingerprint.
+and ?f=B&f=A are one query with one fingerprint.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ ANY = "any"
 
 #: The vocabulary, closed: each key names where the fact lives and how
 #: it may be asked. Adding a key here is the WHOLE work of adding a
-#: gallery filter -- URL spelling, canonical qs, fingerprint, timed
+#: gallery filter -- URL encoding, canonical qs, fingerprint, timed
 #: walk and pre-RRF eligibility all follow.
 REGISTRY: dict[str, _Spec] = {
     "capture.iso": _Spec(
@@ -95,7 +95,7 @@ REGISTRY: dict[str, _Spec] = {
         "date",
         ("eq", "gte", "lte"),
         # composed around context.HUMAN_MOMENT -- the link and the
-        # timeline shelf share one definition of the human day
+        # timeline share one definition of the human day
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy}"
         " AND strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') {op} ?)",
@@ -141,8 +141,9 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy} AND mc.place_id {op} ?)",
     ),
     #: A session's link: the members of one CURRENT event -- a run proven
-    #: over this interpretation, so a stale hypothesis answers nothing.
-    #: The timeline links here instead of growing a membership engine.
+    #: over this interpretation, so a stale hypothesis returns an empty
+    #: result set. The timeline links here instead of growing a
+    #: membership engine.
     "event.id": _Spec(
         "int",
         ("eq",),
@@ -158,16 +159,16 @@ REGISTRY: dict[str, _Spec] = {
     #: silently drops every mixed file, and because repeated facets are
     #: ANDed there is no way to spell "generated OR mixed" either. This
     #: asks the fact instead: is there a generation row. Origin stays
-    #: for the forensic question of what the evidence adds up to.
+    #: for the forensic reading of what the evidence adds up to.
     #:
-    #: It also answers before the context job has run, which origin
-    #: cannot: the generation row is written by ingest.
+    #: It also can be evaluated before the context job has run, which
+    #: origin cannot: the generation row is written by ingest.
     "has.generation": _Spec(
         "int",
         ("eq",),
         "(EXISTS (SELECT 1 FROM generation gen WHERE gen.file_id = f.id)) {op} ?",
     ),
-    #: The same question for a camera: is there EXIF from a capture.
+    #: The same query for a camera: is there EXIF from a capture.
     "has.capture": _Spec(
         "int",
         ("eq",),
@@ -175,7 +176,8 @@ REGISTRY: dict[str, _Spec] = {
     ),
     #: Whether anybody is attributed in it, under the PRIMARY clustering
     #: -- the same run the `person` scope means, so "has people" and
-    #: "has Hannah" cannot disagree about which answer they are reading.
+    #: "has Hannah" cannot disagree about which result set they are
+    #: reading.
     "has.people": _Spec(
         "int",
         ("eq",),
@@ -193,7 +195,7 @@ REGISTRY: dict[str, _Spec] = {
     # --- the resources, by role ----------------------------------------
     #: An artifact BY ROLE, as a repeatable facet, because the `artifact`
     #: scope holds exactly one and "this checkpoint with that LoRA" is
-    #: the ordinary question. The value is the artifact's entity id: the
+    #: the ordinary query. The value is the artifact's entity id: the
     #: stable identity, since renaming a model is a thing people do and
     #: a bookmark must survive it. The chip says the name
     #: (db/vocabulary.py), never the number.
@@ -281,7 +283,7 @@ REGISTRY: dict[str, _Spec] = {
     #:
     #: `kind=` is also a GalleryQuery scope, and stays one: every
     #: bookmark, every smart collection and every other surface's link
-    #: spells it that way, and rewriting them would break all of it to no
+    #: encodes it that way, and rewriting them would break all of it to no
     #: one's benefit. But a scope holds exactly ONE value, so "image or
     #: video" was unaskable -- and it is the most ordinary multi-select
     #: there is. The filter surface writes this; the scope keeps working;
@@ -294,11 +296,11 @@ REGISTRY: dict[str, _Spec] = {
     ),
     #: WHO IS IN IT, as a facet, so several people can be asked for at
     #: once -- either "any of these" or "all of these", which are both
-    #: real questions about a photograph and mean opposite things.
+    #: real queries about a photograph and mean opposite things.
     #:
     #: Bound to the PRIMARY clustering, exactly as the `person` scope is
     #: (db/resultset.py bind), so the two cannot disagree about which
-    #: answer they are reading.
+    #: result set they are reading.
     "people.person": _Spec(
         "int",
         ("eq", "any"),
@@ -324,7 +326,7 @@ REGISTRY: dict[str, _Spec] = {
         ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key {op} ?)",
     ),
-    #: One key AND what it holds, spelled `key=value`. Two binds, which
+    #: One key AND what it holds, written `key=value`. Two binds, which
     #: is why `predicate` returns a list: the tail is rows, not columns,
     #: so naming a field costs a value of its own.
     "param.is": _Spec(
@@ -348,7 +350,7 @@ REGISTRY: dict[str, _Spec] = {
         "f.height {op} ?",
     ),
     #: Seconds. A still picture has none and is not a member of any
-    #: duration question, which is the honest answer rather than zero.
+    #: duration query, which is the honest result rather than zero.
     "media.duration": _Spec(
         "num",
         ("gte", "lte"),
@@ -368,7 +370,7 @@ def facet(key: str, op: str, raw: str) -> Facet:
     """A validated Facet from request-shaped parts. Refusals name the
     rule: an unregistered key, a disallowed operator or a value of the
     wrong shape must fail where it is asked, never become an empty page
-    wearing an answer's clothes."""
+    wearing a result's clothes."""
     spec = REGISTRY.get(key)
     if spec is None:
         raise ValueError(f"there is no filter named {key!r}; the filters are {', '.join(sorted(REGISTRY))}")
@@ -384,7 +386,7 @@ def facet(key: str, op: str, raw: str) -> Facet:
         if _NUM.fullmatch(raw) is None:
             raise ValueError(f"{key} takes a number, not {raw!r}")
         # int where it is one, so `cfg:eq:7` and `cfg:eq:7.0` are not two
-        # spellings of one question with two fingerprints
+        # encodings of one query with two fingerprints
         made = float(raw)
         return Facet(key, op, int(made) if made.is_integer() else made)
     if spec.value_kind == "date":
@@ -405,7 +407,7 @@ def facet(key: str, op: str, raw: str) -> Facet:
 
 
 def parse_spelling(spelled: str) -> Facet:
-    """The URL spelling: `key:op:value`, exactly two colons of
+    """The URL encoding: `key:op:value`, exactly two colons of
     structure; the value keeps any colons of its own."""
     parts = spelled.split(":", 2)
     if len(parts) != 3:
@@ -414,9 +416,9 @@ def parse_spelling(spelled: str) -> Facet:
 
 
 def normalized(spellings) -> tuple[Facet, ...]:
-    """Request-shaped facet spellings into ONE canonical tuple:
+    """Request-shaped facet encodings into ONE canonical tuple:
     validated, deduplicated, ordered -- so two orders of the same
-    conjunction are one question with one fingerprint."""
+    conjunction are one query with one fingerprint."""
     held = [spellings] if isinstance(spellings, str) else list(spellings or ())
     return tuple(sorted({parse_spelling(one) for one in held if one and one.strip()}, key=spell))
 
@@ -433,7 +435,7 @@ UNSCOPED: tuple[str, list] = ("", [])
 def clauses(held) -> list[tuple[str, list]]:
     """Facets as SQL clauses, with `any` REPEATS OR'D TOGETHER.
 
-    Repeating a key is how a question says more than one thing about one
+    Repeating a key is how a query says more than one thing about one
     dimension, and there are two meanings for it:
 
         eq   repeated -> AND. "this checkpoint AND that LoRA", and
@@ -443,13 +445,13 @@ def clauses(held) -> list[tuple[str, list]]:
         any  repeated -> OR. "image or video", "generated or mixed" --
              which is the only reading that makes sense for a dimension
              a file has exactly one of, where AND would ask for a file
-             that is two things and always answer nothing.
+             that is two things and always returns an empty result set.
 
     One vocabulary cannot pick for both: which is right is a fact about
-    the DIMENSION, so it is spelled in the operator and the surface
+    the DIMENSION, so it is encoded in the operator and the surface
     chooses it (db/vocabulary.py `multi`).
 
-    Ordering is by first appearance, so the SQL a question produces is
+    Ordering is by first appearance, so the SQL a query produces is
     stable and its plan is comparable between runs.
     """
     order: list[tuple[str, str]] = []

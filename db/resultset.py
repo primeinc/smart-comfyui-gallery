@@ -1,40 +1,41 @@
-"""One authoritative answer to "what is the user looking at".
+"""One authoritative result set for "what is the user looking at".
 
-A GalleryQuery names the question -- scope, filter, phrase, order, page
+A GalleryQuery states the query -- scope, filter, phrase, order, page
 size -- and every presentation surface reads the SAME materialized
-answer: the grid page, the total and page count, the rail's geometry,
-the hover peek, locate, previous and next. The browser chooses how
-results look, never what they are; no route, template or script owns a
-second opinion about membership or order.
+result set: the grid page, the total and page count, the rail's
+geometry, the hover peek, locate, previous and next. The browser
+chooses how results look, never what they are; no route, template or
+script owns a second opinion about membership or order.
 
 Behind the interface sits a disposable ordered projection: the full
-list of file ids in answer order, built once and paged by slicing. Two
-rules govern it, and both are contracts rather than implementation
+list of file ids in result-set order, built once and paged by slicing.
+Two rules govern it, and both are contracts rather than implementation
 choices:
 
-- **Validity is (query fingerprint, data currency), never fingerprint
-  alone.** The fingerprint identifies the QUESTION; the currency
-  identifies the LIBRARY STATE it was answered against. A scan lands,
+- **Validity is (query fingerprint, data version), never fingerprint
+  alone.** The fingerprint identifies the QUERY; the data version
+  identifies the LIBRARY STATE it was computed against. A scan lands,
   an embed job finishes, a rating changes -- a projection keyed only by
-  the question would keep answering from the world before the change,
-  which is precisely the divergence this module exists to prevent.
-  Currency comes from `PRAGMA data_version` read on ONE long-lived
-  read-only monitor connection per database file: the counter is
-  per-connection (sqlite/sqlite@b09c88c14 src/pager.c:669), bumps when a
-  read begins after any other connection's commit (src/pager.c:3306
-  -> pager_reset -> :1784), and reading the pragma opens that read
-  (src/btree.c:10443 asserts an open transaction) -- so a per-request
-  connection could never carry the key, and the monitor always can.
+  the query would keep serving results from the world before the
+  change, which is precisely the divergence this module exists to
+  prevent. The data version comes from `PRAGMA data_version` read on
+  ONE long-lived read-only monitor connection per database file: the
+  counter is per-connection (sqlite/sqlite@b09c88c14 src/pager.c:669),
+  bumps when a read begins after any other connection's commit
+  (src/pager.c:3306 -> pager_reset -> :1784), and reading the pragma
+  opens that read (src/btree.c:10443 asserts an open transaction) -- so
+  a per-request connection could never carry the key, and the monitor
+  always can.
 
 - **Semantic order makes the projection MANDATORY, not an
   optimization.** db/retrieval.py returns a rank fusion, and rank
   fusion is not incrementally pageable: page 138 of a fused ranking
   depends on every space's full candidate list. The fused ordering is
-  materialized once per (fingerprint, currency) and every page, peek
-  and locate reads it; nothing reruns FAISS per page. Do not "optimize"
-  the projection away -- keyset paging is an alternative only for the
-  time-ordered sorts, and adopting it would silently break semantic
-  paging.
+  materialized once per (fingerprint, data version) and every page,
+  peek and locate reads it; nothing reruns FAISS per page. Do not
+  "optimize" the projection away -- keyset paging is an alternative
+  only for the time-ordered sorts, and adopting it would silently break
+  semantic paging.
 
 Materializing walks the whole membership once -- an ordered index walk
 for the time sorts, the fused retrieval for similarity. That cost is
@@ -64,7 +65,8 @@ import threading
 #: timeline link opened -- with uninterpreted files last, never dropped.
 SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity")
 
-#: The file kinds a query may filter to -- the vocabulary of file.kind.
+#: The file kinds a query may filter to -- the vocabulary of file.kind
+#: is closed here.
 KINDS = ("image", "animated_image", "video", "audio", "document")
 
 DEFAULT_PAGE_SIZE = 60
@@ -74,38 +76,38 @@ MAX_PAGE_SIZE = 400
 class StaleSession(ValueError):
     """A session link (`event.id`) names a run grouped over an older
     interpretation: its members are a hypothesis nobody has re-proved,
-    so the question is refused with the remedy -- never an empty grid
+    so the query is refused with the remedy -- never an empty grid
     wearing the bookmark's URL."""
 
 
 class UnevaluatedCollection(ValueError):
     """A rule-defined collection was asked for members no evaluator has
-    produced: unevaluated is not empty, so the question is refused. A
-    ValueError, so every route seam already answers it as a bad question;
+    produced: unevaluated is not empty, so the query is refused. A
+    ValueError, so every route seam already returns it as a bad request;
     typed, so a view can decide "show the rule instead" without matching
     message strings."""
 
 
 class AnswerChanged(Exception):
-    """The caller's expectation names an answer this question no longer
+    """The caller's expectation names a result set this query no longer
     has -- a selection made against one generation must never mutate
-    another. Routes answer it as 409, and nothing was written."""
+    another. Routes return it as 409, and nothing was written."""
 
 
 #: How many previews a peek may carry -- the rail popover shows 6..9.
 PEEK_MOST = 9
 
 #: How many projections stay resident per process. Each is one int per
-#: file plus an ordinal map -- a handful of concurrent questions, not a
+#: file plus an ordinal map -- a handful of concurrent queries, not a
 #: history.
 KEEP = 8
 
 
 @dataclasses.dataclass(frozen=True)
 class GalleryQuery:
-    """The question, whole. Frozen because the fingerprint is derived
-    from it; build one through `parse`, which refuses what the module
-    cannot answer instead of guessing."""
+    """The query, whole. Frozen because the fingerprint is derived from
+    it; build one through `parse`, which refuses what the module cannot
+    evaluate instead of guessing."""
 
     folder: str | None = None  # scope: one folder, by slug
     album: str | None = None  # scope: one album (collection), by slug
@@ -115,17 +117,18 @@ class GalleryQuery:
     #: here. Never model=/lora=/role= -- one entity, one facet.
     artifact: str | None = None
     kind: str | None = None  # filter: one file kind
-    #: Authored facets: the asking ACTOR's own judgement, composable like
-    #: any predicate. The actor never rides the URL -- it binds at answer
-    #: time and lives in the projection identity, so two people asking
-    #: "favorite=1" share a spelling and never an answer.
+    #: Authored facets: the requesting ACTOR's own judgement, composable
+    #: like any predicate. The actor never rides the URL -- it binds at
+    #: evaluation time and lives in the projection identity, so two
+    #: people filtering on "favorite=1" share a URL and never a result
+    #: set.
     favorite: bool | None = None  # True: favorited; False: NOT favorited
     rating_min: int | None = None  # at least this many stars from the actor, 1..5
     text: str | None = None  # the semantic phrase; implies sort=similarity
     #: Registered metadata predicates (db/context.py owns the
     #: vocabulary): each composes like any other facet, timed and
-    #: semantic alike. Canonically ordered, so two spellings of one
-    #: conjunction are one question.
+    #: semantic alike. Canonically ordered, so two encodings of one
+    #: conjunction are one query.
     facets: tuple = ()
     sort: str = "newest"
     size: int = DEFAULT_PAGE_SIZE
@@ -147,9 +150,9 @@ def parse(
 ) -> GalleryQuery:
     """A validated GalleryQuery from request-shaped inputs.
 
-    Refusals are loud and name the rule: an unanswerable question must
-    fail where it is asked, never become an empty page that looks like
-    an answer.
+    Refusals are loud and name the rule: a query this module cannot
+    evaluate must fail where it is made, never become an empty page
+    that looks like a result.
     """
     folder = (folder or "").strip() or None
     album = (album or "").strip() or None
@@ -172,12 +175,12 @@ def parse(
         raise ValueError("choose a folder or an album, not both")
     # `person` deliberately COMPOSES with either -- and with kind and a
     # phrase: eligibility is an intersection of predicates, and a
-    # person's beach pictures in one album is a real question.
+    # person's beach pictures in one album is a real query.
     if kind is not None and kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
     liked = (favorite or "").strip() or None
     if liked is not None and liked not in ("1", "0"):
-        # Tri-state, two spellings: 1 favorited, 0 not favorited, and
+        # Tri-state, two values: 1 favorited, 0 not favorited, and
         # dropping the parameter stops constraining. Nothing else.
         raise ValueError(f"favorite is 1 (favorited) or 0 (not favorited), not favorite={liked!r}")
     if rating_min is not None and not 1 <= int(rating_min) <= 5:
@@ -204,20 +207,20 @@ def parse(
 
 
 def fingerprint(query: GalleryQuery) -> str:
-    """The identity of the question AS SPELLED: canonical JSON over
-    every field, hashed. Page size is part of it because ordinal->page
+    """The identity of the query AS WRITTEN: canonical JSON over every
+    field, hashed. Page size is part of it because ordinal->page
     arithmetic is. The projection cache does NOT key on this -- it keys
     on `_bound_fingerprint`, over stable entity ids, so a renamed
-    person's two spellings stay one cached question."""
+    person's two slugs stay one cached query."""
     told = json.dumps(dataclasses.asdict(query), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(told.encode()).hexdigest()[:16]
 
 
-# --- data currency ----------------------------------------------------------
+# --- data version -----------------------------------------------------------
 
 #: One read-only monitor connection per database file, held for the
 #: process. `PRAGMA data_version` is only comparable to itself on the
-#: same connection, so the connection that answers it must never be a
+#: same connection, so the connection that reads it must never be a
 #: per-request one.
 _MONITORS: dict[str, sqlite3.Connection] = {}
 _MONITOR_LOCK = threading.Lock()
@@ -237,7 +240,7 @@ def close_monitors() -> int:
     (python/cpython Doc/library/sqlite3.rst: Connection warns if close()
     was not called before it is deleted).
 
-    A caller that reads `currency` again after this simply gets a fresh
+    A caller that reads `currency` again after this gets a fresh
     monitor: the cache is a cache.
     """
     with _MONITOR_LOCK:
@@ -261,9 +264,10 @@ def _database_file(conn) -> str:
 
 
 def currency(conn) -> str:
-    """The library-state half of the projection key.
+    """The library-state half of the projection key: SQLite's own
+    `PRAGMA data_version`.
 
-    A file database answers from the monitor connection, which sees
+    A file database reads it from the monitor connection, which sees
     every OTHER connection's commit -- and every writer in this
     application is another connection, per-request or worker. An
     in-memory database is reachable only through the one connection
@@ -290,21 +294,22 @@ def currency(conn) -> str:
 class Projection:
     fingerprint: str
     currency: str
-    #: The identity of the ORDERED ANSWER itself, as against `currency`,
-    #: which is the identity of the library generation it was computed
-    #: from. `data_version` moves on EVERY commit -- a favorite, a
-    #: rating -- while most commits leave most answers untouched; a
-    #: client holding (currency, answer) can tell "the library moved but
-    #: this answer did not" (adopt the new currency in place) from "the
-    #: answer really changed" (redraw), without anyone teaching it which
-    #: tables affect which queries.
+    #: The identity of the ORDERED RESULT SET itself, as against
+    #: `currency`, which is the identity of the library generation it
+    #: was computed from. `data_version` moves on EVERY commit -- a
+    #: favorite, a rating -- while most commits leave most result sets
+    #: untouched; a client holding (currency, answer) can tell "the
+    #: library moved but this result set did not" (adopt the new data
+    #: version in place) from "the result set really changed" (redraw),
+    #: without anyone teaching it which tables affect which queries.
     answer: str
-    ids: tuple[int, ...]  # file ids, answer order
+    ids: tuple[int, ...]  # file ids, result-set order
     ordinal: dict[int, int]  # file id -> 0-based position
     provenance: dict | None  # similarity only: participants/contributors/missing
 
 
-#: (database, fingerprint, currency) -> Projection, oldest evicted first.
+#: (database, fingerprint, data version) -> Projection, oldest evicted
+#: first.
 _PROJECTIONS: dict[tuple[str, str, str], Projection] = {}
 _PROJECTION_LOCK = threading.Lock()
 
@@ -327,13 +332,13 @@ NAMED = (
 
 
 def canonical(query: GalleryQuery, page: int | None = None) -> str:
-    """The query's one spelling in a URL -- owned HERE, beside what the
-    question means, because the spelling is entity-aware: answers carry
-    the canonical string rebuilt from the BOUND query, so a context
-    written with a since-retired slug heals to the live one as it is
-    navigated. Defaults are omitted so two ways of asking the same
-    question share an address; `page` rides at the end so the rail can
-    append its jumps."""
+    """The query's one URL encoding -- owned HERE, beside what the query
+    means, because the encoding is entity-aware: responses carry the
+    canonical string rebuilt from the BOUND query, so a context written
+    with a since-retired slug heals to the live one as it is navigated.
+    Defaults are omitted so two ways of writing the same query share an
+    address; `page` rides at the end so the rail can append its
+    jumps."""
     import urllib.parse
 
     pairs: list[tuple[str, str]] = []
@@ -368,19 +373,19 @@ def canonical(query: GalleryQuery, page: int | None = None) -> str:
 
 @dataclasses.dataclass(frozen=True)
 class _Bound:
-    """The question bound to STABLE identities.
+    """The query bound to STABLE identities.
 
     The public interface speaks slugs because URLs do; the
     implementation works in entity ids, because slugs are the one part
     of an address that moves -- naming a person is the People page's
     primary action, and a projection keyed on the slug string would
-    fork the cache for one human and answer an old bookmark as a
-    different question. `query` carries the LIVE spelling, which is
-    what every emitted URL uses; `face_run_id` pins WHICH clustering's
+    fork the cache for one human and serve an old bookmark as a
+    different query. `query` carries the LIVE slugs, which is what
+    every emitted URL uses; `face_run_id` pins WHICH clustering's
     attribution person membership means, so switching the primary run
-    is visibly a different question."""
+    is visibly a different query."""
 
-    query: GalleryQuery  # live-slug spelling
+    query: GalleryQuery  # live slugs
     folder_id: int | None
     collection_id: int | None
     person_id: int | None
@@ -392,26 +397,26 @@ class _Bound:
     artifact_id: int | None
     artifact_kind: str | None
     #: WHOSE judgement the authored facets mean. Set only when the query
-    #: carries one, so questions without an authored facet stay one
-    #: cached projection however many actors ask them.
+    #: carries one, so queries without an authored facet stay one
+    #: cached projection however many actors run them.
     actor_id: int | None
-    #: A SMART collection scope, bound: the rule's own question as an
+    #: A SMART collection scope, bound: the rule's own query as an
     #: inner _Bound plus its take. The rule owns MEMBERSHIP (evaluated to
-    #: a set); the outer question still owns the ordered answer --
+    #: a set); the outer query still owns the ordered result set --
     #: `collection_id` stays None for smart, because collection_file
     #: holds nothing to EXISTS against.
     rule: tuple[_Bound, int | None] | None = None
 
 
 def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
-    """Resolve every slug to its entity -- retired spellings included,
-    refusing an address nothing lives at: an empty page at a misspelled
+    """Resolve every slug to its entity -- retired slugs included,
+    refusing an address nothing lives at: an empty page at a mistyped
     folder would look exactly like an empty folder.
 
     `actor_id` is required exactly when the query carries an authored facet
     (favorite, rating): those predicates are one person's judgement, and
-    answering them for nobody would be answering a different question
-    while wearing this one's URL."""
+    evaluating them for nobody would evaluate a different query while
+    wearing this one's URL."""
     from . import naming
 
     held: dict[str, int | None] = {"folder": None, "album": None, "person": None, "artifact": None}
@@ -437,8 +442,8 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     if held["album"] is not None:
         kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (held["album"],)).fetchone()[0]
         if kind == "smart":
-            # A smart collection's membership is its RULE's answer. No
-            # typed rule yet -- migrated prose, or nothing -- stays an
+            # A smart collection's membership is its RULE's result set.
+            # No typed rule yet -- migrated prose, or nothing -- stays an
             # UNEVALUATED collection, never an empty one; a rule whose
             # references rot is BROKEN, never empty (db/collection_rules).
             from . import collection_rules
@@ -454,7 +459,7 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     for one in query.facets:
         if one.key != "event.id":
             continue
-        # the facet's own predicate answers nothing for a stale run; say why
+        # the facet's own predicate matches nothing for a stale run; say why
         from .context import POLICY_VERSION
 
         row = conn.execute(
@@ -493,8 +498,8 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
 
 
 def _bind_rule(conn, rule, spelled: str) -> _Bound:
-    """The rule's own question, bound like any other -- uuid references
-    to live entity ids, the CURRENT primary run for its person, and the
+    """The rule's own query, bound like any other -- uuid references to
+    live entity ids, the CURRENT primary run for its person, and the
     actor PINNED AT CREATION for its authored facets, never the viewer."""
     from .collection_rules import BrokenCollectionRule
 
@@ -538,9 +543,9 @@ def _bind_rule(conn, rule, spelled: str) -> _Bound:
 
 
 def _bound_fingerprint(bound: _Bound) -> str:
-    """The projection key's question half, over bound identities: two
-    spellings of one entity are one question, and one spelling across a
-    primary-run switch is two."""
+    """The projection key's query half, over bound identities: two slugs
+    for one entity are one query, and one slug across a primary-run
+    switch is two."""
     query = bound.query
     told = json.dumps(
         {
@@ -559,8 +564,8 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "size": query.size,
             # A smart scope's identity is its BOUND rule (recursively
             # fingerprinted -- ids, pinned actor, run) plus its take: two
-            # collections with one rule are one membership question, and
-            # an edited rule is a different one.
+            # collections with one rule are one membership query, and an
+            # edited rule is a different one.
             "rule": None if bound.rule is None else [_bound_fingerprint(bound.rule[0]), bound.rule[1]],
         },
         sort_keys=True,
@@ -572,14 +577,14 @@ def _bound_fingerprint(bound: _Bound) -> str:
 def scope_of(
     conn, query: GalleryQuery, actor_id: int | None = None, *, models_dir: str | None = None, now: float | None = None
 ) -> tuple[str, list, GalleryQuery]:
-    """A gallery question as a scope another surface appends to its own
+    """A gallery query as a scope another surface appends to its own
     statements: the membership conjunct over the file alias `f` (the
-    same predicates the gallery walks), its bound values, and the
-    question in its LIVE spelling for the links that surface offers.
-    A rule-defined collection's membership is a materialized set
+    same predicates the gallery walks), its bound values, and the query
+    with its LIVE slugs for the links that surface offers. A
+    rule-defined collection's membership is a materialized set
     (`_rule_members`, the one engine), appended as `f.id IN (...)`; it
     needs the models directory, because a semantic rule ranks through
-    its encoder, and a rule that cannot be answered right now refuses
+    its encoder, and a rule that cannot be evaluated right now refuses
     (UnavailableCollectionRule) rather than scoping to nothing."""
     import json
 
@@ -596,12 +601,12 @@ def scope_of(
 
 
 def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
-    """The membership predicates of a bound question, constructed ONCE
-    -- eligibility is an INTERSECTION of predicates, not a choice
-    between fixed statements, and this single construction feeds BOTH
-    the ordered timed walk and semantic retrieval's allowed set. A facet
+    """The membership predicates of a bound query, constructed ONCE --
+    eligibility is an INTERSECTION of predicates, not a choice between
+    fixed statements, and this single construction feeds BOTH the
+    ordered timed walk and semantic retrieval's allowed set. A facet
     added here is automatically part of both; the alternative was two
-    manually-synchronized definitions of "is this question faceted?",
+    manually-synchronized definitions of "is this query faceted?",
     whose drift would have made a timed artifact search correct while
     the same facet under a phrase silently ranked the whole library.
 
@@ -619,7 +624,7 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
     if bound.person_id is not None:
         if bound.face_run_id is None:
             # The person exists; no primary clustering attributes anyone
-            # anything. An honest empty, distinct from an unknown slug.
+            # anything. A truthful empty, distinct from an unknown slug.
             where.append("0")
         else:
             where.append(
@@ -655,7 +660,7 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
         # Through `clauses`, never `predicate` in a loop: repeating a key
         # with `any` means OR and has to arrive here as ONE clause. A
         # loop that appended each predicate separately would AND them,
-        # and "image or video" would silently answer nothing.
+        # and "image or video" would silently match nothing.
         for sql, values in facets_module.clauses(query.facets):
             where.append(sql)
             args.extend(values)
@@ -668,10 +673,10 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     per library change, never once per page."""
     # The ORDERING CONTRACT: (mtime, id) both in the sort's direction --
     # the same contract file_in_folder_by_time carries, so global and
-    # folder-scoped questions tie identically. The indexes implement
-    # this spelling (file_recent is (mtime DESC, id DESC), schema v6),
+    # folder-scoped queries tie identically. The indexes implement this
+    # exact ordering (file_recent is (mtime DESC, id DESC), schema v6),
     # never the reverse: bending the tiebreak to fit an index once
-    # silently changed real answer identities and ordinals.
+    # silently changed real result-set identities and ordinals.
     where, args, _ = _eligibility(bound)
     if bound.query.sort in ("moment", "moment-newest"):
         # The human moment, not the filesystem's: what a timeline link
@@ -695,19 +700,19 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
 
 def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset[int]:
     """A smart rule evaluated to its MEMBERSHIP SET, through the same
-    machinery every question uses -- never a second engine. `take` cuts
-    the rule's own ordering (fused for a semantic rule, timed
-    otherwise) down to a set; the outer question then orders whatever
-    of that set it keeps."""
+    machinery every query uses -- never a second engine. `take` cuts the
+    rule's own ordering (fused for a semantic rule, timed otherwise)
+    down to a set; the outer query then orders whatever of that set it
+    keeps."""
     from .collection_rules import UnavailableCollectionRule
 
     inner, take = bound.rule or (None, None)
     if inner is None:
         return frozenset()
     if any(one.key.startswith("context.") or one.key == "place.id" for one in inner.query.facets):
-        # A facet over the interpretation answers only for interpreted
+        # A facet over the interpretation matches only interpreted
         # files: after a policy bump, or before the context job ran, the
-        # rule would evaluate to a smaller set that looks like an answer.
+        # rule would evaluate to a smaller set that looks like a result.
         from . import pages
 
         have, present, _ = pages.timeline_coverage(conn)
@@ -721,7 +726,7 @@ def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset
             ids, _ = _fused_ids(conn, models_dir, inner, now)
         except (ValueError, LookupError) as silent:
             raise UnavailableCollectionRule(
-                f"the collection's semantic rule cannot be answered right now: {silent}"
+                f"the collection's semantic rule cannot be evaluated right now: {silent}"
             ) from silent
     else:
         ids = _timed_ids(conn, inner)
@@ -736,7 +741,7 @@ def _fused_ids(
     """The whole fused ordering, once.
 
     A scope or filter is handed to retrieval as the ALLOWED set, never
-    applied to the fused answer afterwards: RRF consumes rank positions,
+    applied to the fused result afterwards: RRF consumes rank positions,
     so each space's ranking must be constrained and renumbered BEFORE
     the fusion (db/retrieval.py owns that arithmetic) -- filtering a
     global fusion keeps global ranks, and two spaces whose out-of-scope
@@ -758,7 +763,7 @@ def _fused_ids(
         # overwriting the other.
         allowed = members if allowed is None else allowed & members
     if allowed is not None and not allowed:
-        # An empty scope needs no encoder and has no honest
+        # An empty scope needs no encoder and has no truthful
         # provenance -- nothing was asked of any space.
         return [], None
     if query.text is None:
@@ -785,12 +790,12 @@ def _present(conn) -> int:
 
 
 def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: int | None) -> tuple[_Bound, Projection]:
-    """The projection for this question over the library as it stands --
-    a stale one is never reused, it is replaced. Currency is read BEFORE
-    binding: bind's resolves are this connection's first data reads and
-    pin the snapshot, so a commit in the gap builds fresh data under an
-    obsolete key -- wasted work the next request replaces, never stale
-    data cached under a fresh key."""
+    """The projection for this query over the library as it stands -- a
+    stale one is never reused, it is replaced. The data version is read
+    BEFORE binding: bind's resolves are this connection's first data
+    reads and pin the snapshot, so a commit in the gap builds fresh data
+    under an obsolete key -- wasted work the next request replaces,
+    never stale data cached under a fresh key."""
     database = _database_file(conn) or f"mem{id(conn)}"
     told = currency(conn)
     bound = bind(conn, query, actor_id)
@@ -833,11 +838,11 @@ def snapshot(conn):
     a worker's commit between two of them hands back items from one
     generation of the library described by another's counts. A DEFERRED
     read transaction pins the connection's snapshot at its FIRST data
-    read -- which lands after the currency read, because currency comes
-    from the monitor connection (file libraries) or an attribute
-    (:memory:), so a racing commit can only produce fresh data under an
-    already-obsolete key: wasted work the next request replaces, never
-    stale data cached under a fresh key.
+    read -- which lands after the data-version read, because the data
+    version comes from the monitor connection (file libraries) or an
+    attribute (:memory:), so a racing commit can only produce fresh data
+    under an already-obsolete key: wasted work the next request
+    replaces, never stale data cached under a fresh key.
 
     Registry minting on a space's first scoped query still writes inside
     the snapshot; that upgrade is the same write the operation always
@@ -860,14 +865,14 @@ def snapshot(conn):
 
 
 def _shape(bound: _Bound, held: Projection) -> dict:
-    """The answer's shape, computed from ONE projection snapshot. Every
-    public operation takes `_current` exactly once and derives all of
-    its counts, pages, items and currency from that same Projection --
-    two takes could straddle another connection's commit and hand back
-    items from one generation under the totals of another. One
-    response describes one answer. `qs` is the canonical spelling of
-    the BOUND question -- live slugs, so a stale contextual name heals
-    as it is navigated."""
+    """The result set's shape, computed from ONE projection snapshot.
+    Every public operation takes `_current` exactly once and derives all
+    of its counts, pages, items and data version from that same
+    Projection -- two takes could straddle another connection's commit
+    and hand back items from one generation under the totals of another.
+    One response describes one result set. `qs` is the canonical
+    encoding of the BOUND query -- live slugs, so a stale contextual
+    name heals as it is navigated."""
     query = bound.query
     total = len(held.ids)
     return {
@@ -885,18 +890,18 @@ def _shape(bound: _Bound, held: Projection) -> dict:
 
 def describe(conn, models_dir: str, query: GalleryQuery, now: float, *, actor_id: int | None = None) -> dict:
     """The result set's shape: what the rail is drawn from and what the
-    grid's pager believes. `currency` rides along so a client can tell
-    a redrawn answer from the one it is holding."""
+    grid's pager uses. `currency` rides along so a client can tell a
+    redrawn result set from the one it is holding."""
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         return _shape(bound, held)
 
 
 def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float, *, actor_id: int | None = None) -> dict:
-    """One page of the answer, by number. A number past the end answers
-    with the last page that exists -- the library may have shrunk since
-    the rail was drawn, and the honest response is the page that IS,
-    named as itself."""
+    """One page of the result set, by number. A number past the end
+    returns the last page that exists -- the library may have shrunk
+    since the rail was drawn, and the truthful response is the page that
+    IS, named as itself."""
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
@@ -918,8 +923,8 @@ def peek(
     actor_id: int | None = None,
 ) -> dict:
     """The rail popover's preview: the first few members of EXACTLY the
-    page a jump would land on -- by construction a prefix of what
-    `page` answers, and the test suite holds the two to it."""
+    page a jump would land on -- by construction a prefix of what `page`
+    returns, and the test suite holds the two to it."""
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
@@ -940,12 +945,12 @@ def peek(
 
 
 def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
-    """Where a position sits in an answer, from one projection.
+    """Where a position sits in a result set, from one projection.
 
     Shared rather than repeated: `locate` and `neighborhood` answer the
-    same question about the same walk, and two spellings of "previous"
-    are two chances for the arrows and the strip beneath them to
-    disagree about what comes next.
+    same question about the same walk, and two implementations of
+    "previous" are two chances for the arrows and the strip beneath them
+    to disagree about what comes next.
     """
     neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
     named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
@@ -964,10 +969,10 @@ def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
 def locate(
     conn, models_dir: str, query: GalleryQuery, file_id: int, now: float, *, actor_id: int | None = None
 ) -> dict | None:
-    """Where one file sits in the answer -- its ordinal, its page, and
-    its neighbours in ANSWER order, which is what previous/next mean
-    while a result set is being walked. None when the file is not in
-    the membership at all."""
+    """Where one file sits in the result set -- its ordinal, its page,
+    and its neighbours in RESULT-SET order, which is what previous/next
+    mean while a result set is being walked. None when the file is not
+    in the membership at all."""
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         position = held.ordinal.get(int(file_id))
@@ -975,7 +980,7 @@ def locate(
 
 
 #: The widest neighborhood a caller may ask for. A bound, so an absurd
-#: `count` is refused rather than answered with a page of thumbnails.
+#: `count` is refused rather than served as a page of thumbnails.
 NEIGHBORHOOD_MOST = 51
 
 
@@ -989,9 +994,9 @@ def neighborhood(
     *,
     actor_id: int | None = None,
 ) -> dict | None:
-    """What SURROUNDS one member of this answer, in answer order.
+    """What SURROUNDS one member of this result set, in result-set order.
 
-    A different question from `peek`, which answers "the first few
+    A different question from `peek`, which returns "the first few
     members of page N" for the rail's long-distance jumps. This one
     knows nothing about pages: it is a window around a POSITION, so a
     window that happens to straddle a page boundary is not a special
@@ -999,14 +1004,14 @@ def neighborhood(
     only the located file's own, carried for the return-to-results URL.
 
     The window slides at the edges rather than being padded: an item
-    near the start of the answer sits near the left of a FULL window,
-    not centred with blanks beside it. Everything comes from the one
-    `_current` inside one snapshot, so the ordinal, the arrows and the
-    window are the same answer at the same generation -- three reads
-    would be three chances to describe two.
+    near the start of the result set sits near the left of a FULL
+    window, not centred with blanks beside it. Everything comes from the
+    one `_current` inside one snapshot, so the ordinal, the arrows and
+    the window are the same result set at the same generation -- three
+    reads would be three chances to describe two.
 
-    None when the file is not in this answer at all. The query defines
-    the walk; there is no fallback neighborhood to invent.
+    None when the file is not in this result set at all. The query
+    defines the walk; there is no fallback neighborhood to invent.
     """
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
@@ -1031,16 +1036,16 @@ SUBSET_MOST = 5_000
 
 #: Exactly 32 hex characters -- a fullmatch, because bytes.fromhex
 #: skips whitespace and a raw-length check alone lets two spaces hide
-#: INSIDE a 32-character spelling and decode to 15 bytes.
+#: INSIDE a 32-character string and decode to 15 bytes.
 _HEX_UUID = re.compile(r"[0-9a-fA-F]{32}")
 
 
 @dataclasses.dataclass(frozen=True)
 class SelectionProof:
     """A completed membership proof: these file ids belonged to this
-    answer under this library generation. Immutable, so a writer can
-    revalidate it with ONE cheap currency comparison instead of holding
-    the writer lane through the proof's own work."""
+    result set under this library generation. Immutable, so a writer can
+    revalidate it with ONE cheap data-version comparison instead of
+    holding the writer lane through the proof's own work."""
 
     currency: str
     answer: str
@@ -1057,31 +1062,31 @@ def prove_subset(
     expect_answer: str,
     entity_uuids: list[str],
 ) -> SelectionProof:
-    """Prove a selection against THIS question's current answer.
+    """Prove a selection against THIS query's current result set.
 
-    Returns a SelectionProof iff the question's answer identity is
-    exactly `expect_answer`, every uuid resolves to a live file entity,
-    and every file belongs to the answer. Anything else is
+    Returns a SelectionProof iff the result set's identity is exactly
+    `expect_answer`, every uuid resolves to a live file entity, and
+    every file belongs to the result set. Anything else is
     AnswerChanged -- a selection made against one generation must never
     mutate another -- or ValueError for a payload that was never a
     selection at all.
 
     Nothing here trusts the browser: uuids are exactly 32 hex
     characters by FULLMATCH -- bytes.fromhex skips whitespace, so
-    neither a padded spelling nor spaces hiding inside a 32-character
-    one may reach it -- the count is bounded, and membership is checked
+    neither a padded string nor spaces hiding inside a 32-character one
+    may reach it -- the count is bounded, and membership is checked
     against the ONE projection, never a locate per item.
 
     Deliberately NOT the write transaction: proving may materialize a
     projection -- a whole membership walk, a smart-rule evaluation, a
     semantic encode-FAISS-RRF round -- and none of that may hold
-    sqlite's one writer lane. A writer takes the proof, claims the
-    lane, compares currency (one monitor read), and mutates only when
+    sqlite's one writer lane. A writer takes the proof, claims the lane,
+    compares the data version (one monitor read), and mutates only when
     the world the proof described is still the world -- re-proving
     OUTSIDE the lane when it is not.
     """
     if type(expect_answer) is not str or not expect_answer:
-        raise ValueError("a selection names the answer it was made against")
+        raise ValueError("a selection names the result set it was made against")
     if not isinstance(entity_uuids, (list, tuple)) or not entity_uuids:
         raise ValueError("a selection names at least one entity")
     if len(entity_uuids) > SUBSET_MOST:
@@ -1128,7 +1133,7 @@ def _named(conn, ids, start: int) -> list[dict]:
             "kind": row[3],
             "uuid": row[4].hex(),
             # None until ingest has hashed it; a surface then falls back
-            # to the slug route, which can still answer.
+            # to the slug route, which can still serve the bytes.
             "sha": row[5],
             "said": None,
         }

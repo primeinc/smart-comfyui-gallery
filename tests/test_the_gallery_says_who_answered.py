@@ -1,8 +1,8 @@
 """A searched gallery says which rankings produced its order.
 
-`/g?q=` fuses every ranking that answered; the page names them beside
+`/g?q=` fuses every ranking that responded; the page names them beside
 the degraded note it already carried, so a person can tell a one-model
-answer from an all-models one -- the distinction the retrieval
+result set from an all-models one -- the distinction the retrieval
 provenance exists to keep.
 """
 
@@ -45,8 +45,8 @@ def test_the_grid_names_the_rankings_that_answered(tmp_path, monkeypatch):
 
 def test_a_phrase_no_caption_mentions_is_said_quietly_not_as_degraded(tmp_path, monkeypatch):
     """A word match that matched nothing is the ordinary outcome, not a
-    model that failed: the grid notes it beside the answer and keeps the
-    degraded note for spaces that could not answer."""
+    model that failed: the grid notes it beside the result set and keeps the
+    degraded note for spaces that could not respond."""
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (8, 8), (10, 20, 30)).save(root / "p.png")
@@ -72,8 +72,8 @@ def test_a_phrase_no_caption_mentions_is_said_quietly_not_as_degraded(tmp_path, 
 
 
 def test_the_gallery_opens_its_question_on_the_timeline(tmp_path):
-    """Every question but a phrase has a timeline: the header's link is
-    the canonical question; a semantic phrase ranks, it does not scope,
+    """Every query but a phrase has a timeline: the header's link is
+    the canonical query; a semantic phrase ranks, it does not scope,
     so a searched gallery offers none."""
     root = tmp_path / "lib"
     root.mkdir()

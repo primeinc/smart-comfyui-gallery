@@ -7,7 +7,7 @@ implementation with nothing binding it to this one. `db/scan.py` says exactly
 that at the top and puts the matcher here for the reason; the pages were the
 same shape and the same argument had not been applied to them.
 
-So this is where a page's question lives, and the tests call these rather
+So this is where a page's query lives, and the tests call these rather
 than restating them. That is also what makes the plan check mean anything:
 the plan being asserted is the plan the application will run.
 
@@ -25,7 +25,7 @@ its whole result set costs the same as one that scans, and on the checkpoint
 most of a library was made with, "its files sorted by name" is most of the
 library sorted by name.
 
-**An index page may aggregate; a listing may not.** A shelf that counts a
+**An index page may aggregate; a listing may not.** An index page that counts a
 whole library is a summary, and its GROUP BY may build a TEMP B-TREE -- those
 queries pass `aggregate=True` to the plan gate. A bare scan of a growing
 table is never allowed, exemption or not.
@@ -48,7 +48,7 @@ NEWEST_FIRST = (
 )
 
 #: The machine front link: what the library HOLDS, in one statement --
-#: a summary, not a media answer (the gallery is the ResultSet's).
+#: a summary, not a media result set (the gallery is the ResultSet's).
 LIBRARY_SUMMARY = (
     "SELECT"
     " (SELECT count(*) FROM file WHERE missing_since IS NULL) AS files,"
@@ -134,7 +134,7 @@ def file_bytes(conn, file_id: int) -> tuple[str, str | None] | None:
 
 def files_named(conn, ids) -> dict[int, tuple[str, str]]:
     """`id -> (slug, name)` for an id set the caller already ranked --
-    the search answer's addresses. A retired or unknown id is absent."""
+    the search result's addresses. A retired or unknown id is absent."""
     if not ids:
         return {}
     marks = ",".join("?" for _ in ids)
@@ -237,14 +237,14 @@ def breadcrumb(conn, folder_id: int):
 
 
 #: The root path rides along for the reachability probe ONLY -- it is
-#: server-side state and never part of any rendered answer; a folder's
+#: server-side state and never part of any rendered response; a folder's
 #: durable identity is its slug and its parent chain.
 FOLDER_CARD = (
     "SELECT f.name, f.parent_id, f.missing_since, r.path  FROM folder f JOIN root r ON r.id = f.root_id WHERE f.id = ?"
 )
 
 #: Two counts per folder, both shown: `pictures` is the folder's OWN
-#: media (what `folder=` answers), `below` the whole subtree's -- a
+#: media (what `folder=` returns), `below` the whole subtree's -- a
 #: library whose media all live two folders down is not "0 pictures".
 FOLDER_CHILDREN = (
     "SELECT e.slug, f.name,"
@@ -265,12 +265,12 @@ def folder_card(conn, folder_id: int):
 def folder_children(conn, folder_id: int):
     """The immediate child directories, each with its own DIRECT media
     count -- `folder=` means the folder itself, never its subtree, so a
-    child is something to navigate into, not part of the answer."""
+    child is something to navigate into, not part of the result set."""
     return conn.execute(FOLDER_CHILDREN, (folder_id,)).fetchall()
 
 
 #: The NAVIGABLE roots only: trash is a real storage location whose
-#: subtree views exclude, never a shelf to browse. Reachability comes
+#: subtree views exclude, never an index to browse. Reachability comes
 #: from db/library.py probe_roots, which verifies the marker rather
 #: than trusting that A directory exists at the recorded path.
 ROOT_SHELF = "SELECT id, kind FROM root WHERE kind IN ('library', 'mount') ORDER BY id"
@@ -382,7 +382,7 @@ def folder_tops(conn, root_id: int):
 #: count(DISTINCT f.id): "pictures" counts pictures. file_artifact
 #: legally holds one artifact at several ordinals in one file -- a LoRA
 #: stacked twice -- and a row count would name relation instances after
-#: media. The shelf number must equal the ResultSet total.
+#: media. The index page's number must equal the ResultSet total.
 ARTIFACTS_BY_USE = (
     "SELECT a.name, e.slug, count(DISTINCT f.id) AS pictures FROM artifact a"
     "  JOIN entity e ON e.id = a.id"
@@ -391,7 +391,7 @@ ARTIFACTS_BY_USE = (
     " WHERE a.kind = ? GROUP BY a.id ORDER BY pictures DESC, a.name"
 )
 
-#: What this LoRA is actually used with, and how often. The old app answered
+#: What this LoRA is actually used with, and how often. The old app handled
 #: this by matching one filename against a delimited blob holding another and
 #: calling co-residency a match; it is a join with real counts.
 LORA_SYNERGY = (
@@ -406,7 +406,7 @@ LORA_SYNERGY = (
 
 #: Workflows attach through `generation.workflow_id`, never `file_artifact`
 #: -- a workflow is how the picture was made, not a weight it loaded -- so
-#: the workflow shelf has its own joins.
+#: the workflow index has its own joins.
 WORKFLOWS_BY_USE = (
     "SELECT a.name, e.slug, count(*) AS pictures FROM artifact a"
     "  JOIN entity e ON e.id = a.id"
@@ -423,7 +423,7 @@ def artifacts_by_use(conn, kind: str):
     return conn.execute(ARTIFACTS_BY_USE, (kind,)).fetchall()
 
 
-#: A few pictures per artifact for its shelf card, newest first: the
+#: A few pictures per artifact for its index card, newest first: the
 #: artifact's slug and the picture's, for every artifact of one kind.
 SHELF_SAMPLES_PER = 4
 ARTIFACT_SHELF_SAMPLES = (
@@ -448,7 +448,7 @@ WORKFLOW_SHELF_SAMPLES = (
 
 def artifact_shelf_samples(conn, kind: str, per: int = SHELF_SAMPLES_PER) -> dict[str, list[str]]:
     """`{artifact slug: [picture slug, ...]}` -- the newest few pictures
-    of every artifact of one kind, for the shelf's cards."""
+    of every artifact of one kind, for the index page's cards."""
     rows = (
         conn.execute(WORKFLOW_SHELF_SAMPLES, (per,))
         if kind == "workflow"
@@ -465,7 +465,7 @@ def workflows_by_use(conn):
 
 
 #: The artifact's own facts -- never its media membership, which is the
-#: ResultSet's answer to artifact={slug}.
+#: ResultSet's result for artifact={slug}.
 ARTIFACT_CARD = "SELECT name, kind, architecture, content_sha256, quoted_hash, first_seen_at FROM artifact WHERE id = ?"
 
 
@@ -513,9 +513,9 @@ PERSON_ACROSS_FOLDERS = (
 
 
 #: When each person was first and last seen, on the human timeline,
-#: for one clustering run: the People index's answer beside the count.
+#: for one clustering run: the People index's timespan beside the count.
 #: An aggregate over the run's attributions -- the index page's own
-#: summary, like the shelves.
+#: summary, like the other index pages.
 PEOPLE_SPANS = (
     "SELECT fp.person_id, min(" + HUMAN_MOMENT + "), max(" + HUMAN_MOMENT + ")"
     "  FROM derived_file_person fp"
@@ -526,7 +526,7 @@ PEOPLE_SPANS = (
 
 #: When a person was seen: every CURRENT session holding one of their
 #: pictures, with how many of its members are theirs and the story told
-#: of it -- the timeline's answer for one face, newest first.
+#: of it -- the timeline's result for one face, newest first.
 PERSON_SESSIONS = (
     "SELECT ev.id, ev.kind, COALESCE(ev.local_start, ev.instant_start), COALESCE(ev.local_end, ev.instant_end),"
     " count(DISTINCT ef.file_id) AS theirs,"
@@ -590,7 +590,7 @@ RUNS = (
 #: Where two runs disagree about one picture: the people each says are in it.
 #: The disagreement is the point -- one threshold welds strangers together and
 #: another splits one person in four, and the only way to see which is
-#: happening is to put the two answers side by side on the same photograph.
+#: happening is to put the two results side by side on the same photograph.
 RUNS_DISAGREE = """
     SELECT f.name,
            group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS left_says,
@@ -726,9 +726,10 @@ def person_across_folders(conn, person_id: int, run_id: int | None = None):
 
 #: Every group of perceptual copies, its best face forward and its count.
 #: An index page over a summary -- the aggregate exemption, like the
-#: shelves. Present members only, on both sides: a group whose best went
-#: missing is not shown, and a missing member is not counted -- the same
-#: convention DUPE_COPIES holds, so the shelf and the page agree.
+#: other index pages. Present members only, on both sides: a group
+#: whose best went missing is not shown, and a missing member is not
+#: counted -- the same convention DUPE_COPIES holds, so the index and
+#: the per-picture page agree.
 DUPE_GROUPS = (
     "SELECT e.slug, f.name, count(*) AS copies FROM derived_dupe_group best"
     "  JOIN derived_dupe_group member ON member.group_id = best.group_id"
@@ -765,7 +766,7 @@ def dupe_copies(conn, file_id: int, limit: int = 120):
 #: Every ACTIVE collection with how many present pictures it holds.
 #: LEFT JOINs so an album somebody just made lists at zero instead of
 #: vanishing; archived collections keep their rows and their addresses
-#: but leave the shelves.
+#: but leave the index pages.
 ALBUMS = (
     "SELECT c.name, e.slug, c.kind, count(f.id) AS pictures"
     "  FROM collection c JOIN entity e ON e.id = c.id"
@@ -775,7 +776,7 @@ ALBUMS = (
     " GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
 )
 
-#: The management shelf: what was retired, flat -- hierarchy is an
+#: The archived index: what was retired, flat -- hierarchy is an
 #: active-tree presentation and an archived row keeps only its own state.
 ARCHIVED_ALBUMS = (
     "SELECT c.name, e.slug, c.kind, count(f.id) AS pictures"
@@ -809,7 +810,7 @@ ALBUM_FILES = (
 )
 
 #: How many of an album's members are actually present -- the number every
-#: route answers with, so the shelf and the membership writes cannot drift.
+#: route returns, so the index page and the membership writes cannot drift.
 ALBUM_PRESENT = (
     "SELECT count(*) FROM collection_file cf"
     "  JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
@@ -855,7 +856,7 @@ def collection_children(conn, collection_id: int | None):
     return conn.execute(COLLECTION_CHILDREN, (collection_id,)).fetchall()
 
 
-#: The whole shelf in ONE statement -- /albums promises every collection,
+#: The whole index in ONE statement -- /albums promises every collection,
 #: so reading O(N) rows is the page's own meaning; what stays forbidden
 #: is a read-time sort, and ORDER BY (parent_id, name) IS the
 #: collection_parent index's order, so the plan is one ordered walk.
@@ -878,7 +879,7 @@ def collection_shelf(conn):
 
 #: The album picker's choices: every LISTED collection -- smart ones are
 #: rule-derived and have no membership to offer -- with whether this
-#: file is filed in each. Ordered as the shelf is, riding
+#: file is filed in each. Ordered as the index is, riding
 #: collection_parent; a whole-index page, because a chooser that hides
 #: albums is a chooser that loses photographs.
 COLLECTION_CHOICES = (
@@ -897,7 +898,7 @@ def collection_choices(conn, file_id: int):
 def collections_named(conn, ids) -> list[tuple[str, str, int]]:
     """`(slug, name, archived)` for an id set the caller already
     resolved -- the parent picker's labels, name-ordered like every
-    shelf. Archived rides along so the one archived offer (the current
+    index page. Archived rides along so the one archived offer (the current
     parent) can say what it is."""
     if not ids:
         return []
@@ -924,9 +925,9 @@ def ways(conn):
 # --- the timeline ----------------------------------------------------------
 
 #: The human timeline's one axis: context.HUMAN_MOMENT, the same
-#: fragment the day facet filters by, so the shelf and the link into
+#: fragment the day facet filters by, so the timeline page and the link into
 #: the gallery cannot disagree. Only rows of the RUNNING code's
-#: interpretation policy answer -- bound at call time, never the
+#: interpretation policy value -- bound at call time, never the
 #: version the database happens to remember, so an upgraded build shows
 #: honest absence until the context job re-interprets.
 #: Every timeline statement is HEAD + scope + TAIL: the scope is the
@@ -955,7 +956,7 @@ _TIMELINE_DAYS_HEAD = (
 _TIMELINE_DAYS_TAIL = " GROUP BY day ORDER BY day DESC LIMIT ?"
 TIMELINE_DAYS = _TIMELINE_DAYS_HEAD + _TIMELINE_DAYS_TAIL
 
-#: Event runs answer only while they can PROVE they were computed over
+#: Event runs are included only while they can PROVE they were computed over
 #: the current interpretation: generation and policy both match, or the
 #: hypothesis is stale -- whoever its members are.
 _TIMELINE_EVENTS_HEAD = (
@@ -1158,7 +1159,7 @@ _FINE_ENOUGH = {
     "quarter": ["minute", "second", "subsecond"],
     "minute": ["minute", "second", "subsecond"],
 }
-#: The most bins one answer carries. Wider asks are refused with the
+#: The most bins one response carries. Wider asks are refused with the
 #: remedy, never served as a 30,000-bar page.
 MAX_BINS = 4_000
 
@@ -1576,7 +1577,7 @@ STORIES = (
 _STORIES_OF_KIND = " WHERE s.event_kind = ?"
 _STORIES_NEWEST = " ORDER BY sr.id DESC LIMIT ?"
 
-#: How many stories each session kind has, for the shelf's filter.
+#: How many stories each session kind has, for the index page's filter.
 STORY_KINDS = (
     "SELECT s.event_kind, count(*) FROM story_render sr JOIN story_plan sp ON sp.id = sr.plan_id"
     "  JOIN story_snapshot s ON s.id = sp.snapshot_id GROUP BY s.event_kind ORDER BY s.event_kind"
@@ -1624,7 +1625,7 @@ def children(conn, file_id: int):
 #: it LEFT JOINed, because the table is cross-media by construction -- a
 #: sound has no width, a photograph has no sampler, and a row that
 #: dropped out for lacking one would make the table lie about what the
-#: answer holds.
+#: result set holds.
 TABLE_ROWS = (
     "SELECT f.id, e.slug, f.name, f.kind, f.size, f.mtime, f.width, f.height, f.duration,"
     " f.content_sha256,"
@@ -1675,10 +1676,10 @@ TABLE_COLUMNS = (
 def table_of(conn, file_ids, actor_id: int | None = None) -> list[dict]:
     """One row per file, in the ORDER GIVEN.
 
-    SQLite returns a set; the answer is a sequence, and the sequence is
+    SQLite returns a set; the result is a sequence, and the sequence is
     the whole point of a ResultSet. So the rows are put back into the
     caller's order here rather than sorted by anything of this query's
-    own -- a table that quietly reordered the answer would be a second
+    own -- a table that quietly reordered the result would be a second
     opinion about it.
     """
     import json

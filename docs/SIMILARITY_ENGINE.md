@@ -4,8 +4,8 @@ SQLite's first-party vector extension (`vec1`, sqlite.org/vec1, first
 checkin 2026-02-04) was evaluated as a candidate to own durable float
 vector state, with FAISS demoted to a hot projection. The decision was
 made on measurements against the real runtimes, not on roadmap
-sympathy. Verdict: **SQLite BLOB columns stay the durable truth and the
-resident FAISS layer (vision/faiss_index.py) serves every similarity
+sympathy. Verdict: **SQLite BLOB columns stay the durable system of record
+and the resident FAISS layer (vision/faiss_index.py) serves every similarity
 workload.** The numbers and the reproduction path are below so the
 decision can be re-taken when the inputs change.
 
@@ -45,7 +45,7 @@ find-similar page; neither side wins anything decisive here.
 **Transactions**: vec1's genuine advantage. An insert inside an open
 transaction is searchable immediately and a rollback removes it from
 both table and index (probed; also upstream's vec1rollback.test). But
-this advantage does not transfer: our durable truth (BLOB columns) is
+this advantage does not transfer: our durable system of record (BLOB columns) is
 ALREADY transactional, and the tier that is not -- the resident RAM/VRAM
 index -- would remain outside SQLite transactions under vec1 too,
 because vec1 has no GPU and no graph workload. The reconciliation layer
@@ -77,13 +77,13 @@ tests/test_faiss_index.py) at 1x plus a sidecar.
 
 ## The decision, stated as invariants
 
-- Durable truth: SQLite rows (BLOB representations + the
+- Durable system of record: SQLite rows (BLOB representations + the
   `similarity_space` identity row). Already transactional;
   that was never the gap.
 - Serving: the one resident FAISS layer, CPU canonical + optional GPU
   clone, for every space -- float and binary alike.
 - `align` stays: it reconciles the non-transactional resident tier with
-  committed truth, a need that exists in every topology that keeps a
+  committed state, a need that exists in every topology that keeps a
   RAM/VRAM index.
 
 ## What would reopen this decision

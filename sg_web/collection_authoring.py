@@ -1,7 +1,7 @@
 """One write adapter for the collection lifecycle.
 
 Every route here parses an address and a body, hands the desired state
-to db/collections.py, commits exactly once, and answers where the facts
+to db/collections.py, commits exactly once, and returns where the facts
 landed: the slug and the definition's next revision. Rules come from the
 same GalleryQuery-shaped inputs the gallery itself takes;
 db/collection_rules.py owns every conversion and the browser never
@@ -37,7 +37,7 @@ from sg_web.wire import Wire
 
 
 def _collection_at(conn, slug: str) -> int:
-    """The entity id for an address, retired spellings included -- a
+    """The entity id for an address, retired slugs included -- a
     write through an old bookmark still means the same entity."""
     found = naming.resolve(conn, "collection", slug)
     if found is None:
@@ -46,10 +46,10 @@ def _collection_at(conn, slug: str) -> int:
 
 
 def _written(state: State, work) -> Response[collection_view.CollectionWriteAnswer]:
-    """Refusal mapping, one commit, and the small answer a write owes.
+    """Refusal mapping, one commit, and the small response a write owes.
 
     Where to go and the definition's next concurrency token. It used to
-    answer with the whole management view -- the ResultSet page evaluated,
+    return the whole management view -- the ResultSet page evaluated,
     the spans, the places and every legal parent move -- which meant every
     rename re-ran the collection's rule to build a body the browser reads
     one field out of.
@@ -101,7 +101,7 @@ def make_album(state: State, data: NewCollection) -> Response[collection_view.Co
 
 class NewSmart(Wire):
     """The body of POST /albums/smart: a name, an optional cutoff, and
-    the canonical spelling of the question being saved. The server
+    the canonical form of the query being saved. The server
     reconstructs the typed rule through the same seams that own query
     semantics -- the browser never defines a rule shape."""
 
@@ -118,8 +118,8 @@ class NewSmart(Wire):
     parent: str | None = None
     color: str | None = None
     description: str | None = None
-    #: the facets, one spelling or a list of them -- `f` repeats in the
-    #: canonical question, and a view with two must save with two
+    #: the facets, one encoding or a list of them -- `f` repeats in the
+    #: canonical query, and a view with two must save with two
     f: str | list[str] | None = None
 
 
@@ -173,7 +173,7 @@ class EditCollection(Wire):
 
     `name` and `archived` accept null on the wire and are refused below it:
     a collection cannot be nameless, and a lifecycle is on or off. Refusing
-    them here would answer 400 without saying which fact was impossible.
+    them here would return 400 without saying which fact was impossible.
     """
 
     expected_rev: int
@@ -226,7 +226,7 @@ async def edit_definition(
 class _Question(Wire):
     """The GalleryQuery-shaped inputs a rule is minted from.
 
-    The same spellings the save-view flow sends. The server reconstructs
+    The same encodings the save-view flow sends. The server reconstructs
     the typed rule through the seams that own query semantics; a browser
     never constructs rule JSON.
     """
@@ -239,13 +239,13 @@ class _Question(Wire):
     sort: str | None = None
     favorite: str | None = None
     rating_min: int | None = None
-    #: the facets, one spelling or a list of them
+    #: the facets, one encoding or a list of them
     f: str | list[str] | None = None
 
 
 class ReplaceRule(_Question):
     """The body of PUT /t/{slug}/rule. `kind` here is the MEDIA kind, the
-    same one a gallery question carries -- a collection's own kind is not
+    same one a gallery query carries -- a collection's own kind is not
     patchable, it is a conversion."""
 
     expected_rev: int
@@ -314,11 +314,11 @@ class ConvertCollection(RootModel[Annotated[ConvertToListed | ConvertToSmart, Fi
     A discriminated union rather than one model holding both sets of
     fields, so a field the target kind cannot mean is refused by name
     instead of accepted and ignored -- `{"kind": "album", "q": "cat"}`
-    answers 400 saying `album.q`, and a smart conversion carrying
+    returns 400 saying `album.q`, and a smart conversion carrying
     `discard_rule` says `smart.discard_rule`.
 
     A RootModel because litestar cannot take a bare union body: measured,
-    a handler annotated `data: A | B` answers 500 to every request,
+    a handler annotated `data: A | B` returns 500 to every request,
     including valid ones, since a body reaches pydantic only when the
     annotation IS a BaseModel subclass
     (litestar/plugins/pydantic/plugins/init.py is_pydantic_v2_model_class).

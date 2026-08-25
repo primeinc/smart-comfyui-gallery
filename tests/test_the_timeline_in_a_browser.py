@@ -132,7 +132,7 @@ def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page:
 
 def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
     """A two-facet link saved from the gallery is a two-facet rule: the
-    button sends every `f` the mounted answer carries, and the saved
+    button sends every `f` the mounted result set carries, and the saved
     collection's words name both."""
     asked = "/g?f=context.local_day%3Aeq%3A2023-06-10&f=context.origin%3Aeq%3Aimported"
     page.on("dialog", lambda dialog: dialog.accept("Two facets"))
@@ -151,12 +151,13 @@ def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
 
 
 def test_a_page_of_dates_stays_alive_under_people_js(page: Page, live: Live):
-    """The People bundle spells every <time data-epoch> and watches the
-    document for new ones. Spelling is itself a mutation: a watcher that
-    re-spelt what it had just spelt looped the main thread forever, and
-    every person page -- the pages with dated sessions -- hung the tab.
-    The page must answer after load, with every date spelled once. The
-    script loaded here is the one the People page loads."""
+    """The People bundle formats every <time data-epoch> and watches the
+    document for new ones. Formatting is itself a mutation: a watcher
+    that re-formatted what it had just formatted looped the main thread
+    forever, and every person page -- the pages with dated sessions --
+    hung the tab. The page must stay responsive after load, with every
+    date formatted once. The script loaded here is the one the People
+    page loads."""
     page.goto("/people")
     page.set_content(
         '<body><time data-epoch="1686355200">1686355200</time><time data-epoch="1686441600">x</time>'

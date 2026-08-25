@@ -1,5 +1,5 @@
 // Interaction only. Membership, order, counts and previews all come from
-// the server's ResultSet answers; this file maps pointer geometry onto
+// what the server's ResultSet returns; this file maps pointer geometry onto
 // page numbers and renders what it is told. Hooks are semantic data
 // attributes, never style classes.
 import { api, refusal } from "./api";
@@ -14,9 +14,9 @@ import { type Viewer, mountViewer } from "./viewer";
 type PeekView = components["schemas"]["PeekView"];
 
 /**
- * The question a rule is minted from, as both save routes spell it.
+ * The query a rule is minted from, as both save routes encode it.
  *
- * The shared half of NewSmart and ReplaceRule. Spelled field by field
+ * The shared half of NewSmart and ReplaceRule. Encoded field by field
  * because a rule saved from `Object.fromEntries` keeps only the LAST `f`,
  * and a two-facet view would then become a one-facet collection -- and
  * because a body carrying a stray URL parameter is refused outright now
@@ -52,15 +52,15 @@ const asked = (spelled: string, take: number | null): Rule => {
 };
 
 (() => {
-  // The filter surface: the question's own controls, drawn from the
+  // The filter surface: the query's own controls, drawn from the
   // vocabulary the server registered them in.
   mountFilters(document.body);
-  // the analysis, when this answer is being described rather than shown
+  // the analysis, when this result set is being described rather than shown
   mountAnalyze(document.body);
   // and browsing: the next page arrives because you kept going
   mountEndless(document.body);
 
-  // The form must ask a question the server can answer: a phrase orders
+  // The form must submit a query the server can resolve: a phrase orders
   // by similarity (the seam refuses the contradiction), and empty fields
   // have no place in a canonical URL.
   const ask = findElement(document, "[data-ask]", HTMLFormElement);
@@ -88,9 +88,9 @@ const asked = (spelled: string, take: number | null): Rule => {
   const grid = () => findElement(document, "[data-grid]", HTMLElement);
 
   /**
-   * The canonical spelling of the answer ON SCREEN.
+   * The canonical form of the result set ON SCREEN.
    *
-   * Not the address bar: ResultSet heals retired entity spellings into
+   * Not the address bar: ResultSet heals retired entity slugs into
    * `data-qbase`, and a save must persist the identity being looked at, not
    * the stale words the URL arrived with. `page` and `size` are paging, not
    * meaning, so they are never part of a rule.
@@ -113,8 +113,8 @@ const asked = (spelled: string, take: number | null): Rule => {
     return held === null ? undefined : Number(held);
   };
 
-  // Save the CURRENT question as a smart collection: the server
-  // reconstructs the typed rule from the canonical spelling -- the browser
+  // Save the CURRENT query as a smart collection: the server
+  // reconstructs the typed rule from the canonical form -- the browser
   // sends the URL's own parameters and a name, never a rule shape.
   const saver = findElement(document, "[data-save-smart]", HTMLElement);
   saver?.addEventListener("click", async () => {
@@ -193,7 +193,7 @@ const asked = (spelled: string, take: number | null): Rule => {
   };
 
   // The rail is the ORDERED RESULT SET at full height: a fraction of the
-  // track is a fraction of the answer, never of scroll height.
+  // track is a fraction of the result set, never of scroll height.
   const pageAt = (clientY: number, s: Shape) => {
     const box = rail.getBoundingClientRect();
     const fraction = Math.min(1, Math.max(0, (clientY - box.top) / box.height));
@@ -218,14 +218,15 @@ const asked = (spelled: string, take: number | null): Rule => {
   };
   window.addEventListener("resize", placeRail);
 
-  // A preview must belong to the SAME answer as the grid it floats beside
-  // -- the answer identity, not the currency. Currency is the library's
-  // data_version, which every commit moves: a running job's bookkeeping
-  // moved it once per item, so every hover during a job was a 409 and a
-  // whole-page reload. The answer is the sha of the ordering itself; the
-  // same answer means the same ordering, and a preview of it is true. A
-  // different answer redraws the gallery from the URL -- two orderings are
-  // never presented as one.
+  // A preview must belong to the SAME result set as the grid it floats
+  // beside -- the result set identity, not the data version. The data
+  // version is the library's data_version, which every commit moves: a
+  // running job's bookkeeping moved it once per item, so every hover
+  // during a job was a 409 and a whole-page reload. The result set is
+  // the sha of the ordering itself; the same result set means the same
+  // ordering, and a preview of it is true. A different result set
+  // redraws the gallery from the URL -- two orderings are never
+  // presented as one.
   const peeked = new Map<string, PeekView>();
   const peek = async (page: number, s: Shape): Promise<PeekView | null> => {
     const key = `${s.answer}:${page}`;
@@ -272,7 +273,7 @@ const asked = (spelled: string, take: number | null): Rule => {
     popGrid.replaceChildren(
       ...told.items.map((item) => {
         const img = new Image();
-        // The URL the ANSWER resolved, not one assembled here: the
+        // The URL the RESULT SET resolved, not one assembled here: the
         // ResultSet already knows the content hash, and a preview
         // that rebuilt `/thumb/<slug>` would send every rail hover
         // back through slug resolution for pictures nobody opened.
@@ -329,7 +330,7 @@ const asked = (spelled: string, take: number | null): Rule => {
   // --- the lightbox: the media adapter over the AddressableOverlay ----
   // The shell (overlay.ts) owns open/mount, push-replace policy,
   // Back-on-dismiss, popstate and the generation check. What is MEDIA'S
-  // alone lives here: which currency the view is walking, and the arrows
+  // alone lives here: which data version the view is walking, and the arrows
   // -- each a REPLACE, so browsing fifty items is one Back out.
   // The viewer inside the mounted fragment. Each open replaces the
   // overlay's contents, so the previous mount's listeners are released
@@ -355,12 +356,13 @@ const asked = (spelled: string, take: number | null): Rule => {
       const s = shape();
       return s ? s.currency : "";
     },
-    // A 409'd arrow proves the generation moved, not that THIS answer did
-    // -- a favorite, a background job's bookkeeping, any commit at all
-    // moves data_version. Ask locate for the walked context's (currency,
-    // answer): the same answer identity means the mounted walk is still
-    // true, so adopt the fresh currency and let the shell retry once. A
-    // changed or vanished answer stays a full redraw.
+    // A 409'd arrow proves the generation moved, not that THIS result set
+    // did -- a favorite, a background job's bookkeeping, any commit at all
+    // moves data_version. Ask locate for the walked context's (data
+    // version, result set): the same result set identity means the
+    // mounted walk is still true, so adopt the fresh data version and let
+    // the shell retry once. A changed or vanished result set stays a
+    // full redraw.
     recover: async () => {
       const shown = findElement(document, "[data-lightbox]", HTMLElement);
       const mounted = shown?.dataset.answer || grid()?.dataset.answer || "";
@@ -385,7 +387,7 @@ const asked = (spelled: string, take: number | null): Rule => {
           },
         },
       });
-      // `in_answer` discriminates: a NotLocated carries no answer to
+      // `in_answer` discriminates: a NotLocated carries no result set to
       // compare, and the type says so rather than leaving it undefined.
       if (!data?.in_answer || data.answer !== mounted) return false;
       for (const surface of [shown, grid()]) {

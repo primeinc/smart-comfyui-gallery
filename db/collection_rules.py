@@ -1,8 +1,8 @@
 """What a smart collection MEANS, durably: a typed membership rule.
 
-A GalleryQuery answers "what am I looking at, and in what order?"; a
-collection answers "which files belong to me?". Almost the same
-question -- so a rule is deliberately SMALLER than a GalleryQuery: no
+A GalleryQuery captures "what am I looking at, and in what order?"; a
+collection captures "which files belong to me?". Nearly the same
+query -- so a rule is deliberately SMALLER than a GalleryQuery: no
 page, no page size, no viewer, no album reference (a smart collection
 inside a smart collection is a dependency graph nobody asked for yet),
 and never any executable text.
@@ -10,7 +10,7 @@ and never any executable text.
 Three conversions happen exactly once, in `from_gallery_query`:
 
 - entity references are stored by `entity.uuid`, never by slug -- a
-  slug is an address spelling that can be renamed and eventually
+  slug is an address encoding that can be renamed and eventually
   reused, and a saved rule must mean the entity that was selected;
 - authored facets (favorite, rating_min) PIN the creating actor into
   the rule -- "Will's favorites" means Will's whoever is looking;
@@ -46,13 +46,13 @@ class BrokenCollectionRule(ValueError):
 
 
 class UnavailableCollectionRule(ValueError):
-    """The rule is sound but cannot be answered RIGHT NOW -- a semantic
-    rule with no space able to answer. Never presented as empty."""
+    """The rule is sound but cannot be evaluated RIGHT NOW -- a semantic
+    rule with no space able to evaluate it. Never presented as empty."""
 
 
 @dataclasses.dataclass(frozen=True)
 class CollectionRule:
-    """One smart collection's membership question, durable form."""
+    """One smart collection's membership query, durable form."""
 
     version: int
     folder_uuid: bytes | None
@@ -68,11 +68,11 @@ class CollectionRule:
     take: int | None
     actor_id: int | None
     #: v3: registered metadata predicates (db/facets.py), the facets a
-    #: gallery question carries, saved as membership. Always empty in a
+    #: gallery query carries, saved as membership. Always empty in a
     #: v1 or v2 rule. Never `event.id`: a session is a run's hypothesis
-    #: over one interpretation, and a rule holding one would answer
-    #: nothing the day the runs regroup -- an empty collection wearing a
-    #: saved view's clothes.
+    #: over one interpretation, and a rule holding one would return an
+    #: empty result set the day the runs regroup -- an empty collection
+    #: wearing a saved view's clothes.
     facets: tuple = ()
 
 
@@ -179,7 +179,7 @@ def _versioned_shape(version: int, held) -> tuple[dict, dict]:
 def _stored_uuid(value, field: str) -> bytes | None:
     """Only actual JSON null means unconstrained: an empty string, a
     false, or any other falsy value is CORRUPTION, not the absence of a
-    reference -- and the spelling is exactly 32 hex characters BEFORE
+    reference -- and the encoding is exactly 32 hex characters BEFORE
     the decoder (which forgives whitespace) ever sees it."""
     if value is None:
         return None
@@ -189,7 +189,7 @@ def _stored_uuid(value, field: str) -> bytes | None:
 
 
 def _stored_facets(spelled) -> tuple:
-    """A list of spellings, each re-validated against the CURRENT
+    """A list of encodings, each re-validated against the CURRENT
     registry: a key this build no longer knows is a rule this build
     cannot evaluate -- refused, never quietly dropped."""
     if not isinstance(spelled, list) or any(type(one) is not str for one in spelled):
@@ -201,10 +201,10 @@ def _stored_facets(spelled) -> tuple:
 
 
 def _entity_uuid(conn, kind: str, slug: str) -> bytes:
-    """Any spelling ResultSet recognizes is also legal when the question
+    """Any encoding ResultSet recognizes is also legal when the query
     becomes durable meaning: retired slugs resolve to the same entity,
     and the uuid -- the identity itself -- is what gets stored. A save
-    that refused the spelling whose answer is on screen would be
+    that refused the encoding whose result set is on screen would be
     healing's opposite."""
     from .naming import resolve
 
@@ -215,7 +215,7 @@ def _entity_uuid(conn, kind: str, slug: str) -> bytes:
 
 
 def from_gallery_query(conn, query, *, actor_id: int | None, take: int | None) -> CollectionRule:
-    """The one place a spelled question becomes a durable rule.
+    """The one place an encoded query becomes a durable rule.
 
     Refusals are loud: an album scope (no smart-in-smart), a semantic
     phrase without `take`, an authored facet with no actor to pin.

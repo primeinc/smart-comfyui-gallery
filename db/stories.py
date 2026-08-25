@@ -5,7 +5,7 @@ It freezes EVIDENCE, not prose. Everything downstream of it -- a
 planner that decides what is interesting, a writer that decides how a
 human is told -- consumes this one frozen document and is forbidden
 from reaching back into today's database for a more convenient fact.
-That is the Seam between mutable library truth and storytelling: no
+That is the Seam between the mutable library and storytelling: no
 LLM ever decides whether July 18 happened in August because some
 timestamps looked convenient.
 
@@ -54,7 +54,7 @@ from . import prompts as prompts_module
 FORMAT_VERSION = 1
 
 #: The session kinds a snapshot may be of -- the schema's own CHECK
-#: (story_snapshot.event_kind), spelled once for every caller that
+#: (story_snapshot.event_kind), defined once for every caller that
 #: filters by it.
 EVENT_KINDS = ("generation_session", "capture_session", "file_session")
 
@@ -62,8 +62,8 @@ _CANONICAL = {"sort_keys": True, "separators": (",", ":"), "ensure_ascii": False
 
 
 def canonical(document: dict) -> str:
-    """One spelling of one document: sorted keys, no whitespace -- the
-    bytes the identity is hashed over."""
+    """One canonical form of one document: sorted keys, no whitespace --
+    the bytes the identity is hashed over."""
     return json.dumps(document, **_CANONICAL)
 
 
@@ -80,7 +80,7 @@ class SnapshotRef:
 
 # --- the evidence Seam -------------------------------------------------------
 #
-# Each Adapter answers one question about a set of member files and
+# Each Adapter resolves one query about a set of member files and
 # returns {file_id: bundle}. The snapshot Module chooses them and owns
 # assembly; adding OCR later, or swapping a caption producer, changes
 # one Adapter and nothing downstream learns where OCR happens.
@@ -102,7 +102,7 @@ class GenerationEvidence:
     bytes it compared), the workflow, the sampling parameters, every
     artifact the generation named, and the generator's own parameter
     bag (wildcards, date, timings -- whatever it recorded). `prompt`
-    and `negative_prompt` are the effective and negative texts, spelled
+    and `negative_prompt` are the effective and negative texts, repeated
     again for readers of the roles' two commonest entries."""
 
     name = "generation"
@@ -358,7 +358,7 @@ class AnnotationEvidence:
 
 #: The Adapters this build freezes, in one place. Order is irrelevant to
 #: the document (keys are sorted) and to identity (the hash is over the
-#: canonical spelling).
+#: canonical form).
 EVIDENCE: tuple[_Evidence, ...] = (
     GenerationEvidence(),
     CaptureEvidence(),

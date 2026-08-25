@@ -5,8 +5,8 @@
  * fourth, which is why every surface that wanted to remember something
  * had started inventing its own key in localStorage:
  *
- *   server state       rows; the truth about media
- *   URL state          the question being asked -- shareable, bookmarkable
+ *   server state       rows; the system of record for media
+ *   URL state          the query being asked -- shareable, bookmarkable
  *   ephemeral state    hover, drag, what is under the pointer right now
  *   WORKSPACE state    how this person has arranged their tools
  *
@@ -46,9 +46,9 @@ export interface Workspace {
   /**
    * The gallery's filter drawer.
    *
-   * Whether the drawer is open is furniture. WHICH FILTERS ARE HELD is
-   * never here: that is the question, it lives in the URL, and a filter
-   * that outlived its URL would mean one link answering differently for
+   * Whether the drawer is open is chrome. WHICH FILTERS ARE HELD is
+   * never here: that is the query, it lives in the URL, and a filter
+   * that outlived its URL would mean one link responding differently for
    * two people.
    */
   filters?: "open" | "closed";
@@ -79,7 +79,7 @@ export interface Workspace {
 /**
  * Read the workspace, or an empty one.
  *
- * Every failure answers the same way: an empty workspace, so a surface
+ * Every failure resolves the same way: an empty workspace, so a surface
  * gets its defaults. Storage can be unavailable outright (private
  * windows, embedded views, a browser told to block site data), and the
  * stored text can be from a version that no longer parses. Neither is

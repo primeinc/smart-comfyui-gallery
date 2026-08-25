@@ -96,7 +96,7 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         assert shelf_with_span["last_seen"] >= shelf_with_span["first_seen"]
         assert "data-seen" in client.get("/places", headers={"accept": "text/html"}).text
 
-        # the shelf lists the place with its count and link
+        # the index page lists the place with its count and link
         shelf = client.get("/places", headers=AS_MACHINE).json()
         assert [(p["name"], p["kind"], p["pictures"]) for p in shelf] == [("Lisbon", "city", 2)]
         assert shelf[0]["qs"] == where["qs"]
@@ -235,8 +235,8 @@ def test_the_lightbox_says_where_too(tmp_path):
 
 def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
     """`/timeline?folder=lib`, `?kind=image`, `?person=...`: the same
-    question the gallery answers, as the surface's scope; its links are
-    that question plus a moment; a rule-defined album is refused and a
+    query the gallery serves, as the surface's scope; its links are
+    that query plus a moment; a rule-defined album is refused and a
     slug nothing lives at is a 404."""
     root = tmp_path / "lib"
     (root / "deep").mkdir(parents=True)
@@ -258,7 +258,7 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         page = client.get("/timeline", params={"folder": "deep"}, headers={"accept": "text/html"}).text
         assert 'data-timeline-scope="folder=deep"' in page
         assert client.get("/timeline/density", params={"bin": "day", "folder": "nowhere"}).status_code == 404
-        # a scope's value is its own address, so it carries no spelling --
+        # a scope's value is its own address, so it carries no encoding --
         # the field is there and null rather than absent, because a reader
         # should not have to branch on which keys a part happens to have
         assert client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()[
@@ -283,7 +283,7 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
 def test_a_place_can_be_within_another(tmp_path):
     """ "Lisbon within Portugal": the parent is found or minted the same
     way, a bare Lisbon said later to be within Portugal gains the parent
-    rather than a twin, the page spells the chain, the shelf says
+    rather than a twin, the page formats the chain, the index page says
     "in Portugal", and a story freezes the whole chain."""
     root = tmp_path / "lib"
     root.mkdir()
@@ -380,7 +380,7 @@ def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
 
 def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
     """The links this product grew carry facets; the bulk writes and the
-    picture page must prove and walk THAT question, or a selection made
+    picture page must prove and walk THAT query, or a selection made
     on a place's link 409s forever and a picture opened from it walks
     the whole library."""
     import re

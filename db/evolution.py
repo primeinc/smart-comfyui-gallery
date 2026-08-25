@@ -181,7 +181,7 @@ def _generation_facts(generation: dict | None) -> dict:
 
 
 def _changes(before: dict, after: dict) -> dict:
-    """Exact deltas. LoRAs differ by frozen IDENTITY (uuid), spelled by
+    """Exact deltas. LoRAs differ by frozen IDENTITY (uuid), rendered as
     their frozen names: two different files that share a name changed,
     one file renamed did not."""
     changed = {key: {"from": before[key], "to": after[key]} for key in (*_PARAMS, "model") if before[key] != after[key]}
@@ -198,7 +198,7 @@ def _changes(before: dict, after: dict) -> dict:
 
 
 def local_day(snapshot: dict) -> str | None:
-    """The session's LOCAL calendar day as the gallery's day facet spells
+    """The session's LOCAL calendar day as the gallery's day facet encodes
     it, when the event has a wall clock -- an identity; the web adapter
     turns it into an address."""
     when = snapshot["subject"]["time"].get("local")

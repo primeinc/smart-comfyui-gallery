@@ -3,7 +3,7 @@
 Each test is named for the failure it prevents. The pipeline under test is
 the production one -- `db.detect` through `db.similarity` and `db.grouping`
 into `db.derived` -- not a re-implementation of it, because the last suite
-formed clusters by writing the answer down and then checking the answer.
+formed clusters by writing the result down and then checking the result.
 """
 
 from __future__ import annotations

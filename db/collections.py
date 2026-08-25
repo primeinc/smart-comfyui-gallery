@@ -26,7 +26,7 @@ Only an unexpected SQLite failure still needs the caller's rollback.
 
 Membership never bumps the revision -- filing a
 picture does not invalidate an open description editor; membership
-coherence already belongs to the ResultSet's currency and answer
+coherence already belongs to the ResultSet's data version and result
 identity.
 
 Archive is the user-facing end of life, not deletion: hard-deleting a
@@ -34,7 +34,7 @@ collection would take its entity and its slug history with it, and a
 retired address that can someday resolve to a DIFFERENT entity breaks
 the addressability doctrine every page is built on. An archived
 collection keeps its members, children, rule and address; it leaves the
-shelves and the pickers, and restore reverses exactly.
+indexes and the pickers, and restore reverses exactly.
 
 Kind transitions are explicit operations, never patch fields: changing
 a description and changing HOW MEMBERSHIP IS DECIDED are different
@@ -104,7 +104,7 @@ def _cleaned_name(value) -> str:
 
 
 def _stored_color(value) -> str | None:
-    """One stored spelling: `#rrggbb` lowercase, or NULL. Arbitrary CSS
+    """One stored encoding: `#rrggbb` lowercase, or NULL. Arbitrary CSS
     is refused now, before something renders it into a style context."""
     if value is None:
         return None
@@ -398,9 +398,9 @@ _FILE_OUT_OF = "DELETE FROM collection_file WHERE collection_id = ? AND file_id 
 
 def _takes_filings(conn, collection_id: int, *, removing: bool) -> None:
     """A smart collection is refused by name here, and by trigger
-    beneath: its members are its rule's answer, and a stored row would
+    beneath: its members are its rule's result set, and a stored row would
     be a second, disagreeing one -- and pretending to remove one would
-    be answering under a membership model the kind does not have."""
+    be acting under a membership model the kind does not have."""
     kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (collection_id,)).fetchone()
     if kind is not None and kind[0] == "smart":
         what = "to remove" if removing else "into it"

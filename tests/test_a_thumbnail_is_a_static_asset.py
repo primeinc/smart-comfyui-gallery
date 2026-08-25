@@ -1,4 +1,4 @@
-"""Delivery: a thumbnail is bytes at an address, not a question.
+"""Delivery: a thumbnail is bytes at an address, not a query.
 
 The derivative cache was already content-addressed and immutable on disk
 -- `<sha[:2]>/<sha>.webp`, keyed on `content_sha256`, safe to delete
@@ -16,7 +16,7 @@ Three claims here, and none of them is visible in a picture:
   * the asset route touches NO DATABASE. Asserted by counting the
     connections the application opens, which is the number the whole
     change exists to move.
-  * the answer resolves thumbnail identity ONCE, so the URL a surface
+  * the route resolves thumbnail identity ONCE, so the URL a surface
     emits is already the asset's.
   * a second view can cost nothing, because the URL names the bytes.
 
@@ -63,7 +63,7 @@ def test_the_asset_url_mirrors_the_cache_on_disk(tmp_path):
 
 def test_a_file_nobody_has_hashed_yet_still_has_somewhere_to_point(tmp_path):
     """Ingest has not reached it, so there is no content address. The
-    slug route can still answer, at the cost this exists to avoid, which
+    slug route can still respond, at the cost this exists to avoid, which
     is the right trade for a file nobody has finished reading."""
     assert thumbs.asset_url(None, "not-hashed") == "/thumb/not-hashed"
     assert thumbs.asset_url("", "not-hashed") == "/thumb/not-hashed"
@@ -74,7 +74,7 @@ def test_it_refuses_a_variant_that_is_not_one(tmp_path):
         thumbs.asset_url("c" * 64, "s", "enormous")
 
 
-# --- the answer resolves it once --------------------------------------------
+# --- the route resolves it once ---------------------------------------------
 
 
 @pytest.fixture
@@ -232,7 +232,7 @@ def test_a_miss_renders_rather_than_showing_a_broken_picture(served):
 
 def test_a_name_that_is_not_a_derivative_is_refused(served):
     """The name is matched, never trusted: nothing that is not a cache
-    entry can be spelled, and `..` cannot appear at all."""
+    entry can be named, and `..` cannot appear at all."""
     client, _ = served
     for bad in (
         "/thumbs/ab/not-a-hash.webp",

@@ -2,7 +2,7 @@
    Tokens are gallery.css's; this file adds the mono register every
    operational VALUE is set in and the two conditions the console must
    keep apart. Pretty beside raw, everywhere: a label in the body face,
-   the machine's own spelling in mono under it. */
+   the machine's own canonical form in mono under it. */
 :root {
   --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   --ok: #6fae7a;

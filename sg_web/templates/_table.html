@@ -2,14 +2,14 @@
 
    Cross-media by construction: a sound has no width, a photograph has no
    sampler, a clip has no aperture. Every column is a LEFT JOIN and an
-   empty cell is an honest "this medium does not have one" -- a table that
-   dropped a row for lacking a column would misreport what the answer
+   empty cell is a truthful "this medium does not have one" -- a table that
+   dropped a row for lacking a column would misreport what the result set
    holds, and one that showed 0 would invent a fact.
 
-   Only the columns SOMETHING in this answer fills are drawn, so asking
+   Only the columns SOMETHING in this result set fills are drawn, so asking
    about photographs does not produce eight empty recipe columns and
    asking about generated pictures does not produce four empty camera
-   ones. The answer decides its own shape. #}
+   ones. The result set decides its own shape. #}
 {% set has_recipe = table | selectattr("tool") | list | length > 0 %}
 {% set has_camera = table | selectattr("camera") | list | length > 0 or table | selectattr("iso") | list | length > 0 %}
 {% set has_length = table | selectattr("duration") | list | length > 0 %}

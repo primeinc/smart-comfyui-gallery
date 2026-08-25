@@ -439,8 +439,8 @@ def observe_tree(conn, root_id: int, root_path, now: float | None = None) -> tup
     """
     # Scoped to this root. `stored` is only consulted for paths under the tree
     # being walked, and a folder belongs to exactly one root, so reading the
-    # whole `file` table here held every row in the library in memory to answer
-    # questions about one drive -- twice per scan, counting resolve_scan.
+    # whole `file` table here held every row in the library in memory to serve
+    # queries about one drive -- twice per scan, counting resolve_scan.
     stored = {
         (folder_id, name): (size, mtime, inode, sha)
         for folder_id, name, size, mtime, inode, sha in conn.execute(

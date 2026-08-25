@@ -1,7 +1,7 @@
 """Long work: what was asked for, what has been done, and who is doing it.
 
 Nothing expensive starts by itself. Every sweep is a row here, created by an
-explicit request, and the row is the truth about it -- not a message that was
+explicit request, and the row is the system of record for it -- not a message
 broadcast, not a counter in a worker's memory. A page reload, a dropped
 socket and a killed process all recover by reading the job back.
 
@@ -120,7 +120,7 @@ def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, 
 
     `gate` is `(setting key, default)`: the claim then succeeds only while
     that setting reads 'on', evaluated INSIDE the claim's single UPDATE.
-    A caller that checks the switch and then claims holds a stale answer
+    A caller that checks the switch and then claims holds a stale result
     for the gap between the two -- observed live once per-request
     connection setup widened it -- and an off-switch committed before the
     claim must never lose to that gap.

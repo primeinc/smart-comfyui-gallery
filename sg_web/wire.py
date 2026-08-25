@@ -51,7 +51,7 @@ class _WireSchema(PydanticSchemaPlugin):
     Litestar builds a component from a model's fields, required set, title
     and examples, and never looks at `extra`
     (litestar/plugins/pydantic/plugins/schema.py for_pydantic_model). The
-    document that came out therefore admitted a key the server answers 400
+    document that came out therefore admitted a key the server returns 400
     for, and the browser's generated types were built from that document.
     """
 

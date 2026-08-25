@@ -23,11 +23,11 @@ definition of the item.
 
 Previous and next come from `resultset.neighborhood` -- locate plus
 the window around it, so the arrows and the strip beneath the picture
-are one read of one answer. Position in the
-answer being walked, never a folder walk: a bare `/i/{slug}` uses the
+are one read of one result set. Position in the
+result set being walked, never a folder walk: a bare `/i/{slug}` uses the
 default GalleryQuery (the whole library, newest first), so the arrows
 always mean something and always mean what the grid meant. The context
-carries the ResultSet currency as concurrency evidence and the
+carries the ResultSet's data version as concurrency evidence and the
 computed return-to-results URL, so closing a directly-opened item goes
 back to its results page instead of wherever the browser had been.
 The `X-SG-Expect` header works as the rail's `expect` does: a context
@@ -63,19 +63,19 @@ def view(
     once, inside ONE database snapshot.
 
     Ordering inside the snapshot is load-bearing: the ResultSet context
-    comes FIRST, because its currency read (the monitor connection)
+    comes FIRST, because its data-version read (the monitor connection)
     must precede the read that pins this connection's snapshot -- a
-    metadata read first would pin the snapshot before the currency was
+    metadata read first would pin the snapshot before the data version was
     taken, and a commit in the gap would label pre-commit data with a
-    post-commit currency: exactly the mislabeling the caller's 409
-    comparison exists to catch. The context's currency is therefore
-    always present -- from `neighborhood` when the item is in the answer,
-    from `describe` (same projection, same snapshot) when it is not.
+    post-commit data version: exactly the mislabeling the caller's 409
+    comparison exists to catch. The context's data version is therefore
+    always present -- from `neighborhood` when the item is in the result
+    set, from `describe` (same projection, same snapshot) when it is not.
     """
     with resultset.snapshot(conn):
         # `neighborhood` IS locate plus the window around it, from one
         # projection: the ordinal, the arrows and the strip beneath the
-        # picture are then the same answer at the same generation. Two
+        # picture are then the same result set at the same generation. Two
         # calls would be two chances to describe two different walks.
         found = resultset.neighborhood(conn, models_dir, query, file_id, now, actor_id=actor_id)
         if found is not None:
@@ -183,7 +183,7 @@ def _assembled(
 def _filmstrip(found: dict, asked: str) -> Filmstrip:
     """The window the ResultSet returned, as addresses.
 
-    Every href carries the walked question, spelled by the server that
+    Every href carries the query being walked, encoded by the server that
     already knows its canonical form. A strip handing the browser slugs
     would be asking it to rebuild browsing state from parts, which is
     how a second, disagreeing ordering gets born.
@@ -224,7 +224,7 @@ def _viewing(conn) -> Viewing:
 def _authored(conn, file_id: int, actor_id: int) -> AuthoredState:
     """This actor's own facts about this picture.
 
-    Spelled field by field rather than validated from `asdict`: the
+    Built field by field rather than validated from `asdict`: the
     dataclass holds its collections as a TUPLE (immutable state nobody
     edits in place), and the seam is strict, so the translation from
     storage's shape to the wire's is a line of Python somebody can read
@@ -623,29 +623,29 @@ class FilmstripItem(Wire):
 
     Deliberately not the gallery's ResultItem: that carries a uuid for
     selection and a model caption for the grid's hover, and a strip of
-    64px squares needs neither. `href` arrives whole, carrying the walked
-    question, because reconstructing a browsing URL from a slug is the
+    64px squares needs neither. `href` arrives whole, carrying the query
+    being walked, because reconstructing a browsing URL from a slug is the
     one thing the browser must never be asked to do here.
     """
 
     slug: str
     name: str
     kind: MediaKind
-    #: position in the WHOLE answer, not in this window
+    #: position in the WHOLE result set, not in this window
     ordinal: int
     href: str
     thumb: str
 
 
 class Filmstrip(Wire):
-    """The local stretch of the walk, in answer order.
+    """The local stretch of the walk, in result-set order.
 
     A window around the current item, not a second gallery: the rail on
     the results page already owns long-distance travel through the same
-    answer, and this owns the few pictures either side of the one being
-    looked at. It knows nothing about pages -- a window straddling a page
-    boundary is not a special case here (db/resultset.py neighborhood),
-    and it is the ANSWER's order, never a folder's.
+    result set, and this owns the few pictures either side of the one
+    being looked at. It knows nothing about pages -- a window straddling
+    a page boundary is not a special case here (db/resultset.py
+    neighborhood), and it is the RESULT SET's order, never a folder's.
     """
 
     first_ordinal: int
@@ -658,7 +658,7 @@ class BrowsingContext(Wire):
     """The walk this address was opened inside.
 
     The ResultSet's, never a folder's: the arrows mean what the grid
-    meant, and the currency is the concurrency evidence a mounted
+    meant, and the data version is the concurrency evidence a mounted
     overlay is checked against.
     """
 
@@ -667,14 +667,14 @@ class BrowsingContext(Wire):
     return_url: str
     currency: str
     answer: str
-    #: present only when the item is IN the answer being walked
+    #: present only when the item is IN the result set being walked
     ordinal: int | None
     page: int | None
     total: int | None
     previous: str | None
     next: str | None
     #: the few members either side of this one, or None when the item is
-    #: not in the answer being walked -- the query defines the walk, and
+    #: not in the result set being walked -- the query defines the walk, and
     #: there is no other stretch of walk to invent for it
     filmstrip: Filmstrip | None
 
@@ -778,7 +778,7 @@ def _faces(conn, file_id: int) -> Faces:
 
 
 def _said(conn, file_id: int) -> list[Said]:
-    """What models have said, translated at the seam: SQLite answers the
+    """What models have said, translated at the seam: SQLite returns the
     staleness comparison with 0 or 1, and the browser is promised a
     boolean (sg_web/wire.py)."""
     return [Said.model_validate({**row, "stale": bool(row["stale"])}) for row in derived.said_about(conn, file_id)]
@@ -874,10 +874,10 @@ def media_page(
 ) -> Template | Response | Redirect:
     """One media item at its address, presented for whoever is asking.
 
-    The overlay's currency expectation arrives OUT-OF-BAND in the
+    The overlay's data-version expectation arrives OUT-OF-BAND in the
     `X-SG-Expect` header -- never in the URL, which stays the canonical
     context the browser may push, share or reload. The facets ride the
-    URL like every other part of the question: a picture opened from a
+    URL like every other part of the query: a picture opened from a
     place's link walks that place, not the library."""
     query = _asked(
         folder,
@@ -908,10 +908,10 @@ def media_page(
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         told = view(conn, weights, file_id, slug, query, time.time(), state.actor_id)
         conn.commit()  # a semantic context may have minted registry rows
-        # Compared AFTER assembly, against the currency the view was
+        # Compared AFTER assembly, against the data version the view was
         # actually located in: a commit landing mid-request would
         # otherwise pass a pre-assembly check and hand back arrows from
-        # a newer answer under the old mounted gallery.
+        # a newer result set under the old mounted gallery.
         expected = request.headers.get("x-sg-expect")
         if expected is not None and told.context.currency != expected:
             raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")

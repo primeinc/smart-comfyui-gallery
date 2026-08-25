@@ -3,29 +3,29 @@
  *
  * The gallery header used to carry the whole vocabulary the browser knew
  * about -- kind, rating and favorite, as three `<select>` elements --
- * which is three questions out of a registry of thirty, with no room for
+ * which is three facets out of a registry of thirty, with no room for
  * a fourth before the header is taller than the photographs. This is the
- * door those went behind, and the room the other twenty-seven came out
+ * control that opens onto them, and the room the other twenty-seven came out
  * into.
  *
  * Three decisions worth knowing.
  *
- * THE URL IS THE QUESTION. Nothing here holds filter state. A change
+ * THE URL IS THE QUERY. Nothing here holds filter state. A change
  * assembles a candidate URL and goes there; the server canonicalizes it
- * and renders chips, counts and grid from its own spelling, so reload,
+ * and renders chips, counts and grid from its own encoding, so reload,
  * Back, a bookmark and a pasted link are the same code path as a click.
  * The alternative -- filters living in JavaScript and the URL catching up
  * -- is how a shared link stops being the thing that was shared.
  *
- * WHAT IS REMEMBERED IS THE FURNITURE, NEVER THE QUESTION. Whether the
+ * WHAT IS REMEMBERED IS THE CHROME, NEVER THE QUERY. Whether the
  * drawer is open and which sections are disclosed are how a person has
  * arranged their tools: workspace state, kept until they rearrange it.
  * The filters themselves never are. A filter that outlived its URL would
- * mean a bookmark that answers differently for two people.
+ * mean a bookmark that responds differently for two people.
  *
  * FILTERING IS ONE EDIT SESSION, NOT FOURTEEN. Clicking six values while
  * the drawer is open leaves ONE history entry, so Back means "the
- * question I had before I started filtering" rather than six presses of
+ * query I had before I started filtering" rather than six presses of
  * undo-one-clause. The first change navigates; the rest replace.
  */
 
@@ -33,10 +33,10 @@ import { everyElement, findElement } from "./dom";
 import { register } from "./keys";
 import { panelState, remember, rememberPanel, workspace } from "./workspace";
 
-/** The query parameters that are the QUESTION, not the position in it. */
+/** The query parameters that make up the query state, not the position in it. */
 const NOT_THE_QUESTION = new Set(["page"]);
 
-/** Marks that this browsing session has begun editing the question. */
+/** Marks that this browsing session has begun editing the query. */
 const EDITING = "sg.filters.editing";
 
 interface Option {
@@ -57,7 +57,7 @@ interface Options {
   more: number;
 }
 
-/** The question as it stands, ready to be changed. */
+/** The query as it stands, ready to be changed. */
 function question(): URLSearchParams {
   const held = new URLSearchParams(window.location.search);
   for (const name of NOT_THE_QUESTION) held.delete(name);
@@ -65,7 +65,7 @@ function question(): URLSearchParams {
 }
 
 /**
- * Go to a changed question.
+ * Go to a changed query.
  *
  * The first change of an editing session takes a history entry, so Back
  * returns to what the person was looking at before they opened the
@@ -95,7 +95,7 @@ function endSession(): void {
   }
 }
 
-/** The clauses the question holds for one dimension, as URL values. */
+/** The clauses the query holds for one dimension, as URL values. */
 function held(key: string, carried: string): Set<string> {
   const asked = question();
   if (carried === "scope") {
@@ -158,11 +158,11 @@ function counted(n: number): string {
  * `any` repeated means OR, `eq` repeated means AND, and which one a
  * dimension SHOULD take is a fact about the dimension rather than a
  * preference (db/vocabulary.py `multi`). A file has one kind, so ANDing
- * two kinds asks for a file that is two things and answers nothing --
+ * two kinds asks for a file that is two things and returns an empty result set --
  * that dimension is always `any`. A picture carries several LoRAs, so
  * both readings are real and the person picks; the stored choice is
  * per-dimension workspace state, because "all of these LoRAs" is an
- * arrangement somebody made, not part of the question's spelling.
+ * arrangement somebody made, not part of the query's encoding.
  */
 function operatorFor(told: Options, carried: string): string {
   if (carried === "scope" || !told.multi) return told.ops[0] ?? "eq";
@@ -182,9 +182,9 @@ function drawList(body: HTMLElement, told: Options, carried: string, again: () =
   }
 
   // Any / All, only where a file can carry several of these at once and
-  // the two readings are therefore different questions. Not offered on a
-  // dimension a file has exactly one of, where "all" is a question that
-  // answers nothing by construction.
+  // the two readings are therefore different queries. Not offered on a
+  // dimension a file has exactly one of, where "all" is a query that
+  // returns an empty result set by construction.
   if (told.multi === "both") {
     const choice = document.createElement("div");
     choice.className = "filter-choice";
@@ -203,8 +203,8 @@ function drawList(body: HTMLElement, told: Options, carried: string, again: () =
       button.setAttribute("aria-pressed", String(all === (mode === "all")));
       button.addEventListener("click", () => {
         rememberPanel(`all:${told.key}`, mode === "all");
-        // Every clause this dimension already holds is respelled, so
-        // the switch changes the QUESTION rather than only the next
+        // Every clause this dimension already holds is re-encoded, so
+        // the switch changes the QUERY rather than only the next
         // click -- which would leave a list whose control disagrees
         // with the chips above it.
         const wanted = mode === "all" ? "eq" : "any";
@@ -226,7 +226,7 @@ function drawList(body: HTMLElement, told: Options, carried: string, again: () =
 
   // Search within the dimension, once it is big enough to need one. A
   // checkpoint list is 900 rows in a real library and nobody reads 900
-  // rows; below a dozen the box is furniture in the way.
+  // rows; below a dozen the box is chrome in the way.
   if (told.options.length > 12 || told.more > 0) {
     const find = document.createElement("input");
     find.type = "search";
@@ -289,7 +289,7 @@ function drawList(body: HTMLElement, told: Options, carried: string, again: () =
  *
  * Nine hundred distinct CFG values is not a list anybody picks from, and
  * a date has no candidates at all. Both get the control their kind
- * deserves, spelled with the operators the vocabulary says they allow.
+ * deserves, written with the operators the vocabulary says they allow.
  */
 function drawRange(body: HTMLElement, key: string, carried: string, kind: string, ops: string[]): void {
   body.replaceChildren();
@@ -314,7 +314,7 @@ function drawRange(body: HTMLElement, key: string, carried: string, kind: string
       const on = now.has(value);
       button.setAttribute("aria-pressed", String(on));
       // Choosing what is already chosen clears it, so the pair behaves
-      // like the tri-state the question actually has: yes, no, or not
+      // like the tri-state the query actually has: yes, no, or not
       // asked at all.
       button.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", on ? null : value)));
       pair.append(button);
@@ -325,7 +325,7 @@ function drawRange(body: HTMLElement, key: string, carried: string, kind: string
 
   // A field this application has no name of its own for: the key is
   // typed because there is no curated list of them, and the whole point
-  // of the advanced door is asking about one nothing here anticipated.
+  // of the advanced section is asking about one nothing here anticipated.
   if (kind === "pair") {
     const form = document.createElement("form");
     form.className = "filter-range";
@@ -361,8 +361,8 @@ function drawRange(body: HTMLElement, key: string, carried: string, kind: string
     if (kind === "num") input.step = "any";
     input.name = op;
     input.setAttribute("aria-label", `${key} ${said.textContent}`);
-    // what the question already says for this operator, so the control
-    // opens showing the answer rather than blank over a live filter
+    // what the query already holds for this operator, so the control
+    // opens showing that value rather than blank over a live filter
     for (const spelled of question().getAll("f")) {
       const parts = spelled.split(":");
       if (parts[0] === key && parts[1] === op) input.value = parts.slice(2).join(":");
@@ -505,7 +505,7 @@ export function mountFilters(root: HTMLElement): void {
     });
   }
 
-  // Clearing is a navigation to the question with nothing in it, and it
+  // Clearing is a navigation to the query with nothing in it, and it
   // ends the editing session: the next filter someone applies starts a
   // fresh history entry rather than replacing this one.
   for (const clear of everyElement(root, "[data-filters-clear], [data-chips-clear]", HTMLElement)) {
@@ -532,7 +532,7 @@ export function mountFilters(root: HTMLElement): void {
     ]);
   }
 
-  // The state restored is the FURNITURE. Which filters are held is the
+  // The state restored is the CHROME. Which filters are held is the
   // URL's, and was never stored.
   show(workspace().filters === "open", false);
 }

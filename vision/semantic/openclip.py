@@ -11,7 +11,7 @@ is mandatory -- models construct in train mode. `torch.no_grad` wraps
 every encode (refs/pytorch/torch torch/autograd/grad_mode.py:22-36).
 
 Provenance is the whole joint model: image vectors from one checkpoint
-answered with another checkpoint's text encoder may share dimensions and
+queried with another checkpoint's text encoder may share dimensions and
 still mean nothing to each other. The space's producer is therefore
 model+checkpoint, and its preprocess version is the open_clip package
 version -- the transforms and tokenizer ship with the package.
@@ -105,13 +105,13 @@ def immutable(checkpoint: str) -> bool:
 
 def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | None:
     """The exact weight file this checkpoint resolves to in the local
-    cache, or None -- answered WITHOUT any network access.
+    cache, or None -- determined WITHOUT any network access.
 
     open_clip names the artifact (refs/mlfoundations/open_clip
     src/open_clip/pretrained.py: get_pretrained_cfg's 'hf_hub' key is
     'org/repo/' or 'org/repo/file'; download_pretrained_from_hf tries
     the safetensors alternative first, then the named file) and
-    `try_to_load_from_cache` answers from disk alone -- "This function
+    `try_to_load_from_cache` resolves from disk alone -- "This function
     will not raise any exception if the file in not cached"
     (refs/huggingface/huggingface_hub src/huggingface_hub/
     file_download.py:1475). Repo presence is not enough: a cache can

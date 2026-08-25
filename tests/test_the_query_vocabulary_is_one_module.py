@@ -1,21 +1,21 @@
-"""One vocabulary, and one definition of what a question already holds.
+"""One vocabulary, and one definition of what a query already holds.
 
 Three claims, and they are the reason this module exists rather than a
 sixth place that knows about filters.
 
 **A registered filter is an offerable filter.** A key the ResultSet can
-answer and no surface can name is an invisible feature. `unknown_facets`
+evaluate and no surface can name is an invisible feature. `unknown_facets`
 is that check, and it fails on the key rather than on a page nobody
 built.
 
 **Options are counted with their own dimension REMOVED.** Disjunctive
 faceting is the difference between a list a person can broaden their
-question from and a list that can only ever narrow it. It is invisible
+query from and a list that can only ever narrow it. It is invisible
 in a screenshot and obvious in a count, so it is asserted on the count.
 
 **Counting goes through db/resultset.py.** Every number here is taken
 through `scope_of`, so a filter surface and the gallery cannot come to
-disagree about which media a question holds.
+disagree about which media a query holds.
 
 The library is deliberately MIXED: generated stills, a plain photograph
 and a real video, because the surface this feeds is cross-media and a
@@ -48,7 +48,7 @@ def _recipe(checkpoint: str, lora: str, sampler: str, steps: int) -> str:
 
 
 #: Four of one recipe, two of another, so a count can be wrong in a way
-#: a test notices -- with one of each, every wrong answer is still 1.
+#: a test notices -- with one of each, every wrong count is still 1.
 MADE = [
     *[("dreamshaper_8", "filmGrain", "Euler a", 28)] * 4,
     *[("juggernautXL", "detailTweaker", "DPM++ 2M", 20)] * 2,
@@ -104,11 +104,11 @@ def _by_label(held) -> dict[str, int]:
     return {one.label: one.count for one in held.options}
 
 
-# --- the vocabulary describes everything the engine can answer --------------
+# --- the vocabulary describes everything the engine can evaluate ------------
 
 
 def test_every_registered_filter_has_a_dimension_describing_it(library):
-    """A key the ResultSet answers and no surface can name is not a
+    """A key the ResultSet evaluates and no surface can name is not a
     secret feature, it is an invisible one."""
     assert vocabulary.unknown_facets() == (), (
         "these facets can be answered but no surface can offer them: " + ", ".join(vocabulary.unknown_facets())
@@ -170,12 +170,12 @@ def test_the_sections_offered_follow_the_medium_being_asked_about(library):
 
 
 def test_ai_generated_asks_the_fact_and_not_the_origin(library):
-    """`has.generation` exists because `context.origin` cannot answer
+    """`has.generation` exists because `context.origin` cannot evaluate
     this. Origin has a fourth value, `mixed`, for a file carrying both
     capture and generation evidence -- and because repeated facets are
     ANDed, `origin=generated` plus `origin=mixed` is not an OR either.
 
-    It also answers before the context job has run, which origin cannot:
+    It also evaluates before the context job has run, which origin cannot:
     the generation row is written by ingest. This library has never had
     a context pass, so the two are measurably different here.
     """
@@ -189,7 +189,7 @@ def test_ai_generated_asks_the_fact_and_not_the_origin(library):
     # and the whole library is the two together, with nothing lost between
     assert _total(library, _query()) == len(MADE) + 2
 
-    # the control: origin answers NOTHING here, because no context job
+    # the control: origin returns NOTHING here, because no context job
     # has run -- which is exactly the case `has.generation` exists for
     assert _total(library, _query(facets=["context.origin:eq:generated"])) == 0
 
@@ -222,10 +222,10 @@ def test_a_checkpoint_and_a_lora_compose_into_one_question(library):
 def test_a_dimensions_own_options_are_counted_without_it(library):
     """The assertion the whole surface rests on.
 
-    Counted against the WHOLE question, choosing one sampler collapses
+    Counted against the WHOLE query, choosing one sampler collapses
     every other sampler's count to zero, and the list a person opens to
     change their mind can only ever agree with them. Counted against the
-    question MINUS this dimension, the other values still say what they
+    query MINUS this dimension, the other values still say what they
     would give.
     """
     samplers = discovery.options(library, _query(), "generation.sampler")
@@ -247,7 +247,7 @@ def test_a_dimensions_own_options_are_counted_without_it(library):
 
 
 def test_counts_narrow_from_another_dimension(library):
-    """A count means "from the rest of this question", so a question
+    """A count means "from the rest of this query", so a query
     that already excludes half the library says so."""
     everything = discovery.options(library, _query(), "generation.lora")
     assert _by_label(everything) == {"filmGrain": 4, "detailTweaker": 2}
@@ -261,14 +261,14 @@ def test_counts_narrow_from_another_dimension(library):
 
 def test_the_kind_dimension_counts_every_medium_the_library_holds(library):
     # `media.kind`, not the `kind` scope: the scope is what old links
-    # carry and is still answered, but a scope holds one value and the
+    # carry and is still evaluated, but a scope holds one value and the
     # surface needs one that can be OR'd.
     held = discovery.options(library, _query(), "media.kind")
     assert _by_label(held) == {"image": len(MADE) + 1, "video": 1}
 
 
 def test_which_dimensions_apply_follows_either_spelling_of_the_kind(library):
-    """A sound has no aperture, and the question can say which medium in
+    """A sound has no aperture, and the query can say which medium in
     two places now. Both have to reach the surface's own decision."""
     by_scope = {
         one.key for _, _, held in vocabulary.grouped(discovery.asked_kind(_query(kind="image"))) for one in held
@@ -279,7 +279,7 @@ def test_which_dimensions_apply_follows_either_spelling_of_the_kind(library):
         for one in held
     }
     assert by_scope == by_facet
-    assert "media.duration" not in by_scope, "a still picture has no length, however the question spelled it"
+    assert "media.duration" not in by_scope, "a still picture has no length, however the query encoded it"
 
     # two kinds OR'd is not one medium, so everything either of them
     # carries still applies
@@ -291,8 +291,8 @@ def test_which_dimensions_apply_follows_either_spelling_of_the_kind(library):
 
 def test_a_dimension_that_is_not_a_fact_about_a_medium_is_not_offered(library):
     """An audio file has no LoRA and no aperture. Offering those under
-    `kind=audio` is offering a filter whose every answer is empty, which
-    reads as a broken library rather than an inapplicable question."""
+    `kind=audio` is offering a filter whose every result is empty, which
+    reads as a broken library rather than an inapplicable query."""
     length = vocabulary.dimension("media.duration")
     width = vocabulary.dimension("media.width")
     lora = vocabulary.dimension("generation.lora")
@@ -304,12 +304,12 @@ def test_a_dimension_that_is_not_a_fact_about_a_medium_is_not_offered(library):
     assert not vocabulary.applies_to(length, "image"), "a still picture has no length"
     assert vocabulary.applies_to(width, "image")
     assert not vocabulary.applies_to(width, "audio"), "a sound has no pixels"
-    # a LoRA names no kinds, so it is a question about any of them: a
+    # a LoRA names no kinds, so it is a query about any of them: a
     # generated video is as real as a generated picture
     assert vocabulary.applies_to(lora, "video")
     assert vocabulary.applies_to(lora, "image")
 
-    # and `kind=None` offers everything, because the answer may hold it
+    # and `kind=None` offers everything, because the result set may hold it
     assert vocabulary.applies_to(length, None)
 
 
@@ -320,8 +320,8 @@ def test_a_video_composes_with_every_other_dimension(library):
     assert _total(library, clips) == 1
     assert _total(library, _query(kind="video", facets=["media.duration:gte:0.5"])) == 1
     assert _total(library, _query(kind="video", facets=["media.duration:gte:600"])) == 0
-    # a still picture is not a member of a duration question, and that
-    # is the honest answer rather than treating its absent length as 0
+    # a still picture is not a member of a duration query, and that
+    # is the honest result rather than treating its absent length as 0
     assert _total(library, _query(kind="image", facets=["media.duration:gte:0"])) == 0
 
 
@@ -371,7 +371,7 @@ def test_repeating_a_key_with_any_means_or(library):
 
     Repeated facets conjoin, which is right for "this checkpoint with
     that LoRA" and catastrophic for "image or video": a file cannot be
-    two kinds at once, so the AND reading answers nothing, every time,
+    two kinds at once, so the AND reading returns nothing, every time,
     for the most ordinary multi-select there is.
     """
     both = _query(facets=["media.kind:any:image", "media.kind:any:video"])
@@ -388,7 +388,7 @@ def test_repeating_a_key_with_any_means_or(library):
 
 def test_or_and_and_are_both_available_on_a_dimension_that_needs_both(library):
     """A picture carries several LoRAs at once, so "any of these" and
-    "all of these" are different questions and both are real."""
+    "all of these" are different queries and both are real."""
     loras = discovery.options(library, _query(), "generation.lora")
     film = next(one for one in loras.options if one.label == "filmGrain")
     detail = next(one for one in loras.options if one.label == "detailTweaker")
@@ -401,7 +401,7 @@ def test_or_and_and_are_both_available_on_a_dimension_that_needs_both(library):
 
 
 def test_an_or_group_composes_with_everything_else_as_one_clause(library):
-    """The group is ONE thing the question says, so it narrows with the
+    """The group is ONE thing the query says, so it narrows with the
     rest rather than replacing it."""
     checkpoints = discovery.options(library, _query(), "generation.checkpoint")
     dreamshaper = next(one for one in checkpoints.options if one.label == "dreamshaper_8")

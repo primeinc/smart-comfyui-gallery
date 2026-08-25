@@ -127,7 +127,7 @@ class Ingested:
     carriers: int = 0
     unparsed: int = 0
     captured: bool = False
-    #: Set when the container answered: this file knows its own size, and its
+    #: Set when the container reported: this file knows its own size, and its
     #: length if it has one.
     probed: bool = False
     #: Set when the bytes could not be opened at all, so a caller can report
@@ -139,7 +139,7 @@ def _name_key(text: str) -> str:
     """The one normalization a name is deduped and searched by.
 
     Ingest and the search box have to agree on this or the library grows a
-    row per spelling of the same model.
+    row per encoding of the same model name.
     """
     return "".join(character for character in str(text).lower() if character.isalnum())
 
@@ -598,9 +598,9 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     #
     # metaparse was Pillow-only, so every generated video in every library
     # had its workflow sitting in the file and no row anywhere: "AI
-    # generated video" was answerable and always empty -- not because the
-    # filter was wrong, but because nothing had ever written the
-    # generation row. ComfyUI writes `workflow` and `prompt` as container
+    # generated video" could be evaluated and was always empty -- not
+    # because the filter was wrong, but because nothing had ever written
+    # the generation row. ComfyUI writes `workflow` and `prompt` as container
     # metadata tags, JSON-encoded, exactly as it writes them into a PNG's
     # text chunks, so `load_raw_video` hands them back in the same shape
     # and every adapter reads a clip without knowing anything changed.
@@ -650,7 +650,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # reader that could.
     if kind in ("image", "animated_image"):
         told.phase("checking-animation")
-        # The suffix guessed; the decoded file answers. An animated WebP,
+        # The suffix guessed; the decoded file settles it. An animated WebP,
         # AVIF or PNG wears a still suffix, and a single-frame GIF wears an
         # animated one -- n_frames is the fact, so the row records it.
         moving = _really_animated(path)
@@ -687,7 +687,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             # The decode reports the stored frame; the tag says to turn it a
             # quarter. Storing the stored size files every portrait photograph
             # in the library as landscape -- the same defect the video probe
-            # handles for a display matrix, and it needs the same answer here.
+            # handles for a display matrix, and it needs the same fix here.
             # SQLite reads both sides from the row as it was, so this really
             # is a swap.
             conn.execute("UPDATE file SET width = height, height = width WHERE id = ?", (file_id,))

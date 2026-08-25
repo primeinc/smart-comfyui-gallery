@@ -7,11 +7,12 @@
 // response's authoritative state, never from its own click.
 //
 // After a commit the library generation has moved (data_version bumps
-// on every commit) while the mounted answer usually has not. The
-// coherence check asks locate for the walked context's (currency,
-// answer) pair: same answer -> adopt the new currency in place, so the
-// next arrow does not 409 over an unchanged answer; different answer or
-// no longer in it -> the mounted walk is really stale, redraw whole.
+// on every commit) while the mounted result set usually has not. The
+// coherence check asks locate for the walked context's (data version,
+// result set) pair: same result set -> adopt the new data version in
+// place, so the next arrow does not 409 over an unchanged result set;
+// different result set or no longer in it -> the mounted walk is
+// really stale, redraw whole.
 //
 // Every request here goes through the generated contract, so the three
 // desired-state routes are three named calls rather than one function
@@ -54,13 +55,13 @@ const mounted = (): HTMLElement[] =>
   );
 
 /**
- * The mounted question, as locate's own declared parameters.
+ * The mounted query, as locate's own declared parameters.
  *
- * The strip carries the walked question as a query string in `data-qs`.
+ * The strip carries the walked query as a query string in `data-qs`.
  * Spelling it out against the contract's parameter type is what makes the
  * repeated `f` survive: an object built from the string wholesale would keep
  * only the last facet, and a two-facet view would locate against a one-facet
- * question.
+ * query.
  */
 const asked = (qs: string | undefined): LocateQuery => {
   const question = new URLSearchParams(qs ?? "");
@@ -99,7 +100,7 @@ const settle = async (root: HTMLElement) => {
   }
   const held = surfaces[0]?.dataset.answer ?? "";
   if (!data.in_answer || (held && data.answer !== held)) {
-    // The walked answer really changed -- the URL owns the state.
+    // The walked result set really changed -- the URL owns the state.
     window.location.reload();
     return;
   }
@@ -110,7 +111,7 @@ const settle = async (root: HTMLElement) => {
 };
 
 /**
- * Redraw from the authoritative answer, then check the mounted walk.
+ * Redraw from the authoritative response, then check the mounted walk.
  *
  * A refusal is said out loud. It used to return null and the strip simply
  * did not change, which looks exactly like a click that missed.

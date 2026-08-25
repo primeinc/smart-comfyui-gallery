@@ -93,7 +93,7 @@ def test_a_slug_can_be_retired_more_than_once(db, a_library):
 
 def test_a_live_slug_beats_a_retired_one(db, a_library):
     """Otherwise renaming A frees a slug that B takes, and the old link to A
-    starts answering with B."""
+    starts resolving to B."""
     first = authored.person(db, "Ilse", NOW)
     authored.name_person(db, first, "Rook", NOW + 1)
     second = authored.person(db, "Ilse", NOW + 2)
@@ -121,7 +121,7 @@ def test_a_rename_that_changes_nothing_writes_no_history(db, a_library):
 def test_a_smart_collection_refuses_stored_members(db, a_library):
     """A smart collection's children are what its rule says, freshly,
     every time. A stored member row would give it a second, disagreeing
-    answer -- refused at the schema, and by the writer before that."""
+    result -- refused at the schema, and by the writer before that."""
     import sqlite3 as sqlite_module
 
     file_id = a_library["file"]
@@ -1120,7 +1120,7 @@ def test_a_carrier_nothing_understood_says_so(db, a_library, tmp_path):
 
     It only means anything if some carriers are NULL and others are not.
     Marking a fixed list of slot names claimed every ComfyUI graph and no
-    A1111 infotext, so "what does nothing understand yet" answered with the
+    A1111 infotext, so "what does nothing understand yet" returned the
     files that parsed best while a genuinely unrecognised chunk was
     indistinguishable from them.
     """
@@ -1414,7 +1414,7 @@ def test_a_refiner_pass_does_not_report_the_pass_that_was_thrown_away(db, a_libr
     """A workflow routinely holds several samplers. The one that made the
     file is the one whose latent reaches the node that saved it; taking the
     first found describes a pass whose output was discarded, which is worse
-    than reporting nothing because it looks like an answer."""
+    than reporting nothing because it looks like a result."""
     nodes = a_graph()
     nodes["20"] = {
         "class_type": "KSampler",

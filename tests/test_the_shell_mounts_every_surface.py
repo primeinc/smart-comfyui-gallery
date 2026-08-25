@@ -250,7 +250,7 @@ def test_the_feed_renders_a_job_the_list_has_never_seen(served):
 def test_operations_is_one_router_over_the_runtime(served):
     """The page lists roots, launchers, settings and clusterings; each form
     posts url-encoded and gets its section back, with a receipt swapped
-    into the shell's notice. The JSON routes keep answering beside it."""
+    into the shell's notice. The JSON routes keep responding beside it."""
     client, root = served
     page = client.get("/operations", headers=AS_BROWSER)
     assert page.status_code == 200, page.text[:300]
@@ -297,7 +297,7 @@ def test_operations_is_one_router_over_the_runtime(served):
 
 
 def test_a_refusal_is_rendered_with_its_status_not_swallowed(served):
-    """The error path is a rendered path. A refused form answers with the
+    """The error path is a rendered path. A refused form responds with the
     refusal's own status and the reason as the notice fragment -- htmx
     swaps it into #shell-notice (templates/base.html response handling)
     -- never a JSON body the page silently drops."""
@@ -325,7 +325,7 @@ def test_a_refusal_is_rendered_with_its_status_not_swallowed(served):
 
 
 def test_the_gallery_header_offers_no_operations(served):
-    """The stop condition: media browsing asks questions about media.
+    """The stop condition: media browsing issues queries about media.
     Launching sweeps, registering roots and switching the worker live on
     /operations and nowhere else."""
     client, _ = served
@@ -349,7 +349,7 @@ def _links(page: str) -> list[str]:
 
 def test_every_link_every_page_emits_lands_on_a_page(served):
     """Walk as a person would: from the navigation, follow every link
-    every page renders, and every one of them answers an HTML page --
+    every page renders, and every one of them returns an HTML page --
     never JSON, never a 4xx, never a 5xx. Nothing is written down in
     advance; the pages themselves say where a person can go."""
     client, _ = served

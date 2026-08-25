@@ -44,7 +44,7 @@ export interface Kept {
    * Content-addressed and immutable when the bytes have been hashed
    * (vision/thumbs.py `asset_url`), so the tray costs no application
    * request at all. Absent for a surface that does not carry one yet,
-   * where the slug route still answers.
+   * where the slug route still responds.
    */
   thumb?: string;
   /**

@@ -1,6 +1,6 @@
 """One person address, a page and a drawer, never a second resource.
 
-`/p/{slug}` answers as the PersonView for machines, as a drawer
+`/p/{slug}` returns the PersonView for machines, as a drawer
 fragment for the mounted People index, and as the full profile for a
 browser -- the same negotiation contract the media address carries,
 with a drawer instead of a lightbox because a person is an entity with
@@ -386,7 +386,7 @@ def test_two_spellings_of_a_renamed_person_are_one_question(renamed_ana, faces):
 
 
 def test_the_item_context_heals_to_the_live_slug(renamed_ana, faces):
-    """A stale bookmark heals as it is navigated: every answer re-spells
+    """A stale bookmark heals as it is navigated: every response re-encodes
     the context with the LIVE slug."""
     walked = faces.get("/i/ana-1", params={"person": "ana"}).json()
 
@@ -396,7 +396,7 @@ def test_the_item_context_heals_to_the_live_slug(renamed_ana, faces):
 
 def test_switching_the_primary_run_is_a_different_question(faces):
     """Person membership means THE PRIMARY run's attribution; promoting
-    another run changes both the answer and its identity -- never a
+    another run changes both the result set and its identity -- never a
     silently reused projection."""
     from db import resultset
 
@@ -792,7 +792,7 @@ def test_search_answers_by_meaning_from_the_joint_space(faces, monkeypatch):
     meet in one space, and /search returns the nearest pictures with
     scores -- no tags or captions anywhere in the loop. The encoder is
     faked; what is under test is the whole path from setting to space to
-    resident index to ranked answer."""
+    resident index to ranked result set."""
     from vision import semantic
 
     _embedded_in_the_default_space(faces)
@@ -864,7 +864,7 @@ def test_search_fuses_two_spaces_by_rank_never_by_raw_score(faces, monkeypatch):
 
     class PerSpace:
         """Each space's query lands at a different cosine LEVEL: space one
-        answers near 1.0, space two near 0.35 -- raw magnitudes that mean
+        returns near 1.0, space two near 0.35 -- raw magnitudes that mean
         nothing across spaces, which is why only ranks may fuse."""
 
         def __init__(self, checkpoint):
@@ -990,7 +990,7 @@ def test_an_empty_people_page_says_where_every_run_stands(faces):
 
 
 def test_a_person_page_says_when_they_were_seen(faces):
-    """The timeline's answer for one face: every current session holding
+    """The timeline's result set for one face: every current session holding
     one of their pictures, newest first, each a link onto THEIR pictures
     in it (the person scope composed with the session facet), and the
     story told of it when one was."""
@@ -1021,10 +1021,10 @@ def test_a_person_page_says_when_they_were_seen(faces):
 
 
 def test_search_refuses_rows_of_another_width_instead_of_crashing(faces, monkeypatch):
-    """Vectors recorded 4 wide and an encoder that answers 512 wide are
-    another build's rows: the space is reported missing with the fix,
-    never searched into an assertion. With nothing else to answer from
-    the request is a 400, not a 500."""
+    """Vectors recorded 4 wide and an encoder that returns 512-wide vectors
+    are another build's rows: the space is reported missing with the fix,
+    never searched into an assertion. With nothing else to return results
+    from, the request is a 400, not a 500."""
     from db import similarity
     from vision import semantic
 
@@ -1052,7 +1052,7 @@ def test_search_refuses_rows_of_another_width_instead_of_crashing(faces, monkeyp
 
 def test_the_gallery_chips_the_person_scope_too(faces):
     """A scope carried as its own parameter is as much a part of the
-    question as a facet: the results page names it and lets it go."""
+    query as a facet: the results page names it and lets it go."""
     page = faces.get("/g?person=ana&kind=image", headers={"accept": "text/html"}).text
     assert 'data-chip="person=ana"' in page
     assert "person ana" in page

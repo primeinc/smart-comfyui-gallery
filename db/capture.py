@@ -363,7 +363,7 @@ def _tag_value(tag, value) -> Held | None:
         return Held("unrecorded")
     label = label_for(tag, value)
     if label is not None:
-        # Both columns, because they answer different questions: the phrase is
+        # Both columns, because they serve different purposes: the phrase is
         # what a person searches for and reads, the code is what stays
         # comparable. Storing only the number makes "Flash = 89" a fact nobody
         # can use; storing only the phrase throws away the ordering.

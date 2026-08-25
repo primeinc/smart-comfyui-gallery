@@ -4,7 +4,7 @@ The MediaContext half of the Metadata package. Raw evidence
 (blob/file_blob) is what the media actually said and is never
 normalized away; source facts (capture, generation, file, file_param)
 are per-source CLAIMS -- EXIF's DateTimeOriginal and the filesystem's
-mtime are independent observations, never two spellings of one value.
+mtime are independent observations, never two encodings of one value.
 `derived_media_context` is the application's best CURRENT understanding
 built from those claims: derived, rebuildable, always carrying its
 BASIS so no date is ever unexplained, and stamped with the
@@ -71,8 +71,8 @@ POLICY_VERSION = 8
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
-#: timeline shelves compose around this same fragment, so the link and
-#: the shelf cannot drift apart.
+#: timeline index pages compose around this same fragment, so the link and
+#: the index cannot drift apart.
 HUMAN_MOMENT = "COALESCE(mc.local_at, mc.instant_at)"
 
 #: The whole ladder, one statement, applied to whichever files the
@@ -136,7 +136,7 @@ def _json(items) -> str | None:
 
 
 def _seconds(text) -> float | None:
-    """A duration as a generator spells it -- SwarmUI writes
+    """A duration as a generator encodes it -- SwarmUI writes
     `generation_time` as "64.33 sec" or "2.13 min" (T2IEngine.cs:221)
     -- as seconds, or None when it is not one."""
     import re
@@ -481,7 +481,7 @@ class Occurrence:
     time_precision: str
     #: the generator's own order inside its claimed bucket, or None
     source_order: int | None = None
-    #: fit for chronology -- the judge's answer (db/when.py Verdict.usable),
+    #: fit for chronology -- the judge's determination (db/when.py Verdict.usable),
     #: not the grouper's reinterpretation of its supports
     usable: bool = True
     #: one act across its renditions (capture only); None elsewhere

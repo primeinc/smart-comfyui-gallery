@@ -89,7 +89,7 @@ def _answers(web) -> bool:
 
 def _wait_healthy(web, server) -> None:
     """Bounded readiness gate. A child that already exited is reported as
-    the crash it is, never as forty quiet seconds of 'never answered'."""
+    the crash it is, never as forty quiet seconds of 'never responded'."""
     deadline = time.time() + 40
     while not _answers(web):
         if server.poll() is not None:

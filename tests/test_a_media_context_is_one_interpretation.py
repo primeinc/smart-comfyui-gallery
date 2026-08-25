@@ -7,7 +7,7 @@ recorded, unknown timezones explicitly uncertain, and a known wall
 clock never replaced by a filesystem time. Stale interpretations are
 deleted at the source-fact writer seams, never served. The typed facet
 registry is the one vocabulary every gallery filter speaks, riding the
-canonical spelling, the projection identity and the pre-RRF gate --
+canonical form, the projection identity and the pre-RRF gate --
 and a faceted view refuses to save until a rule version can carry it.
 """
 
@@ -311,7 +311,7 @@ def test_a_changed_source_claim_deletes_the_interpretation(interpreted):
 
 
 def test_the_registry_is_the_one_vocabulary(interpreted):
-    """Registered keys answer through the same eligibility everything
+    """Registered keys return results through the same eligibility everything
     rides; unregistered keys, wrong operators and wrong value shapes
     refuse loudly at parse time."""
     client, _ = interpreted
@@ -349,9 +349,9 @@ def test_the_registry_is_the_one_vocabulary(interpreted):
 
 
 def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpreted, monkeypatch):
-    """One facet is part of the question everywhere: the canonical qs,
+    """One facet is part of the query everywhere: the canonical qs,
     the projection fingerprint (two orders of one conjunction are ONE
-    question), and semantic retrieval's pre-RRF allowed set."""
+    query), and semantic retrieval's pre-RRF allowed set."""
     from db import retrieval
 
     client, _ = interpreted
@@ -387,7 +387,7 @@ def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpret
 
 def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
     """The save-view landmine, closed: a v3 rule carries the facets, so
-    the smart collection's membership IS the answer on screen -- today
+    the smart collection's membership IS the result set on screen -- today
     and after the library grows. A session's link is the one facet a
     rule refuses: a hypothesis is not a durable membership."""
     client, _ = interpreted
@@ -421,7 +421,7 @@ def test_a_faceted_view_saves_whole_as_a_v3_rule(interpreted):
         assert inside["total"] == on_screen["total"] > 0
     finally:
         connect.close(conn)
-    # the collection's page opens the same question in the gallery
+    # the collection's page opens the same query in the gallery
     page = client.get(f"/t/{slug}", headers={"accept": "text/html"}).text
     assert 'data-rule-gallery href="/g?f=capture.iso%3Agte%3A800"' in page
     refused = client.post("/albums/smart", json={"name": "One Session", "f": "event.id:eq:1"})
@@ -460,9 +460,9 @@ def test_take_is_an_exact_integer_before_any_coercion(interpreted):
 
 
 def test_a_rule_over_the_interpretation_refuses_while_files_are_uninterpreted(interpreted, monkeypatch):
-    """After a policy bump every context facet answers for nobody until
-    the context job runs: a smart rule over one would evaluate to an
-    empty set wearing an answer's clothes, so it refuses with the count
+    """After a policy bump every context facet returns nothing for anybody
+    until the context job runs: a smart rule over one would evaluate to an
+    empty set wearing a result set's clothes, so it refuses with the count
     and the remedy instead."""
     from db import collection_rules, resultset
 
@@ -470,7 +470,7 @@ def test_a_rule_over_the_interpretation_refuses_while_files_are_uninterpreted(in
     saved = client.post("/albums/smart", json={"name": "Captured", "f": "context.origin:eq:captured"})
     assert saved.status_code == 201, saved.text
     # the bump comes with a deploy, i.e. a fresh process: no projection of
-    # this question is cached when the rule is first evaluated under it
+    # this query is cached when the rule is first evaluated under it
     monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
     conn = _raw(client)
     try:

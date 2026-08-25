@@ -10,7 +10,7 @@ So this asks directly. The same distinct pictures are encoded twice --
 once one at a time, once at the batch size actually proposed -- and both
 sets of vectors are searched with the same queries.
 
-    top-1 agreement      did the best answer change
+    top-1 agreement      did the best result change
     top-k overlap        did the SET change, ignoring order
     rank displacement    how far did the top-k items move
     score delta          how far did the similarities move
@@ -19,7 +19,7 @@ sets of vectors are searched with the same queries.
 
 The last one is the point. It counts the pairs that COULD reorder under a
 perturbation this size and then how many did, which is the difference
-between "the vectors barely moved" and "the answers barely moved".
+between "the vectors barely moved" and "the results barely moved".
 
 Two query kinds, because they stress different parts of the space. Text
 goes through the same text tower a person's search uses. Image queries
@@ -79,7 +79,7 @@ def corpus(db: pathlib.Path, wanted: int) -> list[tuple[int, pathlib.Path]]:
 
     Not `ORDER BY id`, which takes them all from whichever root holds the
     newest files -- the mistake that had an earlier measurement report
-    the camera JPEGs' answer as the whole library's.
+    the camera JPEGs' results as the whole library's.
     """
     from db import connect, detect
 
@@ -195,8 +195,8 @@ def compare(name: str, base_scores, base_order, other_scores, other_order, depth
     # reported to say so. Most items are far from any given query, so
     # their scores bunch up in the tail and around 90% of all adjacent
     # pairs sit inside the drift -- a swap between the 600th and 601st
-    # result is not a changed answer. The top-k count is the one that
-    # corresponds to something a person sees.
+    # result does not change what the top result is. The top-k count is
+    # the one that corresponds to something a person sees.
     close = swapped = 0
     close_top = swapped_top = 0
     for q in range(queries):

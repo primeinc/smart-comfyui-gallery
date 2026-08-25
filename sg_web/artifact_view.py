@@ -1,18 +1,19 @@
 """One artifact, one address: the recipe axis rendered as an entity.
 
 An artifact describes a media predicate; the ResultSet owns the ordered
-media answer to it; this view owns the artifact -- its identity, its
+media result set for it; this view owns the artifact -- its identity, its
 facts (name, kind, architecture, the two hash claims, first sighting),
 its LoRA synergy when that applies, and ONE ResultSet page of
 `artifact={slug}`: the same membership `/g?artifact=` serves, the same
-answer identity, never a private media list. Whether membership means
+result-set identity, never a private media list. Whether membership means
 `file_artifact` or `generation.workflow_id` is the ResultSet's private
 knowledge; nothing here knows the difference.
 
-Three shelf addresses, one view: /m, /l and /w are thin adapters, and
+Three index addresses, one view: /m, /l and /w are thin adapters, and
 the canonical URL is computed ONCE from the resolved entity, its live
-slug and its own kind -- a retired slug on the wrong shelf reaches the
-canonical artifact page in exactly one 301, never a redirect chain.
+slug and its own kind -- a retired slug filed under the wrong index
+reaches the canonical artifact page in exactly one 301, never a
+redirect chain.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from db import connect, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page
 
-#: Which shelf each addressable artifact kind lives on. Kinds outside
+#: Which index each addressable artifact kind lives on. Kinds outside
 #: this map have rows and identity but no page yet.
 _SHELVES = {"checkpoint": "/m", "lora": "/l", "workflow": "/w"}
 
@@ -39,7 +40,7 @@ def view(conn, models_dir: str, artifact_id: int, slug: str, now: float) -> dict
     """The ArtifactView, assembled inside ONE database snapshot: the
     artifact's facts and its first ResultSet page describe the same
     generation of the library. `count` IS the ResultSet total -- there
-    is no second arithmetic for a shelf to disagree with."""
+    is no second arithmetic for an index page to disagree with."""
     with resultset.snapshot(conn):
         grid = resultset.page(conn, models_dir, resultset.parse(artifact=slug), 1, now)
         name, kind, architecture, sha, quoted, first_seen = pages.artifact_card(conn, artifact_id)
@@ -86,7 +87,7 @@ def _artifact_page(state: State, request: Request, slug: str, shelf: str) -> Tem
             raise NotFoundException(f"a {kind} has no page yet")
         if home_shelf != shelf or not is_current:
             # The canonical address, computed once: one redirect covers a
-            # retired slug, a wrong shelf, and both at once.
+            # retired slug, the wrong index, and both at once.
             return Redirect(path=f"{home_shelf}/{live}", status_code=301)
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         told = view(conn, weights, artifact_id, slug, time.time())
@@ -95,7 +96,7 @@ def _artifact_page(state: State, request: Request, slug: str, shelf: str) -> Tem
     return presented_page(request, told, page="artifact.html", context={"artifact": told, "shelf": shelf})
 
 
-#: The three shelves: what the index is called, what one row is, and
+#: The three indexes: what each is called, what one row is, and
 #: where a row's page lives.
 _INDEXES = {
     "checkpoint": {"title": "Models", "noun": "models", "one": "model", "link": "/m"},
@@ -105,7 +106,7 @@ _INDEXES = {
 
 
 def _shelf_index(state: State, request: Request, kind: str) -> Template | Response:
-    """One shelf of artifacts by use -- counted by pictures, never by
+    """One index of artifacts by use -- counted by pictures, never by
     mentions -- each row with its newest pictures: the machine list it
     always was, or the page."""
     conn = connect.connect(state.db_path, read_only=True)

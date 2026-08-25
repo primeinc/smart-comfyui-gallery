@@ -6,8 +6,8 @@ story at the camera's time and the generation story at the generator's
 claimed time. A session splits on TEMPORAL separation only; time has a
 DOMAIN, and unlike domains are never subtracted; precision is
 orthogonal to certainty, and a claim too coarse for the gap never
-enters the arithmetic -- "insufficient temporal precision" is an
-answer. Currentness is PROVEN and stable is not complete: a run must
+enters the arithmetic -- "insufficient temporal precision" is a valid
+outcome. Currentness is PROVEN and stable is not complete: a run must
 show the interpretation covers every present file, names the
 generation it read, and survives a revalidation race -- and an
 upgraded policy blinds every reader until the context job runs.
@@ -255,7 +255,7 @@ def test_events_refuse_a_stable_but_incomplete_interpretation(grouped):
 
 def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypatch):
     """The software upgrades its ladder; the database still holds
-    yesterday's interpretation. EVERY reader -- timeline shelves, the
+    yesterday's interpretation. EVERY reader -- timeline index pages, the
     facet link, the groupers -- binds the RUNNING policy, so the old
     rows are honestly invisible everywhere at once until the context
     job re-interprets. Serving them as current would be two definitions
@@ -490,7 +490,7 @@ def test_a_grouping_proof_cannot_race_a_context_mutation(grouped, monkeypatch):
 def test_the_timeline_is_a_view_with_a_link_into_the_gallery(grouped):
     """GET /timeline writes nothing and renders whatever the jobs last
     produced; every day links into /g through the Facet Interface's own
-    spelling, so the ResultSet answers the media and the timeline never
+    encoding, so the ResultSet resolves the media and the timeline never
     grows a second membership engine."""
     from db import resultset
 

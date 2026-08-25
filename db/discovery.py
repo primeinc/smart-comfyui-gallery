@@ -1,9 +1,9 @@
 """What useful refinements are available from here.
 
-The ResultSet answers "which media match?". This answers the other
-question a filter surface has to ask: "given what is already being
+The ResultSet returns "which media match?". This module handles the other
+query a filter surface has to resolve: "given what is already being
 asked, what could be asked next, and how many would each leave?" They
-are different questions and only one of them was implemented, which is
+are different queries and only one of them was implemented, which is
 why the gallery's filters were four `<select>` elements -- a control can
 only offer what something has counted.
 
@@ -18,11 +18,11 @@ schema change.
 
 **A dimension's own options are counted with that dimension REMOVED.**
 This is disjunctive faceting and it is not a detail. Counted against
-the whole question, choosing `Hannah` collapses every other person's
+the whole query, choosing `Hannah` collapses every other person's
 count to "pictures that already contain Hannah", so the list a person
-opens to broaden their question can only ever narrow it. Removing the
+opens to broaden their query can only ever narrow it. Removing the
 dimension first means the People counts always mean "people among the
-rest of this question", which is what the number is for.
+rest of this query", which is what the number is for.
 """
 
 from __future__ import annotations
@@ -41,13 +41,13 @@ MOST = 40
 class Option:
     """One value a dimension could take, and what it would leave."""
 
-    #: The value as the URL spells it.
+    #: The value as the URL encodes it.
     value: str
     #: The value as a person reads it.
     label: str
-    #: How many media it would leave, from the rest of this question.
+    #: How many media it would leave, from the rest of this query.
     count: int
-    #: Whether the question already carries it.
+    #: Whether the query already carries it.
     chosen: bool
 
 
@@ -65,7 +65,7 @@ class Options:
 
 
 def without(query: resultset.GalleryQuery, key: str) -> resultset.GalleryQuery:
-    """The question with one dimension taken out of it.
+    """The query with one dimension taken out of it.
 
     The base a dimension's own options are counted against, and also
     exactly what a chip's remove link needs -- so the two cannot come to
@@ -80,7 +80,7 @@ def without(query: resultset.GalleryQuery, key: str) -> resultset.GalleryQuery:
 
 
 def chosen_values(query: resultset.GalleryQuery, key: str) -> tuple[str, ...]:
-    """What this question already asks of one dimension, as URL values."""
+    """What this query already asks of one dimension, as URL values."""
     one = vocabulary.dimension(key)
     if one is None:
         return ()
@@ -107,9 +107,9 @@ def options(
 ) -> Options:
     """The values one dimension could take, counted from here.
 
-    Counted against the question WITHOUT this dimension, so opening a
+    Counted against the query WITHOUT this dimension, so opening a
     list can broaden as well as narrow. A dimension with nothing to
-    enumerate -- a free number, a date -- answers with no options, and
+    enumerate -- a free number, a date -- returns no options, and
     the surface offers a control instead of a list.
     """
     one = vocabulary.dimension(key)
@@ -149,15 +149,15 @@ def breakdown(
     now: float | None = None,
     most: int = MOST,
 ) -> Options:
-    """What one dimension holds ACROSS THIS ANSWER.
+    """What one dimension holds ACROSS THIS RESULT SET.
 
     The same statement `options` runs, scoped differently, because they
-    answer different questions and the difference is the whole reason
+    address different queries and the difference is the whole reason
     both exist:
 
         options    counted WITHOUT this dimension -- "what could I ask
-                   next", so the list can widen the question
-        breakdown  counted WITH the whole question -- "what is in what I
+                   next", so the list can widen the query
+        breakdown  counted WITH the whole query -- "what is in what I
                    am looking at", which is what an analysis says
 
     Scoped through `resultset.scope_of` either way, so an analysis and
@@ -176,8 +176,8 @@ def breakdown(
     made = [
         Option(value=str(value), label=str(label), count=int(count), chosen=str(value) in held)
         for value, label, count in rows
-        # a value nothing in this answer carries is not part of what this
-        # answer IS; the options list is where "it exists and gives none"
+        # a value nothing in this result set carries is not part of what this
+        # result set IS; the options list is where "it exists and gives none"
         # belongs
         if int(count) > 0
     ]
@@ -185,13 +185,13 @@ def breakdown(
 
 
 def labels(conn, query: resultset.GalleryQuery) -> dict[str, dict[int, str]]:
-    """The names behind every id-valued clause the question carries.
+    """The names behind every id-valued clause the query carries.
 
     An artifact and a place ride the URL as entity ids, because renaming
     a model is a thing people do and a bookmark has to survive it. A
-    chip that printed the id would be the database's answer to a
-    question a person asked in words. One statement per dimension, over
-    the ids that question actually holds -- never a table read.
+    chip that printed the id would be the database's result for a
+    query a person phrased in words. One statement per dimension, over
+    the ids that query actually holds -- never a table read.
     """
     import json
 
@@ -207,16 +207,16 @@ def labels(conn, query: resultset.GalleryQuery) -> dict[str, dict[int, str]]:
 
 
 def asked_kind(query: resultset.GalleryQuery) -> str | None:
-    """The one medium this question is about, or None.
+    """The one medium this query is about, or None.
 
     Which dimensions apply is decided by the medium being asked about --
-    a sound has no aperture -- and the question can now say which medium
+    a sound has no aperture -- and the query can now say which medium
     in two places: the `kind=` scope that every bookmark carries, and the
     `media.kind` facet the drawer writes so kinds can be OR'd.
 
-    Exactly ONE kind, from either. Two OR'd kinds mean the answer holds
-    both, so a dimension either of them carries still applies; and no
-    kind at all means the answer may hold anything.
+    Exactly ONE kind, from either. Two OR'd kinds mean the result set
+    holds both, so a dimension either of them carries still applies; and
+    no kind at all means the result set may hold anything.
     """
     if query.kind is not None:
         return query.kind
@@ -225,10 +225,10 @@ def asked_kind(query: resultset.GalleryQuery) -> str | None:
 
 
 def counts(query: resultset.GalleryQuery) -> dict[str, int]:
-    """How many clauses the question carries per dimension.
+    """How many clauses the query carries per dimension.
 
     What the `Filters 6` badge counts and what puts a number beside a
-    section heading. Cheap: it reads the question, never the database.
+    section heading. Cheap: it reads the query, never the database.
     """
     made: dict[str, int] = {}
     for one in vocabulary.DIMENSIONS:

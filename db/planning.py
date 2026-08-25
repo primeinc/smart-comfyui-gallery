@@ -5,7 +5,7 @@ A planner receives ONE frozen StorySnapshot document (db/stories.py)
 and explicitly versioned computation services, and returns a StoryPlan:
 phases, representatives, first-class CLAIMS whose evidence references
 resolve inside the snapshot, and what the evidence does NOT support.
-It answers "what is interesting, what changed, what are the phases" --
+It determines "what is interesting, what changed, what are the phases" --
 not "how should a human be told". `label_hint` is the only human-facing
 field, and it is a deterministic suggestion a later labeler may
 replace; nothing here writes a sentence.
@@ -22,7 +22,7 @@ The similarity service is a Seam with the same discipline as the
 snapshot: `embed(texts) -> vectors`, the planner supplying the FROZEN
 prompt strings, the output VALIDATED (exactly N vectors, one dimension,
 finite) because a producer that returns N-1 vectors is broken, not
-padded. The same engine that answers semantic retrieval sits behind
+padded. The same engine that performs semantic retrieval sits behind
 the production Adapter, but nothing here may look a vector up by file:
 that would smuggle today's library back across the seam the snapshot
 exists to close. A lexical bag-of-tokens Adapter gives tests a
@@ -113,7 +113,7 @@ def validated_settings(settings: dict | None, defaults: dict) -> dict:
     domain -- not a bool, not a string. An unknown key would ride the
     identity while meaning nothing; a string would compare as a string.
     The same exact-shape doctrine CollectionRule paid for."""
-    # defaults are spelled as floats exactly as a given value is: `30`
+    # defaults are encoded as floats exactly as a given value is: `30`
     # and `30.0` are one setting, and a request hashed under one must
     # find the plan its job persisted under the other
     held = {key: float(value) for key, value in defaults.items()}
@@ -1152,7 +1152,7 @@ def _placed(member: dict) -> bool:
 
 def _place_names(members: list[dict]) -> list[str]:
     """The leaf places the claim rests on, one entry per ENTITY, sorted:
-    two Springfields are two places, spelled apart by what they are
+    two Springfields are two places, distinguished by what they are
     within when their names collide."""
     leaves: dict[str, list[dict]] = {}
     for member in members:
@@ -1400,7 +1400,7 @@ STORY_PLAN_V6 = {
     "claims": STORY_PLAN_V5["claims"] | frozenset({"seen"}),
 }
 #: StoryPlan v7 -- FROZEN. v6 plus `located`: where a phase's members
-#: happened, from the place each member froze (a person's word; GPS
+#: happened, from the place each member froze (a user-supplied claim; GPS
 #: alone names no place). Facts are how many members carry a place and
 #: the leaf names they carry.
 STORY_PLAN_V7 = {
@@ -1833,7 +1833,7 @@ validate_plan = validate_current_plan
 
 
 def identity(plan: dict) -> tuple[str, str]:
-    """The DOCUMENT identity: the plan's canonical spelling -- which
+    """The DOCUMENT identity: the plan's canonical form -- which
     already names the snapshot sha, the planner, the engine and the
     settings -- with nothing about WHEN it was planned."""
     spelled = canonical({key: value for key, value in plan.items() if key != "planned_at"})
@@ -2048,7 +2048,7 @@ def plan_item(conn, _item: int, payload: dict, now: float) -> None:
     from . import prompts
 
     # The loaded engine behind the durable prompt-vector cache: frozen
-    # texts are answered by text hash under the engine's own text space,
+    # texts are resolved by text hash under the engine's own text space,
     # computed once where missing (db/prompts.py cached). A planner that
     # compares no prompts never loads weights.
     if maker.uses_similarity:

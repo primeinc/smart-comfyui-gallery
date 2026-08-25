@@ -11,7 +11,7 @@ claims, then lets every other source SUPPORT it, satisfy a CONSTRAINT,
 or CONFLICT -- named, persisted, never compressed into a score. The
 sources all descend from the same request, so agreement is consistency,
 not independent probability: `quality` is an ORDINAL -- corroborated >
-claimed > contested -- and `certainty` is that ordinal's fixed spelling.
+claimed > contested -- and `certainty` is that ordinal's fixed encoding.
 
 The FILESYSTEM is read in the host's zone: mtime and btime are UTC
 instants, the generator's claims are unzoned wall clocks, and the only
@@ -111,10 +111,10 @@ import re
 #: Seconds of slack around a finish: queue wait, encoding, disk.
 SLACK = 90.0
 
-#: The ordinal, and its fixed spelling in the certainty column.
+#: The ordinal, and its fixed encoding in the certainty column.
 CERTAINTY = {"corroborated": 0.9, "claimed": 0.6, "contested": 0.4}
 
-#: A conflict's spelling says who disagreed: the generator with itself,
+#: A conflict's prefix says who disagreed: the generator with itself,
 #: or the filesystem (read in the host's zone) with the generator.
 GENERATOR = "generator: "
 FILESYSTEM = "filesystem: "
@@ -402,7 +402,7 @@ def name_stamp(name: str) -> tuple[float, str] | None:
 
 def folder_day(folders: list[str]) -> float | None:
     """The day a folder names, nearest folder first: `2013-02-10` in any
-    spelling, or a `2013/02/10` chain (year, month, day as successive
+    form, or a `2013/02/10` chain (year, month, day as successive
     folders). None when no folder names one."""
     for i in range(len(folders) - 1, -1, -1):
         match = _FOLDER_DAY.match(folders[i])

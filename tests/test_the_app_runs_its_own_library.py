@@ -62,7 +62,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
     """Ingestion is a job the application offers, and what it reads
     becomes addressable: the model has a page counting pictures, the LoRA
     knows what it is used with, the picture page carries its whole
-    recipe, and a model reached on the wrong shelf 301s to its own."""
+    recipe, and a model reached on the wrong index page 301s to its own."""
     from PIL import Image
     from PIL.PngImagePlugin import PngInfo
 
@@ -90,14 +90,14 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         told = client.get(f"/jobs/{job['id']}").json()
         assert (told["state"], told["failed_count"]) == ("done", 0)
 
-        # Artifact slugs carry their kind: every shelf shares one entity
+        # Artifact slugs carry their kind: every index page shares one entity
         # kind, and a checkpoint and a LoRA may share a name.
         models = client.get("/models").json()
         assert models == [{"name": "dreamshaper_8", "slug": "checkpoint-dreamshaper-8", "pictures": 2}]
         shelf = client.get("/m/checkpoint-dreamshaper-8").json()
         assert (shelf["name"], shelf["kind"]) == ("dreamshaper_8", "checkpoint")
-        # The media answer IS the ResultSet's: same items, same count as
-        # the shelf's aggregate -- no second membership arithmetic.
+        # The media result set IS the ResultSet's: same items, same count as
+        # the index page's aggregate -- no second membership arithmetic.
         assert sorted(p["name"] for p in shelf["gallery"]["items"]) == ["helm_1.png", "helm_2.png"]
         assert shelf["count"] == models[0]["pictures"] == 2
 
@@ -111,7 +111,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert moved.headers["location"] == "/l/lora-filmgrain"
         assert client.get("/m/nobody").status_code == 404
 
-        # The workflow shelf, with data: both files carry the same graph
+        # The workflow index page, with data: both files carry the same graph
         # chunk, so one workflow artifact holds both pictures.
         shelved = client.get("/workflows").json()
         assert [row["pictures"] for row in shelved] == [2]
@@ -119,7 +119,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert graph_page["kind"] == "workflow"
         assert sorted(p["name"] for p in graph_page["gallery"]["items"]) == ["helm_1.png", "helm_2.png"]
 
-        # A kind with rows but no shelf yet says so, on every shelf.
+        # A kind with rows but no index page yet says so, on every index page.
         conn = connect.connect(client.app.state.db_path)
         from db import ingest as ingest_module
 

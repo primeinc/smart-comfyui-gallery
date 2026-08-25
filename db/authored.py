@@ -36,7 +36,7 @@ def local_actor(conn, now: float) -> int:
 
     Ratings and favorites are per-user by schema, and "user_id = 1"
     hard-coded at a write site is how that stops being true. This is
-    the single place the local-first deployment answers "who is
+    the single place the local-first deployment resolves "who is
     writing": the first registered user, created if the library has
     none. When real sessions arrive, the request's actor replaces this
     resolution while every authored signature stays as it is. The
@@ -52,7 +52,7 @@ def local_actor(conn, now: float) -> int:
 
 
 #: One statement per fact, shared by the one-item and many-item shapes --
-#: two spellings of an upsert is where their semantics quietly fork.
+#: two implementations of an upsert is where their semantics quietly fork.
 _RATE = (
     "INSERT INTO rating(file_id, user_id, rating, created_at) VALUES(?, ?, ?, ?)"
     " ON CONFLICT(file_id, user_id) DO UPDATE SET rating = excluded.rating"

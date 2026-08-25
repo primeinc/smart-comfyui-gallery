@@ -3,7 +3,7 @@
 Every entry here is a promise about the tree that the rules in
 sglint/rules.py hold it to. Adding a name is a decision; the exactness
 rule (SG102) prunes a name the moment nothing writes it, so these lists
-are the tree's current truth, never a record of what used to be.
+are the tree's current state, never a record of what used to be.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ STATEMENT_METHODS = frozenset({"execute", "executemany", "executescript", "curso
 
 #: Presentation modules that may not run a statement, each with the
 #: `from db import ...` vocabulary it may speak: address resolution,
-#: configuration and the one answer seam -- never a query module.
+#: configuration and the one result-set seam -- never a query module.
 ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/collection_authoring.py": frozenset({"collection_rules", "collections", "connect", "naming", "settings"}),
     "sg_web/person_view.py": frozenset({"authored", "connect", "facets", "naming", "pages", "resultset", "settings"}),
@@ -81,13 +81,13 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     ),
     "sg_web/artifact_view.py": frozenset({"connect", "naming", "pages", "resultset", "settings"}),
     # facets and vocabulary are VOCABULARY, not query paths: they parse
-    # and spell the closed registry and describe what its keys are
+    # and define the closed registry and describe what its keys are
     # called, and neither touches a connection. `discovery` does read
     # one -- but only to count what one dimension's values would leave,
     # and it takes that count through resultset.scope_of rather than
     # writing membership SQL of its own, which is the whole point of it
     # existing beside the ResultSet instead of inside this adapter.
-    # `analysis` is the other presentation of one answer: it aggregates
+    # `analysis` is the other presentation of one result set: it aggregates
     # over the SAME membership, taken through resultset.scope_of, and
     # writes no WHERE clause of its own about which media are included.
     # `pages` for the TABLE presentation only: one read of the columns a
@@ -286,14 +286,14 @@ MUST_CONTAIN: dict[str, tuple[str, ...]] = {
     # worker would be a second channel and half the subscribers would
     # never hear a job move (sg_web/__main__.py starts no workers).
     "sg_web/app.py": ("collections.set_membership", "MemoryChannelsBackend()"),
-    # ONE viewer, and it answers for every kind the schema admits. The two
+    # ONE viewer, and it handles every kind the schema admits. The two
     # containers include it; neither may grow a second stage, which is what
     # naming the kinds HERE and nowhere else holds them to.
     "sg_web/templates/_media_viewer.html": ("video", "animated_image", "image", "audio", "item.stage"),
     # The container adapters are containers: each mounts the one viewer.
     "sg_web/templates/media.html": ("_media_viewer.html",),
     "sg_web/templates/_media_lightbox.html": ("_media_viewer.html",),
-    # The variant addresses are spelled once each, where the stage is built.
+    # The variant addresses are written once each, where the stage is built.
     "sg_web/media_view.py": ("/media/", "/preview/"),
     # the grouping input IS the occurrence interface, named out loud
     "db/events.py": ("context.occurrences(",),
@@ -355,9 +355,9 @@ CONNECTION_KEPT: frozenset[str] = frozenset(
     }
 )
 
-#: Route handlers whose JSON answer SG413 does not yet hold to a wire
+#: Route handlers whose JSON response SG413 does not yet hold to a wire
 #: model. This is the migration's remaining surface, written down: a
-#: handler leaves the list by naming its answer, never by being excused,
+#: handler leaves the list by naming its response, never by being excused,
 #: and SG413 reports an entry here that no longer offends, so the list can
 #: only shrink.
 RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
@@ -468,8 +468,8 @@ FREE_TEXT: frozenset[str] = frozenset(
     {
         # the location of a root, which is the one place a path IS the fact
         "path",
-        # a person's own words, and the name of a thing as its metadata
-        # spelled it
+        # text a person typed, and the name of a thing as its metadata
+        # wrote it
         "name",
         "note",
         "summary",

@@ -24,14 +24,14 @@ Two rules keep it honest.
 **The vocabulary describes; it never decides membership.** The SQL here
 finds candidate VALUES to offer. Which media match is
 db/resultset.py's, through `scope_of`, and no surface built on this
-module may answer that question a second way -- one definition of "these
+module may resolve that a second way -- one definition of "these
 videos" or eventually one of them says 412 and the other 407.
 
 **A dimension is curated, not discovered.** The schema deliberately
 records arbitrary `file_param` keys, because tools emit arbitrary
 metadata. Those are not dimensions. A dimension is a fact whose meaning
 this application understands well enough to name in a person's words.
-The long tail belongs behind an explicit "advanced" door, asked by key.
+The long tail belongs behind the explicit "advanced" section, asked by key.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ GROUPS: tuple[tuple[str, str], ...] = (
 )
 
 #: Every file kind. A dimension that names no kinds applies to all of
-#: them, which is the default because most questions are cross-media:
+#: them, which is the default because most queries are cross-media:
 #: favorite, rating, folder, album, people, place and date mean the same
 #: thing about a photograph, a video and a document.
 EVERY_KIND = ("image", "animated_image", "video", "audio", "document")
@@ -77,7 +77,7 @@ TIMED = ("animated_image", "video", "audio")
 class Dimension:
     """One filterable fact, described once."""
 
-    #: The URL spelling: a GalleryQuery field name when `carried` is
+    #: The URL encoding: a GalleryQuery field name when `carried` is
     #: "scope", a db/facets.py registry key when it is "facet".
     key: str
     #: What a person calls it. Lower case: the surface decides casing.
@@ -86,7 +86,7 @@ class Dimension:
     group: str
     #: "scope" -- its own URL parameter, one value, established
     #: semantics and smart-collection compatibility. "facet" -- the
-    #: repeatable `f=key:op:value` spelling. The interface hides the
+    #: repeatable `f=key:op:value` encoding. The interface hides the
     #: distinction; the implementation keeps whichever it already has,
     #: because rewriting `folder=` into a facet for tidiness would break
     #: every bookmark and every saved collection to no one's benefit.
@@ -106,11 +106,11 @@ class Dimension:
     #:   "any"   several, OR'd -- the only sane reading for a dimension a
     #:           file has exactly ONE of. "image or video". AND there
     #:           would ask for a file that is two things at once and
-    #:           always answer nothing.
+    #:           always return an empty result set.
     #:   "both"  several, and BOTH readings are real, so the surface
     #:           offers the choice. A picture carries several LoRAs and
     #:           several people at once, so "any of these" and "all of
-    #:           these" are questions somebody genuinely asks separately.
+    #:           these" are queries somebody genuinely issues separately.
     #:
     #: Which is right is a fact about the dimension, not a preference, so
     #: it is stated once here rather than guessed at by each surface.
@@ -128,14 +128,14 @@ class Dimension:
     #: labels went stale in the first place.
     offered: bool = True
     #: SELECT value, label, COUNT(*) -- the candidate values reachable
-    #: from a question, counted. `{scope}` is where the ResultSet's
+    #: from a query, counted. `{scope}` is where the ResultSet's
     #: membership conjunct goes, over the file alias `f`. None means the
     #: values are not enumerable (a free number, a date) and the surface
     #: offers a control rather than a list.
     discover: str | None = None
     #: For `id` kinds: SELECT id, name over a `json_each` array of ids.
-    #: A chip that said "#412" would be the database's answer to a
-    #: question a person asked in words.
+    #: A chip that said "#412" would be the database's result for a
+    #: query a person phrased in words.
     names: str | None = None
 
 
@@ -200,7 +200,7 @@ DIMENSIONS: tuple[Dimension, ...] = (
     ),
     #: A scope, and now a discoverable one. It held a slug and offered no
     #: list, so the drawer showed a heading with nothing under it -- a
-    #: filter you can only use if you already know the answer.
+    #: filter you can only use if you already know the value.
     Dimension(
         key="album",
         label="album",
@@ -231,7 +231,7 @@ DIMENSIONS: tuple[Dimension, ...] = (
         ),
     ),
     # --- media ---------------------------------------------------------
-    #: Two spellings of one question, on purpose.
+    #: Two encodings of one query, on purpose.
     #:
     #: `kind=` is a GalleryQuery scope and every bookmark, saved
     #: collection and cross-surface link uses it -- so it stays, and
@@ -294,7 +294,7 @@ DIMENSIONS: tuple[Dimension, ...] = (
     # --- people --------------------------------------------------------
     #: As with `kind`: the scope is what a person's own page links with,
     #: the facet is what the drawer writes -- because "Hannah or Lelly"
-    #: and "Hannah AND Lelly" are both real questions about a
+    #: and "Hannah AND Lelly" are both real queries about a
     #: photograph, and a scope can express neither.
     Dimension(key="person", label="person", group="people", carried="scope", value_kind="slug", offered=False),
     Dimension(
@@ -679,10 +679,10 @@ def applies_to(one: Dimension, kind: str | None) -> bool:
     """Whether a dimension is a fact about this kind of media.
 
     An audio file has no LoRA and no aperture. Offering those under a
-    `kind=audio` question is offering a filter whose every answer is
+    `kind=audio` query is offering a filter whose every result is
     empty, which reads as a broken library rather than an inapplicable
-    question. `kind=None` is "no kind chosen", where everything applies
-    because the answer may hold anything.
+    query. `kind=None` is "no kind chosen", where everything applies
+    because the result set may hold anything.
     """
     if not one.kinds or kind is None:
         return True
@@ -703,7 +703,7 @@ def spelled_value(one: Dimension, value, named: dict | None = None) -> str:
 
     `named` resolves the entity-id kinds -- an artifact or a place is
     stored by id because names move, and a chip that said "#412" would
-    be the database's answer to a question a person asked in words.
+    be the database's result for a query a person phrased in words.
     """
     if one.value_kind == "bool":
         held = value if isinstance(value, bool) else str(value) not in ("0", "False")
@@ -723,10 +723,10 @@ def chip(one: Dimension, op: str, value, named: dict | None = None) -> str:
 def chip_any(one: Dimension, values, named: dict | None = None) -> str:
     """Several values of one dimension, OR'd, as ONE clause.
 
-    An OR group is one thing the question says, so it is one chip that
+    An OR group is one thing the query says, so it is one chip that
     removes as one. Three chips reading `kind image`, `kind video`,
     `kind audio` would look exactly like three ANDed clauses -- which is
-    the opposite question, and one that answers nothing.
+    the opposite query, and one that returns an empty result set.
     """
     spelled = [spelled_value(one, value, named) for value in values]
     if len(spelled) == 1:
@@ -750,7 +750,7 @@ def chip_all(one: Dimension, values, named: dict | None = None) -> str:
 def unknown_facets() -> tuple[str, ...]:
     """Registered facet keys with no dimension describing them.
 
-    A key the ResultSet can answer and no surface can offer is not a
+    A key the ResultSet can evaluate and no surface can offer is not a
     secret feature, it is an invisible one. Named here so a test can
     fail on it rather than a person never finding it.
     """

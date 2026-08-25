@@ -20,7 +20,7 @@ type JobDeltaFrame = components["schemas"]["JobDeltaFrame"];
  *
  * `kind` and `state` are closed vocabularies in the contract, held to the
  * schema's CHECK by sglint SG709 through db/jobs.py. Proving membership here
- * would mean a second spelling of both in authored TypeScript -- the exact
+ * would mean a second encoding of both in authored TypeScript -- the exact
  * duplication the generated contract exists to remove -- so the decoder
  * proves `typeof === "string"` and says so.
  */
@@ -83,8 +83,9 @@ function isDelta(value: unknown): value is ReadableJobDelta {
  * One socket message as a frame, or null when it is not one.
  *
  * Null is a transport failure, not a skippable message. The rows are the
- * truth here as they are for the ledger, so the answer is the same one:
- * reconnect, and the feed opens with a fresh snapshot read from them.
+ * system of record here as they are for the ledger, so the answer is
+ * the same one: reconnect, and the feed opens with a fresh snapshot
+ * read from them.
  */
 export function decodeJobFrame(payload: unknown): JobFrame | null {
   if (typeof payload !== "string") return null;

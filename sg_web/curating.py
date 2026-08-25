@@ -1,8 +1,8 @@
 """Bulk curation: one desired fact over an explicit, proven selection.
 
 A bulk operation applies ONE desired state to an explicit set of media
-entities selected from ONE known ResultSet answer, atomically. The
-browser names the answer it selected against and the entity uuids it
+entities selected from ONE known ResultSet, atomically. The browser
+names the result set it selected against and the entity uuids it
 selected; the server proves both against the authoritative projection
 and writes all or nothing -- no partial batches, no per-file HTTP loop,
 no 207-shaped ambiguity about which three of two thousand files are
@@ -13,18 +13,18 @@ materialize a projection -- a whole membership walk, a smart-rule
 evaluation, a semantic encode-FAISS-RRF round -- and none of that may
 hold sqlite's one writer lane. So the proof runs FIRST, outside any
 write transaction; the writer then claims the lane, revalidates with
-one cheap currency comparison, and mutates only when the world the
+one cheap data-version comparison, and mutates only when the world the
 proof described is still the world. A commit landing in the tiny
 proof-to-lane handoff triggers ONE re-proof outside the lane (an
-unrelated commit leaves the answer identical and the retry lands); a
-second race, or a really changed answer, is a 409 with zero writes.
+unrelated commit leaves the result set identical and the retry lands); a
+second race, or a really changed result set, is a 409 with zero writes.
 The invariant is not "nobody writes while we prove" -- it is "nobody
 writes between a VALIDATED proof and its mutation."
 
-The routes themselves stay boring: parse the question, prove, claim,
+The routes themselves stay boring: parse the query, prove, claim,
 revalidate, call the one authored implementation (db/authored.py
-*_many), commit once, and answer with the after-state so the client
-settles by answer identity exactly as single writes do.
+*_many), commit once, and return the after-state so the client
+settles by result-set identity exactly as single writes do.
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ from sg_web.wire import Wire
 
 
 class BulkFlag(Wire):
-    """The body of the boolean bulk routes: the answer the selection was
-    made against, the selected entity uuids, and the desired fact."""
+    """The body of the boolean bulk routes: the result set the selection
+    was made against, the selected entity uuids, and the desired fact."""
 
     answer: str
     items: list[str]
@@ -78,13 +78,13 @@ class BulkRating(Wire):
 
 
 class AnswerAfter(Wire):
-    """The answer as it stands once the write has landed.
+    """The result set identity as it stands once the write has landed.
 
     The browser compares `answer` with the one its selection was made
-    against: the same identity means the facts moved and the question did
+    against: the same identity means the facts moved and the query did
     not, so it adopts `currency` in place and keeps the selection mounted;
     a different one means the selected pictures left (or joined) this
-    question, and the URL decides what renders.
+    query, and the URL decides what renders.
     """
 
     answer: str
@@ -93,7 +93,7 @@ class AnswerAfter(Wire):
 
 
 class Curated(Wire):
-    """What a bulk write answers."""
+    """What a bulk write returns."""
 
     #: how many pictures the desired fact was stated FOR -- not how many
     #: rows changed. Desired state means an idempotent retry touches
@@ -108,15 +108,15 @@ def _still_racing() -> None:
 
 def _applied(state: State, query, data, write) -> Response[Curated]:
     """Prove outside the lane, mutate inside a narrow one, commit once
-    -- then describe the SAME question again so the client settles on
-    the (currency, answer) pair."""
+    -- then describe the SAME query again so the client settles on
+    the (data version, result-set identity) pair."""
     conn = connect.connect(state.db_path)
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
 
         def proven():
             # The proof reads under one snapshot; a space's first scoped
-            # question mints registry rows inside it, and a commit that
+            # query mints registry rows inside it, and a commit that
             # landed since the snapshot's first read makes that write
             # SQLITE_BUSY_SNAPSHOT -- refused at once, not waited for
             # (sqlite/src/wal.c sqlite3WalBeginWriteTransaction). The
@@ -157,8 +157,8 @@ def _applied(state: State, query, data, write) -> Response[Curated]:
                 _still_racing()
             # A commit landed in the proof-to-lane handoff. Re-prove
             # OUTSIDE the lane, once: an unrelated commit leaves this
-            # answer identical and the retry lands; a changed answer
-            # raises here, with zero writes behind it.
+            # result set identical and the retry lands; a changed result
+            # set raises here, with zero writes behind it.
             proof = proven()
         after = resultset.describe(conn, weights, query, time.time(), actor_id=state.actor_id)
         return Response(

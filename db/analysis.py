@@ -1,11 +1,11 @@
-"""What is IN this answer.
+"""What is IN this result set.
 
 The gallery could produce a result set and then offered exactly one
 thing to do with it: look at thumbnails. "Show me every video that was
 generated, and tell me which prompts and which LoRAs made them" is the
-obvious next question and there was nowhere to ask it.
+obvious next query and there was nowhere to issue it.
 
-So: a question has ONE membership and several presentations.
+So: a query has ONE membership and several presentations.
 
     GalleryQuery
         |
@@ -22,10 +22,10 @@ WHERE clause about which media are included, because the moment two
 places decide that, one of them says 412 videos and the other says 407
 and no one can tell which is lying.
 
-**Every number is a question you can ask.** A count that cannot be
+**Every number is a query you can issue.** A count that cannot be
 clicked back into the query is a dashboard, and a dashboard is where
 data goes to be looked at instead of used. Each row carries the
-dimension key and value that would add it to the question, so the
+dimension key and value that would add it to the query, so the
 surface refines rather than reports.
 
 What is deliberately NOT here: word frequencies over prompt text. Exact
@@ -47,12 +47,12 @@ MOST = 12
 #: How many distinct prompts a panel lists at once.
 PROMPTS_MOST = 40
 
-#: The dimensions worth breaking an answer down by, in the order they
-#: answer "what am I looking at". Curated rather than "every dimension",
+#: The dimensions worth breaking a result set down by, in the order they
+#: best explain "what am I looking at". Curated rather than "every dimension",
 #: because thirty charts is not an analysis, it is a wall.
 BREAKDOWNS: tuple[str, ...] = (
     # `media.kind`, not the `kind` scope: the scope holds one value and
-    # has no value list, so breaking an answer down by it counted
+    # has no value list, so breaking a result set down by it counted
     # nothing at all.
     "media.kind",
     "has.generation",
@@ -77,26 +77,26 @@ BREAKDOWNS: tuple[str, ...] = (
 
 @dataclasses.dataclass(frozen=True)
 class Share:
-    """One row of a breakdown, and the question it would make."""
+    """One row of a breakdown, and the query narrowing to it."""
 
     #: what the URL would carry to narrow to this
     value: str
     label: str
     count: int
-    #: of the answer, as a percentage 0..100 -- computed here so a bar
+    #: of the result set, as a percentage 0..100 -- computed here so a bar
     #: and its number cannot disagree
     share: float
-    #: whether the question already holds it
+    #: whether the query already holds it
     chosen: bool
 
 
 @dataclasses.dataclass(frozen=True)
 class Breakdown:
-    """One dimension, across the answer."""
+    """One dimension, across the result set."""
 
     key: str
     label: str
-    #: how many members carry this dimension at all -- NOT the answer's
+    #: how many members carry this dimension at all -- NOT the result set's
     #: total. "18 of 684 have a camera" and "18 of 18 cameras are a
     #: Canon" are different sentences and a surface needs both.
     covered: int
@@ -106,7 +106,7 @@ class Breakdown:
 
 @dataclasses.dataclass(frozen=True)
 class PromptUse:
-    """One exact prompt, and how much of this answer used it."""
+    """One exact prompt, and how much of this result set used it."""
 
     id: int
     text: str
@@ -133,13 +133,13 @@ class Weighted:
 
 @dataclasses.dataclass(frozen=True)
 class Analysis:
-    """Everything said about one answer."""
+    """Everything said about one result set."""
 
     total: int
     breakdowns: tuple[Breakdown, ...]
     prompts: tuple[PromptUse, ...]
     loras: tuple[Weighted, ...]
-    #: How many distinct prompts the answer holds, beyond those listed.
+    #: How many distinct prompts the result set holds, beyond those listed.
     more_prompts: int
 
 
@@ -151,14 +151,14 @@ _PROMPTS = (
     " GROUP BY p.id, gp.role ORDER BY COUNT(*) DESC, p.id LIMIT ?"
 )
 
-#: Every LoRA in the answer, with the strengths it was applied AT.
+#: Every LoRA in the result set, with the strengths it was applied AT.
 #:
 #: The weights come back as one column and the middle one is taken here.
-#: SQLite has no percentile function, and the obvious spelling -- a
+#: SQLite has no percentile function, and the obvious way to write it -- a
 #: correlated subquery ordering one artifact's weights and taking the
 #: middle by OFFSET -- needs to reach the outer alias from two levels
 #: down, which SQLite refuses ("no such column: a.id"). One column and
-#: one line of Python is the honest version of the same answer.
+#: one line of Python is the honest version of the same result.
 _LORAS = (
     "SELECT a.id, a.name, COUNT(DISTINCT f.id),"
     " group_concat(fa.model_weight), MIN(fa.model_weight), MAX(fa.model_weight)"
@@ -201,7 +201,7 @@ def prompts(
     now: float | None = None,
     most: int = PROMPTS_MOST,
 ) -> tuple[tuple[PromptUse, ...], int]:
-    """The exact prompts this answer used, most-used first.
+    """The exact prompts this result set used, most-used first.
 
     EXACT, not similar. `prompt.text_hash` is a real identity and two
     files carrying one prompt share one row, so this is a count and not
@@ -224,7 +224,7 @@ def loras(
     now: float | None = None,
     most: int = MOST,
 ) -> tuple[Weighted, ...]:
-    """Every LoRA this answer used, with the strengths it was used at."""
+    """Every LoRA this result set used, with the strengths it was used at."""
     conjunct, args = _scoped(conn, query, actor_id, models_dir, now)
     rows = conn.execute(_LORAS.replace("{scope}", conjunct), [*args, most])
     return tuple(
@@ -250,10 +250,10 @@ def analyze(
     now: float | None = None,
     keys: tuple[str, ...] = BREAKDOWNS,
 ) -> Analysis:
-    """What this answer is made of.
+    """What this result set is made of.
 
     `total` is the ResultSet's own count, passed in rather than counted
-    again here: the share a bar shows is a fraction of THE ANSWER, and
+    again here: the share a bar shows is a fraction of THE RESULT SET, and
     an analysis that counted its own denominator could show 108%.
     """
     made: list[Breakdown] = []
@@ -264,14 +264,14 @@ def analyze(
         held = discovery.breakdown(conn, query, key, actor_id=actor_id, models_dir=models_dir, now=now, most=MOST)
         if not held.options:
             continue
-        # A breakdown with ONE value covering the whole answer says
+        # A breakdown with ONE value covering the whole result set says
         # nothing: asking `has.generation=1` and being shown "AI
-        # generated: yes, 100%" is the question read back as an answer.
+        # generated: yes, 100%" is the query read back as a result.
         # It is dropped rather than drawn, which is also what stops a
         # filtered analysis being half bars at 100%.
         if len(held.options) == 1 and held.options[0].count >= total:
             continue
-        # How many members carry this dimension AT ALL. Not the answer's
+        # How many members carry this dimension AT ALL. Not the result set's
         # total: "18 of 684 have a camera" and "18 of 18 are a Canon" are
         # different sentences, and a share drawn against the wrong one is
         # a bar that lies quietly.

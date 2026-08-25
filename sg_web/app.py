@@ -3,7 +3,7 @@
 Addresses are entity slugs -- never paths, never raw ids -- and nothing
 expensive starts by itself: a sweep is a `job` row somebody POSTs into
 existence, drained by the in-process worker (sg_web/worker.py),
-cancellable and resumable because the row is the truth.
+cancellable and resumable because the row is the system of record.
 
 Realtime first: progress is pushed, not polled. The worker publishes
 every observable change onto the "jobs" channel and /ws/jobs streams it;
@@ -129,10 +129,10 @@ def _resolved(conn, kind: str, slug: str, where: str) -> tuple[int, str | None]:
 @get("/", sync_to_thread=True)
 def front(state: State, request: Request) -> Response | Redirect:
     """The front link. A browser lands in the gallery -- /g owns the
-    canonical question state, and an entrance pointing at JSON was the
+    canonical query state, and an entrance pointing at JSON was the
     one page of this application still shaped for its developers. A
     machine gets the compact library summary with a newest strip; the
-    media answers themselves are the ResultSet's."""
+    media result sets themselves are the ResultSet's."""
     if not wants_json(request):
         return Redirect(path="/g", status_code=302)
     conn = _connect(state.db_path)
@@ -155,9 +155,9 @@ def front(state: State, request: Request) -> Response | Redirect:
 
 # The media page lives in sg_web/media_view.py, the folder page in
 # sg_web/folder_view.py, the artifact pages in sg_web/artifact_view.py:
-# one address each, negotiated per caller. The shelf indexes below are
+# one address each, negotiated per caller. The index pages below are
 # aggregates -- "which artifacts are commonly used?" -- not media
-# answers; every media answer is the ResultSet's.
+# result sets; every media result set is the ResultSet's.
 
 
 # The album index and page live in sg_web/collection_view.py, and every
@@ -187,7 +187,7 @@ def _album_membership(state: State, slug: str, data: AlbumEntry, *, adding: bool
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        # Present members only -- the same number GET /albums answers with,
+        # Present members only -- the same number GET /albums returns with,
         # so the two routes cannot drift apart; and the LIVE slugs, so a
         # caller holding a retired address learns the current one.
         return {
@@ -322,7 +322,7 @@ def job_frames() -> JobFrame:
     shape with no path reaches `components.schemas`, because the document
     assigns that dict from what the routes generated
     (litestar-org/litestar@v2.24.0 litestar/_openapi/plugin.py:90). It
-    answers an empty snapshot rather than raising -- a route a generator
+    returns an empty snapshot rather than raising -- a route a generator
     reads is still a route somebody can request.
     """
     return JobsSnapshotFrame(type="snapshot", jobs=[])
@@ -489,7 +489,7 @@ def submit_phash(state: State, everything: FromQuery[bool] = False) -> dict | Re
 def submit_embed(state: State, everything: FromQuery[bool] = False) -> list[dict]:
     """Ask for the joint image/text embedding of every present picture
     still without a current vector -- `?everything=true` for all of them
-    again -- the representation /search answers from (db/runner.py
+    again -- the representation /search draws its results from (db/runner.py
     submit_embed). One job per participating space, so one model's
     failure never costs another's progress; the response carries one
     snapshot per job and is empty when every space is current. The
@@ -559,7 +559,7 @@ def prompt_neighbours(
 @get("/search", sync_to_thread=True)
 def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
     """Pictures by what they LOOK like: the phrase becomes a query vector
-    in every participating joint space, each resident index answers with
+    in every participating joint space, each resident index returns
     its nearest pictures, and the rankings fuse (db/retrieval.py) -- no
     tags, no captions, no metadata anywhere in the loop.
 
@@ -567,11 +567,11 @@ def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
     cosine ride along as `sources`, because cross-model scores are not
     comparable and knowing which model found what is the evidence the
     next model choice is made on. `participants`, `contributors` and
-    `missing` say which configured spaces actually answered -- a page
+    `missing` say which configured spaces actually responded -- a page
     that hides a silently absent model reports agreement that never
     happened. No model weights are ever downloaded on this path --
-    provisioning belongs to /jobs/embed, and a request NOTHING can
-    answer is refused.
+    provisioning belongs to /jobs/embed, and a request nothing can
+    evaluate is refused.
     """
     from db import retrieval
 
@@ -725,11 +725,11 @@ def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream |
     lie about an MP4 wearing .jpg is how players break. Range semantics
     live in sg_web/media.py.
 
-    HEAD answers here too, with the same headers and no body (RFC 9110:
-    a resource that answers GET answers HEAD) -- one mixed-method handler
+    HEAD is served here too, with the same headers and no body (RFC 9110:
+    a resource that handles GET handles HEAD) -- one mixed-method handler
     rather than a separate `@head` sibling, because registering a second
     handler on a sync handler's path breaks the sync wrapper upstream
-    (GET answers 500 "coroutine has no attribute to_asgi_response";
+    (GET returns 500 "coroutine has no attribute to_asgi_response";
     reproduced on litestar-org/litestar@64cd7da with a 15-line pair, while
     its own static_files pairs @get with @head only as async handlers,
     litestar/static_files.py:115-133). The explicit content-length
@@ -846,7 +846,7 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
 
     The name is matched against a pattern rather than trusted: sixty-four
     hex characters and one of two known suffixes, so nothing that is not
-    a cache entry can be spelled, and `..` cannot appear at all.
+    a cache entry can be named, and `..` cannot appear at all.
     """
     found = _ASSET_NAME.match(name)
     if found is None or shard != name[:2]:
@@ -971,7 +971,7 @@ def all_settings(state: State) -> list[dict]:
 class SettingChange(Wire):
     """The body of POST /settings/{key}. A setting's value is stored as
     text and read back through its own vocabulary, so the wire carries
-    whichever JSON scalar the setting is spelled with rather than
+    whichever JSON scalar the setting is encoded with rather than
     pretending every setting is a string."""
 
     value: str | int | float | bool
@@ -1276,7 +1276,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     does not exist yet is created from the schema -- a first run needs
     nothing but the command that starts it.
 
-    `worker=True` -- the runtime truth -- starts the draining thread with
+    `worker=True` -- what the process actually does -- starts the draining thread with
     the app and stops it with the app; the `worker` setting row idles it
     live without a restart. `worker=False` is for embedding the routes
     over a database whose jobs something else is stepping.
@@ -1300,7 +1300,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
 
     # The one local authored identity, resolved ONCE into application
     # state: every rating and favorite is per-user by schema, and this is
-    # the single place the local-first deployment answers "who is
+    # the single place the local-first deployment decides "who is
     # writing" (db/authored.py local_actor). A future session layer
     # replaces this resolution, not the authored signatures.
     opening = connect.connect(where)

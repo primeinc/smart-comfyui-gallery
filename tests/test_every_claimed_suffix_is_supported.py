@@ -538,7 +538,7 @@ def _absent(path):
     assert not path.exists()
 
 
-#: id -> (file name, writer, kind asked, geometry answered)
+#: id -> (file name, writer, kind requested, geometry returned)
 _GEOMETRY = {
     "png": ("still.png", _png_96x64, "image", (96, 64)),
     "webp": ("still.webp", _webp_48x32, "image", (48, 32)),
@@ -553,8 +553,8 @@ _GEOMETRY = {
 def test_dimensions_answers_from_headers(tmp_path, name, write, kind, geometry):
     """The decoder's geometry probe: stills through the registered
     openers, video through the container's stream entry -- never a frame
-    decoded, never bare Image.open, so the answer does not depend on
-    which code ran first in the process. Unreadable bytes answer None,
+    decoded, never bare Image.open, so the result does not depend on
+    which code ran first in the process. Unreadable bytes return None,
     ranking last wherever geometry decides."""
     path = tmp_path / name
     write(path)

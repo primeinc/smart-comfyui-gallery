@@ -104,7 +104,7 @@ def measure_shipped(path: pathlib.Path, kind: str, orientation: int | None, stag
     It makes the SAME routing decision production makes -- libvips first
     through `derive.opened`, Pillow when that returns None -- because a
     lane that always takes one branch reports a pipeline nobody runs. The
-    `decoder` field says which one answered, so a row can be read without
+    `decoder` field says which one responded, so a row can be read without
     guessing.
 
     Everything here is a production function. A benchmark that

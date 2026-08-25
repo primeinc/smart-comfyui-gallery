@@ -1,14 +1,14 @@
-"""One question, one answer: db/resultset.py is the only opinion.
+"""One query, one result set: db/resultset.py is the only opinion.
 
 The grid page, the counts, the rail, the hover peek, and locate/previous/
 next all read a single materialized projection, so they cannot disagree.
 Two properties are contracts, pinned here exactly as WI-35 demands them
 pinned -- as tests, not prose:
 
-- validity is (query fingerprint, data currency), never fingerprint
-  alone: mutate the library and the same question answers from the new
+- validity is (query fingerprint, data version), never fingerprint
+  alone: mutate the library and the same query resolves against the new
   state, no cache flush anywhere;
-- semantic order is materialized ONCE per (fingerprint, currency) from
+- semantic order is materialized ONCE per (fingerprint, data version) from
   the fused retrieval result, and page/peek/locate read that ordering
   rather than rerunning retrieval.
 """
@@ -93,7 +93,7 @@ def test_page_peek_and_locate_agree(shelves):
     assert looked["last_ordinal"] == 15
 
     # locate agrees with where the page actually shows the file, and its
-    # neighbours are the page's own neighbours in answer order.
+    # neighbours are the page's own neighbours in result-set order.
     middle = third["items"][2]
     found = resultset.locate(conn, "", q, middle["id"], NOW)
     assert found is not None
@@ -104,12 +104,12 @@ def test_page_peek_and_locate_agree(shelves):
 
 
 def test_a_neighborhood_is_a_window_on_the_answer_not_on_a_page(shelves):
-    """The filmstrip's question, and the one thing it must never know.
+    """The filmstrip's query, and the one thing it must never know.
 
-    `peek` answers "the first few members of page N" for the rail's
-    long-distance jumps. This answers "what surrounds THIS member", and
+    `peek` returns "the first few members of page N" for the rail's
+    long-distance jumps. This returns "what surrounds THIS member", and
     a window that straddles a page boundary is not a special case -- it
-    is the same slice of the same ordered answer. If the result can be
+    is the same slice of the same ordered result set. If the result can be
     explained by a page, the abstraction has leaked.
     """
     conn = shelves["conn"]
@@ -150,7 +150,7 @@ def test_a_neighborhood_slides_at_the_edges_rather_than_padding(shelves):
 
 
 def test_a_neighborhood_agrees_with_locate_about_the_walk(shelves):
-    """One projection, one answer. The arrows under the picture and the
+    """One projection, one result set. The arrows under the picture and the
     strip beneath them are the same read, so they cannot disagree about
     what comes next."""
     conn = shelves["conn"]
@@ -174,18 +174,18 @@ def test_a_neighborhood_agrees_with_locate_about_the_walk(shelves):
 
 def test_a_file_outside_the_answer_has_no_neighborhood(shelves):
     """The query defines the walk. There is no other neighborhood to
-    invent for an item the question does not contain."""
+    invent for an item the query does not contain."""
     conn = shelves["conn"]
     only = resultset.page(conn, "", _q(size=5), 1, NOW)["items"][0]
     assert only["kind"] == "image"
-    # a question this picture is not an answer to
+    # this picture is not a member of this query's result set
     elsewhere = _q(kind="video")
     assert resultset.describe(conn, "", elsewhere, NOW)["total"] == 0
     assert resultset.neighborhood(conn, "", elsewhere, only["id"], NOW) is None
 
 
 def test_a_neighborhood_is_bounded(shelves):
-    """An absurd `count` is refused rather than answered."""
+    """An absurd `count` is refused rather than served."""
     conn = shelves["conn"]
     q = _q(size=5)
     only = resultset.page(conn, "", q, 1, NOW)["items"][0]
@@ -266,8 +266,8 @@ def test_a_phrase_defaults_to_similarity_and_the_fingerprint_names_the_question(
 
 
 def test_validity_is_currency_not_fingerprint_alone(tmp_path):
-    """The pinned amendment: mutate the library and the SAME question
-    answers from the new state -- across separate connections, which is
+    """The pinned amendment: mutate the library and the SAME query
+    resolves against the new state -- across separate connections, which is
     how the application actually runs (one per request, one per job)."""
     root = tmp_path / "pics"
     for i in range(4):
@@ -298,7 +298,7 @@ def test_validity_is_currency_not_fingerprint_alone(tmp_path):
 
 def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
     """The other pinned amendment: page, peek and locate read ONE fused
-    ordering; retrieval runs once per (fingerprint, currency), and a
+    ordering; retrieval runs once per (fingerprint, data version), and a
     library change is what makes it run again."""
     conn = shelves["conn"]
     ranked = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
@@ -328,7 +328,7 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
     assert asked[0][2] is True, "the serving path must stay offline"
 
     # The pages ARE the fused ordering, sliced -- and the degraded-space
-    # provenance survives to the answer instead of being flattened away.
+    # provenance survives to the result set instead of being flattened away.
     assert [row["id"] for row in first["items"]] == ranked[:4]
     assert [row["id"] for row in fourth["items"]] == ranked[12:16]
     assert shape["provenance"]["missing"] == {"space.b": "not provisioned"}
@@ -339,7 +339,7 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
     assert told["page"] == 3
 
     # A library change -- one more committed row -- is the one thing that
-    # re-materializes. total_changes carries currency for a :memory: db.
+    # re-materializes. total_changes carries the data version for a :memory: db.
     conn.execute("UPDATE file SET mtime = mtime + 1 WHERE id = ?", (ranked[0],))
     conn.commit()
     resultset.describe(conn, "", q, NOW + 1)
@@ -349,7 +349,7 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
 def test_the_scope_reaches_retrieval_as_the_allowed_set(shelves, monkeypatch):
     """The seam of the ownership split: this module decides WHICH files
     are eligible and hands retrieval the allowed set BEFORE the fusion;
-    it never trims a fused answer afterwards -- RRF consumes rank
+    it never trims a fused result set afterwards -- RRF consumes rank
     positions, and post-fusion filtering keeps global ranks."""
     conn = shelves["conn"]
     portraits = {
@@ -385,7 +385,7 @@ def test_a_scope_constrains_each_space_before_the_fusion_not_after(tmp_path, mon
     """The hostile geometry: two spaces whose out-of-scope candidates sit
     at different depths. Global-RRF-then-filter keeps global ranks and
     compresses the spaces unequally; constraining each space's ranking
-    first renumbers 1..N in scope. The two answers must DISAGREE here --
+    first renumbers 1..N in scope. The two result sets must DISAGREE here --
     space one buries every in-scope file under five outsiders (A,B,C at
     global 6,7,8), space two splits them around its outsiders (C=1, B=2,
     A=8). Fused globally then filtered: C, B, A. Fused in scope:
@@ -450,7 +450,7 @@ def test_a_scope_constrains_each_space_before_the_fusion_not_after(tmp_path, mon
 
 
 def test_one_response_reads_one_projection(shelves, monkeypatch):
-    """One HTTP answer, one projection snapshot: every public operation
+    """One HTTP response, one projection snapshot: every public operation
     takes `_current` exactly once, so items from one generation can
     never ship under the totals of another when a job commits mid-
     request."""
@@ -513,7 +513,7 @@ def test_one_response_reads_one_database_snapshot(tmp_path, monkeypatch):
     """Counting takes proved an operation cannot mix PROJECTIONS; this
     proves construction cannot mix GENERATIONS: membership and item
     hydration are several reads, and a worker committing between them
-    must not leak into an answer half-built from the world before it.
+    must not leak into a result set half-built from the world before it.
     The writer renames a file after membership is read but before
     hydration -- the response must carry the name the snapshot saw."""
     root = tmp_path / "pics"

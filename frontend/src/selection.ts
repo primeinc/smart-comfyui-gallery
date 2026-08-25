@@ -1,20 +1,20 @@
-// Selection: ephemeral browser state, anchored to ONE ResultSet answer.
+// Selection: ephemeral browser state, anchored to ONE result set instance.
 //
 //   { answer, selected: Set<entity uuid> }
 //
-// Selection belongs to an answer: it survives page swaps while the mounted
-// grid's data-answer is unchanged (select on page 1, more on page 3, curate
-// all of it at once), and clears the moment a different answer mounts -- a
-// toolbar must never operate on files the current question no longer shows.
-// Nothing here is durable, nothing rides the URL, and no membership or
-// ordering is ever computed in the browser.
+// Selection belongs to a result set: it survives page swaps while the
+// mounted grid's data-answer is unchanged (select on page 1, more on page
+// 3, curate all of it at once), and clears the moment a different result
+// set mounts -- a toolbar must never operate on files the current query
+// no longer shows. Nothing here is durable, nothing rides the URL, and no
+// membership or ordering is ever computed in the browser.
 //
 // Every action states ONE desired fact for the whole selection, sent to a
 // bulk route that proves the selection against the authoritative projection
-// inside its write transaction. Settlement is the same answer-identity
-// contract single writes use: an unchanged after-answer adopts the new
-// currency and KEEPS the selection for the next operation; a changed one
-// clears and redraws.
+// inside its write transaction. Settlement is the same result-set-identity
+// contract single writes use: an unchanged after-write result set adopts
+// the new data version and KEEPS the selection for the next operation; a
+// changed one clears and redraws.
 import { type Answered, answered, api, refusal } from "./api";
 import { closestFrom, findElement, requireData, requireElement } from "./dom";
 import type { components, operations } from "./generated/api";
@@ -22,12 +22,12 @@ import type { components, operations } from "./generated/api";
 type Curated = components["schemas"]["Curated"];
 
 /**
- * The question the toolbar is curating within, from the URL.
+ * The query the toolbar is curating within, from the URL.
  *
  * Spelled out against the contract's own parameter type rather than handed
  * over as a search string: an object built from the string wholesale would
  * keep only the last `f`, and a two-facet view would then prove its selection
- * against a one-facet question.
+ * against a one-facet query.
  */
 type Question = NonNullable<operations["GSelectionFavoriteBulkFavorite"]["parameters"]["query"]>;
 
@@ -66,8 +66,8 @@ const asked = (): Question => {
   const albums = requireElement(bar, "[data-bulk-album]", HTMLSelectElement);
   const grid = () => findElement(document, "[data-grid]", HTMLElement);
 
-  // The answer the selection was made against. Empty until a grid mounts,
-  // which is also what makes a first swap adopt rather than clear.
+  // The result set the selection was made against. Empty until a grid
+  // mounts, which is also what makes a first swap adopt rather than clear.
   let answer = "";
   const selected = new Set<string>();
 
@@ -85,8 +85,8 @@ const asked = (): Question => {
     if (!mounted) return;
     const held = requireData(mounted, "answer");
     if (answer !== held) {
-      // A different answer mounted: the old selection named members of a
-      // question that is no longer on screen.
+      // A different result set mounted: the old selection named members of a
+      // query that is no longer on screen.
       answer = held;
       selected.clear();
     }
@@ -122,12 +122,12 @@ const asked = (): Question => {
     }
     const mounted = grid();
     if (told.data.after.answer !== answer) {
-      // The selected files left (or re-entered) this answer: the URL owns
-      // what renders now.
+      // The selected files left (or re-entered) this result set: the URL
+      // owns what renders now.
       window.location.reload();
       return;
     }
-    // The facts changed; the question did not. Adopt the generation in place
+    // The facts changed; the query did not. Adopt the generation in place
     // and keep the selection mounted for the next operation.
     if (mounted) {
       mounted.dataset.currency = told.data.after.currency;
@@ -137,7 +137,7 @@ const asked = (): Question => {
   };
 
   /**
-   * A 409 means the answer moved underneath the selection and NOTHING was
+   * A 409 means the result set moved underneath the selection and NOTHING was
    * written. The honest move is a whole redraw and a fresh selection, so it
    * is separated from an ordinary refusal, which the person can act on.
    */

@@ -1,14 +1,14 @@
 """Folders and collections as entity addresses over the one ResultSet.
 
 `/f/{slug}` and `/t/{slug}` describe ENTITIES -- identity, hierarchy,
-presence, authored facts -- and never own the media answer: the
+presence, authored facts -- and never own the media result set: the
 rendered grid is one ResultSet page of the folder- or album-faceted
 GalleryQuery, the same membership `/g` serves, links in context.
 
 Two meanings pinned hard: `folder=` is the folder ITSELF (direct
 children, never the subtree), and a smart collection's membership is
 UNEVALUATED, not empty -- the ResultSet refuses the scope rather than
-answering zero rows as if the rule had run.
+returning zero rows as if the rule had run.
 """
 
 from __future__ import annotations
@@ -75,13 +75,13 @@ def test_the_folder_address_keeps_its_json_and_gains_the_bounded_answer(placed_o
     # The historical machine shape survives, wholly.
     assert sorted(f["name"] for f in body["files"]) == ["shore_1.png", "shore_2.png"]
     assert body["breadcrumb"][-1]["name"] == "lib"
-    # And the entity gained its bounded ResultSet answer, in context.
+    # And the entity gained its bounded result set, in context.
     assert body["count"] == 2, "folder= means the folder itself, never the subtree"
     assert body["gallery"]["qs"] == "folder=lib"
     assert body["state"] == "present"
     assert body["folders"] == [{"slug": "deep", "name": "deep", "pictures": 3, "below": 3}]
     # Durable identity is the slug and the parent chain; the disk path is
-    # server-side state and never part of any answer.
+    # server-side state and never part of any response.
     for answer in (told.text, placed.get("/f/lib", headers=AS_BROWSER).text):
         assert str(root) not in answer
         assert str(root).replace("\\", "/") not in answer
@@ -157,7 +157,7 @@ def test_the_album_preview_is_exactly_the_resultset_page(placed):
 def test_a_smart_collection_is_refused_not_emptied(placed):
     """THE load-bearing distinction: a rule nobody has evaluated is not
     an empty album. The ResultSet refuses the scope; the entity page
-    shows the rule and says the media answer does not exist yet."""
+    shows the rule and says the media result set does not exist yet."""
     from db import resultset
 
     refused = placed.get("/g", params={"album": "rules"})
@@ -169,7 +169,7 @@ def test_a_smart_collection_is_refused_not_emptied(placed):
     try:
         # TYPED, not a message string: a view decides "show the rule
         # instead" by catching this, and the route seams still see a
-        # ValueError to answer 400 with.
+        # ValueError to return a 400 for.
         with pytest.raises(resultset.UnevaluatedCollection, match="not evaluated"):
             resultset.describe(conn, "", resultset.parse(album="rules"), 0.0)
     finally:
@@ -200,7 +200,7 @@ def test_the_albums_index_renders_for_a_browser_and_stays_json_for_machines(plac
 
 def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     """Physical navigation's front link: each registered root as a
-    shelf -- kind, reachability, and its depth-0 folder ENTITIES. No
+    index -- kind, reachability, and its depth-0 folder ENTITIES. No
     root ids and no host paths anywhere in the browsing surface; the
     operational /roots route keeps the management shape."""
     placed, root = placed_on_disk
@@ -227,7 +227,7 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     # The operational route still says what an operator needs.
     assert str(root) in [row["path"] for row in placed.get("/roots").json()]
 
-    # Trash is a storage location, never a shelf: registering one must
+    # Trash is a storage location, never an index page: registering one must
     # not add a browsable "trash" section to the navigation surface.
     bin_dir = root.parent / "bin"
     bin_dir.mkdir()
@@ -260,7 +260,7 @@ def test_the_albums_index_shows_the_hierarchy_as_authored(placed_on_disk):
 
 
 def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch):
-    """The whole shelf is ONE SELECT, nested in Python: no query per
+    """The whole index is ONE SELECT, nested in Python: no query per
     node (the N+1 the review caught), and single-statement atomicity is
     what makes the rendered tree one generation -- a reparent committed
     mid-render can never show a collection twice or lose it."""
@@ -279,7 +279,7 @@ def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch
         )
         connect.close(conn)
 
-        # The shape: one shelf read, zero per-node walks.
+        # The shape: one index read, zero per-node walks.
         shelf_calls: list[int] = []
         child_calls: list[int] = []
         real_shelf = pages.collection_shelf
@@ -315,7 +315,7 @@ def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch
 @pytest.mark.slow
 def test_a_browsing_get_records_nothing_and_the_operational_one_commits(tmp_path):
     """/folders observes; /roots records. After the disk changes, the
-    browsing GET must answer with fresh reachability while writing
+    browsing GET must respond with fresh reachability while writing
     nothing -- and the operational GET must persist what it saw, not
     hold the writer lane for a rollback."""
     import shutil

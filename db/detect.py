@@ -37,7 +37,7 @@ def harvest(
     image=None,
     thumbs_dir=None,
 ) -> list[int]:
-    """Detect and record every face in one file, replacing earlier answers.
+    """Detect and record every face in one file, replacing earlier results.
 
     `image` is for callers that already hold decoded pixels -- a video
     sampler with a frame in hand. It must already be upright; a file path is
@@ -121,7 +121,7 @@ def harvest(
 #: How many extra moments a face-free video is granted beyond its cadence.
 #: Refinement bisects the widest gaps first, so the budget spreads across
 #: the whole video rather than crowding its start; when it runs out, the
-#: cadence's answer stands.
+#: cadence's result stands.
 REFINE_MOST = 32
 
 

@@ -229,7 +229,7 @@ CREATE TABLE file (
 -- (db/ingest.py one). NULL until ingest reads the file; unequal to
 -- content_sha256 once a scan records new bytes. The ingest sweep queues
 -- only files where it is NULL or stale -- the record of the read, so
--- "never read" and "read, found no metadata" are different rows. Spelled
+-- "never read" and "read, found no metadata" are different rows. Written
 -- exactly as SQLite stores an ALTER TABLE ADD COLUMN on the v26 text --
 -- a newline, then `, ingested_sha256 TEXT)` -- so a migrated file's DDL
 -- reads equal to a fresh build's (db/build.py drift).
@@ -324,8 +324,8 @@ CREATE UNIQUE INDEX artifact_ident
 -- deliberate operation -- never a silent overwrite.
 CREATE UNIQUE INDEX artifact_sha ON artifact(content_sha256) WHERE content_sha256 IS NOT NULL;
 -- Deliberately NOT unique: a quoted short hash is a lead for resolution, not
--- an identity. Indexed so "which artifacts did some tool call a1b2c3d4" is
--- answerable.
+-- an identity. Indexed so "which artifacts did some tool call a1b2c3d4" can
+-- be evaluated.
 CREATE INDEX artifact_quoted ON artifact(quoted_hash) WHERE quoted_hash IS NOT NULL;
 -- No index on kind alone: artifact_ident already leads on it, so a second one
 -- is write cost for a read the first already serves.
@@ -381,9 +381,9 @@ CREATE TABLE collection (
 -- versioned rule the ResultSet evaluates. Nothing here is ever executable:
 -- `source_text` and `legacy_sql_text` are provenance a human reads, and a
 -- row whose rule_json is NULL is an UNEVALUATED collection, never an empty
--- one. Entity references inside rule_json are entity.uuid -- an address
--- spelling can be renamed and eventually reused; a saved rule must mean the
--- entity that was selected.
+-- one. Entity references inside rule_json are entity.uuid -- a slug can be
+-- renamed and eventually reused; a saved rule must mean the entity that was
+-- selected.
 CREATE TABLE collection_rule (
     collection_id INTEGER PRIMARY KEY REFERENCES collection(id) ON DELETE CASCADE,
     rule_version  INTEGER,
@@ -466,7 +466,7 @@ CREATE INDEX region_mask ON region(mask_hash) WHERE mask_hash IS NOT NULL;
 -- The same PICTURE, whatever became of its bytes: files whose phash64
 -- agrees within the run's threshold, grouped, with one member marked the
 -- group's best face forward. Wholesale replaced by every dupes job --
--- rebuilt from derived_file_hash alone -- like every derived answer.
+-- rebuilt from derived_file_hash alone -- like every derived result.
 CREATE TABLE derived_dupe_group (
     file_id     INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
     -- the group's seed: its lowest member id. Deleting the seed file
@@ -551,7 +551,7 @@ CREATE INDEX file_artifact_role     ON file_artifact(role);
 -- of one clustering, and two clusterings disagree -- that disagreement is
 -- the whole reason for running both. Keyed on (model, version) alone the
 -- second run overwrote the first's attributions, so the cluster tables could
--- hold two answers while this table could hold one, and the People page read
+-- hold two results while this table could hold one, and the People page read
 -- whichever wrote last.
 CREATE TABLE derived_file_person (
     file_id       INTEGER NOT NULL REFERENCES file(id)   ON DELETE CASCADE,
@@ -622,7 +622,7 @@ CREATE TABLE job_item (
 ) STRICT, WITHOUT ROWID;
 
 -- ============ the operational ledger ============
--- The job row is current truth; this is historical observation; the
+-- The job row is current state; this is historical observation; the
 -- channel is transport. One row per operationally meaningful transition,
 -- typed, append-only. AUTOINCREMENT: the id is the ORDER a subscriber
 -- resumes from and a gap in the ids a client holds is a gap it can name,
@@ -957,7 +957,7 @@ END;
 -- Names of anything addressable, searchable by substring.
 -- Names of anything addressable, searchable by substring. Every named kind is
 -- indexed, and every one follows a rename -- an index that only learns names
--- at insert answers with the old one forever.
+-- at insert returns the old one forever.
 -- Note: the trigram tokenizer emits nothing below three characters
 -- (fts5_tokenize.c), so short names such as "XL" are not substring-searchable
 -- and callers must fall back to an equality match on name_key.
@@ -1084,12 +1084,12 @@ END;
 -- ============ derived_*: drop this namespace, re-index, reproduced ============
 -- Recomputing must replace, never append: an interrupted job re-run must not
 -- triple every face. Two shapes do that, and which one applies is a property
--- of the answer rather than of the table.
+-- of the result rather than of the table.
 --
--- Where one row IS the answer for a subject -- a hash, an embedding, a caption
+-- Where one row IS the result for a subject -- a hash, an embedding, a caption
 -- from one model -- the table carries a natural key and the producer upserts.
 --
--- Where the answer is a SET whose size can change, there is no such key: a
+-- Where the result is a SET whose size can change, there is no such key: a
 -- face is located by a `region`, and a re-run mints a new region, so keying on
 -- one would append forever, and a detector that finds two faces where the last
 -- version found three must be able to say so. Those producers delete their own
@@ -1153,8 +1153,8 @@ END;
 -- semantic search lives in. Which model, which weights, and which
 -- preprocessing produced a vector is the space row's identity -- a CLIP
 -- image vector is only comparable to text encoded by the SAME
--- checkpoint, and rows keyed by immutable space id cannot be answered
--- by the wrong encoder after an upgrade.
+-- checkpoint, and rows keyed by immutable space id can never be matched
+-- to the wrong encoder after an upgrade.
 CREATE TABLE derived_embedding (
     -- AUTOINCREMENT for the same reason as derived_face_instance: this id
     -- is what the resident index stores, and index alignment treats an id
@@ -1272,9 +1272,9 @@ END;
 -- all four are the run's identity.
 --
 -- A first version keyed clusters on the embedder alone, and that quietly
--- made "which clustering is right" unanswerable: a second method or a second
--- threshold replaced the first, so the only way to try one was to destroy
--- the other. There is no settled answer to compare against either -- this
+-- made "which clustering is right" impossible to evaluate: a second method or
+-- a second threshold replaced the first, so the only way to try one was to
+-- destroy the other. There is no settled result to compare against either -- this
 -- repo's own measurements put ArcFace at 0.48 and SFace at 0.55, and being
 -- wrong by a tenth puts 96% of a library into a single person
 -- (docs/FACE_CLUSTERING.md, Chaining). Comparing runs is the normal activity.
@@ -1328,7 +1328,7 @@ CREATE INDEX derived_face_cluster_run    ON derived_face_cluster(run_id);
 -- Which faces a cluster holds. A join table rather than a column on the face,
 -- because a face belongs to one cluster PER RUN and several runs coexist:
 -- with `derived_face_instance.cluster_id` the second run overwrote the
--- first's answer for every face, which is why nothing could be compared.
+-- first's result for every face, which is why nothing could be compared.
 CREATE TABLE derived_face_membership (
     cluster_id INTEGER NOT NULL REFERENCES derived_face_cluster(id) ON DELETE CASCADE,
     face_id    INTEGER NOT NULL REFERENCES derived_face_instance(id) ON DELETE CASCADE,
@@ -2115,7 +2115,7 @@ CREATE TRIGGER collection_takes_its_entity AFTER DELETE ON collection BEGIN
 END;
 
 -- A smart collection's members are what its rule says, freshly, every
--- time. A stored member row would give it a second, disagreeing answer --
+-- time. A stored member row would give it a second, disagreeing result --
 -- refused on the way in, refused as a destination, and a filled
 -- collection cannot quietly BECOME smart for the same reason.
 CREATE TRIGGER collection_file_not_into_smart BEFORE INSERT ON collection_file
@@ -2134,7 +2134,7 @@ END;
 
 -- The mirror-image guards: exactly ONE membership definition per
 -- collection. A rule belongs only to a smart collection -- an album with
--- filed rows AND a dormant rule is two authored answers waiting to
+-- filed rows AND a dormant rule is two authored results waiting to
 -- disagree -- and a rule-carrying smart collection cannot quietly become
 -- listed with its rule still attached. Deleting the rule first is the
 -- deliberate act that makes the transition honest.

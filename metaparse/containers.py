@@ -214,8 +214,8 @@ def load_raw_video(filepath: str) -> RawMetadata | None:
 
     The whole of metaparse was Pillow-only, so a generated CLIP carried
     its recipe and nothing in this application could see it: "AI
-    generated video" was answerable and always empty, not because the
-    filter was wrong but because no row was ever written. AI video
+    generated video" could be evaluated and was always empty, not because
+    the filter was wrong but because no row was ever written. AI video
     generators write the same graphs the image ones do, one container
     along.
 
@@ -236,7 +236,7 @@ def load_raw_video(filepath: str) -> RawMetadata | None:
 
             # Container tags first, then each stream's: a muxer may hang
             # the payload off the video stream rather than the container,
-            # and the container's own answer wins where both spell one key.
+            # and the container's own value wins where both use the same key.
             def strings(tags) -> dict[str, str]:
                 return {k: v for k, v in (tags or {}).items() if isinstance(k, str) and isinstance(v, str)}
 

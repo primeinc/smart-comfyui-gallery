@@ -4,7 +4,7 @@ The home directory is created, the database is built from the schema, the
 worker starts with the server and stops with it. Every other choice is a
 settings row changed over HTTP while it runs (db/settings.py); the flags
 here are only what cannot live inside the database they locate: where it
-is, and what socket to answer.
+is, and what socket to serve.
 
 It does not build the browser bundles and it refuses to start without
 them. `sg_web/static/build` is esbuild's output and IS committed
@@ -14,7 +14,7 @@ because "there is a .js for every template" is a property of the tree,
 not of the clone: an entry point added without committing what it built,
 or a build directory somebody deleted, produces a server whose pages
 render and whose every script 404s -- a picture that would not zoom, keys
-that answered nothing, an activity panel that never connected. Legal
+that produced no response, an activity panel that never connected. Legal
 according to each part, broken according to the person looking at it.
 
 Nor does it require a particular interpreter. Any python that can read
@@ -75,9 +75,9 @@ def unbuilt(templates: pathlib.Path, static: pathlib.Path) -> list[str]:
 def missing() -> str | None:
     """The first of this command's dependencies this interpreter cannot import.
 
-    Asked before the imports rather than by attempting them, so the answer
-    is a name this module can act on instead of a traceback whose last
-    line is `import uvicorn`.
+    Checked before the imports rather than by attempting them, so the
+    result is a name this module can act on instead of a traceback whose
+    last line is `import uvicorn`.
     """
     for package in ("uvicorn", "litestar"):
         if importlib.util.find_spec(package) is None:
@@ -109,7 +109,7 @@ def handover() -> None:
     is one known path away.
 
     So it is handed the command instead of the person being handed a rule:
-    no venv to activate, no wrapper to remember, no answer that depends on
+    no venv to activate, no wrapper to remember, nothing that depends on
     which shell is open. `python -m sg_web` is the whole instruction, and
     it is true from anywhere, because the interpreter that cannot serve
     replaces itself with the one that can and keeps the argv it was given.
@@ -128,7 +128,7 @@ def handover() -> None:
     silent, and PID 26348 was still LISTENING on 8791 afterwards.
 
     `Popen` and not `run` because a server has no timeout to give -- it
-    runs until told to stop, which is the case `run` has no spelling for
+    runs until told to stop, which is a case `run` has no way to express
     and sglint SG003 correctly refuses. Streams are inherited rather than
     piped, so the child's log is this command's log (SG004: a pipe here
     would be one nobody drains, and uvicorn would block on a full one).

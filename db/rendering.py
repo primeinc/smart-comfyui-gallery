@@ -6,7 +6,7 @@ TemplateStoryRenderer receives exactly two immutable, VERIFIED things:
 a StorySnapshot (db/stories.py) and a StoryPlan (db/planning.py). It
 decides nothing: no phases, no similarity, no database, no model. It
 selects deterministic wording for each Claim through a CLOSED registry
-of Adapters (story_renderers/claims.py), spells values through one
+of Adapters (story_renderers/claims.py), formats values through one
 formatting Module, and assembles a StoryRender document: a lede (title,
 dek, summary) that declares its structural support, one section per
 plan phase made of BLOCKS -- each block is either `structure` (a count,
@@ -281,7 +281,7 @@ class TemplateStoryRenderer:
 
 def _day_label(snapshot: dict) -> tuple[str | None, bool]:
     """The days the story spans, in the domain the evidence claims them
-    in: the event's wall-clock interval spells the human's own calendar
+    in: the event's wall-clock interval names the human's own calendar
     days; an instant interval with no wall clock is UTC and says so --
     the two domains the snapshot keeps apart are never fused here. A
     session that crosses midnight spans two days and is narrated as a
@@ -481,7 +481,7 @@ def _sequencing_words(text: str, names: list[str]) -> list[str]:
 def violations(render: dict, plan: dict, snapshot: dict, snapshot_sha256: str, plan_sha256: str) -> list[str]:
     """Every way a render can be wrong about its plan and snapshot -- the
     chain block -> Claim -> phase -> frozen members, and the unsupported-
-    chronology rule. Empty is the only acceptable answer."""
+    chronology rule. Empty is the only acceptable result."""
     bad = validate_story_render(render)
     if bad:
         return bad

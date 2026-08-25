@@ -23,7 +23,7 @@
  *
  * THE URL FOLLOWS. `page` is replaced -- never pushed -- with whichever
  * page fills the top of the viewport, so reload lands where you were
- * reading and Back still means the question before this one rather than
+ * reading and Back still means the query before this one rather than
  * one press per sixty pictures.
  *
  * THE PAGER STAYS. It is the sentinel that triggers the next fetch, it
@@ -213,7 +213,7 @@ export function mountEndless(root: HTMLElement): void {
   //
   // REPLACE, never push. Pushing would make Back mean "up one screen",
   // and then leaving a gallery somebody scrolled through would be twenty
-  // presses. Back stays what it was: the question before this one.
+  // presses. Back stays what it was: the query before this one.
   let shown = first;
   let waiting = 0;
   const follow = () => {

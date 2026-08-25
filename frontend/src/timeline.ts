@@ -8,7 +8,7 @@
 // routes and waits on the job feed.
 //
 // Two kinds of request, and the difference is deliberate. The surface is
-// asked for as HTML, because a fragment swapped in place IS the answer.
+// asked for as HTML, because a fragment swapped in place IS the response.
 // Everything else -- the mosaics in the scrubber, the picture under the
 // pointer -- is asked for through the generated client, so the shapes come
 // from the application's own contract.
@@ -123,7 +123,7 @@ type Scope = Required<
   };
 
   // the window's URL: the scope's own parameters ride every move; `snap`
-  // is the scrubber's ask, answered by the server with a window on pictures
+  // is the scrubber's ask, and the server responds with a window on pictures
   const urlFor = (start: number, end: number, snap = false): string => {
     const qs = new URLSearchParams(read()?.scope ?? "");
     qs.set("start", String(start));
@@ -161,7 +161,7 @@ type Scope = Required<
   const move = async (url: string, push: boolean | null): Promise<void> => {
     const mine = ++generation;
     swap.dataset.loading = "";
-    // HTML on purpose: the surface fragment IS the answer, swapped in place
+    // HTML on purpose: the surface fragment IS the response, swapped in place
     const answer = await fetch(url, { headers: { "hx-request": "true", accept: "text/html" } });
     if (mine !== generation) return; // a newer move superseded this one
     if (!answer.ok) {
@@ -612,7 +612,7 @@ type Scope = Required<
   // The hand a fraction of the way down a segment points at a picture by
   // RANK -- the k-th of its n in moment order, newest at the top -- never
   // by time: a burst of thousands in one minute would otherwise map every
-  // position to its first or last. /timeline/nth answers it; one ask in
+  // position to its first or last. /timeline/nth returns it; one ask in
   // flight at a time, the newest always the one that lands.
   const rankAt = (seg: HTMLElement, y: number): number => {
     const box = seg.getBoundingClientRect();

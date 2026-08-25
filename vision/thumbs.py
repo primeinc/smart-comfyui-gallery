@@ -215,7 +215,7 @@ def asset_url(sha: str | None, slug: str, kind: str = "thumb") -> str:
         raise ValueError(f"{kind!r} is not a variant; EDGES in vision/thumbs.py is the vocabulary")
     if not sha:
         # Not yet hashed -- ingest has not reached it. The slug route can
-        # still answer, at the cost this exists to avoid, which is the
+        # still respond, at the cost this exists to avoid, which is the
         # right trade for a file nobody has finished reading.
         return f"/{kind}/{slug}"
     suffix = "" if kind == "thumb" else f".{kind}"

@@ -54,7 +54,7 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
 
     `gallery` is the bounded grid: one ResultSet page of this person's
     pictures under the person-faceted GalleryQuery, whose canonical
-    spelling every rendered media link carries so the lightbox arrows
+    form every rendered media link carries so the lightbox arrows
     walk THIS person, not the library. `count` is that same
     membership's total. The unbounded legacy `pictures` list exists for
     the historical JSON shape ONLY -- `legacy=True` is the machine
@@ -178,11 +178,11 @@ def person_page(state: State, request: Request, slug: FromPath[str]) -> Template
 
 
 class NamedPerson(Wire):
-    """What naming a person answers.
+    """What naming a person returns.
 
     The name became the ADDRESS, so `slug` is where the person lives now
     and the browser replaces its location with it -- the old slug retires
-    into history and answers 301, and leaving it as a history stop would
+    into history and returns 301, and leaving it as a history stop would
     put a redirect between Back and the index.
     """
 
@@ -206,7 +206,7 @@ def name_person(state: State, slug: FromPath[str], data: NewName) -> NamedPerson
 
     The name becomes the address: a new slug is minted and the old one
     retires into history, so the URL somebody saved before the naming
-    still answers with a 301 (db/naming.py). And the naming is written
+    still returns a 301 (db/naming.py). And the naming is written
     down as assertions against the person's files -- the durable record a
     re-cluster or a full derived rebuild re-applies the name from, so the
     application cannot destroy what it accepted (db/authored.py)."""

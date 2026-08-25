@@ -5,7 +5,7 @@ spaces participate (the `semantic_model` setting, plural), the top-K
 query against each space's resident index, the fusion of their rankings,
 and the provenance of who said what. Adapters own their models;
 db/similarity.py owns space identity and index alignment; this layer
-composes them into one answer.
+composes them into one result set.
 
 Two rules hold the composition honest:
 
@@ -76,7 +76,7 @@ def spelled(provider: str, model: str, checkpoint: str) -> str:
 def choice_for(conn, selector: str) -> tuple[str, str, str]:
     """ONE configured space by name -- exactly. A selector names a
     provider (`openclip`), a provider and model (`openclip:ViT-B-32`),
-    or the full spelling (`openclip:ViT-B-32@laion2b_s34b_b79k`); it
+    or the full canonical form (`openclip:ViT-B-32@laion2b_s34b_b79k`); it
     resolves when exactly one configured space matches and is REFUSED
     when several do, naming them -- first-match-wins would let a second
     configured model silently change what a request meant."""
@@ -132,10 +132,10 @@ def query(
     k+1 in one space invisible to a file's agreement everywhere else.
 
     `allowed` constrains the candidate set: only these file ids may
-    answer. The constraint applies to EACH SPACE'S RANKING BEFORE the
+    be returned. The constraint applies to EACH SPACE'S RANKING BEFORE the
     fusion -- out-of-scope candidates are discarded and the survivors
     renumbered 1..N -- because RRF consumes rank positions, and
-    filtering a fused answer afterwards keeps every survivor's GLOBAL
+    filtering a fused result set afterwards keeps every survivor's GLOBAL
     rank: two spaces whose out-of-scope candidates sit at different
     depths would compress by different amounts and the fused order can
     flip. "Search inside this album" means each model ranks the album,
@@ -143,21 +143,21 @@ def query(
     rather than the overfetch heuristic: a scope survivor may sit
     arbitrarily deep in the unconstrained ranking.
 
-    The answer says who was asked and who answered. `participants` is
-    every configured space; `contributors` the ones whose ranking
-    entered the fusion; `missing` maps the rest to why; `unmatched` the
-    rankings that answered "nothing matches" (captions) -- because a
-    result fused from one space when three are configured is a
+    The response says which spaces were queried and which ones
+    responded. `participants` is every configured space; `contributors`
+    the ones whose ranking entered the fusion; `missing` maps the rest to
+    why; `unmatched` the rankings that returned no matches (captions) --
+    because a result fused from one space when three are configured is a
     different claim than one all three agreed on, and a page that
     cannot tell them apart flattens the difference into false
-    confidence. One unprovisioned model degrades the answer, never
-    denies it; only NOTHING to answer from raises.
+    confidence. One unprovisioned model degrades the result, never
+    denies it; only having NOTHING to build a result from raises.
 
     Captions are one more ranking. Once the annotate job has said
     something about any file, the phrase's words are matched against
     every annotation (bm25) and that ranking enters the same fusion
     under the name `captions` -- a file a model described as "a red
-    bicycle" answers "bicycle" whether or not an embedding agrees, and
+    bicycle" matches "bicycle" whether or not an embedding agrees, and
     its agreement with the spaces lifts it. A library nothing has
     captioned lists no such participant: the channel is configured by
     having run the job.
@@ -176,9 +176,9 @@ def query(
     to_file: dict[int, int] = {}
     participants: list[str] = []
     missing: dict[str, str] = {}
-    #: rankings that were asked and answered "nothing here" -- a word
+    #: rankings that were queried and returned "nothing here" -- a word
     #: match with no matching word is the ordinary outcome, not a space
-    #: that could not answer, and the page must not call it degraded
+    #: that could not respond, and the page must not call it degraded
     unmatched: dict[str, str] = {}
     for provider, model, configured in choices(conn):
         # A mutable checkpoint (a Hugging Face branch) resolves to the
@@ -206,8 +206,9 @@ def query(
         answers = getattr(declared, "dimensions", None)
         if answers is not None and int(answers) != int(spec.dimensions):
             # Rows recorded under one width cannot be searched with a query
-            # of another: the index would assert, not answer. The rows are
-            # another build's; a re-embed under this encoder replaces them.
+            # of another: the index would assert, not return a result. The
+            # rows are another build's; a re-embed under this encoder
+            # replaces them.
             missing[name] = (
                 f"the recorded space is {spec.dimensions}-dimensional and this encoder answers in {answers};"
                 " its vectors were made by a different build -- run /jobs/embed to replace them"
@@ -243,8 +244,9 @@ def query(
             unmatched[derived.CAPTIONS] = "no caption mentions a word of the phrase in this scope"
 
     if not per_space and any("not provisioned" in why or "-dimensional" in why for why in missing.values()):
-        # Degraded is an answer; NOTHING to answer from is a refusal that
-        # must name its fix, exactly as the single-space case always did.
+        # A degraded result is still a result; NOTHING to draw a result
+        # from is a refusal that must name its fix, exactly as the
+        # single-space case always did.
         raise LookupError("; ".join(f"{name}: {why}" for name, why in sorted(missing.items())))
 
     # Fusion is over FILES: a file's agreement across rankings must

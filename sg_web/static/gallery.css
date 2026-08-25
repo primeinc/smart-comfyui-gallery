@@ -141,7 +141,7 @@ body {
   color: var(--accent);
 }
 
-/* --- the rail: the whole ordered answer, drawn at full height -------- */
+/* --- the rail: the whole ordered result set, drawn at full height ---- */
 
 .rail {
   position: fixed;
@@ -416,7 +416,7 @@ body {
   will-change: transform;
 }
 
-/* A picture being examined belongs on top of the furniture around it:
+/* A picture being examined belongs on top of the chrome around it:
    zoomed, the stage is the thing being done and the filmstrip and the
    inspector are in its way.
 
@@ -1668,7 +1668,7 @@ body {
 .surface-zoom a[data-current] {
   color: var(--imprint);
 }
-/* the axis: furniture, density, sessions as frames, pictures at their moment */
+/* the axis: chrome, density, sessions as frames, pictures at their moment */
 .axis {
   position: relative;
   height: 260px;
@@ -2729,7 +2729,7 @@ a.ask-save {
    the chips, where their controls were visible and unclickable. */
 /* EVERYTHING beside the drawer moves over, and "everything" includes
    the application's own navigation. Shifting only the gallery's own
-   furniture left the drawer sitting on top of the brand and the shell
+   chrome left the drawer sitting on top of the brand and the shell
    links -- visible, unclickable, and the first thing a screenshot
    shows. */
 body[data-filters="open"] .shell,
@@ -2953,7 +2953,7 @@ body[data-filters="open"] .stage {
   }
 }
 
-/* --- analyze: what this answer is made of ----------------------------- */
+/* --- analyze: what this result set is made of ------------------------ */
 
 .ask-views {
   border: 1px solid var(--line);
@@ -3348,7 +3348,7 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
   padding-bottom: 48px;
 }
 
-/* --- the table: the same answer, as facts --------------------------- */
+/* --- the table: the same result set, as facts ------------------------ */
 
 .table-scroll {
   overflow-x: auto;
@@ -3410,8 +3410,8 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 }
 
 /* Any / All: offered only where a file can carry several at once, so
-   the two readings are different questions rather than one of them
-   being an answer that is always empty. */
+   the two readings are different queries rather than one of them
+   returning a result set that is always empty. */
 .filter-choice {
   border: 1px solid var(--line);
   border-radius: var(--radius);

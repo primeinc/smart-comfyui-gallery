@@ -42,7 +42,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
 
 
 def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live, unbroken):
-    # `unbroken` watches every first-party answer, not only 500s: a script
+    # `unbroken` watches every first-party response, not only 500s: a script
     # that 404s is a page which renders and does nothing, which is how a
     # dead viewer sat behind a green suite (tests/conftest.py).
 

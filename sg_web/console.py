@@ -210,7 +210,7 @@ class Event(Reported):
     """A committed ledger row.
 
     The same shape crosses the HTTP pages and the /ws/events feed, because
-    it is the same event; a second spelling for the socket would be the
+    it is the same event; a second encoding for the socket would be the
     same contract written twice.
     """
 
@@ -319,7 +319,7 @@ def socket_frames() -> Frame:
     reach the generated types and the browser would go back to
     hand-written interfaces beside `JSON.parse` -- the exact duplication
     this contract exists to remove. Declaring the union as one route's
-    answer puts all three arms in components, and openapi-typescript
+    response type puts all three arms in components, and openapi-typescript
     generates the browser's union from them.
 
     A route, and not `OpenAPIConfig(components=...)`, because that field
@@ -333,7 +333,7 @@ def socket_frames() -> Frame:
     served document. A route is therefore the only seam that reaches the
     generator without restating the three models by hand.
 
-    It answers the empty backlog rather than raising: a route that exists
+    It returns the empty backlog rather than raising: a route that exists
     only to be read by a generator is still a route somebody can request,
     and one that 500s when they do is a trap. Nothing needs to call it --
     the frames arrive on the socket.

@@ -68,7 +68,7 @@ def _drained(api, timeout=60.0) -> None:
 
 
 def _address(api, name: str) -> str:
-    """The library's own answer, by name. `/g/grid` is a fragment whatever
+    """The library's own result set, by name. `/g/grid` is a fragment whatever
     the Accept says; peek is the typed listing of the same ordering."""
     listed = api.get("/g/peek", params={"page": 1, "count": 9}).json()["items"]
     for row in listed:
@@ -129,7 +129,7 @@ def _placement(page: Page):
 
 def _walk(page: Page) -> dict:
     """Whichever ends of the walk this picture has, read without waiting --
-    "there is no next" is an answer, not a slow yes."""
+    "there is no next" is a response, not a slow yes."""
     return page.evaluate(
         "() => Object.fromEntries([...document.querySelectorAll('[data-nav]')]"
         ".map(a => [a.dataset.nav, a.getAttribute('href')]))"
@@ -159,7 +159,7 @@ def _actual(page: Page) -> None:
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
 def test_the_filmstrip_shows_the_walk_and_marks_where_you_are(page: Page, live: Live, where, open_it, unbroken):
-    """Rendered by the server, in answer order, one of them current.
+    """Rendered by the server, in result-set order, one of them current.
 
     Nothing in the browser sorts or pages it: the assertion is that the
     DOM order IS the ordinals the server sent, ascending, with no gaps
@@ -628,7 +628,7 @@ def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live
     RESIZES rather than shrinks -- so a 320px picture is served as a
     1440px preview. A viewer promoting on "displayed pixels exceed the
     preview's naturalWidth" would fetch the original and get four times
-    FEWER pixels. `promotable` is the server's answer; this is the
+    FEWER pixels. `promotable` is the server's determination; this is the
     control that proves the browser obeys it rather than measuring.
     """
     open_it(page, live, "b_small.png")
@@ -741,7 +741,7 @@ def test_escape_unwinds_the_viewer_before_it_means_leave(page: Page, live: Live,
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
 def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, where, open_it, unbroken):
-    """Placement is geometry's answer, not a preference.
+    """Placement is geometry's determination, not a preference.
 
     Nothing in the browser decides this and nothing is stored: the same
     markup and the same open state land beside the picture when there is
@@ -799,7 +799,7 @@ def test_lights_out_leaves_a_visible_way_back(page: Page, live: Live, where, ope
     """L hides every control the viewer has, including the one that turned
     the lights off -- so without this, the only exits are two keys nothing
     on screen names. The button appears only while the lights ARE off, and
-    it is a mouse's answer, not a keyboard's: pressed, not typed."""
+    it is a mouse's response, not a keyboard's: pressed, not typed."""
     open_it(page, live, "a_big.png")
     lit = _lights_on_button(page)
     assert lit["there"], f"{where}: no way out of lights-out is rendered at all"

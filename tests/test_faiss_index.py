@@ -8,7 +8,7 @@ bespoke consumer. This layer is where indexes live, and its contract is
 what the two paths could not share: results name SQLite ids, never
 positions; spaces stay resident and mutate in place; snapshots restore
 or are refused. The numpy oracle (db/similarity.numpy_graph) appears
-here as the independent exact answer the engine is held to -- it is a
+here as the independent exact result the engine is held to -- it is a
 test instrument, not a backend.
 """
 
@@ -34,7 +34,7 @@ def pairs_of(manager: IndexManager, key: str, radius) -> set[tuple[int, int]]:
 
 def test_binary_neighbours_come_back_as_the_ids_that_went_in():
     """Non-contiguous, unsorted ids -- the shape a real file table has.
-    A positional index would answer 0, 1, 2 here; the contract is 700, 3,
+    A positional index would return 0, 1, 2 here; the contract is 700, 3,
     12, and getting this wrong groups the wrong pictures."""
     manager = IndexManager()
     twin = 0x0123456789ABCDEF
@@ -61,7 +61,7 @@ def test_the_radius_is_inclusive_and_self_pairs_are_absent():
 
 
 def test_float_edges_match_the_exact_numpy_oracle_with_ids_translated():
-    """The engine is held to an independent exact answer: every edge and
+    """The engine is held to an independent exact result: every edge and
     weight the blocked numpy sweep finds, keyed by the caller's ids."""
     rng = np.random.default_rng(7)
     vectors = rng.normal(size=(20, 8)).astype(np.float32)
@@ -81,7 +81,7 @@ def test_float_edges_match_the_exact_numpy_oracle_with_ids_translated():
 
 def test_cpu_and_gpu_policies_agree_on_the_edges():
     """Device policy is the manager's configuration. Whichever way it is
-    configured, the answers are the same edges -- the GPU path is exact
+    configured, the results are the same edges -- the GPU path is exact
     by construction (knn on device + CPU range pass for overflow).
 
     The CUDA build is imported FIRST, deliberately: the process's faiss
@@ -111,8 +111,8 @@ def test_cpu_and_gpu_policies_agree_on_the_edges():
     faiss = import_faiss(gpu=True)
     if not (hasattr(faiss, "StandardGpuResources") and faiss.get_num_gpus() > 0):
         pytest.skip("no GPU in this environment; the CPU-policy half of the parity ran")
-    # A GPU exists, so the gpu=True manager MUST have answered on it --
-    # a silent CPU answer here is the fallback theater this test bans.
+    # A GPU exists, so the gpu=True manager MUST have run on it --
+    # a silent CPU result here is the fallback theater this test bans.
     assert quick.served_by(spec.key) == "faiss-gpu"
     assert quick._spaces[spec.key].gpu_clone is not None, "the device clone was not kept resident"
     assert pairs_of(quick, spec.key, 0.4) == told, "the resident clone answered differently"
@@ -197,7 +197,7 @@ def test_duplicate_and_unknown_ids_are_refused():
 
 def test_a_checkpoint_restores_into_a_fresh_manager(tmp_path):
     """The snapshot tier: a fresh process restores the space from disk
-    and answers identically, without touching the rows that built it."""
+    and returns identical results, without touching the rows that built it."""
     twin = 0x0123456789ABCDEF
     first = IndexManager(tmp_path)
     first.load(PHASH, [700, 3, 12], [twin, twin ^ 0b1, -1])
@@ -346,7 +346,7 @@ def test_a_rolled_back_hash_never_reaches_the_live_index(db, tmp_path):
 
 def test_a_snapshot_from_another_manager_restores_and_answers(tmp_path):
     """Manager A checkpoints and is gone; manager B restores from the
-    files alone and answers -- the boot the snapshot tier exists for.
+    files alone and returns results -- the boot the snapshot tier exists for.
     The boundary is the files on disk: nothing of A survives in memory."""
     spec = SpaceSpec("perceptual.phash64", "binary", 64, "hamming", producer="imagehash.phash", producer_version="x")
     first = IndexManager(tmp_path)
@@ -466,9 +466,9 @@ def test_each_fingerprint_carries_its_own_producer(db):
 
 
 def test_a_failed_post_commit_sync_invalidates_the_space(db, tmp_path):
-    """A space that took half a batch could answer with stale rows, so a
+    """A space that took half a batch could return stale rows, so a
     failed application marks it unservable -- resident and snapshot both
-    -- and the next align rebuilds it from committed truth."""
+    -- and the next align rebuilds it from committed state."""
     manager = IndexManager(tmp_path)
     key = similarity.align(db, manager, similarity.PHASH, [1], lambda w: [0b1 for _ in w], 1.0)
     similarity.note(db, similarity.PHASH, 2, 0b11, 2.0)
@@ -534,7 +534,7 @@ def test_a_crash_between_commit_and_sync_cannot_revive_an_old_embedding(db, tmp_
     post-commit sync. On restart the snapshot still holds A -- but under
     an embedding id that no longer exists, because a replacement mints a
     new immutable id instead of reusing the file's. Alignment sees an id
-    disappear and another appear, and the space answers B, never A."""
+    disappear and another appear, and the space returns B, never A."""
     from db import derived, scan
 
     db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/lib','library',0)")
@@ -586,7 +586,7 @@ def test_a_search_deeper_than_the_gpu_ceiling_still_answers_exactly():
     DeviceDefs.cuh; the refusal in gpu/impl/IndexUtils.cu
     validateKSelect), the same on every card. The one caller that asks
     deeper is retrieval materializing a whole ranking, once per
-    projection; past the ceiling the CPU canonical answers -- the same
+    projection; past the ceiling the CPU canonical path returns it -- the same
     exact flat computation with no ceiling. Found live: a 2,995-file
     library 500'd /g?q=... on this exact refusal."""
     from vision.faiss_index import GPU_MAX_K

@@ -22,7 +22,7 @@ type BacklogFrame = components["schemas"]["BacklogFrame"];
  *
  * The contract closes `type` to seventeen members and `severity` to three.
  * Proving that here would mean writing those twenty strings into authored
- * TypeScript -- a second spelling of the vocabulary that db/ledger.py owns
+ * TypeScript -- a second encoding of the vocabulary that db/ledger.py owns
  * and sglint SG709 holds to the schema's CHECK, which is exactly the
  * duplication this whole seam exists to remove. So the decoder proves what
  * it can, `typeof === "string"`, and says so in the type: a caller gets

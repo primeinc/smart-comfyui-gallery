@@ -8,7 +8,7 @@
 // looking closely at a photograph was silently rating it.
 //
 // Two listeners cannot agree about a key by being careful. So there is one
-// listener here, modules REGISTER what they answer to, and a second claim
+// listener here, modules REGISTER what they respond to, and a second claim
 // on a live key throws where it was registered -- naming both claimants.
 // The failure is a page that does not load rather than a picture that
 // quietly gains a star, and the browser tests hit it on the first mount.
@@ -25,7 +25,7 @@
 /** One key, and what the surface holding it should do. */
 export interface Command {
   /**
-   * The `KeyboardEvent.key` this answers to.
+   * The `KeyboardEvent.key` this responds to.
    *
    * Single letters are given lower-case and matched case-insensitively:
    * a person with caps lock on means the same thing.
@@ -44,8 +44,8 @@ const spelled = (key: string) => (key.length === 1 ? key.toLowerCase() : key);
  * Claim these keys until the returned release is called.
  *
  * Registration is where a collision is caught, not dispatch: a module that
- * registers has said what it answers to, and the whole point is that the
- * answer is decided once. A remounted surface releases first (the overlay
+ * registers has said what it responds to, and the whole point is that the
+ * claim is decided once. A remounted surface releases first (the overlay
  * replaces its contents on every open), so re-registering the same keys
  * from the same place is ordinary, not a conflict.
  */
@@ -73,7 +73,7 @@ export function register(commands: Command[]): () => void {
   };
 }
 
-/** What answers to a key right now, or null. Exported for the tests. */
+/** What responds to a key right now, or null. Exported for the tests. */
 export function claimant(key: string): string | null {
   return claimed.get(spelled(key))?.by ?? null;
 }

@@ -23,7 +23,7 @@
   <main class="detail" data-collection="{{ album.slug }}" data-rev="{{ album.definition_rev }}">
     {% if album.archived %}
     <p class="detail-state" data-state="archived">
-      this collection is archived: still addressable, members and children intact, off the shelves and pickers.
+      this collection is archived: still addressable, members and children intact, out of the indexes and pickers.
       <button type="button" data-restore>restore</button>
     </p>
     {% endif %}
@@ -84,9 +84,9 @@
       {% if album.state == "broken" %}
       this collection's rule points at something that no longer exists: {{ album.reason }}
       {% elif album.state == "unavailable" %}
-      this collection's rule cannot be answered right now: {{ album.reason }}
+      this collection's rule cannot be evaluated right now: {{ album.reason }}
       {% else %}
-      this collection is rule-defined; its membership is not evaluated yet, so there is no media answer to show
+      this collection is rule-defined; its membership is not evaluated yet, so there are no results to show
       {% endif %}
     </p>
     {% elif album.gallery["items"] %}

@@ -11,12 +11,12 @@ in db/similarity.py -- this module executes.
 
 Three tiers, and this manager owns the traffic between them:
 
-- SQLite is the durable truth. Losing every other tier loses nothing.
+- SQLite is the durable system of record. Losing every other tier loses nothing.
 - Disk snapshots (`write_index` / `write_index_binary` + a JSON sidecar)
   are a startup accelerator. A snapshot that does not match -- wrong
   spec, wrong count, unreadable file -- is refused, because FAISS itself
   does not validate what it loads (faiss.wiki Index-IO).
-- RAM/VRAM holds the live index that answers. Indexes are REBUILDABLE,
+- RAM/VRAM holds the live index that serves searches. Indexes are REBUILDABLE,
   never routinely rebuilt: `add` rows are searchable immediately,
   `remove` takes them out, and every other id survives both.
 
@@ -42,7 +42,7 @@ doctrine: "it is best to copy an index once to a GPU and keep it there"
 and rebuilt on the next search. GPU range search is emulated exactly --
 k nearest on the device, a CPU range pass for any query whose k-th
 neighbour still cleared the radius (faiss/contrib/exhaustive_search.py:
-60-116). A build without GPU support serves the same answers from the
+60-116). A build without GPU support serves the same results from the
 CPU canonical. Binary flat search has no GPU implementation in any
 faiss build, so binary spaces serve from CPU always. The GPU never
 serialises; snapshots are the CPU canonical form (faiss.wiki
@@ -83,7 +83,7 @@ GPU_K = 1024
 #: outright ("GPU index only supports min/max-K selection up to 2048",
 #: faiss/gpu/impl/IndexUtils.cu validateKSelect). A deeper search --
 #: retrieval asking for a whole scoped ranking -- serves from the CPU
-#: canonical, which computes the same exact flat answer with no ceiling.
+#: canonical, which computes the same exact flat result with no ceiling.
 GPU_MAX_K = 2048
 
 #: The ways a faiss capability fails to exist on a machine: no module, a
@@ -99,7 +99,7 @@ class SpaceSpec:
     """What the vectors in one space mean -- never how they are searched.
 
     `producer` and `producer_version` name what computed the vectors: an
-    index of ArcFace embeddings answered with SFace queries is garbage
+    index of ArcFace embeddings queried with SFace vectors is garbage
     with a valid shape. `preprocess` and `preprocess_version` name what
     fed the computation -- the same hash algorithm over a differently
     oriented frame is a different representation. All of it is part of
@@ -338,7 +338,7 @@ class IndexManager:
         """Replace-or-add these rows, searchable the moment this returns.
 
         The representation mutation primitive the post-commit sync uses:
-        membership is answered from the space's own bookkeeping, never by
+        membership is determined from the space's own bookkeeping, never by
         reading every stored id back out -- an incremental commit must
         not cost a scan of the index it is updating."""
         space = self._space(key)
@@ -361,7 +361,7 @@ class IndexManager:
     def invalidate(self, key: str) -> None:
         """Drop the space everywhere -- resident AND snapshot. The rows
         it described changed meaning; a tier that outlives that is a
-        wrong answer waiting for a boot."""
+        wrong result waiting for a boot."""
         with self._lock:
             self._spaces.pop(key, None)
             self._served.pop(key, None)
@@ -408,7 +408,7 @@ class IndexManager:
             keys = [key for key, space in self._spaces.items() if space.dirty]
         return [written for key in keys if (written := self.checkpoint(key)) is not None]
 
-    # -- answering ----------------------------------------------------------
+    # -- searching ----------------------------------------------------------
 
     def has(self, key: str) -> bool:
         with self._lock:
@@ -435,7 +435,7 @@ class IndexManager:
             return self._matrix(space)
 
     def served_by(self, key: str) -> str | None:
-        """Which execution answered this space's last search -- provenance
+        """Which execution served this space's last search -- provenance
         for run rows, because a timing nobody can attribute to a machine
         is not a measurement."""
         return self._served.get(key)

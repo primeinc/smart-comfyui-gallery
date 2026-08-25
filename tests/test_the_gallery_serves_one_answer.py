@@ -1,9 +1,9 @@
 """The gallery grid over HTTP: presentation adapters, one ResultSet.
 
 The shell renders whole from nothing but the URL, the fragment swaps
-the same answer, the rail's peek previews the exact destination page,
+the same result set, the rail's peek previews the exact destination page,
 and locate agrees with where the grid actually shows a file. None of
-these routes owns a second opinion -- change the question and every
+these routes owns a second opinion -- change the query and every
 surface moves together, which is what WI-35's acceptance pins.
 """
 

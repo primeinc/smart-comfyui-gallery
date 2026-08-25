@@ -1,4 +1,4 @@
-"""The questions the product asks, answered against a real library.
+"""The queries the product's pages issue, checked against a real library.
 
 The schema has been checked against its own constraints, its producers, a real
 folder, real EXIF and 100k rows. What it had not been checked against is the
@@ -6,8 +6,8 @@ thing it exists for: a page. Every table can be correct and every write linear
 while the query a page needs is still awkward, wrong, or a scan.
 
 Each test here is one page. It builds a library through the real producers --
-the scanner, the metadata readers, the authored-state writers -- asks the
-question that page asks, and checks two things: the answer is right, and the
+the scanner, the metadata readers, the authored-state writers -- issues the
+query that page needs, and checks two things: the result set is right, and the
 plan is not a scan of a table that grows with the library.
 
 The plan assertion is what makes this useful at 12 files. A page that reads
@@ -191,17 +191,17 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
     bare table scan still applies to both.
 
     `whole_index=True` is for a page whose PROMISE is every row -- the
-    /albums shelf displays every collection, so reading O(N) rows once
+    /albums index page displays every collection, so reading O(N) rows once
     is that page's own meaning, not a defect. What it still demands: the
     read is ONE ordered index walk (SCAN ... USING INDEX) with no
     read-time sort. It is not license for a bare scan, and it is never
-    the answer to a temp B-tree -- that answer is an index whose order
+    the fix for a temp B-tree -- that fix is an index whose order
     the query can ride.
 
     `counts=True` is for the one page whose meaning IS the library's
     cardinalities -- the machine front link's summary. Every column is
     a bare count(*), and no index can hold a count, so the b-tree walks
-    are the answer's own cost. Declared per call like the others; the
+    are that response's own cost. Declared per call like the others; the
     temp B-tree ban still applies.
     """
     names = tables_by_name(sql)
@@ -328,7 +328,7 @@ def test_the_image_page_answers_in_one_query(library):
 
 def test_an_address_that_was_renamed_still_resolves(library):
     """Resolution is the page layer's, not each page's. A live slug wins and
-    history answers only on a miss, so a link written down last year opens
+    history is consulted only on a miss, so a link written down last year opens
     the thing it named rather than whatever took the name since."""
     conn = library["conn"]
     person = library["person"]
@@ -659,7 +659,7 @@ def test_identical_files_are_never_guessed_between_on_a_move(library):
 
 def a_recipe_library(tmp_path):
     """Four pictures across two checkpoints and two LoRAs, so co-occurrence
-    is a question with an answer rather than a table with one row."""
+    is a query with a result rather than a table with one row."""
     root = tmp_path / "recipes"
     root.mkdir()
     recipes = [
@@ -742,7 +742,7 @@ def test_the_entity_layer_queries_do_not_scan_the_library(library):
 
 def test_a_missing_copy_leaves_the_shelf_and_the_page_agreeing(library):
     """/dupes counted every member of a group -- missing ones included --
-    while the picture page lists only present twins: the shelf said three
+    while the picture page lists only present twins: the index page said three
     bodies, the page showed one. Present members only, both routes, per
     the repo's own "the two routes cannot drift apart" doctrine."""
     conn = library["conn"]
@@ -809,23 +809,23 @@ def test_the_place_pages_ask_answerable_questions(library):
 
 
 def test_the_navigation_indexes_ask_answerable_questions(library):
-    """The /folders shelves and the /albums tree: the root list is a
+    """The /folders index pages and the /albums tree: the root list is a
     stays-small scan, each root's depth-0 folders ride the NOCASE
-    uniqueness index, and the tree is a whole-shelf summary like ALBUMS
+    uniqueness index, and the tree is a whole-index summary like ALBUMS
     -- counting groups is what aggregate=True exists for."""
     conn, album = library["conn"], library["album"]
     shelves = pages.roots_shelf(conn)
     assert [kind for _, kind in shelves] == ["library"]
     root_id = shelves[0][0]
     # 0 DIRECT files: the fixture's twelve live in subfolders, and the
-    # shelf count keeps folder='s direct-only meaning.
+    # index count keeps folder='s direct-only meaning.
     assert [(n, p, b) for _, n, p, b in pages.folder_tops(conn, root_id)] == [("pics", 0, 12)], (
         "a top folder whose media live below it is not 0 pictures: 0 here, 12 in the subtree"
     )
     assert_no_growing_scan(conn, pages.ROOT_SHELF)
     assert_no_growing_scan(conn, pages.FOLDER_TOPS, (root_id,))
 
-    # The albums shelf promises EVERY collection, in one statement: the
+    # The albums index page promises EVERY collection, in one statement: the
     # whole-index category demands the read be one ordered walk of
     # collection_parent with no read-time sort, and one statement is
     # what makes the rendered tree one snapshot.
@@ -835,6 +835,6 @@ def test_the_navigation_indexes_ask_answerable_questions(library):
     assert shelf[nested] == album, "the shelf carries the authored parents"
     assert_no_growing_scan(conn, pages.COLLECTION_SHELF, (), whole_index=True)
 
-    # And a trash root is a storage location, never a navigation shelf.
+    # And a trash root is a storage location, never a navigation index.
     conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/bin', 'trash', ?)", (NOW,))
     assert "trash" not in [kind for _, kind in pages.roots_shelf(conn)]

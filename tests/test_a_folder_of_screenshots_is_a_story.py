@@ -149,7 +149,7 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert held["story"]["href"] == f"/stories/renders/{made.json()['id']}", "the story rides its session's card"
     assert held["story"]["title"]
     assert held["story"]["heroes"], "with its heroes"
-    # the shelf lists it, newest first, with its words and links
+    # the index page lists it, newest first, with its words and links
     shelf = client.get("/stories", headers={"accept": "application/json"}).json()
     assert [s["id"] for s in shelf] == [made.json()["id"]]
     assert shelf[0]["title"] == "5 files from June 10, 2023"
@@ -158,7 +158,7 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert all(h["thumbnail"].startswith("/thumb/") for h in shelf[0]["heroes"])
     page = client.get("/stories", headers={"accept": "text/html"}).text
     assert f'data-story="{made.json()["id"]}"' in page
-    # the shelf filters by session kind, and says how many of each
+    # the index page filters by session kind, and says how many of each
     assert 'data-stories-kind="file_session"' in page
     assert (
         client.get("/stories", params={"kind": "file_session"}, headers={"accept": "application/json"}).json() == shelf

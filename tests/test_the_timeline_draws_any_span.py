@@ -1,6 +1,6 @@
 """The timeline draws any library, whatever its span: five minutes of
 pictures or five centuries, the opening window and the whole extent
-both answer, the scrubber fills its height exactly, every picture of
+both draw, the scrubber fills its height exactly, every picture of
 the extent is on the page, and the silence between days grows with the
 days but never past a screen.
 

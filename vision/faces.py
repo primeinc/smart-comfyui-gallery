@@ -375,7 +375,7 @@ class OpenCVFaceBackend(FaceBackend):
         return detections
 
 
-#: insightface's genderage head answers a letter (Face.sex: 'M' / 'F',
+#: insightface's genderage head returns a letter (Face.sex: 'M' / 'F',
 #: insightface/app/common.py); the schema stores the word
 #: (db/schema.sql derived_face_instance.sex CHECK).
 _SEX_WORDS = {"M": "male", "F": "female"}

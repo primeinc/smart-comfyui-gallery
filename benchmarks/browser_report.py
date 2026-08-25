@@ -99,9 +99,9 @@ def _answers(web) -> bool:
 
 def _wait_healthy(web, server) -> None:
     """Bounded readiness gate: a child process offers no push signal
-    before its socket answers, so this is a retry with a deadline, not
+    before its socket responds, so this is a retry with a deadline, not
     pacing. A child that already exited is reported as the crash it is,
-    not as thirty quiet seconds of 'never answered'."""
+    not as thirty quiet seconds of 'never responded'."""
     deadline = time.time() + 30
     while not _answers(web):
         if server.poll() is not None:
@@ -465,7 +465,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 stride = max(1, len(slug_rows) // 18)
                 page.set_content(_grid(base, slug_rows[::stride][:18]), wait_until="domcontentloaded")
                 # An album, made and filled through the application, so the
-                # shelves capture shows authored state the routes produced.
+                # index-page capture shows authored state the routes produced.
                 keepsake = web.post("/albums", json={"name": "Sample picks"}).json()
                 for pick in slug_rows[:3]:
                     kept = web.post(f"/t/{keepsake['slug']}/add", json={"file": pick})
@@ -484,7 +484,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 )
                 page.close()
 
-                # --- the recipe shelves, from the app's own routes ------------
+                # --- the recipe's index pages, from the app's own routes ------
                 page = watched_page()
                 shelves = {
                     "Models": web.get("/models").json(),

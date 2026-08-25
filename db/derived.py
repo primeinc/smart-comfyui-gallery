@@ -36,7 +36,7 @@ def plain(value):
     ONNX face model returns -- fails. Nothing caught it because every face in
     every test was placed here by hand, as Python literals.
 
-    Duck-typed rather than importing numpy: torch scalars answer `.item()`
+    Duck-typed rather than importing numpy: torch scalars respond to `.item()`
     too, and the schema layer should not take a dependency on either.
     """
     if value is None or isinstance(value, (int, float, str, bytes)):
@@ -289,7 +289,7 @@ def _insert_face(
     """One detected face. The region is required: a detection with no
     location cannot be shown, cropped, checked, or asserted against.
 
-    Private because it appends. `record_faces` is the way in -- a detector
+    Private because it appends. `record_faces` is the entry point -- a detector
     run has to replace what it said last time, and a public row-at-a-time
     insert is how "re-running a detector doubles every face" comes back.
     """
@@ -356,7 +356,7 @@ def run_for(conn, model_id: str, model_version: str, method: str, threshold, now
     A run is (embedder, version, method, threshold) -- all four, because all
     four decide who ends up in a cluster. Asking twice for the same four
     returns the same run, so re-clustering at the same settings replaces its
-    own answer and leaves everybody else's alone.
+    own result set and leaves everybody else's alone.
     """
     conn.execute(
         "INSERT INTO derived_face_run(model_id, model_version, method, threshold,"
@@ -462,7 +462,7 @@ def record_faces(
 ) -> list[int]:
     """Every face this model found in this file, replacing what it found before.
 
-    Scoped replacement rather than an upsert, because a detector's answer is
+    Scoped replacement rather than an upsert, because a detector's result is
     the whole set and not a row: a version that finds two faces where the
     last one found three has to be able to say so. There is no natural key to
     upsert on either -- a face is located by a `region`, and a re-run mints a
@@ -622,7 +622,7 @@ def cluster(
     The step the People page is downstream of, and the one nothing could do:
     a face's embedding had no column to live in, so every test in this suite
     formed clusters by assigning `cluster_id` by hand -- which is not
-    clustering, it is stating the answer.
+    clustering, it is stating the result.
 
     **Label propagation, not connected components.** Each face repeatedly
     adopts whichever label its neighbours agree on most strongly. Single
@@ -1088,7 +1088,7 @@ def assign_cluster(conn, face_id: int, cluster_id: int) -> None:
 
     A face is in one cluster per RUN and in as many runs as have grouped it,
     so this adds a membership rather than overwriting a column -- which is
-    what made a second clustering destroy the first one's answer.
+    what made a second clustering destroy the first one's result.
     """
     conn.execute(
         "INSERT OR IGNORE INTO derived_face_membership(cluster_id, face_id) VALUES(?, ?)",
@@ -1111,7 +1111,7 @@ def attribute(
     Keyed on the run. Two runs disagree about who is in a picture -- that
     disagreement is the reason for running both -- and keyed on the embedder
     alone the second overwrote the first, so the cluster tables held two
-    answers while this one held whichever wrote last.
+    results while this one held whichever wrote last.
     """
     conn.execute(
         "INSERT INTO derived_file_person(file_id, person_id, run_id, model_id,"
@@ -1160,8 +1160,8 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
     A cluster whose votes name two different people is left unnamed. That is
     the point of naming from a record: where the record does not say, this
-    does not invent, and an unnamed cluster is a question the People page can
-    put to somebody who knows the answer.
+    does not invent, and an unnamed cluster is left for the People page to
+    show to somebody who can identify it.
 
     Returns the number of clusters named.
     """
@@ -1331,7 +1331,7 @@ def annotate(
 ) -> int:
     """A caption, a description, a tag, text read out of the image.
 
-    Re-running the same model on the same picture replaces its own answer
+    Re-running the same model on the same picture replaces its own result
     rather than accumulating; two *different* models are kept side by side on
     purpose, because comparing them is the point of running both.
     """
@@ -1384,7 +1384,7 @@ def said_about(conn, file_id: int, *, kind=None) -> list[dict]:
     return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
-#: The lexical channel's name in a retrieval answer's provenance.
+#: The lexical channel's name in a retrieval result set's provenance.
 CAPTIONS = "captions"
 
 

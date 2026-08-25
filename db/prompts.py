@@ -39,9 +39,9 @@ top of that identity:
 
 - CONSUMERS. The StoryPlanner's similarity Seam stays value-in/
   vector-out and connection-free; `cached(...)` wraps a loaded engine so
-  its frozen texts are answered BY TEXT HASH under (space, policy) --
+  its frozen texts are looked up BY TEXT HASH under (space, policy) --
   never by file id, generation id, or today's role relation -- and
-  computed once where missing. `neighbours(...)` answers "prompts like
+  computed once where missing. `neighbours(...)` returns "prompts like
   this one" inside ONE (space, policy); a role or section-kind filter
   constrains the CANDIDATES before ranking, at full depth, never the
   top-k afterwards.

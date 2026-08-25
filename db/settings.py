@@ -20,7 +20,7 @@ import typing
 #: zoom alone.
 #:
 #: Two modifiers are deliberately NOT offered, because three booleans on a
-#: WheelEvent are not three interchangeable answers:
+#: WheelEvent are not three interchangeable choices:
 #:
 #: `ctrl` is unsafe. A trackpad pinch reaches the page as a wheel event
 #: with `ctrlKey` set -- that is how browsers deliver pinch-to-zoom (MDN,
@@ -36,7 +36,7 @@ import typing
 #: whatever the browser does with them -- the viewer calls preventDefault
 #: only for the gestures it actually acts on (frontend/src/viewer.ts).
 #:
-#: Spelled as a Literal so the browser is typed against the same closed
+#: Declared as a Literal so the browser is typed against the same closed
 #: set the registry validates writes with -- one vocabulary, two readers,
 #: the way db/ledger.py owns the event types.
 WheelModifier = typing.Literal["alt", "none"]

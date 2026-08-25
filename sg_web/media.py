@@ -6,7 +6,7 @@ litestar/status_codes.py (litestar-org/litestar@64cd7da) -- and a video
 element that cannot seek is a slideshow. So the range grammar lives here,
 per RFC 9110 section 14: one bytes-range, first-byte/last-byte inclusive,
 suffix form for "the last N bytes". Syntactically malformed or multipart
-ranges are ignored (the whole body is the permitted answer); a
+ranges are ignored (the whole body is the permitted response); a
 syntactically valid range that selects nothing is 416, said with the
 `bytes */size` form so the client learns the size it misjudged.
 """
@@ -82,7 +82,7 @@ def exemplar_face(conn, person_id: int):
 
     `(face_id, file_id, sample_id, x, y, w, h)` or None when no primary
     run holds a cluster attributed to them -- an unclustered person has no
-    face to show, and that is an answer, not an error.
+    face to show, and that is a valid result, not an error.
     """
     return conn.execute(
         "SELECT fi.id, fi.file_id, fi.sample_id, r.x, r.y, r.w, r.h"

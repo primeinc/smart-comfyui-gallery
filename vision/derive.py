@@ -21,7 +21,7 @@ default's output size at a fraction of its cost. Concurrency was swept
 from 1 to 16 and changed nothing at these sizes -- the gain is the
 decoder, not stolen cores, so parallelism above this will not fight it.
 
-Pillow answers for the rest, and the rest is not small. This build of
+Pillow handles the rest, and the rest is not small. This build of
 libvips refuses Canon raws outright ("Old-style JPEG compression support
 is not configured") and has no video loader, so raws keep going through
 rawpy's embedded preview and video through PyAV. Callers already holding
@@ -108,7 +108,7 @@ def upright(image: Raster, orientation: int | None) -> Raster:
 def fit(image: Raster, edge: int) -> Raster:
     """A libvips image no larger than `edge` on its longest side.
 
-    `size='down'` is libvips' own spelling of never-enlarge, which is what
+    `size='down'` is libvips' own name for never-enlarge, which is what
     vision/thumbs.fit does for Pillow. Returns the image itself when it
     already fits.
     """

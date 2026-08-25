@@ -42,8 +42,8 @@ def cadence(every_ms: int = EVERY_MS) -> str:
     """The policy token for a fixed interval.
 
     A token, not a sentence: the schema refuses spaces and capitals for it,
-    because the same policy spelled three ways cannot be grouped and a re-run
-    spelled differently cannot tell it already did this.
+    because the same policy encoded three ways cannot be grouped and a re-run
+    encoded differently cannot tell it already did this.
     """
     if every_ms % 1000 == 0:
         return f"every-{every_ms // 1000}s"

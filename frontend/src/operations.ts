@@ -1,7 +1,8 @@
-// The Operations Console client. The rows are the truth (db/inspecting.py),
-// the ledger is history (db/ledger.py), /ws/events is transport. This
-// script holds EVERY event it has been given -- never a sample -- and
-// renders only the rows in view. Pausing pauses the painting; filtering
+// The Operations Console client. The rows are the system of record
+// (db/inspecting.py), the ledger is history (db/ledger.py), /ws/events
+// is transport. This script holds EVERY event it has been given -- never
+// a sample -- and renders only the rows in view. Pausing pauses the
+// painting; filtering
 // hides rows; neither touches what is held. Ids are the order: a skipped
 // id is a named gap, fetched from /operations/events, never papered over.
 //
@@ -390,7 +391,7 @@ type LiveReport = components["schemas"]["LiveReport"];
 
   // the inspector's own links: item pages load into the items slot; the
   // "every one" link filters the tape to the job instead of leaving the page.
-  // These answer HTML fragments, not JSON, so they are `fetch` and not the
+  // These return HTML fragments, not JSON, so they are `fetch` and not the
   // typed client -- the contract they honour is the template's, not the
   // document's.
   inspectorBody.addEventListener("click", (ev) => {

@@ -119,7 +119,7 @@ def test_the_surface_rule_can_fail(tmp_path):
     ],
 )
 def test_a_second_module_claiming_the_keyboard_can_fail(tmp_path, claim):
-    """SG503: one module owns keystroke dispatch, whatever the spelling.
+    """SG503: one module owns keystroke dispatch, however it is written.
 
     The defect it exists for: the viewer and the authored strip each had a
     document listener, so F was focus AND favorite, 1 was actual-pixels AND
@@ -324,7 +324,7 @@ def test_a_test_that_spawns_is_a_lint_error(tmp_path):
 
 
 class _FakeGit:
-    """A git that answers from a table, so the repo rules can be bent
+    """A git that responds from a table, so the repo rules can be bent
     without starting a program."""
 
     def __init__(self, answers: dict[tuple[str, ...], str], rc: dict[tuple[str, ...], int] | None = None):
@@ -482,10 +482,10 @@ def test_the_request_contract_rule_can_fail():
 
 
 def test_the_response_contract_rule_can_fail():
-    """SG413 holds every route's JSON answer to a wire model.
+    """SG413 holds every route's JSON response to a wire model.
 
     The negotiated routes are why this rule reads `responses=` as well as
-    the return type: a handler that answers a page to a person and JSON to
+    the return type: a handler that returns a page to a person and JSON to
     a machine cannot say the JSON half in its signature, and OpenAPI reads
     the declaration instead.
 
@@ -498,7 +498,7 @@ def test_the_response_contract_rule_can_fail():
     inside such a union is a contract nobody is ever given.
 
     `picture` is the other side of it: bytes are not JSON, so a union that
-    only ever answers a byte stream has nothing to declare.
+    only ever returns a byte stream has nothing to declare.
     """
     module = rules.from_text(
         "sg_web/routes.py",

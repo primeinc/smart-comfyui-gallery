@@ -1,6 +1,6 @@
 """Request-shaped values into the GalleryQuery Interface, once.
 
-db/resultset.py owns what a question means and how it is spelled; this
+db/resultset.py owns what a query means and how it is encoded; this
 is the one Litestar-facing translation of request values and errors
 into that Interface, so no presentation Adapter depends on another to
 understand a GalleryQuery.

@@ -87,7 +87,7 @@ def open_intents(conn) -> list[tuple]:
 #: are the same statement. Everything else in `file_relation.kind` reads one
 #: way round -- a video HAS a proxy, a photograph HAS a sidecar -- and writing
 #: the reverse as well asserted something false: after relating a video to its
-#: proxy, "give me the proxy for this file" answered with the video.
+#: proxy, "give me the proxy for this file" returned the video.
 _SYMMETRIC = frozenset({"raw_pair"})
 
 

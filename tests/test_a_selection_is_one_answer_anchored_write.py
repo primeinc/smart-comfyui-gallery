@@ -1,14 +1,14 @@
 """Bulk curation: one desired fact, one proven selection, one write.
 
-A selection names the answer it was made against and the entity uuids
+A selection names the result set it was made against and the entity uuids
 it chose. The server proves both against the authoritative projection
 OUTSIDE any write transaction -- proving may cost a materialization,
 and sqlite's one writer lane never pays for it -- then claims the lane
-for a narrow revalidate-and-mutate: one currency comparison, the
+for a narrow revalidate-and-mutate: one data version comparison, the
 authored write, one commit. A commit in the handoff earns one re-proof
-outside the lane; a stale answer, a foreign file, or a vanished entity
+outside the lane; a stale result set, a foreign file, or a vanished entity
 writes zero rows. The response's after-state lets the client settle by
-answer identity exactly as single writes do.
+result set identity exactly as single writes do.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def chosen(_stage):
 
 
 def _grid(client, **params) -> tuple[str, dict[str, str]]:
-    """(answer, {slug: uuid}) for the current grid of this question."""
+    """(result set, {slug: uuid}) for the current grid of this query."""
     page = client.get("/g", params=params).text
     found = re.search(r'data-answer="([^"]+)"', page)
     assert found is not None
@@ -87,8 +87,8 @@ def test_one_desired_fact_lands_on_the_whole_selection_atomically(chosen):
     assert body["targets"] == 2
     assert "changed" not in body, "targets, not a transition count nothing computed"
     assert _favorites(chosen) == {"pic-1", "pic-3"}
-    # The question does not depend on favorite: the answer is unchanged
-    # and the currency moved -- the client keeps its selection.
+    # The query does not depend on favorite: the result set is unchanged
+    # and the data version moved -- the client keeps its selection.
     assert body["after"]["answer"] == answer
     # Desired state: the retry is harmless.
     again = chosen.post(
@@ -104,7 +104,7 @@ def test_a_stale_or_foreign_selection_writes_nothing(chosen):
     answer, keys = _grid(chosen, folder="lib")
     _, aside = _grid(chosen, folder="side")
 
-    # Stale answer: 409, zero writes.
+    # Stale result set: 409, zero writes.
     refused = chosen.post(
         "/g/selection/favorite",
         params={"folder": "lib"},
@@ -113,7 +113,7 @@ def test_a_stale_or_foreign_selection_writes_nothing(chosen):
     assert refused.status_code == 409
     assert _favorites(chosen) == set()
 
-    # A file OUTSIDE this answer poisons the WHOLE batch: 409, zero writes.
+    # A file OUTSIDE this result set poisons the WHOLE batch: 409, zero writes.
     mixed = chosen.post(
         "/g/selection/favorite",
         params={"folder": "lib"},
@@ -135,7 +135,7 @@ def test_a_stale_or_foreign_selection_writes_nothing(chosen):
     )
     assert _favorites(chosen) == set()
 
-    # Payloads that were never selections: refused as bad questions.
+    # Payloads that were never selections: refused as bad queries.
     for items in (["zz"], [], [keys["pic-1"][:8]]):
         refused = chosen.post(
             "/g/selection/favorite",
@@ -207,9 +207,9 @@ def test_bulk_membership_shares_the_smart_refusal(chosen):
 
 
 def test_membership_writes_settle_by_answer_identity(chosen):
-    """/g?album=keep with a bulk remove-from-keep: the after-answer must
-    differ, because the selected files left the walked answer; a write
-    the question does not depend on keeps the answer identical."""
+    """/g?album=keep with a bulk remove-from-keep: the after-write result set
+    must differ, because the selected files left the walked result set; a
+    write the query does not depend on keeps the result set identical."""
     _, keys = _grid(chosen)
     first = chosen.post(
         "/g/selection/collections/keep",
@@ -229,7 +229,7 @@ def test_membership_writes_settle_by_answer_identity(chosen):
     assert told.json()["after"]["total"] == 1
 
     # The other direction of the same contract: raising ratings INSIDE
-    # rating_min=4 keeps every member above the threshold -- the answer
+    # rating_min=4 keeps every member above the threshold -- the result set
     # identity is preserved and the client keeps its selection mounted.
     rate_answer, rated = _grid(chosen)
     lifted = chosen.post(
@@ -299,8 +299,8 @@ def test_the_proof_never_holds_the_writer_lane(chosen, monkeypatch):
 
 def test_a_commit_in_the_handoff_is_reproved_not_trusted(chosen, monkeypatch):
     """A commit landing between a completed proof and the writer lane:
-    the stale proof's currency is rejected by revalidation, ONE re-proof
-    runs outside the lane, and -- the answer being unchanged by the
+    the stale proof's data version is rejected by revalidation, ONE re-proof
+    runs outside the lane, and -- the result set being unchanged by the
     unrelated commit -- the retry lands. Nothing is ever written from
     the first proof's generation."""
     real_prove = resultset.prove_subset
@@ -311,7 +311,7 @@ def test_a_commit_in_the_handoff_is_reproved_not_trusted(chosen, monkeypatch):
         proofs.append(proof.currency)
         if len(proofs) == 1:
             # An UNRELATED commit: rates a file outside the folder
-            # question -- currency moves, the answer does not.
+            # query -- data version moves, the result set does not.
             writer = connect.connect(chosen.app.state.db_path)
             file_id = writer.execute("SELECT id FROM file WHERE name = 'aside_0.png'").fetchone()[0]
             authored.set_rating(writer, file_id, chosen.app.state.actor_id, 3, 0.0)
@@ -333,7 +333,7 @@ def test_a_commit_in_the_handoff_is_reproved_not_trusted(chosen, monkeypatch):
 
 
 def test_a_changed_answer_in_the_handoff_writes_nothing(chosen, monkeypatch):
-    """The same race, but the commit CHANGES the walked answer: the
+    """The same race, but the commit CHANGES the walked result set: the
     re-proof raises, the response is 409, and zero rows moved."""
     real_prove = resultset.prove_subset
     raced: list[str] = []
@@ -403,7 +403,7 @@ def test_a_semantic_proof_runs_without_the_writer_lane(chosen, monkeypatch):
 
 def test_every_non_hex_spelling_is_refused_as_a_bad_question(chosen):
     """bytes.fromhex skips whitespace, so length alone is not the gate:
-    a 34-character padded spelling, a 32-character one with spaces
+    a 34-character padded encoding, a 32-character one with spaces
     HIDING INSIDE it (30 hex digits, 15 bytes), and a non-hex character
     are all 400 -- malformed selections, never 409-shaped racing."""
     answer, keys = _grid(chosen)
@@ -417,7 +417,7 @@ def test_every_non_hex_spelling_is_refused_as_a_bad_question(chosen):
         refused = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [rotten], "value": True})
         assert refused.status_code == 400, rotten
     assert _favorites(chosen) == set()
-    # And the canonical spelling still lands.
+    # And the canonical encoding still lands.
     landed = chosen.post("/g/selection/favorite", json={"answer": answer, "items": [valid], "value": True})
     assert landed.status_code < 300
     assert _favorites(chosen) == {"pic-0"}

@@ -1590,7 +1590,7 @@ def test_a_name_survives_dropping_everything_derived(db):
     assert db.execute("SELECT name FROM person WHERE id=700").fetchone()[0] == "Ilse"
     assert db.execute("SELECT count(*) FROM person_assertion WHERE person_id=700").fetchone()[0] == 1
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
-    # and the People page still answers, from assertions alone
+    # and the People page still responds, from assertions alone
     rows = db.execute(
         "SELECT p.name, COUNT(DISTINCT pa.file_id) FROM person p "
         "JOIN person_assertion pa ON pa.person_id = p.id GROUP BY p.id"

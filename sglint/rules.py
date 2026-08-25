@@ -278,7 +278,8 @@ def sql_interpolations(tree: ast.AST) -> list[tuple[str, int, int]]:
 
 def rule_sql_structure(sources: typing.Iterable[pathlib.Path] | None = None) -> list[Finding]:
     """SG101: a value written into a statement. SG102: a structure name
-    listed but no longer written anywhere -- the list is the tree's truth."""
+    listed but no longer written anywhere -- the list is the tree's current
+    state."""
     found: list[Finding] = []
     written: set[str] = set()
     for source in sources if sources is not None else shipped():
@@ -626,7 +627,7 @@ def rule_adapters(
         tree = parsed(root / relative)
         for dotted, param in pairs:
             # "Class.method" names one method; a bare name is a function
-            # of the module, which is how a judge or a planner is spelled
+            # of the module, which is how a judge or a planner is written
             owner, _, method = dotted.rpartition(".")
             scopes: list[list[ast.stmt]] = (
                 [tree.body]
@@ -712,7 +713,7 @@ def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
 
 #: The one module allowed to listen to the document for keystrokes.
 KEY_ROUTER = "keys.ts"
-#: Claiming keys for a whole surface, however it is spelled -- the direct
+#: Claiming keys for a whole surface, however it is written -- the direct
 #: listener, one through a module's own helper. An element-scoped listener
 #: (`swap.addEventListener("keydown", ...)`) is deliberately not matched:
 #: a key pressed inside one widget is that widget's business.
@@ -730,7 +731,7 @@ def _one_keyboard(scripts: typing.Iterable[pathlib.Path]) -> list[Finding]:
     photograph was silently rating it.
 
     So the dispatch lives in ONE place (frontend/src/keys.ts) and modules
-    register what they answer to, where a second claim on a live key is
+    register what they respond to, where a second claim on a live key is
     refused by name. That only holds while nothing else listens, which is
     what this rule is. An element-scoped listener is untouched: a key
     pressed inside one widget is that widget's business.
@@ -888,7 +889,7 @@ def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
             if isinstance(node, ast.ClassDef):
                 held = {base.id for base in node.bases if isinstance(base, ast.Name)}
                 # `class X(RootModel[Annotated[A | B, ...]])` is how a
-                # discriminated body is spelled: litestar takes a body only
+                # discriminated body is written: litestar takes a body only
                 # when the annotation is a model CLASS, so the union travels
                 # inside one. It is a contract when its arms are.
                 for base in node.bases:
@@ -906,7 +907,7 @@ def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
     while growing:
         found = {name for name, held in bases.items() if held & named}
         # An alias every member of which is a contract is one too: it is
-        # how a discriminated document is spelled, and a rule that could
+        # how a discriminated document is written, and a rule that could
         # not read it would send every route serving one to the ledger.
         found |= {name for name, held in aliases.items() if held and held <= (named | found)}
         growing = not found <= named
@@ -1000,7 +1001,7 @@ def rule_request_contracts(
 
 
 #: Return types that carry no JSON: a rendered page, a redirect, a byte
-#: stream. A handler that only ever answers with one of these has no wire
+#: stream. A handler that only ever responds with one of these has no wire
 #: contract to state.
 _NOT_JSON = frozenset({"Template", "Redirect", "Stream", "File", "ASGIResponse"})
 
@@ -1032,7 +1033,7 @@ def _json_parts(node: ast.expr | None) -> list[ast.expr]:
 
 
 def _muddled(node: ast.expr | None) -> bool:
-    """Whether a union puts a JSON answer beside one that is not JSON.
+    """Whether a union puts a JSON response beside one that is not JSON.
 
     Litestar builds the response schema from the whole annotation, and a
     union it cannot render as one media type collapses to the empty
@@ -1102,7 +1103,7 @@ def _declared_containers(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[a
 def rule_response_contracts(
     sources: typing.Iterable[Source] | None = None, reserved: frozenset[str] | None = None
 ) -> list[Finding]:
-    """SG413: a route answers JSON the contract does not describe.
+    """SG413: a route returns JSON the contract does not describe.
 
     `dict`, `list[dict]` and a bare `Response` all reach OpenAPI as "an
     object", so the browser's generated types say nothing and every reader
@@ -1110,7 +1111,7 @@ def rule_response_contracts(
     negotiates -- a page to a person, JSON to a machine -- cannot say it in
     the return type, and says it in `responses=` instead; that is the same
     contract, written where OpenAPI reads it -- and it has to, because a
-    union that mixes a page with a JSON answer reaches the document as the
+    union that mixes a page with a JSON response reaches the document as the
     empty schema however precisely each arm is written (_muddled).
     """
     held = list(web_sources() if sources is None else sources)

@@ -361,8 +361,8 @@ def _seen(claim: dict, phase: dict, ctx: Context) -> str:
 def _located(claim: dict, phase: dict, ctx: Context) -> str:
     """Where the members happened, from the places they froze: one
     place, or several named. The frozen chain above a place -- "Lisbon,
-    Portugal" -- is spelled from the snapshot's members, never from the
-    live library, so the words match what the evidence held."""
+    Portugal" -- is assembled from the snapshot's members, never from
+    the live library, so the words match what the evidence held."""
     members = {_member_ref(one["ordinal"]): one for one in ctx.snapshot["members"]}
     above: dict[str, list[str]] = {}
     for ref in claim["evidence_refs"]:

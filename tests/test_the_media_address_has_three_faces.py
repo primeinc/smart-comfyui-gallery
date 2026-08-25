@@ -1,6 +1,6 @@
 """One media address, three representations, zero second resources.
 
-`/i/{slug}` answers as the MediaView (JSON) for machines, as a lightbox
+`/i/{slug}` is served as the MediaView (JSON) for machines, as a lightbox
 fragment for the mounted gallery, and as a complete page for a browser
 -- all from one assembly, negotiated deterministically and declared
 with Vary. The query string is browsing context: previous/next mean the
@@ -105,9 +105,9 @@ def test_a_scope_the_item_is_outside_says_so_instead_of_inventing_arrows(address
 
 
 def test_the_filmstrip_is_the_walk_the_context_describes(address):
-    """The strip and the arrows are one read of one answer.
+    """The strip and the arrows are one read of one result set.
 
-    Its addresses carry the walked question whole, because a browser
+    Its addresses carry the walked query whole, because a browser
     handed slugs would be rebuilding browsing state from parts -- which
     is how a second, disagreeing ordering gets born under the first.
     """
@@ -134,7 +134,7 @@ def test_the_filmstrip_is_the_walk_the_context_describes(address):
 
 def test_a_picture_outside_the_answer_gets_no_filmstrip(address):
     """The query defines the walk, so there is no neighbourhood to
-    invent for a picture the question does not contain."""
+    invent for a picture the query does not contain."""
     from db import collections, connect
 
     conn = connect.connect(address.app.state.db_path)
@@ -176,7 +176,7 @@ def test_a_superseded_currency_is_refused_not_mixed(address):
 
 def test_a_commit_landing_mid_request_cannot_cross_generations(tmp_path, monkeypatch):
     """The last WI-36 race: the expectation check must compare the
-    currency the view was ACTUALLY located in, after assembly -- a
+    data version the view was ACTUALLY located in, after assembly -- a
     pre-assembly check passes at v10, a worker commits, and the arrows
     would silently belong to v11 under the mounted v10 gallery. The
     writer here commits exactly inside that window."""

@@ -5,9 +5,9 @@ mints a new one and retires the old into `slug_history`, so an address
 written down last year still resolves rather than 404ing.
 
 Resolution order is fixed and not negotiable: a live `entity.slug` always
-wins, and history answers only on a miss, most recent retirement first. The
-other order would let a retired slug shadow a live entity that has since
-taken that name.
+wins, and history resolves it only on a miss, most recent retirement
+first. The other order would let a retired slug shadow a live entity that
+has since taken that name.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def resolve(conn, kind: str, slug: str) -> tuple[int, bool] | None:
 
     `is_current` False means the caller should redirect to the live slug
     rather than serve the page, so an old link keeps working without two
-    addresses answering for one thing.
+    addresses resolving to one thing.
     """
     row = conn.execute("SELECT id FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone()
     if row:

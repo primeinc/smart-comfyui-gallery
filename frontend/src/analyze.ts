@@ -1,10 +1,10 @@
 /**
- * The analysis panel: what this answer is made of.
+ * The analysis panel: what this result set is made of.
  *
  * Almost nothing runs here, and that is the point. Every bar, share and
  * count is rendered by the server from the same membership the grid
  * reads, and every one of them is an ordinary link that adds a clause to
- * the question -- so refining an analysis is a navigation, works with
+ * the query -- so refining an analysis is a navigation, works with
  * the middle mouse button, and survives with JavaScript switched off.
  *
  * What a browser is actually needed for is the clipboard.

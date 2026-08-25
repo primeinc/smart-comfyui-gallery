@@ -886,7 +886,7 @@ def test_the_story_plan_grammar_is_exact_and_fails_closed():
     """A self-consistent, correctly hashed document is still invalid when
     it carries an unknown key, a claim kind nobody defined, facts of the
     wrong shape, a second representative, or a boolean confidence -- and
-    the answer is a controlled reason, never an exception, whatever the
+    the result is a controlled reason, never an exception, whatever the
     bytes say."""
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
     document, sha = _snapshot(members)

@@ -3,7 +3,7 @@
 //
 // Every control states the DESIRED FINAL STATE -- name is X, parent is Y,
 // archived is true -- with the definition revision the page rendered at
-// (data-rev). A stale revision answers 409, and this module's whole
+// (data-rev). A stale revision returns 409, and this module's whole
 // reaction is to reload: the server is authoritative and the browser never
 // invents the resulting state. An empty input means CLEAR (sent as null);
 // a fact the form does not carry is simply absent and stays unchanged --

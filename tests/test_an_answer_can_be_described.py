@@ -1,4 +1,4 @@
-"""Understanding, in a browser: one answer, described rather than shown.
+"""Understanding, in a browser: one result set, described rather than shown.
 
 The gallery could produce a result set and then offered exactly one
 thing to do with it -- look at thumbnails. "Show me these, and tell me
@@ -7,12 +7,12 @@ which prompts and which LoRAs made them" had nowhere to be asked.
 Three claims here, and the first is the one the whole design rests on.
 
 **Gallery and Analyze describe the SAME members.** They are two
-presentations of one question, and `view` never reaches the
+presentations of one query, and `view` never reaches the
 GalleryQuery. If switching could move the total, an analysis would be a
 report about a different library than the one on screen -- which is how
 one surface says 412 and another says 407.
 
-**Every number is a question.** A count that cannot be clicked back into
+**Every number is a query.** A count that cannot be clicked back into
 the query is a dashboard. Each row is an ordinary link that adds its own
 clause, so refining is navigation and works with the middle mouse
 button.
@@ -126,7 +126,7 @@ def _prompts(page: Page) -> dict[str, int]:
     )
 
 
-# --- one question, two presentations ----------------------------------------
+# --- one query, two presentations -------------------------------------------
 
 
 def test_switching_presentation_does_not_change_the_answer(page: Page, live: Live, unbroken):
@@ -142,7 +142,7 @@ def test_switching_presentation_does_not_change_the_answer(page: Page, live: Liv
     page.wait_for_selector("[data-analyze]", timeout=15_000)
     assert _total(page) == grid_total, "the analysis describes the answer it is standing on"
     assert page.locator('[data-view="analyze"]').get_attribute("aria-current") == "page"
-    # and the chips -- the question itself -- are untouched
+    # and the chips -- the query itself -- are untouched
     assert page.evaluate("() => document.querySelectorAll('[data-chip-edit]').length") == 1
 
     page.click('[data-view="gallery"]')
@@ -204,7 +204,7 @@ def test_a_breakdown_says_how_much_of_the_answer_it_covers(page: Page, live: Liv
     assert covered == f"{len(MADE)} of {WHOLE}", covered
 
 
-# --- every number is a question ---------------------------------------------
+# --- every number is a query ------------------------------------------------
 
 
 def test_clicking_a_bar_narrows_the_question(page: Page, live: Live, unbroken):
@@ -219,7 +219,7 @@ def test_clicking_a_bar_narrows_the_question(page: Page, live: Live, unbroken):
     assert "view=analyze" in page.url, "refining stays in the presentation it was refined from"
     assert _total(page) == "4 results"
     assert page.evaluate("() => document.querySelectorAll('[data-chip-edit]').length") == 1
-    # and the answer it now describes is the narrowed one
+    # and the result set it now describes is the narrowed one
     assert _prompts(page) == {f"{CASTLE} <lora:filmGrain:0.35>": 4}
 
 
@@ -250,7 +250,7 @@ def test_a_prompt_can_be_taken_somewhere_else(page: Page, live: Live, unbroken):
 
 def test_an_answer_of_mixed_media_is_described_as_one(page: Page, live: Live, unbroken):
     """Not a generated-image feature. The whole library, including a
-    clip and a photograph, is one answer with one description."""
+    clip and a photograph, is one result set with one description."""
     _analyze(page)
     assert _total(page) == f"{WHOLE} results"
     assert _bars(page, "media.kind") == {"image": WHOLE - 1, "video": 1}
@@ -261,12 +261,12 @@ def test_describing_a_medium_with_nothing_to_say_says_nothing(page: Page, live: 
     """An honest empty, rather than a page of bars at 100%.
 
     The clip in THIS library carries no ComfyUI tags, so it has no
-    recipe to describe -- and a one-member answer has nothing to break
+    recipe to describe -- and a one-member result set has nothing to break
     down either: every dimension it does carry would read "video, 1,
-    100%", which is the question repeated back as an answer.
+    100%", which is the query repeated back as a result.
 
     Both halves are deliberate. A breakdown whose single value covers
-    the whole answer is dropped, so a narrow question does not produce a
+    the whole result set is dropped, so a narrow query does not produce a
     wall of full bars saying what the chips already say.
     """
     _analyze(page, "kind=video")
@@ -276,14 +276,14 @@ def test_describing_a_medium_with_nothing_to_say_says_nothing(page: Page, live: 
     assert _bars(page, "media.kind") == {}, "one video, described as 'video, 100%', is the question read back"
     assert page.locator(".analyze-bar").count() == 0
 
-    # the control: the SAME surface over an answer that does hold a
+    # the control: the SAME surface over a result set that does hold a
     # spread has plenty to say, so the emptiness above is about this
-    # answer and not about the analysis being broken
+    # result set and not about the analysis being broken
     _analyze(page)
     assert page.locator(".analyze-bar").count() > 0
 
 
-# --- the third presentation: the same answer as facts ------------------------
+# --- the third presentation: the same result set as facts --------------------
 
 
 def _table(page: Page, question: str = "") -> None:

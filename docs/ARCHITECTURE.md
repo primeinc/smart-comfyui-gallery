@@ -1,8 +1,8 @@
 # Architecture
 
 The application is `sg_web` over `db`: a server-rendered Litestar
-application, one process, SQLite as the only truth. There is no other
-runtime.
+application, one process, SQLite as the only system of record. There is no
+other runtime.
 
 ```
 sg_web/app.py        Litestar: routes, lifespan, the worker thread, ChannelsPlugin
@@ -26,7 +26,7 @@ db/                  schema, queries, jobs, runner -- every fact lives here
 | server-driven interaction | htmx 2.0.7 (`hx-get`/`hx-post`), `htmx-ext-ws` 2.0.3 for the feed |
 | interactions HTML cannot express | small vanilla JS per page (`static/*.js`) |
 | realtime transport | `ChannelsPlugin` + `MemoryChannelsBackend`, channel `jobs` |
-| truth | SQLite (`db/schema.sql`); job rows in `job` / `job_item` |
+| system of record | SQLite (`db/schema.sql`); job rows in `job` / `job_item` |
 
 ## Representation
 
@@ -93,8 +93,8 @@ operational control.
 
 A sweep is `POST /jobs/<kind>` or its console button; every sweep is a
 job row. The ingest, phash, faces, embed, annotate and context sweeps
-queue only what is missing and answer 204 (the console: "nothing to
-do") when nothing is -- embed, one job per space, answers an empty list
+queue only what is missing and return 204 (the console: "nothing to
+do") when nothing is -- embed, one job per space, returns an empty list
 instead; `everything` -- the console's "again" button --
 redoes all of it. The console shows beside each such button how many
 present files the sweep would still queue (`inspecting.coverage`),
@@ -120,7 +120,7 @@ into the context sweep.
 ### The console
 
 ```
-job + job_item        current truth        db/jobs.py
+job + job_item        current state        db/jobs.py
 job_event             historical ledger    db/ledger.py  append-only, monotonic id, never sampled
 channel "events"      transport            sg_web/app.py publish_event -> /ws/events
 ```
@@ -156,15 +156,15 @@ distinct conditions on every surface.
 
 A listed collection's membership is its filed rows; a smart collection's
 is a typed rule (`db/collection_rules.py`) evaluated through the same
-ResultSet every gallery question goes through. The rule is authored from
+ResultSet every gallery query goes through. The rule is authored from
 a GalleryQuery (`from_gallery_query`) -- the gallery's save-view button
-sends the mounted answer's canonical parameters, every repeated `f`
-included, and never a rule shape -- and read back per version:
+sends the canonical parameters of the result set on screen, every
+repeated `f` included, and never a rule shape -- and read back per version:
 
 ```
 v1  folder, person, kind, favorite, rating_min; select sort/text/take
 v2  + artifact (a checkpoint, LoRA or workflow, by entity uuid)
-v3  + facets (registered metadata predicates, db/facets.py, by spelling)
+v3  + facets (registered metadata predicates, db/facets.py, by encoding)
 ```
 
 Reading is fail-closed: an unknown key, a missing key, a facet whose
@@ -172,17 +172,17 @@ key this build no longer registers, or a version stamp that does not
 equal its column is `BrokenCollectionRule`, never an evaluated empty
 collection. Entity references are uuids, so a rename moves the address
 and not the membership. A rule never holds `event.id`: a session is a
-run's hypothesis over one interpretation and would answer nothing the
-day the runs regroup -- save its day or moment window instead. The
-collection's page names the rule's words and opens the same question
-in the gallery.
+run's hypothesis over one interpretation and would return an empty
+result set the day the runs regroup -- save its day or moment window
+instead. The collection's page names the rule's words and opens the
+same query in the gallery.
 
 ## Places
 
 A place is an entity (`place`, nested by kind: country .. poi). Nothing
 resolves coordinates to one -- no gazetteer ships, and GPS alone names
-no place -- so `derived_media_context.place_id` comes from a person's
-word: `POST /i/{slug}/place {"name", "kind"}` finds or mints the place
+no place -- so `derived_media_context.place_id` comes from a
+user-supplied claim: `POST /i/{slug}/place {"name", "kind"}` finds or mints the place
 by name, kind and parent (`places.named`, under the writer lane; the
 `place_identity` index is the database's own word that there is one
 Lisbon), records the claim as authored
@@ -211,21 +211,21 @@ route for the shape alone). Thumbnails ride every bin up to
 pictures per bin split by clock domain and origin, claims too coarse
 for the bin as spans, thumbnails per bin while the bins are few, and
 the sessions touching the range (`db/pages.py TIMELINE_*`,
-`SESSION_*`). Any gallery question scopes the whole surface --
+`SESSION_*`). Any gallery query scopes the whole surface --
 `?folder=`, `?album=`, `?person=`, `?kind=`, `?f=` -- through
 `resultset.scope_of`: the same membership predicates the gallery walks,
 appended to every timeline statement (HEAD + conjunct + TAIL), and
-every link is that question plus a moment and the precision the bar
+every link is that query plus a moment and the precision the bar
 counted (the `context.granule` facet, db/facets.py), so what is drawn is what opens. A session link over a run grouped before the interpretation last moved is refused with the events job (`resultset.StaleSession`); the surface says the same beside its coverage. A session is a link, never a scope; a rule-defined collection
 scopes through its materialized membership (`f.id IN (...)`, the one
-engine) and refuses with why when its rule cannot be answered. A
+engine) and refuses with why when its rule cannot be evaluated. A
 person's, a folder's and an album's page open their own timeline, and
-the gallery opens its question on the timeline. Every bin, span and session is a link into the gallery
+the gallery opens its query on the timeline. Every bin, span and session is a link into the gallery
 through the facets (`context.local_day`, `context.moment`,
 `context.origin`, `context.disputed`, `event.id`) ordered by `moment`.
 A session card names who is in it (primary clustering), carries a
 bounded strip of its pictures, and offers the story chain behind one
-button. The people, folders and albums shelves carry the span of their
+button. The people, folders and albums index pages carry the span of their
 pictures' moments so the same axis reads across the product.
 
 ## Stories
@@ -243,7 +243,7 @@ captioning model said about a phase's members, read from the captions
 the snapshot froze -- every planner emits it, the renderer quotes one
 sentence and names the models under the technical profile. v7 added
 `located`: where a phase's members happened, from the place each
-member froze (a person's word), named in the render. `story_renderers` words
+member froze (a user-supplied claim), named in the render. `story_renderers` renders
 every claim kind through a closed registry; a render cites what
 supports it and `violations()` proves the chain on every read. The
 timeline offers the whole chain behind one button per session.
