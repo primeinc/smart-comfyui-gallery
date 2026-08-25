@@ -1266,6 +1266,26 @@
         star.setAttribute("aria-pressed", authored.rating !== null && authored.rating >= n ? "true" : "false");
       }
     }
+    const tags = requireElement(root, "[data-tags]", HTMLElement);
+    tags.replaceChildren(
+      ...authored.tags.map((held) => {
+        const chip = document.createElement("span");
+        chip.className = "authored-tag";
+        chip.dataset.tag = held.tag;
+        const link = document.createElement("a");
+        link.href = `/g?f=${encodeURIComponent(`tag:eq:${held.tag}`)}`;
+        link.textContent = held.label;
+        const off = document.createElement("button");
+        off.type = "button";
+        off.className = "authored-untag";
+        off.dataset.untag = held.tag;
+        off.title = `remove ${held.label}`;
+        off.setAttribute("aria-label", `remove ${held.label}`);
+        off.textContent = "\xD7";
+        chip.append(link, off);
+        return chip;
+      })
+    );
     const albums = requireElement(root, "[data-albums]", HTMLElement);
     albums.replaceChildren(
       ...authored.collections.map((held) => {
@@ -1349,6 +1369,27 @@
     });
     await applied(root, answered(told, "the album membership could not be recorded"));
   };
+  var setTag = async (root, name, value) => {
+    const told = await api.POST("/i/{slug}/tags", {
+      params: { path: { slug: requireData(root, "slug") } },
+      body: { name, value }
+    });
+    await applied(root, answered(told, "the keyword could not be recorded"));
+  };
+  var suggest = async (root) => {
+    const list = requireElement(root, "[data-keyword-list]", HTMLElement);
+    if (list.dataset.filled) return;
+    list.dataset.filled = "1";
+    const told = await api.GET("/g/options", { params: { query: { key: "tag" } } });
+    if (told.error || !told.data) return;
+    list.replaceChildren(
+      ...told.data.options.map((one) => {
+        const choice = document.createElement("option");
+        choice.value = one.label;
+        return choice;
+      })
+    );
+  };
   var choices = async (root) => {
     const box = requireElement(root, "[data-album-choices]", HTMLElement);
     if (!box.hidden) {
@@ -1394,7 +1435,30 @@
       void setRating(root, n > 0 ? n : null);
       return;
     }
+    const off = closestFrom(event.target, "[data-untag]", HTMLElement);
+    if (off) {
+      void setTag(root, requireData(off, "untag"), false);
+      return;
+    }
     if (closestFrom(event.target, "[data-album-picker]", HTMLElement)) void choices(root);
+  });
+  document.addEventListener("submit", (event) => {
+    const form = closestFrom(event.target, "[data-tagging]", HTMLElement);
+    if (!form) return;
+    event.preventDefault();
+    const root = closestFrom(form, "[data-authored]", HTMLElement);
+    if (!root) return;
+    const box = requireElement(form, "[data-tag-input]", HTMLInputElement);
+    const name = box.value.trim();
+    if (!name) return;
+    box.value = "";
+    void setTag(root, name, true);
+  });
+  document.addEventListener("focusin", (event) => {
+    const box = closestFrom(event.target, "[data-tag-input]", HTMLInputElement);
+    if (!box) return;
+    const root = closestFrom(box, "[data-authored]", HTMLElement);
+    if (root) void suggest(root);
   });
   var strip = () => findElement(document, "[data-lightbox] [data-authored]", HTMLElement) ?? findElement(document, "[data-authored]", HTMLElement);
   register([
@@ -1412,6 +1476,14 @@
       run: () => {
         const root = strip();
         if (root) void choices(root);
+      }
+    },
+    {
+      key: "t",
+      by: "authored: keyword",
+      run: () => {
+        const root = strip();
+        if (root) findElement(root, "[data-tag-input]", HTMLInputElement)?.focus();
       }
     },
     ...[1, 2, 3, 4, 5].map((stars) => ({

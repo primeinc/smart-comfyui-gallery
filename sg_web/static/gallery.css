@@ -1362,6 +1362,36 @@ body {
   color: var(--accent);
   font-size: 0.9em;
 }
+.authored-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.authored-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 2px 0 6px;
+  font-size: 0.85em;
+}
+.authored-tag a {
+  color: var(--ink);
+}
+.authored-untag {
+  font-size: 0.9em;
+  line-height: 1;
+}
+.authored-tagging input {
+  width: 9em;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85em;
+  padding: 2px 6px;
+}
 .authored-picker {
   border: 1px solid var(--line);
   border-radius: var(--radius);

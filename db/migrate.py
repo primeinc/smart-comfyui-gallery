@@ -3403,3 +3403,52 @@ def _a_person_can_choose_their_own_face(conn: sqlite3.Connection) -> None:
     # table when a parent row goes, and an unindexed FK makes that a full
     # scan of `person` per deleted file.
     conn.execute("CREATE INDEX person_exemplar ON person(exemplar_file_id)")
+
+
+@step(41)
+def _a_keyword_is_a_thing_a_person_can_write_down(conn: sqlite3.Connection) -> None:
+    """v41 -> v42: `tag` and `file_tag`.
+
+    Forty-one dimensions to slice a library by and not one of them was
+    the oldest idea in the field: a word you type on a picture.
+
+    Authored, so it sits beside `rating` and `file_place` rather than in
+    `derived_annotation` with kind='tag' -- which is where a keyword
+    nearly went, and where `drop_all` would have deleted it at the next
+    re-annotate.
+
+    Nothing to backfill. A library that has never been tagged has no
+    tags, which is the state these tables already describe.
+    """
+    # schema.sql's blocks VERBATIM, whitespace included: the drift check
+    # compares sqlite_master text, so a reflowed statement is drift.
+    conn.execute(
+        """CREATE TABLE tag (
+    id         INTEGER PRIMARY KEY,
+    tag        TEXT NOT NULL UNIQUE,
+    label      TEXT NOT NULL,
+    created_at REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE TABLE file_tag (
+    file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tag(id)  ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (file_id, tag_id)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX file_tag_tag  ON file_tag(tag_id)")
+    conn.execute("CREATE INDEX file_tag_user ON file_tag(user_id)")
+    # A keyword changes which files an answer holds, so both tables owe
+    # the staleness counter their three triggers -- the exact omission
+    # test_every_table_that_can_change_an_answer_moves_the_counter exists
+    # to catch, and did. Without them a person filters by the word they
+    # just typed and a mounted answer serves the library from before it.
+    for name in ("tag", "file_tag"):
+        for short, verb in (("ins", "INSERT"), ("upd", "UPDATE"), ("del", "DELETE")):
+            conn.execute(
+                f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
+                " BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
+            )

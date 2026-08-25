@@ -73,6 +73,14 @@ def said(tmp_path):
         connect.close(conn)
 
 
+def _slug(client, file_id: int) -> str:
+    conn = connect.connect(client.app.state.db_path, read_only=True)
+    try:
+        return str(conn.execute("SELECT slug FROM entity WHERE id = ?", (file_id,)).fetchone()[0])
+    finally:
+        connect.close(conn)
+
+
 def _exported(client) -> dict:
     told = client.get("/operations/export/authored.json")
     assert told.status_code == 200, told.text
@@ -81,8 +89,9 @@ def _exported(client) -> dict:
 
 def test_it_carries_what_a_person_said_about_a_picture(said):
     """The whole document, on one photograph: the stars, the flag, the
-    album it is filed in and who is in it."""
-    client, _conn, _ids = said
+    keyword, the album it is filed in and who is in it."""
+    client, _conn, ids = said
+    client.post(f"/i/{_slug(client, ids[0])}/tags", json={"name": "New York"})
     told = _exported(client)
 
     assert told["people"] == [{"slug": "sarah", "name": "Sarah"}]
@@ -90,6 +99,9 @@ def test_it_carries_what_a_person_said_about_a_picture(said):
     assert picture["rating"] == 5
     assert picture["favorite"] is True
     assert picture["collections"] == ["iowa-2019"]
+    # Both spellings, and the space intact: a keyword holds spaces, so it
+    # cannot ride the space-joined slug list the collections use.
+    assert picture["tags"] == [{"tag": "new york", "label": "New York"}]
     assert picture["people"] == [
         {"person": "sarah", "stance": "is", "region": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}}
     ]

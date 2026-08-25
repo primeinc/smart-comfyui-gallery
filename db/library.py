@@ -182,6 +182,7 @@ _ATTACHED = (
     ("comments", "comment", "file_id"),
     ("people_named", "person_assertion", "file_id"),
     ("places", "file_place", "file_id"),
+    ("keywords", "file_tag", "file_id"),
     ("in_collections", "collection_file", "file_id"),
 )
 

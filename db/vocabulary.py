@@ -198,6 +198,31 @@ DIMENSIONS: tuple[Dimension, ...] = (
         ops=("gte",),
         note="at least this many stars",
     ),
+    #: The keyword. Last of the "mine" group to be built and the first
+    #: thing most people reach for -- a word you typed because it is the
+    #: word you will look for.
+    #:
+    #: `multi="both"` and it is the dimension that makes the distinction
+    #: worth offering: "beach AND sunset" and "beach OR sunset" are both
+    #: ordinary questions about keywords, where for `kind` only one of
+    #: them means anything.
+    Dimension(
+        key="tag",
+        label="keyword",
+        group="mine",
+        carried="facet",
+        value_kind="text",
+        ops=("eq", "any"),
+        multi="both",
+        note="a word you wrote on a picture",
+        discover=(
+            "SELECT t.tag, t.label, COUNT(DISTINCT f.id) FROM file f"
+            " JOIN file_tag ft ON ft.file_id = f.id"
+            " JOIN tag t ON t.id = ft.tag_id"
+            " WHERE f.missing_since IS NULL {scope}"
+            " GROUP BY t.id ORDER BY COUNT(DISTINCT f.id) DESC, t.label COLLATE NOCASE"
+        ),
+    ),
     #: A scope, and now a discoverable one. It held a slug and offered no
     #: list, so the drawer showed a heading with nothing under it -- a
     #: filter you can only use if you already know the answer.

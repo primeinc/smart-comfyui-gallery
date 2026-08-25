@@ -49,6 +49,11 @@ class _Spec:
     #: the VALUE always bound.
     template: str
     choices: tuple[str, ...] | None = None
+    #: Whether a text value has an identity narrower than the bytes
+    #: typed. `tag` does: "Sunset" and "sunset" are one keyword, so both
+    #: spellings must fold to one Facet or they are two questions with
+    #: two fingerprints, two cached answers and one of them empty.
+    folded: bool = False
 
 
 #: `any` compares like `eq`. What makes it different is not the
@@ -69,6 +74,17 @@ REGISTRY: dict[str, _Spec] = {
         "int",
         ("eq", "gte", "lte"),
         "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.iso {op} ?)",
+    ),
+    #: A word somebody typed on a picture. A FACET rather than a scope
+    #: because a picture wears several at once, which makes both
+    #: readings real: repeated `eq` asks for all of them, repeated `any`
+    #: for any of them, and both are questions people actually ask.
+    #: Stored normalised, so the value here is folded to match.
+    "tag": _Spec(
+        "text",
+        ("eq", "any"),
+        "EXISTS (SELECT 1 FROM file_tag ft JOIN tag t ON t.id = ft.tag_id WHERE ft.file_id = f.id AND t.tag {op} ?)",
+        folded=True,
     ),
     "generation.sampler": _Spec(
         "text",
@@ -438,6 +454,13 @@ def facet(key: str, op: str, raw: str) -> Facet:
         raise ValueError(f"{key} takes a non-empty value")
     if spec.choices is not None and value not in spec.choices:
         raise ValueError(f"{key} is one of {', '.join(spec.choices)}, not {value!r}")
+    if spec.folded:
+        # Locally imported: a keyword's identity rule belongs with the
+        # keyword, and db/authored.py reaches naming and scan, which this
+        # module sits underneath.
+        from .authored import normalised
+
+        return Facet(key, op, normalised(value))
     return Facet(key, op, value)
 
 

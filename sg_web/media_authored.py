@@ -29,7 +29,7 @@ from litestar.response import Response
 
 from db import authored, collections, connect, context, naming, pages, places
 from sg_web import media_view
-from sg_web.media_view import AuthoredState, CollectionSummary, Faces
+from sg_web.media_view import AuthoredState, CollectionSummary, Faces, TagSummary
 from sg_web.presenting import VARIES
 from sg_web.wire import Wire
 
@@ -77,6 +77,7 @@ def _answered(conn, file_id: int, actor_id: int) -> Response[AuthoredAnswer]:
                 favorite=state.favorite,
                 rating=state.rating,
                 collections=[CollectionSummary(slug=one["slug"], name=one["name"]) for one in state.collections],
+                tags=[TagSummary(tag=one["tag"], label=one["label"]) for one in state.tags],
             ),
         ),
         headers=VARIES,
@@ -179,6 +180,42 @@ def set_membership(
         collection_id = _resolved(conn, "collection", collection, "/t")
         try:
             collections.set_membership(conn, collection_id, file_id, data.value, time.time())
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        return _answered(conn, file_id, state.actor_id)
+    finally:
+        connect.close(conn)
+
+
+class DesiredTag(Wire):
+    """The body of POST /i/{slug}/tags: a keyword and whether it is on.
+
+    The word is in the BODY and not the path, unlike the album route
+    beside it. An album is addressed by a slug this application minted;
+    a keyword is whatever somebody typed, spaces and all, and a free
+    sentence squeezed into a path segment is an encoding argument nobody
+    asked to have.
+    """
+
+    name: str
+    value: bool = True
+
+
+@post("/i/{slug:str}/tags", sync_to_thread=True)
+def set_tag(state: State, slug: FromPath[str], data: DesiredTag) -> Response[AuthoredAnswer]:
+    """Write a word on a picture, or take it off.
+
+    Desired state like everything else here, so the same word posted
+    twice is one keyword rather than a toggle that lands wherever the
+    retry left it. The keyword is minted on first use and disappears
+    when its last picture lets go of it (db/authored.py set_tag_many).
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        file_id = _resolved(conn, "file", slug, "/i")
+        try:
+            authored.set_tag(conn, file_id, state.actor_id, data.name, data.value, time.time())
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()

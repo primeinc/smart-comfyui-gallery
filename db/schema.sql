@@ -1656,6 +1656,56 @@ CREATE TABLE favorite (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX favorite_user ON favorite(user_id);
 
+-- A keyword. The oldest idea in digital asset management and the last
+-- one this schema grew, so the reasons it looks like this are worth
+-- stating.
+--
+-- NOT an entity, unlike `person`, `place` and `collection`. `entity.kind`
+-- is a CHECK constraint, so admitting one more kind means rebuilding the
+-- most-referenced table in the file -- and a tag would get nothing for
+-- it. An entity exists to have an address, a history of spellings and a
+-- page; a keyword has a name, and renaming one is this UPDATE rather
+-- than a retired slug somebody may still hold a bookmark to.
+--
+-- NOT `derived_annotation` with kind='tag' either, which is where this
+-- nearly went. That namespace requires a model_id and a source_sha256
+-- and is deleted wholesale by derived.drop_all -- so a keyword a person
+-- typed would be a durable claim living in the disposable half, gone at
+-- the next re-annotate with nothing reporting it. Authored facts sit
+-- here beside `rating` and `file_place`: they survive every rebuild.
+--
+-- Two columns for one name because case is not identity. `tag` is the
+-- normalised form (casefolded, whitespace collapsed -- db/authored.py
+-- `normalised`) and carries the UNIQUE; `label` is what somebody
+-- actually typed, so "New York" is displayed the way they wrote it and
+-- "new york" typed later lands on the same keyword rather than
+-- splitting the library in two. Folded in Python and not by COLLATE
+-- NOCASE, which folds ASCII only and would leave CAFE and Cafe apart.
+CREATE TABLE tag (
+    id         INTEGER PRIMARY KEY,
+    tag        TEXT NOT NULL UNIQUE,
+    label      TEXT NOT NULL,
+    created_at REAL NOT NULL
+) STRICT;
+
+-- Shared rather than per-actor, which is the difference from `rating`
+-- and `favorite` beside it: those are one person's opinion and two
+-- people may hold different ones, while a keyword is a fact about the
+-- picture that everybody reads. So the key is (file, tag) and `user_id`
+-- records who first said it rather than whose it is.
+CREATE TABLE file_tag (
+    file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tag(id)  ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (file_id, tag_id)
+) STRICT, WITHOUT ROWID;
+-- Both for the reason `job_target` is indexed: SQLite checks every child
+-- table when a parent row goes, and an unindexed FK makes that a full
+-- scan of `file_tag` per deleted file.
+CREATE INDEX file_tag_tag  ON file_tag(tag_id);
+CREATE INDEX file_tag_user ON file_tag(user_id);
+
 -- Feedback is authored and survives every rebuild, so it must not point at a
 -- row that a rebuild destroys. An earlier version carried
 -- (target_kind, target_ref) with no constraint -- reintroducing the exact
@@ -2365,6 +2415,9 @@ CREATE TRIGGER answer_moved_file_place_del AFTER DELETE ON file_place BEGIN UPDA
 CREATE TRIGGER answer_moved_file_relation_ins AFTER INSERT ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_file_relation_upd AFTER UPDATE ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_file_relation_del AFTER DELETE ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_tag_ins AFTER INSERT ON file_tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_tag_upd AFTER UPDATE ON file_tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_tag_del AFTER DELETE ON file_tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_folder_ins AFTER INSERT ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_folder_upd AFTER UPDATE ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_folder_del AFTER DELETE ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
@@ -2416,6 +2469,9 @@ CREATE TRIGGER answer_moved_story_render_del AFTER DELETE ON story_render BEGIN 
 CREATE TRIGGER answer_moved_story_snapshot_ins AFTER INSERT ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_story_snapshot_upd AFTER UPDATE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_story_snapshot_del AFTER DELETE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_tag_ins AFTER INSERT ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_tag_upd AFTER UPDATE ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_tag_del AFTER DELETE ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_user_ins AFTER INSERT ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_user_upd AFTER UPDATE ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_user_del AFTER DELETE ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
@@ -2425,7 +2481,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 41;
+PRAGMA user_version   = 42;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

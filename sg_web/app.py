@@ -1557,6 +1557,7 @@ class RootRemoval(Wire):
     comments: int
     people_named: int
     places: int
+    keywords: int
     in_collections: int
 
 
@@ -1610,7 +1611,8 @@ def forget_root(state: State, root_id: FromPath[int], confirm: FromQuery[str] = 
                 f"removing this root drops {told['files']} file(s) and what is attached to them"
                 f" -- {told['ratings']} rating(s), {told['favorites']} favourite(s),"
                 f" {told['comments']} comment(s), {told['people_named']} named person(s),"
-                f" {told['places']} place(s), {told['in_collections']} collection membership(s)."
+                f" {told['places']} place(s), {told['keywords']} keyword(s),"
+                f" {told['in_collections']} collection membership(s)."
                 f" Nothing on disk is touched. Repeat the path to confirm:"
                 f" DELETE /roots/{root_id}?confirm={told['path']}"
             )
@@ -1959,6 +1961,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             media_authored.set_rating,
             media_authored.set_place,
             media_authored.set_membership,
+            media_authored.set_tag,
             media_authored.collection_choices,
             folder_view.folders_index,
             folder_view.folder_page,

@@ -733,32 +733,42 @@ not a design decision anybody made; it is work nobody did.
   inside a screenshot, a receipt or a document is a whole modality
   missing. Immich searches it as a first-class field.
 
-- **Tags and keywords -- which are TWO features, and the schema only
-  permits one of them.** `derived_annotation.kind = 'tag'` is allowed
-  and never written, and `db/vocabulary.py` has no tag dimension at all
-  -- 41 dimensions and not one of them is the oldest idea in digital
-  asset management.
+- **Auto-tagging: a model that proposes a keyword.**
 
-  But `derived_annotation` is DERIVED: it requires a `model_id`, a
-  `model_version` and a `source_sha256`, and `derived.drop_all` deletes
-  it wholesale. So the permitted `tag` is a tag a MODEL produced --
-  auto-tagging -- and a keyword somebody TYPED cannot live there at
-  all. Writing one into it would put an authored claim in the
-  disposable namespace, and it would be gone at the next rebuild with
+  The human half shipped: `tag` and `file_tag` are authored tables
+  (schema v42), `f=tag:eq:<word>` is a gallery dimension with AND and
+  OR, and the media inspector types one in. What is still missing is the
+  other reading of the same word.
+
+  `derived_annotation.kind = 'tag'` is permitted and never written, and
+  that is the MODEL's tag -- it requires a `model_id`, a `model_version`
+  and a `source_sha256`, and `derived.drop_all` deletes it wholesale.
+  Which is why the human keyword did not go there: an authored claim in
+  the disposable namespace would be gone at the next rebuild with
   nothing recording that it had ever been said.
 
-  A human keyword needs its own authored table, on the same terms as
-  `rating`, `person_assertion` and `file_place`: survives every
-  rebuild, points at a file, signed by a user. That is a schema
-  addition and a migration step, not a column somebody can borrow --
-  which is the part this entry hid by naming both features at once.
+  So the work is a job that writes `derived_annotation` tags from a
+  classifier, and a surface that offers them for a person to ACCEPT --
+  at which point the acceptance writes a `file_tag` and becomes theirs.
+  The same shape reverse geocoding needs below: evidence suggests, a
+  person authors, and the two never share a table.
+
+  Two smaller things the human half left open, both deliberate:
+
+  - **A smart album cannot filter by keyword.** `collection_rule`'s
+    stored format is versioned (`RULE_VERSION`), so a `tag` field there
+    is a durable-format change with a migration of its own, not a line
+    in the registry. Every other surface got the dimension for free.
+  - **No keyword management page.** `authored.rename_tag` folds one word
+    into another and is covered, but nothing calls it: renaming and
+    merging are `/albums`-shaped work with no surface yet.
 
 - **Metadata portability: OUT is done, IN and interop are not.**
 
   `GET /operations/export/authored.json` carries everything a person
   told this library about their own pictures -- names, ratings,
-  favourites, places, albums with their nesting, and who is in what
-  including who expressly is NOT. Keyed by `content_sha256` and never
+  favourites, places, keywords, albums with their nesting, and who is in
+  what including who expressly is NOT. Keyed by `content_sha256` and never
   by a row id, which is the difference between an export and a dump: an
   id belongs to one database file, a hash names the same photograph in
   any library that holds it. Only pictures carrying something authored,
@@ -780,8 +790,6 @@ not a design decision anybody made; it is work nobody did.
     round-trips face regions and names as MWG-RS; digiKam edits
     EXIF/IPTC/XMP in place. JSON solves custody; only XMP solves
     interop.
-  - **Tags**, which this cannot export because nothing writes them
-    (see above).
 
 - **Reverse geocoding, as a suggestion.** `db/places.py:8` already
   names "a future reverse-geocoding job (cached by geographic cell)".

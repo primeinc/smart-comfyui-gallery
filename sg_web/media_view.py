@@ -245,6 +245,7 @@ def _authored(conn, file_id: int, actor_id: int) -> AuthoredState:
         favorite=held.favorite,
         rating=held.rating,
         collections=[CollectionSummary(slug=one["slug"], name=one["name"]) for one in held.collections],
+        tags=[TagSummary(tag=one["tag"], label=one["label"]) for one in held.tags],
     )
 
 
@@ -724,6 +725,14 @@ class CollectionSummary(Wire):
     name: str
 
 
+class TagSummary(Wire):
+    """One keyword on a file: the normalised identity a filter is built
+    from, and the spelling to put on the screen."""
+
+    tag: str
+    label: str
+
+
 class AuthoredState(Wire):
     """What this actor has written down about one file, as opposed to
     what was derived from it.
@@ -740,6 +749,12 @@ class AuthoredState(Wire):
     favorite: bool
     rating: int | None
     collections: list[CollectionSummary]
+    #: Shared rather than this actor's, unlike everything above it: a
+    #: keyword is a fact about the picture that everybody reads, where a
+    #: rating is one person's opinion and two people may hold different
+    #: ones. It rides in the actor's state anyway because it is authored
+    #: and this is where the surface already looks for authored things.
+    tags: list[TagSummary]
 
 
 class Viewing(Wire):

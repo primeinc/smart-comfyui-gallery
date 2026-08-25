@@ -56,8 +56,14 @@ def kept(tmp_path_factory):
 def test_the_three_faces_report_one_authored_state(kept):
     assert kept.post("/i/pic-1/favorite", json={"value": True}).json()["authored"]["favorite"] is True
     assert kept.post("/i/pic-1/rating", json={"value": 4}).json()["authored"]["rating"] == 4
-    told = kept.post("/i/pic-1/collections/keep", json={"value": True}).json()["authored"]
-    assert told == {"favorite": True, "rating": 4, "collections": [{"slug": "keep", "name": "Keep"}]}
+    kept.post("/i/pic-1/collections/keep", json={"value": True})
+    told = kept.post("/i/pic-1/tags", json={"name": "Harbour"}).json()["authored"]
+    assert told == {
+        "favorite": True,
+        "rating": 4,
+        "collections": [{"slug": "keep", "name": "Keep"}],
+        "tags": [{"tag": "harbour", "label": "Harbour"}],
+    }
 
     body = kept.get("/i/pic-1", headers=AS_MACHINE).json()
     assert body["authored"] == told
@@ -67,6 +73,7 @@ def test_the_three_faces_report_one_authored_state(kept):
         assert re.search(r'data-fav\s+aria-pressed="true"', face), "the favorite must render pressed"
         assert 'data-rating="4"' in face
         assert 'href="/t/keep"' in face, "the strip must show the membership in every presentation"
+        assert 'data-tag="harbour"' in face, "the strip must show the keyword in every presentation"
 
 
 def test_desired_state_retries_are_idempotent(kept):

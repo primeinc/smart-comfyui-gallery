@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/i/{slug}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** SetTag */
+        post: operations["ISlugTagsSetTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/i/{slug}/collection-choices": {
         parameters: {
             query?: never;
@@ -1989,6 +2006,7 @@ export interface components {
             favorite: boolean;
             rating: number | null;
             collections: components["schemas"]["CollectionSummary"][];
+            tags: components["schemas"]["TagSummary"][];
         };
         /** BacklogFrame */
         BacklogFrame: {
@@ -2233,6 +2251,12 @@ export interface components {
         /** DesiredRating */
         DesiredRating: {
             value?: number | null;
+        };
+        /** DesiredTag */
+        DesiredTag: {
+            name: string;
+            /** @default true */
+            value: boolean;
         };
         /** DocumentStage */
         DocumentStage: {
@@ -2721,6 +2745,11 @@ export interface components {
             verdict?: "right" | "wrong" | "unsure" | null;
             note?: string | null;
         };
+        /** Keyword */
+        Keyword: {
+            tag: string;
+            label: string;
+        };
         /** LedgerHealth */
         LedgerHealth: {
             last_id: number;
@@ -3006,6 +3035,7 @@ export interface components {
             favorite: boolean;
             place: string | null;
             collections: string[];
+            tags: components["schemas"]["Keyword"][];
             people: components["schemas"]["Appears"][];
         };
         /** Pixels */
@@ -3162,6 +3192,7 @@ export interface components {
             comments: number;
             people_named: number;
             places: number;
+            keywords: number;
             in_collections: number;
         };
         /** RuleView */
@@ -3318,6 +3349,11 @@ export interface components {
             src: string;
             original: string;
             duration: number | null;
+        };
+        /** TagSummary */
+        TagSummary: {
+            tag: string;
+            label: string;
         };
         /** TimelineAt */
         TimelineAt: {
@@ -4119,6 +4155,47 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DesiredFlag"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthoredAnswer"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ISlugTagsSetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesiredTag"];
             };
         };
         responses: {

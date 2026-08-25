@@ -94,6 +94,7 @@ class MediaAuthoredState:
     favorite: bool
     rating: int | None
     collections: tuple[dict, ...]  # {"slug", "name"}, static memberships by name
+    tags: tuple[dict, ...]  # {"tag", "label"}, shared keywords, not this actor's
 
 
 def media_state(conn, file_id: int, user_id: int) -> MediaAuthoredState:
@@ -119,6 +120,7 @@ def media_state(conn, file_id: int, user_id: int) -> MediaAuthoredState:
                 (file_id,),
             )
         ),
+        tags=tags_of(conn, file_id),
     )
 
 
@@ -180,6 +182,134 @@ def set_rating(conn, file_id: int, user_id: int, value: int | None, now: float) 
     """`None` clears; 1..5 sets. Validated in `_rating` so every caller
     gets the same refusal instead of a CHECK-constraint traceback."""
     set_rating_many(conn, (file_id,), user_id, value, now)
+
+
+#: A pasted paragraph is not a keyword. The cap is on the NORMALISED
+#: form, so it counts characters somebody meant rather than the spaces
+#: between them.
+LONGEST_TAG = 100
+
+
+def normalised(name: str) -> str:
+    """The identity of a keyword: whitespace collapsed, case folded.
+
+    Case is not identity -- "New York" and "new york" are one keyword,
+    and a library that let them split would be answering two different
+    questions with the same word. Folded here rather than by COLLATE
+    NOCASE, which folds ASCII only: SQLite would keep CAFE and cafe
+    together and let CAFE and cafE apart, which is worse than either
+    rule applied consistently.
+    """
+    held = " ".join(name.split())
+    if not held:
+        raise ValueError("a keyword needs a word in it")
+    folded = held.casefold()
+    if len(folded) > LONGEST_TAG:
+        raise ValueError(f"a keyword is at most {LONGEST_TAG} characters, not {len(folded)}")
+    return folded
+
+
+def tag(conn, name: str, now: float) -> int:
+    """The keyword by that name, minted if this library has never held
+    it. The spelling somebody typed becomes the label the FIRST time and
+    is left alone after: whoever wrote it down first named it, and a
+    later `set_tag` should not silently restyle a word on every page
+    that shows it."""
+    held = normalised(name)
+    found = conn.execute("SELECT id FROM tag WHERE tag = ?", (held,)).fetchone()
+    if found:
+        return int(found[0])
+    return int(
+        conn.execute(
+            "INSERT INTO tag(tag, label, created_at) VALUES(?, ?, ?) RETURNING id",
+            (held, " ".join(name.split()), now),
+        ).fetchone()[0]
+    )
+
+
+def set_tag_many(conn, file_ids, user_id: int, name: str, value: bool, now: float) -> None:
+    """This keyword on these pictures, or off them, as desired state.
+
+    Removing the last picture from a keyword removes the keyword. A word
+    with nothing under it is not a vocabulary somebody built, it is the
+    typo they just corrected -- and left standing it would haunt the
+    filter menu forever, where the cost of being wrong is a list nobody
+    trusts. Typing it again is what recreates it.
+    """
+    ids = [(int(one),) for one in file_ids]
+    if value:
+        tag_id = tag(conn, name, now)
+        conn.executemany(
+            "INSERT OR IGNORE INTO file_tag(file_id, tag_id, user_id, created_at) VALUES(?, ?, ?, ?)",
+            [(file_id, tag_id, user_id, now) for (file_id,) in ids],
+        )
+        return
+    held = normalised(name)
+    found = conn.execute("SELECT id FROM tag WHERE tag = ?", (held,)).fetchone()
+    if not found:
+        return
+    tag_id = int(found[0])
+    conn.executemany("DELETE FROM file_tag WHERE file_id = ? AND tag_id = ?", [(f, tag_id) for (f,) in ids])
+    conn.execute(
+        "DELETE FROM tag WHERE id = ? AND NOT EXISTS (SELECT 1 FROM file_tag WHERE tag_id = ?)", (tag_id, tag_id)
+    )
+
+
+def set_tag(conn, file_id: int, user_id: int, name: str, value: bool, now: float) -> None:
+    set_tag_many(conn, (file_id,), user_id, name, value, now)
+
+
+def rename_tag(conn, name: str, to: str, now: float) -> int:
+    """Rename a keyword, folding it into the one already there if that
+    name is taken.
+
+    The whole reason a tag is not an entity: renaming is this, rather
+    than a retired address somebody may still hold a bookmark to. A fold
+    is the ordinary case -- somebody typed "beach" and "Beaches" over a
+    year and is now saying they were always the same word -- so a
+    collision merges rather than refusing, and the pictures under both
+    end up under one.
+    """
+    held, want = normalised(name), normalised(to)
+    found = conn.execute("SELECT id FROM tag WHERE tag = ?", (held,)).fetchone()
+    if not found:
+        raise ValueError(f"no keyword {name!r} to rename")
+    from_id = int(found[0])
+    onto = conn.execute("SELECT id FROM tag WHERE tag = ?", (want,)).fetchone()
+    if onto is None or int(onto[0]) == from_id:
+        conn.execute("UPDATE tag SET tag = ?, label = ? WHERE id = ?", (want, " ".join(to.split()), from_id))
+        return from_id
+    onto_id = int(onto[0])
+    # OR IGNORE, not a plain UPDATE: a picture already under both words
+    # would collide on (file_id, tag_id), and the honest result of "these
+    # were always one word" is one row rather than a refusal.
+    conn.execute("UPDATE OR IGNORE file_tag SET tag_id = ? WHERE tag_id = ?", (onto_id, from_id))
+    conn.execute("DELETE FROM tag WHERE id = ?", (from_id,))
+    return onto_id
+
+
+TAGS_OF = (
+    "SELECT t.tag, t.label FROM file_tag ft JOIN tag t ON t.id = ft.tag_id"
+    " WHERE ft.file_id = ? ORDER BY t.label COLLATE NOCASE"
+)
+
+
+def tags_of(conn, file_id: int) -> tuple[dict, ...]:
+    return tuple({"tag": one, "label": label} for one, label in conn.execute(TAGS_OF, (file_id,)))
+
+
+def vocabulary(conn) -> list[tuple[str, str, int]]:
+    """Every keyword in the library with how many pictures wear it,
+    commonest first. The filter menu's whole content, and the answer to
+    "what have I actually been calling things"."""
+    return [
+        (one, label, int(count))
+        for one, label, count in conn.execute(
+            "SELECT t.tag, t.label, count(ft.file_id) FROM tag t"
+            "  JOIN file_tag ft ON ft.tag_id = t.id"
+            " GROUP BY t.id ORDER BY count(ft.file_id) DESC, t.label COLLATE NOCASE"
+        )
+    ]
 
 
 def comment(conn, file_id: int, user_id: int, body: str, now: float) -> int:
@@ -665,10 +795,11 @@ SAID = (
     "         (SELECT group_concat(e.slug, ' ') FROM collection_file cf"
     "            JOIN entity e ON e.id = cf.collection_id"
     "           WHERE cf.file_id = f.id ORDER BY e.slug) AS collections,"
-    "         EXISTS(SELECT 1 FROM person_assertion a WHERE a.file_id = f.id) AS appears"
+    "         EXISTS(SELECT 1 FROM person_assertion a WHERE a.file_id = f.id) AS appears,"
+    "         EXISTS(SELECT 1 FROM file_tag ft WHERE ft.file_id = f.id) AS tagged"
     "    FROM file f WHERE f.content_sha256 IS NOT NULL)"
     " WHERE rating IS NOT NULL OR favorite OR place IS NOT NULL"
-    "    OR collections IS NOT NULL OR appears"
+    "    OR collections IS NOT NULL OR appears OR tagged"
     " ORDER BY name"
 )
 
@@ -687,6 +818,24 @@ APPEARS = (
     "  JOIN entity e ON e.id = a.person_id"
     "  LEFT JOIN region r ON r.id = a.region_id"
     " ORDER BY f.name, e.slug"
+)
+
+#: The keywords on each picture.
+#:
+#: Its own query rather than a `group_concat` beside the collections,
+#: because a keyword holds SPACES -- "new york" is one word here -- and
+#: the collections ride a space-joined list of slugs that split back
+#: apart. Joining tags that way would export one keyword as two.
+#:
+#: Both spellings: `tag` is the identity a filter is built from, `label`
+#: is what somebody typed. A reader that kept only the label would have
+#: to re-fold it and might fold it differently.
+KEYWORDED = (
+    "SELECT f.content_sha256 AS sha256, t.tag, t.label"
+    "  FROM file_tag ft"
+    "  JOIN file f ON f.id = ft.file_id AND f.content_sha256 IS NOT NULL"
+    "  JOIN tag t ON t.id = ft.tag_id"
+    " ORDER BY f.name, t.label COLLATE NOCASE"
 )
 
 #: The people themselves. A picture's row names a slug; this says what
@@ -732,6 +881,9 @@ def exported(conn) -> dict:
         appearances.setdefault(one["sha256"], []).append(
             {"person": one["person"], "stance": one["stance"], "region": box}
         )
+    keywords: dict[str, list[dict]] = {}
+    for one in _rows(conn, KEYWORDED):
+        keywords.setdefault(one["sha256"], []).append({"tag": one["tag"], "label": one["label"]})
     pictures = [
         {
             "sha256": one["sha256"],
@@ -740,6 +892,7 @@ def exported(conn) -> dict:
             "favorite": bool(one["favorite"]),
             "place": one["place"],
             "collections": (one["collections"] or "").split(),
+            "tags": keywords.get(one["sha256"], []),
             "people": appearances.get(one["sha256"], []),
         }
         for one in _rows(conn, SAID)

@@ -670,6 +670,15 @@ class Appears(Wire):
     region: Box | None
 
 
+class Keyword(Wire):
+    """One word on a picture: the identity a filter is built from, and
+    the spelling somebody typed. Both, because a reader that kept only
+    the label would have to re-fold it and might fold it differently."""
+
+    tag: str
+    label: str
+
+
 class Picture(Wire):
     """What somebody said about one photograph, named by its bytes."""
 
@@ -679,6 +688,7 @@ class Picture(Wire):
     favorite: bool
     place: str | None
     collections: list[str]
+    tags: list[Keyword]
     people: list[Appears]
 
 
@@ -1687,7 +1697,11 @@ def export_authored(state: State) -> Response[Authored]:
             collections=[Shelved(**one) for one in told["collections"]],
             pictures=[
                 Picture(
-                    **one | {"people": [Appears(**who | {"region": _boxed(who["region"])}) for who in one["people"]]}
+                    **one
+                    | {
+                        "tags": [Keyword(**word) for word in one["tags"]],
+                        "people": [Appears(**who | {"region": _boxed(who["region"])}) for who in one["people"]],
+                    }
                 )
                 for one in told["pictures"]
             ],
