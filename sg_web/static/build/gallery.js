@@ -736,6 +736,10 @@
     let lowest = first;
     let highest = first;
     let busy = false;
+    let again = false;
+    const settle2 = (state) => {
+      grid.dataset.endless = state;
+    };
     const dropped = /* @__PURE__ */ new Map();
     const cellsOf = (page) => [...cells.children].filter(
       (one) => one instanceof HTMLElement && one.dataset.page === String(page)
@@ -786,22 +790,37 @@
       }
     };
     const pump = async () => {
-      if (busy) return;
+      if (busy) {
+        again = true;
+        return;
+      }
       busy = true;
+      settle2("working");
+      let moved = false;
       try {
-        while (highest < pages) {
-          if (pager.getBoundingClientRect().top > window.innerHeight + REACH) break;
-          const before = highest;
-          await extend();
-          if (highest === before) break;
-        }
+        do {
+          again = false;
+          while (highest < pages) {
+            if (!inReach()) break;
+            const before = highest;
+            await extend();
+            if (highest === before) break;
+            moved = true;
+          }
+        } while (again);
       } finally {
         busy = false;
+        settle2("idle");
+      }
+      if (moved && highest < pages && inReach()) {
+        requestAnimationFrame(() => void pump());
       }
     };
+    const inReach = () => pager.getBoundingClientRect().top <= window.innerHeight + REACH;
     const restore = async () => {
       if (busy || lowest <= 1 || !dropped.has(lowest - 1)) return;
       busy = true;
+      settle2("working");
       try {
         const page = lowest - 1;
         const made = await fetchPage(page);
@@ -821,6 +840,7 @@
       } catch {
       } finally {
         busy = false;
+        settle2("idle");
       }
     };
     const watchDown = new IntersectionObserver(
@@ -835,6 +855,7 @@
     const follow = () => {
       waiting = 0;
       if (window.scrollY < REACH) void restore();
+      if (inReach()) void pump();
       const top = [...cells.children].find(
         (one) => one instanceof HTMLElement && one.getBoundingClientRect().bottom > 0
       );

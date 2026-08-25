@@ -84,9 +84,44 @@ def _to_bottom(page: Page) -> None:
     page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
 
 
-def _grew_to(page: Page, atLeast: int, timeout: int = 15_000) -> None:
+def _settled(page: Page, timeout: int = 15_000) -> None:
+    """Wait for the loader to have finished DECIDING, not for a count.
+
+    Waiting on a count is how this harness raced the very fetch it
+    triggered: a scroll arriving mid-fetch used to be dropped, so the
+    count never moved and the test timed out on a gallery that was
+    working correctly. The loader says when it has settled
+    (`data-endless`), and that is a fact about the loader rather than a
+    guess about how much it should have done by now.
+    """
+    page.wait_for_function("() => document.querySelector('[data-grid]')?.dataset.endless === 'idle'", timeout=timeout)
+
+
+def _reached_page(page: Page, atLeast: int, timeout: int = 15_000) -> None:
+    """More arrived, measured in PAGES.
+
+    Not in cells, which is what this waited on and why it failed one run
+    in four. The loader holds a WINDOW of pages and drops what falls off
+    the top, so the cell count stops rising once the window is full --
+    and `was + SIZE` was then a number that could never arrive. Whether
+    it did depended on how much the first screen had loaded before `was`
+    was read, which is a race with the loader rather than a fact about
+    it.
+
+    A page number cannot be capped by the window. It only goes up, and
+    "the next page came" is what this test is about.
+    """
+    for _ in range(6):
+        _settled(page, timeout)
+        held = _pages_held(page)
+        if held and held[-1] >= atLeast:
+            return
+        _to_bottom(page)
+        page.wait_for_timeout(80)
     page.wait_for_function(
-        "n => document.querySelectorAll('[data-cells] > *').length >= n", arg=atLeast, timeout=timeout
+        "n => [...document.querySelectorAll('[data-cells] > *')].some(one => Number(one.dataset.page) >= n)",
+        arg=atLeast,
+        timeout=timeout,
     )
 
 
@@ -100,10 +135,14 @@ def test_scrolling_to_the_end_brings_the_next_page(page: Page, live: Live, unbro
     # cells does not fill it. What matters is that it starts at page 1 and
     # that more arrives when there is more.
     assert _pages_held(page)[0] == 1
-    was = _cells(page)
+    # SETTLED first. Read while the loader is still filling the first
+    # screen, `was` is a number that keeps moving, and the target built
+    # from it is a race rather than an expectation.
+    _settled(page)
+    was = _pages_held(page)[-1]
 
     _to_bottom(page)
-    _grew_to(page, was + SIZE)
+    _reached_page(page, was + 1)
     held = _pages_held(page)
     assert held == list(range(1, held[-1] + 1)), f"the server's pages, in order, with no gap: {held}"
 
@@ -117,7 +156,7 @@ def test_it_keeps_going_for_as_long_as_there_is_more(page: Page, live: Live, unb
     for _ in range(4):
         _to_bottom(page)
         page.wait_for_timeout(250)
-    _grew_to(page, SIZE * 4)
+    _reached_page(page, 4)
     held = _pages_held(page)
     assert held[-1] >= 4, held
     assert held == list(range(held[0], held[-1] + 1)), f"no gap in what is held: {held}"

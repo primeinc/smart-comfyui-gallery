@@ -777,17 +777,16 @@ not a design decision anybody made; it is work nobody did.
   worse than either: a gate that fails one run in three teaches people
   to re-run it.
 
-- **`test_browsing_does_not_stop_at_sixty.py` fails about one run in
-  four, on a different case each time.** Measured at both revisions
-  before it was believed: 4 runs at HEAD gave 1 failure, 3 runs with an
-  unrelated change gave 1 failure -- the same rate, so it is the suite's
-  and not any change's. Always the same shape: `_grew_to` times out at
-  15s waiting for the next page to append, and the case that loses
-  varies (`scrolling_to_the_end`, `it_keeps_going`,
-  `dropping_from_the_top`, `scrolling_back_up`). Alone, every one of
-  them passes. The trigger is a scroll-driven fetch racing the harness's
-  own scroll, so the fix is in the test: wait for the loader's own
-  signal rather than for a count to move.
+- ~~**`test_browsing_does_not_stop_at_sixty.py` fails about one run in
+  four.**~~ Fixed, and it was a PRODUCT bug rather than a test one: a
+  reader already at the bottom could not restart a loader that had
+  stopped. Every wake-up was an edge -- the observer fires when
+  intersection CHANGES and a sentinel already on screen never changes;
+  a scroll event needs the page to move and somebody at the bottom
+  cannot move it. Two fixes, both measured as load-bearing by removing
+  each and re-running: the pump re-arms when it finishes with the end
+  still in reach, and a scroll asks where the window IS rather than
+  waiting for an edge. Eight runs green, from one-in-three failing.
 
 - **`test_the_bytes_are_served.py` fails whenever something earlier left
   a running event loop.** Not xdist, as this was previously recorded:

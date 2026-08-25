@@ -73,6 +73,21 @@ export function mountEndless(root: HTMLElement): void {
   let lowest = first;
   let highest = first;
   let busy = false;
+  //: A wake-up that arrived while the loader was working. See `pump`.
+  let again = false;
+
+  /**
+   * What the loader is doing, on the grid.
+   *
+   * For a person, nothing: this is not a spinner. It is the loader's own
+   * signal, so a test can wait for "it has finished deciding" instead of
+   * for a count to move -- and waiting on a count is how a harness ends
+   * up racing the very fetch it triggered, then timing out on a gallery
+   * that was correct and simply already full.
+   */
+  const settle = (state: "working" | "idle") => {
+    grid.dataset.endless = state;
+  };
   const dropped = new Map<number, Dropped>();
 
   const cellsOf = (page: number): HTMLElement[] =>
@@ -154,25 +169,62 @@ export function mountEndless(root: HTMLElement): void {
    * is the wake-up; this loop is what actually fills the screen.
    */
   const pump = async () => {
-    if (busy) return;
+    // Asked while already working: REMEMBER it rather than dropping it.
+    //
+    // Dropping it was a dead stop, not a delay. The observer fires when
+    // intersection CHANGES, and the sentinel is already on screen -- so
+    // a scroll that arrived mid-fetch was the last wake-up that surface
+    // would ever get, and the gallery stopped appending until the reader
+    // scrolled again. Scrolling fast is exactly when it happened.
+    if (busy) {
+      again = true;
+      return;
+    }
     busy = true;
+    settle("working");
+    let moved = false;
     try {
-      while (highest < pages) {
-        if (pager.getBoundingClientRect().top > window.innerHeight + REACH) break;
-        const before = highest;
-        await extend();
-        // a page that did not arrive stops the loop rather than spinning
-        if (highest === before) break;
-      }
+      do {
+        again = false;
+        while (highest < pages) {
+          if (!inReach()) break;
+          const before = highest;
+          await extend();
+          // a page that did not arrive stops the loop rather than spinning
+          if (highest === before) break;
+          moved = true;
+        }
+        // and if somebody asked while that ran, the reach is re-checked
+        // against where the page is NOW rather than where it was.
+      } while (again);
     } finally {
       busy = false;
+      settle("idle");
+    }
+    // Finished with the end still in reach and more to come: go again.
+    //
+    // Every wake-up here is an EDGE. The observer fires when intersection
+    // changes and a sentinel already on screen never changes; a scroll
+    // event needs the page to actually move, and a reader already at the
+    // bottom cannot move it. So a loader that stops in this state has no
+    // event left that can restart it -- it sits idle, in reach, with six
+    // pages it could fetch, until the reader scrolls UP and back down.
+    //
+    // Guarded on `moved`: a round that appended nothing leaves the same
+    // state it found, and re-arming on that would spin.
+    if (moved && highest < pages && inReach()) {
+      requestAnimationFrame(() => void pump());
     }
   };
+
+  /** Is the end close enough to be worth fetching more? */
+  const inReach = () => pager.getBoundingClientRect().top <= window.innerHeight + REACH;
 
   /** Bring back a page dropped off the top, and give back its padding. */
   const restore = async () => {
     if (busy || lowest <= 1 || !dropped.has(lowest - 1)) return;
     busy = true;
+    settle("working");
     try {
       const page = lowest - 1;
       const made = await fetchPage(page);
@@ -194,6 +246,7 @@ export function mountEndless(root: HTMLElement): void {
       // as above: the next scroll upward tries again
     } finally {
       busy = false;
+      settle("idle");
     }
   };
 
@@ -222,6 +275,20 @@ export function mountEndless(root: HTMLElement): void {
     // on the cells container -- that container is always intersecting,
     // which is a trigger that fires once and then never again.
     if (window.scrollY < REACH) void restore();
+    // And going DOWN is decided the same way, for the same reason.
+    //
+    // This used to be the observer's job alone, and an observer fires
+    // when intersection CHANGES. A pump that stopped because the end was
+    // briefly out of reach -- which is every append, since the append is
+    // what pushes it away -- had no edge left to restart it: the
+    // sentinel does not change again, and a reader already at the bottom
+    // cannot produce a scroll that moves anything. The gallery sat idle,
+    // in reach, with six pages it could have fetched.
+    //
+    // Where the window IS, checked on every scroll: a fact rather than
+    // an edge. The observer stays as the wake-up for the case this
+    // cannot see -- a page that grew without anybody scrolling.
+    if (inReach()) void pump();
     const top = [...cells.children].find(
       (one) => one instanceof HTMLElement && one.getBoundingClientRect().bottom > 0,
     ) as HTMLElement | undefined;
