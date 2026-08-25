@@ -43,6 +43,12 @@ SQL_STRUCTURE: dict[str, str] = {
     # the validated sort vocabulary -- eligibility is an intersection,
     # constructed, so the pieces are structure by definition
     "' AND '.join(where)": "clause",
+    # db/runner.py submit_ingest: the freshness predicate, chosen between
+    # two literals here -- the folder it may be bounded to is BOUND.
+    "where": "clause",
+    # db/runner.py _UNDER: the recursive CTE naming a folder's subtree.
+    # A literal in this module; its one parameter is bound.
+    "_UNDER": "clause",
     # db/collections.py _claim_revision: "col = ?," assignments chosen
     # from the module's fixed patch vocabulary, every value bound
     "sets": "clause",

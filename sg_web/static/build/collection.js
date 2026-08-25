@@ -669,6 +669,53 @@
     });
   })();
 
+  // src/reread.ts
+  var POLL_MS = 400;
+  function mountReread(root) {
+    for (const button2 of everyElement(root, "[data-folder-reread]", HTMLButtonElement)) {
+      button2.addEventListener("click", async () => {
+        const folder = requireData(button2, "folderReread");
+        button2.disabled = true;
+        const was = button2.textContent;
+        button2.textContent = "queueing\u2026";
+        const { data, error, response } = await api.POST("/jobs/ingest", {
+          params: { query: { everything: true, folder } }
+        });
+        if (!data && response.status !== 204) {
+          button2.disabled = false;
+          button2.textContent = was;
+          await say(refusal(error, "the re-read was not queued"));
+          return;
+        }
+        if (response.status === 204) {
+          button2.textContent = "already read";
+          return;
+        }
+        const held = data;
+        const job = held?.id;
+        if (job === void 0) {
+          button2.textContent = "queued";
+          return;
+        }
+        for (; ; ) {
+          const told = await api.GET("/jobs/{job_id}", { params: { path: { job_id: job } } });
+          const state = told.data?.state;
+          if (state === void 0) {
+            button2.textContent = "queued";
+            return;
+          }
+          if (state === "done" || state === "failed" || state === "cancelled") {
+            const failed = told.data?.failed_count ?? 0;
+            button2.textContent = state === "done" && !failed ? `read ${told.data?.done_count ?? 0} again` : `${state}${failed ? ` \u2014 ${failed} could not be read` : ""}`;
+            return;
+          }
+          button2.textContent = `reading\u2026 ${told.data?.done_count ?? 0} of ${told.data?.total ?? "?"}`;
+          await new Promise((wake) => setTimeout(wake, POLL_MS));
+        }
+      });
+    }
+  }
+
   // src/jobframes.ts
   function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1317,6 +1364,7 @@
       pinch = null;
     });
   })();
+  mountReread(document);
 
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();

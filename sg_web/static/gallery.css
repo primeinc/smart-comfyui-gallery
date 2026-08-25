@@ -3896,3 +3896,27 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 .person-deny:hover {
   color: var(--danger);
 }
+
+/* "Read these again". A repair, offered where the problem is visible --
+   dressed as a link in a line of links rather than as a call to action,
+   because most visits to a folder are not repairs. */
+.folder-reread {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.folder-reread:hover:not(:disabled),
+.folder-reread:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.folder-reread:disabled {
+  cursor: default;
+  opacity: 0.7;
+}

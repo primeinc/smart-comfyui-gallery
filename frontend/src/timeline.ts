@@ -12,6 +12,7 @@
 // Everything else -- the mosaics in the scrubber, the picture under the
 // pointer -- is asked for through the generated client, so the shapes come
 // from the application's own contract.
+import { mountReread } from "./reread";
 import { api, refusal } from "./api";
 import { closestFrom, everyElement, findElement, requireData } from "./dom";
 import type { components, paths } from "./generated/api";
@@ -825,3 +826,6 @@ type Scope = Required<
     pinch = null;
   });
 })();
+
+// The folder page loads this bundle; the button is its only tenant here.
+mountReread(document);

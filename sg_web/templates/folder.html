@@ -17,6 +17,16 @@
       <span class="crumbs-where">{{ folder.count }} pictures{% if folder.last_seen is not none %} &middot; <span class="album-seen" data-seen><time data-epoch="{{ folder.first_seen }}" data-domain="day">{{ folder.first_seen }}</time>{% if folder.last_seen != folder.first_seen %} – <time data-epoch="{{ folder.last_seen }}" data-domain="day">{{ folder.last_seen }}</time>{% endif %}</span>{% endif %}</span>
     </nav>
     {% if folder.timeline is defined %}<p class="places-line"><a href="{{ folder.timeline }}" data-folder-timeline>this folder on the timeline</a></p>{% endif %}
+    {# Re-reading is how this application corrects itself: improving a
+       parser is a re-parse, and the sniffer that decides a file's KIND
+       is the part most likely to improve. The whole-library sweep lives
+       on the operations page and costs what it costs; THIS is the one
+       somebody actually runs, because it is bounded to the folder they
+       are looking at and can see the problem in. #}
+    {% if folder.state == "present" and folder.count %}
+    <p class="places-line"><button type="button" class="folder-reread" data-folder-reread="{{ folder.slug }}"
+       title="read these files' metadata again — after a parser improves, or when something looks wrong">re-read these {{ folder.count }} files</button></p>
+    {% endif %}
     {% if folder.places %}
     <p class="places-line" data-places-line>in {% for where in folder.places %}<a href="/g?{{ where.qs }}">{{ where.name }}</a> &middot; {{ where.pictures }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
     {% endif %}

@@ -4453,6 +4453,7 @@ export interface operations {
         parameters: {
             query?: {
                 everything?: boolean;
+                folder?: string | null;
             };
             header?: never;
             path?: never;

@@ -956,3 +956,46 @@ def test_a_failed_item_is_a_warning_naming_the_item_and_the_reason(db, caplog):
 
     warned = [r for r in caplog.records if r.name == "db.runner" and r.levelno == logging.WARNING]
     assert [r.getMessage() for r in warned] == [f"job #{job_id} embed: item 2 failed: item 2 is broken"]
+
+
+def test_the_ingest_sweep_can_be_bounded_to_one_folder(db, tmp_path):
+    """Re-reading is how this application corrects itself -- improving a
+    parser is a re-parse -- and "re-read all eighty thousand files" is a
+    price nobody pays to fix one folder of album tracks. A correction
+    too expensive to apply is not a correction.
+
+    The SUBTREE, not the one folder: somebody pointing at `music` means
+    the albums inside it, and a scope that stopped at the top level
+    would silently do a fraction of what was asked.
+    """
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/x','library',0)")
+    named = {}
+    for at, (name, parent) in enumerate([("lib", None), ("music", 1), ("album", 2), ("pictures", 1)], start=1):
+        db.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(?,?,'folder',?)", (at, bytes([at]) * 16, name))
+        db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,?,?,0)", (at, parent, name))
+        named[name] = at
+    for at, folder in enumerate([named["music"], named["album"], named["pictures"]], start=10):
+        db.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(?,?,'file',?)", (at, bytes([at]) * 16, f"f{at}"))
+        db.execute(
+            "INSERT INTO file(id,folder_id,name,kind,size,mtime,first_seen_at,last_seen_at)"
+            " VALUES(?,?,?,'audio',1,0,0,0)",
+            (at, folder, f"t{at}.m4a"),
+        )
+    db.commit()
+
+    whole = runner.submit_ingest(db, 1.0, everything=True)
+    assert db.execute("SELECT count(*) FROM job_item WHERE job_id = ?", (whole,)).fetchone()[0] == 3
+
+    bounded = runner.submit_ingest(db, 2.0, everything=True, folder_id=named["music"])
+    held = [row[0] for row in db.execute("SELECT item_id FROM job_item WHERE job_id = ? ORDER BY item_id", (bounded,))]
+    assert held == [10, 11], "the subtree, and nothing outside it"
+
+
+def test_a_bounded_sweep_with_nothing_to_do_says_so(db):
+    """None, not an empty job: "already read" is an answer, and a job
+    with no items would sit in the console claiming work."""
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/x','library',0)")
+    db.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,?,'folder','lib')", (b"\x01" * 16,))
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'lib',0)")
+    db.commit()
+    assert runner.submit_ingest(db, 1.0, everything=True, folder_id=1) is None

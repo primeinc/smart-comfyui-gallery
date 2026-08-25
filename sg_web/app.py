@@ -661,14 +661,27 @@ def submit_events(state: State) -> dict:
 
 
 @post("/jobs/ingest", sync_to_thread=True)
-def submit_ingest(state: State, everything: FromQuery[bool] = False) -> dict | Response:
+def submit_ingest(
+    state: State, everything: FromQuery[bool] = False, folder: FromQuery[str | None] = None
+) -> dict | Response:
     """Ask for the metadata of every present file not yet read for its
     current bytes -- `?everything=true` for all of them again -- the
     expensive half of scanning, as a job (db/runner.py submit_ingest).
-    204 when every file is read."""
+    204 when every file is read.
+
+    `?folder=<slug>` bounds it to that folder and everything under it,
+    which is what makes `everything` usable on a real library. Re-reading
+    is how this application corrects itself -- improving a parser is a
+    re-parse -- and "re-read all eighty thousand files" is a price nobody
+    pays to fix one folder.
+    """
     conn = _connect(state.db_path)
     try:
-        job_id = runner.submit_ingest(conn, time.time(), everything=everything)
+        # `_resolved` answers (id, live_slug_when_retired); a submit takes
+        # the id and lets the retired spelling be, because a job is not
+        # an address somebody bookmarks.
+        folder_id = None if folder is None else _resolved(conn, "folder", folder, "/f")[0]
+        job_id = runner.submit_ingest(conn, time.time(), everything=everything, folder_id=folder_id)
         if job_id is None:
             return Response(content=None, status_code=204)
         conn.commit()

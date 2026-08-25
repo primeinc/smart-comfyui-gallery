@@ -486,6 +486,13 @@
   }
 
   // src/dom.ts
+  function requireElement(root, selector, type) {
+    const found = root.querySelector(selector);
+    if (!(found instanceof type)) {
+      throw new Error(`expected ${selector} to be ${type.name}, found ${describe(found)}`);
+    }
+    return found;
+  }
   function findElement(root, selector, type) {
     const found = root.querySelector(selector);
     return found instanceof type ? found : null;
@@ -504,6 +511,118 @@
       throw new Error(`expected a data-${key} on ${node.tagName.toLowerCase()}`);
     }
     return held;
+  }
+  function describe(found) {
+    return found === null ? "nothing" : found.constructor.name;
+  }
+
+  // src/ask.ts
+  var DISMISSED = "";
+  var TAKEN = "ok";
+  var framed = (question, submit, dismiss, said) => ({
+    question,
+    submit: said.submit !== void 0 ? said.submit : submit,
+    dismiss: said.dismiss !== void 0 ? said.dismiss : dismiss,
+    ...said.detail !== void 0 ? { detail: said.detail } : {},
+    ...said.grave !== void 0 ? { grave: said.grave } : {}
+  });
+  var button = (words, value, kind) => {
+    const control = document.createElement("button");
+    control.value = value;
+    control.className = kind;
+    control.textContent = words;
+    return control;
+  };
+  async function ask(asked, build2) {
+    const box = document.createElement("dialog");
+    box.className = "ask-box";
+    box.innerHTML = `<form method="dialog" class="ask-form">
+      <h2 class="ask-question"></h2>
+      <p class="ask-detail" hidden></p>
+      <div class="ask-body"></div>
+      <div class="ask-feet"></div>
+    </form>`;
+    requireElement(box, ".ask-question", HTMLElement).textContent = asked.question;
+    if (asked.detail !== void 0) {
+      const line = requireElement(box, ".ask-detail", HTMLElement);
+      line.textContent = asked.detail;
+      line.hidden = false;
+    }
+    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const feet = requireElement(box, ".ask-feet", HTMLElement);
+    if (asked.submit !== null) {
+      feet.append(button(asked.submit, TAKEN, asked.grave === true ? "ask-take is-grave" : "ask-take"));
+    }
+    if (asked.dismiss !== null) feet.append(button(asked.dismiss, DISMISSED, "ask-drop"));
+    box.addEventListener("click", (event) => {
+      const at = box.getBoundingClientRect();
+      const inside = event.clientX >= at.left && event.clientX <= at.right && event.clientY >= at.top && event.clientY <= at.bottom;
+      if (!inside && event.detail > 0) box.close(DISMISSED);
+    });
+    const answer = new Promise((settle) => {
+      box.addEventListener(
+        "close",
+        () => {
+          const taken = box.returnValue !== DISMISSED ? read() : null;
+          box.remove();
+          settle(taken);
+        },
+        { once: true }
+      );
+    });
+    document.body.append(box);
+    box.showModal();
+    return answer;
+  }
+  async function say(message, framing = {}) {
+    await ask(framed(message, "ok", null, framing), () => () => void 0);
+  }
+
+  // src/reread.ts
+  var POLL_MS = 400;
+  function mountReread(root) {
+    for (const button2 of everyElement(root, "[data-folder-reread]", HTMLButtonElement)) {
+      button2.addEventListener("click", async () => {
+        const folder = requireData(button2, "folderReread");
+        button2.disabled = true;
+        const was = button2.textContent;
+        button2.textContent = "queueing\u2026";
+        const { data, error, response } = await api.POST("/jobs/ingest", {
+          params: { query: { everything: true, folder } }
+        });
+        if (!data && response.status !== 204) {
+          button2.disabled = false;
+          button2.textContent = was;
+          await say(refusal(error, "the re-read was not queued"));
+          return;
+        }
+        if (response.status === 204) {
+          button2.textContent = "already read";
+          return;
+        }
+        const held = data;
+        const job = held?.id;
+        if (job === void 0) {
+          button2.textContent = "queued";
+          return;
+        }
+        for (; ; ) {
+          const told = await api.GET("/jobs/{job_id}", { params: { path: { job_id: job } } });
+          const state = told.data?.state;
+          if (state === void 0) {
+            button2.textContent = "queued";
+            return;
+          }
+          if (state === "done" || state === "failed" || state === "cancelled") {
+            const failed = told.data?.failed_count ?? 0;
+            button2.textContent = state === "done" && !failed ? `read ${told.data?.done_count ?? 0} again` : `${state}${failed ? ` \u2014 ${failed} could not be read` : ""}`;
+            return;
+          }
+          button2.textContent = `reading\u2026 ${told.data?.done_count ?? 0} of ${told.data?.total ?? "?"}`;
+          await new Promise((wake) => setTimeout(wake, POLL_MS));
+        }
+      });
+    }
   }
 
   // src/jobframes.ts
@@ -1154,6 +1273,7 @@
       pinch = null;
     });
   })();
+  mountReread(document);
 
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();
@@ -1333,26 +1453,26 @@
       }
       const one = held[at];
       said.textContent = mode === "side" ? `${held.length} side by side` : `${letter(at)} of ${held.length} \xB7 ${one ? one.name : ""}`;
-      for (const button of everyElement(modes, "[data-compare-mode]", HTMLElement)) {
-        button.setAttribute("aria-pressed", String(button.dataset.compareMode === mode));
+      for (const button2 of everyElement(modes, "[data-compare-mode]", HTMLElement)) {
+        button2.setAttribute("aria-pressed", String(button2.dataset.compareMode === mode));
       }
     };
     for (const [name, words, why] of [
       ["side", "side by side", "every one at once: how do these differ"],
       ["flip", "flip", "one at a time in the same place: did this change"]
     ]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "compare-mode";
-      button.dataset.compareMode = name;
-      button.title = why;
-      button.textContent = words;
-      button.addEventListener("click", () => {
+      const button2 = document.createElement("button");
+      button2.type = "button";
+      button2.className = "compare-mode";
+      button2.dataset.compareMode = name;
+      button2.title = why;
+      button2.textContent = words;
+      button2.addEventListener("click", () => {
         mode = name;
         remember({ compareMode: name });
         paint();
       });
-      modes.append(button);
+      modes.append(button2);
     }
     const step = (by) => {
       at += by;

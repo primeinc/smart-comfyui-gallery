@@ -925,7 +925,15 @@ def _hash_item(conn, file_id: int, payload: dict, now: float) -> None:
         raise ValueError(f"unknown derive {derive!r} -- refusing to guess which job this is")
 
 
-def submit_ingest(conn, now: float, *, everything: bool = False) -> int | None:
+#: One folder and everything under it. The same walk db/pages.py uses
+#: for a folder's span and places, so "this folder" means one thing.
+_UNDER = (
+    "WITH RECURSIVE sub(id) AS (SELECT ? UNION ALL SELECT c.id FROM folder c JOIN sub ON c.parent_id = sub.id"
+    "  WHERE c.missing_since IS NULL)"
+)
+
+
+def submit_ingest(conn, now: float, *, everything: bool = False, folder_id: int | None = None) -> int | None:
     """Read every present file's own story, as one job.
 
     The walk (POST /roots/{id}/scan) finds files cheaply; this is the
@@ -937,11 +945,28 @@ def submit_ingest(conn, now: float, *, everything: bool = False) -> int | None:
     (`file.ingested_sha256`) is not an item again; `everything` reads all
     of them -- the way to catch bytes that rotted behind the scanner's
     back. None when nothing is left.
+
+    `folder_id` bounds it to one folder AND EVERYTHING UNDER IT, which
+    is what makes `everything` usable at all on a real library.
+    Re-reading is how this application corrects itself -- improving a
+    parser is a re-parse, and the sniffer that decides a file's KIND is
+    the part most likely to improve -- but "re-read all eighty thousand
+    files" is a cost nobody pays to fix one folder of album tracks. A
+    correction that is too expensive to apply is not a correction.
     """
-    sql = "SELECT id FROM file WHERE missing_since IS NULL"
+    where = "WHERE missing_since IS NULL"
+    args: list = []
     if not everything:
-        sql += " AND (ingested_sha256 IS NULL OR ingested_sha256 IS NOT content_sha256)"
-    items = [row[0] for row in conn.execute(sql + " ORDER BY id")]
+        where += " AND (ingested_sha256 IS NULL OR ingested_sha256 IS NOT content_sha256)"
+    if folder_id is None:
+        sql = f"SELECT id FROM file {where} ORDER BY id"
+    else:
+        # The subtree, not the one folder: somebody pointing at `music`
+        # means the albums inside it, and a scope that stopped at the
+        # top level would silently do a fraction of what was asked.
+        sql = f"{_UNDER} SELECT f.id FROM sub JOIN file f ON f.folder_id = sub.id {where} ORDER BY f.id"
+        args = [folder_id]
+    items = [row[0] for row in conn.execute(sql, args)]
     if not items:
         return None
     return jobs.submit(conn, "scan", now, items=items)
