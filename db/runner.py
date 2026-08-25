@@ -23,6 +23,7 @@ import logging
 import sqlite3
 import time
 import traceback
+from collections.abc import Callable
 
 from . import jobs, ledger
 
@@ -209,13 +210,7 @@ def submit_faces(
     """
     from . import settings as settings_module
 
-    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
-    if not everything:
-        sql += (
-            " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
-            "   AND s.source_sha256 = f.content_sha256)"
-        )
-    items = [row[0] for row in conn.execute(sql + " ORDER BY f.id")]
+    items = face_items(conn, everything=everything)
     if not items:
         return None
     payload: dict = {
@@ -226,6 +221,36 @@ def submit_faces(
     if thumbs_dir is not None:
         payload["thumbs_dir"] = thumbs_dir
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
+
+
+#: The files a sweep would take, asked as a question rather than
+#: answered at submit. A step in a chain has to ask it when it RUNS: the
+#: step before it has not gone yet, so the files it will find do not
+#: exist and the derivations it will make are not there to be missing.
+def face_items(conn, *, everything: bool = False) -> list[int]:
+    """Every present picture and video no detector has looked at for its
+    current bytes -- or all of them, said so."""
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    if not everything:
+        sql += (
+            " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
+            "   AND s.source_sha256 = f.content_sha256)"
+        )
+    return [row[0] for row in conn.execute(sql + " ORDER BY f.id")]
+
+
+def caption_items(conn, model: str, *, everything: bool = False) -> list[int]:
+    """Every present picture and video this model has not captioned for
+    its current bytes -- or all of them, said so."""
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    args: tuple = ()
+    if not everything:
+        sql += (
+            " AND NOT EXISTS (SELECT 1 FROM derived_annotation a WHERE a.file_id = f.id AND a.kind = 'caption'"
+            "   AND a.model_id = ? AND a.source_sha256 = f.content_sha256)"
+        )
+        args = (model,)
+    return [row[0] for row in conn.execute(sql + " ORDER BY f.id", args)]
 
 
 def submit_phash(conn, now: float, *, everything: bool = False) -> int | None:
@@ -954,6 +979,14 @@ def submit_ingest(conn, now: float, *, everything: bool = False, folder_id: int 
     files" is a cost nobody pays to fix one folder of album tracks. A
     correction that is too expensive to apply is not a correction.
     """
+    items = ingest_items(conn, everything=everything, folder_id=folder_id)
+    if not items:
+        return None
+    return jobs.submit(conn, "scan", now, items=items)
+
+
+def ingest_items(conn, *, everything: bool = False, folder_id: int | None = None) -> list[int]:
+    """The files an ingest sweep would read, asked when somebody asks."""
     from .ingest import READER
 
     where = "WHERE missing_since IS NULL"
@@ -976,10 +1009,7 @@ def submit_ingest(conn, now: float, *, everything: bool = False, folder_id: int 
         # means the albums inside it, and a scope that stopped at the
         # top level would silently do a fraction of what was asked.
         sql = f"{_UNDER} SELECT f.id FROM sub JOIN file f ON f.folder_id = sub.id {where} ORDER BY f.id"
-    items = [row[0] for row in conn.execute(sql, args)]
-    if not items:
-        return None
-    return jobs.submit(conn, "scan", now, items=items)
+    return [row[0] for row in conn.execute(sql, args)]
 
 
 def _ingest_item(conn, file_id: int, payload: dict, now: float) -> None:
@@ -1221,15 +1251,7 @@ def submit_annotate(conn, now: float, *, models_dir: str, everything: bool = Fal
         raise ValueError(
             f"caption_model must be a Hub repository id like Salesforce/blip-image-captioning-base, not {model!r}"
         )
-    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
-    args: tuple = ()
-    if not everything:
-        sql += (
-            " AND NOT EXISTS (SELECT 1 FROM derived_annotation a WHERE a.file_id = f.id AND a.kind = 'caption'"
-            "   AND a.model_id = ? AND a.source_sha256 = f.content_sha256)"
-        )
-        args = (model,)
-    items = [row[0] for row in conn.execute(sql + " ORDER BY f.id", args)]
+    items = caption_items(conn, model, everything=everything)
     if not items:
         return None
     payload = {"models_dir": models_dir, "model": model, "kind": "caption"}
@@ -1705,6 +1727,20 @@ def run_next(
         return {"job": job_id, "state": "failed", "did": 0}
     payload = json.loads(raw) if raw else {}
 
+    # A lazy step works out its units NOW, holding the lease. Submitted
+    # with no items and no total, it could not know them: the step before
+    # it had not run, so the files it will read did not exist yet.
+    #
+    # `total IS NULL` is the marker rather than an empty item list,
+    # because "nothing to do" and "not decided yet" have to be different
+    # rows -- a job that really has no work settles `done` over zero
+    # items and must not be re-counted every time it is claimed.
+    counter = COUNTERS.get(payload.get("count_when_claimed", ""))
+    if counter is not None and jobs.not_yet_counted(conn, job_id):
+        found = jobs.count_now(conn, job_id, fence, counter(conn, payload))
+        committed()
+        _logger.info("job #%d %s: %d to do, counted when claimed", job_id, kind, found)
+
     did = failed = 0
     for item in jobs.pending(conn, job_id):
         if (budget is not None and did >= budget) or (should_stop is not None and should_stop()):
@@ -1868,6 +1904,21 @@ def _keep(conn, told: Report, unspoken: list[dict]) -> None:
     )
 
 
+#: How a lazy step works out its units when it is claimed.
+#:
+#: Keyed by a name in the payload rather than by kind, because a kind
+#: does not decide this: `scan` submitted on its own knows its files at
+#: submit and should, so a person pressing the button is told "nothing
+#: to do" then and not four jobs later.
+COUNTERS: dict[str, Callable[..., list[int]]] = {
+    "ingest": lambda conn, payload: ingest_items(conn, everything=bool(payload.get("everything"))),
+    "faces": lambda conn, payload: face_items(conn, everything=bool(payload.get("everything"))),
+    "captions": lambda conn, payload: caption_items(
+        conn, str(payload.get("model", "")), everything=bool(payload.get("everything"))
+    ),
+}
+
+
 #: The name the catch-up's steps share. A schedule points at this; the
 #: console groups on it.
 CATCH_UP = "catch up"
@@ -1890,19 +1941,21 @@ def catch_up(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None
     Returns the job ids in order. Empty means the library was already up
     to date, which is an answer and not a failure.
 
-    NOT here yet: the walk, though `submit_walk` now exists and the
-    runner can claim one. The reason is the same property that made
-    `cluster_faces` wrong until it stopped enumerating at submit --
-    `submit_ingest` picks its file ids HERE, so a walk in front of the
-    chain would discover files that no later step in the same chain has
-    any way to see. Leading with it would look like it worked and
-    quietly derive nothing over everything new.
+    The walk leads, and every step that reads files is LAZY -- submitted
+    with no items, counting its units when a worker claims it
+    (`COUNTERS`). That pairing is the whole correctness of this: a chain
+    is only as ordered as its least lazy step, and an eager step decides
+    what to do before the step in front of it has run. Led by a walk,
+    eager steps would derive nothing over everything the walk found and
+    look like they had worked.
 
-    A chain is only as correct as its least lazy step. Making the
-    file-enumerating steps decide their work when they run is what
-    unblocks it, and it is not free: per-file items are what give a
-    sweep of eighty thousand files its progress and its per-file failure
-    isolation.
+    They keep their per-file items, which is what gives a sweep of
+    eighty thousand files its progress and its per-file failure
+    isolation. What moved is WHEN the list is made, not what is in it.
+
+    Pressing one of these sweeps on its own still counts at submit, and
+    should: somebody who presses "read the metadata of every file not
+    yet read" is owed "nothing to do" now, not four jobs later.
     """
     from . import jobs
 
@@ -1920,17 +1973,56 @@ def catch_up(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None
             queued.append(one)
             after = one
 
+    # What is on disk, before anything that reads what is on disk.
+    step(submit_walk(conn, now))
     # Metadata before anything derived from it: an embedding of a file
     # ingest has not read is an embedding of bytes nothing has described.
-    step(submit_ingest(conn, now))
+    step(jobs.submit(conn, "scan", now, payload={"count_when_claimed": "ingest"}))
     # Interpretation, then the sessions built out of it.
     step(submit_context(conn, now))
     step(submit_events(conn, now))
     # Semantic vectors, then faces, then the grouping OF those faces --
     # which is the pair the order exists for.
     step(submit_embed(conn, now, models_dir=models_dir))
-    step(submit_faces(conn, now, models_dir=models_dir, thumbs_dir=thumbs_dir))
+    step(_lazy_faces(conn, now, models_dir=models_dir, thumbs_dir=thumbs_dir))
     step(submit_cluster(conn, now))
     # Captions last: the most expensive per file, and nothing waits on it.
-    step(submit_annotate(conn, now, models_dir=models_dir))
+    step(_lazy_captions(conn, now, models_dir=models_dir))
     return queued
+
+
+def _lazy_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None) -> int:
+    """Face detection as a STEP: same payload, units counted on claim.
+
+    The settings still ride in the payload, read once here, because every
+    item of one job must run the same pipeline on the same device
+    whatever the settings say by the time it drains. That is a fact about
+    the job; the file list is a fact about the library, and only the
+    second one has to wait.
+    """
+    from . import settings as settings_module
+
+    payload: dict = {
+        "models_dir": models_dir,
+        "backend": settings_module.value(conn, "face_backend"),
+        "providers": settings_module.value(conn, "ort_providers"),
+        "count_when_claimed": "faces",
+    }
+    if thumbs_dir is not None:
+        payload["thumbs_dir"] = thumbs_dir
+    return jobs.submit(conn, "detect_faces", now, payload=payload)
+
+
+def _lazy_captions(conn, now: float, *, models_dir: str) -> int:
+    """Captioning as a STEP. The model is refused here if it is not a
+    repository id: every item of a job under a bad name fails by the same
+    sentence, and a chain should not queue a step that cannot work."""
+    from . import settings as settings_module
+
+    model = settings_module.value(conn, "caption_model").strip()
+    if not model or "/" not in model:
+        raise ValueError(
+            f"caption_model must be a Hub repository id like Salesforce/blip-image-captioning-base, not {model!r}"
+        )
+    payload = {"models_dir": models_dir, "model": model, "kind": "caption", "count_when_claimed": "captions"}
+    return jobs.submit(conn, "annotate", now, payload=payload)

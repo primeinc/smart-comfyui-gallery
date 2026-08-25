@@ -421,6 +421,49 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
         stop_dependents(conn, job_id, now)
 
 
+def not_yet_counted(conn, job_id: int) -> bool:
+    """Has this job's work still to be worked OUT?
+
+    `total IS NULL` is the marker, and it is the honest one: a job whose
+    items were fixed at submit has a total even when that total is zero,
+    so "nothing to do" and "not decided yet" are different rows rather
+    than the same empty list.
+    """
+    row = conn.execute("SELECT total FROM job WHERE id = ?", (job_id,)).fetchone()
+    return row is not None and row[0] is None
+
+
+def count_now(conn, job_id: int, fence: int, items: list[int]) -> int:
+    """Fix a lazy job's units, under the lease that claimed it.
+
+    A step in a chain cannot know its work at submit: the step before it
+    has not run, so the files it will read do not exist and the spaces it
+    will group are empty. Enumerating here -- once, by the worker that
+    holds the job -- is what makes an ordered chain actually ordered
+    rather than merely sequenced.
+
+    Fenced like every other write in this module: a worker whose lease
+    lapsed must not be able to fill in the items of a job somebody else
+    is now working.
+    """
+    _held(conn, job_id, fence)
+    _wrote(
+        conn.execute("UPDATE job SET total = ? WHERE id = ? AND fence = ?", (len(items), job_id, fence)),
+        job_id,
+        fence,
+    )
+    if items:
+        conn.executemany(
+            "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
+            [(job_id, item) for item in items],
+        )
+    # No ledger row of its own. `job_event.type` is a closed CHECK and a
+    # new member is a schema change; the fact this would announce -- the
+    # total is known now -- already reaches every subscriber in the
+    # progress delta the runner sends on the next observable change.
+    return len(items)
+
+
 def enlist(conn, job_id: int, collection: str, after_id: int | None) -> None:
     """Make an already-submitted job a step of `collection`.
 

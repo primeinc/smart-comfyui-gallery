@@ -501,3 +501,60 @@ def test_walking_a_library_with_no_roots_is_nothing_to_do(tmp_path):
             assert runner.submit_walk(conn, NOW) is None
         finally:
             connect.close(conn)
+
+
+def test_a_catch_up_reads_the_files_its_own_walk_finds(tmp_path):
+    """The whole chain, over a library that grew after it was queued.
+
+    This is what the walk at the head is FOR, and what makes it safe to
+    put there. Every step that reads files is submitted with no item
+    list and counts its units when a worker claims it, so the ingest step
+    asks "which files are unread" AFTER the walk in front of it has
+    found them.
+
+    Eagerly counted, this passes its own ordering check and reads
+    nothing: the walk brings in three files and ingest, having decided
+    on an empty library, has zero items and settles done.
+    """
+    from PIL import Image
+
+    from db import connect, runner
+
+    root = tmp_path / "lib"
+    root.mkdir()
+
+    with _console(tmp_path) as client:
+        client.post("/roots", json={"path": str(root)})
+
+        # The files appear AFTER the root is registered and BEFORE the
+        # chain is queued -- and nothing has walked, so the library does
+        # not know about any of them.
+        for i in range(3):
+            Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            assert conn.execute("SELECT count(*) FROM file").fetchone()[0] == 0, "the fixture already knew the files"
+            queued = runner.catch_up(conn, NOW, models_dir=str(tmp_path / "models"))
+            conn.commit()
+            assert queued, "the chain queued nothing"
+
+            # only the steps the chain can run without models
+            while runner.run_next(conn, OWNER, NOW, kinds=("walk", "scan")) is not None:
+                conn.commit()
+            conn.commit()
+
+            files = conn.execute("SELECT count(*) FROM file").fetchone()[0]
+            read = conn.execute("SELECT count(*) FROM file WHERE ingested_sha256 IS NOT NULL").fetchone()[0]
+            reading = conn.execute("SELECT total FROM job WHERE kind = 'scan' AND collection = 'catch up'").fetchone()
+            assert reading is not None, (
+                "the chain has no ingest step at all: counted eagerly over a library the walk "
+                "had not run for yet, the submitter found nothing to do and queued nothing"
+            )
+            ingest_total = reading[0]
+        finally:
+            connect.close(conn)
+
+    assert files == 3, "the walk did not find the files"
+    assert ingest_total == 3, "the ingest step decided its work before the walk in front of it ran"
+    assert read == 3, "the files the walk found were never read"

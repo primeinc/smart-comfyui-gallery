@@ -244,27 +244,18 @@ consequences the architecture should keep room for, not work.
 
   What is left, in order of what it earns:
 
-  - **A chain is only as correct as its least lazy step.** Every
-    submitter picks its items at SUBMIT time, so a later step decides
-    what to do before the earlier one has run. `cluster_faces` was
-    actively wrong this way -- queued behind `detect_faces` it found no
-    embedding spaces, queued zero items and settled `done` having
-    clustered nothing, which is the exact failure the ordering exists to
-    prevent. It enumerates when it runs now.
-
-    The file-enumerating steps (ingest, faces, annotate) still do not,
-    which is why the WALK is not at the head of the chain even though
-    `submit_walk` exists and the runner claims one: it would discover
-    files no later step in the same chain can see. Making them lazy
-    costs something real -- per-file items are what give a sweep of
-    eighty thousand files its progress and its per-file failure
-    isolation -- so the shape is probably "enumerate at claim", not
-    "one item that loops".
+  - ~~**A chain is only as correct as its least lazy step.**~~ Done:
+    steps count their units when a worker claims them
+    (`runner.COUNTERS`, `jobs.count_now`), the walk leads the chain, and
+    a catch-up reads the files its own walk found. Per-file items are
+    kept -- only WHEN the list is made moved. Pressing a sweep on its own
+    still counts at submit, so "nothing to do" is still said then.
   - **Cancelling a collection** cancels its unstarted steps only when a
     step FAILS. Cancelling a running step by hand does the same thing by
     the same path, but nothing cancels a collection as a unit.
-  - **Scheduling.** Now possible -- there is a name to point at -- and
-    not built.
+  - **Scheduling.** Now possible AND now worth it: there is a name to
+    point at, and a catch-up finally notices files arriving, which is
+    the whole difference between a nightly job and a nightly no-op.
 
   The original design note, for the parts not yet done:
 
