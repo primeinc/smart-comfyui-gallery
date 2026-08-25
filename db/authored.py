@@ -347,6 +347,71 @@ def deny_person(conn, person_id: int, file_id: int, user_id: int | None, now: fl
         )
 
 
+def reject_duplicate(conn, file_id: int, other_file_id: int, user_id: int | None, now: float) -> int:
+    """These two are not the same picture -- said out loud, and kept.
+
+    The same doctrine `deny_person` follows, because it is the same
+    problem. A perceptual group is a guess: pHash sees composition, and
+    two photographs of one scene a second apart are close in it. Told
+    otherwise, the application must both stop showing them together NOW
+    and refuse to group them again -- a correction that survives only
+    until the next sweep is a chore repeated for ever.
+
+    So it writes a verdict AND drops the pair, and the sweep reads the
+    verdicts back (db/runner.py `_dupes_item`). Returns how many rows it
+    took out of the group.
+
+    Recorded as a judgement of the PRODUCER too, which is what makes the
+    console able to say a fingerprinting threshold is costing somebody
+    time -- the same count `deny_person` contributes for faces.
+    """
+    low, high = (file_id, other_file_id) if file_id < other_file_id else (other_file_id, file_id)
+    conn.execute(
+        "DELETE FROM feedback WHERE target_kind = 'duplicate' AND file_id = ? AND other_file_id = ? AND user_id IS ?",
+        (low, high, user_id),
+    )
+    feedback(
+        conn,
+        "duplicate",
+        "wrong",
+        now,
+        file_id=low,
+        other_file_id=high,
+        user_id=user_id,
+        model_id="perceptual",
+        model_version="phash64",
+    )
+    # And take them apart NOW. The page reads `derived_dupe_group`, so
+    # leaving them together would show the two pictures somebody just
+    # said were different sitting in one group until a sweep that may
+    # never come.
+    return int(
+        conn.execute(
+            "DELETE FROM derived_dupe_group WHERE file_id = ? AND group_id IN"
+            " (SELECT group_id FROM derived_dupe_group WHERE file_id = ?)",
+            (high, low),
+        ).rowcount
+        or 0
+    )
+
+
+def rejected_pairs(conn) -> set[tuple[int, int]]:
+    """Every pair somebody has said is not one picture, low id first.
+
+    Read by the dupes sweep before it writes a group, which is what
+    makes the correction permanent instead of a chore repeated after
+    every run.
+    """
+    return {
+        (int(low), int(high))
+        for low, high in conn.execute(
+            "SELECT file_id, other_file_id FROM feedback"
+            " WHERE target_kind = 'duplicate' AND verdict = 'wrong'"
+            "   AND file_id IS NOT NULL AND other_file_id IS NOT NULL"
+        )
+    }
+
+
 def choose_face(conn, person_id: int, file_id: int | None) -> None:
     """Take this person's face from this picture, or go back to automatic.
 

@@ -894,6 +894,11 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         if rooted_a != rooted_b:
             parent[rooted_b] = rooted_a
 
+    from . import authored
+
+    # Read once for the sweep: a verdict per candidate pair would be a
+    # query per pair over a library where the pairs are the expensive part.
+    rejected = authored.rejected_pairs(conn)
     grouped: dict[int, list[int]] = {}
     for file_id in by_id:
         grouped.setdefault(find(file_id), []).append(file_id)
@@ -912,7 +917,18 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         kept = [
             member
             for member in members
-            if member == best or (dupes.hamming(by_id[member][1], by_id[best][1]) <= threshold and agreed(member, best))
+            if member == best
+            or (
+                dupes.hamming(by_id[member][1], by_id[best][1]) <= threshold
+                and agreed(member, best)
+                # And not a pair somebody has already said is not one
+                # picture. A group is a GUESS -- pHash sees composition,
+                # so two photographs of one scene a second apart are
+                # close in it -- and a correction that survived only
+                # until the next sweep would be a chore repeated for
+                # ever (db/authored.py `reject_duplicate`).
+                and (min(member, best), max(member, best)) not in rejected
+            )
         ]
         if len(kept) < 2:
             continue

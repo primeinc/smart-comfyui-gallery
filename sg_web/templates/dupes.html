@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Duplicates{% endblock %}
+{% block scripts %}
+  <script src="/static/build/dupes.js?v={{ static_v }}" defer></script>
+{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
@@ -49,7 +52,14 @@
                  lost if the wrong copy goes. #}
               {% if one.collections %}<span class="dupe-member-filed" data-dupe-filed>filed under {{ one.collections }}</span>{% else %}<span class="muted" data-dupe-unfiled>in no collection</span>{% endif %}
               {% if one.is_best %}<span class="dupe-best">best of the group</span>
-              {% else %}<span class="muted" title="hamming bits from this copy's perceptual hash to the best one's">{{ one.distance }} bits from the best{% if one.verified %} &middot; a second fingerprint agreed{% endif %}</span>{% endif %}
+              {% else %}<span class="muted" title="hamming bits from this copy's perceptual hash to the best one's">{{ one.distance }} bits from the best{% if one.verified %} &middot; a second fingerprint agreed{% endif %}</span>
+              {# A group is a GUESS: pHash sees composition, so two
+                 photographs of one scene a second apart are close in
+                 it. This is the page disagreeing with one -- and it
+                 survives the next sweep, which reads the verdicts back
+                 before it writes a group. #}
+              <button type="button" class="dupe-not" data-not-a-duplicate="{{ one.slug }}" data-against="{{ group.slug }}"
+                      title="not the same picture as {{ group.name }} &mdash; and remember that">not a duplicate</button>{% endif %}
             </div>
           </li>
           {% endfor %}

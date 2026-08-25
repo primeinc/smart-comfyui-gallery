@@ -4,8 +4,9 @@ Detection has shipped since `/jobs/dupes`. Seeing the result had no
 surface at all -- `/dupes` answered JSON and no page rendered it, so a
 person could not look at their own duplicates in their own library.
 
-The review is deliberately read-only, and the reason is the naive
-resolution being the one to avoid: byte identity and organisational
+The review is deliberately read-only ABOUT THE FILES -- it can disagree
+with a grouping, which is a guess, and it cannot touch a byte. The
+reason is the naive resolution being the one to avoid: byte identity and organisational
 identity are different things. Three copies of one photograph filed
 under `Iowa 2019`, `Family` and `Old Backup` are ONE content and THREE
 placements, and a deduper that reports "2 duplicates removed" has
@@ -157,8 +158,13 @@ def test_copies_that_are_only_alike_are_never_called_the_same(tmp_path):
 
 
 def test_the_page_removes_nothing_and_offers_no_way_to(reviewed):
-    """Read-only, and provably. The preview is the half that has to be
-    right before anything is allowed to touch a file."""
+    """Read-only about the FILES, and provably.
+
+    It is not read-only about the GROUPING -- a group is a guess and the
+    page can disagree with one, which is the correction below. What it
+    cannot do is touch a byte: the preview is the half that has to be
+    right before anything is allowed to.
+    """
     client, conn, _by_name = reviewed
     before = conn.execute("SELECT count(*) FROM file").fetchone()[0]
     page = client.get("/dupes", headers={"accept": "text/html"}).text
@@ -184,3 +190,101 @@ def test_it_is_reachable_without_knowing_the_address(reviewed):
     """A page nothing links to is a page nobody finds."""
     client, _conn, _by_name = reviewed
     assert '<a href="/dupes"' in client.get("/g", headers={"accept": "text/html"}).text
+
+
+# --- and the page can disagree with the grouping -----------------------------
+
+
+def test_saying_two_are_not_one_takes_them_apart_now(reviewed):
+    """A perceptual group is a GUESS: pHash sees global composition, so
+    two photographs of one scene a second apart are close in it. The
+    page that showed them had no way to say they are two pictures."""
+    client, conn, by_name = reviewed
+    best = naming.entity_slug(conn, by_name["backup.png"])
+    other = naming.entity_slug(conn, by_name["iowa.png"])
+    assert best is not None
+    assert other is not None
+
+    told = client.post(f"/dupes/{other[1]}/not-a-duplicate", json={"other": best[1]})
+    assert told.status_code == 204, told.text
+
+    page = client.get("/dupes", headers={"accept": "text/html"}).text
+    assert f'data-dupe-member="{other[1]}"' not in page, "the picture is still in the group"
+    assert f'data-dupe-member="{best[1]}"' in page, "the rest of the group went with it"
+
+
+def test_the_correction_survives_the_next_sweep(reviewed):
+    """The half that makes it a correction rather than a chore. A
+    grouping the sweep rebuilds every run would put them back together,
+    so the sweep reads the verdicts back before it writes a group."""
+    from db import authored
+
+    client, conn, by_name = reviewed
+    low, high = sorted((by_name["iowa.png"], by_name["backup.png"]))
+    one = naming.entity_slug(conn, high)
+    two = naming.entity_slug(conn, low)
+    assert one is not None
+    assert two is not None
+
+    client.post(f"/dupes/{one[1]}/not-a-duplicate", json={"other": two[1]})
+    assert (low, high) in authored.rejected_pairs(conn), "nothing recorded that they are not one picture"
+
+
+def test_it_counts_against_the_producer_that_grouped_them(reviewed):
+    """The same thing correcting a face does: somebody is already doing
+    the work, and the aggregate that would tell them a fingerprinting
+    threshold is costing them time should hear about it."""
+    from db import verdicts
+
+    client, conn, by_name = reviewed
+    one = naming.entity_slug(conn, by_name["iowa.png"])
+    two = naming.entity_slug(conn, by_name["backup.png"])
+    assert one is not None
+    assert two is not None
+
+    client.post(f"/dupes/{one[1]}/not-a-duplicate", json={"other": two[1]})
+    held = conn.execute(
+        "SELECT target_kind, verdict, model_id FROM feedback WHERE target_kind = 'duplicate'"
+    ).fetchall()
+    assert held == [("duplicate", "wrong", "perceptual")]
+    # and it does not leak into the RATED table, which is about captions
+    assert verdicts.by_producer(conn) == []
+
+
+def test_saying_it_twice_is_one_correction(reviewed):
+    """One person has one opinion about one pair."""
+    from db import authored
+
+    client, conn, by_name = reviewed
+    one = naming.entity_slug(conn, by_name["iowa.png"])
+    two = naming.entity_slug(conn, by_name["backup.png"])
+    assert one is not None
+    assert two is not None
+
+    client.post(f"/dupes/{one[1]}/not-a-duplicate", json={"other": two[1]})
+    client.post(f"/dupes/{one[1]}/not-a-duplicate", json={"other": two[1]})
+    assert len(authored.rejected_pairs(conn)) == 1
+
+
+def test_the_order_of_the_pair_does_not_matter(reviewed):
+    """ "A is not B" and "B is not A" are one statement, so the pair is
+    stored lowest id first and read back the same way."""
+    from db import authored
+
+    client, conn, by_name = reviewed
+    one = naming.entity_slug(conn, by_name["iowa.png"])
+    two = naming.entity_slug(conn, by_name["backup.png"])
+    assert one is not None
+    assert two is not None
+
+    client.post(f"/dupes/{one[1]}/not-a-duplicate", json={"other": two[1]})
+    client.post(f"/dupes/{two[1]}/not-a-duplicate", json={"other": one[1]})
+    assert len(authored.rejected_pairs(conn)) == 1
+
+
+def test_a_picture_is_not_a_duplicate_of_itself(reviewed):
+    client, conn, by_name = reviewed
+    one = naming.entity_slug(conn, by_name["iowa.png"])
+    assert one is not None
+    told = client.post(f"/dupes/{one[1]}/not-a-duplicate", json={"other": one[1]})
+    assert told.status_code == 400, told.text

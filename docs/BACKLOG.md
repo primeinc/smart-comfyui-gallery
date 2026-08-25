@@ -482,7 +482,7 @@ not a design decision anybody made; it is work nobody did.
   a smaller claim than deciding a video has nobody in it, and it targets
   exactly the frames that are pure cost today.
 
-- **A verdict on a similarity or a duplicate still cannot be given.**
+- **A verdict on a SIMILARITY still cannot be given.**
   (Was: "this is not that person" cannot be said -- that half shipped.)
   The positive claim is built and the doctrine around it is
   the best thing in this schema: `person_assertion` is a human saying
@@ -495,13 +495,13 @@ not a design decision anybody made; it is work nobody did.
   1. ~~**No way to spell it.**~~ Shipped: `person_assertion.stance`,
      `deny_person`, the route, and the control on the media inspector
      and over every thumbnail on the person's own page.
-  2. **The similarity and duplicate arms.** The annotation arm ships
-     (`POST /i/{slug}/said/verdict`) and the person arm is now written
-     by correcting a face rather than by a separate gesture
-     (`db/authored.py deny_person`). A verdict on a SIMILARITY or a
-     DUPLICATE still has no surface, and shipping a general endpoint
-     whose remaining arms nothing exercises would be two contracts
-     nobody has tested.
+  2. **The similarity arm.** The annotation arm ships
+     (`POST /i/{slug}/said/verdict`), the person arm is written by
+     correcting a face, and the duplicate arm by saying two pictures are
+     not one (`/dupes`, `db/authored.py reject_duplicate`). A verdict on
+     a SIMILARITY -- "these two are not alike" against a semantic
+     neighbour -- still has no surface, and shipping the last arm with
+     nothing exercising it would be a contract nobody has tested.
   3. **Only the annotation arm is rated.** `db/verdicts.py by_producer`
      and `contests` read the annotation arm; corrections read as a
      count (`corrections`), which is all a denial-only sample can

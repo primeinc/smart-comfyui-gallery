@@ -397,6 +397,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dupes/{slug}/not-a-duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** NotADuplicate */
+        post: operations["DupesSlugNotADuplicateNotADuplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/views/{view_id}/opened": {
         parameters: {
             query?: never;
@@ -2801,6 +2818,10 @@ export interface components {
             description?: string | null;
             f?: string | string[] | null;
         };
+        /** NotADuplicate */
+        NotADuplicate: {
+            other: string;
+        };
         /** NotLocated */
         NotLocated: {
             /** @constant */
@@ -4414,6 +4435,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RememberedView"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    DupesSlugNotADuplicateNotADuplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotADuplicate"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null;
                 };
             };
             /** @description Bad request syntax or unsupported method */

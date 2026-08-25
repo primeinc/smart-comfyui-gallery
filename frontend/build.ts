@@ -23,6 +23,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const options = {
   absWorkingDir: here,
   entryPoints: {
+    dupes: "src/entries/dupes.ts",
     gallery: "src/entries/gallery.ts",
     people: "src/entries/people.ts",
     person: "src/entries/person.ts",

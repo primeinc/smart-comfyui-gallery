@@ -826,6 +826,40 @@ def _dupe_group(conn, best_slug: str, best_name: str, copies: int) -> dict:
     }
 
 
+class NotADuplicate(Wire):
+    """The body of POST /dupes/{slug}/not-a-duplicate: the other one."""
+
+    other: str
+
+
+@post("/dupes/{slug:str}/not-a-duplicate", sync_to_thread=True)
+def not_a_duplicate(state: State, slug: FromPath[str], data: NotADuplicate) -> Response[None]:
+    """These two are not the same picture.
+
+    The same doctrine denying a person follows, because it is the same
+    problem. A perceptual group is a GUESS -- pHash sees composition, so
+    two photographs of one scene a second apart are close in it -- and
+    the page had no way to disagree with one.
+
+    Said here it takes them apart now AND survives the next sweep, which
+    reads the verdicts back before it writes a group. A correction that
+    lasted only until the next run would be a chore repeated for ever.
+    """
+    conn = _connect(state.db_path)
+    try:
+        one = naming.resolve(conn, "file", slug)
+        other = naming.resolve(conn, "file", data.other.strip().removeprefix("/i/"))
+        if one is None or other is None:
+            raise NotFoundException("no such picture")
+        if one[0] == other[0]:
+            raise ClientException("a picture is not a duplicate of itself")
+        authored.reject_duplicate(conn, one[0], other[0], state.actor_id, time.time())
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return Response(content=None, status_code=204)
+
+
 @get("/dupes", sync_to_thread=True)
 def dupes(state: State, request: Request) -> Template | Response:
     """Every group of perceptual copies -- rendered for a browser, the
@@ -1854,6 +1888,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             collection_authoring.make_album,
             collection_authoring.make_smart,
             saved_views,
+            not_a_duplicate,
             remember_view,
             view_opened,
             forget_view,
