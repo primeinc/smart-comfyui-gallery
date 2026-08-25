@@ -578,3 +578,4 @@ exclude = ["vendor"]
 # The same decision pyright's enableTypeIgnoreComments = false makes: a
 # comment does not get to turn a type error off.
 respect-type-ignore-comments = false
+

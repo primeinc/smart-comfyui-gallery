@@ -29,7 +29,7 @@ import threading
 import time
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from litestar import Litestar, Request, delete, get, post, route, websocket
 from litestar.channels import ChannelsPlugin
@@ -1782,14 +1782,16 @@ def _template_engine() -> JinjaTemplateEngine:
     # static/: a browser that cached yesterday's timeline.js fetches
     # today's, and a deploy that changed nothing keeps every cache warm
     #
-    # ty reports this and the report is jinja2's, not ours: it never
-    # annotates the attribute -- `self.globals = DEFAULT_NAMESPACE.copy()`
-    # (jinja2/environment.py:353) -- so its type is inferred from a
-    # heterogeneous literal holding a range, a dict and a callable, and a
-    # str is not one of those. Adding to `globals` is the documented way
-    # to do this; spelling it any other way would contort our code around
-    # a missing annotation upstream.
-    environment.globals["static_v"] = _static_version()
+    # Cast, for jinja2's missing annotation rather than for anything
+    # here: it never types the attribute -- `self.globals =
+    # DEFAULT_NAMESPACE.copy()` (jinja2/environment.py:353) -- so the
+    # type is inferred from a literal holding a range, a dict and a
+    # callable, and a str is not one of them. Adding to `globals` is the
+    # documented way to do this, and the cast keeps the line idiomatic
+    # while saying whose problem it is. Local, so nothing else in this
+    # module stops being checked -- which a file-wide rule override
+    # would have cost.
+    cast("dict[str, object]", environment.globals)["static_v"] = _static_version()
     engine = JinjaTemplateEngine.from_environment(environment)
     activity.register(engine)
     return engine

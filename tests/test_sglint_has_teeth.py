@@ -737,7 +737,12 @@ def test_the_before_marker_sweep_excuses_a_named_function_and_nothing_else(tmp_p
     (here / "db").mkdir(parents=True)
     module = here / "db" / "planner.py"
     marker = "# --- persistence"
-    wanted = {"db/planner.py": (marker, ("(conn", "execute("), ("engine_for",))}
+    # annotated because `dict` is invariant in its value: a
+    # `tuple[str, str]` nested in one is not a `tuple[str, ...]`,
+    # even though the tuple alone would be.
+    wanted: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
+        "db/planner.py": (marker, ("(conn", "execute("), ("engine_for",))
+    }
     clean = (
         "def engine_for(conn, name):\n    return conn.execute('SELECT 1')\n\n\n"
         "def plan(document):\n    return document\n\n\n" + marker + "\n\ndef save(conn):\n    pass\n"

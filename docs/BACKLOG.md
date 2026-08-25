@@ -288,8 +288,9 @@ consequences the architecture should keep room for, not work.
 
 ## Surfaces
 
-- **Adding a root means pressing seven buttons in an order only the
-  application knows.** scan, then ingest, then context, then events,
+- ~~**Adding a root means pressing seven buttons in an order only the
+  application knows.**~~ Closed: the headline and all three sub-items
+  below are done, and the section with it. scan, then ingest, then context, then events,
   then embed, then detect_faces, then cluster_faces, then annotate. The
   order is real -- `cluster_faces` over an unembedded library is a job
   that honestly settles `done` having clustered nothing -- and the
@@ -555,8 +556,12 @@ consequences the architecture should keep room for, not work.
   Triaged 2026-08-25, and the count in this entry was the wrong unit.
   ty reported 89 diagnostics, but many are one call site reported once
   per overload: `test_the_resultset_is_authoritative.py:276` is eleven
-  of them. **48 distinct sites** was the real number, now **16** (26
+  of them. **48 distinct sites** was the real number, now **18** (21
   diagnostics).
+
+  (An earlier revision of this line said 16, which was a miscount --
+  the count command was run against a tree that had not been re-checked.
+  The number here is what `uvx ty@0.0.74 check` reports today.)
 
   Two were the real bugs this entry named, and one of them is fixed:
 
@@ -605,24 +610,50 @@ consequences the architecture should keep room for, not work.
   `for refused, why in (...)` had been written and did nothing;
   annotating the TUPLE is what works.
 
-  Where the remaining 16 sit, and they are the hard ones:
+  `db/planning.py`'s FROZEN plan dicts are done, 4 sites to 2, and the
+  shape is why one TypedDict was not enough. `settings` is a flat set of
+  keys through v3 and one set PER PLANNER from v4 on -- it changed
+  exactly once. A single dict with
+  `frozenset[str] | dict[str, frozenset[str]]` merely moved the
+  complaint: it says v3 might carry a dict and v5 might carry a set, so
+  every construction in the chain has to be read as if it could, and the
+  count came back to 4. Two names -- `StoryPlanFlat` and `StoryPlan` --
+  say what actually happened and cost nothing, because a frozen version
+  is frozen and both shapes are live for ever.
 
-      db/planning.py         4   the FROZEN plan dicts, above
-      tests/                 6   in 5 files
+  Where the remaining 18 sit, and they are the hard ones:
+
+      tests/                 9   in 7 files
       vision/                5   narrowing and transformers' own types
       benchmarks/            3
+      db/planning.py         2   a planner union, unrelated to the plans
       sg_web/app.py          1   NOT ours, see below
 
-  `sg_web/app.py:1783` is jinja2's: it never annotates `Environment.
-  globals` -- `self.globals = DEFAULT_NAMESPACE.copy()`
-  (jinja2/environment.py:353) -- so the type is inferred from a
-  heterogeneous literal holding a range, a dict and a callable, and
-  assigning a str is reported. Adding to `globals` is the documented way
-  to do it; the code says so and stays idiomatic rather than contorting
-  around a missing annotation upstream. Reaching zero means a
-  suppression mechanism for exactly this, which `respect-type-ignore-
-  comments = false` currently forbids -- that is the decision left
-  before ty can join the fast gate.
+  **The count that matters is 17 ERRORS, not 21 diagnostics.** ty exits
+  0 when only warning-level violations remain
+  (`../refs/astral-sh/ty/docs/rules.md:16`), so the three
+  `redundant-cast` warnings do not block the gate -- which is just as
+  well, because they are a genuine two-checker conflict: those casts
+  exist FOR pyright, whose `Module.to` sees the wrapped descriptor
+  transformers decorates it with. Removing them to please ty would
+  break `just check-deep`.
+
+  And a correction to what this entry said last: **a suppression
+  mechanism does exist.** `[[tool.ty.overrides]]` takes a glob and
+  per-rule severities
+  (`../refs/astral-sh/ty/docs/reference/configuration.md:551`), which is
+  not what `respect-type-ignore-comments = false` forbids -- that bans a
+  COMMENT silencing an error on the author's say so, where an override
+  is a named file, a named rule and a reason in the file everyone reads,
+  one grep from a list of every exception granted. Exactly the shape
+  `sglint/policy.py` already uses.
+
+  It was not needed for the jinja line, and that is worth keeping: an
+  override is per FILE, so ignoring `invalid-assignment` across a
+  2000-line composition root to silence one line would stop checking
+  everything else in it. A local `cast` says the same thing in one place
+  -- and the tree already casts for exactly this reason in
+  `vision/captions.py`, around the same missing-annotation problem.
 
 ## The query workspace, as far as it got
 
