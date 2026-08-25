@@ -324,20 +324,22 @@ search answers with a set. What is NOT built:
 
   What is not built:
 
-  - **A discovered key still has no value list.** Choosing one fills
-    `key=` into the long-tail text box and puts the caret after the
-    `=`, which removes the need to remember the spelling but not the
-    need to know the values. `param.is` has no `discover` SQL, and it
-    could: the same aggregate the catalog runs already knows how many
-    distinct values a key holds, so offering them is a second statement
-    over one key rather than new machinery. That is the difference
-    between "type sniffed format equals..." and picking `png` off a
-    list.
   - **A field does not choose its own operators yet.** The catalog
-    sends `value_kind` and `ops` per field and the surface ignores
-    both for discovered keys, which always get `is`. A number-kinded
-    key should offer above / below / between, which is the machinery
-    `drawRange` already has.
+    sends `value_kind` and `ops` per field and the surface ignores both
+    for discovered keys, which always get `is`. A number-kinded key --
+    `param_key.value_kind` says which, and `Steps` and `CFG scale` are
+    the obvious ones -- should offer above / below / between, which is
+    the machinery `drawRange` already has.
+
+    This one is not only a surface change, which is why it was not done
+    with the value list. `param.is` compares `fp.value_text` and admits
+    `eq` and `any` only (db/facets.py). A range wants `fp.value_num`,
+    which the schema populates when a value parses as a number and
+    already indexes for exactly this (`file_param_key_num ON
+    file_param(key, value_num) WHERE value_num IS NOT NULL`). So the
+    work is a second spec beside `param.is` -- call it `param.atleast`
+    / `param.atmost` -- rather than widening one whose SQL compares the
+    wrong column.
 
 - **A saved view is not a first-class thing.** Everything a question can
   become is a collection today. People distinguish three: an **album**
