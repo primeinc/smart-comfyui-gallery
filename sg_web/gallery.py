@@ -126,6 +126,24 @@ def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str)
     return spelled
 
 
+def _split_out(query: resultset.GalleryQuery, slug: str, rest: str, view: str) -> str:
+    """The same question, asked as a person and a phrase.
+
+    The phrase keeps its ranking when there is one left to rank; with
+    nothing left, "Sarah" alone is a person's pictures and ordering them
+    by similarity to an empty phrase is not a thing.
+    """
+    import dataclasses as _dataclasses
+
+    held = _dataclasses.replace(query, person=slug, text=rest or None)
+    if not rest:
+        held = _dataclasses.replace(held, sort="newest")
+    spelled = resultset.canonical(held)
+    if view != "gallery":
+        spelled = f"{spelled}&view={view}" if spelled else f"view={view}"
+    return f"/g?{spelled}" if spelled else "/g"
+
+
 def _with_text(query: resultset.GalleryQuery, said: str, view: str) -> str:
     """The question this answer would become, searched for one term.
 
@@ -224,6 +242,26 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         # context dict below is assembled after `close`, so anything
         # asked for down there is asked of a closed database.
         remembered = views_module.all_of(conn)
+        # "Sarah at the beach" is what somebody types, and the ranking
+        # is over image embeddings: the text encoder has never heard of
+        # Sarah and never will. The answer is not a better caption, it
+        # is the question splitting into a filter the vocabulary already
+        # has plus the phrase that is left.
+        #
+        # Offered, never applied. Rewriting a typed question silently is
+        # how somebody stops trusting what the box does, and this
+        # application says what a question is with visible chips.
+        splitting = None
+        if query.text and not query.person:
+            found = discovery.person_in(conn, query.text)
+            if found is not None:
+                name, slug, rest = found
+                splitting = {
+                    "name": name,
+                    "slug": slug,
+                    "rest": rest,
+                    "qs": _split_out(query, slug, rest, view),
+                }
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -277,6 +315,10 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         # first paint: a remembered question is a way IN, and a list that
         # arrives after the answer is a list nobody used to get to it.
         "remembered": remembered,
+        #: A person's name spotted in the phrase, and the question it
+        #: would become. None when the phrase names nobody, or when the
+        #: question already says who.
+        "splitting": splitting,
         "analysis": described,
         "table": listed,
         "columns": _column_sorts(query, view),

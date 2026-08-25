@@ -1463,6 +1463,16 @@ body {
   opacity: 0.55;
 }
 
+/* A name spotted in the phrase. Above the chips, because it is about
+   the question rather than part of it -- and quiet, because it is an
+   offer and not an answer. */
+.ask-split {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  font-size: 0.9rem;
+}
+
 /* Recurring terms: a cloud of ways to narrow, each carrying the count
    of FILES that asked for it. Quieter than the prompt panel above,
    because it is a reading of a convention rather than an identity. */

@@ -79,6 +79,25 @@
     {% if not q %}<a class="ask-save" data-timeline-link href="/timeline{% if qs %}?{{ qs }}{% endif %}"
             title="these pictures on the timeline">on the timeline</a>{% endif %}
   </header>
+  {# "Sarah at the beach" is what somebody types, and it fails: the
+     ranking is over image embeddings and the text encoder has never
+     heard of Sarah. No caption fixes that. What does is the question
+     splitting into a person -- a filter the vocabulary already has --
+     plus the phrase that is left.
+
+     OFFERED, never applied. Rewriting a typed question silently is how
+     somebody stops trusting the box, and this application says what a
+     question is with chips somebody can see. #}
+  {% if splitting %}
+  <p class="ask-split" data-split-person="{{ splitting.slug }}">
+    <b>{{ splitting.name }}</b> is somebody in this library.
+    <a href="{{ splitting.qs }}" data-split-apply>
+      {% if splitting.rest %}search their pictures for &ldquo;{{ splitting.rest }}&rdquo;{% else %}see their pictures{% endif %}
+    </a>
+    <span class="muted">&mdash; a name is not something the text search can rank on</span>
+  </p>
+  {% endif %}
+
   {# The questions somebody asked to be reminded of, most recently used
      first. Here rather than on the album shelf, because that is the
      whole distinction: this is a bookmark on a question, not a

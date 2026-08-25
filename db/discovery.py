@@ -236,3 +236,70 @@ def counts(query: resultset.GalleryQuery) -> dict[str, int]:
         if held:
             made[one.key] = held
     return made
+
+
+#: Whether the phrase somebody typed names a person this library knows.
+#:
+#: NAMED only. An unnamed cluster's slug is `person-<short-id>`, which
+#: nobody types, and matching one would be matching an accident.
+_NAMED_PEOPLE = (
+    "SELECT p.name, e.slug FROM person p JOIN entity e ON e.id = p.id WHERE p.name IS NOT NULL AND trim(p.name) <> ''"
+)
+
+
+def person_in(conn, phrase: str) -> tuple[str, str, str] | None:
+    """`(name, slug, what is left of the phrase)`, or None.
+
+    "Sarah at the beach" is the thing somebody types, and it fails
+    today: the ranking is over image embeddings and the text encoder has
+    never heard of Sarah and never will. No amount of captioning fixes
+    that -- the answer is the question splitting into a person FILTER,
+    which the vocabulary already has, plus the phrase that is left.
+
+    Whole words only, and case-insensitively. A person called `Ana`
+    must not match `banana`, and matching a fragment would be a
+    suggestion nobody can explain.
+
+    The LONGEST name wins. With both `Ana` and `Ana Torres` in the
+    library, "ana torres at the beach" means the second, and offering
+    the first would leave "torres at the beach" as a phrase -- a worse
+    answer arrived at more confidently.
+
+    Nothing is applied here. This only says a split is available; the
+    surface offers it and somebody chooses, because rewriting a typed
+    question silently is how a person stops trusting what the box does.
+    """
+    said = " ".join(phrase.split())
+    if not said:
+        return None
+    folded = said.casefold()
+    best: tuple[str, str, str] | None = None
+    for name, slug in conn.execute(_NAMED_PEOPLE):
+        held = " ".join(str(name).split()).casefold()
+        if not held:
+            continue
+        at = _word_at(folded, held)
+        if at is None:
+            continue
+        rest = " ".join((said[:at] + " " + said[at + len(held) :]).split())
+        if best is None or len(held) > len(best[0]):
+            best = (str(name), str(slug), rest)
+    return best
+
+
+def _word_at(haystack: str, needle: str) -> int | None:
+    """Where `needle` sits in `haystack` as whole words, or None.
+
+    Written out rather than a regex because a person's name is somebody
+    else's text: it can hold a bracket, a dot or a plus, and escaping it
+    into a pattern is one forgotten call away from a name that matches
+    everything or raises.
+    """
+    at = haystack.find(needle)
+    while at != -1:
+        before = at == 0 or not haystack[at - 1].isalnum()
+        after = at + len(needle) == len(haystack) or not haystack[at + len(needle)].isalnum()
+        if before and after:
+            return at
+        at = haystack.find(needle, at + 1)
+    return None

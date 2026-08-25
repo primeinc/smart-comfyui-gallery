@@ -685,14 +685,16 @@ not a design decision anybody made; it is work nobody did.
     improves the sentence whether or not it says a name. This is the
     case for the prompt seam, and rule 3 above says the sentence can
     still come back nameless.
-  - **Search.** "Sarah at the beach" is the thing somebody types, and
-    it fails today because the CLIP text encoder has never heard of
-    Sarah and never will -- no amount of captioning fixes that, since
-    the ranking is over image embeddings. The answer there is not the
-    caption model at all: it is the query splitting into
-    `person=sarah` (a filter the vocabulary already has) plus `q="at
-    the beach"` (the phrase). That belongs with the field catalog, and
-    it is probably the more valuable half.
+  - ~~**Search.**~~ Shipped, and it was the more valuable half: typing
+    "Sarah at the beach" now offers the split -- `person=sarah` plus
+    `q="at the beach"` -- OFFERED and never applied, because rewriting a
+    typed question silently is how somebody stops trusting the box.
+
+    Which leaves only the first case above as the reason to build the
+    prompt seam at all, and it is the weaker one: a better SENTENCE,
+    from a model that knows two people are present and where. Rule 3
+    still holds -- the sentence comes back nameless and the name is
+    substituted at render time.
 
 - **Duplicate CONSOLIDATION.** The review shipped: `/dupes` is a page,
   linked from the shell, showing every group, each copy's folder and the
