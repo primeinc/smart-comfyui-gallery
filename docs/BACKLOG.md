@@ -314,55 +314,30 @@ every dimension where both readings mean something, value lists on
 (`param.has`, `param.is`), and a cut on the semantic ranking so a
 search answers with a set. What is NOT built:
 
-- **The field catalog: one searchable Add-filter over every fact.**
-  This is the largest remaining gap and the door we built is the proof
-  of it. `param.is` is a text box whose placeholder is `key=value`
-  (`frontend/src/filters.ts:334`), so it can only be used by somebody
-  who already knows the internal spelling -- which is the one thing the
-  application is supposed to remember for you. The requirement is not a
-  nicer box; it is that the application TEACHES its own vocabulary:
+- **The field catalog is built; two pieces of it are not.** One
+  searchable list over the curated vocabulary and every discovered
+  metadata key now answers the Add-filter box (db/catalog.py,
+  `/g/fields`, frontend/src/filters.ts `mountFind`). Indexed families
+  collapse, the observed type comes from `param_key.value_kind`, and
+  ranking is by what would cut THIS answer, with a camera's plumbing
+  ranked down rather than hidden.
 
-      Add filter…    [ edit                          ]
-      ─────────────────────────────────────────────
-      Used local editor                     SwarmUI
-      Edit reference megapixels          Generation
+  What is not built:
 
-  You type what you half-remember, it tells you what it knows. Then
-  the chosen field decides its own operators and offers its own values
-  (`is / above / below / between` for a number, `is / any of` for an
-  enumeration, `contains` for text). The catalog must match on friendly
-  label, alias, raw source key and source application, so `edit`,
-  `editor` and the ugly serialised key all arrive at the same fact.
-
-  `param.has` already discovers keys with counts and should stop being
-  a filter somebody uses by hand and become the thing that POWERS this.
-  The curated/discovered split stays real internally -- one has
-  semantics we understand, the other is a recorded fact -- and stops
-  being visible to the person.
-
-  Three things make this harder than it looks, all measured against
-  the real 3,748-file library (108 distinct `file_param` keys):
-
-  1. **`_param()` flattens lists into INDEXED keys.** `used_wildcards.0`
-     through `used_wildcards.6` are one concept wearing seven names, 55
-     files each; likewise `loras.0`/`loras.1` and
-     `unused_parameters.0..2`. "Did this use a wildcard" is currently
-     seven separate questions. The catalog has to collapse an indexed
-     family into one dimension whose repeats OR -- which is exactly the
-     `multi="any"` machinery already built.
-  2. **Everything is TEXT.** `automaticvae` is the string `'True'` with
-     `value_num` NULL on all 155 files, so no operator can be derived
-     from storage. The observed type has to be inferred from the values.
-  3. **About 40 of the 108 keys are EXIF plumbing** -- `StripOffsets`,
-     `YCbCrPositioning`, `FocalPlaneXResolution`. A picker built
-     straight off `param_key` is a haystack. Rank by how much a key
-     discriminates within the answer, and let the ugly ones be findable
-     without being offered first.
-
-  The acceptance test is a browser interaction, not a unit test for
-  `param.is`: open the app knowing nothing of the schema, type `edit`,
-  discover the field exists, choose `is -> yes`, get the right media,
-  save the question, reload, get the same answer.
+  - **A discovered key still has no value list.** Choosing one fills
+    `key=` into the long-tail text box and puts the caret after the
+    `=`, which removes the need to remember the spelling but not the
+    need to know the values. `param.is` has no `discover` SQL, and it
+    could: the same aggregate the catalog runs already knows how many
+    distinct values a key holds, so offering them is a second statement
+    over one key rather than new machinery. That is the difference
+    between "type sniffed format equals..." and picking `png` off a
+    list.
+  - **A field does not choose its own operators yet.** The catalog
+    sends `value_kind` and `ops` per field and the surface ignores
+    both for discovered keys, which always get `is`. A number-kinded
+    key should offer above / below / between, which is the machinery
+    `drawRange` already has.
 
 - **A saved view is not a first-class thing.** Everything a question can
   become is a collection today. People distinguish three: an **album**
