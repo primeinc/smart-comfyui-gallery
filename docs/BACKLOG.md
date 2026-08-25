@@ -49,15 +49,32 @@ Two consequences that are not yet true in the code:
   generations of them makes encryption-at-rest and no-accidental-network
   a storage rule, not a preference.
 
-- **Anything expensive the program learns should be exportable without
-  the program.** The application can always rebuild an index; the
-  accumulated understanding is the valuable part. Concretely: export a
-  person's face representation over a date range as embeddings WITH
-  their provenance — model identity and version, dimensions,
-  normalisation, preprocessing, source content hash, occurrence,
-  capture time, face region — plus a centroid. Not a naked 512-float
-  vector, which recreates exactly the opaque dependency this is
-  supposed to escape.
+- ~~**Anything expensive the program learns should be exportable
+  without the program.**~~ Shipped, and it is now three exports rather
+  than one, each with a different audience:
+
+      /operations/export/verdicts.json       what you judged, to SHARE
+      /operations/export/authored.json       what you said, for CUSTODY
+      /operations/export/faces/<slug>.json   what it learned, with proof
+
+  The third is this entry: a person's face vectors, grouped by the
+  immutable `similarity_space` that gives them meaning -- producer,
+  version, preprocessing, metric, dimensions, spec hash -- with the
+  cluster's own centroid, each face named by the `content_sha256` of
+  the picture it was found in, its region, its detection score and its
+  capture time. Offered on the person's own page, not a console, and
+  the link says these are BIOMETRIC TEMPLATES before somebody puts them
+  in a file.
+
+  Grouped BY SPACE rather than flattened: a vector is comparable only
+  to another from the same one, and a library re-detected under a new
+  model holds two representations of one person.
+
+  A date range is over CAPTURE time, so a picture whose camera never
+  said when excludes itself the moment a range is given -- the honest
+  reading of "their faces from 2019", stated rather than silent. With
+  no range the undated sort LAST, because SQLite sorts NULL first and
+  would otherwise have led the file with the least locatable pictures.
 
 Deferred on purpose, and deliberately not listed below: portable
 catalogs, workspaces federating several of them, reversible

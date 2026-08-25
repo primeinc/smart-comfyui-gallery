@@ -1534,3 +1534,117 @@ def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
     )
     columns = [c[0] for c in cursor.description]
     return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+# --- taking the expensive thing with you -------------------------------------
+
+#: A person's faces in the PRIMARY run, each with the provenance that
+#: makes the numbers mean something.
+#:
+#: A naked 512-float vector recreates exactly the opaque dependency an
+#: export is supposed to escape: without the producer, the preprocessing
+#: and the dimensions it cannot be compared with anything, reproduced,
+#: or checked. `similarity_space` is that identity and it is immutable
+#: by trigger, so what comes back describes itself.
+#:
+#: `content_sha256` is the join back to a photograph. No path -- the
+#: bytes are what identify a picture in any library that holds it, and a
+#: path is a fact about this machine.
+FACES_OF = (
+    "SELECT s.key AS space, s.representation, s.dimensions, s.metric,"
+    "       s.producer, s.producer_version, s.preprocess, s.preprocess_version,"
+    "       s.spec_hash, c.centroid, c.dim AS centroid_dim,"
+    "       f.content_sha256 AS sha256, fi.det_score, fi.dim, fi.embedding,"
+    "       r.x, r.y, r.w, r.h, cap.captured_at"
+    "  FROM derived_face_cluster c"
+    "  JOIN derived_face_membership m ON m.cluster_id = c.id"
+    "  JOIN derived_face_instance fi ON fi.id = m.face_id"
+    "  JOIN derived_face_run run ON run.id = c.run_id AND run.is_primary = 1"
+    "  JOIN file f ON f.id = fi.file_id AND f.content_sha256 IS NOT NULL"
+    "  JOIN region r ON r.id = fi.region_id"
+    "  JOIN similarity_space s ON s.id = fi.space_id"
+    "  LEFT JOIN capture cap ON cap.file_id = f.id"
+    " WHERE c.person_id = ? AND fi.embedding IS NOT NULL"
+    "   AND (? IS NULL OR cap.captured_at >= ?)"
+    "   AND (? IS NULL OR cap.captured_at <= ?)"
+    # Dated first, in time order, and the undated after them: SQLite
+    # sorts NULL FIRST, which would have led the file with the pictures
+    # whose camera never said when -- the least locatable ones.
+    " ORDER BY cap.captured_at IS NULL, cap.captured_at, f.content_sha256"
+)
+
+
+def _floats(raw) -> list[float]:
+    import numpy as np
+
+    return [] if raw is None else [float(x) for x in np.frombuffer(raw, dtype=np.float32)]
+
+
+def person_faces(conn, slug: str, *, since: float | None = None, until: float | None = None) -> dict | None:
+    """`{person, name, spaces}` for an address, or None for no such
+    person.
+
+    The slug is resolved HERE, through `naming`, so a retired address
+    still answers -- somebody exporting from a bookmark should not be
+    told the person does not exist because they were renamed.
+    """
+    from . import naming
+
+    found = naming.resolve(conn, "person", slug)
+    if found is None:
+        return None
+    person_id, _live = found
+    row = conn.execute("SELECT name FROM person WHERE id = ?", (person_id,)).fetchone()
+    if row is None:
+        return None
+    return {
+        "person": slug,
+        "name": row[0],
+        "spaces": faces_exported(conn, person_id, since=since, until=until),
+    }
+
+
+def faces_exported(conn, person_id: int, *, since: float | None = None, until: float | None = None) -> list[dict]:
+    """A person's face vectors, grouped by the space that gives them
+    meaning, each group with its centroid.
+
+    Grouped rather than flat because a vector is only comparable to
+    another from the SAME space: a library that has re-detected under a
+    new model holds two representations of one person, and flattening
+    them into one list would invite a comparison that means nothing.
+
+    A date range is over CAPTURE time, so a picture whose camera never
+    said when excludes itself the moment a range is given. That is the
+    honest reading of "faces from 2019" and the surface says it.
+    """
+    cursor = conn.execute(FACES_OF, (person_id, since, since, until, until))
+    columns = [c[0] for c in cursor.description]
+    spaces: dict[str, dict] = {}
+    for row in (dict(zip(columns, one, strict=True)) for one in cursor):
+        held = spaces.setdefault(
+            row["space"],
+            {
+                "space": row["space"],
+                "representation": row["representation"],
+                "dimensions": row["dimensions"],
+                "metric": row["metric"],
+                "producer": row["producer"],
+                "producer_version": row["producer_version"],
+                "preprocess": row["preprocess"],
+                "preprocess_version": row["preprocess_version"],
+                "spec_hash": row["spec_hash"],
+                "centroid": _floats(row["centroid"]),
+                "faces": [],
+            },
+        )
+        held["faces"].append(
+            {
+                "sha256": row["sha256"],
+                "captured_at": row["captured_at"],
+                "det_score": row["det_score"],
+                "dim": row["dim"],
+                "region": {"x": row["x"], "y": row["y"], "w": row["w"], "h": row["h"]},
+                "embedding": _floats(row["embedding"]),
+            }
+        )
+    return list(spaces.values())

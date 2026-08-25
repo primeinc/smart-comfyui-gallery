@@ -1879,6 +1879,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/operations/export/faces/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ExportFaces */
+        get: operations["OperationsExportFacesNameExportFaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations/schedules/{collection}": {
         parameters: {
             query?: never;
@@ -2461,12 +2478,41 @@ export interface components {
             lineage: components["schemas"]["EvolutionEdge"][];
             links: components["schemas"]["EvolutionLinks"];
         };
+        /** FaceExport */
+        FaceExport: {
+            person: string;
+            name: string | null;
+            spaces: components["schemas"]["FaceSpace"][];
+        };
         /** FaceScan */
         FaceScan: {
             model_id: string;
             model_version: string;
             faces: number;
             at: number;
+        };
+        /** FaceSpace */
+        FaceSpace: {
+            space: string;
+            representation: string;
+            dimensions: number;
+            metric: string;
+            producer: string;
+            producer_version: string;
+            preprocess: string;
+            preprocess_version: string;
+            spec_hash: string;
+            centroid: number[];
+            faces: components["schemas"]["FaceVector"][];
+        };
+        /** FaceVector */
+        FaceVector: {
+            sha256: string;
+            captured_at: number | null;
+            det_score: number | null;
+            dim: number | null;
+            region: unknown;
+            embedding: number[];
         };
         /** Faces */
         Faces: {
@@ -7823,6 +7869,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Authored"];
+                };
+            };
+        };
+    };
+    OperationsExportFacesNameExportFaces: {
+        parameters: {
+            query?: {
+                since?: number | null;
+                until?: number | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceExport"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
                 };
             };
         };

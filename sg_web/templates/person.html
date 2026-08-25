@@ -33,6 +33,18 @@
       </div>
     </section>
     <p class="places-line"><a href="{{ person.timeline }}" data-person-timeline>their timeline</a></p>
+    {# The most expensive thing this application learns about a library
+       and the least portable. Offered with what it IS said plainly:
+       these are biometric templates, and a person about to put them in
+       a file should know that from the link rather than from a
+       docstring. It carries the producer, the preprocessing and the
+       metric beside the numbers, because a naked vector recreates
+       exactly the dependency an export is meant to escape. #}
+    <p class="places-line person-vectors">
+      <a href="/operations/export/faces/{{ person.slug }}.json" download data-export-faces>take their face vectors</a>
+      <span class="muted">&mdash; biometric templates, with the model and preprocessing that made them, so they
+      mean something somewhere else. Your library, your machine, your file.</span>
+    </p>
     {% if person.places %}
     <section class="detail-facts" data-person-places>
       <h2>where they were seen</h2>

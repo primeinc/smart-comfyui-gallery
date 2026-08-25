@@ -508,6 +508,48 @@ class MatrixRow(Wire):
     after_id: int | None = None
 
 
+class FaceVector(Wire):
+    """One detected face, and enough about it to be checked."""
+
+    sha256: str
+    captured_at: float | None
+    det_score: float | None
+    dim: int | None
+    region: Box
+    embedding: list[float]
+
+
+class FaceSpace(Wire):
+    """One immutable space, its centroid, and the faces in it.
+
+    Everything above `faces` is what stops the numbers being opaque: the
+    producer that made them, the preprocessing that fed it, the metric
+    they are compared under and how many of them there are. A bare
+    vector without these recreates exactly the dependency an export is
+    meant to escape.
+    """
+
+    space: str
+    representation: str
+    dimensions: int
+    metric: str
+    producer: str
+    producer_version: str
+    preprocess: str
+    preprocess_version: str
+    spec_hash: str
+    centroid: list[float]
+    faces: list[FaceVector]
+
+
+class FaceExport(Wire):
+    """One person's face representation, by space."""
+
+    person: str
+    name: str | None
+    spaces: list[FaceSpace]
+
+
 class Named(Wire):
     """A person, by the address their pictures name them at."""
 
@@ -1483,6 +1525,60 @@ def compare_clusterings(state: State, left: FromPath[int], right: FromPath[int])
     )
 
 
+@get("/export/faces/{name:str}", sync_to_thread=True)
+def export_faces(
+    state: State,
+    name: FromPath[str],
+    since: FromQuery[float | None] = None,
+    until: FromQuery[float | None] = None,
+) -> Response[FaceExport]:
+    """One person's face vectors, with the provenance that makes them
+    mean something.
+
+    The most expensive thing this application learns about a library and
+    the least portable: a naked 512-float vector recreates exactly the
+    opaque dependency an export is supposed to escape. So each group
+    carries the producer, its version, the preprocessing, the metric and
+    the dimensions -- `similarity_space`, which is immutable by trigger
+    -- and the centroid the clustering computed.
+
+    Grouped BY SPACE because a vector is comparable only to another from
+    the same one. A library re-detected under a new model holds two
+    representations of one person, and flattening them would invite a
+    comparison that means nothing.
+
+    These are BIOMETRIC TEMPLATES. This is your own library answering on
+    your own machine, which is the only place face vectors are allowed
+    to be here -- the surface offering it says so, because somebody
+    should know what they are about to put in a file.
+    """
+    # The extension rides INSIDE the captured value, the way
+    # `/thumbs/{shard}/{name}` takes `<sha>.webp`: a path parameter
+    # occupies a whole segment, so `{slug:str}.json` matches nothing at
+    # all -- checked, it 404s before the handler is reached.
+    slug = name.removesuffix(".json")
+    conn = connect.connect(state.db_path)
+    try:
+        told = derived.person_faces(conn, slug, since=since, until=until)
+    finally:
+        connect.close(conn)
+    if told is None:
+        raise NotFoundException(f"no person at {slug}")
+    return Response(
+        content=FaceExport(
+            person=told["person"],
+            name=told["name"],
+            spaces=[
+                FaceSpace(
+                    **one | {"faces": [FaceVector(**who | {"region": Box(**who["region"])}) for who in one["faces"]]}
+                )
+                for one in told["spaces"]
+            ],
+        ),
+        headers={"content-disposition": f'attachment; filename="faces-{slug}.json"', **VARIES},
+    )
+
+
 @get("/export/authored.json", sync_to_thread=True)
 def export_authored(state: State) -> Response[Authored]:
     """Everything you told this library about your own pictures.
@@ -1599,6 +1695,7 @@ router = Router(
         compare_clusterings,
         export_verdicts,
         export_authored,
+        export_faces,
         set_schedule,
         stop_collection,
     ],
