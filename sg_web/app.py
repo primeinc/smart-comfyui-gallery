@@ -868,7 +868,20 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
         # By CONTENT, not by slug: the cache is keyed on the bytes, so
         # any present file carrying them will do, which is the whole
         # reason it is content-addressed.
-        _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
+        try:
+            _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
+        except ValueError as unrenderable:
+            # A file with no decodable frame has no thumbnail, and that
+            # is a 404 rather than a defect: the request asked for a
+            # picture of something that does not have one.
+            #
+            # It reached here as an uncaught 500 with a traceback, once
+            # per cell, for a folder of album tracks -- an .m4a is
+            # ISO-BMFF, so the sniffer called it video/mp4 (fixed in
+            # vision/sniff.py) and the grid minted it an address. The
+            # sniff was the cause; this is the reason one bad row cost a
+            # page of stack traces instead of one grey cell.
+            raise NotFoundException(str(unrenderable)) from unrenderable
     return File(
         path=target,
         media_type="image/webp",

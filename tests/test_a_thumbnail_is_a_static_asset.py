@@ -340,3 +340,54 @@ def test_a_whole_timeline_of_thumbnails_costs_no_connections(served):
         client.get(src)  # warm, so this measures delivery
     opened = _connections_during(lambda: [client.get(src) for src in sources])
     assert opened == 0, f"{len(sources)} timeline thumbnails opened {opened} connections"
+
+
+# --- a file that has no picture -----------------------------------------
+
+
+def test_an_album_track_is_audio_and_not_a_video(tmp_path):
+    """The sniff that cost a page of 500s.
+
+    An .m4a is ISO-BMFF, so mimesniff's MP4 walk calls it video/mp4 --
+    correct for choosing a decoder, wrong here, because `kind` decides
+    whether a file HAS A PICTURE. Ingest let the bytes overrule the
+    suffix, the track became a video, the grid minted it a thumbnail
+    address, and the renderer went looking for a frame that does not
+    exist.
+    """
+    from vision import sniff
+
+    for brand in (b"M4A ", b"M4B ", b"M4P "):
+        head = (0).to_bytes(4, "big") + b"ftyp" + brand + b"\x00" * 500
+        assert sniff.sniff(head) == ("audio", "m4a"), brand
+
+    # and the video brands still are videos
+    movie = (0).to_bytes(4, "big") + b"ftyp" + b"mp42" + b"\x00" * 500
+    assert sniff.sniff(movie) == ("video", "mp4")
+
+
+def test_a_file_with_no_decodable_frame_is_a_404_not_a_500(served):
+    """Even with the sniff right, anything that sniffs pictured and
+    holds no frame -- a truncated clip, a video of zero frames -- must
+    answer 404. It arrived as an uncaught 500 with a traceback, once per
+    cell, which is how one bad row cost a page of stack traces instead
+    of one grey cell."""
+    client, root = served
+    broken = root / "broken.mp4"
+    broken.write_bytes((0).to_bytes(4, "big") + b"ftyp" + b"mp42" + b"\x00" * 64)
+    client.post("/roots/1/scan")
+    _drained(client, __import__("time"))
+
+    conn = connect.connect(client.app.state.db_path, read_only=True)
+    try:
+        held = conn.execute("SELECT content_sha256, kind FROM file WHERE name = 'broken.mp4'").fetchone()
+    finally:
+        connect.close(conn)
+    if held is None or held[0] is None:
+        pytest.skip("this build did not hash the unreadable file")
+    sha, kind = held
+    if kind not in ("image", "animated_image", "video"):
+        pytest.skip(f"this build classified the stub as {kind}, which has no asset address")
+
+    answered = client.get(f"/thumbs/{sha[:2]}/{sha}.webp")
+    assert answered.status_code == 404, f"answered {answered.status_code}"

@@ -3870,3 +3870,29 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
   filter: none;
   opacity: 1;
 }
+
+/* Saying a name is wrong, beside the name. Quiet until wanted: it is a
+   correction offered, not a question being asked of every picture. */
+.person-said {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 2px;
+}
+.person-deny {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  opacity: 0;
+  padding: 0 2px;
+}
+.person-said:hover .person-deny,
+.person-deny:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+.person-deny:hover {
+  color: var(--danger);
+}

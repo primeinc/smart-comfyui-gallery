@@ -94,6 +94,56 @@ const asPlaceKind = (held: string): PlaceKind => {
     }
   }
 
+  // "That is not her", said where the name is shown.
+  //
+  // A DENIAL, not a retraction, and the difference is the point: a
+  // retraction deletes the claim and the next clustering run is free to
+  // decide the same thing again, which is how correcting a false merge
+  // became a chore somebody repeated after every re-run. This is a
+  // record that stops it (db/authored.py `deny_person`).
+  //
+  // Redrawn from the answer, which is the faces the SERVER now holds --
+  // never by removing the chip that was clicked. The two differ the
+  // moment anything else has a say, and a browser that drew its own
+  // guess would be inventing state.
+  const people = findElement(document, "[data-people]", HTMLElement);
+  if (judged && people) {
+    const slug = requireData(judged, "slug");
+    for (const deny of everyElement(people, "[data-person-deny]", HTMLElement)) {
+      deny.addEventListener("click", async () => {
+        const who = requireData(deny, "personDeny");
+        const { data, error } = await api.POST("/i/{slug}/people/{person}/deny", {
+          params: { path: { slug, person: who } },
+          body: { value: true },
+        });
+        if (!data) {
+          await say(refusal(error, "that was not recorded"));
+          return;
+        }
+        people.replaceChildren();
+        for (const [at, one] of data.people.entries()) {
+          if (at) people.append(document.createTextNode(" · "));
+          const held = document.createElement("span");
+          held.className = "person-said";
+          held.dataset.personSaid = one.slug;
+          const link = document.createElement("a");
+          link.href = one.href;
+          link.dataset.person = one.slug;
+          link.textContent = one.name ?? one.slug;
+          held.append(link);
+          people.append(held);
+        }
+        if (data.people.length === 0) {
+          const none = document.createElement("span");
+          none.className = "muted";
+          none.dataset.peopleNone = "";
+          none.textContent = "nobody named here now";
+          people.append(none);
+        }
+      });
+    }
+  }
+
   // where it happened: one POST of desired state, then the page re-reads
   const placeForm = findElement(document, "[data-place-form]", HTMLFormElement);
   if (placeForm) {

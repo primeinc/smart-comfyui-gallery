@@ -48,7 +48,14 @@
 
       {% if item.faces.people %}
       <dt>who</dt>
-      <dd data-people>{% for who in item.faces.people %}<a href="{{ who.href }}" data-person="{{ who.slug }}">{{ who.name or who.slug }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+      {#- The correction sits with the name. This is where somebody is
+          already looking at "Hannah" over a picture that is not Hannah,
+          and the whole value of a denial is that it is said once and
+          holds -- so it must not be a page you have to go and find.
+
+          A BUTTON beside the link, never inside it: the name goes to
+          the person, and the × is a different act. -#}
+      <dd data-people>{% for who in item.faces.people %}<span class="person-said" data-person-said="{{ who.slug }}"><a href="{{ who.href }}" data-person="{{ who.slug }}">{{ who.name or who.slug }}</a><button type="button" class="person-deny" data-person-deny="{{ who.slug }}" title="not {{ who.name or who.slug }} — and remember that" aria-label="say this is not {{ who.name or who.slug }}">&times;</button></span>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
       {% endif %}
 
       {% if item.said %}

@@ -258,3 +258,71 @@ def test_denying_a_FACE_refuses_the_cluster_that_holds_it(library):
     authored.deny_person(library, who, 3, 1, NOW, region_id=box)
     library.commit()
     assert _named_clusters(library, _cluster(library)) == set(), "the face was refused; the cluster is a question now"
+
+
+# --- and it is sayable from the page ----------------------------------------
+
+
+def test_the_page_offers_the_correction_beside_the_name(tmp_path):
+    """The button, and where it is. This is where somebody is already
+    looking at "Hannah" over a picture that is not Hannah -- the value
+    of a denial is that it is said once and holds, so it must not be a
+    page you have to go and find."""
+    import time as clock
+
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from db import connect, naming
+    from sg_web.app import build_app
+
+    root = tmp_path / "pics"
+    root.mkdir()
+    Image.new("RGB", (16, 12), (30, 90, 140)).save(root / "one.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            file_id = conn.execute("SELECT id FROM file").fetchone()[0]
+            sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
+            who = authored.person(conn, "Hannah", clock.time())
+            derived.record_faces(
+                conn,
+                file_id,
+                MODEL[0],
+                MODEL[1],
+                sha,
+                clock.time(),
+                [
+                    {
+                        "region": derived.region(conn, 0.1, 0.1, 0.3, 0.3),
+                        "embedding": np.ones(4, np.float32).tobytes(),
+                    }
+                ],
+            )
+            run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
+            derived.attribute(conn, file_id, who, run_id, MODEL[0], MODEL[1], face_count=1)
+            # The page shows the PRIMARY run's people and nothing else
+            # (db/pages.py MEDIA_PEOPLE), so a run nobody chose renders
+            # an empty "who" -- which reads exactly like a missing
+            # button rather than like a fixture that named no run.
+            derived.make_primary(conn, run_id)
+            conn.commit()
+            named = naming.entity_slug(conn, file_id)
+            person_slug = naming.entity_slug(conn, who)
+            assert named is not None
+            assert person_slug is not None
+        finally:
+            connect.close(conn)
+
+        page = client.get(f"/i/{named[1]}", headers={"accept": "text/html"}).text
+        assert f'data-person-deny="{person_slug[1]}"' in page, "no way to say it from the page"
+
+        told = client.post(f"/i/{named[1]}/people/{person_slug[1]}/deny", json={"value": True})
+        assert told.status_code in (200, 201), told.text
+        # answers with who the picture NOW holds, read from the database
+        assert told.json()["people"] == []
+
+        again = client.get(f"/i/{named[1]}", headers={"accept": "text/html"}).text
+        assert f'data-person-deny="{person_slug[1]}"' not in again, "the name is still on the picture"

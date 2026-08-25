@@ -1161,6 +1161,43 @@
         }
       }
     }
+    const people = findElement(document, "[data-people]", HTMLElement);
+    if (judged && people) {
+      const slug = requireData(judged, "slug");
+      for (const deny of everyElement(people, "[data-person-deny]", HTMLElement)) {
+        deny.addEventListener("click", async () => {
+          const who = requireData(deny, "personDeny");
+          const { data, error } = await api.POST("/i/{slug}/people/{person}/deny", {
+            params: { path: { slug, person: who } },
+            body: { value: true }
+          });
+          if (!data) {
+            await say(refusal(error, "that was not recorded"));
+            return;
+          }
+          people.replaceChildren();
+          for (const [at, one] of data.people.entries()) {
+            if (at) people.append(document.createTextNode(" \xB7 "));
+            const held = document.createElement("span");
+            held.className = "person-said";
+            held.dataset.personSaid = one.slug;
+            const link = document.createElement("a");
+            link.href = one.href;
+            link.dataset.person = one.slug;
+            link.textContent = one.name ?? one.slug;
+            held.append(link);
+            people.append(held);
+          }
+          if (data.people.length === 0) {
+            const none = document.createElement("span");
+            none.className = "muted";
+            none.dataset.peopleNone = "";
+            none.textContent = "nobody named here now";
+            people.append(none);
+          }
+        });
+      }
+    }
     const placeForm = findElement(document, "[data-place-form]", HTMLFormElement);
     if (placeForm) {
       const slug = requireData(placeForm, "slug");
