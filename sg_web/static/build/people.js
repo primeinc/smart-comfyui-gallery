@@ -519,6 +519,68 @@
     return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
   }
 
+  // src/ask.ts
+  var DISMISSED = "";
+  var TAKEN = "ok";
+  var framed = (question, submit, dismiss, said) => ({
+    question,
+    submit: said.submit !== void 0 ? said.submit : submit,
+    dismiss: said.dismiss !== void 0 ? said.dismiss : dismiss,
+    ...said.detail !== void 0 ? { detail: said.detail } : {},
+    ...said.grave !== void 0 ? { grave: said.grave } : {}
+  });
+  var button = (words, value, kind) => {
+    const control = document.createElement("button");
+    control.value = value;
+    control.className = kind;
+    control.textContent = words;
+    return control;
+  };
+  async function ask(asked, build2) {
+    const box = document.createElement("dialog");
+    box.className = "ask-box";
+    box.innerHTML = `<form method="dialog" class="ask-form">
+      <h2 class="ask-question"></h2>
+      <p class="ask-detail" hidden></p>
+      <div class="ask-body"></div>
+      <div class="ask-feet"></div>
+    </form>`;
+    requireElement(box, ".ask-question", HTMLElement).textContent = asked.question;
+    if (asked.detail !== void 0) {
+      const line = requireElement(box, ".ask-detail", HTMLElement);
+      line.textContent = asked.detail;
+      line.hidden = false;
+    }
+    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const feet = requireElement(box, ".ask-feet", HTMLElement);
+    if (asked.submit !== null) {
+      feet.append(button(asked.submit, TAKEN, asked.grave === true ? "ask-take is-grave" : "ask-take"));
+    }
+    if (asked.dismiss !== null) feet.append(button(asked.dismiss, DISMISSED, "ask-drop"));
+    box.addEventListener("click", (event) => {
+      const at = box.getBoundingClientRect();
+      const inside = event.clientX >= at.left && event.clientX <= at.right && event.clientY >= at.top && event.clientY <= at.bottom;
+      if (!inside && event.detail > 0) box.close(DISMISSED);
+    });
+    const answer = new Promise((settle) => {
+      box.addEventListener(
+        "close",
+        () => {
+          const taken = box.returnValue !== DISMISSED ? read() : null;
+          box.remove();
+          settle(taken);
+        },
+        { once: true }
+      );
+    });
+    document.body.append(box);
+    box.showModal();
+    return answer;
+  }
+  async function say(message, framing = {}) {
+    await ask(framed(message, "ok", null, framing), () => () => void 0);
+  }
+
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();
   var spelled = (key) => key.length === 1 ? key.toLowerCase() : key;
@@ -542,7 +604,7 @@
   }
   document.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const command = claimed.get(spelled(event.key));
     if (!command) return;
@@ -686,7 +748,7 @@
       const name = requireElement(form, '[name="name"]', HTMLInputElement).value;
       const { data, error } = await api.POST("/p/{slug}/name", { params: { path: { slug } }, body: { name } });
       if (!data) {
-        window.alert(refusal(error, "that name was refused"));
+        await say(refusal(error, "that name was refused"));
         return;
       }
       window.location.replace(`/p/${data.slug}`);

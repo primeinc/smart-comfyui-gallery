@@ -523,24 +523,124 @@
     return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
   }
 
+  // src/ask.ts
+  var DISMISSED = "";
+  var TAKEN = "ok";
+  var framed = (question2, submit, dismiss, said) => ({
+    question: question2,
+    submit: said.submit !== void 0 ? said.submit : submit,
+    dismiss: said.dismiss !== void 0 ? said.dismiss : dismiss,
+    ...said.detail !== void 0 ? { detail: said.detail } : {},
+    ...said.grave !== void 0 ? { grave: said.grave } : {}
+  });
+  var button = (words, value, kind) => {
+    const control = document.createElement("button");
+    control.value = value;
+    control.className = kind;
+    control.textContent = words;
+    return control;
+  };
+  async function ask(asked4, build2) {
+    const box = document.createElement("dialog");
+    box.className = "ask-box";
+    box.innerHTML = `<form method="dialog" class="ask-form">
+      <h2 class="ask-question"></h2>
+      <p class="ask-detail" hidden></p>
+      <div class="ask-body"></div>
+      <div class="ask-feet"></div>
+    </form>`;
+    requireElement(box, ".ask-question", HTMLElement).textContent = asked4.question;
+    if (asked4.detail !== void 0) {
+      const line = requireElement(box, ".ask-detail", HTMLElement);
+      line.textContent = asked4.detail;
+      line.hidden = false;
+    }
+    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const feet = requireElement(box, ".ask-feet", HTMLElement);
+    if (asked4.submit !== null) {
+      feet.append(button(asked4.submit, TAKEN, asked4.grave === true ? "ask-take is-grave" : "ask-take"));
+    }
+    if (asked4.dismiss !== null) feet.append(button(asked4.dismiss, DISMISSED, "ask-drop"));
+    box.addEventListener("click", (event) => {
+      const at = box.getBoundingClientRect();
+      const inside = event.clientX >= at.left && event.clientX <= at.right && event.clientY >= at.top && event.clientY <= at.bottom;
+      if (!inside && event.detail > 0) box.close(DISMISSED);
+    });
+    const answer = new Promise((settle2) => {
+      box.addEventListener(
+        "close",
+        () => {
+          const taken = box.returnValue !== DISMISSED ? read() : null;
+          box.remove();
+          settle2(taken);
+        },
+        { once: true }
+      );
+    });
+    document.body.append(box);
+    box.showModal();
+    return answer;
+  }
+  async function say(message, framing = {}) {
+    await ask(framed(message, "ok", null, framing), () => () => void 0);
+  }
+  async function askText(question2, typed = {}) {
+    const said = await ask(framed(question2, "save", "cancel", typed), (body) => {
+      const field = document.createElement("input");
+      field.type = "text";
+      field.className = "ask-field";
+      field.value = typed.value ?? "";
+      field.placeholder = typed.placeholder ?? "";
+      field.autofocus = true;
+      field.setAttribute("aria-label", typed.label ?? question2);
+      body.append(field);
+      return () => field.value.trim();
+    });
+    return said ? said : null;
+  }
+  async function askChoice(question2, choices2, framing = {}) {
+    if (choices2.length === 0) return null;
+    return ask(
+      // No affirmative in the feet: the choices are the affirmative.
+      framed(question2, null, "cancel", { ...framing, submit: null }),
+      (body, box) => {
+        const list = document.createElement("div");
+        list.className = "ask-choices";
+        for (const [index, one] of choices2.entries()) {
+          const control = button(one.label, one.value, "ask-choice");
+          control.autofocus = index === 0;
+          if (one.note !== void 0) {
+            const note = document.createElement("span");
+            note.className = "ask-choice-note";
+            note.textContent = one.note;
+            control.append(note);
+          }
+          list.append(control);
+        }
+        body.append(list);
+        return () => box.returnValue;
+      }
+    );
+  }
+
   // src/recipe.ts
   function fit(field) {
     if (field.clientWidth === 0) return;
     field.style.height = "auto";
     field.style.height = `${field.scrollHeight}px`;
   }
-  async function copied(button, text) {
-    const was = button.textContent;
+  async function copied(button2, text) {
+    const was = button2.textContent;
     try {
       await navigator.clipboard.writeText(text);
-      button.textContent = "copied";
-      button.dataset.done = "true";
+      button2.textContent = "copied";
+      button2.dataset.done = "true";
     } catch {
-      button.textContent = "cannot copy";
+      button2.textContent = "cannot copy";
     }
     setTimeout(() => {
-      button.textContent = was;
-      delete button.dataset.done;
+      button2.textContent = was;
+      delete button2.dataset.done;
     }, 1200);
   }
   function scratchOf(root, named) {
@@ -609,11 +709,11 @@
   function mountAnalyze(root) {
     const panel = findElement(root, "[data-analyze]", HTMLElement);
     if (!panel) return;
-    for (const button of everyElement(panel, "[data-copy-prompt]", HTMLElement)) {
-      const use = button.closest("[data-prompt]");
+    for (const button2 of everyElement(panel, "[data-copy-prompt]", HTMLElement)) {
+      const use = button2.closest("[data-prompt]");
       const text = use && findElement(use, "[data-prompt-text]", HTMLElement);
       if (!text) continue;
-      button.addEventListener("click", () => void copied(button, text.textContent ?? ""));
+      button2.addEventListener("click", () => void copied(button2, text.textContent ?? ""));
     }
   }
 
@@ -784,7 +884,7 @@
   }
   document.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const command = claimed.get(spelled(event.key));
     if (!command) return;
@@ -911,14 +1011,14 @@
         ["any", "any of", `media with any one of these ${told.label}s`],
         ["all", "all of", `media carrying every one of these ${told.label}s`]
       ]) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "filter-choice-mode";
-        button.dataset.mode = mode;
-        button.title = why;
-        button.textContent = said;
-        button.setAttribute("aria-pressed", String(all === (mode === "all")));
-        button.addEventListener("click", () => {
+        const button2 = document.createElement("button");
+        button2.type = "button";
+        button2.className = "filter-choice-mode";
+        button2.dataset.mode = mode;
+        button2.title = why;
+        button2.textContent = said;
+        button2.setAttribute("aria-pressed", String(all === (mode === "all")));
+        button2.addEventListener("click", () => {
           rememberPanel(`all:${told.key}`, mode === "all");
           const wanted = mode === "all" ? "eq" : "any";
           const asked4 = question();
@@ -929,7 +1029,7 @@
           if (mine.length) go(asked4);
           else again();
         });
-        choice.append(button);
+        choice.append(button2);
       }
       body.append(choice);
     }
@@ -990,16 +1090,16 @@
         ["1", "yes"],
         ["0", "no"]
       ]) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "filter-choice-mode";
-        button.dataset.option = value;
-        button.dataset.label = said;
-        button.textContent = said;
+        const button2 = document.createElement("button");
+        button2.type = "button";
+        button2.className = "filter-choice-mode";
+        button2.dataset.option = value;
+        button2.dataset.label = said;
+        button2.textContent = said;
         const on = now.has(value);
-        button.setAttribute("aria-pressed", String(on));
-        button.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", on ? null : value)));
-        pair.append(button);
+        button2.setAttribute("aria-pressed", String(on));
+        button2.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", on ? null : value)));
+        pair.append(button2);
       }
       body.append(pair);
       return;
@@ -1417,8 +1517,8 @@
     const showInspector = (open, arranged = true) => {
       if (!inspector) return;
       root.dataset.inspector = open ? "open" : "closed";
-      for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
-        button.setAttribute("aria-expanded", String(open));
+      for (const button2 of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
+        button2.setAttribute("aria-expanded", String(open));
       }
       if (arranged) remember({ inspector: open ? "open" : "closed" });
     };
@@ -1527,17 +1627,17 @@
         walk(near.href);
       });
     }
-    for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
-      onElement(button, "click", () => showInspector(root.dataset.inspector !== "open"));
+    for (const button2 of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
+      onElement(button2, "click", () => showInspector(root.dataset.inspector !== "open"));
     }
-    for (const button of everyElement(root, "[data-panel-open]", HTMLElement)) {
-      onElement(button, "click", () => {
+    for (const button2 of everyElement(root, "[data-panel-open]", HTMLElement)) {
+      onElement(button2, "click", () => {
         showInspector(true);
-        panel(requireData(button, "panelOpen"));
+        panel(requireData(button2, "panelOpen"));
       });
     }
-    for (const button of everyElement(root, "[data-focus]", HTMLElement)) {
-      onElement(button, "click", focus);
+    for (const button2 of everyElement(root, "[data-focus]", HTMLElement)) {
+      onElement(button2, "click", focus);
     }
     if (inspector) {
       const kept2 = workspace();
@@ -1614,15 +1714,15 @@
     mountFilters(document.body);
     mountAnalyze(document.body);
     mountEndless(document.body);
-    const ask = findElement(document, "[data-ask]", HTMLFormElement);
-    if (ask) {
+    const ask2 = findElement(document, "[data-ask]", HTMLFormElement);
+    if (ask2) {
       const fields = () => [
-        ...everyElement(ask, "input", HTMLInputElement),
-        ...everyElement(ask, "select", HTMLSelectElement)
+        ...everyElement(ask2, "input", HTMLInputElement),
+        ...everyElement(ask2, "select", HTMLSelectElement)
       ];
-      ask.addEventListener("submit", () => {
-        const phrase = requireElement(ask, '[name="q"]', HTMLInputElement);
-        const sort = requireElement(ask, '[name="sort"]', HTMLSelectElement);
+      ask2.addEventListener("submit", () => {
+        const phrase = requireElement(ask2, '[name="q"]', HTMLInputElement);
+        const sort = requireElement(ask2, '[name="sort"]', HTMLSelectElement);
         if (phrase.value.trim()) sort.value = "similarity";
         else if (sort.value === "similarity") sort.value = "newest";
         for (const field of fields()) {
@@ -1651,12 +1751,16 @@
     const saver = findElement(document, "[data-save-smart]", HTMLElement);
     saver?.addEventListener("click", async () => {
       const spelled2 = spelling();
-      const name = window.prompt("name this smart collection");
-      if (!name) return;
+      const name = await askText("name this smart collection", {
+        detail: "the question you are looking at becomes its rule, and its members follow the library",
+        placeholder: "portraits from June",
+        label: "collection name"
+      });
+      if (name === null) return;
       const take = cutoff(spelled2);
       const { data, error } = await api.POST("/albums/smart", { body: { name, ...asked(spelled2, take) } });
       if (!data) {
-        window.alert(refusal(error, "the view could not be saved"));
+        await say(refusal(error, "the view could not be saved"));
         return;
       }
       window.location.assign(`/t/${data.slug}`);
@@ -1665,23 +1769,24 @@
     replacer?.addEventListener("click", async () => {
       const shelf = await api.GET("/albums", { headers: { accept: "application/json" } });
       const smarts = (shelf.data ?? []).filter((held2) => held2.kind === "smart");
-      const first = smarts[0];
-      if (first === void 0) {
-        window.alert("no smart collection exists yet -- save the view as a new one instead");
+      if (smarts.length === 0) {
+        await say("no smart collection exists yet", {
+          detail: "save this view as a new one instead, and it will be here to replace next time"
+        });
         return;
       }
-      const named = window.prompt(
-        `replace the rule of which smart collection?
-${smarts.map((held2) => held2.slug).join(", ")}`,
-        first.slug
+      const named = await askChoice(
+        "replace the rule of which smart collection?",
+        smarts.map((held2) => ({ value: held2.slug, label: held2.name, note: `/t/${held2.slug}` })),
+        { detail: "its members become whatever this question answers, from now on" }
       );
-      if (!named) return;
+      if (named === null) return;
       const current2 = await api.GET("/t/{slug}", {
         params: { path: { slug: named } },
         headers: { accept: "application/json" }
       });
       if (!current2.data) {
-        window.alert(`no collection at /t/${named}`);
+        await say(`no collection at /t/${named}`);
         return;
       }
       const spelled2 = spelling();
@@ -1691,7 +1796,7 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
         body: { expected_rev: current2.data.definition_rev, ...asked(spelled2, take) }
       });
       if (!data) {
-        window.alert(refusal(error, "the rule could not be replaced"));
+        await say(refusal(error, "the rule could not be replaced"));
         return;
       }
       window.location.assign(`/t/${data.slug}`);
@@ -1955,7 +2060,7 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
   };
   var applied = async (root, told) => {
     if (!told.ok) {
-      window.alert(told.refusal);
+      await say(told.refusal);
       return;
     }
     draw(root, told.data.authored);
@@ -1993,7 +2098,7 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
       "the albums could not be read"
     );
     if (!told.ok) {
-      window.alert(told.refusal);
+      await say(told.refusal);
       return;
     }
     const data = told.data;
@@ -2127,7 +2232,7 @@ ${smarts.map((held2) => held2.slug).join(", ")}`,
     };
     const settle2 = (told2) => {
       if (!told2.ok) {
-        window.alert(told2.refusal);
+        void say(told2.refusal);
         return;
       }
       const mounted2 = grid();

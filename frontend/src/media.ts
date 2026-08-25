@@ -2,6 +2,7 @@
 // history, so Escape goes to the computed return-to-results URL -- never a
 // blind history.back() that could leave the site entirely.
 import { api, refusal } from "./api";
+import { say } from "./ask";
 import { everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components } from "./generated/api";
 import { register } from "./keys";
@@ -54,10 +55,10 @@ const asPlaceKind = (held: string): PlaceKind => {
     const value = (name: string) => requireElement(placeForm, `[name="${name}"]`, HTMLInputElement).value.trim();
     const chosen = (name: string) => requireElement(placeForm, `[name="${name}"]`, HTMLSelectElement).value;
 
-    const say = async (body: DesiredPlace) => {
+    const record = async (body: DesiredPlace) => {
       const { data, error } = await api.POST("/i/{slug}/place", { params: { path: { slug } }, body });
       if (!data) {
-        window.alert(refusal(error, "the place could not be recorded"));
+        await say(refusal(error, "the place could not be recorded"));
         return;
       }
       window.location.reload();
@@ -68,7 +69,7 @@ const asPlaceKind = (held: string): PlaceKind => {
       const name = value("name");
       if (!name) return;
       const within = value("within");
-      void say({
+      void record({
         name,
         kind: asPlaceKind(chosen("kind")),
         within: within || null,
@@ -80,7 +81,7 @@ const asPlaceKind = (held: string): PlaceKind => {
     // Python, but a defaulted field is `required` in the document litestar
     // generates, so the contract asks for them and the browser sends them.
     findElement(placeForm, "[data-place-clear]", HTMLElement)?.addEventListener("click", () => {
-      void say({ name: null, kind: "locality", within: null, within_kind: "country" });
+      void record({ name: null, kind: "locality", within: null, within_kind: "country" });
     });
   }
 

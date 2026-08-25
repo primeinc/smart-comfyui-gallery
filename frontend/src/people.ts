@@ -5,6 +5,7 @@
 // collection, not a piece of media, so there are no arrows: the drawer
 // shows who they are and hands off to the full profile.
 import { api, refusal } from "./api";
+import { say } from "./ask";
 import { closestFrom, everyElement, requireData, requireElement } from "./dom";
 import { addressableOverlay } from "./overlay";
 
@@ -41,7 +42,7 @@ const spellDays = (root: ParentNode) => {
     const name = requireElement(form, '[name="name"]', HTMLInputElement).value;
     const { data, error } = await api.POST("/p/{slug}/name", { params: { path: { slug } }, body: { name } });
     if (!data) {
-      window.alert(refusal(error, "that name was refused"));
+      await say(refusal(error, "that name was refused"));
       return;
     }
     // REPLACE, never assign: the identity's address just moved, and the

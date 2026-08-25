@@ -1178,7 +1178,7 @@
   }
   document.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const command = claimed.get(spelled(event.key));
     if (!command) return;

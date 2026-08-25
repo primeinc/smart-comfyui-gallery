@@ -10,6 +10,7 @@
 // which the contract keeps apart, because pydantic knows which fields a
 // request actually named.
 import { api, refusal } from "./api";
+import { askYesNo, say } from "./ask";
 import { findElement, requireData } from "./dom";
 import type { components } from "./generated/api";
 
@@ -23,12 +24,14 @@ type ListedKind = components["schemas"]["ConvertToListed"]["kind"];
  * stale in a way no local patch can fix, so it reloads rather than
  * pretending the click landed.
  */
-const landed = (result: { data?: WriteAnswer | undefined; error?: unknown; response: Response }) => {
+const landed = async (result: { data?: WriteAnswer | undefined; error?: unknown; response: Response }) => {
   if (result.data) {
     window.location.assign(`/t/${result.data.slug}`);
     return;
   }
-  window.alert(refusal(result.error, "the collection did not accept that"));
+  // Awaited, so the reload happens after the refusal has been read. A
+  // message the page reloads out from under is not a message.
+  await say(refusal(result.error, "the collection did not accept that"));
   if (result.response.status === 409) window.location.reload();
 };
 
@@ -63,7 +66,7 @@ const asListedKind = (held: string): ListedKind => {
       body: { name, kind: kind === null ? "album" : asListedKind(kind) },
     });
     if (!data) {
-      window.alert(refusal(error, "the collection could not be created"));
+      await say(refusal(error, "the collection could not be created"));
       return;
     }
     window.location.assign(`/t/${data.slug}`);
@@ -82,7 +85,7 @@ const asListedKind = (held: string): ListedKind => {
     event.preventDefault();
     const name = said(editing, "name");
     if (!name) return;
-    landed(
+    await landed(
       await api.PATCH("/t/{slug}", {
         params: { path: { slug } },
         body: {
@@ -102,7 +105,7 @@ const asListedKind = (held: string): ListedKind => {
   };
 
   const archived = async (value: boolean) => {
-    landed(await api.PATCH("/t/{slug}", { params: { path: { slug } }, body: { expected_rev, archived: value } }));
+    await landed(await api.PATCH("/t/{slug}", { params: { path: { slug } }, body: { expected_rev, archived: value } }));
   };
 
   onClick("[data-archive]", () => archived(true));
@@ -117,12 +120,18 @@ const asListedKind = (held: string): ListedKind => {
       wanted === "smart"
         ? ({ kind: "smart", expected_rev } as const)
         : { kind: asListedKind(wanted), expected_rev, discard_rule: false };
-    landed(await api.POST("/t/{slug}/convert", { params: { path: { slug } }, body }));
+    await landed(await api.POST("/t/{slug}/convert", { params: { path: { slug } }, body }));
   });
 
   onClick("[data-discard-rule]", async () => {
-    if (!window.confirm("discard this collection's rule and keep it as a plain album?")) return;
-    landed(
+    const sure = await askYesNo("discard this collection's rule?", {
+      detail: "it keeps every file it holds right now and stops following the question",
+      submit: "discard the rule",
+      dismiss: "keep it",
+      grave: true,
+    });
+    if (!sure) return;
+    await landed(
       await api.POST("/t/{slug}/convert", {
         params: { path: { slug } },
         body: { kind: "album", expected_rev, discard_rule: true },

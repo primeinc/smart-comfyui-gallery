@@ -519,6 +519,68 @@
     return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
   }
 
+  // src/ask.ts
+  var DISMISSED = "";
+  var TAKEN = "ok";
+  var framed = (question, submit, dismiss, said) => ({
+    question,
+    submit: said.submit !== void 0 ? said.submit : submit,
+    dismiss: said.dismiss !== void 0 ? said.dismiss : dismiss,
+    ...said.detail !== void 0 ? { detail: said.detail } : {},
+    ...said.grave !== void 0 ? { grave: said.grave } : {}
+  });
+  var button = (words, value, kind) => {
+    const control = document.createElement("button");
+    control.value = value;
+    control.className = kind;
+    control.textContent = words;
+    return control;
+  };
+  async function ask(asked, build2) {
+    const box = document.createElement("dialog");
+    box.className = "ask-box";
+    box.innerHTML = `<form method="dialog" class="ask-form">
+      <h2 class="ask-question"></h2>
+      <p class="ask-detail" hidden></p>
+      <div class="ask-body"></div>
+      <div class="ask-feet"></div>
+    </form>`;
+    requireElement(box, ".ask-question", HTMLElement).textContent = asked.question;
+    if (asked.detail !== void 0) {
+      const line = requireElement(box, ".ask-detail", HTMLElement);
+      line.textContent = asked.detail;
+      line.hidden = false;
+    }
+    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const feet = requireElement(box, ".ask-feet", HTMLElement);
+    if (asked.submit !== null) {
+      feet.append(button(asked.submit, TAKEN, asked.grave === true ? "ask-take is-grave" : "ask-take"));
+    }
+    if (asked.dismiss !== null) feet.append(button(asked.dismiss, DISMISSED, "ask-drop"));
+    box.addEventListener("click", (event) => {
+      const at = box.getBoundingClientRect();
+      const inside = event.clientX >= at.left && event.clientX <= at.right && event.clientY >= at.top && event.clientY <= at.bottom;
+      if (!inside && event.detail > 0) box.close(DISMISSED);
+    });
+    const answer = new Promise((settle) => {
+      box.addEventListener(
+        "close",
+        () => {
+          const taken = box.returnValue !== DISMISSED ? read() : null;
+          box.remove();
+          settle(taken);
+        },
+        { once: true }
+      );
+    });
+    document.body.append(box);
+    box.showModal();
+    return answer;
+  }
+  async function say(message, framing = {}) {
+    await ask(framed(message, "ok", null, framing), () => () => void 0);
+  }
+
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();
   var spelled = (key) => key.length === 1 ? key.toLowerCase() : key;
@@ -542,7 +604,7 @@
   }
   document.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const command = claimed.get(spelled(event.key));
     if (!command) return;
@@ -556,18 +618,18 @@
     field.style.height = "auto";
     field.style.height = `${field.scrollHeight}px`;
   }
-  async function copied(button, text) {
-    const was = button.textContent;
+  async function copied(button2, text) {
+    const was = button2.textContent;
     try {
       await navigator.clipboard.writeText(text);
-      button.textContent = "copied";
-      button.dataset.done = "true";
+      button2.textContent = "copied";
+      button2.dataset.done = "true";
     } catch {
-      button.textContent = "cannot copy";
+      button2.textContent = "cannot copy";
     }
     setTimeout(() => {
-      button.textContent = was;
-      delete button.dataset.done;
+      button2.textContent = was;
+      delete button2.dataset.done;
     }, 1200);
   }
   function scratchOf(root, named) {
@@ -790,8 +852,8 @@
     const showInspector = (open, arranged = true) => {
       if (!inspector) return;
       root.dataset.inspector = open ? "open" : "closed";
-      for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
-        button.setAttribute("aria-expanded", String(open));
+      for (const button2 of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
+        button2.setAttribute("aria-expanded", String(open));
       }
       if (arranged) remember({ inspector: open ? "open" : "closed" });
     };
@@ -900,17 +962,17 @@
         walk(near.href);
       });
     }
-    for (const button of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
-      onElement(button, "click", () => showInspector(root.dataset.inspector !== "open"));
+    for (const button2 of everyElement(root, "[data-inspector-toggle]", HTMLElement)) {
+      onElement(button2, "click", () => showInspector(root.dataset.inspector !== "open"));
     }
-    for (const button of everyElement(root, "[data-panel-open]", HTMLElement)) {
-      onElement(button, "click", () => {
+    for (const button2 of everyElement(root, "[data-panel-open]", HTMLElement)) {
+      onElement(button2, "click", () => {
         showInspector(true);
-        panel(requireData(button, "panelOpen"));
+        panel(requireData(button2, "panelOpen"));
       });
     }
-    for (const button of everyElement(root, "[data-focus]", HTMLElement)) {
-      onElement(button, "click", focus);
+    for (const button2 of everyElement(root, "[data-focus]", HTMLElement)) {
+      onElement(button2, "click", focus);
     }
     if (inspector) {
       const kept2 = workspace();
@@ -989,10 +1051,10 @@
       const slug = requireData(placeForm, "slug");
       const value = (name) => requireElement(placeForm, `[name="${name}"]`, HTMLInputElement).value.trim();
       const chosen = (name) => requireElement(placeForm, `[name="${name}"]`, HTMLSelectElement).value;
-      const say = async (body) => {
+      const record = async (body) => {
         const { data, error } = await api.POST("/i/{slug}/place", { params: { path: { slug } }, body });
         if (!data) {
-          window.alert(refusal(error, "the place could not be recorded"));
+          await say(refusal(error, "the place could not be recorded"));
           return;
         }
         window.location.reload();
@@ -1002,7 +1064,7 @@
         const name = value("name");
         if (!name) return;
         const within = value("within");
-        void say({
+        void record({
           name,
           kind: asPlaceKind(chosen("kind")),
           within: within || null,
@@ -1010,7 +1072,7 @@
         });
       });
       findElement(placeForm, "[data-place-clear]", HTMLElement)?.addEventListener("click", () => {
-        void say({ name: null, kind: "locality", within: null, within_kind: "country" });
+        void record({ name: null, kind: "locality", within: null, within_kind: "country" });
       });
     }
     const mounted = findElement(document, "[data-viewer]", HTMLElement);
@@ -1173,7 +1235,7 @@
       const name = requireElement(form, '[name="name"]', HTMLInputElement).value;
       const { data, error } = await api.POST("/p/{slug}/name", { params: { path: { slug } }, body: { name } });
       if (!data) {
-        window.alert(refusal(error, "that name was refused"));
+        await say(refusal(error, "that name was refused"));
         return;
       }
       window.location.replace(`/p/${data.slug}`);

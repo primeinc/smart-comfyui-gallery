@@ -16,6 +16,7 @@
 // currency and KEEPS the selection for the next operation; a changed one
 // clears and redraws.
 import { type Answered, answered, api, refusal } from "./api";
+import { say } from "./ask";
 import { closestFrom, findElement, requireData, requireElement } from "./dom";
 import type { components, operations } from "./generated/api";
 
@@ -117,7 +118,7 @@ const asked = (): Question => {
    */
   const settle = (told: Answered<Curated>) => {
     if (!told.ok) {
-      window.alert(told.refusal);
+      void say(told.refusal);
       return;
     }
     const mounted = grid();

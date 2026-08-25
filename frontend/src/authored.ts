@@ -17,6 +17,7 @@
 // desired-state routes are three named calls rather than one function
 // that concatenated a path fragment onto a slug and hoped.
 import { type Answered, answered, api } from "./api";
+import { say } from "./ask";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components, paths } from "./generated/api";
 import { register } from "./keys";
@@ -117,7 +118,7 @@ const settle = async (root: HTMLElement) => {
  */
 const applied = async (root: HTMLElement, told: Answered<AuthoredAnswer>) => {
   if (!told.ok) {
-    window.alert(told.refusal);
+    await say(told.refusal);
     return;
   }
   draw(root, told.data.authored);
@@ -159,7 +160,7 @@ const choices = async (root: HTMLElement) => {
     "the albums could not be read",
   );
   if (!told.ok) {
-    window.alert(told.refusal);
+    await say(told.refusal);
     return;
   }
   const data = told.data;

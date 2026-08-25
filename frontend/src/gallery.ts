@@ -3,6 +3,7 @@
 // page numbers and renders what it is told. Hooks are semantic data
 // attributes, never style classes.
 import { api, refusal } from "./api";
+import { askChoice, askText, say } from "./ask";
 import { closestFrom, everyElement, findElement, isPlainClick, requireData, requireElement } from "./dom";
 import { mountAnalyze } from "./analyze";
 import { mountEndless } from "./endless";
@@ -134,12 +135,16 @@ const asked = (spelled: string, take: number | null): Rule => {
   const saver = findElement(document, "[data-save-smart]", HTMLElement);
   saver?.addEventListener("click", async () => {
     const spelled = spelling();
-    const name = window.prompt("name this smart collection");
-    if (!name) return;
+    const name = await askText("name this smart collection", {
+      detail: "the question you are looking at becomes its rule, and its members follow the library",
+      placeholder: "portraits from June",
+      label: "collection name",
+    });
+    if (name === null) return;
     const take = cutoff(spelled);
     const { data, error } = await api.POST("/albums/smart", { body: { name, ...asked(spelled, take) } });
     if (!data) {
-      window.alert(refusal(error, "the view could not be saved"));
+      await say(refusal(error, "the view could not be saved"));
       return;
     }
     window.location.assign(`/t/${data.slug}`);
@@ -153,22 +158,27 @@ const asked = (spelled: string, take: number | null): Rule => {
   replacer?.addEventListener("click", async () => {
     const shelf = await api.GET("/albums", { headers: { accept: "application/json" } });
     const smarts = (shelf.data ?? []).filter((held) => held.kind === "smart");
-    const first = smarts[0];
-    if (first === undefined) {
-      window.alert("no smart collection exists yet -- save the view as a new one instead");
+    if (smarts.length === 0) {
+      await say("no smart collection exists yet", {
+        detail: "save this view as a new one instead, and it will be here to replace next time",
+      });
       return;
     }
-    const named = window.prompt(
-      `replace the rule of which smart collection?\n${smarts.map((held) => held.slug).join(", ")}`,
-      first.slug,
+    // Names, with the address underneath. The prompt this replaced pasted
+    // the SLUGS into its question and asked for one back, which meant
+    // knowing the internal spelling of a thing you had named yourself.
+    const named = await askChoice(
+      "replace the rule of which smart collection?",
+      smarts.map((held) => ({ value: held.slug, label: held.name, note: `/t/${held.slug}` })),
+      { detail: "its members become whatever this question answers, from now on" },
     );
-    if (!named) return;
+    if (named === null) return;
     const current = await api.GET("/t/{slug}", {
       params: { path: { slug: named } },
       headers: { accept: "application/json" },
     });
     if (!current.data) {
-      window.alert(`no collection at /t/${named}`);
+      await say(`no collection at /t/${named}`);
       return;
     }
     const spelled = spelling();
@@ -178,7 +188,7 @@ const asked = (spelled: string, take: number | null): Rule => {
       body: { expected_rev: current.data.definition_rev, ...asked(spelled, take) },
     });
     if (!data) {
-      window.alert(refusal(error, "the rule could not be replaced"));
+      await say(refusal(error, "the rule could not be replaced"));
       return;
     }
     window.location.assign(`/t/${data.slug}`);

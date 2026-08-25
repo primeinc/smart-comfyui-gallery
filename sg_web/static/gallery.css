@@ -3509,3 +3509,125 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
   background: var(--accent);
   color: var(--ground);
 }
+
+/* --- asking a person something --------------------------------------
+   The native <dialog>, dressed. What is NOT here is the interesting
+   part: no z-index, no backdrop element, no focus trap, no Escape
+   handler, no scroll lock. A modal dialog is in the top layer, above
+   every stacking context on the page, and the browser owns the rest
+   (frontend/src/ask.ts). */
+.ask-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 0;
+  width: max-content;
+}
+.ask-box::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.ask-form {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 16px;
+}
+.ask-question {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+.ask-detail {
+  color: var(--ink-muted);
+  font-size: 13px;
+  margin: -8px 0 0;
+}
+.ask-body:empty {
+  display: none;
+}
+.ask-field {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 8px 10px;
+  width: 100%;
+}
+.ask-field:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+/* Every choice is its own submit button, so this is a list of them.
+   Bounded height because a library can hold a lot of collections and a
+   dialog taller than the window has no scrollbar of its own. */
+.ask-choices {
+  display: grid;
+  gap: 6px;
+  max-height: min(340px, 50vh);
+  overflow-y: auto;
+}
+.ask-choice {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+}
+.ask-choice:hover,
+.ask-choice:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.ask-choice-note {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.ask-feet {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+/* The affirmative is FIRST in the document, because implicit submission
+   -- Enter in the text field -- picks the first submit button in tree
+   order and a person typing a name means save. It belongs last on the
+   screen, so the dismissal is ordered before it here rather than the
+   markup being written the wrong way round. */
+.ask-drop {
+  order: -1;
+}
+.ask-take,
+.ask-drop {
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 14px;
+}
+.ask-take {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--ground);
+  font-weight: 600;
+}
+.ask-take.is-grave {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--ink);
+}
+.ask-drop {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+}
+.ask-drop:hover,
+.ask-drop:focus-visible {
+  color: var(--ink);
+  outline: none;
+}

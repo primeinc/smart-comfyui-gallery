@@ -135,11 +135,15 @@ def test_the_save_view_button_keeps_every_facet(page: Page, live: Live):
     button sends every `f` the mounted answer carries, and the saved
     collection's words name both."""
     asked = "/g?f=context.local_day%3Aeq%3A2023-06-10&f=context.origin%3Aeq%3Aimported"
-    page.on("dialog", lambda dialog: dialog.accept("Two facets"))
     page.goto(asked)
     page.wait_for_selector("[data-grid]", timeout=10_000)
     assert int(page.get_attribute("[data-grid]", "data-total") or 0) == FILES
     page.click("[data-save-smart]")
+    # The application's own dialog, not the browser's: an autofocused
+    # field and Enter (tests/test_the_application_asks_in_its_own_words.py).
+    page.wait_for_selector("dialog.ask-box[open]", timeout=10_000)
+    page.keyboard.type("Two facets")
+    page.keyboard.press("Enter")
     page.wait_for_url("**/t/*", timeout=20_000)
     slug = page.url.rsplit("/t/", 1)[1].split("?", 1)[0]
     told = live.api.get(f"/t/{slug}", headers={"accept": "application/json"}).json()

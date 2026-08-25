@@ -486,6 +486,13 @@
   }
 
   // src/dom.ts
+  function requireElement(root, selector, type) {
+    const found = root.querySelector(selector);
+    if (!(found instanceof type)) {
+      throw new Error(`expected ${selector} to be ${type.name}, found ${describe(found)}`);
+    }
+    return found;
+  }
   function findElement(root, selector, type) {
     const found = root.querySelector(selector);
     return found instanceof type ? found : null;
@@ -505,14 +512,82 @@
     }
     return held;
   }
+  function describe(found) {
+    return found === null ? "nothing" : found.constructor.name;
+  }
+
+  // src/ask.ts
+  var DISMISSED = "";
+  var TAKEN = "ok";
+  var framed = (question, submit, dismiss, said2) => ({
+    question,
+    submit: said2.submit !== void 0 ? said2.submit : submit,
+    dismiss: said2.dismiss !== void 0 ? said2.dismiss : dismiss,
+    ...said2.detail !== void 0 ? { detail: said2.detail } : {},
+    ...said2.grave !== void 0 ? { grave: said2.grave } : {}
+  });
+  var button = (words, value, kind) => {
+    const control = document.createElement("button");
+    control.value = value;
+    control.className = kind;
+    control.textContent = words;
+    return control;
+  };
+  async function ask(asked, build2) {
+    const box = document.createElement("dialog");
+    box.className = "ask-box";
+    box.innerHTML = `<form method="dialog" class="ask-form">
+      <h2 class="ask-question"></h2>
+      <p class="ask-detail" hidden></p>
+      <div class="ask-body"></div>
+      <div class="ask-feet"></div>
+    </form>`;
+    requireElement(box, ".ask-question", HTMLElement).textContent = asked.question;
+    if (asked.detail !== void 0) {
+      const line = requireElement(box, ".ask-detail", HTMLElement);
+      line.textContent = asked.detail;
+      line.hidden = false;
+    }
+    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const feet = requireElement(box, ".ask-feet", HTMLElement);
+    if (asked.submit !== null) {
+      feet.append(button(asked.submit, TAKEN, asked.grave === true ? "ask-take is-grave" : "ask-take"));
+    }
+    if (asked.dismiss !== null) feet.append(button(asked.dismiss, DISMISSED, "ask-drop"));
+    box.addEventListener("click", (event) => {
+      const at = box.getBoundingClientRect();
+      const inside = event.clientX >= at.left && event.clientX <= at.right && event.clientY >= at.top && event.clientY <= at.bottom;
+      if (!inside && event.detail > 0) box.close(DISMISSED);
+    });
+    const answer = new Promise((settle) => {
+      box.addEventListener(
+        "close",
+        () => {
+          const taken = box.returnValue !== DISMISSED ? read() : null;
+          box.remove();
+          settle(taken);
+        },
+        { once: true }
+      );
+    });
+    document.body.append(box);
+    box.showModal();
+    return answer;
+  }
+  async function say(message, framing = {}) {
+    await ask(framed(message, "ok", null, framing), () => () => void 0);
+  }
+  async function askYesNo(question, framing = {}) {
+    return await ask(framed(question, "yes", "no", framing), () => () => true) === true;
+  }
 
   // src/collection.ts
-  var landed = (result) => {
+  var landed = async (result) => {
     if (result.data) {
       window.location.assign(`/t/${result.data.slug}`);
       return;
     }
-    window.alert(refusal(result.error, "the collection did not accept that"));
+    await say(refusal(result.error, "the collection did not accept that"));
     if (result.response.status === 409) window.location.reload();
   };
   var said = (form, name) => {
@@ -536,7 +611,7 @@
         body: { name, kind: kind === null ? "album" : asListedKind(kind) }
       });
       if (!data) {
-        window.alert(refusal(error, "the collection could not be created"));
+        await say(refusal(error, "the collection could not be created"));
         return;
       }
       window.location.assign(`/t/${data.slug}`);
@@ -550,7 +625,7 @@
       event.preventDefault();
       const name = said(editing, "name");
       if (!name) return;
-      landed(
+      await landed(
         await api.PATCH("/t/{slug}", {
           params: { path: { slug } },
           body: {
@@ -563,23 +638,29 @@
         })
       );
     });
-    const onClick = (selector, ask) => {
+    const onClick = (selector, ask2) => {
       const control = findElement(root, selector, HTMLElement);
-      control?.addEventListener("click", () => void ask(control));
+      control?.addEventListener("click", () => void ask2(control));
     };
     const archived = async (value) => {
-      landed(await api.PATCH("/t/{slug}", { params: { path: { slug } }, body: { expected_rev, archived: value } }));
+      await landed(await api.PATCH("/t/{slug}", { params: { path: { slug } }, body: { expected_rev, archived: value } }));
     };
     onClick("[data-archive]", () => archived(true));
     onClick("[data-restore]", () => archived(false));
     onClick("[data-convert]", async (control) => {
       const wanted = requireData(control, "convert");
       const body = wanted === "smart" ? { kind: "smart", expected_rev } : { kind: asListedKind(wanted), expected_rev, discard_rule: false };
-      landed(await api.POST("/t/{slug}/convert", { params: { path: { slug } }, body }));
+      await landed(await api.POST("/t/{slug}/convert", { params: { path: { slug } }, body }));
     });
     onClick("[data-discard-rule]", async () => {
-      if (!window.confirm("discard this collection's rule and keep it as a plain album?")) return;
-      landed(
+      const sure = await askYesNo("discard this collection's rule?", {
+        detail: "it keeps every file it holds right now and stops following the question",
+        submit: "discard the rule",
+        dismiss: "keep it",
+        grave: true
+      });
+      if (!sure) return;
+      await landed(
         await api.POST("/t/{slug}/convert", {
           params: { path: { slug } },
           body: { kind: "album", expected_rev, discard_rule: true }
@@ -1260,7 +1341,7 @@
   }
   document.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const command = claimed.get(spelled(event.key));
     if (!command) return;

@@ -81,8 +81,18 @@ export function claimant(key: string): string | null {
 document.addEventListener("keydown", (event) => {
   // Somebody typing means the letters: a place name with an "L" in it is
   // not a request to turn the lights out.
+  //
+  // `dialog[open]` is the same rule for a different reason: a modal
+  // dialog (frontend/src/ask.ts) owns the keyboard while it is up.
+  //
+  // Escape is the sharp case, and it fails the opposite way round from
+  // what it looks like. A claimed key is PREVENTED here, and a modal
+  // dialog closes on Escape as the default action of a close request --
+  // so without this, the overlay's Escape ran (the viewer quietly
+  // unwound behind the dialog) and the cancel was swallowed: the dialog
+  // stayed up, unclosable by the one key every modal answers to.
   const target = event.target;
-  if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+  if (target instanceof Element && target.closest("input, textarea, select, [contenteditable], dialog[open]")) return;
   // A held modifier is a different vocabulary -- the browser's, or the
   // viewer's wheel -- and never a command here.
   if (event.ctrlKey || event.metaKey || event.altKey) return;
