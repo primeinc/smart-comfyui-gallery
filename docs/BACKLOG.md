@@ -572,30 +572,24 @@ not a design decision anybody made; it is work nobody did.
   one authored table whose subject is disposable. Nothing writes it but
   a test.
 
-  Three things it should become, and they are separable:
+  The first of three is BUILT for captions: a thumb beside the sentence
+  in the inspector, one click, retract by clicking the lit one, and
+  `feedback` carries the producer it judged (v34) so the aggregate below
+  is possible at all. What is left:
 
-  1. **A thumb where the claim is SHOWN.** Not a review queue -- a
-     queue is a chore nobody does. The caption in the inspector, the
-     face chip on a picture, a duplicate group, a similar-to row: each
-     already renders a derived claim, and each is where somebody
-     already knows the answer. One click, no dialog, no confirmation,
-     reversible by clicking again. Minimally intrusive means it costs
-     nothing to ignore and one gesture to use.
+  1. **The other three things it can judge.** Only the annotation arm
+     has a route. A face chip on a picture, a duplicate group and a
+     similar-to row each render a derived claim with nowhere to say it
+     is wrong -- and the person arm is the one that matters most,
+     because "not her" has to constrain clustering rather than only
+     being counted (see above).
   2. **An aggregate that says what to change.** "BLIP base: 340
      captions, 41 judged wrong" is the number that tells a person to
      try another model; "arcface at 0.48: 12 merges rejected" tells
-     them to move a knob. This is the honest reason to collect
-     verdicts at all, and it is what makes the two entries below
-     actionable rather than a settings page nobody knows how to set.
-
-     One concrete gap in the way: `feedback` deliberately records
-     `annotation_kind` rather than the annotation's row, so it survives
-     the rebuild -- but that means it does NOT record which model
-     produced the thing judged. `derived_annotation` carries
-     `model_id`/`model_version`; the verdict must copy them at
-     judgement time, or after the next rebuild no verdict can be
-     attributed to the producer it was about, and the aggregate above
-     is unbuildable.
+     them to move a knob. This is the honest reason to collect verdicts
+     at all, and it is what makes the two entries below actionable
+     rather than a settings page nobody knows how to set. Nothing reads
+     the verdicts yet.
   3. **Exportable without the pictures.** Verdicts are the cheapest
      valuable thing this application accumulates and the easiest to
      share safely: a row is a producer identity, a kind, a verdict, a
