@@ -1211,10 +1211,10 @@
       body.dataset.state = "failed";
     }
   }
-  async function drawParamValues(body, param, label) {
+  async function drawParamValues(body, param, label2) {
     const said = document.createElement("p");
     said.className = "filter-note";
-    said.textContent = `${label} \u2014 counting\u2026`;
+    said.textContent = `${label2} \u2014 counting\u2026`;
     body.replaceChildren(said);
     body.dataset.state = "counting";
     body.dataset.param = param;
@@ -1227,14 +1227,14 @@
       told = await answered2.json();
     } catch {
       said.className = "filter-note warn";
-      said.textContent = `could not count ${label}`;
+      said.textContent = `could not count ${label2}`;
       body.dataset.state = "failed";
       return;
     }
     body.replaceChildren();
     const naming = document.createElement("p");
     naming.className = "filter-note";
-    naming.textContent = `${label} \xB7 ${param}`;
+    naming.textContent = `${label2} \xB7 ${param}`;
     body.append(naming);
     const list = document.createElement("ul");
     list.className = "filter-list";
@@ -1278,7 +1278,7 @@
     const typed = document.createElement("input");
     typed.type = "text";
     typed.value = `${param}=`;
-    typed.setAttribute("aria-label", `${label}, written key equals value`);
+    typed.setAttribute("aria-label", `${label2}, written key equals value`);
     const apply = document.createElement("button");
     apply.type = "submit";
     apply.textContent = "apply";
@@ -2717,15 +2717,15 @@
       frame.className = "compare-frame";
       const shown = playable(one);
       frame.append(shown);
-      const label = document.createElement("figcaption");
+      const label2 = document.createElement("figcaption");
       const named = document.createElement("b");
       named.className = "compare-letter";
       named.textContent = letter(at2);
       const link = document.createElement("a");
       link.href = `/i/${one.slug}`;
       link.textContent = one.name;
-      label.append(named, link);
-      column.append(frame, label);
+      label2.append(named, link);
+      column.append(frame, label2);
       strip2.append(column);
     }
     sheet.append(bar, strip2);
@@ -2912,5 +2912,36 @@
 
   // src/compare-mount.ts
   mountCompare(document.body);
+
+  // src/pictures.ts
+  function label(kind) {
+    const said = document.createElement("span");
+    said.className = "cell-kind";
+    said.dataset.cellKind = kind ?? "";
+    said.dataset.brokenPicture = "";
+    said.setAttribute("aria-hidden", "true");
+    said.textContent = kind === "audio" ? "audio" : "doc";
+    return said;
+  }
+  function mountPictures() {
+    document.addEventListener(
+      "error",
+      (event) => {
+        const broken = event.target;
+        if (!(broken instanceof HTMLImageElement)) return;
+        const src = broken.getAttribute("src") ?? "";
+        if (!src.startsWith("/thumbs/") && !src.startsWith("/thumb/") && !src.startsWith("/preview/")) return;
+        if (!broken.isConnected) return;
+        const holder = broken.closest("[data-kind]");
+        const kind = holder instanceof HTMLElement ? holder.dataset.kind : void 0;
+        broken.replaceWith(label(kind));
+      },
+      // The capture phase, because `error` on an <img> does not bubble.
+      true
+    );
+  }
+
+  // src/pictures-mount.ts
+  mountPictures();
 })();
 //# sourceMappingURL=gallery.js.map

@@ -989,16 +989,16 @@
       }
       const rail = findElement(swap, "[data-scrubber]", HTMLElement);
       const img = findElement(card, "img", HTMLImageElement);
-      const label = findElement(card, ".scrubber-peek-label", HTMLElement);
+      const label2 = findElement(card, ".scrubber-peek-label", HTMLElement);
       const count = findElement(card, ".scrubber-peek-count", HTMLElement);
-      if (!rail || !img || !label || !count) return;
+      if (!rail || !img || !label2 || !count) return;
       const box = rail.getBoundingClientRect();
       card.hidden = false;
       card.style.top = `${Math.min(box.height - 60, Math.max(40, y - box.top))}px`;
       if (!Number(seg.dataset.pictures)) {
         img.removeAttribute("src");
         img.hidden = true;
-        label.textContent = seg.dataset.label ?? "";
+        label2.textContent = seg.dataset.label ?? "";
         count.textContent = "nothing";
         return;
       }
@@ -1006,7 +1006,7 @@
         if (!told) return;
         img.src = told.thumb ?? "";
         img.hidden = false;
-        label.textContent = told.spelled;
+        label2.textContent = told.spelled;
         count.textContent = `${(told.k + 1).toLocaleString()} of ${told.of.toLocaleString()}`;
         let best = null;
         let nearest = Number.POSITIVE_INFINITY;
@@ -1307,15 +1307,15 @@
       frame.className = "compare-frame";
       const shown = playable(one);
       frame.append(shown);
-      const label = document.createElement("figcaption");
+      const label2 = document.createElement("figcaption");
       const named = document.createElement("b");
       named.className = "compare-letter";
       named.textContent = letter(at2);
       const link = document.createElement("a");
       link.href = `/i/${one.slug}`;
       link.textContent = one.name;
-      label.append(named, link);
-      column.append(frame, label);
+      label2.append(named, link);
+      column.append(frame, label2);
       strip.append(column);
     }
     sheet.append(bar, strip);
@@ -1502,5 +1502,36 @@
 
   // src/compare-mount.ts
   mountCompare(document.body);
+
+  // src/pictures.ts
+  function label(kind) {
+    const said = document.createElement("span");
+    said.className = "cell-kind";
+    said.dataset.cellKind = kind ?? "";
+    said.dataset.brokenPicture = "";
+    said.setAttribute("aria-hidden", "true");
+    said.textContent = kind === "audio" ? "audio" : "doc";
+    return said;
+  }
+  function mountPictures() {
+    document.addEventListener(
+      "error",
+      (event) => {
+        const broken = event.target;
+        if (!(broken instanceof HTMLImageElement)) return;
+        const src = broken.getAttribute("src") ?? "";
+        if (!src.startsWith("/thumbs/") && !src.startsWith("/thumb/") && !src.startsWith("/preview/")) return;
+        if (!broken.isConnected) return;
+        const holder = broken.closest("[data-kind]");
+        const kind = holder instanceof HTMLElement ? holder.dataset.kind : void 0;
+        broken.replaceWith(label(kind));
+      },
+      // The capture phase, because `error` on an <img> does not bubble.
+      true
+    );
+  }
+
+  // src/pictures-mount.ts
+  mountPictures();
 })();
 //# sourceMappingURL=timeline.js.map
