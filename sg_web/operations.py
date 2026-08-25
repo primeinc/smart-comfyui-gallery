@@ -39,6 +39,7 @@ from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
 from db import (
+    authored,
     connect,
     derived,
     inspecting,
@@ -505,6 +506,66 @@ class MatrixRow(Wire):
     #: it is waiting its turn, which is a different thing and the console
     #: must not show them alike.
     after_id: int | None = None
+
+
+class Named(Wire):
+    """A person, by the address their pictures name them at."""
+
+    slug: str
+    name: str
+
+
+class Shelved(Wire):
+    """One collection, and the collection it sits under -- both by slug,
+    so a shelf rebuilds from this alone."""
+
+    slug: str
+    name: str
+    kind: str
+    parent: str | None
+
+
+class Box(Wire):
+    """Where in the picture, in fractions of it."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class Appears(Wire):
+    """A person in a picture, or expressly NOT in it.
+
+    `stance` rides along because a negative is a claim here rather than
+    the absence of one: "not her" survives a rebuild and constrains the
+    next clustering, and an export that dropped it would hand back a
+    library that starts making the same mistake again.
+    """
+
+    person: str
+    stance: str
+    region: Box | None
+
+
+class Picture(Wire):
+    """What somebody said about one photograph, named by its bytes."""
+
+    sha256: str
+    name: str
+    rating: int | None
+    favorite: bool
+    place: str | None
+    collections: list[str]
+    people: list[Appears]
+
+
+class Authored(Wire):
+    """Everything a person told this library about their own pictures."""
+
+    people: list[Named]
+    collections: list[Shelved]
+    pictures: list[Picture]
 
 
 class VerdictRow(Wire):
@@ -1422,6 +1483,47 @@ def compare_clusterings(state: State, left: FromPath[int], right: FromPath[int])
     )
 
 
+@get("/export/authored.json", sync_to_thread=True)
+def export_authored(state: State) -> Response[Authored]:
+    """Everything you told this library about your own pictures.
+
+    The opposite shape from the verdict export beside it, and
+    deliberately. That one is for SHARING, so it carries no name and no
+    path. This one is for CUSTODY: it is yours, it is about your
+    pictures, and an export that withheld the names would be withholding
+    them from their owner. An application about keeping your own data
+    must not be the only place your understanding can exist.
+
+    Keyed by `content_sha256` and never by a row id, which is the
+    difference between an export and a dump: an id belongs to one
+    database file, a hash names the same photograph in any library that
+    holds it. Only pictures carrying something authored -- a library is
+    mostly pictures nobody has said anything about.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        told = authored.exported(conn)
+    finally:
+        connect.close(conn)
+    return Response(
+        content=Authored(
+            people=[Named(**one) for one in told["people"]],
+            collections=[Shelved(**one) for one in told["collections"]],
+            pictures=[
+                Picture(
+                    **one | {"people": [Appears(**who | {"region": _boxed(who["region"])}) for who in one["people"]]}
+                )
+                for one in told["pictures"]
+            ],
+        ),
+        headers={"content-disposition": 'attachment; filename="authored.json"', **VARIES},
+    )
+
+
+def _boxed(region: dict | None) -> Box | None:
+    return None if region is None else Box(**region)
+
+
 @get("/export/verdicts.json", sync_to_thread=True)
 def export_verdicts(state: State, include: FromQuery[str] = "") -> Response[list[VerdictRow]]:
     """Every verdict, as an eval set that carries no pictures.
@@ -1496,6 +1598,7 @@ router = Router(
         choose_primary,
         compare_clusterings,
         export_verdicts,
+        export_authored,
         set_schedule,
         stop_collection,
     ],

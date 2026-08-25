@@ -1862,6 +1862,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/operations/export/authored.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ExportAuthored */
+        get: operations["OperationsExportAuthoredJsonExportAuthored"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations/schedules/{collection}": {
         parameters: {
             query?: never;
@@ -1919,6 +1936,12 @@ export interface components {
             currency: string;
             total: number;
         };
+        /** Appears */
+        Appears: {
+            person: string;
+            stance: string;
+            region: components["schemas"]["Box"] | null;
+        };
         /** AskedView */
         AskedView: {
             name: string;
@@ -1932,6 +1955,12 @@ export interface components {
             data: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** Authored */
+        Authored: {
+            people: components["schemas"]["Named"][];
+            collections: components["schemas"]["Shelved"][];
+            pictures: components["schemas"]["Picture"][];
         };
         /** AuthoredAnswer */
         AuthoredAnswer: {
@@ -1951,6 +1980,13 @@ export interface components {
             events: components["schemas"]["Event"][];
             after: number;
             last_id: number;
+        };
+        /** Box */
+        Box: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
         };
         /** BrowsingContext */
         BrowsingContext: {
@@ -2781,6 +2817,11 @@ export interface components {
             folded: string;
             assertions: number;
         };
+        /** Named */
+        Named: {
+            slug: string;
+            name: string;
+        };
         /** NamedItem */
         NamedItem: {
             id: number;
@@ -2910,6 +2951,16 @@ export interface components {
             avatar: string | null;
             first_seen: number | null;
             last_seen: number | null;
+        };
+        /** Picture */
+        Picture: {
+            sha256: string;
+            name: string;
+            rating: number | null;
+            favorite: boolean;
+            place: string | null;
+            collections: string[];
+            people: components["schemas"]["Appears"][];
         };
         /** Pixels */
         Pixels: {
@@ -3116,6 +3167,13 @@ export interface components {
             data: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** Shelved */
+        Shelved: {
+            slug: string;
+            name: string;
+            kind: string;
+            parent: string | null;
         };
         /** SmartBroken */
         SmartBroken: {
@@ -7745,6 +7803,26 @@ export interface operations {
                             [key: string]: unknown;
                         } | unknown[];
                     };
+                };
+            };
+        };
+    };
+    OperationsExportAuthoredJsonExportAuthored: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Authored"];
                 };
             };
         };

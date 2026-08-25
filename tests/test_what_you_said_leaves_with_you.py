@@ -1,0 +1,208 @@
+"""Deleting the application must not delete the understanding.
+
+An application whose thesis is custody of your own data cannot be the
+only place that data can exist. Names, ratings, places, albums and who
+is in what live in `gallery.db` and nowhere else, so this is the way
+out: everything a person told this library about their own pictures, as
+one document.
+
+The opposite shape from the verdict export beside it, and deliberately.
+That one is for SHARING, so it carries no name and no path. This one is
+for CUSTODY -- it is yours, it is about your pictures, and an export
+that withheld the names would be withholding them from their owner.
+
+Keyed by `content_sha256` and never by a row id, which is the whole
+difference between an export and a dump: an id belongs to one database
+file, a hash names the same photograph in any library that holds it.
+
+This is the OUT half. Reading one back in is a different problem with
+its own conflicts to resolve, and XMP sidecars -- what another DAM could
+read -- are untouched.
+"""
+
+from __future__ import annotations
+
+import pytest
+from litestar.testing import TestClient
+from PIL import Image
+
+from db import authored, collections, connect, derived
+from sg_web.app import build_app
+
+pytestmark = pytest.mark.slow
+
+
+@pytest.fixture
+def said(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(4):
+        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
+        who = int(
+            conn.execute(
+                "INSERT INTO user(username, password_hash, role, created_at) VALUES('ana', 'x', 'USER', 0) RETURNING id"
+            ).fetchone()[0]
+        )
+        sarah = authored.person(conn, "Sarah", 0.0)
+        where = derived.region(conn, 0.1, 0.2, 0.3, 0.4)
+        # p0: rated, favourited, filed, and Sarah is in it, with a box
+        conn.execute(
+            "INSERT INTO person_assertion(person_id, file_id, region_id, user_id, created_at, stance)"
+            " VALUES(?, ?, ?, ?, 0, 'is')",
+            (sarah, ids[0], where, who),
+        )
+        conn.execute("INSERT INTO rating VALUES(?, ?, 5, 0)", (ids[0], who))
+        conn.execute("INSERT INTO favorite VALUES(?, ?, 0)", (ids[0], who))
+        trips = collections.collection(conn, "Trips", 0.0)
+        iowa = collections.collection(conn, "Iowa 2019", 0.0, parent_id=trips)
+        conn.execute("INSERT INTO collection_file VALUES(?, ?, 0)", (iowa, ids[0]))
+        # p1: Sarah is expressly NOT in it
+        conn.execute(
+            "INSERT INTO person_assertion(person_id, file_id, user_id, created_at, stance)"
+            " VALUES(?, ?, ?, 0, 'is_not')",
+            (sarah, ids[1], who),
+        )
+        # p2 and p3: nobody has said anything at all
+        conn.commit()
+        yield client, conn, ids
+        connect.close(conn)
+
+
+def _exported(client) -> dict:
+    told = client.get("/operations/export/authored.json")
+    assert told.status_code == 200, told.text
+    return told.json()
+
+
+def test_it_carries_what_a_person_said_about_a_picture(said):
+    """The whole document, on one photograph: the stars, the flag, the
+    album it is filed in and who is in it."""
+    client, _conn, _ids = said
+    told = _exported(client)
+
+    assert told["people"] == [{"slug": "sarah", "name": "Sarah"}]
+    picture = next(one for one in told["pictures"] if one["name"] == "p0.png")
+    assert picture["rating"] == 5
+    assert picture["favorite"] is True
+    assert picture["collections"] == ["iowa-2019"]
+    assert picture["people"] == [
+        {"person": "sarah", "stance": "is", "region": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}}
+    ]
+    assert len(picture["sha256"]) == 64
+
+
+def test_a_picture_is_named_by_its_bytes_and_not_by_a_row_number(said):
+    """The difference between an export and a dump. An id belongs to one
+    database file; a hash names the same photograph in any library that
+    holds it, which is what lets this be read back at all."""
+    client, conn, ids = said
+    told = _exported(client)
+    shas = {one["sha256"] for one in told["pictures"]}
+    assert shas == {
+        sha
+        for (sha,) in conn.execute(
+            "SELECT content_sha256 FROM file WHERE id IN (?, ?)",
+            (ids[0], ids[1]),
+        )
+    }
+    for one in told["pictures"]:
+        assert "id" not in one
+        assert "file_id" not in one
+
+
+def test_pictures_nobody_has_said_anything_about_are_not_listed(said):
+    """A library is mostly pictures nobody has touched. A hundred
+    thousand rows of `rating: null` would bury the few hundred that are
+    the understanding."""
+    client, _conn, _ids = said
+    told = _exported(client)
+    names = {one["name"] for one in told["pictures"]}
+    assert names == {"p0.png", "p1.png"}, sorted(names)
+
+
+def test_a_negative_claim_leaves_with_the_rest(said):
+    """ "Not her" is a CLAIM here rather than the absence of one: it
+    survives a rebuild and constrains the next clustering. An export
+    that dropped it would hand back a library that starts making the
+    same mistake again."""
+    client, _conn, _ids = said
+    told = _exported(client)
+    denied = next(one for one in told["pictures"] if one["name"] == "p1.png")
+    assert denied["people"] == [{"person": "sarah", "stance": "is_not", "region": None}]
+
+
+def test_the_shelf_rebuilds_from_slugs_alone(said):
+    """A collection's parent is named the way a picture names its
+    collection -- by slug -- so the nesting is in the document rather
+    than in the ids it came from."""
+    client, _conn, _ids = said
+    told = _exported(client)
+    by_slug = {one["slug"]: one for one in told["collections"]}
+    assert by_slug["iowa-2019"]["parent"] == "trips"
+    assert by_slug["trips"]["parent"] is None
+    # and every parent named is a collection the document also carries
+    for one in told["collections"]:
+        assert one["parent"] is None or one["parent"] in by_slug
+
+
+def test_every_person_a_picture_names_is_in_the_document(said):
+    """A slug with nothing to resolve it against is not portable."""
+    client, _conn, _ids = said
+    told = _exported(client)
+    known = {one["slug"] for one in told["people"]}
+    for picture in told["pictures"]:
+        for who in picture["people"]:
+            assert who["person"] in known, f"{who['person']} is named and never introduced"
+        for album in picture["collections"]:
+            assert album in {one["slug"] for one in told["collections"]}
+
+
+def test_it_says_the_names_because_they_are_yours(said):
+    """The deliberate difference from the verdict export beside it. That
+    one shares and so carries no name; this one is custody, and
+    withholding a person's own names from them would be the defect."""
+    client, _conn, _ids = said
+    body = client.get("/operations/export/authored.json").text
+    assert "Sarah" in body
+    assert "Iowa 2019" in body
+    assert "p0.png" in body
+
+
+def test_an_untouched_library_exports_an_empty_document(tmp_path):
+    """Nothing said yet is a real state, and the answer is a document
+    with nothing in it rather than a refusal."""
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        told = client.get("/operations/export/authored.json")
+        assert told.status_code == 200
+        assert told.json() == {"people": [], "collections": [], "pictures": []}
+
+
+def test_both_exports_are_offered_before_anything_has_been_judged(tmp_path):
+    """The defect this test found when it was written.
+
+    Both links first went inside the verdict panel, which only renders
+    once somebody has judged something -- so on a fresh library there
+    was no way out at all, which is the case where a person is most
+    likely to be deciding whether they trust this with their pictures.
+    They live in their own section now.
+    """
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert "data-operations-export" in page
+    assert "data-export-authored" in page
+    assert "data-export-verdicts" in page, "the verdict export was hidden until a verdict existed"
+
+
+def test_it_is_offered_beside_the_one_that_shares(said):
+    """Two exports, opposite shapes, next to each other -- which is how
+    somebody sees that they are different things."""
+    client, _conn, _ids = said
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert "data-export-authored" in page
+    assert 'href="/operations/export/authored.json"' in page
+    assert "data-export-verdicts" in page

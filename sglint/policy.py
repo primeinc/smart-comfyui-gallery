@@ -170,6 +170,14 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     # connection through it.
     "sg_web/operations.py": frozenset(
         {
+            # The authored layer, READ, for the export that makes it
+            # portable. Admitted on the narrowest terms: this module
+            # calls `authored.exported` and nothing else there, because
+            # an application whose thesis is custody of your own data
+            # must not be the only place that data can exist -- and the
+            # console is where a person looks for "take this with me".
+            # Authoring itself stays in the media and person adapters.
+            "authored",
             "connect",
             "derived",
             "inspecting",

@@ -444,6 +444,31 @@ consequences the architecture should keep room for, not work.
   the folder writes belong inside the file writes' savepoint. That is
   the invariant to argue with before touching this.
 
+  **And there is a second route, which this entry did not have.**
+  Measured 2026-08-25, 15,000 new rows, two runs per arm: the write
+  half is not the write, it is the TRIGGERS.
+
+      as shipped                     88.8 us/file
+      without the name_fts trigger   51.2
+      without the generation counter 83.6
+      without the kind check         87.8
+      the bare INSERT, all dropped    9.1
+
+  So 90% of what a first scan holds the lane for is index maintenance,
+  and the filename FTS index is nearly all of it -- keeping only that
+  one costs 83.2. (The savings do not add up because SQLite pays most
+  of the trigger cost for having ANY trigger on the statement; drop one
+  of three and the machinery still runs.)
+
+  That makes deferring the FTS population -- once per scan rather than
+  once per row -- an alternative to splitting the transaction, and a
+  different trade: it costs "filename search is behind during a scan"
+  instead of "a scan is one atomic reconciliation". Which is the better
+  price is a real question, and it is now a question with numbers.
+
+  Whichever is chosen, `mint` is not the problem: 14.8 us of the 108,
+  and its collision probe is 4.7 of that.
+
 - ~~**`neighborhood`'s test matrix is short two cases.**~~ Both written,
   and the filmstrip was right under both -- no bug, and now it cannot
   regress unnoticed.
@@ -570,22 +595,55 @@ not a design decision anybody made; it is work nobody did.
   inside a screenshot, a receipt or a document is a whole modality
   missing. Immich searches it as a first-class field.
 
-- **Tags and keywords.** `said.kind = 'tag'` is likewise permitted and
-  likewise never written, and `db/vocabulary.py` has no tag dimension
-  at all -- 41 dimensions and not one of them is the oldest idea in
-  digital asset management. Every serious DAM has hierarchical
-  keywords; this has people, places, albums and generation entities and
-  no free-form vocabulary at all.
+- **Tags and keywords -- which are TWO features, and the schema only
+  permits one of them.** `derived_annotation.kind = 'tag'` is allowed
+  and never written, and `db/vocabulary.py` has no tag dimension at all
+  -- 41 dimensions and not one of them is the oldest idea in digital
+  asset management.
 
-- **Metadata portability, in and out.** There is no export route in
-  `sg_web/app.py`. Names, ratings, places, tags, collections and
-  provenance live only in `gallery.db`, so deleting the application
-  deletes the understanding. This one contradicts the product thesis
-  directly -- an application about custody of your own data must not be
-  the only place your knowledge can exist. XMP sidecars are the boring
-  standard: LibrePhotos round-trips face regions and names as MWG-RS,
-  digiKam edits EXIF/IPTC/XMP in place. Read AND write, so another DAM
-  can see what you decided here.
+  But `derived_annotation` is DERIVED: it requires a `model_id`, a
+  `model_version` and a `source_sha256`, and `derived.drop_all` deletes
+  it wholesale. So the permitted `tag` is a tag a MODEL produced --
+  auto-tagging -- and a keyword somebody TYPED cannot live there at
+  all. Writing one into it would put an authored claim in the
+  disposable namespace, and it would be gone at the next rebuild with
+  nothing recording that it had ever been said.
+
+  A human keyword needs its own authored table, on the same terms as
+  `rating`, `person_assertion` and `file_place`: survives every
+  rebuild, points at a file, signed by a user. That is a schema
+  addition and a migration step, not a column somebody can borrow --
+  which is the part this entry hid by naming both features at once.
+
+- **Metadata portability: OUT is done, IN and interop are not.**
+
+  `GET /operations/export/authored.json` carries everything a person
+  told this library about their own pictures -- names, ratings,
+  favourites, places, albums with their nesting, and who is in what
+  including who expressly is NOT. Keyed by `content_sha256` and never
+  by a row id, which is the difference between an export and a dump: an
+  id belongs to one database file, a hash names the same photograph in
+  any library that holds it. Only pictures carrying something authored,
+  because a library is mostly pictures nobody has said anything about.
+
+  The opposite shape from the verdict export beside it, deliberately.
+  That one is for SHARING and carries no name or path; this one is for
+  CUSTODY, and withholding a person's own names from them would be the
+  defect rather than the feature.
+
+  What is left is the harder half and the one this entry was really
+  about:
+
+  - **Reading one back in.** A different problem with its own conflicts
+    to resolve -- a hash that matches two files, a name already taken,
+    an album that exists with different members.
+  - **XMP sidecars.** The boring standard, and the only thing that lets
+    ANOTHER application see what you decided here. LibrePhotos
+    round-trips face regions and names as MWG-RS; digiKam edits
+    EXIF/IPTC/XMP in place. JSON solves custody; only XMP solves
+    interop.
+  - **Tags**, which this cannot export because nothing writes them
+    (see above).
 
 - **Reverse geocoding, as a suggestion.** `db/places.py:8` already
   names "a future reverse-geocoding job (cached by geographic cell)".

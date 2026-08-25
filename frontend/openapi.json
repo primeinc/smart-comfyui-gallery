@@ -10798,6 +10798,26 @@
                 "deprecated": false
             }
         },
+        "/operations/export/authored.json": {
+            "get": {
+                "summary": "ExportAuthored",
+                "operationId": "OperationsExportAuthoredJsonExportAuthored",
+                "responses": {
+                    "200": {
+                        "description": "Request fulfilled, document follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Authored"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/operations/schedules/{collection}": {
             "post": {
                 "summary": "SetSchedule",
@@ -11020,6 +11040,34 @@
                 ],
                 "title": "AnswerAfter"
             },
+            "Appears": {
+                "properties": {
+                    "person": {
+                        "type": "string"
+                    },
+                    "stance": {
+                        "type": "string"
+                    },
+                    "region": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Box"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "person",
+                    "region",
+                    "stance"
+                ],
+                "title": "Appears"
+            },
             "AskedView": {
                 "properties": {
                     "name": {
@@ -11084,6 +11132,36 @@
                     "type"
                 ],
                 "title": "Attempt"
+            },
+            "Authored": {
+                "properties": {
+                    "people": {
+                        "items": {
+                            "$ref": "#/components/schemas/Named"
+                        },
+                        "type": "array"
+                    },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/Shelved"
+                        },
+                        "type": "array"
+                    },
+                    "pictures": {
+                        "items": {
+                            "$ref": "#/components/schemas/Picture"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "collections",
+                    "people",
+                    "pictures"
+                ],
+                "title": "Authored"
             },
             "AuthoredAnswer": {
                 "properties": {
@@ -11168,6 +11246,31 @@
                     "last_id"
                 ],
                 "title": "BacklogFrame"
+            },
+            "Box": {
+                "properties": {
+                    "x": {
+                        "type": "number"
+                    },
+                    "y": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    },
+                    "h": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "h",
+                    "w",
+                    "x",
+                    "y"
+                ],
+                "title": "Box"
             },
             "BrowsingContext": {
                 "properties": {
@@ -15713,6 +15816,23 @@
                 ],
                 "title": "Merged"
             },
+            "Named": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "slug"
+                ],
+                "title": "Named"
+            },
             "NamedItem": {
                 "properties": {
                     "id": {
@@ -16361,6 +16481,63 @@
                     "slug"
                 ],
                 "title": "PersonListed"
+            },
+            "Picture": {
+                "properties": {
+                    "sha256": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "rating": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "favorite": {
+                        "type": "boolean"
+                    },
+                    "place": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "collections": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "people": {
+                        "items": {
+                            "$ref": "#/components/schemas/Appears"
+                        },
+                        "type": "array"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "collections",
+                    "favorite",
+                    "name",
+                    "people",
+                    "place",
+                    "rating",
+                    "sha256"
+                ],
+                "title": "Picture"
             },
             "Pixels": {
                 "properties": {
@@ -17300,6 +17477,38 @@
                     "type"
                 ],
                 "title": "SettledPhase"
+            },
+            "Shelved": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "parent": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "parent",
+                    "slug"
+                ],
+                "title": "Shelved"
             },
             "SmartBroken": {
                 "properties": {

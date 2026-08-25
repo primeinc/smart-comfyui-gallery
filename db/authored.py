@@ -639,3 +639,109 @@ def retract_feedback(conn, file_id: int, annotation_kind: str, model_id, model_v
         (file_id, annotation_kind, model_id, model_version, user_id),
     )
     return int(cursor.rowcount or 0)
+
+
+# --- taking it with you ------------------------------------------------------
+
+#: What somebody SAID about their own pictures, keyed by the bytes.
+#:
+#: By `content_sha256` and never by a row id, which is the whole
+#: difference between an export and a dump: ids belong to one database
+#: file and mean nothing in the next one, while a hash names the same
+#: photograph in any library that holds it. What comes back can be read
+#: against a rebuilt library, or a moved one, or somebody else's copy of
+#: the same pictures.
+#:
+#: Only files carrying SOMETHING authored. A library is mostly pictures
+#: nobody has said anything about, and listing a hundred thousand rows
+#: of `rating: null` would bury the few hundred that are the point.
+SAID = (
+    "SELECT * FROM ("
+    "  SELECT f.content_sha256 AS sha256, f.name,"
+    "         (SELECT r.rating FROM rating r WHERE r.file_id = f.id) AS rating,"
+    "         EXISTS(SELECT 1 FROM favorite v WHERE v.file_id = f.id) AS favorite,"
+    "         (SELECT p.name FROM file_place fp JOIN place p ON p.id = fp.place_id"
+    "           WHERE fp.file_id = f.id) AS place,"
+    "         (SELECT group_concat(e.slug, ' ') FROM collection_file cf"
+    "            JOIN entity e ON e.id = cf.collection_id"
+    "           WHERE cf.file_id = f.id ORDER BY e.slug) AS collections,"
+    "         EXISTS(SELECT 1 FROM person_assertion a WHERE a.file_id = f.id) AS appears"
+    "    FROM file f WHERE f.content_sha256 IS NOT NULL)"
+    " WHERE rating IS NOT NULL OR favorite OR place IS NOT NULL"
+    "    OR collections IS NOT NULL OR appears"
+    " ORDER BY name"
+)
+
+#: Who is in a picture, and who is NOT.
+#:
+#: `stance` rides along because a negative is a CLAIM here rather than
+#: the absence of one -- "not her" has to survive a rebuild and
+#: constrain the next clustering, exactly as a positive does. An export
+#: that dropped the negatives would hand back a library that starts
+#: making the same mistake again.
+APPEARS = (
+    "SELECT f.content_sha256 AS sha256, e.slug AS person, a.stance,"
+    "       r.x, r.y, r.w, r.h"
+    "  FROM person_assertion a"
+    "  JOIN file f ON f.id = a.file_id AND f.content_sha256 IS NOT NULL"
+    "  JOIN entity e ON e.id = a.person_id"
+    "  LEFT JOIN region r ON r.id = a.region_id"
+    " ORDER BY f.name, e.slug"
+)
+
+#: The people themselves. A picture's row names a slug; this says what
+#: the slug is called, which is the part somebody typed.
+NAMED = (
+    "SELECT e.slug, p.name FROM person p JOIN entity e ON e.id = p.id"
+    " WHERE p.name IS NOT NULL ORDER BY p.name COLLATE NOCASE"
+)
+
+#: The albums, with their nesting. A collection's slug is its address in
+#: the rows above; `parent` is a slug too, so a shelf rebuilds.
+SHELVED = (
+    "SELECT e.slug, c.name, c.kind, up.slug AS parent"
+    "  FROM collection c"
+    "  JOIN entity e ON e.id = c.id"
+    "  LEFT JOIN entity up ON up.id = c.parent_id"
+    " ORDER BY c.name COLLATE NOCASE"
+)
+
+
+def _rows(conn, sql: str) -> list[dict]:
+    cursor = conn.execute(sql)
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+def exported(conn) -> dict:
+    """Everything a person told this library about their own pictures.
+
+    The opposite shape from `verdicts.exported`, and deliberately. That
+    one is for SHARING, so it carries no name and no path; this one is
+    for CUSTODY -- it is yours, it is about your pictures, and an export
+    that withheld the names would be withholding them from their owner.
+    Deleting the application must not delete the understanding.
+
+    Still no pixels: a picture is named by the hash of its bytes and by
+    the filename it had, which is what lets somebody put this back
+    against the same photographs wherever they now live.
+    """
+    appearances: dict[str, list[dict]] = {}
+    for one in _rows(conn, APPEARS):
+        box = None if one["x"] is None else {"x": one["x"], "y": one["y"], "w": one["w"], "h": one["h"]}
+        appearances.setdefault(one["sha256"], []).append(
+            {"person": one["person"], "stance": one["stance"], "region": box}
+        )
+    pictures = [
+        {
+            "sha256": one["sha256"],
+            "name": one["name"],
+            "rating": one["rating"],
+            "favorite": bool(one["favorite"]),
+            "place": one["place"],
+            "collections": (one["collections"] or "").split(),
+            "people": appearances.get(one["sha256"], []),
+        }
+        for one in _rows(conn, SAID)
+    ]
+    return {"people": _rows(conn, NAMED), "collections": _rows(conn, SHELVED), "pictures": pictures}
