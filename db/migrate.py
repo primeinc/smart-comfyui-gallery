@@ -135,6 +135,18 @@ def rebuilt(
     is not a straight carry-over (`{"fs_id": "CAST(inode AS TEXT)"}`);
     anything it names is copied whether or not the old table has it.
 
+    INDEXES AND TRIGGERS ARE PUT BACK, read off `sqlite_master` before
+    the rename. Dropping the old table takes everything attached to it,
+    and the ones that hurt are the ones nobody was thinking about: this
+    was written narrowing a CHECK on `root`, and it silently took the
+    three `answer_moved_root_*` triggers with it -- so every cached
+    answer would have stopped noticing that a root changed. SQLite's own
+    twelve steps say to recreate them (lang_altertable.html, step 7) and
+    a helper that names the dance has to do the whole dance.
+
+    `indexes` is for objects the rebuild ADDS. Anything the table
+    already had comes back on its own.
+
     The shipped steps above are deliberately NOT rewritten to call this.
     They ran against real libraries and their being correct is a fact
     about what happened, not about how they read. New work -- the
@@ -148,6 +160,17 @@ def rebuilt(
         )
     aside = f"{table}_rebuilding"
     reading = reading or {}
+    # Read BEFORE the rename: after it, these rows name `aside`, and
+    # after the drop they are gone. `sql IS NOT NULL` skips the indexes
+    # SQLite made itself for UNIQUE and PRIMARY KEY -- those come back
+    # with the new DDL, and replaying a NULL would be a crash.
+    attached = [
+        row[0]
+        for row in conn.execute(
+            "SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index','trigger') AND sql IS NOT NULL",
+            (table,),
+        )
+    ]
     conn.execute("PRAGMA legacy_alter_table=ON")
     conn.execute(f"ALTER TABLE {table} RENAME TO {aside}")
     conn.execute("PRAGMA legacy_alter_table=OFF")
@@ -158,8 +181,30 @@ def rebuilt(
     only = f" WHERE {where}" if where else ""
     conn.execute(f"INSERT INTO {table}({', '.join(named)}) SELECT {reads} FROM {aside}{only}")
     conn.execute(f"DROP TABLE {aside}")
+    for one in attached:
+        # A rebuild that recreates an object the new DDL already made is
+        # a step that fails on its second object rather than its first,
+        # so the ones already there are skipped by name rather than by
+        # swallowing the error.
+        if not _already(conn, one):
+            conn.execute(one)
     for one in indexes:
         conn.execute(one)
+
+
+def _already(conn: sqlite3.Connection, ddl: str) -> bool:
+    """Does the object this statement creates exist already?
+
+    By NAME, read out of the statement: `CREATE UNIQUE INDEX x ON ...`,
+    `CREATE TRIGGER y AFTER ...`. A rebuild whose new DDL re-declares an
+    index the old table also had would otherwise fail on the replay.
+    """
+    words = ddl.split()
+    for at, word in enumerate(words):
+        if word.upper() in ("INDEX", "TRIGGER") and at + 1 < len(words):
+            name = words[at + 1].strip('"[]`')
+            return conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", (name,)).fetchone() is not None
+    return False
 
 
 def version_of(conn: sqlite3.Connection) -> int:
@@ -3242,4 +3287,64 @@ def _something_can_run_without_being_asked(conn: sqlite3.Connection) -> None:
     last_started_at REAL,
     created_at      REAL NOT NULL
 ) STRICT;"""
+    )
+
+
+@step(38)
+def _a_root_is_a_library_or_the_trash(conn: sqlite3.Connection) -> None:
+    """v38 -> v39: `root.kind` drops 'mount'.
+
+    Nothing anywhere branched on the difference. Every read that cared
+    spelled `kind IN ('library','mount')`, and the distinction 'mount'
+    reached for -- "this one is not always attached" -- is `root.online`:
+    per-root, set by probing, and what the whole deletion doctrine rests
+    on. It was a choice on the add-a-folder form that changed nothing,
+    offered to somebody with no way to know that.
+
+    Existing mounts become libraries, which is what they already were
+    everywhere it mattered. A CHECK cannot be narrowed by ALTER, so the
+    table is rebuilt -- `rebuilt` names that dance once.
+    """
+    conn.execute("UPDATE root SET kind = 'library' WHERE kind = 'mount'")
+    rebuilt(
+        conn,
+        "root",
+        """CREATE TABLE root (
+    id            INTEGER PRIMARY KEY,
+    -- What the root IS, as against where it currently sits. Written into a
+    -- marker file inside the directory, so a library that moved is recognised
+    -- as the same library rather than registered a second time.
+    --
+    -- Without it `path` was a root's only identity: re-registering a moved
+    -- library minted a second root while every folder and file stayed under
+    -- the first, which `check_roots` then marked offline -- the whole library
+    -- stranded behind a root nobody could reach, and no operation anywhere
+    -- that could move it back. The one place in this schema where a path was
+    -- still identity.
+    -- Defaulted by the database, so a root registered by any route has an
+    -- identity whether or not the caller thought to mint one.
+    uuid          BLOB    NOT NULL UNIQUE DEFAULT (randomblob(16))
+                          CHECK (length(uuid) = 16),
+    -- Where it is now. Still UNIQUE -- two roots cannot occupy one directory
+    -- -- but no longer what the root is.
+    path          TEXT    NOT NULL UNIQUE,
+    -- 'trash' is a real location, not a state: a deleted file's bytes are
+    -- still somewhere, restore is a move, and views exclude the subtree by
+    -- ancestry rather than by matching paths against a configured string.
+    --
+    -- There was a 'mount' beside 'library' and nothing anywhere branched
+    -- on the difference -- every read that cared spelled
+    -- `kind IN ('library','mount')`. The distinction it reached for,
+    -- "this one is not always attached", is `online` below: per-root,
+    -- set by probing, and what the whole deletion doctrine rests on. So
+    -- it was a choice offered on the add-a-folder form that changed
+    -- nothing, made by somebody who had no way to know that.
+    kind          TEXT    NOT NULL CHECK (kind IN ('library','trash')),
+    -- `online` is the flag the whole deletion doctrine rests on: an unplugged
+    -- drive and an emptied folder look identical from a directory listing, so
+    -- an unreadable root is marked offline and its files are left alone.
+    online        INTEGER NOT NULL DEFAULT 1 CHECK (online IN (0,1)),
+    created_at    REAL    NOT NULL
+) STRICT""",
+        indexes=(),
     )

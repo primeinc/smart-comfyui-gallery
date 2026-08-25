@@ -207,20 +207,6 @@ consequences the architecture should keep room for, not work.
 
 ## Surfaces
 
-- **`library` and `mount` are the same thing.** `root.kind` admits
-  `library`, `mount` and `trash`, and nothing anywhere branches on the
-  first two: `db/pages.py:276` selects `kind IN ('library','mount')`
-  and `sg_web/folder_view.py:55` probes `kinds=("library","mount")`.
-  Only `trash` is load-bearing, and the schema says why -- it is a real
-  location, not a state, so views exclude that subtree by ancestry.
-
-  The distinction `mount` was reaching for -- "this one is not always
-  attached" -- is already carried by `root.online`, which is per-root,
-  set by probing, and is what the whole deletion doctrine rests on. So
-  either give `mount` a behaviour it alone has, or collapse it: one
-  media kind and `trash`. Two names for one thing is a decision
-  everybody reading the schema has to make again.
-
 - **Adding a root means pressing seven buttons in an order only the
   application knows.** scan, then ingest, then context, then events,
   then embed, then detect_faces, then cluster_faces, then annotate. The

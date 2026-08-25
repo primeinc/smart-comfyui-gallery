@@ -16,9 +16,5 @@
 {% endif %}
 <form class="operations-form" data-add-root hx-post="/operations/roots" hx-target="#operations-roots" hx-swap="innerHTML">
   <input name="path" placeholder="D:/pictures" aria-label="directory path" required>
-  <select name="kind" aria-label="kind">
-    <option value="library">library</option>
-    <option value="mount">mount</option>
-  </select>
   <button type="submit">add root</button>
 </form>

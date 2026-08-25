@@ -1172,8 +1172,14 @@ def test_two_files_naming_one_model_share_its_row(db, a_library, a_generated_fil
 
 def test_an_unreachable_root_is_marked_offline_not_emptied(db, a_library, tmp_path):
     """Unplugged and emptied look identical from a listing, and only one of
-    them is recoverable."""
-    missing = library.add_root(db, tmp_path / "not-here", "mount", NOW)
+    them is recoverable.
+
+    A plain library, because this IS the case `root.kind = 'mount'` was
+    reaching for and never carried: "not always attached" is `online`,
+    per-root and set by probing, and it works the same for a folder that
+    has never been anywhere near a removable drive.
+    """
+    missing = library.add_root(db, tmp_path / "not-here", "library", NOW)
     checked = {row[0]: row[2] for row in library.check_roots(db)}
     assert checked[a_library["root"]] is True
     assert checked[missing] is False
@@ -1960,3 +1966,36 @@ def test_an_embedding_that_does_not_fit_its_space_is_refused(db, a_library):
     spec = similarity_module.semantic_space("clip", "v1", 8)
     with pytest.raises(sqlite3.IntegrityError, match="dimensions"):
         derived.record_embedding(db, a_library["file"], spec, np.zeros(4, dtype=np.float32), "aa", NOW)
+
+
+def test_a_root_is_a_library_or_the_trash_and_nothing_else(db, tmp_path):
+    """One media kind, and `trash`.
+
+    There was a `mount` beside `library` and nothing anywhere branched on
+    the difference: every read that cared spelled
+    `kind IN ('library','mount')`. It reached the person as a dropdown on
+    the add-a-folder form -- a choice that changed nothing, offered to
+    somebody with no way to know that, at the moment they were trying to
+    add their photographs.
+
+    What it was reaching for is the test above this one: `online`, which
+    is per-root, set by probing, and what the whole deletion doctrine
+    rests on.
+    """
+    import sqlite3
+
+    with pytest.raises(sqlite3.IntegrityError, match="kind"):
+        library.add_root(db, tmp_path / "elsewhere", "mount", NOW)
+
+
+def test_the_form_does_not_ask_which_kind(tmp_path):
+    """And the choice is gone from where it was asked."""
+    from litestar.testing import TestClient
+
+    from sg_web.app import build_app
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert "data-add-root" in page, "the control: the form is on the page"
+        assert '<option value="mount">' not in page
+        assert '<select name="kind"' not in page, "it still asks a question with one answer"

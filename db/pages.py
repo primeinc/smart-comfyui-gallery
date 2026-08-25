@@ -278,7 +278,7 @@ def folder_children(conn, folder_id: int):
 #: subtree views exclude, never a shelf to browse. Reachability comes
 #: from db/library.py probe_roots, which verifies the marker rather
 #: than trusting that A directory exists at the recorded path.
-ROOT_SHELF = "SELECT id, kind FROM root WHERE kind IN ('library', 'mount') ORDER BY id"
+ROOT_SHELF = "SELECT id, kind FROM root WHERE kind = 'library' ORDER BY id"
 
 FOLDER_TOPS = (
     "SELECT e.slug, f.name,"

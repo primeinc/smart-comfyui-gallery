@@ -431,7 +431,7 @@ def two_roots(tmp_path):
     write(first / "kept.png", "kept bytes")
     write(second / "archived.png", "archived bytes")
     a = library_module.add_root(conn, first, "library", NOW)
-    b = library_module.add_root(conn, second, "mount", NOW)
+    b = library_module.add_root(conn, second, "library", NOW)
     scan.scan(conn, a, first, NOW)
     scan.scan(conn, b, second, NOW)
     return conn, (a, first), (b, second)

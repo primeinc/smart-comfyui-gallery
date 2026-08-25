@@ -93,7 +93,15 @@ CREATE TABLE root (
     -- 'trash' is a real location, not a state: a deleted file's bytes are
     -- still somewhere, restore is a move, and views exclude the subtree by
     -- ancestry rather than by matching paths against a configured string.
-    kind          TEXT    NOT NULL CHECK (kind IN ('library','mount','trash')),
+    --
+    -- There was a 'mount' beside 'library' and nothing anywhere branched
+    -- on the difference -- every read that cared spelled
+    -- `kind IN ('library','mount')`. The distinction it reached for,
+    -- "this one is not always attached", is `online` below: per-root,
+    -- set by probing, and what the whole deletion doctrine rests on. So
+    -- it was a choice offered on the add-a-folder form that changed
+    -- nothing, made by somebody who had no way to know that.
+    kind          TEXT    NOT NULL CHECK (kind IN ('library','trash')),
     -- `online` is the flag the whole deletion doctrine rests on: an unplugged
     -- drive and an emptied folder look identical from a directory listing, so
     -- an unreadable root is marked offline and its files are left alone.
@@ -2358,7 +2366,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 38;
+PRAGMA user_version   = 39;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

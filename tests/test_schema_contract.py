@@ -85,7 +85,7 @@ def entity(conn, eid, kind, slug):
 
 def tree(conn):
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'/lib','library',0)")
-    conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(2,'/ext','mount',0)")
+    conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(2,'/ext','library',0)")
     entity(conn, 1, "folder", "portraits")
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'portraits',0)")
     entity(conn, 2, "folder", "y2026")

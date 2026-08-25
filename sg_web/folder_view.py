@@ -53,7 +53,7 @@ def folders_index(state: State, request: Request) -> Template | Response:
     operational paths that commit it."""
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        online = {root_id: reachable for root_id, _, reachable in library.probe_roots(conn, kinds=("library", "mount"))}
+        online = {root_id: reachable for root_id, _, reachable in library.probe_roots(conn, kinds=("library",))}
         told = []
         for root_id, kind in pages.roots_shelf(conn):
             spans = pages.folder_top_spans(conn, root_id)

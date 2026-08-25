@@ -15243,7 +15243,6 @@
                         "type": "string",
                         "enum": [
                             "library",
-                            "mount",
                             "trash"
                         ],
                         "default": "library"

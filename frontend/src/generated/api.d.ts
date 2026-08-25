@@ -2681,7 +2681,7 @@ export interface components {
              * @default library
              * @enum {string}
              */
-            kind: "library" | "mount" | "trash";
+            kind: "library" | "trash";
         };
         /** NewSmart */
         NewSmart: {

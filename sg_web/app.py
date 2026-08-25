@@ -1320,7 +1320,10 @@ def roots(state: State) -> list[dict]:
 
 
 #: What a watched directory is to the library, per db/schema.sql root.kind.
-RootKind = Literal["library", "mount", "trash"]
+#: What a root IS. 'mount' was here and nothing branched on it -- the
+#: distinction it reached for, "not always attached", is `root.online`,
+#: which is per-root and set by probing.
+RootKind = Literal["library", "trash"]
 
 
 class NewRoot(Wire):
