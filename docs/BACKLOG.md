@@ -475,7 +475,8 @@ consequences the architecture should keep room for, not work.
   Triaged 2026-08-25, and the count in this entry was the wrong unit.
   ty reported 89 diagnostics, but many are one call site reported once
   per overload: `test_the_resultset_is_authoritative.py:276` is eleven
-  of them. **48 distinct sites** was the real number, now **32**.
+  of them. **48 distinct sites** was the real number, now **27** (57
+  diagnostics).
 
   Two were the real bugs this entry named, and one of them is fixed:
 
@@ -505,22 +506,27 @@ consequences the architecture should keep room for, not work.
   Annotated dict literals rather than constructor calls, so the readable
   form and the checkable one are the same thing.
 
-  Where the remaining 32 sit:
+  Also fixed, all the same pattern:
 
-      tests/                          15 sites, in 9 files
-      db/stories.py                    1 site, 9 diagnostics (json.dumps overloads)
-      db/planning.py                   4
+  - `db/pages.py:1403` -- the second real one. The signature and the
+    docstring both said `{bin: [(slug, sha, kind), ...]}` and the local
+    said `dict[int, list[str]]`. The annotation was the lie.
+  - `db/stories.py:67` -- one site, NINE diagnostics: `**_CANONICAL`
+    into `json.dumps` offered `bool | tuple[str, str]` to each keyword.
+  - `metaparse/adapters.py:214`, `sg_web/collection_view.py:619` --
+    `.rsplit` and `.append` on the union a heterogeneous literal infers.
+
+  Where the remaining 27 sit:
+
+      tests/                          17 sites, in 9 files
       sg_web/app.py                    5
+      db/planning.py                   4   -- the FROZEN plan dicts, above
       vision/                          5
-      db/pages.py                      2   -- a real annotation mismatch
-      metaparse/adapters.py            1   -- .rsplit on a possible None
-      sg_web/collection_view.py        1
       benchmarks/                      3
 
-  `db/pages.py:1403-1404` is worth doing next: the declared return is
-  `dict[int, list[tuple[str, str | None, str]]]` and the code builds
-  `dict[int, list[str]]`. One of those two is a lie about what callers
-  receive.
+  The tests are the bulk now and are mostly one shape: `resultset.parse`
+  handed a `str | int` where a parameter is `str | None`. Two files hold
+  21 of the diagnostics between them.
 
 ## The query workspace, as far as it got
 

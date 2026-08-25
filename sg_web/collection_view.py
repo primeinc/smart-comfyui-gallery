@@ -35,7 +35,7 @@ import dataclasses
 import pathlib
 import time
 import urllib.parse
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypedDict
 
 from litestar import MediaType, Request, get
 from litestar.datastructures import State
@@ -580,7 +580,25 @@ def _albums_archived(db_path: str) -> list[CollectionListed]:
         connect.close(conn)
 
 
-def _albums_nested(db_path: str) -> tuple[list[dict], int]:
+class _Shelved(TypedDict):
+    """One collection on the shelf, and the collections under it.
+
+    Spelled out because a literal holding a str, an int, a None and a
+    list infers every key as the union of those, and the tree is built
+    by `nodes[parent]["collections"].append(...)` -- `.append` on
+    `str | int | None | list`.
+    """
+
+    slug: str
+    name: str
+    kind: str
+    pictures: int
+    first_seen: float | None
+    last_seen: float | None
+    collections: list[_Shelved]
+
+
+def _albums_nested(db_path: str) -> tuple[list[_Shelved], int]:
     """The ACTIVE collection hierarchy as it was authored: every node
     still opens its own /t/{slug}, and a rule-defined node shows its
     badge rather than a member count nothing computed.
@@ -601,7 +619,7 @@ def _albums_nested(db_path: str) -> tuple[list[dict], int]:
         spans = pages.collection_spans(conn)
     finally:
         connect.close(conn)
-    nodes = {
+    nodes: dict[int, _Shelved] = {
         cid: {
             "slug": slug,
             "name": name,
@@ -613,7 +631,7 @@ def _albums_nested(db_path: str) -> tuple[list[dict], int]:
         }
         for cid, _, slug, name, kind, pictures in rows
     }
-    top: list[dict] = []
+    top: list[_Shelved] = []
     for cid, parent_id, *_ in rows:  # row order IS name order within each parent
         if parent_id in nodes:
             nodes[parent_id]["collections"].append(nodes[cid])

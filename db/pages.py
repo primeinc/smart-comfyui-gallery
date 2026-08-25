@@ -1394,7 +1394,7 @@ def timeline_samples(
     width = BINS[bin_name]
     anchor = _ANCHOR.get(bin_name, 0)
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
-    held: dict[int, list[str]] = {}
+    held: dict[int, list[tuple[str, str | None, str]]] = {}
     for at, slug, sha, kind in conn.execute(
         _TIMELINE_BIN_SAMPLES_HEAD + scope[0] + _TIMELINE_BIN_SAMPLES_TAIL,
         (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, *scope[1], SAMPLES_PER_BIN),

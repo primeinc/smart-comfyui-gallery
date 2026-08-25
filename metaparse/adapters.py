@@ -22,7 +22,7 @@ Format references (cloned under ../refs):
 import json
 import logging
 import re
-from typing import ClassVar
+from typing import ClassVar, NotRequired, TypedDict
 
 from defusedxml import minidom
 
@@ -192,7 +192,7 @@ class SwarmUIAdapter:
             if index < len(weights):
                 by_lora[str(name).strip()] = weights[index]
 
-        found = []
+        found: list[_Model] = []
         for entry in obj.get("sui_models") or []:
             if not isinstance(entry, dict):
                 continue
@@ -200,7 +200,7 @@ class SwarmUIAdapter:
             if not name:
                 continue
             role = cls._ROLES.get(str(entry.get("param", "")).strip())
-            record = {"name": name, "role": role, "hash": entry.get("hash")}
+            record: _Model = {"name": name, "role": role, "hash": entry.get("hash")}
             # The manifest names the file with its extension; `loras` names it
             # without. Matched on the stem so a weight is not lost to
             # ".safetensors".
@@ -216,15 +216,28 @@ class SwarmUIAdapter:
             text = str(name).strip()
             if not text or text in named:
                 continue
-            found.append(
-                {
-                    "name": text,
-                    "role": "lora",
-                    "hash": None,
-                    "weight": weights[index] if index < len(weights) else None,
-                }
-            )
+            unlisted: _Model = {
+                "name": text,
+                "role": "lora",
+                "hash": None,
+                "weight": weights[index] if index < len(weights) else None,
+            }
+            found.append(unlisted)
         return found
+
+
+class _Model(TypedDict):
+    """One weight file a render used, as this adapter reports it.
+
+    Spelled out because a bare literal holding a str, a `str | None` and
+    a hash infers every key as the union of those -- and the set
+    comprehension below then calls `.rsplit` on `str | None`.
+    """
+
+    name: str
+    role: str | None
+    hash: NotRequired[object]
+    weight: NotRequired[object]
 
 
 class FooocusAdapter:

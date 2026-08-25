@@ -58,7 +58,21 @@ FORMAT_VERSION = 1
 #: filters by it.
 EVENT_KINDS = ("generation_session", "capture_session", "file_session")
 
-_CANONICAL = {"sort_keys": True, "separators": (",", ":"), "ensure_ascii": False}
+
+class _Canonical(typing.TypedDict):
+    """`json.dumps` keywords, spelled out.
+
+    A bare dict of these infers every value as `bool | tuple[str, str]`,
+    so `**_CANONICAL` offers that to each of `dumps`' keyword parameters
+    and every one of them is wrong -- nine complaints about one call.
+    """
+
+    sort_keys: bool
+    separators: tuple[str, str]
+    ensure_ascii: bool
+
+
+_CANONICAL: _Canonical = {"sort_keys": True, "separators": (",", ":"), "ensure_ascii": False}
 
 
 def canonical(document: dict) -> str:
