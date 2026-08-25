@@ -411,10 +411,22 @@ search answers with a set. What is NOT built:
   narrow to the files that HAVE one is a product decision, not an
   implementation detail.
 
-- **The compare tray has no two-up A/B mode.** It shows everything kept,
-  side by side, in tray order. Two is the common case and works; naming
-  one A and one B and flipping between them is not built. digiKam's
-  Light Table is the reference, including synchronised pan and zoom.
+- **The comparison has no zoom, so it cannot have a synchronised one.**
+  Flipping is built -- one at a time in the same pixels, lettered, Space
+  and the arrows, every column decoded so the flip is a repaint -- which
+  was the half that answers "did this change". What is still missing is
+  the half digiKam's Light Table is actually the reference for: zooming
+  into a detail on one and having the other follow, so two 4k
+  generations can be compared at the grain rather than at the thumbnail.
+
+  The viewer already owns zoom and pan over one picture
+  (frontend/src/viewer.ts: fit / fill / actual / free, with a tether so
+  a zoomed picture cannot be flung off screen). The comparison shows
+  `object-fit: contain` and nothing else. So the work is not new
+  arithmetic, it is deciding what a shared transform MEANS across
+  pictures of different shapes -- same scale, or same fraction of each
+  frame? -- and those give different answers for a 3:2 beside a square,
+  which is exactly the pair somebody is comparing.
 
 ## Modalities the schema allows and nothing produces
 
