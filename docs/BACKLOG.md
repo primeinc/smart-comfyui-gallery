@@ -385,13 +385,14 @@ Gallery/Table/Analyze, the compare tray, endless browsing, reading
 generation metadata out of video containers, Any/All multi-select on
 every dimension where both readings mean something, value lists on
 `folder`/`album`/`people.person`/`place.id`, a door to the long tail
-(`param.has`, `param.is`), and a cut on the semantic ranking so a
-search answers with a set. What is NOT built:
+(`param.has`, `param.is`, `param.num`), a cut on the semantic ranking so
+a search answers with a set, sorting by every column the table draws,
+saved views as their own object, a synchronised glass over the compare
+tray, and recurring prompt TERMS beside the exact counts -- as a
+separate panel that says what it assumes, because a reading of a comma
+convention does not get to borrow an identity's certainty.
 
-- **The analysis has no prompt-term view.** Exact prompt identity is
-  built and counted. Recurring TERMS across an answer -- which is a
-  different claim with a different error mode -- is not, and is
-  deliberately absent rather than quietly mixed into the exact counts.
+This section has nothing left in it.
 
 ## Modalities the schema allows and nothing produces
 

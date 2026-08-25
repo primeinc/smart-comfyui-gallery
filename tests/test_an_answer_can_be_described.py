@@ -406,3 +406,40 @@ def test_a_row_is_a_way_into_the_picture(page: Page, live: Live, unbroken):
     page.click("[data-table] tbody tr:first-child .answer-name a")
     page.wait_for_selector("[data-viewer]", timeout=15_000)
     assert "/i/" in page.url
+
+
+# --- and the terms, which are a reading rather than a count -----------------
+
+
+def test_the_terms_panel_stands_beside_the_prompts_and_says_what_it_is(page: Page, live: Live, unbroken):
+    """Two panels, two kinds of claim, next to each other on purpose.
+
+    The prompts above are counts -- `prompt.text_hash` is a real
+    identity. These are a reading: commas separate terms, which is a
+    convention every prompt box follows and no grammar enforces. Mixing
+    them into one panel would let the reading borrow the count's
+    certainty, so they are apart and the second says what it assumes.
+    """
+    _analyze(page)
+    page.wait_for_selector("[data-analyze-terms]", timeout=10_000)
+
+    said = page.inner_text("[data-analyze-terms]")
+    assert "split on commas" in said, "the panel does not say what it assumes"
+
+    # This library's prompts are prose, so each is ONE term -- which is
+    # the reading being wrong, visibly, rather than hidden.
+    terms = page.evaluate("() => [...document.querySelectorAll('[data-term]')].map(one => one.dataset.term)")
+    assert CASTLE in terms, terms
+    assert LIGHTHOUSE in terms, terms
+
+
+def test_a_term_carries_the_question_it_would_make(page: Page, live: Live, unbroken):
+    """Every row of an analysis is a way to ask a narrower question, and
+    a term is no different: clicking one searches for it."""
+    _analyze(page)
+    page.wait_for_selector("[data-analyze-terms]", timeout=10_000)
+
+    page.click(f'[data-term-search="{CASTLE}"]')
+    page.wait_for_function("() => new URLSearchParams(location.search).get('q') !== null", timeout=10_000)
+    asked = page.evaluate("() => new URLSearchParams(location.search).get('q')")
+    assert asked == CASTLE

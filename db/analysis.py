@@ -38,6 +38,7 @@ worth building; conflating them is not.
 from __future__ import annotations
 
 import dataclasses
+import re
 
 from . import discovery, resultset, vocabulary
 
@@ -115,6 +116,18 @@ class PromptUse:
 
 
 @dataclasses.dataclass(frozen=True)
+class TermUse:
+    """One recurring term, and how many files asked for it.
+
+    `files`, never `uses`: a term written three times in one prompt is
+    one file that wanted it.
+    """
+
+    term: str
+    files: int
+
+
+@dataclasses.dataclass(frozen=True)
 class Weighted:
     """One LoRA, how often, and at what strength.
 
@@ -138,9 +151,17 @@ class Analysis:
     total: int
     breakdowns: tuple[Breakdown, ...]
     prompts: tuple[PromptUse, ...]
+    #: The terms that recur across those prompts. A separate field, not
+    #: folded into `prompts`, because it is a separate CLAIM: an exact
+    #: prompt count is a fact and a term count is a reading of a comma
+    #: convention, and mixing them would let the reading borrow the
+    #: fact's certainty.
+    terms: tuple[TermUse, ...]
     loras: tuple[Weighted, ...]
     #: How many distinct prompts the answer holds, beyond those listed.
     more_prompts: int
+    #: And how many more terms.
+    more_terms: int
 
 
 _PROMPTS = (
@@ -149,6 +170,17 @@ _PROMPTS = (
     " JOIN prompt p ON p.id = gp.prompt_id"
     " WHERE f.missing_since IS NULL {scope} AND gp.role = ?"
     " GROUP BY p.id, gp.role ORDER BY COUNT(*) DESC, p.id LIMIT ?"
+)
+
+#: The prompt TEXTS this answer used, with how many files each. The
+#: terms are counted in Python because splitting one is a reading of a
+#: convention rather than a fact the schema holds -- see `terms`.
+_PROMPT_TEXTS = (
+    "SELECT p.text, COUNT(*) FROM file f"
+    " JOIN generation_prompt gp ON gp.file_id = f.id"
+    " JOIN prompt p ON p.id = gp.prompt_id"
+    " WHERE f.missing_since IS NULL {scope} AND gp.role = ?"
+    " GROUP BY p.id"
 )
 
 #: Every LoRA in the answer, with the strengths it was applied AT.
@@ -213,6 +245,96 @@ def prompts(
     rows = list(conn.execute(_PROMPTS.replace("{scope}", conjunct), [*args, role, most + 1]))
     made = tuple(PromptUse(id=int(one[0]), text=str(one[1]), role=str(one[2]), uses=int(one[3])) for one in rows[:most])
     return made, max(0, len(rows) - most)
+
+
+#: Weight syntax, stripped so `(rim light:1.3)` and `rim light` are one
+#: term. The number is a strength, not part of what was asked for.
+_WEIGHTED = re.compile(r"^[(\[{]+\s*(.*?)\s*(?::\s*-?\d+(?:\.\d+)?\s*)?[)\]}]+$")
+
+#: A LoRA or embedding reference, ANYWHERE in a fragment. Not a term: it
+#: is an ARTIFACT, counted by `loras` with the strengths it was used at,
+#: and letting it in here would report the same fact twice under two
+#: different kinds of claim.
+#:
+#: Removed rather than rejected, because it does not arrive on its own.
+#: A1111 writes `a castle on a hill <lora:filmGrain:0.35>` -- one
+#: comma-free fragment with the reference glued to the end of it -- so a
+#: rule that only refused a fragment that was ENTIRELY a reference left
+#: every one of them inside a term.
+_ARTIFACT = re.compile(r"<[^>]*>")
+
+
+def term_of(raw: str) -> str | None:
+    """One prompt fragment as the term it names, or None for no term.
+
+    This is the interpretation `prompts` deliberately refuses to make,
+    kept in one place so it can be read and disagreed with:
+
+    - **Commas separate terms.** The convention every diffusion UI's
+      prompt box follows, and it is a convention rather than a grammar:
+      a sentence prompt with commas in it splits into clauses, which is
+      wrong, and there is no way to tell the two apart from the text.
+    - **Weights are not part of the term.** `(rim light:1.3)` is the
+      same thing asked for as `rim light`, more loudly.
+    - **An `<...>` reference is not a term, wherever it sits.** It names
+      an artifact, and `loras` already counts those WITH their strengths
+      -- counting it here too would report one fact twice under two
+      kinds of claim. It is REMOVED rather than refused, because it does
+      not arrive alone: A1111 writes it glued to the end of the prose.
+    - **Case is not meaning.** Folded, so `Rim Light` and `rim light`
+      are one term.
+    """
+    held = _ARTIFACT.sub(" ", raw).strip()
+    for _ in range(4):
+        # Nested wrapping: `((rim light:1.3))`. Bounded rather than
+        # `while`, because a prompt is somebody's text and an unbalanced
+        # bracket must not become a loop.
+        found = _WEIGHTED.match(held)
+        if found is None:
+            break
+        held = found.group(1).strip()
+    if not held:
+        return None
+    # The reference may have left two spaces where it was.
+    return " ".join(held.split()).casefold()
+
+
+def terms(
+    conn,
+    query: resultset.GalleryQuery,
+    *,
+    role: str = "effective",
+    actor_id: int | None = None,
+    models_dir: str | None = None,
+    now: float | None = None,
+    most: int = MOST,
+) -> tuple[tuple[TermUse, ...], int]:
+    """The terms that RECUR across this answer, most-used first.
+
+    A different claim from `prompts`, with a different error mode, and
+    the reason the two are separate panels rather than one.
+
+    `prompts` is a count: `prompt.text_hash` is a real identity, two
+    files carrying one prompt share one row, and "twelve files used this
+    prompt" is a fact. This is a READING: it assumes commas separate
+    terms, which is a convention every prompt box follows and no grammar
+    enforces. A prompt written as a sentence splits into clauses here and
+    is counted as terms nobody asked for.
+
+    So it says `files`, not `uses`: a term appearing three times in one
+    prompt is one file that wanted it, and counting the repeats would
+    make a habit of typing look like a habit of generating.
+    """
+    conjunct, args = _scoped(conn, query, actor_id, models_dir, now)
+    counted: dict[str, int] = {}
+    for text, files in conn.execute(_PROMPT_TEXTS.replace("{scope}", conjunct), [*args, role]):
+        # Per PROMPT, so one prompt saying "sunset" twice is one wanting.
+        seen = {held for held in (term_of(one) for one in str(text).split(",")) if held}
+        for one in seen:
+            counted[one] = counted.get(one, 0) + int(files)
+    ranked = sorted(counted.items(), key=lambda one: (-one[1], one[0]))
+    made = tuple(TermUse(term=term, files=files) for term, files in ranked[:most])
+    return made, max(0, len(ranked) - most)
 
 
 def loras(
@@ -295,10 +417,13 @@ def analyze(
             )
         )
     said, over = prompts(conn, query, actor_id=actor_id, models_dir=models_dir, now=now)
+    recurring, over_terms = terms(conn, query, actor_id=actor_id, models_dir=models_dir, now=now)
     return Analysis(
         total=total,
         breakdowns=tuple(made),
         prompts=said,
+        terms=recurring,
         loras=loras(conn, query, actor_id=actor_id, models_dir=models_dir, now=now),
         more_prompts=over,
+        more_terms=over_terms,
     )

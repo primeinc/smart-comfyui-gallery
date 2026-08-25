@@ -36,6 +36,37 @@
   </section>
   {% endif %}
 
+  {% if analysis.terms %}
+  {# A different claim from the panel above, and next to it on purpose
+     so the difference is visible rather than explained.
+
+     Those are COUNTS: a prompt's text hash is a real identity, so
+     "twelve files used this prompt" is a fact. These are a READING --
+     that commas separate terms, which every prompt box's convention
+     follows and no grammar enforces. A prompt written as a sentence
+     splits into clauses here and is counted as terms nobody asked for,
+     so the panel says what it assumes rather than presenting the
+     numbers as if they were the same kind of thing.
+
+     FILES, never uses: a term written three times in one prompt is one
+     file that wanted it, and counting the repeats would make a habit of
+     typing look like a habit of generating. #}
+  <section class="analyze-panel" data-analyze-terms>
+    <h2>terms <span class="analyze-of">{{ analysis.terms | length }}{% if analysis.more_terms %}, {{ analysis.more_terms }} more{% endif %}</span></h2>
+    <p class="analyze-note">split on commas, weights ignored &mdash; a reading of how prompts are written, not an identity like the prompts above</p>
+    <ul class="term-uses" data-terms>
+      {% for one in analysis.terms %}
+      <li class="term-use" data-term="{{ one.term }}">
+        <a href="{{ one.qs }}" data-term-search="{{ one.term }}">
+          <span class="term-use-text">{{ one.term }}</span>
+          <b class="term-use-count">{{ one.files }}</b>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if analysis.loras %}
   {# The weight is why this is not a list of names: a LoRA without its
      number does not reproduce the picture, and it is the field people
@@ -87,7 +118,7 @@
   </section>
   {% endfor %}
 
-  {% if not analysis.breakdowns and not analysis.prompts %}
+  {% if not analysis.breakdowns and not analysis.prompts and not analysis.terms %}
   <p class="analyze-empty">nothing in this answer carries anything to describe yet.</p>
   {% endif %}
 </section>

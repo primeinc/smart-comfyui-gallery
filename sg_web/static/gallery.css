@@ -1439,6 +1439,37 @@ body {
   padding: 0 0 0 18px;
   border-left: 2px solid var(--line);
 }
+/* Recurring terms: a cloud of ways to narrow, each carrying the count
+   of FILES that asked for it. Quieter than the prompt panel above,
+   because it is a reading of a convention rather than an identity. */
+.term-uses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.term-use > a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.term-use-count {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.analyze-note {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
 /* Remembered questions: a strip of ways IN, above the chips that say
    what the current one is. Quiet -- these are bookmarks, not the
    answer -- and the forget button only appears on the one hovered. */

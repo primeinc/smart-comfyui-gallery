@@ -126,6 +126,25 @@ def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str)
     return spelled
 
 
+def _with_text(query: resultset.GalleryQuery, said: str, view: str) -> str:
+    """The question this answer would become, searched for one term.
+
+    The phrase REPLACES whatever text the question carried rather than
+    joining it: two phrases would be a narrower question than either,
+    and a person clicking a term in a breakdown means "this one", not
+    "this one as well as the last one I clicked".
+    """
+    import dataclasses as _dataclasses
+
+    # `similarity`, which is what a ranked text answer is called here --
+    # and it is the only sort that REQUIRES a phrase, so it can only be
+    # asked for alongside one. The question keeps whatever else it said.
+    spelled = resultset.canonical(_dataclasses.replace(query, text=said, sort="similarity"))
+    if view != "gallery":
+        spelled = f"{spelled}&view={view}" if spelled else f"view={view}"
+    return f"/g?{spelled}" if spelled else "/g"
+
+
 def _analysis(conn, query: resultset.GalleryQuery, total: int, weights: str, view: str) -> dict:
     """The answer, described -- and every row carrying the question it
     would make."""
@@ -152,6 +171,14 @@ def _analysis(conn, query: resultset.GalleryQuery, total: int, weights: str, vie
         ],
         "prompts": [{"id": one.id, "text": one.text, "uses": one.uses, "role": one.role} for one in told.prompts],
         "more_prompts": told.more_prompts,
+        # Each term carries the question it would make: clicking one
+        # narrows to the files whose prompt says it. `q` rather than a
+        # facet, because a term is text inside a prompt and the text
+        # search is what reads inside prompts.
+        "terms": [
+            {"term": one.term, "files": one.files, "qs": _with_text(query, one.term, view)} for one in told.terms
+        ],
+        "more_terms": told.more_terms,
         "loras": [
             {
                 "name": one.name,
