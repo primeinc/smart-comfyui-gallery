@@ -241,7 +241,27 @@ CREATE TABLE file (
     -- when a content match was ambiguous. Deletion is then a deliberate act
     -- rather than a scan side effect: unreachable is not the same as deleted.
     missing_since  REAL
-, ingested_sha256 TEXT) STRICT;
+, ingested_sha256 TEXT, ingested_by TEXT) STRICT;
+-- file.ingested_by: WHICH READER took it, so improving one re-reads.
+--
+-- `ingested_sha256` says which BYTES were read, which makes a file stale
+-- when its bytes change and never when the READER changes. That is half a
+-- freshness rule, and the missing half cost a person a folder of broken
+-- pictures: the sniffer called every .m4a a video, ingest wrote the wrong
+-- `kind`, and fixing the sniffer could not fix the rows -- nothing recorded
+-- that they had been read by the version that was wrong. The only repair
+-- was re-reading the entire library by hand, which is a bug turned into a
+-- chore.
+--
+-- So the reader states its own identity (db/ingest.py READER) and bumps it
+-- whenever a change alters what it would WRITE for the same bytes. Every
+-- file read by an older one is then stale by the ordinary rule, and the
+-- ordinary sweep -- the one for what is missing, the one a worker already
+-- runs -- repairs the library with nobody asked to do anything.
+--
+-- NULL means "read before this column existed". Treated as stale, because
+-- it is exactly the population that may carry what an old reader decided.
+--
 -- file.ingested_sha256: the bytes the last metadata read was taken from
 -- (db/ingest.py one). NULL until ingest reads the file; unequal to
 -- content_sha256 once a scan records new bytes. The ingest sweep queues
@@ -2274,7 +2294,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 35;
+PRAGMA user_version   = 36;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

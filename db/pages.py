@@ -81,8 +81,11 @@ ONE_PICTURE = """
       (SELECT g.seed FROM generation g WHERE g.file_id = f.id) AS seed,
       (SELECT count(*) FROM file_param WHERE file_id = f.id) AS fields,
       f.kind,
+      -- `current` means read for THESE bytes by THIS reader. A file read
+      -- by an older one is stale, because the answer it holds may not be
+      -- the answer that reader would give now (db/ingest.py READER).
       CASE WHEN f.ingested_sha256 IS NULL THEN 'never'
-           WHEN f.ingested_sha256 = f.content_sha256 THEN 'current'
+           WHEN f.ingested_sha256 = f.content_sha256 AND f.ingested_by IS ? THEN 'current'
            ELSE 'stale' END AS read_state
     FROM file f JOIN folder fo ON fo.id = f.folder_id
    WHERE f.id = ?
@@ -117,7 +120,9 @@ FILE_BYTES = "SELECT kind, content_sha256 FROM file WHERE id = ?"
 
 
 def picture(conn, file_id: int):
-    return conn.execute(ONE_PICTURE, (file_id,)).fetchone()
+    from .ingest import READER
+
+    return conn.execute(ONE_PICTURE, (READER, file_id)).fetchone()
 
 
 def file_present(conn, file_id: int) -> bool | None:

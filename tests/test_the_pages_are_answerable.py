@@ -323,7 +323,10 @@ def test_the_image_page_answers_in_one_query(library):
     assert prompt.startswith("a brass diving helmet")
     assert seed == 4242
     assert fields > 0, "the parsed long tail is not reachable from the page"
-    assert_no_growing_scan(conn, pages.ONE_PICTURE, (file_id,))
+    # Two binds now: the page asks whether this file was read for these
+    # bytes BY THE CURRENT READER, because a file read by a reader that
+    # has since been fixed is stale (db/ingest.py READER).
+    assert_no_growing_scan(conn, pages.ONE_PICTURE, (ingest.READER, file_id))
 
 
 def test_an_address_that_was_renamed_still_resolves(library):

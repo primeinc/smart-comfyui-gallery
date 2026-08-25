@@ -538,6 +538,29 @@ def _really_animated(path) -> bool | None:
         return None
 
 
+#: WHO read a file, recorded on every file this module reads.
+#:
+#: BUMP THIS whenever a change here or in what this module calls would
+#: write something DIFFERENT for the same bytes -- a sniffer that
+#: classifies a container it used to miss, a parser that learns a new
+#: generator, a probe that starts recording a field. Not for a
+#: refactor, a comment, or a speed-up: the version means "the answer
+#: may differ", and bumping it for a change that cannot alter an answer
+#: re-reads every file in the library for nothing.
+#:
+#: This is the half of freshness `ingested_sha256` cannot express. That
+#: column says which BYTES were read, so a file is stale when its bytes
+#: change and never when the reader improves -- and the day the sniffer
+#: started calling album tracks videos, fixing the sniffer could not fix
+#: the rows, because nothing recorded that they had been read by the
+#: version that was wrong. The only repair was re-reading the whole
+#: library by hand.
+#:
+#: Dated rather than numbered, so two branches that both bump it do not
+#: silently agree on "4" and leave one of their libraries unrepaired.
+READER = "ingest/2026-08-24"
+
+
 def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ingested:
     """Read one file completely: what made it, and how it was taken.
 
@@ -714,7 +737,10 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
         if sha is None:
             sha = scan_module.sha256_of(path)
             conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
-        conn.execute("UPDATE file SET ingested_sha256 = ? WHERE id = ?", (sha, file_id))
+        # The bytes AND the reader, together and in one write: a row
+        # claiming to be current for bytes it was not read for, or for a
+        # reader that did not read it, is the freshness rule lying.
+        conn.execute("UPDATE file SET ingested_sha256 = ?, ingested_by = ? WHERE id = ?", (sha, READER, file_id))
     return out
 
 

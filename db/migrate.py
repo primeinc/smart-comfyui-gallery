@@ -3119,3 +3119,23 @@ def _a_person_can_be_denied(conn: sqlite3.Connection) -> None:
     conn.execute(
         "ALTER TABLE person_assertion ADD COLUMN stance TEXT NOT NULL DEFAULT 'is' CHECK (stance IN ('is','is_not'))"
     )
+
+
+@step(35)
+def _the_reader_signs_its_work(conn: sqlite3.Connection) -> None:
+    """v35 -> v36: `file.ingested_by`, so improving a reader re-reads.
+
+    `ingested_sha256` says which BYTES were read, so a file goes stale
+    when its bytes change and never when the READER changes. That is
+    half a freshness rule, and the missing half turned a defect into a
+    chore: the sniffer called every .m4a a video, ingest wrote the wrong
+    `kind`, and fixing the sniffer could not fix the rows -- nothing
+    recorded that they were read by the version that was wrong.
+
+    Left NULL for every existing row ON PURPOSE. They were read by a
+    reader that did not sign its work, so they are exactly the
+    population that may carry what an old one decided, and the freshness
+    rule treats NULL as stale. The first ordinary sweep after this
+    upgrade re-reads the library once, and never again for this reason.
+    """
+    conn.execute("ALTER TABLE file ADD COLUMN ingested_by TEXT")

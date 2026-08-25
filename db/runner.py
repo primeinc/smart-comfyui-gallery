@@ -954,18 +954,28 @@ def submit_ingest(conn, now: float, *, everything: bool = False, folder_id: int 
     files" is a cost nobody pays to fix one folder of album tracks. A
     correction that is too expensive to apply is not a correction.
     """
+    from .ingest import READER
+
     where = "WHERE missing_since IS NULL"
     args: list = []
     if not everything:
-        where += " AND (ingested_sha256 IS NULL OR ingested_sha256 IS NOT content_sha256)"
+        # Stale by BYTES or by READER. The second is what makes a fixed
+        # parser repair the library on its own: every file read by an
+        # older reader is due, and the ordinary sweep -- the one a worker
+        # already runs for what is missing -- picks them up with nobody
+        # asked to do anything.
+        where += " AND (ingested_sha256 IS NULL OR ingested_sha256 IS NOT content_sha256 OR ingested_by IS NOT ?)"
+        args.append(READER)
     if folder_id is None:
         sql = f"SELECT id FROM file {where} ORDER BY id"
     else:
+        # The folder is bound BEFORE the freshness arguments, because the
+        # CTE that names the subtree comes first in the statement.
+        args = [folder_id, *args]
         # The subtree, not the one folder: somebody pointing at `music`
         # means the albums inside it, and a scope that stopped at the
         # top level would silently do a fraction of what was asked.
         sql = f"{_UNDER} SELECT f.id FROM sub JOIN file f ON f.folder_id = sub.id {where} ORDER BY f.id"
-        args = [folder_id]
     items = [row[0] for row in conn.execute(sql, args)]
     if not items:
         return None

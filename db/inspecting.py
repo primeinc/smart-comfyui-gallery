@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 
-from . import jobs, ledger, settings
+from . import ingest, jobs, ledger, settings
 
 #: The payload keys a launcher writes, as the console labels them.
 TERMINAL = ("done", "failed", "cancelled")
@@ -73,7 +73,12 @@ def _target(conn, target_id: int | None) -> dict | None:
 _PRESENT = "SELECT count(*) FROM file f WHERE f.missing_since IS NULL"
 _PICTURE = " AND f.kind IN ('image', 'animated_image', 'video')"
 _MISSING = {
-    "ingest": _PRESENT + " AND (f.ingested_sha256 IS NULL OR f.ingested_sha256 IS NOT f.content_sha256)",
+    # Stale by BYTES or by READER, the same rule the sweep queues on
+    # (db/runner.py submit_ingest). Counted differently from what is
+    # queued would make the console say "0 missing" beside a sweep that
+    # is about to read the whole library.
+    "ingest": _PRESENT + " AND (f.ingested_sha256 IS NULL OR f.ingested_sha256 IS NOT f.content_sha256"
+    "        OR f.ingested_by IS NOT ?)",
     "faces": _PRESENT + _PICTURE + " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
     "   AND s.source_sha256 = f.content_sha256)",
     "annotate": _PRESENT
@@ -126,7 +131,7 @@ def coverage(conn, models_dir: str | None = None) -> dict:
     from . import context, similarity
 
     held = {
-        "ingest": conn.execute(_MISSING["ingest"]).fetchone()[0],
+        "ingest": conn.execute(_MISSING["ingest"], (ingest.READER,)).fetchone()[0],
         "faces": conn.execute(_MISSING["faces"]).fetchone()[0],
         "context": conn.execute(_MISSING["context"], (context.POLICY_VERSION,)).fetchone()[0],
     }
