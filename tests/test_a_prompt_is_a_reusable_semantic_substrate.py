@@ -741,26 +741,38 @@ def test_neighbours_answer_inside_one_space_and_policy_with_role_before_rank(lib
     assert client.get("/prompts/424242/neighbours", params={"space": "fake"}).status_code == 404
 
 
-def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
-    """A v17 database with prompts on `generation` and the generator's
-    `original_*` parameters comes across with every prompt id intact,
-    the roles filled, the originals interned, the FTS index whole, and
-    the job vocabulary widened."""
-    from db import build, migrate, scan
+def _back_to_v17(conn) -> None:
+    """Turn a freshly built database into a plausible v17 one.
 
-    path = tmp_path / "old.db"
-    build.build(path)
-    conn = connect.connect(path)
+    A hand-maintained UNDO list, and the reason to have exactly one of
+    it: both migration tests here carried their own copy, a step landed
+    that neither undid, and both broke together with an error about a
+    column that had been renamed three versions ago.
+
+    Nothing about this is clever. Each line names the version whose
+    addition it is removing, so the next migration adds one line HERE
+    and both tests keep meaning what they meant.
+    """
     conn.execute("PRAGMA foreign_keys=OFF")
-    conn.execute("DROP TABLE derived_prompt_embedding")
-    conn.execute("DROP TABLE derived_prompt_section")
-    conn.execute("DROP TABLE generation_prompt")
-    conn.execute("DROP TABLE generation")
+    for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
+        conn.execute(f"DROP TABLE {table}")
     conn.execute("DROP TABLE job_event")  # v24's addition
     conn.execute("DROP TABLE derived_face_scan")  # v26's addition
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
     conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
     conn.execute("DROP TABLE file_place")  # v28's addition
+    # v30's rename: `fs_id TEXT` was `inode`. The NAME is what step 30
+    # reads -- it selects `CAST(inode AS TEXT)`, which is right over
+    # either type -- so the rename alone is a faithful enough v17 for a
+    # test about prompts.
+    conn.execute("ALTER TABLE folder RENAME COLUMN fs_id TO inode")
+    conn.execute("ALTER TABLE file RENAME COLUMN fs_id TO inode")
+    # v31's addition: the answer-currency counter and its triggers.
+    for (name,) in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'answer_moved_%'"
+    ).fetchall():
+        conn.execute(f"DROP TRIGGER {name}")
+    conn.execute("DROP TABLE answer_generation")
     conn.execute(
         "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
         " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
@@ -780,6 +792,19 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
     conn.execute("PRAGMA user_version = 17")
     conn.commit()
     conn.close()
+
+
+def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
+    """A v17 database with prompts on `generation` and the generator's
+    `original_*` parameters comes across with every prompt id intact,
+    the roles filled, the originals interned, the FTS index whole, and
+    the job vocabulary widened."""
+    from db import build, migrate, scan
+
+    path = tmp_path / "old.db"
+    build.build(path)
+    conn = connect.connect(path)
+    _back_to_v17(conn)
     conn = connect.connect(str(path))
     try:
         root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
@@ -807,7 +832,13 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    # A SUPERSET, not the exact list. What these tests are about is that
+    # the prompt steps ran over a database that came the long way; the
+    # exact tail is "how many steps exist above 17", a number every
+    # future migration changes and which broke this assertion the first
+    # time one did.
+    stepped = migrate.migrate(path)
+    assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1036,33 +1067,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
     path = tmp_path / "old.db"
     build.build(path)
     conn = connect.connect(path)
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
-        conn.execute(f"DROP TABLE {table}")
-    conn.execute("DROP TABLE job_event")  # v24's addition
-    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
-    conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
-    conn.execute("DROP TABLE file_place")  # v28's addition
-    conn.execute(
-        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
-        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
-        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
-        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
-        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
-    )
-    for index in (
-        "generation_workflow ON generation(workflow_id)",
-        "generation_prompt ON generation(prompt_id)",
-        "generation_negative ON generation(negative_id)",
-        "generation_seed ON generation(seed)",
-    ):
-        conn.execute(f"CREATE INDEX {index}")
-    conn.execute("PRAGMA user_version = 17")
-    conn.commit()
-    conn.close()
+    _back_to_v17(conn)
     conn = connect.connect(str(path))
     try:
         root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
@@ -1089,7 +1094,13 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    # A SUPERSET, not the exact list. What these tests are about is that
+    # the prompt steps ran over a database that came the long way; the
+    # exact tail is "how many steps exist above 17", a number every
+    # future migration changes and which broke this assertion the first
+    # time one did.
+    stepped = migrate.migrate(path)
+    assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
     try:
         held = dict(

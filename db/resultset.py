@@ -244,6 +244,27 @@ def fingerprint(query: GalleryQuery) -> str:
 _MONITORS: dict[str, sqlite3.Connection] = {}
 _MONITOR_LOCK = threading.Lock()
 
+#: Per database file, the highest generation this process has seen, and
+#: how many times that number has gone BACKWARDS.
+#:
+#: `answer_generation` lives in the file, so restoring a snapshot over a
+#: running process rewinds it -- `sqlite3.Connection.backup` into the
+#: live database, a migration rolling back to its own snapshot, a test
+#: harness putting a template back. `PRAGMA data_version` could not do
+#: this: it counts a connection's OWN observations, so other-connection
+#: writes only ever push it up, and replacing the file pushes it up too.
+#:
+#: A rewound counter is worse than a stale one. The projection cache is
+#: process-lifetime and keyed on this string, so after a rewind an old
+#: key matches again and an answer computed from data that no longer
+#: exists is served as current -- silently, and with no read of the
+#: database that could notice.
+#:
+#: So the epoch goes in the key. Counting rewinds is enough: it never
+#: goes backwards itself, so every key minted after a restore is new,
+#: and nothing has to walk the cache and decide what to discard.
+_SEEN: dict[str, tuple[int, int]] = {}
+
 
 def close_monitors() -> int:
     """Close every monitor and forget it; returns how many there were.
@@ -268,6 +289,12 @@ def close_monitors() -> int:
     for monitor in held:
         monitor.close()
     return len(held)
+
+
+# `_SEEN` is deliberately NOT cleared above. It is the rewind epoch, and
+# the projection cache it protects outlives any monitor: forgetting the
+# highest generation seen would reset the epoch, and every key minted
+# before a restore would start matching again.
 
 
 # The PROCESS owns these, not an application instance: `_MONITORS` is
@@ -318,7 +345,13 @@ def currency(conn) -> str:
         monitor = _MONITORS.get(where)
         if monitor is None:
             monitor = _MONITORS[where] = connect.connect(where, read_only=True, cross_thread=True)
-        return f"g{monitor.execute('SELECT value FROM answer_generation').fetchone()[0]}"
+        held = int(monitor.execute("SELECT value FROM answer_generation").fetchone()[0])
+        highest, epoch = _SEEN.get(where, (held, 0))
+        if held < highest:
+            epoch += 1
+            highest = held
+        _SEEN[where] = (max(highest, held), epoch)
+        return f"g{epoch}.{held}"
 
 
 # --- the projection ---------------------------------------------------------

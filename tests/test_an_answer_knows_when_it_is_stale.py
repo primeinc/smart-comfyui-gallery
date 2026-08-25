@@ -216,6 +216,66 @@ def test_a_cached_answer_survives_a_job_committing(library):
         connect.close(writer)
 
 
+def test_a_restored_snapshot_cannot_resurrect_a_cached_answer(library, tmp_path):
+    """The counter lives in the FILE, so restoring one rewinds it.
+
+    `PRAGMA data_version` could not do this: it counts one connection's
+    own observations, so another connection's writes only ever push it
+    up -- and replacing the whole file pushes it up too. A counter in
+    the database is comparable across connections, which is why it is
+    here, and rewindable, which is why this test is.
+
+    A rewound counter is worse than a stale one. The projection cache is
+    process-lifetime and keyed on this string, so after a restore an old
+    key matches again and an answer built from rows that no longer exist
+    is served as current -- with no read that could notice.
+
+    Found by a suite, not by reasoning: a module-scoped harness that
+    restores its template between tests started reporting one test's
+    collection counts under another's question.
+    """
+    path, conn = library
+    asked = resultset.parse()
+    before = resultset.describe(conn, "", asked, NOW)
+
+    snapshot = tmp_path / "snapshot.db"
+    source = connect.connect(str(path), read_only=True)
+    try:
+        kept = connect.connect(str(snapshot))
+        try:
+            source.backup(kept)
+        finally:
+            connect.close(kept)
+    finally:
+        connect.close(source)
+
+    writer = connect.connect(str(path))
+    try:
+        writer.execute("UPDATE file SET mtime = mtime + 500 WHERE id = 2")
+        writer.commit()
+        moved = resultset.describe(conn, "", asked, NOW)
+        assert moved["currency"] != before["currency"]
+    finally:
+        connect.close(writer)
+
+    # the snapshot back over the live file: every generation the writes
+    # above minted is gone, and the counter is back where it started
+    held = connect.connect(str(snapshot), read_only=True)
+    try:
+        live = connect.connect(str(path))
+        try:
+            held.backup(live)
+        finally:
+            connect.close(live)
+    finally:
+        connect.close(held)
+
+    after = resultset.describe(conn, "", asked, NOW)
+    assert after["currency"] not in (before["currency"], moved["currency"]), (
+        "a restored snapshot handed back a currency this process had already cached answers under"
+    )
+
+
 def test_a_migrated_database_gets_the_same_coverage(tmp_path):
     """The hole this nearly shipped with.
 
@@ -246,7 +306,14 @@ def test_a_migrated_database_gets_the_same_coverage(tmp_path):
 
     from db import migrate
 
-    assert migrate.migrate(path) == [32]
+    # `32 in`, not `== [32]`. What this test is about is that step 32 --
+    # the one that writes the triggers -- really ran over a database that
+    # got here the long way. Spelling the whole list pins something else
+    # entirely: how many steps exist above 31, which is a number every
+    # future migration changes, and which broke this test the first time
+    # one did.
+    ran = migrate.migrate(path)
+    assert 32 in ran, ran
 
     conn = connect.connect(str(path), read_only=True)
     try:
