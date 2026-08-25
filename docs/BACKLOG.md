@@ -436,6 +436,55 @@ not a design decision anybody made; it is work nobody did.
   with no correction UI means the durability protects whatever mistake
   was made first.
 
+- **A video with nobody in it is the most expensive video to look at.**
+  Not a guess about the code -- it is what the code is for.
+  `harvest_video` samples a cadence, and *because* it found nothing it
+  then bisects the widest gaps, up to `REFINE_MOST = 32` extra decoded
+  frames, and only stops when faces appear (db/detect.py). That
+  refinement is right: a fixed interval can land every moment on the
+  establishing shot of a clip that is otherwise all people, and without
+  it those people are simply missed. But it means a landscape timelapse
+  pays the cadence, then pays thirty-two more decodes, then records that
+  it found nothing -- and a library of screen recordings and B-roll
+  spends most of its face budget proving negatives.
+
+  What is missing is a cheap gate BEFORE the expensive certainty, and
+  the library already computes the signal for it: `derived_embedding`
+  holds a semantic vector per file after the embed job, and the cosine
+  against an encoded phrase like "a person" is arithmetic on a vector
+  already in the database. A zero-shot person detector for free, on a
+  file that has been embedded. `db/retrieval.py` already knows how to
+  ask a space a question and where a score stands relative to the rest.
+
+  Three things it must not become:
+
+  - **Not a silent skip.** A false negative hides a person for ever and
+    reads as a broken face pipeline, which is the worst failure this
+    subsystem has. A gated file must record that it was gated, with the
+    threshold and the model that gated it -- `derived_face_scan` already
+    exists to say a file was looked at and what was found; "looked at
+    cheaply and declined" is a third state, not an absence. Then a later
+    run at a lower threshold, or a person saying "look properly", can
+    revisit exactly the right files.
+  - **Not a new hardcoded number.** The threshold is another knob, and
+    belongs with the entry below rather than as a constant in
+    db/detect.py.
+  - **Not assumed to pay.** The gate is only worth building if decode is
+    where the time goes, and that is measurable rather than obvious: the
+    embed benchmark already says decoding is 39% of that job. The
+    equivalent split for `detect_faces` over a video-heavy corpus should
+    exist before the gate does, along with the recall cost at each
+    candidate threshold -- how many face-carrying videos a given cut
+    would have skipped, checked against the ones already scanned. That
+    measurement is most of the work and all of the confidence.
+
+  A cheaper variant needs no embedding and could gate the REFINEMENT
+  rather than the whole file: the cadence is already decoded and already
+  found nothing, so the question is only whether to spend the extra
+  thirty-two. Deciding that from what the cadence frames looked like is
+  a smaller claim than deciding a video has nobody in it, and it targets
+  exactly the frames that are pure cost today.
+
 - **"This is not that person" cannot be said, and would be ignored if
   it were.** The positive claim is built and the doctrine around it is
   the best thing in this schema: `person_assertion` is a human saying
