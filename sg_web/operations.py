@@ -271,7 +271,7 @@ def _matrix_row(state: State, row: dict) -> MatrixRow:
     return MatrixRow(
         **{one: row[one] for one in MatrixRow.model_fields if one in row and one not in _TRANSLATED},
         cancel_requested=bool(row["cancel_requested"]),
-        what=console.describe_kind(row["kind"], row.get("derive")),
+        what=console.describe_kind(row["kind"], row.get("derive"), row.get("total"), row.get("path")),
         live=None
         if not held
         else LiveReport(phase=held.get("phase"), type=held["type"], text=held["text"], item_id=held.get("item_id")),
@@ -663,7 +663,9 @@ def _job_detail(state: State, told: dict) -> JobDetail:
             ),
         ),
         recent_events=[console.envelope(event) for event in told["recent_events"]],
-        what=console.describe_kind(told["kind"], (payload or {}).get("derive")),
+        what=console.describe_kind(
+            told["kind"], (payload or {}).get("derive"), told.get("total"), (payload or {}).get("path")
+        ),
     )
 
 

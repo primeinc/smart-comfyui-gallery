@@ -35,7 +35,26 @@ def _seconds(value) -> str:
 
 
 def _item(event: Mapping) -> str:
-    return f"item {event['item_id']}" if event.get("item_id") is not None else "item"
+    """Which item, said the way a person can act on.
+
+    The name when the runner knew one (db/runner.py `FILE_ITEMS`), the
+    number otherwise. "item 41 started" is a hundred thousand lines
+    naming an integer nobody can resolve; the file's name was one
+    indexed lookup away and the ledger simply did not carry it.
+
+    The number stays beside it. It is what `/jobs/{id}` and the
+    `job_item` rows are keyed on, so dropping it would make the console
+    unusable for the person debugging one.
+    """
+    at = event.get("item_id")
+    if at is None:
+        return "item"
+    # `item_name`, never `name`: `item.observed` has always used `name`
+    # for what the HANDLER noticed, and reading one key for two facts
+    # rendered "item 41 · captioned · captioned" the moment both were
+    # present. Two facts, two keys.
+    named = (event.get("data") or {}).get("item_name")
+    return f"item {at} · {named}" if named else f"item {at}"
 
 
 def _submitted(e: Mapping) -> str:
@@ -99,6 +118,7 @@ def _item_failed(e: Mapping) -> str:
 
 def _item_observed(e: Mapping) -> str:
     d = dict(e.get("data") or {})
+    # The OBSERVATION's name, which is not the file's -- see `_item`.
     name = d.pop("name", e.get("message") or "observation")
     facts = ", ".join(f"{k} {v}" for k, v in d.items())
     return f"{_item(e)} · {name}" + (f": {facts}" if facts else "")
@@ -249,9 +269,67 @@ HASH_MODES: dict[str | None, str] = {
     "groups": "group perceptual copies",
 }
 
+#: The same sentences with THIS job's numbers in them: a template and
+#: the unit its count is in.
+#:
+#: The sentences above are constants per kind, so "read every file's
+#: metadata" is the same line whether the job is over four files or
+#: eighty thousand, and a console full of them says nothing about what
+#: is actually happening. The count is `job.total` -- it has been on the
+#: row the whole time and nothing read it.
+#:
+#: `every` is left in the uncounted forms deliberately: a job whose
+#: items were never enumerable really is over whatever is there, and
+#: inventing a number for it would be worse than the constant.
+COUNTED: dict[str, tuple[str, str]] = {
+    "scan": ("read metadata for {n}", "file"),
+    "embed": ("embed {n} for search", "picture"),
+    "detect_faces": ("detect faces in {n}", "file"),
+    "cluster_faces": ("cluster {n} into people", "face space"),
+    "sample_frames": ("sample frames from {n}", "video"),
+    "annotate": ("caption {n}", "picture"),
+    "remix": ("remix {n}", "picture"),
+    "zip": ("pack {n} for download", "file"),
+    "context": ("interpret time and place for {n}", "file"),
+    "events": ("propose events across {n}", "group"),
+    "story_plan": ("plan {n}", "story"),
+    "embed_prompts": ("embed {n}", "prompt"),
+}
 
-def describe_kind(kind: str, derive: str | None = None) -> str:
-    """The human line for a job: its kind's words, or its hash mode's."""
+#: The counted form of each hash mode. Four different acts behind one
+#: kind, and "render 1,204 missing thumbnails" is not "verify 1,204
+#: files' bytes" -- one of them is the one somebody would cancel.
+COUNTED_HASH: dict[str | None, tuple[str, str]] = {
+    None: ("verify the bytes of {n}", "file"),
+    "perceptual": ("fingerprint {n}", "picture"),
+    "thumbs": ("render {n}", "missing thumbnail"),
+    "groups": ("group perceptual copies across {n}", "picture"),
+}
+
+
+def _many(n: int, unit: str) -> str:
+    """`1 file`, `412 files`. Grouped, because a person reading 80000
+    counts the digits."""
+    return f"{n:,} {unit}" if n == 1 else f"{n:,} {unit}s"
+
+
+def describe_kind(kind: str, derive: str | None = None, total: int | None = None, where: str | None = None) -> str:
+    """What THIS job is doing, in a person's words.
+
+    Everything here was already on the row and none of it was read: the
+    count of items, the hash mode, and a walk's own root path. The line
+    was a constant per kind, so a console showed the same sentence for
+    every job of a kind it ever ran.
+    """
+    if kind == "walk" and where:
+        # A walk has no enumerable items -- finding them is the job --
+        # so what it can say is WHERE it is looking, which is the fact
+        # somebody watching a scan actually wants.
+        return f"look for files under {where}"
+    counted = COUNTED_HASH.get(derive) if kind == "hash" else COUNTED.get(kind)
+    if counted is not None and total:
+        template, unit = counted
+        return template.format(n=_many(int(total), unit))
     if kind == "hash":
         return HASH_MODES.get(derive, f"hash, mode {derive}")
     return KINDS.get(kind, kind.replace("_", " "))

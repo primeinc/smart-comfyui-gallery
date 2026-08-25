@@ -42,11 +42,13 @@ TERMINAL = ("done", "failed", "cancelled")
 RECENT = 12
 
 
-def _view(id_: int, kind: str, state: str, done: int, total: int | None, cancel_requested: int, derive=None) -> dict:
+def _view(
+    id_: int, kind: str, state: str, done: int, total: int | None, cancel_requested: int, derive=None, where=None
+) -> dict:
     return {
         "id": id_,
         "kind": kind,
-        "what": console.describe_kind(kind, derive),
+        "what": console.describe_kind(kind, derive, total, where),
         "state": state,
         "done": done,
         "total": total,
@@ -65,6 +67,7 @@ def row_view(row: Mapping[str, Any]) -> dict:
         row["total"],
         row["cancel_requested"],
         row.get("derive"),
+        row.get("path"),
     )
 
 
@@ -80,6 +83,7 @@ def delta_view(delta: Mapping[str, Any]) -> dict:
         delta["total"],
         delta.get("cancel_requested", 0),
         delta.get("derive"),
+        delta.get("path"),
     )
 
 

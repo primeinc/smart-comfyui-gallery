@@ -593,16 +593,25 @@ def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
         assert "queued #" in dupes
         matrix = client.get("/operations/overview").json()["matrix"]
         told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
-        assert told[("hash", "perceptual")] == "fingerprint every picture"
-        assert told[("hash", "groups")] == "group perceptual copies"
+        # The claim is that the MODE is told apart -- these are two acts
+        # behind one kind. The count comes from the row and so depends
+        # on the library, which is why this asserts the shape rather
+        # than a sentence: a test that pinned "fingerprint every
+        # picture" is what kept the line a constant.
+        assert told[("hash", "perceptual")].startswith("fingerprint ")
+        assert "group perceptual copies" in told[("hash", "groups")]
+        assert told[("hash", "perceptual")] != told[("hash", "groups")]
         page = client.get("/operations", headers={"accept": "text/html"}).text
-        assert "fingerprint every picture" in page
+        assert "fingerprint " in page
         assert '<code class="raw">hash</code>' in page
         one = next(row["id"] for row in matrix if row.get("derive") == "perceptual")
         detail = client.get(f"/operations/job/{one}", headers={"accept": "application/json"}).json()
-        assert detail["what"] == "fingerprint every picture"
+        # The inspector reads the same line as the matrix -- one library,
+        # one job, one description, whichever surface asks.
+        assert detail["what"] == told[("hash", "perceptual")]
+        assert detail["what"].startswith("fingerprint ")
         inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
-        assert "fingerprint every picture" in inspector
+        assert detail["what"] in inspector
 
 
 def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
@@ -654,10 +663,11 @@ def test_the_activity_surface_words_the_hash_kinds_mode_too():
     from sg_web import activity
 
     row = {"id": 1, "kind": "hash", "state": "queued", "done_count": 0, "total": 3, "cancel_requested": 0}
-    assert activity.row_view({**row, "derive": "perceptual"})["what"] == "fingerprint every picture"
-    assert activity.row_view({**row, "derive": None})["what"] == "verify every file's bytes"
+    # And it reads THIS job's numbers, not its kind's: the row says 3.
+    assert activity.row_view({**row, "derive": "perceptual"})["what"] == "fingerprint 3 pictures"
+    assert activity.row_view({**row, "derive": None})["what"] == "verify the bytes of 3 files"
     delta = {"job": 1, "kind": "hash", "state": "running", "done": 1, "total": 3, "derive": "groups"}
-    assert activity.delta_view(delta)["what"] == "group perceptual copies"
+    assert activity.delta_view(delta)["what"] == "group perceptual copies across 3 pictures"
 
 
 def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
@@ -713,3 +723,81 @@ def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(tm
             backward = ids + backward
             before = ids[0]
         assert backward == forward, "backwards reaches every event once and meets the forward walk"
+
+
+# --- saying what THIS job is, not what its kind is --------------------------
+
+
+def test_a_job_says_its_own_numbers_not_its_kind(db):
+    """The complaint, exactly: every description was the same all the
+    time. `job.total`, the hash mode and a walk's own root path were all
+    on the row and none of them was read, so "read every file's
+    metadata" was the line for four files and for eighty thousand."""
+    from sg_web import console
+
+    assert console.describe_kind("scan", None, 412) == "read metadata for 412 files"
+    assert console.describe_kind("scan", None, 1) == "read metadata for 1 file"
+    assert console.describe_kind("embed", None, 400) == "embed 400 pictures for search"
+    assert console.describe_kind("walk", None, None, "D:/Photos/2019") == "look for files under D:/Photos/2019"
+
+
+def test_four_acts_behind_one_kind_read_as_four(db):
+    """`hash` is verify, fingerprint, render thumbnails and group copies,
+    told apart only by the payload's `derive` -- and one of them is the
+    one somebody would cancel."""
+    from sg_web import console
+
+    assert console.describe_kind("hash", "thumbs", 1204) == "render 1,204 missing thumbnails"
+    assert console.describe_kind("hash", None, 1204) == "verify the bytes of 1,204 files"
+    assert console.describe_kind("hash", "perceptual", 9) != console.describe_kind("hash", "groups", 9)
+
+
+def test_a_job_with_no_count_still_says_something_true(db):
+    """`every` survives where the items were never enumerable. Inventing
+    a number for a job that has none would be worse than the constant it
+    replaced."""
+    from sg_web import console
+
+    assert console.describe_kind("scan") == "read every file's metadata"
+    assert console.describe_kind("scan", None, 0) == "read every file's metadata"
+    assert console.describe_kind("walk") == "look for files on disk"
+
+
+def test_an_item_is_named_where_the_runner_knows_the_name(db):
+    """ "item 41 started" is a hundred thousand lines naming an integer
+    nobody can resolve. The file's name was one indexed lookup away."""
+    from sg_web import console
+
+    told = console.describe(
+        {"type": "item.started", "item_id": 41, "data": {"item_name": "DSC_0042.NEF"}, "message": "item 41 started"}
+    )
+    assert "41" in told, "the number stays: it is what job_item is keyed on"
+    assert "DSC_0042.NEF" in told
+
+
+def test_an_item_the_runner_cannot_name_still_reads(db):
+    """A `cluster_faces` item is an index into a payload, not a file --
+    so there is no name, and inventing one by looking up the integer as
+    a file id would put a real picture's name beside item 2 of a
+    clustering run."""
+    from sg_web import console
+
+    told = console.describe({"type": "item.started", "item_id": 2, "data": {}, "message": "item 2 started"})
+    assert told == "item 2 started"
+
+
+def test_the_observation_name_and_the_file_name_stay_apart(db):
+    """Two facts, two keys. Read from one, an observed event rendered
+    its own name twice and the file's not at all."""
+    from sg_web import console
+
+    told = console.describe(
+        {
+            "type": "item.observed",
+            "item_id": 7,
+            "data": {"name": "captioned", "item_name": "beach.png", "words": 12},
+            "message": "",
+        }
+    )
+    assert "beach.png" in told
+    assert told.count("captioned") == 1

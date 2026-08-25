@@ -1359,6 +1359,32 @@ def _embed_prompts_item(conn, prompt_id: int, payload: dict, now: float) -> None
     prompts.embed_item(conn, prompt_id, payload, now)
 
 
+#: The kinds whose `job_item.item_id` IS a file id.
+#:
+#: Written down because the console wants to say WHICH file an item is,
+#: and guessing is unsafe: `cluster_faces` numbers its items 0, 1, 2 as
+#: indices into its payload's spaces, and `events` does the same -- so a
+#: lookup that assumed every item id were a file would put a real
+#: picture's name beside item 2 of a clustering run. Only the parameter
+#: names said which was which, and a parameter name is not something
+#: another module can read.
+FILE_ITEMS = frozenset({"scan", "hash", "embed", "detect_faces", "annotate", "context"})
+
+#: What an item is called, for the ledger. One indexed lookup on a
+#: connection that is already open, next to per-item work measured in
+#: tens of milliseconds -- and it is the difference between a console
+#: that says "item 41 started" a hundred thousand times and one that
+#: says which picture it is on.
+_ITEM_NAME = "SELECT name FROM file WHERE id = ?"
+
+
+def _item_named(conn, kind: str, item: int) -> str | None:
+    if kind not in FILE_ITEMS:
+        return None
+    row = conn.execute(_ITEM_NAME, (item,)).fetchone()
+    return None if row is None else str(row[0])
+
+
 HANDLERS = {
     "story_plan": _story_plan_item,
     "embed_prompts": _embed_prompts_item,
@@ -1567,7 +1593,13 @@ def run_next(
             return {"job": job_id, "state": "cancelled", "did": did, "failed": failed}
         # The start is committed BEFORE the handler runs -- a 47-second
         # decode is then a console row saying so, not a frozen bar.
-        note("item.started", item_id=item, message=f"item {item} started")
+        named = _item_named(conn, kind, item)
+        note(
+            "item.started",
+            item_id=item,
+            message=f"item {item} started",
+            data={"item_name": named} if named else None,
+        )
         committed()
         told = Report(job_id, item, tick, tell_event)
         token = _REPORT.set(told)
@@ -1591,9 +1623,20 @@ def run_next(
                 item_id=item,
                 severity="warning",
                 message=str(why),
-                data={"error": str(why), "exception": type(why).__name__, "job_continues": True},
+                data={
+                    "error": str(why),
+                    "exception": type(why).__name__,
+                    "job_continues": True,
+                    # The one a person most wants named. "item 41 failed:
+                    # cannot identify image file" is a defect report with
+                    # the subject removed.
+                    **({"item_name": named} if named else {}),
+                },
             )
-            _logger.warning("job #%d %s: item %r failed: %s", job_id, kind, item, why)
+            # The name only where there IS one: "item 2 (?) failed" is
+            # a question mark standing in for a fact that does not exist
+            # for this kind of item, which reads as a lookup that broke.
+            _logger.warning("job #%d %s: item %r%s failed: %s", job_id, kind, item, f" ({named})" if named else "", why)
         except Exception as defect:
             conn.rollback()
             similarity_module.discard_pending(conn)
@@ -1623,7 +1666,15 @@ def run_next(
             told.close()
             _keep(conn, told, unspoken)
             moved = jobs.finish_item(conn, job_id, fence, item)
-            note("item.done", item_id=item, message=f"item {item} done")
+            # `named` is the one read at the top of this item, reused:
+            # the row cannot have changed under a transaction that has
+            # been open the whole time.
+            note(
+                "item.done",
+                item_id=item,
+                message=f"item {item} done",
+                data={"item_name": named} if named else None,
+            )
         finally:
             _REPORT.reset(token)
         did += 1

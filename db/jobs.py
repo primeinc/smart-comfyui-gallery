@@ -413,7 +413,11 @@ def snapshot(conn, job_id: int) -> dict:
 #: `active` and `recent` rows are the same shape to a renderer.
 _LISTED = (
     "id, kind, state, cancel_requested, total, done_count, created_at, finished_at,"
-    " json_extract(payload, '$.derive') AS derive"
+    " json_extract(payload, '$.derive') AS derive,"
+    # A walk has no enumerable items -- finding them is the job -- so
+    # WHERE it is looking is the only specific thing it can say, and a
+    # console that cannot say it shows the same line for every root.
+    " json_extract(payload, '$.path') AS path"
 )
 
 
