@@ -110,6 +110,21 @@
       <a class="filters-clear" href="/g" data-filters-clear>clear all</a>
       <button type="button" class="viewer-act" data-filters-close aria-label="close filters">&times;</button>
     </header>
+    {# The door out of "you must already know the spelling".
+
+       Every fact below is in a named section somebody has to find, and
+       the long tail is behind an advanced heading whose control used to
+       be a text box with a `key=value` placeholder. This searches BOTH
+       -- the curated vocabulary and every metadata key any tool wrote --
+       and the list it draws is the application saying what it knows
+       rather than waiting to be told. db/catalog.py ranks it. #}
+    <div class="filter-find" data-filter-find>
+      <input type="search" data-filter-find-input autocomplete="off"
+             placeholder="add filter&hellip;" aria-label="search every field this answer has"
+             role="combobox" aria-expanded="false" aria-controls="filter-found">
+      <div class="filter-found" id="filter-found" data-filter-found role="listbox"
+           aria-label="matching fields" hidden></div>
+    </div>
     {% for group in filter_groups %}
     <section class="filter-group" data-filter-group="{{ group.name }}">
       <h3>{{ group.label }}</h3>

@@ -1211,6 +1211,122 @@
       body.dataset.state = "failed";
     }
   }
+  var SETTLED_MS = 140;
+  function mountFind(drawer, reveal) {
+    const box = findElement(drawer, "[data-filter-find]", HTMLElement);
+    const field = box && findElement(box, "[data-filter-find-input]", HTMLInputElement);
+    const list = box && findElement(box, "[data-filter-found]", HTMLElement);
+    if (!box || !field || !list) return;
+    let at = -1;
+    let ticket = 0;
+    let timer = 0;
+    const rows = () => everyElement(list, "[data-field]", HTMLElement);
+    const highlight = (wanted) => {
+      const all = rows();
+      if (all.length === 0) {
+        at = -1;
+        return;
+      }
+      at = (wanted + all.length) % all.length;
+      for (const [index, row] of all.entries()) {
+        row.setAttribute("aria-selected", String(index === at));
+        if (index === at) row.scrollIntoView({ block: "nearest" });
+      }
+    };
+    const shut = () => {
+      list.hidden = true;
+      list.replaceChildren();
+      field.setAttribute("aria-expanded", "false");
+      at = -1;
+    };
+    const take = (one) => {
+      shut();
+      field.value = "";
+      reveal(one.key);
+      if (one.param === null) return;
+      const section = findElement(drawer, '[data-filter="param.is"]', HTMLDetailsElement);
+      const input = section && findElement(section, 'input[type="text"]', HTMLInputElement);
+      if (!input) return;
+      input.value = `${one.param}=`;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+    const draw2 = (told) => {
+      list.replaceChildren();
+      if (told.fields.length === 0) {
+        const none = document.createElement("p");
+        none.className = "filter-note";
+        none.textContent = "nothing here answers to that";
+        list.append(none);
+      }
+      for (const one of told.fields) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "filter-found-row";
+        row.dataset.field = one.key;
+        if (one.param !== null) row.dataset.param = one.param;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", "false");
+        const name = document.createElement("span");
+        name.className = "filter-found-label";
+        name.textContent = one.label;
+        const where = document.createElement("span");
+        where.className = "filter-found-group";
+        where.textContent = one.curated ? one.group : `${one.group} \xB7 ${one.covered}`;
+        row.append(name, where);
+        row.addEventListener("click", () => take(one));
+        list.append(row);
+      }
+      if (told.more > 0) {
+        const cut = document.createElement("p");
+        cut.className = "filter-note";
+        cut.textContent = `${told.more} more \u2014 keep typing`;
+        list.append(cut);
+      }
+      list.hidden = false;
+      field.setAttribute("aria-expanded", "true");
+      highlight(0);
+    };
+    const look = async () => {
+      const wanted = field.value.trim();
+      const mine = ++ticket;
+      const asked4 = question();
+      asked4.set("search", wanted);
+      try {
+        const answered2 = await fetch(`/g/fields?${asked4.toString()}`, { headers: { accept: "application/json" } });
+        if (!answered2.ok) throw new Error(`${answered2.status}`);
+        const told = await answered2.json();
+        if (mine === ticket) draw2(told);
+      } catch {
+        if (mine === ticket) shut();
+      }
+    };
+    field.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void look(), SETTLED_MS);
+    });
+    field.addEventListener("focus", () => void look());
+    field.addEventListener("keydown", (event) => {
+      if (list.hidden) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        highlight(at + 1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        highlight(at - 1);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        rows()[at]?.click();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        shut();
+      }
+    });
+    document.addEventListener("click", (event) => {
+      if (!list.hidden && event.target instanceof Node && !box.contains(event.target)) shut();
+    });
+  }
   function mountFilters(root) {
     const drawer = findElement(root, "[data-filters-panel]", HTMLElement);
     const open = findElement(root, "[data-filters-open]", HTMLElement);
@@ -1241,16 +1357,21 @@
         void fill(section);
       }
     }
+    const reveal = (key) => {
+      show(true);
+      const section = findElement(drawer, `[data-filter="${key}"]`, HTMLDetailsElement);
+      if (!section) return;
+      section.open = true;
+      if (!section.dataset.filled) {
+        section.dataset.filled = "1";
+        void fill(section);
+      }
+      section.scrollIntoView({ block: "nearest" });
+    };
     for (const chip of everyElement(root, "[data-chip-edit]", HTMLElement)) {
-      chip.addEventListener("click", () => {
-        const key = chip.dataset.chipEdit ?? "";
-        const section = findElement(drawer, `[data-filter="${key}"]`, HTMLDetailsElement);
-        show(true);
-        if (!section) return;
-        section.open = true;
-        section.scrollIntoView({ block: "nearest" });
-      });
+      chip.addEventListener("click", () => reveal(chip.dataset.chipEdit ?? ""));
     }
+    mountFind(drawer, reveal);
     for (const clear of everyElement(root, "[data-filters-clear], [data-chips-clear]", HTMLElement)) {
       clear.addEventListener("click", endSession);
     }

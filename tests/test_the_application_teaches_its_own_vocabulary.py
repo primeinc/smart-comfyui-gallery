@@ -190,6 +190,33 @@ def test_a_key_no_file_here_carries_is_not_offered(library):
     assert any(one.curated for one in narrow), "the curated vocabulary went away with them"
 
 
+def test_the_long_tail_keeps_its_share_of_a_full_list(library):
+    """The defect this module exists to fix, caught reproducing itself
+    inside the fix.
+
+    Forty-one curated dimensions against thirty rows: ranked purely by
+    match quality, a broad search fills the list with names before a
+    single raw key appears -- and the long tail is unreachable again for
+    exactly the person who cannot name what they want. Found by a
+    browser test that asked for "s" and got thirty dimensions.
+    """
+    found, _ = catalog.catalog(library, resultset.parse(), most=10)
+    assert len(found) == 10
+    tail = [one for one in found if not one.curated]
+    assert len(tail) >= 3, f"the tail got {len(tail)} of 10 rows: {[one.label for one in found]}"
+    assert any(one.curated for one in found), "the reservation took the whole list"
+
+
+def test_a_library_with_no_metadata_keys_still_fills_the_list(library):
+    """The share is kept, never demanded. A tail with nothing to put in
+    its rows gives them back rather than leaving gaps."""
+    library.execute("DELETE FROM file_param")
+    library.commit()
+    found, _ = catalog.catalog(library, resultset.parse(), most=10)
+    assert len(found) == 10, [one.label for one in found]
+    assert all(one.curated for one in found)
+
+
 def test_the_list_is_bounded_and_says_how_much_it_cut(library):
     """A truncated list that does not say so reads as a complete one,
     and then a field that IS in the library looks absent."""

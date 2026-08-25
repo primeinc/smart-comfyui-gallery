@@ -25,7 +25,7 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.params import FromPath, FromQuery
 from litestar.response import Template
 
-from db import analysis, connect, discovery, naming, pages, places, resultset, settings, vocabulary
+from db import analysis, catalog, connect, discovery, naming, pages, places, resultset, settings, vocabulary
 from db import facets as facets_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
@@ -462,6 +462,118 @@ def filter_options(
             for each in told.options
         ],
         more=told.more,
+    )
+
+
+class CatalogField(Wire):
+    """One filterable fact, as the Add-filter list shows it."""
+
+    #: what the URL carries: a dimension's own key, or `param.is`
+    key: str
+    #: for a discovered field, the raw metadata key its clause names
+    param: str | None
+    label: str
+    #: the section it belongs to, or the source that wrote it
+    group: str
+    value_kind: str
+    ops: list[str]
+    multi: str
+    note: str
+    #: whether this application understands the fact or merely recorded
+    #: that some tool wrote it. The surface builds a different control
+    #: for each; the PERSON is never shown the distinction.
+    curated: bool
+    #: media in this answer carrying it, and how many values they hold
+    #: between them -- the two numbers the ranking is made of, sent so a
+    #: surface can say "412 files, 6 values" rather than only ordering.
+    covered: int
+    values: int
+    #: how many positional members collapsed into this one
+    repeats: int
+
+
+class Catalog(Wire):
+    """What the Add-filter box answers with."""
+
+    fields: list[CatalogField]
+    #: how many more matched. Never silently zero: a truncated list that
+    #: does not say so reads as a complete one, and then a field that IS
+    #: in the library looks absent.
+    more: int
+
+
+@get("/g/fields", sync_to_thread=True)
+def filter_catalog(
+    state: State,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    search: FromQuery[str | None] = None,
+) -> Catalog:
+    """Every fact this answer can be asked about, best first.
+
+    The whole question rides the query string, exactly as `/g/options`
+    takes it, because the ranking is counted WITHIN the answer being
+    looked at -- "what could I ask next about these" is a different list
+    from "what does this library contain", and only the first is worth
+    reading.
+    """
+    query = _asked(
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
+        depth=depth,
+    )
+    conn = connect.connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        found, more = catalog.catalog(
+            conn,
+            query,
+            search=search or "",
+            actor_id=state.actor_id,
+            models_dir=weights,
+            now=time.time(),
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return Catalog(
+        fields=[
+            CatalogField(
+                key=one.key,
+                param=one.param,
+                label=one.label,
+                group=one.group,
+                value_kind=one.value_kind,
+                ops=list(one.ops),
+                multi=one.multi,
+                note=one.note,
+                curated=one.curated,
+                covered=one.covered,
+                values=one.values,
+                repeats=one.repeats,
+            )
+            for one in found
+        ],
+        more=more,
     )
 
 

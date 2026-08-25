@@ -1351,6 +1351,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/g/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FilterCatalog */
+        get: operations["GFieldsFilterCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/g/peek": {
         parameters: {
             query?: never;
@@ -1735,6 +1752,26 @@ export interface components {
             answer: string;
             items: string[];
             value?: number | null;
+        };
+        /** Catalog */
+        Catalog: {
+            fields: components["schemas"]["CatalogField"][];
+            more: number;
+        };
+        /** CatalogField */
+        CatalogField: {
+            key: string;
+            param: string | null;
+            label: string;
+            group: string;
+            value_kind: string;
+            ops: string[];
+            multi: string;
+            note: string;
+            curated: boolean;
+            covered: number;
+            values: number;
+            repeats: number;
         };
         /** ChildCollection */
         ChildCollection: {
@@ -6094,6 +6131,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FilterOptions"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    GFieldsFilterCatalog: {
+        parameters: {
+            query?: {
+                folder?: string | null;
+                album?: string | null;
+                person?: string | null;
+                artifact?: string | null;
+                kind?: string | null;
+                favorite?: string | null;
+                rating_min?: number | null;
+                q?: string | null;
+                f?: string[] | null;
+                sort?: string | null;
+                depth?: string | null;
+                size?: number | null;
+                search?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalog"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

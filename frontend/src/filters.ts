@@ -451,6 +451,199 @@ async function fill(section: HTMLDetailsElement): Promise<void> {
   }
 }
 
+/** One field the catalog offered, as `/g/fields` sends it. */
+interface CatalogField {
+  key: string;
+  param: string | null;
+  label: string;
+  group: string;
+  value_kind: string;
+  ops: string[];
+  multi: string;
+  note: string;
+  curated: boolean;
+  covered: number;
+  values: number;
+  repeats: number;
+}
+
+interface Catalog {
+  fields: CatalogField[];
+  more: number;
+}
+
+/** How long a pause in typing means "this is what I meant". */
+const SETTLED_MS = 140;
+
+/**
+ * The Add-filter box: the application saying what it knows.
+ *
+ * The drawer already holds every curated dimension in a named section,
+ * and the long tail behind an "advanced" heading whose control was a
+ * text box placeheld `key=value`. Both assume you can find, or already
+ * know, the name of the thing you want. This is the other direction --
+ * you type what you half-remember and it answers with what it has,
+ * curated and discovered in one list, ranked by what would actually cut
+ * the answer you are looking at (db/catalog.py).
+ *
+ * Choosing a field does NOT apply a filter. It takes you to that
+ * field's own control, which already knows its operators and can offer
+ * its values -- so this is a way IN to the drawer rather than a second,
+ * poorer copy of it. That is the whole reason the catalog says
+ * `curated`: a fact we named has a section waiting, and a raw key is
+ * asked through the long-tail door with its spelling already filled in,
+ * which is the part nobody should have had to remember.
+ */
+function mountFind(drawer: HTMLElement, reveal: (key: string) => void): void {
+  const box = findElement(drawer, "[data-filter-find]", HTMLElement);
+  const field = box && findElement(box, "[data-filter-find-input]", HTMLInputElement);
+  const list = box && findElement(box, "[data-filter-found]", HTMLElement);
+  if (!box || !field || !list) return;
+
+  let at = -1;
+  let ticket = 0;
+  let timer = 0;
+
+  const rows = () => everyElement(list, "[data-field]", HTMLElement);
+
+  const highlight = (wanted: number) => {
+    const all = rows();
+    if (all.length === 0) {
+      at = -1;
+      return;
+    }
+    // Wrap: a list you can walk off the end of makes somebody reach for
+    // the mouse to get back to the top.
+    at = (wanted + all.length) % all.length;
+    for (const [index, row] of all.entries()) {
+      row.setAttribute("aria-selected", String(index === at));
+      if (index === at) row.scrollIntoView({ block: "nearest" });
+    }
+  };
+
+  const shut = () => {
+    list.hidden = true;
+    list.replaceChildren();
+    field.setAttribute("aria-expanded", "false");
+    at = -1;
+  };
+
+  /** Take the field a row names: go to its control, ready to be used. */
+  const take = (one: CatalogField) => {
+    shut();
+    field.value = "";
+    reveal(one.key);
+    if (one.param === null) return;
+    // A discovered key is asked through `param.is`, whose control is a
+    // text box because there is no curated list of them. The spelling
+    // goes in for them -- remembering it is the thing this box exists
+    // to stop being a requirement -- and the caret lands after the `=`
+    // so the next keystroke is the VALUE.
+    const section = findElement(drawer, '[data-filter="param.is"]', HTMLDetailsElement);
+    const input = section && findElement(section, 'input[type="text"]', HTMLInputElement);
+    if (!input) return;
+    input.value = `${one.param}=`;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  };
+
+  const draw = (told: Catalog) => {
+    list.replaceChildren();
+    if (told.fields.length === 0) {
+      const none = document.createElement("p");
+      none.className = "filter-note";
+      none.textContent = "nothing here answers to that";
+      list.append(none);
+    }
+    for (const one of told.fields) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "filter-found-row";
+      row.dataset.field = one.key;
+      if (one.param !== null) row.dataset.param = one.param;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", "false");
+
+      const name = document.createElement("span");
+      name.className = "filter-found-label";
+      name.textContent = one.label;
+      const where = document.createElement("span");
+      where.className = "filter-found-group";
+      // What it costs to say: for a discovered key, how much of this
+      // answer it can speak about at all. A person choosing between two
+      // unfamiliar fields is choosing on exactly that.
+      where.textContent = one.curated ? one.group : `${one.group} · ${one.covered}`;
+      row.append(name, where);
+      row.addEventListener("click", () => take(one));
+      list.append(row);
+    }
+    if (told.more > 0) {
+      // Never silently truncated: a cut list that does not say so reads
+      // as a complete one, and then a field that IS here looks absent.
+      const cut = document.createElement("p");
+      cut.className = "filter-note";
+      cut.textContent = `${told.more} more — keep typing`;
+      list.append(cut);
+    }
+    list.hidden = false;
+    field.setAttribute("aria-expanded", "true");
+    highlight(0);
+  };
+
+  const look = async () => {
+    const wanted = field.value.trim();
+    const mine = ++ticket;
+    const asked = question();
+    asked.set("search", wanted);
+    try {
+      const answered = await fetch(`/g/fields?${asked.toString()}`, { headers: { accept: "application/json" } });
+      if (!answered.ok) throw new Error(`${answered.status}`);
+      const told = (await answered.json()) as Catalog;
+      // A slower earlier answer must never overwrite a newer one: the
+      // list would then show what was typed two keystrokes ago.
+      if (mine === ticket) draw(told);
+    } catch {
+      if (mine === ticket) shut();
+    }
+  };
+
+  field.addEventListener("input", () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => void look(), SETTLED_MS);
+  });
+  // Focusing an empty box opens the list at what is worth asking from
+  // here -- which is the answer to "what CAN I filter by", and the
+  // question somebody with an empty box actually has.
+  field.addEventListener("focus", () => void look());
+
+  field.addEventListener("keydown", (event) => {
+    if (list.hidden) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      highlight(at + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      highlight(at - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      rows()[at]?.click();
+    } else if (event.key === "Escape") {
+      // The box first, the drawer second: Escape means "undo the
+      // smallest thing I am doing", and closing the whole drawer
+      // because a list was open is a surprise.
+      event.preventDefault();
+      event.stopPropagation();
+      shut();
+    }
+  });
+
+  // A click anywhere else is a dismissal. On the document, because the
+  // list must also close when somebody goes back to the grid.
+  document.addEventListener("click", (event) => {
+    if (!list.hidden && event.target instanceof Node && !box.contains(event.target)) shut();
+  });
+}
+
 export function mountFilters(root: HTMLElement): void {
   // `[data-filters-panel]`, never `[data-filters]`: the root carries
   // that as its open/closed state and would match first.
@@ -492,18 +685,35 @@ export function mountFilters(root: HTMLElement): void {
     }
   }
 
+  /**
+   * Open one dimension's own control, wherever the ask came from.
+   *
+   * Shared by the chip that made a filter and by the Add-filter list,
+   * because "take me to that field" is one behaviour: the drawer opens,
+   * the section discloses, its values are counted the first time, and
+   * it is scrolled to. Two copies of this drifted once already -- a
+   * chip that opened a section which never filled reads as a control
+   * that does nothing.
+   */
+  const reveal = (key: string) => {
+    show(true);
+    const section = findElement(drawer, `[data-filter="${key}"]`, HTMLDetailsElement);
+    if (!section) return;
+    section.open = true;
+    if (!section.dataset.filled) {
+      section.dataset.filled = "1";
+      void fill(section);
+    }
+    section.scrollIntoView({ block: "nearest" });
+  };
+
   // A chip and the filter that made it are the same thing, so clicking
   // one opens the other rather than being a label that does nothing.
   for (const chip of everyElement(root, "[data-chip-edit]", HTMLElement)) {
-    chip.addEventListener("click", () => {
-      const key = chip.dataset.chipEdit ?? "";
-      const section = findElement(drawer, `[data-filter="${key}"]`, HTMLDetailsElement);
-      show(true);
-      if (!section) return;
-      section.open = true;
-      section.scrollIntoView({ block: "nearest" });
-    });
+    chip.addEventListener("click", () => reveal(chip.dataset.chipEdit ?? ""));
   }
+
+  mountFind(drawer, reveal);
 
   // Clearing is a navigation to the question with nothing in it, and it
   // ends the editing session: the next filter someone applies starts a

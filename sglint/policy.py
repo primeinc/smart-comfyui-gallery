@@ -104,9 +104,15 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     # `pages` for the TABLE presentation only: one read of the columns a
     # grid cell deliberately does not carry, over the ids the ResultSet
     # already returned. It never asks which files those are.
+    # `catalog` is `discovery` for the OTHER axis and admitted on the
+    # same terms: discovery counts what one dimension's values would
+    # leave, catalog ranks which dimensions are worth offering at all,
+    # and both take their membership through resultset.scope_of rather
+    # than writing a WHERE clause about which media are included.
     "sg_web/gallery.py": frozenset(
         {
             "analysis",
+            "catalog",
             "connect",
             "discovery",
             "facets",

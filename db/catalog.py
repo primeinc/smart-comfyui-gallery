@@ -76,6 +76,16 @@ PLUMBING = ("exif", "iptc", "container", "filesystem")
 #: A key ending `.<digits>` is one member of a positional family.
 _INDEXED = re.compile(r"^(?P<stem>.+)\.(?P<at>\d+)$")
 
+#: The share of a full list kept for keys nothing here named.
+#:
+#: Not a tweak. Forty-one curated dimensions against thirty rows means a
+#: broad search fills the list with names, and the long tail is
+#: unreachable again for exactly the person who cannot name what they
+#: want -- the defect this module exists to fix, reproducing itself
+#: inside the fix. The tail keeps this share whenever it has anything to
+#: put in it, and gives back what it does not use.
+SHARE = 0.4
+
 #: Where a field's usefulness stops growing with its value count. Two to
 #: fifty distinct values is a list somebody can pick from; past that it
 #: still filters, and is worth less as something to OFFER.
@@ -340,6 +350,16 @@ def catalog(
     and a raw key is one it can only compare. Within the discovered, by
     what would cut the answer most usefully, with a camera's own
     plumbing ranked down rather than hidden.
+
+    And then a SHARE of the list is kept for discovered fields, which is
+    not a tweak -- it is the defect this module exists to fix, found
+    reproducing itself inside the fix. There are forty-one curated
+    dimensions and thirty rows: ranked purely by match quality, any
+    broad search fills the list with names before a single raw key
+    appears, and the long tail is unreachable again for exactly the
+    person who does not know what it is called. So the tail keeps
+    `SHARE` of the rows whenever it has anything to put in them, and
+    gives back whatever it does not use.
     """
     wanted = search.strip().casefold()
     found, total = discovered(conn, query, actor_id=actor_id, models_dir=models_dir, now=now)
@@ -361,4 +381,19 @@ def catalog(
             )
         )
     ranked.sort(key=lambda held: held[:-1])
-    return tuple(held[-1] for held in ranked[:most]), max(0, len(ranked) - most)
+    order = [held[-1] for held in ranked]
+
+    kept = max(0, most - int(most * SHARE))
+    named = [one for one in order if one.curated][:kept]
+    tail = [one for one in order if not one.curated][: most - len(named)]
+    # Back-fill from whichever side had less to give, so a library with
+    # no metadata keys at all still answers with a full list of names.
+    if len(named) + len(tail) < most:
+        room = most - len(named) - len(tail)
+        held = {id(one) for one in (*named, *tail)}
+        named += [one for one in order if one.curated and id(one) not in held][:room]
+    # Back in the ranked order they were chosen from: the reservation
+    # decides WHICH rows are shown, never which is best.
+    chosen = {id(one) for one in (*named, *tail)}
+    shown = tuple(one for one in order if id(one) in chosen)
+    return shown, max(0, len(order) - len(shown))
