@@ -3016,3 +3016,22 @@ def _a_verdict_names_what_it_judged(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE feedback ADD COLUMN model_id TEXT")
     conn.execute("ALTER TABLE feedback ADD COLUMN model_version TEXT")
     conn.execute("""CREATE INDEX feedback_producer ON feedback(model_id, model_version, annotation_kind)""")
+
+
+@step(34)
+def _a_person_can_be_denied(conn: sqlite3.Connection) -> None:
+    """v35 -> v36: `person_assertion` can say a person is NOT in a file.
+
+    The positive claim was durable and re-applied after every rebuild;
+    the negative one could not be spelled at all. `retract_person`
+    DELETES, which means "I take that back" -- and the next clustering
+    run is then free to decide the same thing again, because nothing
+    recorded that it was wrong. A false merge stayed a chore somebody
+    repeated after every re-run.
+
+    Defaulted to 'is', so every claim already recorded keeps meaning
+    exactly what it meant.
+    """
+    conn.execute(
+        "ALTER TABLE person_assertion ADD COLUMN stance TEXT NOT NULL DEFAULT 'is' CHECK (stance IN ('is','is_not'))"
+    )

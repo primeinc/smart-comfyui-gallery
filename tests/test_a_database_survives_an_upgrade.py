@@ -498,6 +498,11 @@ def _binary_sibling_indexes(conn) -> None:
     conn.execute("CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL")
 
 
+def _pre_v35_denial(conn) -> None:
+    """v35's change, inverted: a person can only be asserted, not denied."""
+    conn.execute("ALTER TABLE person_assertion DROP COLUMN stance")
+
+
 def _pre_v34_verdict_producer(conn) -> None:
     """v34's change, inverted: a verdict names no producer.
 
@@ -561,6 +566,7 @@ def v1_database(tmp_path):
         conn.execute(f"DROP TRIGGER {trigger}")
     _pre_v7_collection(conn)  # v7's change, inverted
     _binary_sibling_indexes(conn)  # v5's change, inverted
+    _pre_v35_denial(conn)  # v35's change, inverted
     _pre_v34_verdict_producer(conn)  # v34's change, inverted
     _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
@@ -668,6 +674,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, ?, ?, 0)",
             (twin, root_id, top, name),
         )
+    _pre_v35_denial(conn)  # v35's change, inverted
     _pre_v34_verdict_producer(conn)  # v34's change, inverted
     _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
@@ -989,6 +996,7 @@ END""")
             (fid, sid, vec.tobytes(), NOW),
         )
     conn.commit()
+    _pre_v35_denial(conn)  # v35's change, inverted
     _pre_v34_verdict_producer(conn)  # v34's change, inverted
     _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
@@ -1065,6 +1073,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
         "INSERT INTO collection_rule(collection_id, source_text, created_at, updated_at) VALUES(?, 'x', ?, ?)",
         (album, NOW, NOW),
     )
+    _pre_v35_denial(conn)  # v35's change, inverted
     _pre_v34_verdict_producer(conn)  # v34's change, inverted
     _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
@@ -1159,6 +1168,7 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
+    _pre_v35_denial(conn)  # v35's change, inverted
     _pre_v34_verdict_producer(conn)  # v34's change, inverted
     _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted
@@ -1213,6 +1223,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
             derived.record_faces(conn, file_id, "m", "1", sha, NOW, faces)
             derived.record_face_scan(conn, file_id, "m", "1", sha, NOW, 1)
             derived.record_hash(conn, file_id, sha, NOW, phash64=1)
+        _pre_v35_denial(conn)  # v35's change, inverted
         _pre_v34_verdict_producer(conn)  # v34's change, inverted
         _pre_v32_answer_generation(conn)  # v32's change, inverted
         _pre_v31_identifier(conn)  # v31's change, inverted
@@ -1261,6 +1272,7 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
     conn.execute("DROP INDEX IF EXISTS place_identity")
     conn.execute("DROP TABLE file_place")
+    _pre_v35_denial(conn)  # v35's change, inverted
     _pre_v34_verdict_producer(conn)  # v34's change, inverted
     _pre_v32_answer_generation(conn)  # v32's change, inverted
     _pre_v31_identifier(conn)  # v31's change, inverted

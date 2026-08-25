@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/i/{slug}/people/{person}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** DenyPerson */
+        post: operations["ISlugPeoplePersonDenyDenyPerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/i/{slug}/rating": {
         parameters: {
             query?: never;
@@ -1922,6 +1939,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** DeniedPerson */
+        DeniedPerson: {
+            /** @default true */
+            value: boolean;
+        };
         /** DesiredFlag */
         DesiredFlag: {
             value: boolean;
@@ -3563,6 +3585,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Verdict"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ISlugPeoplePersonDenyDenyPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                person: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeniedPerson"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Faces"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

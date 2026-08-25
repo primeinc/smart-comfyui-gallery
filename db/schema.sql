@@ -1642,9 +1642,27 @@ CREATE TABLE person_assertion (
     -- it stands whether or not anybody drew a box around them.
     region_id  INTEGER REFERENCES region(id) ON DELETE SET NULL,
     user_id    INTEGER REFERENCES user(id) ON DELETE SET NULL,
-    created_at REAL NOT NULL,
+    created_at REAL NOT NULL, stance     TEXT NOT NULL DEFAULT 'is' CHECK (stance IN ('is','is_not')),
     PRIMARY KEY (person_id, file_id)
 ) STRICT, WITHOUT ROWID;
+-- person_assertion.stance: whether the claim is that this person IS in this
+-- file or is NOT.
+--
+-- A negative is a CLAIM, and that is the whole reason it is a row rather
+-- than the absence of one. Retracting an assertion deletes it, which means
+-- "I take that back" -- and the next clustering run is then free to decide
+-- the same thing again, because nothing recorded that it was wrong. "Not
+-- her" has to survive the rebuild and constrain it, exactly as a positive
+-- does, which is what makes a correction permanent instead of a chore
+-- somebody repeats after every re-run.
+--
+-- One row per (person, file) either way: a person cannot both be and not be
+-- in one picture, and the upsert makes saying the second withdraw the first.
+--
+-- Spelled the way ALTER TABLE ADD COLUMN leaves it in v35 -- inside the
+-- parenthesis, before the PRIMARY KEY, no comment -- so a migrated file and
+-- a fresh build hold the same DDL text (db/build.py drift). The same reason
+-- file.ingested_sha256 and feedback.model_id are written that way.
 CREATE INDEX person_assertion_file   ON person_assertion(file_id);
 CREATE INDEX person_assertion_user   ON person_assertion(user_id);
 CREATE INDEX person_assertion_region ON person_assertion(region_id);
@@ -2256,7 +2274,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 34;
+PRAGMA user_version   = 35;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

@@ -993,7 +993,12 @@ def agreement(conn, run_id: int) -> dict:
         "SELECT pa.person_id, m.cluster_id FROM person_assertion pa"
         "  JOIN derived_face_instance fi ON fi.file_id = pa.file_id"
         "  JOIN derived_face_membership m ON m.face_id = fi.id"
-        "  JOIN derived_face_cluster c ON c.id = m.cluster_id AND c.run_id = ?",
+        "  JOIN derived_face_cluster c ON c.id = m.cluster_id AND c.run_id = ?"
+        # Positive claims only. A denial says two faces are NOT the same
+        # person, so counting it here would read as evidence that they
+        # are -- the measure would improve every time somebody corrected
+        # the thing it measures.
+        " WHERE pa.stance = 'is'",
         (run_id,),
     ).fetchall()
     together = apart = mixed = 0
@@ -1062,7 +1067,7 @@ def choose_primary(conn) -> int | None:
     if not sound:
         return None
 
-    asserted = conn.execute("SELECT count(*) FROM person_assertion").fetchone()[0]
+    asserted = conn.execute("SELECT count(*) FROM person_assertion WHERE stance = 'is'").fetchone()[0]
     if asserted:
 
         def by_agreement(run):
@@ -1174,13 +1179,23 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         row[0]: (row[1], row[2], row[3], row[4])
         for row in conn.execute("SELECT id, file_id, kind, offset_ms, page_index FROM derived_media_sample")
     }
+    # Positive claims VOTE; negative ones VETO. Read apart, because they
+    # are different acts: "she is in this" proposes a name for a cluster,
+    # and "that is not her" refuses one -- and a denial that merely
+    # failed to vote would be indistinguishable from never having been
+    # said, which is what deleting the claim already meant.
     assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
-    for person_id, file_id, sample_id, region_id in conn.execute(
-        "SELECT person_id, file_id, sample_id, region_id FROM person_assertion"
+    denied: dict[int, list[tuple[int, int | None]]] = {}
+    for person_id, file_id, sample_id, region_id, stance in conn.execute(
+        "SELECT person_id, file_id, sample_id, region_id, stance FROM person_assertion"
     ):
-        assertions.setdefault(file_id, []).append((person_id, sample_id, region_id))
+        if stance == "is_not":
+            denied.setdefault(file_id, []).append((person_id, region_id))
+        else:
+            assertions.setdefault(file_id, []).append((person_id, sample_id, region_id))
 
     votes: dict[int, set[int]] = {}
+    vetoes: dict[int, set[int]] = {}
     for cluster_id, file_id, sample_id, region_id in conn.execute(
         "SELECT m.cluster_id, fi.file_id, fi.sample_id, fi.region_id"
         "  FROM derived_face_membership m"
@@ -1189,6 +1204,22 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         " WHERE c.person_id IS NULL AND c.run_id = ?",
         (run_id,),
     ):
+        # A denial naming a REGION refuses that person for the cluster
+        # holding the face it overlaps: "not her, THAT one" is a claim
+        # about a FACE, and the cluster is what collects faces.
+        #
+        # A denial naming no region is not. "She is not in this picture"
+        # is about the FILE, and vetoing the cluster for it would punish
+        # every OTHER picture in the same cluster -- deny one photograph
+        # and a correctly-named person loses their name everywhere. The
+        # attribution filter is what a file-level denial acts through,
+        # and it acts on exactly the file it was about. Learned by
+        # writing the veto the broad way first and watching one denial
+        # unname the picture it was not about.
+        for person, box in denied.get(file_id, ()):
+            if box is not None and _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:
+                vetoes.setdefault(cluster_id, set()).add(person)
+
         claims = assertions.get(file_id, ())
         for person, on_sample, box in claims:
             # A claim about one frame says nothing about another. Two frames
@@ -1217,11 +1248,17 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
     named = 0
     for cluster_id, people in votes.items():
-        if len(people) != 1:
+        # A vetoed name is not a name. Applied AFTER the vote rather than
+        # by filtering the claims, so a cluster whose only proposal was
+        # refused ends up UNNAMED rather than named by whatever came
+        # second -- an unnamed cluster is a question the People page can
+        # put to somebody, and a wrong name is not.
+        allowed = people - vetoes.get(cluster_id, set())
+        if len(allowed) != 1:
             continue
         conn.execute(
             "UPDATE derived_face_cluster SET person_id = ? WHERE id = ?",
-            (people.pop(), cluster_id),
+            (allowed.pop(), cluster_id),
         )
         named += 1
     conn.execute(
@@ -1231,10 +1268,36 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         "   FROM derived_face_membership m"
         "   JOIN derived_face_instance fi ON fi.id = m.face_id"
         "   JOIN derived_face_cluster c ON c.id = m.cluster_id"
-        "  WHERE c.person_id IS NOT NULL AND c.run_id = ?",
+        "  WHERE c.person_id IS NOT NULL AND c.run_id = ?"
+        # A denial stops the ATTRIBUTION too, not only the naming. A
+        # cluster can be correctly named and still hold one face from a
+        # picture that person is not in -- which is exactly the case
+        # somebody is correcting -- and without this the name comes back
+        # on that picture through the file attribution even though the
+        # cluster was refused it.
+        "    AND NOT EXISTS (SELECT 1 FROM person_assertion pa"
+        "                     WHERE pa.person_id = c.person_id AND pa.file_id = fi.file_id"
+        "                       AND pa.stance = 'is_not')",
         (run_id,),
     )
     return named
+
+
+def withdraw_attribution(conn, person_id: int, file_id: int) -> int:
+    """Take a person off a file in the INFERRED layer; returns rows gone.
+
+    The consequence of a denial, and it has to be immediate. The claim
+    constrains the next clustering run (`seed_clusters_from_assertions`),
+    but `derived_file_person` is what the page reads, so leaving it
+    standing would show the picture contradicting the thing somebody
+    just said until the next re-run -- which may be never.
+    """
+    return int(
+        conn.execute(
+            "DELETE FROM derived_file_person WHERE file_id = ? AND person_id = ?", (file_id, person_id)
+        ).rowcount
+        or 0
+    )
 
 
 # --- embeddings ------------------------------------------------------------

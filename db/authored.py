@@ -268,8 +268,21 @@ def assert_person(
     *,
     sample_id=None,
     region_id=None,
+    stance: str = "is",
 ) -> None:
-    """A person states that this person appears in this file.
+    """A person states that this person appears in this file -- or, with
+    `stance="is_not"`, that they do not.
+
+    The negative is a CLAIM and not the absence of one, which is the
+    whole reason it is a row. `retract_person` deletes, and deleting
+    means "I take that back": the next clustering run is then free to
+    decide the same thing again, because nothing recorded that it was
+    wrong. A denial survives the rebuild and constrains it
+    (db/derived.py `seed_clusters_from_assertions`), which is what makes
+    a correction permanent rather than a chore repeated after each run.
+
+    One row per (person, file) either way -- a person cannot both be and
+    not be in one picture -- so saying the second withdraws the first.
 
     Kept apart from `derived_file_person`, which is what a model inferred.
     After a re-index the inference is gone and this is what re-attributes the
@@ -282,22 +295,60 @@ def assert_person(
     rows are today an out-of-band affordance -- no route writes one --
     and the guard protects them for the tooling and surfaces that do.
     """
+    if stance not in ("is", "is_not"):
+        raise ValueError(f"a claim is 'is' or 'is_not', not {stance!r}")
     conn.execute(
         "INSERT INTO person_assertion(person_id, file_id, sample_id, region_id,"
-        " user_id, created_at) VALUES(?, ?, ?, ?, ?, ?)"
+        " user_id, created_at, stance) VALUES(?, ?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(person_id, file_id) DO UPDATE SET"
         " sample_id = excluded.sample_id, region_id = excluded.region_id,"
-        " user_id = excluded.user_id"
+        " user_id = excluded.user_id, stance = excluded.stance"
         " WHERE person_assertion.user_id IS NULL OR excluded.user_id IS NOT NULL",
-        (person_id, file_id, sample_id, region_id, user_id, now),
+        (person_id, file_id, sample_id, region_id, user_id, now, stance),
     )
 
 
+def deny_person(conn, person_id: int, file_id: int, user_id: int | None, now: float, *, region_id=None) -> None:
+    """This person is NOT in this file -- said out loud, and kept.
+
+    The thing there was no way to say. Naming a region says WHICH face
+    was wrong, which is the ordinary case: a picture with two people in
+    it cannot express "not her" by naming the file alone.
+    """
+    from . import derived
+
+    assert_person(conn, person_id, file_id, user_id, now, region_id=region_id, stance="is_not")
+    # And take the name off the picture NOW. The claim constrains the
+    # next clustering run; `derived_file_person` is what the page reads,
+    # so leaving it would show the picture contradicting what somebody
+    # just said until a re-run that may never come.
+    derived.withdraw_attribution(conn, person_id, file_id)
+
+
 def retract_person(conn, person_id: int, file_id: int) -> None:
+    """Withdraw a claim entirely -- neither said nor denied.
+
+    Different from denying, and the difference is what a re-run may do
+    next: a retraction leaves no record, so clustering is free to decide
+    it again; a denial is a record that stops it.
+    """
     conn.execute(
         "DELETE FROM person_assertion WHERE person_id = ? AND file_id = ?",
         (person_id, file_id),
     )
+
+
+def denials(conn, file_id: int | None = None) -> list[tuple[int, int, int | None]]:
+    """`(person_id, file_id, region_id)` for every standing denial, or
+    for one file."""
+    if file_id is None:
+        return conn.execute(
+            "SELECT person_id, file_id, region_id FROM person_assertion WHERE stance = 'is_not'"
+        ).fetchall()
+    return conn.execute(
+        "SELECT person_id, file_id, region_id FROM person_assertion WHERE stance = 'is_not' AND file_id = ?",
+        (file_id,),
+    ).fetchall()
 
 
 # --- feedback on what the machine said -------------------------------------

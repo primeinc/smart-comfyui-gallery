@@ -256,7 +256,9 @@ class PeopleEvidence:
         for row in conn.execute(
             "SELECT pa.file_id, e.uuid, p.name FROM person_assertion pa"
             " JOIN person p ON p.id = pa.person_id JOIN entity e ON e.id = p.id"
-            f" WHERE pa.file_id IN ({_marks(file_ids)}) ORDER BY pa.file_id, e.uuid",
+            # `stance = 'is'`: a denial is a claim that somebody is NOT
+            # here, and listing it would put their name on the picture.
+            f" WHERE pa.stance = 'is' AND pa.file_id IN ({_marks(file_ids)}) ORDER BY pa.file_id, e.uuid",
             file_ids,
         ):
             held.setdefault(row[0], []).append({"uuid": row[1].hex(), "name": row[2], "basis": "asserted"})

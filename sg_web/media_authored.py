@@ -29,7 +29,7 @@ from litestar.response import Response
 
 from db import authored, collections, connect, context, naming, pages, places
 from sg_web import media_view
-from sg_web.media_view import AuthoredState, CollectionSummary
+from sg_web.media_view import AuthoredState, CollectionSummary, Faces
 from sg_web.presenting import VARIES
 from sg_web.wire import Wire
 
@@ -273,5 +273,44 @@ def judge_said(state: State, slug: FromPath[str], data: Judged) -> Response[Verd
             Verdict(kind=data.kind, model_id=data.model_id, model_version=data.model_version, verdict=held),
             headers=VARIES,
         )
+    finally:
+        connect.close(conn)
+
+
+class DeniedPerson(Wire):
+    """The body of POST /i/{slug}/people/{person}/deny.
+
+    `value` true denies, false withdraws the denial. Withdrawing is NOT
+    asserting: it leaves no claim at all, so the next clustering run is
+    free to decide again -- which is the difference the whole feature
+    turns on.
+    """
+
+    value: bool = True
+
+
+@post("/i/{slug:str}/people/{person:str}/deny", sync_to_thread=True)
+def deny_person(state: State, slug: FromPath[str], person: FromPath[str], data: DeniedPerson) -> Response[Faces]:
+    """Say this person is not in this picture, and have it stick.
+
+    The thing there was no way to say. `retract` deletes a claim, which
+    means "I take that back" -- and the next clustering run is then free
+    to decide the same thing again, because nothing recorded that it was
+    wrong. A denial is a claim, survives the rebuild, and refuses the
+    name (db/derived.py `seed_clusters_from_assertions`).
+
+    Answers with who the picture now holds, from the same read the page
+    uses: the browser never computes the resulting state.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        file_id = _resolved(conn, "file", slug, "/i")
+        person_id = _resolved(conn, "person", person, "/p")
+        if data.value:
+            authored.deny_person(conn, person_id, file_id, state.actor_id, time.time())
+        else:
+            authored.retract_person(conn, person_id, file_id)
+        conn.commit()
+        return Response(media_view.faces_of(conn, file_id), headers=VARIES)
     finally:
         connect.close(conn)

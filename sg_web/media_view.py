@@ -786,6 +786,17 @@ class MediaSurface(Wire):
     viewing: Viewing
 
 
+def faces_of(conn, file_id: int) -> Faces:
+    """Who is in the picture, for a surface that just changed it.
+
+    The same read the page assembles from, exported so a write route
+    answers with what the database now holds rather than with what the
+    caller asked for -- the two differ the moment anything else has a
+    say, and a browser that drew the difference would be inventing state.
+    """
+    return _faces(conn, file_id)
+
+
 def _faces(conn, file_id: int) -> Faces:
     """Who is in the picture, by the primary clustering, and whether any
     detector has looked at its current bytes -- so the page can tell
