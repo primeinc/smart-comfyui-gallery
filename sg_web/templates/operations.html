@@ -40,16 +40,33 @@
       <div class="console-matrix" data-matrix aria-label="jobs">
         <div class="console-head"><h2>jobs</h2><span class="console-hint">active first, then the settled tail</span></div>
         <ol class="matrix" data-matrix-rows>
-          {% for job in matrix %}
-          <li class="matrix-row" data-matrix-job="{{ job.id }}" data-state="{{ job.state }}"{% if job.derived.cancellation == "requested" %} data-cancelling{% endif %} tabindex="0" role="button">
-            <span class="matrix-id">#{{ job.id }}</span>
-            <span class="matrix-kind"><span class="v">{{ job.what }}</span><code class="raw">{{ job.kind }}</code></span>
-            <span class="matrix-state" data-state="{{ job.state }}">{{ "cancelling" if job.derived.cancellation == "requested" else job.state }}</span>
-            <progress class="matrix-progress"{% if job.total %} value="{{ job.done_count }}" max="{{ job.total }}"{% endif %}></progress>
-            <code class="matrix-count">{{ job.done_count }}{% if job.total is not none %}/{{ job.total }}{% endif %}{% if job.failed_count %} · {{ job.failed_count }} failed{% endif %}</code>
-            <code class="matrix-exec">a{{ job.attempt }} f{{ job.fence if job.fence is defined else "" }}{% if job.owner %} · {{ job.owner }}{% endif %}</code>
-            {% if job.live %}<span class="matrix-live" data-matrix-live>{{ job.live.phase or job.live.type }}{% if job.live.item_id is not none %} · item {{ job.live.item_id }}{% endif %}</span>{% endif %}
+          {# Every collection as ONE row, its steps nested under the
+             fold. The steps are still here: the step that FAILED is the
+             row somebody actually needs, and a console that swallowed it
+             would be quieter and less useful at once. Open while it is
+             running or has failed, which are the two states somebody is
+             looking at it for. #}
+          {% for group in collections %}
+          <li class="matrix-collection" data-matrix-collection="{{ group.name }}">
+            <details{% if group.state in ("running", "failed") %} open{% endif %}>
+              <summary class="matrix-row" data-collection-state="{{ group.state }}">
+                <span class="matrix-id">{{ group.steps|length }} steps</span>
+                <span class="matrix-kind"><span class="v">{{ group.name }}</span><code class="raw">{{ group.settled }}/{{ group.steps|length }} settled</code></span>
+                <span class="matrix-state" data-state="{{ group.state }}">{{ group.state }}</span>
+                <progress class="matrix-progress"{% if group.total %} value="{{ group.done }}" max="{{ group.total }}"{% endif %}></progress>
+                <code class="matrix-count">{{ group.done }}{% if group.total is not none %}/{{ group.total }}{% endif %}</code>
+              </summary>
+              <ol class="matrix matrix-steps">
+                {% for job in matrix if job.id in group.steps %}
+                {% include "_matrix_row.html" %}
+                {% endfor %}
+              </ol>
+            </details>
           </li>
+          {% endfor %}
+          {% set grouped = collections | map(attribute="steps") | sum(start=[]) %}
+          {% for job in matrix if job.id not in grouped %}
+          {% include "_matrix_row.html" %}
           {% endfor %}
         </ol>
         {% if not matrix %}<p class="empty">no jobs yet. start a sweep below.</p>{% endif %}

@@ -27,6 +27,7 @@ declare global {
 
 type Overview = components["schemas"]["Overview"];
 type MatrixRow = components["schemas"]["MatrixRow"];
+type Collapsed = components["schemas"]["Collapsed"];
 type LiveReport = components["schemas"]["LiveReport"];
 
 (() => {
@@ -298,7 +299,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     const { data } = await api.GET("/operations/overview");
     if (!data) return;
     paintHealth(data.overview);
-    paintMatrix(data.matrix);
+    paintMatrix(data.matrix, data.collections);
   }
 
   function paintHealth(o: Overview): void {
@@ -327,9 +328,68 @@ type LiveReport = components["schemas"]["LiveReport"];
     }
   }
 
-  function paintMatrix(jobs: MatrixRow[]): void {
+  /**
+   * The matrix, with every collection folded into one row.
+   *
+   * Eight rows where a person asked for one thing. Each was honest and
+   * none was the answer: somebody watching a catch-up wants to know
+   * whether the catch-up is going well, and eight rows made that a sum
+   * they had to do themselves while the rows moved.
+   *
+   * The steps are still there, nested under the fold. Collapsing must
+   * not be the same as hiding -- the step that FAILED is the row
+   * somebody actually needs, and a console that swallowed it would have
+   * made the page quieter and less useful at the same time.
+   *
+   * Open by default while the collection is running or has failed,
+   * because those are the two states somebody is looking at it for.
+   */
+  function paintMatrix(jobs: MatrixRow[], collections: Collapsed[]): void {
     matrixRows.textContent = "";
+    const grouped = new Set<number>();
+    for (const group of collections) for (const id of group.steps) grouped.add(id);
+    const byId = new Map(jobs.map((j) => [j.id, j]));
+
+    for (const group of collections) {
+      const holder = el("li", { class: "matrix-collection", "data-matrix-collection": group.name });
+      const fold = el("details", {});
+      if (group.state === "running" || group.state === "failed") fold.open = true;
+      const head = el("summary", { class: "matrix-row", "data-collection-state": group.state });
+      head.appendChild(el("span", { class: "matrix-id" }, `${group.steps.length} steps`));
+      const kind = el("span", { class: "matrix-kind" });
+      kind.appendChild(el("span", { class: "v" }, group.name));
+      kind.appendChild(el("code", { class: "raw" }, `${group.settled}/${group.steps.length} settled`));
+      head.appendChild(kind);
+      head.appendChild(el("span", { class: "matrix-state", "data-state": group.state }, group.state));
+      const bar = el("progress", { class: "matrix-progress" });
+      if (group.total) {
+        bar.value = group.done;
+        bar.max = group.total;
+      }
+      head.appendChild(bar);
+      head.appendChild(
+        el("code", { class: "matrix-count" }, `${group.done}${group.total != null ? `/${group.total}` : ""}`),
+      );
+      fold.appendChild(head);
+      const steps = el("ol", { class: "matrix matrix-steps" });
+      for (const id of group.steps) {
+        const step = byId.get(id);
+        if (step) steps.appendChild(matrixRow(step));
+      }
+      fold.appendChild(steps);
+      holder.appendChild(fold);
+      matrixRows.appendChild(holder);
+    }
+
     for (const j of jobs) {
+      if (grouped.has(j.id)) continue;
+      matrixRows.appendChild(matrixRow(j));
+    }
+    wireMatrix();
+  }
+
+  function matrixRow(j: MatrixRow): HTMLElement {
+    {
       const cancelling = j.derived.cancellation === "requested";
       const li = el("li", {
         class: "matrix-row",
@@ -366,9 +426,8 @@ type LiveReport = components["schemas"]["LiveReport"];
       if (live && j.state === "running") {
         li.appendChild(el("span", { class: "matrix-live", "data-matrix-live": "" }, liveWords(live)));
       }
-      matrixRows.appendChild(li);
+      return li;
     }
-    wireMatrix();
   }
 
   function liveWords(live: ReadablePendingFrame | LiveReport): string {

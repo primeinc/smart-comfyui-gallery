@@ -229,3 +229,108 @@ def test_a_step_that_knows_it_has_nothing_to_do_is_simply_absent(tmp_path):
         assert after[steps[0]] is None
         for before, this in itertools.pairwise(steps):
             assert after[this] == before, "the chain gated a step on a job that was never queued"
+
+
+# --- and the console stops showing eight rows for one act --------------------
+
+
+def _console(tmp_path):
+    from litestar.testing import TestClient
+
+    from sg_web.app import build_app
+
+    return TestClient(app=build_app(str(tmp_path / "run"), worker=False))
+
+
+def test_the_console_folds_a_collection_into_one_row(tmp_path):
+    """The half a person sees.
+
+    Eight rows where somebody asked for one thing. Each honest, none the
+    answer -- "is the catch-up going well" was a sum they had to do
+    themselves while the rows moved.
+    """
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            made = _chain(conn, "scan", "embed", "cluster_faces")
+            alone = jobs.submit(conn, "annotate", NOW)
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        told = client.get("/operations/overview").json()
+        folded = told["collections"]
+        assert len(folded) == 1
+        assert folded[0]["name"] == "catch up"
+        assert folded[0]["steps"] == made
+        assert folded[0]["state"] == "queued"
+
+        # the steps are still in the matrix -- this is a fold over them,
+        # not a replacement, and a client that wants one still has it
+        seen = {row["id"] for row in told["matrix"]}
+        assert set(made) <= seen
+        assert alone in seen
+
+
+def test_a_failed_step_makes_the_whole_collection_read_failed(tmp_path):
+    """One failed step means the collection did not do what it was asked,
+    whatever the others managed. Saying "running" while the rest of the
+    chain drains would be the console agreeing with the queue instead of
+    with the person."""
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            first, _second = _chain(conn, "scan", "embed")
+            jobs.claim(conn, OWNER, NOW)
+            jobs.settle(conn, first, _fence(conn, first), "failed", NOW, error="gone")
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        folded = client.get("/operations/overview").json()["collections"][0]
+        assert folded["state"] == "failed"
+        assert folded["failed"] == first, "the row somebody needs is not named"
+
+
+def test_the_fold_shows_the_steps_rather_than_hiding_them(tmp_path):
+    """Collapsing is not the same as hiding. The page carries every step
+    under the fold, and the one that failed is reachable without going
+    anywhere else."""
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            first, second = _chain(conn, "scan", "embed")
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert 'data-matrix-collection="catch up"' in page
+        for one in (first, second):
+            assert f'data-matrix-job="{one}"' in page, "a step vanished when its collection folded"
+        assert page.count('data-matrix-job="') == 2, "a step was rendered twice, folded and loose"
+
+
+def test_a_job_that_is_nobodys_step_is_untouched(tmp_path):
+    """The control. Every job submitted on its own renders exactly as it
+    did before collections existed."""
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            alone = jobs.submit(conn, "annotate", NOW)
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        told = client.get("/operations/overview").json()
+        assert told["collections"] == []
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert f'data-matrix-job="{alone}"' in page

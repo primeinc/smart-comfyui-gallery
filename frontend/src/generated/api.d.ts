@@ -1872,6 +1872,17 @@ export interface components {
             kind: "album" | "flag" | "smart";
             pictures: number;
         };
+        /** Collapsed */
+        Collapsed: {
+            name: string;
+            steps: number[];
+            done: number;
+            total: number | null;
+            settled: number;
+            state: string;
+            running?: number | null;
+            failed?: number | null;
+        };
         /** CollectionChoice */
         CollectionChoice: {
             slug: string;
@@ -2578,6 +2589,8 @@ export interface components {
             settled: boolean;
             what: string;
             live: components["schemas"]["LiveReport"] | null;
+            collection?: string | null;
+            after_id?: number | null;
         };
         /** MediaSurface */
         MediaSurface: {
@@ -2662,6 +2675,7 @@ export interface components {
         OperationsState: {
             overview: components["schemas"]["Overview"];
             matrix: components["schemas"]["MatrixRow"][];
+            collections: components["schemas"]["Collapsed"][];
             judged: components["schemas"]["WhatTheThumbsSay"];
         };
         /** Overview */

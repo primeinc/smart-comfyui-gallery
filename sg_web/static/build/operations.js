@@ -783,7 +783,7 @@
       const { data } = await api.GET("/operations/overview");
       if (!data) return;
       paintHealth(data.overview);
-      paintMatrix(data.matrix);
+      paintMatrix(data.matrix, data.collections);
     }
     function paintHealth(o) {
       const say = (selector, text) => {
@@ -810,9 +810,49 @@
         if (n != null) node.textContent = `${n} missing`;
       }
     }
-    function paintMatrix(jobs) {
+    function paintMatrix(jobs, collections) {
       matrixRows.textContent = "";
+      const grouped = /* @__PURE__ */ new Set();
+      for (const group of collections) for (const id of group.steps) grouped.add(id);
+      const byId = new Map(jobs.map((j) => [j.id, j]));
+      for (const group of collections) {
+        const holder = el("li", { class: "matrix-collection", "data-matrix-collection": group.name });
+        const fold = el("details", {});
+        if (group.state === "running" || group.state === "failed") fold.open = true;
+        const head2 = el("summary", { class: "matrix-row", "data-collection-state": group.state });
+        head2.appendChild(el("span", { class: "matrix-id" }, `${group.steps.length} steps`));
+        const kind = el("span", { class: "matrix-kind" });
+        kind.appendChild(el("span", { class: "v" }, group.name));
+        kind.appendChild(el("code", { class: "raw" }, `${group.settled}/${group.steps.length} settled`));
+        head2.appendChild(kind);
+        head2.appendChild(el("span", { class: "matrix-state", "data-state": group.state }, group.state));
+        const bar = el("progress", { class: "matrix-progress" });
+        if (group.total) {
+          bar.value = group.done;
+          bar.max = group.total;
+        }
+        head2.appendChild(bar);
+        head2.appendChild(
+          el("code", { class: "matrix-count" }, `${group.done}${group.total != null ? `/${group.total}` : ""}`)
+        );
+        fold.appendChild(head2);
+        const steps = el("ol", { class: "matrix matrix-steps" });
+        for (const id of group.steps) {
+          const step = byId.get(id);
+          if (step) steps.appendChild(matrixRow(step));
+        }
+        fold.appendChild(steps);
+        holder.appendChild(fold);
+        matrixRows.appendChild(holder);
+      }
       for (const j of jobs) {
+        if (grouped.has(j.id)) continue;
+        matrixRows.appendChild(matrixRow(j));
+      }
+      wireMatrix();
+    }
+    function matrixRow(j) {
+      {
         const cancelling = j.derived.cancellation === "requested";
         const li = el("li", {
           class: "matrix-row",
@@ -849,9 +889,8 @@
         if (live && j.state === "running") {
           li.appendChild(el("span", { class: "matrix-live", "data-matrix-live": "" }, liveWords(live)));
         }
-        matrixRows.appendChild(li);
+        return li;
       }
-      wireMatrix();
     }
     function liveWords(live) {
       return `${live.phase || live.type}${live.item_id != null ? ` \xB7 item ${live.item_id}` : ""}`;

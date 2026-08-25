@@ -10847,6 +10847,69 @@
                 ],
                 "title": "ChildCollection"
             },
+            "Collapsed": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "steps": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array"
+                    },
+                    "done": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "settled": {
+                        "type": "integer"
+                    },
+                    "state": {
+                        "type": "string"
+                    },
+                    "running": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "failed": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "done",
+                    "name",
+                    "settled",
+                    "state",
+                    "steps",
+                    "total"
+                ],
+                "title": "Collapsed"
+            },
             "CollectionChoice": {
                 "properties": {
                     "slug": {
@@ -14727,6 +14790,26 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "collection": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "after_id": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,
@@ -15199,6 +15282,12 @@
                         },
                         "type": "array"
                     },
+                    "collections": {
+                        "items": {
+                            "$ref": "#/components/schemas/Collapsed"
+                        },
+                        "type": "array"
+                    },
                     "judged": {
                         "$ref": "#/components/schemas/WhatTheThumbsSay"
                     }
@@ -15206,6 +15295,7 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
+                    "collections",
                     "judged",
                     "matrix",
                     "overview"

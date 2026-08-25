@@ -243,6 +243,7 @@ def _state_of(state: State, conn, now: float) -> OperationsState:
         thread_alive=bool(thread is not None and thread.is_alive()),
         thread=getattr(thread, "name", None),
     )
+    rows = [_matrix_row(state, row) for row in inspecting.matrix(conn, now)]
     return OperationsState(
         overview=Overview(
             now=held["now"],
@@ -251,7 +252,8 @@ def _state_of(state: State, conn, now: float) -> OperationsState:
             queue=QueueHealth(**held["queue"]),
             ledger=LedgerHealth(**held["ledger"]),
         ),
-        matrix=[_matrix_row(state, row) for row in inspecting.matrix(conn, now)],
+        matrix=rows,
+        collections=_collapsed(rows),
         judged=_judged(conn),
     )
 
@@ -444,6 +446,13 @@ class MatrixRow(Wire):
     #: the sweep said in words
     what: str
     live: LiveReport | None
+    #: what this job is a step OF, when it is one. None for a job that
+    #: stands alone, which is every job submitted on its own.
+    collection: str | None = None
+    #: the step it waits on. A queued job with this set is not stalled --
+    #: it is waiting its turn, which is a different thing and the console
+    #: must not show them alike.
+    after_id: int | None = None
 
 
 class ProducerJudged(Wire):
@@ -525,12 +534,101 @@ class WhatTheThumbsSay(Wire):
     floor: int
 
 
+class Collapsed(Wire):
+    """A collection as one row: its steps, added up.
+
+    The console showed ten rows where a person had asked for one thing.
+    Each was honest and none was the answer -- somebody watching a
+    catch-up wants to know whether the catch-up is going well, and the
+    eight rows made that a sum they had to do themselves while the rows
+    moved.
+
+    So the steps stop being rows and become a bar. They are still THERE,
+    under it: the row that failed is the one somebody needs, and
+    collapsing must not be the same as hiding.
+    """
+
+    name: str
+    #: every step, in the order each gates the next
+    steps: list[int]
+    #: units done and units expected across the steps that state a total.
+    #: A step with no total (a walk, which finds its work by doing it)
+    #: contributes to neither, so the bar measures what can be measured
+    #: rather than inventing a denominator.
+    done: int
+    total: int | None
+    #: how many steps have settled, and how many there are
+    settled: int
+    #: what the collection as a whole is doing. `failed` if any step
+    #: failed -- one failed step means the collection did not do what it
+    #: was asked, whatever the others managed.
+    state: str
+    #: the step running right now, when one is
+    running: int | None = None
+    #: the first step that failed, which is the row somebody wants
+    failed: int | None = None
+
+
+def _collapsed(rows: list[MatrixRow]) -> list[Collapsed]:
+    """Fold every collection's steps into one row each, oldest first.
+
+    Order by the first step, not by the newest: a collection is one act
+    and its place in the list is where that act began.
+    """
+    held: dict[str, list[MatrixRow]] = {}
+    for row in rows:
+        if row.collection is not None:
+            held.setdefault(row.collection, []).append(row)
+    made = []
+    for name, steps in held.items():
+        steps.sort(key=lambda one: one.id)
+        totals = [one.total for one in steps if one.total is not None]
+        failed = next((one.id for one in steps if one.state == "failed"), None)
+        running = next((one.id for one in steps if one.state == "running"), None)
+        settled = sum(1 for one in steps if one.settled)
+        made.append(
+            Collapsed(
+                name=name,
+                steps=[one.id for one in steps],
+                done=sum(one.done_count for one in steps),
+                total=sum(totals) if totals else None,
+                settled=settled,
+                state=_collection_state(steps, failed, running, settled),
+                running=running,
+                failed=failed,
+            )
+        )
+    made.sort(key=lambda one: one.steps[0])
+    return made
+
+
+def _collection_state(steps: list[MatrixRow], failed: int | None, running: int | None, settled: int) -> str:
+    """One word for what a collection is doing.
+
+    `failed` wins over everything, including steps still to come: a
+    catch-up whose embed step died did not do what it was asked, and
+    saying "running" while the rest of the chain drains would be the
+    console agreeing with the queue instead of with the person.
+    """
+    if failed is not None:
+        return "failed"
+    if running is not None:
+        return "running"
+    if settled == len(steps):
+        return "cancelled" if all(one.state == "cancelled" for one in steps) else "done"
+    return "queued"
+
+
 class OperationsState(Wire):
     """What the console re-reads after a reconnect, and what a machine
     asks: the health strip and every job worth showing."""
 
     overview: Overview
     matrix: list[MatrixRow]
+    #: The collections among those rows, each as one row. The steps stay
+    #: in `matrix` -- this is a fold over them, not a replacement, and a
+    #: client that wants the step that failed still has it.
+    collections: list[Collapsed]
     #: What this library has been told about its own models. Empty until
     #: somebody judges something, which is honest: no verdicts is not a
     #: model with nothing wrong with it.

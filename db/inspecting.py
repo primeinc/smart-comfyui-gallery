@@ -192,6 +192,7 @@ def overview(conn, now: float, *, models_dir: str | None = None) -> dict:
 _MATRIX = (
     "SELECT j.id, j.kind, j.state, j.cancel_requested, j.total, j.done_count, j.attempt, j.owner, j.fence,"
     " j.heartbeat_at, j.lease_until, j.created_at, j.started_at, j.finished_at, j.error,"
+    " j.collection, j.after_id,"
     " json_extract(j.payload, '$.derive') AS derive,"
     " (SELECT count(*) FROM job_item i WHERE i.job_id = j.id AND i.state = 'failed') AS failed_count"
     " FROM job j"

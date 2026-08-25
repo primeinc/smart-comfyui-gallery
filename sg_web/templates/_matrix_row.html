@@ -1,0 +1,13 @@
+{# One job as the matrix shows it. Included twice -- once for a job that
+   stands alone, once for a step nested under its collection -- because
+   the two must not drift apart: a step is a job, and reading it should
+   not depend on where it is standing. #}
+<li class="matrix-row" data-matrix-job="{{ job.id }}" data-state="{{ job.state }}"{% if job.derived.cancellation == "requested" %} data-cancelling{% endif %} tabindex="0" role="button">
+  <span class="matrix-id">#{{ job.id }}</span>
+  <span class="matrix-kind"><span class="v">{{ job.what }}</span><code class="raw">{{ job.kind }}</code></span>
+  <span class="matrix-state" data-state="{{ job.state }}">{{ "cancelling" if job.derived.cancellation == "requested" else job.state }}</span>
+  <progress class="matrix-progress"{% if job.total %} value="{{ job.done_count }}" max="{{ job.total }}"{% endif %}></progress>
+  <code class="matrix-count">{{ job.done_count }}{% if job.total is not none %}/{{ job.total }}{% endif %}{% if job.failed_count %} &middot; {{ job.failed_count }} failed{% endif %}</code>
+  <code class="matrix-exec">a{{ job.attempt }} f{{ job.fence if job.fence is defined else "" }}{% if job.owner %} &middot; {{ job.owner }}{% endif %}</code>
+  {% if job.live %}<span class="matrix-live" data-matrix-live>{{ job.live.phase or job.live.type }}{% if job.live.item_id is not none %} &middot; item {{ job.live.item_id }}{% endif %}</span>{% endif %}
+</li>

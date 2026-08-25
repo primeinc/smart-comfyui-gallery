@@ -239,11 +239,11 @@ consequences the architecture should keep room for, not work.
   this entry named, decided that way because a partial catch-up is
   normal and one unreadable file must not abandon four thousand others.
 
+  The console collapses: a collection is one row with a bar and its
+  steps nested under it, open while it is running or has failed.
+
   What is left, in order of what it earns:
 
-  - **The console does not collapse yet.** Ten rows are still ten rows;
-    nothing groups on `collection`, which was the first of the three
-    consequences below and the one a person sees.
   - **The walk is not in the chain.** Finding files is per-root and has
     its own action; a catch-up over a NEW root still means scanning it
     first, then catching up.
