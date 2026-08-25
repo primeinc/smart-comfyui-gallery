@@ -1330,7 +1330,11 @@ def test_the_page_lays_out_the_verified_render_and_escapes_evidence(planned):
     assert "gen_0 & 'friends'.png" not in html, "frozen evidence is text, never markup"
     assert "gen_0 &amp; &#39;friends&#39;.png" in html
     assert html.count('href="/i/') >= len(story["sections"]), "a hero links to its picture through address resolution"
-    assert html.count('src="/thumb/') >= len(story["support"]["member_refs"]), "every member is shown, not only named"
+    # `/thumb` prefixes both addresses a member can have: the
+    # content-addressed `/thumbs/<shard>/<sha>.webp` once its bytes are
+    # hashed, and the `/thumb/<slug>` route while they are not. What this
+    # asserts is that every member is SHOWN, which is true of either.
+    assert html.count('src="/thumb') >= len(story["support"]["member_refs"]), "every member is shown, not only named"
     assert "data-story-evolution" in html
     assert "/evolution" in html
     assert "data-story-profile-here" in html, "the page names the profile it was told under"

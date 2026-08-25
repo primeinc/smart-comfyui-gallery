@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from db import connect, derived, naming, planning, rendering, stories
+from db import connect, derived, planning, rendering, stories
 from tests.staging import staged
 from tests.test_the_timeline_is_a_surface import HOUR, NOW, _drain, _interpreted, _library
 
@@ -155,7 +155,12 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert shelf[0]["title"] == "5 files from June 10, 2023"
     assert (shelf[0]["kind"], shelf[0]["profile"], shelf[0]["members"]) == ("file_session", "memory", 5)
     assert shelf[0]["heroes"], "the shelf shows the story's heroes"
-    assert all(h["thumbnail"].startswith("/thumb/") for h in shelf[0]["heroes"])
+    # `/thumb` prefixes both: the content-addressed
+    # `/thumbs/<shard>/<sha>.webp` for a hashed file, and the
+    # `/thumb/<slug>` route for one ingest has not reached. A card's
+    # heroes address a picture the same way the story page does, which is
+    # what makes the two share a cache entry rather than fetch it twice.
+    assert all(h["thumbnail"].startswith("/thumb") for h in shelf[0]["heroes"])
     page = client.get("/stories", headers={"accept": "text/html"}).text
     assert f'data-story="{made.json()["id"]}"' in page
     # the shelf filters by session kind, and says how many of each
@@ -174,12 +179,21 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert "data-story-hero-said" not in story_page, "nothing captioned yet"
     conn = connect.connect(client.app.state.db_path)
     try:
-        hero_slug = shelf[0]["heroes"][0]["thumbnail"].rsplit("/", 1)[1]
-        resolved = naming.resolve(conn, "file", hero_slug)
-        assert resolved is not None
-        hero_id = resolved[0]
-        sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (hero_id,)).fetchone()[0]
-        derived.annotate(conn, hero_id, "caption", "a window full of icons", "m", "1", sha, NOW)
+        # By the sha the address carries, not by a slug parsed out of it:
+        # a content-addressed thumbnail deliberately holds no slug, which
+        # is the lookup it exists to save.
+        #
+        # And it names BYTES rather than a file. Every picture in this
+        # fixture is the same 12x12 image, so one sha is eight files --
+        # which is the honest shape of content addressing and not an
+        # artifact of the fixture. A caption about what the picture SHOWS
+        # is true of every file that is that picture, so it is recorded
+        # against all of them.
+        sha = shelf[0]["heroes"][0]["thumbnail"].rsplit("/", 1)[1].removesuffix(".webp")
+        holders = [one for (one,) in conn.execute("SELECT id FROM file WHERE content_sha256 = ?", (sha,))]
+        assert holders, f"the hero addresses {sha}, which no file in the library has"
+        for one in holders:
+            derived.annotate(conn, one, "caption", "a window full of icons", "m", "1", sha, NOW)
         conn.commit()
     finally:
         connect.close(conn)

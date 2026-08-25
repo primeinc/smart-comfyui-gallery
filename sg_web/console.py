@@ -14,6 +14,7 @@ ITEM_FAILURES); the console must not fold them back together.
 
 from __future__ import annotations
 
+import pathlib
 from collections.abc import Callable, Mapping
 from typing import Literal
 
@@ -325,7 +326,14 @@ def describe_kind(kind: str, derive: str | None = None, total: int | None = None
         # A walk has no enumerable items -- finding them is the job --
         # so what it can say is WHERE it is looking, which is the fact
         # somebody watching a scan actually wants.
-        return f"look for files under {where}"
+        #
+        # By the root's LEAF, never its path. `root.path` is where a
+        # library currently sits and explicitly not what it is (see
+        # schema.sql `root.uuid`), and this line put an absolute
+        # filesystem path onto every page carrying the activity strip --
+        # including /folders, whose whole rule is that a place is entered
+        # by entity and never by path.
+        return f"look for files under {pathlib.PurePath(where).name or where}"
     counted = COUNTED_HASH.get(derive) if kind == "hash" else COUNTED.get(kind)
     if counted is not None and total:
         template, unit = counted

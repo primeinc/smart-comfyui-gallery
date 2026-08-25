@@ -738,7 +738,15 @@ def test_a_job_says_its_own_numbers_not_its_kind(db):
     assert console.describe_kind("scan", None, 412) == "read metadata for 412 files"
     assert console.describe_kind("scan", None, 1) == "read metadata for 1 file"
     assert console.describe_kind("embed", None, 400) == "embed 400 pictures for search"
-    assert console.describe_kind("walk", None, None, "D:/Photos/2019") == "look for files under D:/Photos/2019"
+    # The LEAF, never the path. This line is not only the console's: the
+    # activity strip carries it onto /folders and /f/<slug>, whose rule is
+    # that a place is entered by entity and never by path -- and the whole
+    # absolute path really did appear there. `root.path` is where a library
+    # sits, not what it is (schema.sql `root.uuid`).
+    assert console.describe_kind("walk", None, None, "D:/Photos/2019") == "look for files under 2019"
+    assert console.describe_kind("walk", None, None, "D:/") == "look for files under D:/", (
+        "a root with no leaf still says something"
+    )
 
 
 def test_four_acts_behind_one_kind_read_as_four(db):

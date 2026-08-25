@@ -678,6 +678,8 @@ def heroes(conn, words: dict, frozen: dict, most: int = CARD_HEROES) -> list[dic
     """The first few heroes a render names, addressed the way the story
     page addresses them: the FROZEN name, and a thumbnail only while the
     file is still in the library."""
+    from vision import thumbs
+
     from . import naming
 
     members = {planning._member_ref(one["ordinal"]): one for one in frozen.get("members") or []}
@@ -693,8 +695,25 @@ def heroes(conn, words: dict, frozen: dict, most: int = CARD_HEROES) -> list[dic
             continue
         held = naming.by_uuid(conn, member["file_uuid"])
         slug = held[1] if held and held[0] == "file" else None
-        told.append({"name": member["name"], "thumbnail": f"/thumb/{slug}" if slug else None})
+        # The same address the story PAGE uses, which is content-addressed
+        # (sg_web/story_view.py, vision/thumbs.py asset_url). This wrote
+        # `/thumb/<slug>` while claiming in its docstring to address them
+        # the way the page does -- so the card and the page pointed at two
+        # different URLs for one picture, one of them costing a slug
+        # lookup per hero, and neither cache hit the other's entry.
+        sha, _slug, medium = _addressable(conn, slug) if slug else (None, None, None)
+        address = thumbs.asset_url(sha, slug, medium=medium) if slug else None
+        told.append({"name": member["name"], "thumbnail": address})
     return told
+
+
+def _addressable(conn, slug: str) -> tuple[str | None, str, str | None]:
+    """`(sha, slug, kind)` for a live file: what an address is made of."""
+    row = conn.execute(
+        "SELECT f.content_sha256, f.kind FROM file f JOIN entity e ON e.id = f.id WHERE e.slug = ? AND e.kind = 'file'",
+        (slug,),
+    ).fetchone()
+    return (row[0] if row else None, slug, row[1] if row else None)
 
 
 def story_card(conn, render_id: int) -> dict | None:

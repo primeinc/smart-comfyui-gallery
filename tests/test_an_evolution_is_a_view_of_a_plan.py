@@ -232,7 +232,11 @@ def test_the_view_is_the_plans_structure_measured_without_writing_or_loading(pla
     # every member: frozen media identity, roles, facts, metrics in one space
     first = view["members"][0]
     assert first["media"]["name"] == "gen_0.png"
-    assert first["media"]["thumbnail"] == f"/thumb/{first['media']['slug']}"
+    # Content-addressed, because these files are hashed. The `/thumb/<slug>`
+    # route is the fallback for bytes ingest has not reached, and pointing
+    # at it for a hashed file costs a slug lookup per picture.
+    assert first["media"]["thumbnail"].startswith("/thumbs/"), first["media"]["thumbnail"]
+    assert first["media"]["thumbnail"].endswith(".webp")
     assert first["prompt"]["effective"]["main"] == PROMPTS[0]
     assert first["prompt"]["original"]["text"] == WRITTEN
     assert first["prompt"]["effective"]["prompt_id"] is not None
@@ -589,7 +593,7 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     assert "links" not in raw
     assert raw["identities"]["local_day"] is not None
     view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
-    assert view["members"][0]["media"]["thumbnail"] == f"/thumb/{view['members'][0]['media']['slug']}"
+    assert view["members"][0]["media"]["thumbnail"].startswith("/thumbs/")
     assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
     assert view["links"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
     assert view["links"]["search"].startswith("/search")
