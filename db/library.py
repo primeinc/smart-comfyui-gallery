@@ -49,6 +49,24 @@ def _write_marker(path, identity: bytes) -> None:
         _logger.warning("%s: marker not written, the root matches by path: %s: %s", path, type(why).__name__, why)
 
 
+def where(path) -> str:
+    """A root's path as it will be STORED: absolute and normalised.
+
+    Every path in this library is composed from a root's -- `path_of`
+    joins the root's recorded path to the folder names below it -- so a
+    root stored relative makes every file's location depend on which
+    directory the reading process happens to be in. The registering
+    request and the background worker have no reason to share one, and
+    the failure it produces is the confusing kind: FileNotFoundError on a
+    file that is not missing, naming half a path.
+
+    `abspath`, not `realpath`: a library deliberately reached through a
+    symlink is a library at that path, and resolving the link would
+    silently re-register it somewhere its owner did not name.
+    """
+    return os.path.abspath(os.path.normpath(str(path)))
+
+
 def add_root(conn, path, kind: str, now: float) -> int:
     """Register a place bytes live.
 
@@ -56,8 +74,12 @@ def add_root(conn, path, kind: str, now: float) -> int:
     under. Registering a moved library used to mint a second root and leave
     the whole library behind the first one, which then read as offline; the
     marker inside the directory is what makes that a relocation instead.
+
+    Normalising first makes the CHEAP half of that idempotence work as
+    well: `lib`, `./lib` and the absolute spelling now match on the path
+    column rather than falling through to the marker read.
     """
-    path = str(path)
+    path = where(path)
     row = conn.execute("SELECT id FROM root WHERE path = ?", (path,)).fetchone()
     if row:
         return row[0]
@@ -92,7 +114,7 @@ def relocate(conn, root_id: int, path) -> None:
     the operation that did not exist, which is why a moved library had no way
     back short of a rebuild.
     """
-    path = str(path)
+    path = where(path)
     row = conn.execute("SELECT uuid FROM root WHERE id = ?", (root_id,)).fetchone()
     if row is None:
         raise LookupError(f"no root {root_id}")
