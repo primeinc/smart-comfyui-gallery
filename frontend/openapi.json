@@ -2270,6 +2270,26 @@
                 "deprecated": false
             }
         },
+        "/jobs/catch-up": {
+            "post": {
+                "summary": "SubmitCatchUp",
+                "operationId": "JobsCatchUpSubmitCatchUp",
+                "responses": {
+                    "201": {
+                        "description": "Document created, URL follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CatchUpQueued"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/jobs/embed": {
             "post": {
                 "summary": "SubmitEmbed",
@@ -10766,6 +10786,36 @@
                     "values"
                 ],
                 "title": "CatalogField"
+            },
+            "CatchUpQueued": {
+                "properties": {
+                    "collection": {
+                        "type": "string"
+                    },
+                    "steps": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array"
+                    },
+                    "first": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/JobSnapshot"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "collection",
+                    "steps"
+                ],
+                "title": "CatchUpQueued"
             },
             "ChildCollection": {
                 "properties": {

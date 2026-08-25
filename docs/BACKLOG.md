@@ -231,9 +231,29 @@ consequences the architecture should keep room for, not work.
   queueing a `scan`), which is the evidence that the need is real and
   currently hand-rolled.
 
-  A **job collection** is a named recipe of jobs with declared edges,
-  submitted as one thing and reported as one thing. Three consequences,
-  and the middle one is the reason to build it:
+  The EDGE shipped: `job.after_id` gates the claim on its predecessor
+  settling `done`, `job.collection` is the name the steps share, and
+  `POST /jobs/catch-up` queues the derivation chain in order. A failed
+  step cancels exactly what depended on it, transitively, and leaves
+  every unrelated step in the collection running -- the product question
+  this entry named, decided that way because a partial catch-up is
+  normal and one unreadable file must not abandon four thousand others.
+
+  What is left, in order of what it earns:
+
+  - **The console does not collapse yet.** Ten rows are still ten rows;
+    nothing groups on `collection`, which was the first of the three
+    consequences below and the one a person sees.
+  - **The walk is not in the chain.** Finding files is per-root and has
+    its own action; a catch-up over a NEW root still means scanning it
+    first, then catching up.
+  - **Cancelling a collection** cancels its unstarted steps only when a
+    step FAILS. Cancelling a running step by hand does the same thing by
+    the same path, but nothing cancels a collection as a unit.
+  - **Scheduling.** Now possible -- there is a name to point at -- and
+    not built.
+
+  The original design note, for the parts not yet done:
 
   - **The console collapses.** Ten rows become one with a bar, and the
     little jobs stop mattering because they are steps rather than rows.

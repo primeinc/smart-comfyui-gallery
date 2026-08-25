@@ -1783,3 +1783,61 @@ def _keep(conn, told: Report, unspoken: list[dict]) -> None:
         )
         for said in told.kept
     )
+
+
+#: The name the catch-up's steps share. A schedule points at this; the
+#: console groups on it.
+CATCH_UP = "catch up"
+
+
+def catch_up(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None) -> list[int]:
+    """Bring the library up to date, in the order the work actually has.
+
+    Eight buttons in a sequence only this application knew. The order is
+    real and the failure it causes is quiet: `cluster_faces` over an
+    unembedded library settles `done` having clustered nothing, so
+    pressing them out of order does not look like a mistake -- it looks
+    like a library with no people in it.
+
+    Every step is gated on the one before with `after_id`, so this queues
+    all of them at once and the runner takes them in order. A step that
+    has nothing to do returns no job and is simply absent: the next step
+    is then gated on the last one that DID queue, never on a hole.
+
+    Returns the job ids in order. Empty means the library was already up
+    to date, which is an answer and not a failure.
+
+    Not here: the walk. Finding files is per-root and already has its own
+    action, which queues its own scan -- this is the derivation chain
+    over what a walk has already found.
+    """
+    from . import jobs
+
+    queued: list[int] = []
+    after: int | None = None
+
+    def step(made) -> None:
+        """One link. `made` is whatever a submitter returned: an id, None
+        for nothing to do, or a list (embed queues one job per space)."""
+        nonlocal after
+        for one in made if isinstance(made, list) else [made]:
+            if one is None:
+                continue
+            jobs.enlist(conn, one, CATCH_UP, after)
+            queued.append(one)
+            after = one
+
+    # Metadata before anything derived from it: an embedding of a file
+    # ingest has not read is an embedding of bytes nothing has described.
+    step(submit_ingest(conn, now))
+    # Interpretation, then the sessions built out of it.
+    step(submit_context(conn, now))
+    step(submit_events(conn, now))
+    # Semantic vectors, then faces, then the grouping OF those faces --
+    # which is the pair the order exists for.
+    step(submit_embed(conn, now, models_dir=models_dir))
+    step(submit_faces(conn, now, models_dir=models_dir, thumbs_dir=thumbs_dir))
+    step(submit_cluster(conn, now))
+    # Captions last: the most expensive per file, and nothing waits on it.
+    step(submit_annotate(conn, now, models_dir=models_dir))
+    return queued

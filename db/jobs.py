@@ -102,16 +102,28 @@ class Progress:
         return min(1.0, self.done / self.total)
 
 
-def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=None) -> int:
-    """Ask for work. Nothing runs until a worker claims it."""
+def submit(
+    conn, kind: str, now: float, *, target_id=None, payload=None, items=None, collection=None, after_id=None
+) -> int:
+    """Ask for work. Nothing runs until a worker claims it.
+
+    `after_id` gates it: `claim` will not take this job until that one has
+    settled `done`. `collection` is the name it shares with its siblings,
+    which is what the console groups on and what a schedule can point at.
+    Both default to None, which is a job that stands alone -- what every
+    job was before steps existed.
+    """
     cursor = conn.execute(
-        "INSERT INTO job(kind, target_id, state, payload, total, created_at) VALUES(?, ?, 'queued', ?, ?, ?)",
+        "INSERT INTO job(kind, target_id, state, payload, total, created_at, collection, after_id)"
+        " VALUES(?, ?, 'queued', ?, ?, ?, ?, ?)",
         (
             kind,
             target_id,
             json.dumps(payload) if payload is not None else None,
             len(items) if items is not None else None,
             now,
+            collection,
+            after_id,
         ),
     )
     job_id = int(cursor.lastrowid or 0)
@@ -178,7 +190,20 @@ def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, 
     connection setup widened it -- and an off-switch committed before the
     claim must never lose to that gap.
     """
-    runnable = "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
+    # A step whose predecessor has not finished is not runnable, however
+    # queued it looks. `done` specifically, not merely settled: a step
+    # after a failed one must not run, which is what makes a failure stop
+    # its dependents and nothing else.
+    #
+    # Inside `runnable` rather than beside it, because the predicate is
+    # evaluated twice -- once to pick the row and once, under the write
+    # lock, to re-check it. A gate applied in only one of those places is
+    # a gate two workers can race through.
+    runnable = (
+        "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
+        " AND (after_id IS NULL OR EXISTS"
+        "      (SELECT 1 FROM job before WHERE before.id = job.after_id AND before.state = 'done'))"
+    )
     kind_filter = ""
     kind_args: list = []
     if kinds:
@@ -392,6 +417,57 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
         job_id,
         fence,
     )
+    if state != "done":
+        stop_dependents(conn, job_id, now)
+
+
+def enlist(conn, job_id: int, collection: str, after_id: int | None) -> None:
+    """Make an already-submitted job a step of `collection`.
+
+    Every submitter in db/runner.py builds its own job -- with its own
+    payload, its own item list and its own reasons to queue nothing at
+    all -- and threading two more arguments through eleven of them would
+    put the recipe's concern inside each of them. This stamps the row
+    instead, in the same transaction, before anything can claim it.
+    """
+    conn.execute("UPDATE job SET collection = ?, after_id = ? WHERE id = ?", (collection, after_id, job_id))
+
+
+def stop_dependents(conn, job_id: int, now: float) -> list[int]:
+    """Cancel every step that was waiting on this one; returns which.
+
+    The product decision this feature turned on, and it is not the
+    obvious one. A partial catch-up is normal and useful -- one
+    unreadable file must not abandon the other four thousand -- so a
+    failed step does NOT fail its collection. It stops exactly the steps
+    that depended on it, transitively, and every unrelated step in the
+    same collection runs to completion.
+
+    Cancelled rather than left queued. A step whose predecessor failed
+    can never become claimable (`claim` gates on `done`), so leaving it
+    queued would be a row that waits for ever and reads as pending work
+    -- the console would show a collection permanently one step short of
+    finished, with nothing to explain why.
+
+    Only steps that have not STARTED. A dependent already running was
+    claimed before its predecessor settled, which the gate makes rare but
+    not impossible under an expired lease; killing work in flight is the
+    runner's business, not a bookkeeping cascade's.
+    """
+    stopped: list[int] = []
+    frontier = [job_id]
+    while frontier:
+        parent = frontier.pop()
+        rows = conn.execute(
+            "UPDATE job SET state = 'cancelled', finished_at = ?,"
+            "               error = COALESCE(error, 'the step before it did not finish')"
+            " WHERE after_id = ? AND state = 'queued' RETURNING id",
+            (now, parent),
+        ).fetchall()
+        for (one,) in rows:
+            stopped.append(int(one))
+            frontier.append(int(one))
+    return stopped
 
 
 def progress(conn, job_id: int) -> Progress:

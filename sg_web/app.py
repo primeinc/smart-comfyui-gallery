@@ -452,6 +452,71 @@ def submit_annotate(state: State, data: Everything | None = None) -> dict | Resp
         connect.close(conn)
 
 
+class CatchUpQueued(Wire):
+    """What one ask queued, and in what order.
+
+    Named rather than answered as a bare dict, because the browser is
+    typed against this: `steps` is the order the runner will take them
+    in, which is the whole point of the collection and the one thing a
+    caller cannot re-derive from the job rows alone until they settle.
+    """
+
+    #: the name every step shares
+    collection: str
+    #: job ids, in the order each gates the next
+    steps: list[int]
+    #: the first step, snapshotted -- what a single submit would answer.
+    #: None only when `steps` is empty, which needs every submitter to
+    #: decline at once.
+    first: JobSnapshot | None = None
+
+
+@post("/jobs/catch-up", sync_to_thread=True)
+def submit_catch_up(state: State) -> CatchUpQueued:
+    """Bring the library up to date, in one ask, in the right order.
+
+    The eight buttons pressed in the sequence only this application knew
+    -- and the sequence is not advice: `cluster_faces` over an unembedded
+    library settles `done` having clustered nothing, so pressing them out
+    of order does not look like a mistake, it looks like a library with
+    no people in it.
+
+    Every step is gated on the one before it, so all of them queue now
+    and the runner takes them in turn.
+
+    `steps` is always a list, never a 204 a caller has to special-case.
+    It is rarely empty even over an empty library: some steps cannot know
+    in advance that they have nothing to do -- `events` and
+    `cluster_faces` reach that conclusion by running -- so they queue and
+    settle `done` having done nothing. The steps that CAN tell (ingest,
+    embed, annotate, faces) are simply absent, and the chain closes over
+    the hole.
+    """
+    conn = _connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
+        try:
+            queued = runner.catch_up(conn, time.time(), models_dir=weights, thumbs_dir=cache)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        if not queued:
+            return CatchUpQueued(collection=runner.CATCH_UP, steps=[])
+        conn.commit()
+        first = _submitted(state, conn, queued[0])
+        # `cancel_requested` is stored as 0/1 -- STRICT has no boolean --
+        # and every other submit route hands the raw dict back, so nothing
+        # ever validated it against the model that says `bool`. Naming the
+        # answer is what made the disagreement visible.
+        return CatchUpQueued(
+            collection=runner.CATCH_UP,
+            steps=queued,
+            first=JobSnapshot(**(first | {"cancel_requested": bool(first["cancel_requested"])})),
+        )
+    finally:
+        connect.close(conn)
+
+
 @post("/jobs/thumbs", sync_to_thread=True)
 def submit_thumbs(state: State) -> dict | Response:
     """Ask for every missing grid thumb and lightbox preview to be
@@ -1711,6 +1776,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             submit_ingest,
             submit_phash,
             submit_thumbs,
+            submit_catch_up,
             submit_embed,
             submit_embed_prompts,
             prompt_neighbours,

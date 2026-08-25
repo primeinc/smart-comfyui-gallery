@@ -649,8 +649,40 @@ CREATE TABLE job (
     created_at       REAL NOT NULL,
     started_at       REAL,
     finished_at      REAL
-) STRICT;
+, collection TEXT, after_id INTEGER REFERENCES job(id) ON DELETE SET NULL) STRICT;
+-- job.collection / job.after_id: a job that is a STEP of something.
+--
+-- Spelled as ALTER TABLE leaves them, which is the convention this file
+-- holds for every added column (see file.ingested_sha256 above): SQLite
+-- stores the literal statement text, `build.drift` compares it, and a
+-- migrated database must be indistinguishable from a fresh build down to
+-- the words. The documentation goes here rather than inside the parens
+-- because ALTER cannot put it there.
+--
+-- Adding a root meant pressing eight buttons in an order only the
+-- application knew: scan, ingest, context, events, embed, detect_faces,
+-- cluster_faces, annotate. The order is REAL -- cluster_faces over an
+-- unembedded library is a job that honestly settles `done` having
+-- clustered nothing -- and the application knew it and made a person
+-- re-derive it every time.
+--
+-- `after_id` is that order, recorded where the claim can read it:
+-- db/jobs.py `claim` will not take a job whose predecessor has not
+-- settled `done`. SET NULL rather than CASCADE, because an aged-out
+-- predecessor must not delete the step that ran after it, and a NULL
+-- edge reads as "nothing gates this" -- true, once it is gone.
+--
+-- `collection` is the name the steps share. A free name rather than a
+-- table: a collection has no identity of its own to keep, it IS the
+-- jobs, and a row per group would need deleting when the last one aged
+-- out. The console groups on it, and a schedule NAMES it -- "every
+-- night, catch up" points at a collection, where naming individual
+-- kinds would mean re-deriving the order at 3am.
 CREATE INDEX job_state ON job(state);
+-- The claim reads it on every attempt, and a cascade-cancel walks it
+-- backwards from a failed step to everything that depended on it.
+CREATE INDEX job_after ON job(after_id);
+CREATE INDEX job_collection ON job(collection) WHERE collection IS NOT NULL;
 -- Not for a query anyone writes: SQLite runs `SELECT 1 FROM child WHERE
 -- child_key = ?` against every child table when a parent row is deleted, and
 -- without an index that is a full scan per delete. Its own shell ships
@@ -2294,7 +2326,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 36;
+PRAGMA user_version   = 37;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

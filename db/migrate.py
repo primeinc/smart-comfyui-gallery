@@ -38,6 +38,7 @@ would commit the half-finished migration and take atomicity with it.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import sqlite3
@@ -2575,7 +2576,7 @@ def _portrait_raw_thumbnails_turned_once(conn: sqlite3.Connection) -> None:
 
     from vision import decode, thumbs
 
-    from . import capture, derived, runner
+    from . import capture, derived
 
     suffixes = tuple(decode.RAW_SUFFIXES)
     turned = tuple(sorted(capture.TRANSPOSED))
@@ -2618,7 +2619,49 @@ def _portrait_raw_thumbnails_turned_once(conn: sqlite3.Connection) -> None:
                 target.unlink()
                 removed += 1
     if removed:
-        runner.submit_thumbs(conn, time.time(), thumbs_dir=str(cache))
+        _queue_thumbs_of_that_day(conn, str(cache), time.time())
+
+
+def _queue_thumbs_of_that_day(conn: sqlite3.Connection, cache: str, now: float) -> None:
+    """Queue the render, writing the `job` table AS IT WAS AT v30.
+
+    This called `runner.submit_thumbs`, and a migration step calling
+    application code is a step that changes after it has shipped. It
+    broke the moment `jobs.submit` learned to write `job.collection` --
+    a column v30 does not have, added six versions later -- and the
+    failure was `table job has no column named collection` in the middle
+    of somebody's upgrade.
+
+    A step is a historical record. The DDL it writes against is the DDL
+    of its own version, so it spells the insert itself and cannot be
+    moved by anything downstream.
+    """
+    from vision import thumbs as thumbs_module
+
+    held = pathlib.Path(cache)
+
+    def wanted(sha) -> bool:
+        return sha is None or any(not thumbs_module.path_for(held, sha, kind).exists() for kind in thumbs_module.EDGES)
+
+    items = [
+        file_id
+        for file_id, sha in conn.execute(
+            "SELECT id, content_sha256 FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id DESC"
+        )
+        if wanted(sha)
+    ]
+    if not items:
+        return
+    cursor = conn.execute(
+        "INSERT INTO job(kind, state, payload, total, created_at) VALUES('hash', 'queued', ?, ?, ?)",
+        (json.dumps({"derive": "thumbs", "thumbs_dir": cache}), len(items), now),
+    )
+    job_id = int(cursor.lastrowid or 0)
+    conn.executemany(
+        "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
+        [(job_id, one) for one in items],
+    )
 
 
 def optimize(conn: sqlite3.Connection) -> None:
@@ -3139,3 +3182,33 @@ def _the_reader_signs_its_work(conn: sqlite3.Connection) -> None:
     upgrade re-reads the library once, and never again for this reason.
     """
     conn.execute("ALTER TABLE file ADD COLUMN ingested_by TEXT")
+
+
+@step(36)
+def _a_job_can_be_a_step_of_something(conn: sqlite3.Connection) -> None:
+    """v36 -> v37: `job.collection` and `job.after_id`.
+
+    Adding a root meant pressing eight buttons in an order only the
+    application knew: scan, ingest, context, events, embed, detect_faces,
+    cluster_faces, annotate. The order is real -- `cluster_faces` over an
+    unembedded library is a job that honestly settles `done` having
+    clustered nothing -- and the application knew it and made a person
+    re-derive it every time.
+
+    `after_id` is that order, written where the claim can read it.
+    `collection` is the name the steps share, which is what the console
+    groups on and what a schedule can point at: "every night, catch up"
+    names a collection, and naming individual kinds would mean
+    re-deriving the order at 3am.
+
+    Both nullable, so every job already in the table stays exactly what
+    it was: ungated, and a member of nothing.
+    """
+    conn.execute("ALTER TABLE job ADD COLUMN collection TEXT")
+    # A REFERENCES clause on an added column is allowed only with a NULL
+    # default, which is what this wants anyway (sqlite ALTER TABLE:
+    # "if foreign key constraints are enabled and a column with a
+    # REFERENCES clause is added, the column must have a default of NULL").
+    conn.execute("ALTER TABLE job ADD COLUMN after_id INTEGER REFERENCES job(id) ON DELETE SET NULL")
+    conn.execute("CREATE INDEX job_after ON job(after_id)")
+    conn.execute("CREATE INDEX job_collection ON job(collection) WHERE collection IS NOT NULL")

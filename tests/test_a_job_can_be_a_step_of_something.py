@@ -1,0 +1,231 @@
+"""The order stops being knowledge a person carries.
+
+Adding a root meant pressing eight buttons in a sequence only the
+application knew: scan, ingest, context, events, embed, detect_faces,
+cluster_faces, annotate. The order is REAL and the failure it causes is
+quiet -- `cluster_faces` over an unembedded library settles `done`
+having clustered nothing -- so pressing them out of order does not look
+like a mistake. It looks like a library with no people in it.
+
+A step now records what it comes after, and `jobs.claim` will not take
+it until that one has settled `done`. Grouping alone would not have been
+worth building: if a collection were only a label over rows, the console
+would be quieter and a person would still not know what to press. The
+edge is the part that earns it.
+
+What a failed step does to its collection was the product decision, and
+the answer here is deliberate: it stops exactly what depended on it. A
+partial catch-up is normal and useful -- one unreadable file must not
+abandon the other four thousand -- so everything unrelated in the same
+collection runs to completion.
+"""
+
+from __future__ import annotations
+
+import itertools
+
+import pytest
+
+from db import jobs
+from tests.staging import fresh_schema
+
+pytestmark = pytest.mark.slow
+
+NOW = 1_700_000_000.0
+OWNER = "test-worker"
+
+
+@pytest.fixture
+def db():
+    conn = fresh_schema()
+    yield conn
+    conn.close()
+
+
+def _chain(conn, *kinds: str) -> list[int]:
+    """Each step gated on the one before, all queued at once."""
+    made: list[int] = []
+    after = None
+    for kind in kinds:
+        after = jobs.submit(conn, kind, NOW, collection="catch up", after_id=after)
+        made.append(after)
+    conn.commit()
+    return made
+
+
+def _claimed(conn) -> int | None:
+    held = jobs.claim(conn, OWNER, NOW)
+    return None if held is None else held[0]
+
+
+def test_a_step_is_not_claimable_until_the_one_before_it_is_done(db):
+    """The whole feature. Both are queued; only the first can be taken."""
+    first, second = _chain(db, "scan", "embed")
+
+    assert _claimed(db) == first
+    assert _claimed(db) is None, "the second step was claimable while the first was still running"
+
+    jobs.settle(db, first, _fence(db, first), "done", NOW)
+    db.commit()
+    assert _claimed(db) == second
+
+
+def _fence(conn, job_id: int) -> int:
+    return int(conn.execute("SELECT fence FROM job WHERE id = ?", (job_id,)).fetchone()[0])
+
+
+def test_an_ungated_job_is_claimable_exactly_as_before(db):
+    """The control, and the compatibility claim: every job that existed
+    before steps did has a NULL edge and is unchanged by all of this."""
+    alone = jobs.submit(db, "scan", NOW)
+    db.commit()
+    assert _claimed(db) == alone
+
+
+def test_a_failed_step_stops_what_waited_on_it_and_nothing_else(db):
+    """The product decision, pinned.
+
+    A partial catch-up is normal: one unreadable file must not abandon
+    the other four thousand. So the failure travels down the edges it
+    owns, and an unrelated step in the same collection is untouched.
+    """
+    first, second, third = _chain(db, "scan", "embed", "cluster_faces")
+    unrelated = jobs.submit(db, "annotate", NOW, collection="catch up")
+    db.commit()
+
+    jobs.claim(db, OWNER, NOW)
+    jobs.settle(db, first, _fence(db, first), "failed", NOW, error="the disk went away")
+    db.commit()
+
+    states = dict(db.execute("SELECT id, state FROM job").fetchall())
+    assert states[second] == "cancelled", "a step whose predecessor failed can never run and was left queued"
+    assert states[third] == "cancelled", "the cascade stopped one link short"
+    assert states[unrelated] == "queued", "a failure abandoned work that did not depend on it"
+
+
+def test_the_cancelled_step_says_why(db):
+    """A row that stops has to say what stopped it, or the console shows
+    a collection one step short of finished with nothing to explain it."""
+    first, second = _chain(db, "scan", "embed")
+    jobs.claim(db, OWNER, NOW)
+    jobs.settle(db, first, _fence(db, first), "failed", NOW, error="the disk went away")
+    db.commit()
+
+    said = db.execute("SELECT error FROM job WHERE id = ?", (second,)).fetchone()[0]
+    assert said == "the step before it did not finish"
+
+
+def test_a_cancelled_step_stops_its_dependents_too(db):
+    """Cancelling is settling, and a step after a cancelled one is as
+    unrunnable as one after a failure -- `claim` gates on `done`."""
+    first, second = _chain(db, "scan", "embed")
+    jobs.claim(db, OWNER, NOW)
+    jobs.settle(db, first, _fence(db, first), "cancelled", NOW)
+    db.commit()
+    assert db.execute("SELECT state FROM job WHERE id = ?", (second,)).fetchone()[0] == "cancelled"
+
+
+def test_a_step_already_running_is_not_cancelled_from_under_the_worker(db):
+    """Bookkeeping does not kill work in flight. A dependent that was
+    claimed before its predecessor settled is the runner's business --
+    stopping it here would mark a row terminal while a worker is still
+    writing under it."""
+    first, second = _chain(db, "scan", "embed")
+    # take the second by hand, the way an expired lease would let it be
+    db.execute("UPDATE job SET state = 'running', owner = ?, fence = fence + 1 WHERE id = ?", (OWNER, second))
+    db.commit()
+
+    jobs.claim(db, OWNER, NOW)
+    jobs.settle(db, first, _fence(db, first), "failed", NOW, error="gone")
+    db.commit()
+    assert db.execute("SELECT state FROM job WHERE id = ?", (second,)).fetchone()[0] == "running"
+
+
+def test_the_collection_is_a_name_the_steps_share(db):
+    """What a schedule points at. "Every night, catch up" names this;
+    naming individual kinds would mean re-deriving the order at 3am."""
+    made = _chain(db, "scan", "embed", "cluster_faces")
+    held = db.execute(
+        "SELECT count(*) FROM job WHERE collection = 'catch up' AND id IN (?, ?, ?)", tuple(made)
+    ).fetchone()[0]
+    assert held == 3
+
+
+def test_the_catch_up_recipe_queues_the_chain_in_order(tmp_path):
+    """End to end, through the route: one ask, and every step gated on
+    the one before it."""
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from db import connect
+    from sg_web.app import build_app
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(2):
+        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+
+        told = client.post("/jobs/catch-up")
+        assert told.status_code in (200, 201), told.text
+        body = told.json()
+        assert body["collection"] == "catch up"
+        steps = body["steps"]
+        assert len(steps) >= 2, f"a catch-up over a fresh library queued {steps}"
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            rows = {
+                one: (kind, after)
+                for one, kind, after in conn.execute(
+                    "SELECT id, kind, after_id FROM job WHERE collection = 'catch up' ORDER BY id"
+                ).fetchall()
+            }
+            assert set(rows) == set(steps)
+            # every step but the first names the one before it
+            assert rows[steps[0]][1] is None, "the first step is gated on something"
+            for before, this in itertools.pairwise(steps):
+                assert rows[this][1] == before, f"{rows[this][0]} is not gated on {rows[before][0]}"
+        finally:
+            connect.close(conn)
+
+
+def test_a_step_that_knows_it_has_nothing_to_do_is_simply_absent(tmp_path):
+    """The chain closes over the hole rather than gating on it.
+
+    A submitter that can tell in advance it has nothing to do returns no
+    job -- ingest over a library with nothing unread, embed with nothing
+    unembedded. The next step is then gated on the last one that DID
+    queue, never on a job that does not exist.
+
+    Not every step can tell: `events` and `cluster_faces` reach "nothing
+    to do" by running, so they queue over an empty library and settle
+    `done` having done nothing. That is why `steps` is rarely empty and
+    why this asserts the SHAPE of the chain rather than its length.
+    """
+    from litestar.testing import TestClient
+
+    from db import connect
+    from sg_web.app import build_app
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        told = client.post("/jobs/catch-up")
+        assert told.status_code in (200, 201), told.text
+        body = told.json()
+        assert body["collection"] == "catch up"
+        steps = body["steps"]
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            kinds = dict(conn.execute("SELECT id, kind FROM job WHERE collection = 'catch up'").fetchall())
+            after = dict(conn.execute("SELECT id, after_id FROM job WHERE collection = 'catch up'").fetchall())
+        finally:
+            connect.close(conn)
+
+        assert "ingest" not in kinds.values(), "ingest queued over a library with nothing to read"
+        assert after[steps[0]] is None
+        for before, this in itertools.pairwise(steps):
+            assert after[this] == before, "the chain gated a step on a job that was never queued"

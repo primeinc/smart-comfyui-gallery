@@ -550,6 +550,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/catch-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** SubmitCatchUp */
+        post: operations["JobsCatchUpSubmitCatchUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/embed": {
         parameters: {
             query?: never;
@@ -1840,6 +1857,12 @@ export interface components {
             covered: number;
             values: number;
             repeats: number;
+        };
+        /** CatchUpQueued */
+        CatchUpQueued: {
+            collection: string;
+            steps: number[];
+            first?: components["schemas"]["JobSnapshot"] | null;
         };
         /** ChildCollection */
         ChildCollection: {
@@ -4565,6 +4588,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never> | unknown;
+                };
+            };
+        };
+    };
+    JobsCatchUpSubmitCatchUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatchUpQueued"];
                 };
             };
         };
