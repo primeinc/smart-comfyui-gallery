@@ -170,8 +170,21 @@ def test_a_raw_latin1_range_octet_is_answered_not_crashed(served):
     """The wire case the test client cannot send: httpx refuses non-ASCII
     header values, but a socket delivers any octet and the server decodes
     it latin-1. Driven at the ASGI layer, `Range: bytes=-\xb2` must get
-    the whole file with 200, not a 500."""
+    the whole file with 200, not a 500.
+
+    Driven on a THREAD of its own, which is what this test learned the
+    hard way. `asyncio.run` refuses to start where a loop is already
+    running, and this suite runs after tests that leave one -- so it
+    raised `asyncio.run() cannot be called from a running event loop`,
+    and the coroutine it had already built was never awaited. The
+    RuntimeWarning for THAT arrives at the next garbage collection,
+    inside whichever unrelated test the collector reaches first, where
+    `filterwarnings = error` turns it into a second failure some
+    distance from its cause. A fresh thread has no loop, so neither
+    happens and this stops depending on what ran before it.
+    """
     import asyncio
+    import concurrent.futures
 
     client, slugs, root = served
 
@@ -212,7 +225,8 @@ def test_a_raw_latin1_range_octet_is_answered_not_crashed(served):
         await client.app(scope, receive, send)
         return told
 
-    told = asyncio.run(drive())
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as apart:
+        told = apart.submit(lambda: asyncio.run(drive())).result(timeout=30)
     start = next(message for message in told if message["type"] == "http.response.start")
     assert start["status"] == 200
     body = b"".join(message.get("body", b"") for message in told if message["type"] == "http.response.body")
