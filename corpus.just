@@ -40,23 +40,6 @@ write SCALE='medium' DIR=default_root:
     echo "add it:  POST /roots {\"path\": \"$(cd "$dir" && pwd -W 2>/dev/null || pwd)\"}"
     echo "or open  /operations  and add the root there"
 
-# The same, plus real media mixed in and re-dated across the range.
-#
-# The synthetic files are small painted rectangles: they exercise every
-# seam and lie about every cost. One real 24-megapixel raw tells the
-# thumbnail, decode and embed paths something no number of generated
-# ones will.
-[doc('Write a corpus with real media from SOURCE mixed in and re-dated')]
-[script]
-mixed SOURCE SCALE='medium' DIR=default_root:
-    cd "$(git rev-parse --show-toplevel)"
-    source="$1"
-    scale="$2"
-    dir="$3"
-    test -d "$source" || { echo "no such directory: $source" >&2; exit 1; }
-    mkdir -p "$dir"
-    {{ python }} -m tests.corpus "$dir" --scale "$scale" --real "$source" --force
-
 # Written, scanned, and read back -- the only proof that a corpus is a
 # LIBRARY rather than a directory. Reports what the application made of
 # it: kinds, recipes, cameras, duplicate groups, and how much of the

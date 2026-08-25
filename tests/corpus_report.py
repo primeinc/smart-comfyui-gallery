@@ -61,7 +61,15 @@ def main() -> int:
             print("\n  producers")
             for row in conn.execute("SELECT kind, count(DISTINCT name) FROM artifact GROUP BY kind ORDER BY 1"):
                 print(f"    {row[0]:14} {row[1]:5}")
-            print(f"\n  duplicate groups {conn.execute('SELECT count(*) FROM derived_dupe_group').fetchone()[0]}")
+            # count(DISTINCT group_id), not count(*). `derived_dupe_group` is
+            # keyed by FILE (db/schema.sql:544), so counting rows counts
+            # MEMBERS: it printed 18 for six groups of three, and that wrong
+            # number reached a commit message before anybody checked it. This
+            # harness exists to be LOOKED at before numbers are chosen, which
+            # makes a wrong number here worse than a wrong number anywhere else.
+            groups = conn.execute("SELECT count(DISTINCT group_id) FROM derived_dupe_group").fetchone()[0]
+            members = conn.execute("SELECT count(*) FROM derived_dupe_group").fetchone()[0]
+            print(f"\n  duplicate groups {groups} ({members} files in them)")
         finally:
             connect.close(conn)
 

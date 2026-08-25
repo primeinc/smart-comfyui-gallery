@@ -29,7 +29,7 @@ Deterministic: seeded, no clock, no `random` without one. The same
 arguments write the same bytes, so a fixture built from this is a
 fixture that can be compared against itself.
 
-    python -m tests.corpus <dir> [--scale wide] [--real <dir>]
+    python -m tests.corpus <dir> [--scale wide]
 
 `just corpus` is the recipe; `spread()` is the import.
 """
@@ -367,7 +367,6 @@ def spread(
     *,
     seed: int = 20260825,
     scale: str = "wide",
-    real: pathlib.Path | None = None,
     eras: tuple[Era, ...] = ERAS,
 ) -> dict:
     """Write the corpus. Returns what it wrote, by era and by kind.
@@ -395,7 +394,6 @@ def spread(
             told["files"] += 1
 
     told["duplicates"] = _duplicates(root)
-    told["real"] = _real(root, real, rng) if real else 0
     return told
 
 
@@ -422,49 +420,23 @@ def _duplicates(root: pathlib.Path) -> int:
     return made
 
 
-def _real(root: pathlib.Path, source: pathlib.Path, rng: random.Random) -> int:
-    """Mix real media in, re-dated across the range.
-
-    The synthetic files are 320x240 flat-ish paint: they exercise every
-    seam and lie about every cost. One real 24-megapixel raw tells the
-    thumbnail, decode and embed paths something no amount of generated
-    ones will.
-    """
-    if not source.is_dir():
-        raise ValueError(f"no such directory to mix in: {source}")
-    into = root / "real"
-    into.mkdir(parents=True, exist_ok=True)
-    made = 0
-    for one in sorted(p for p in source.rglob("*") if p.is_file())[:60]:
-        target = into / one.name
-        shutil.copy2(one, target)
-        # spread them over the whole range rather than leaving them in a
-        # clump at whatever date they came with
-        _stamp(target, _at(rng.randrange(2005, 2026), rng.randrange(1, 13), rng.randrange(1, 28)))
-        made += 1
-    return made
-
-
 def main(argv: list[str] | None = None) -> int:
     parsed = argparse.ArgumentParser(prog="tests.corpus", description=__doc__)
     parsed.add_argument("root", type=pathlib.Path)
     parsed.add_argument("--scale", default="wide", choices=sorted(SCALES))
     parsed.add_argument("--seed", type=int, default=20260825)
-    parsed.add_argument("--real", type=pathlib.Path, default=None)
     parsed.add_argument("--force", action="store_true", help="write into a directory that already holds files")
     args = parsed.parse_args(argv)
 
     if args.root.exists() and any(args.root.iterdir()) and not args.force:
         print(f"{args.root} is not empty; pass --force to write into it anyway", file=sys.stderr)
         return 2
-    told = spread(args.root, seed=args.seed, scale=args.scale, real=args.real)
+    told = spread(args.root, seed=args.seed, scale=args.scale)
     print(f"{told['files']} files under {told['root']}")
     for name, held in told["eras"].items():
         print(f"  {name:10} {held:5}")
     print(f"  {'kinds':10} {told['kinds']}")
     print(f"  {'duplicates':10} {told['duplicates']}")
-    if told["real"]:
-        print(f"  {'real':10} {told['real']}")
     return 0
 
 
