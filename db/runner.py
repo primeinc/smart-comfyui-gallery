@@ -33,7 +33,20 @@ _logger = logging.getLogger(__name__)
 
 #: What a handler is allowed to fail with, per item. Everything else is a
 #: defect in the handler, not a fact about the item.
-ITEM_FAILURES = (OSError, ValueError, RuntimeError, LookupError, sqlite3.Error)
+#:
+#: EOFError is raised where a decoder ran out of input: a fact about the
+#: file, never a defect in the code reading it. pillow_heif 1.1.0 raises the
+#: builtin out of `Image.load()` ("Decoder plugin generated an error:
+#: Unexpected end of file") at db/oriented.py:137 -- outside vision/decode.py,
+#: so there is no decoder boundary to translate it at. PyAV's
+#: `EOFError(FFmpegError, builtins.EOFError)` (PyAV-Org/PyAV@040da79
+#: av/error.pyi:59) is not an OSError either.
+#:
+#: Measured over ../sg-corpus at 7cf254e: one truncated HEIC ended a scan of
+#: 901 items -- the outcome the module docstring above forbids. Three
+#: decoders (rawpy, PyAV, pillow_heif) raised outside this tuple; see
+#: docs/CORPUS_FINDINGS.md.
+ITEM_FAILURES = (OSError, ValueError, RuntimeError, LookupError, EOFError, sqlite3.Error)
 
 #: SQLite saying somebody else is writing. By NAME, not by message: the
 #: driver carries the result code as `sqlite_errorname` (Python 3.11+),

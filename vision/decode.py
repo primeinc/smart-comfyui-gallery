@@ -118,9 +118,35 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
         import numpy as np
         import rawpy
+        from rawpy._rawpy import LibRawError
 
-        with rawpy.imread(os.fspath(path)) as raw:
-            rendered = raw.postprocess(user_flip=0)
+        # LibRawError descends from Exception and nothing else
+        # (letmaik/rawpy@326494be83cb rawpy/_rawpy.pyx:346), so it falls
+        # outside ITEM_FAILURES (7016dab db/runner.py:36) and a file
+        # LibRaw cannot read ended the whole job instead of failing as one
+        # item -- against that module's stated contract (7016dab
+        # db/runner.py:9-15).
+        #
+        # Measured over ../sg-corpus at 7cf254e: 9 of 811 image-kind files
+        # raise here. CanonRaw.cr2/.cr3/.crw, FujiFilm.raf, Minolta.mrw,
+        # PhaseOne.iiq, Sigma.x3f, SigmaDP2.x3f, Nikon.nef -- ExifTool
+        # specimens (exiftool/exiftool@2200871d9cef t/images) truncated to
+        # their metadata. Each one alone stopped a full-library scan.
+        #
+        # Translated, not swallowed: the file still fails. `_raw_preview`
+        # below already treats LibRawError as expected.
+        #
+        # ValueError, not OSError, and the difference is load-bearing: both
+        # are in ITEM_FAILURES so the job survives either way, but the
+        # thumbnail route turns ValueError into a 404 and anything else
+        # into a 500 (sg_web/app.py:1216-1227). derive.py:257 raises
+        # ValueError for the same situation. A file with no picture in it
+        # is a 404, not a defect.
+        try:
+            with rawpy.imread(os.fspath(path)) as raw:
+                rendered = raw.postprocess(user_flip=0)
+        except LibRawError as why:
+            raise ValueError(f"{path}: LibRaw cannot read this file: {why}") from why
         array = np.asarray(rendered)
         if array.ndim == 3 and array.shape[2] == 1:
             array = array[:, :, 0]
@@ -335,21 +361,43 @@ def frames_at(path: str | os.PathLike[str], offsets_ms):
     the end of a stream is its own closest moment.
     """
     import av
+    from av.error import FFmpegError
 
-    with av.open(os.fspath(path), "r", timeout=TIMEOUT) as container:
-        if not container.streams.video:
-            return
-        stream = container.streams.video[0]
-        for offset_ms in offsets_ms:
-            container.seek(int(offset_ms) * 1000)
-            target = int(offset_ms) / 1000.0
-            found = None
-            for frame in container.decode(stream):
-                found = frame
-                if frame.time is None or frame.time >= target:
-                    break
-            if found is not None:
-                yield int(offset_ms), _upright(found)
+    # FFmpegError descends from Exception; its subclasses descend from
+    # assorted builtins (PyAV-Org/PyAV@040da79 av/error.pyi:9,27,59), some
+    # covered by ITEM_FAILURES and some not. Measured over ../sg-corpus at
+    # 7cf254e: 14 video-kind files, 8 decode, 6 fail. ASF.wmv raised
+    # InvalidDataError (a ValueError) and failed as one item; Matroska.mkv
+    # raised EOFError and ended the whole job. Which container a file was
+    # decided which -- for the same fact about the file.
+    #
+    # EVERY FFmpegError is translated, not only the uncovered ones: one
+    # rule cannot drift out of step with a taxonomy in another package.
+    # Translated here, like the LibRawError above, so format knowledge
+    # stays in one layer and db/runner.py need not import av.
+    #
+    # To ValueError for the reason `open_still` states: the thumbnail route
+    # answers 404 for a ValueError and 500 for anything else. Translating
+    # these to OSError instead turned a truncated mp4 into a 500 with a
+    # traceback, which is the exact regression
+    # test_a_file_with_no_decodable_frame_is_a_404_not_a_500 exists to catch.
+    try:
+        with av.open(os.fspath(path), "r", timeout=TIMEOUT) as container:
+            if not container.streams.video:
+                return
+            stream = container.streams.video[0]
+            for offset_ms in offsets_ms:
+                container.seek(int(offset_ms) * 1000)
+                target = int(offset_ms) / 1000.0
+                found = None
+                for frame in container.decode(stream):
+                    found = frame
+                    if frame.time is None or frame.time >= target:
+                        break
+                if found is not None:
+                    yield int(offset_ms), _upright(found)
+    except FFmpegError as why:
+        raise ValueError(f"{path}: cannot be read as video: {why}") from why
 
 
 def poster(path: str | os.PathLike[str], offset_ms: int = 0) -> Image.Image | None:
