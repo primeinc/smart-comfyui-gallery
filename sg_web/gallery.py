@@ -577,6 +577,83 @@ def filter_catalog(
     )
 
 
+class FieldValues(Wire):
+    """What one discovered key holds across this answer."""
+
+    param: str
+    #: value and how many media here carry it, most used first
+    options: list[FilterOption]
+    #: how many values were not returned -- never silently zero
+    more: int
+
+
+@get("/g/fields/values", sync_to_thread=True)
+def field_values(
+    state: State,
+    param: FromQuery[str],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
+    size: FromQuery[int | None] = None,
+    search: FromQuery[str | None] = None,
+) -> FieldValues:
+    """The values a key nothing here named actually takes.
+
+    `/g/options` answers this for a CURATED dimension, from the
+    statement the vocabulary carries per dimension. The long tail has no
+    statement per key -- it has one statement for every key, and this is
+    the route over it. The two are deliberately separate addresses: one
+    takes a dimension, the other takes a metadata key, and collapsing
+    them would mean a `key` parameter that means two things.
+    """
+    query = _asked(
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        size,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
+        depth=depth,
+    )
+    held = {one.value for one in query.facets if one.key == "param.is"}
+    conn = connect.connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        found, more = catalog.values(
+            conn,
+            query,
+            param,
+            actor_id=state.actor_id,
+            models_dir=weights,
+            now=time.time(),
+            search=search or "",
+        )
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return FieldValues(
+        param=param,
+        options=[
+            FilterOption(value=value, label=value, count=count, chosen=f"{param}={value}" in held)
+            for value, count in found
+        ],
+        more=more,
+    )
+
+
 @get("/g/peek", sync_to_thread=True)
 def rail_peek(
     state: State,

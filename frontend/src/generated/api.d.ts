@@ -1368,6 +1368,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/g/fields/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FieldValues */
+        get: operations["GFieldsValuesFieldValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/g/peek": {
         parameters: {
             query?: never;
@@ -2173,6 +2190,12 @@ export interface components {
             name: string | null;
             href: string | null;
             error: string | null;
+        };
+        /** FieldValues */
+        FieldValues: {
+            param: string;
+            options: components["schemas"]["FilterOption"][];
+            more: number;
         };
         /** FileFacts */
         FileFacts: {
@@ -6180,6 +6203,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Catalog"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    GFieldsValuesFieldValues: {
+        parameters: {
+            query: {
+                param: string;
+                folder?: string | null;
+                album?: string | null;
+                person?: string | null;
+                artifact?: string | null;
+                kind?: string | null;
+                favorite?: string | null;
+                rating_min?: number | null;
+                q?: string | null;
+                f?: string[] | null;
+                sort?: string | null;
+                depth?: string | null;
+                size?: number | null;
+                search?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldValues"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

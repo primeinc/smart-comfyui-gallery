@@ -397,3 +397,59 @@ def catalog(
     chosen = {id(one) for one in (*named, *tail)}
     shown = tuple(one for one in order if id(one) in chosen)
     return shown, max(0, len(order) - len(shown))
+
+
+#: What ONE discovered key holds across this answer, most used first.
+#:
+#: `LIKE`, not `=`: a positional family is offered as one field, so its
+#: values are its members' values together -- `used_wildcards.0` and
+#: `.3` both answer "which wildcards did these use". The stem is
+#: matched exactly OR followed by a dot and digits, and the escape is
+#: explicit because a metadata key is a string some tool chose and may
+#: hold `%` or `_` (`Exif_Offset` does).
+_VALUES = (
+    "SELECT fp.value_text, COUNT(DISTINCT f.id) FROM file f"
+    " JOIN file_param fp ON fp.file_id = f.id"
+    " WHERE f.missing_since IS NULL {scope}"
+    r"   AND (fp.key = ? OR fp.key LIKE ? ESCAPE '\')"
+    "   AND fp.value_text IS NOT NULL"
+    " GROUP BY fp.value_text"
+    " ORDER BY COUNT(DISTINCT f.id) DESC, fp.value_text COLLATE NOCASE"
+)
+
+
+def values(
+    conn,
+    query: resultset.GalleryQuery,
+    param: str,
+    *,
+    actor_id: int | None = None,
+    models_dir: str | None = None,
+    now: float | None = None,
+    search: str = "",
+    most: int = MOST,
+) -> tuple[tuple[tuple[str, int], ...], int]:
+    """What one discovered key holds here: (value, files), and how many
+    more.
+
+    The half of the catalog that turns "type sniffed format equals…"
+    into picking `png` off a list. The curated dimensions have carried
+    their own value lists since the drawer was built (db/vocabulary.py
+    `discover`); the long tail never could, because there is no
+    statement per key to write -- there is one statement for every key,
+    and this is it.
+
+    Counted WITH the whole question, like `discovered`: these are the
+    values present in what is being looked at, so choosing one always
+    leaves something. A value the library holds and this answer does not
+    is not an option here.
+    """
+    conjunct, args, _ = resultset.scope_of(conn, query, actor_id, models_dir=models_dir, now=now)
+    # The backslash first, or escaping the wildcards would then escape
+    # the escapes. `Exif_Offset` is a real key and its underscore is a
+    # LIKE wildcard, so this is not hypothetical tidiness.
+    stem = param.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = list(conn.execute(_VALUES.replace("{scope}", conjunct), [*args, param, f"{stem}.%"]))
+    wanted = search.strip().casefold()
+    made = [(str(value), int(count)) for value, count in rows if not wanted or wanted in str(value).casefold()]
+    return tuple(made[:most]), max(0, len(made) - most)

@@ -1666,6 +1666,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             gallery.grid_fragment,
             gallery.filter_options,
             gallery.filter_catalog,
+            gallery.field_values,
             gallery.rail_peek,
             gallery.locate_in_answer,
             curating.bulk_favorite,

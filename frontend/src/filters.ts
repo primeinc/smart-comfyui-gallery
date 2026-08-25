@@ -451,6 +451,118 @@ async function fill(section: HTMLDetailsElement): Promise<void> {
   }
 }
 
+/** What `/g/fields/values` sends: one discovered key's values here. */
+interface FieldValues {
+  param: string;
+  options: Option[];
+  more: number;
+}
+
+/**
+ * One discovered key's own control: its values, counted, in this answer.
+ *
+ * The half that turns "type sniffed format equals…" into picking `png`
+ * off a list. A curated dimension has carried its values since the
+ * drawer was built, because the vocabulary holds a statement per
+ * dimension; the long tail never could, since there is no statement per
+ * key -- there is one statement for every key (db/catalog.py `values`).
+ *
+ * The text box stays underneath, and is not a leftover. A value that is
+ * not in this answer has no row here by design, and somebody who knows
+ * exactly what they want should not have to find it in a list first.
+ */
+async function drawParamValues(body: HTMLElement, param: string, label: string): Promise<void> {
+  const said = document.createElement("p");
+  said.className = "filter-note";
+  said.textContent = `${label} — counting…`;
+  body.replaceChildren(said);
+  body.dataset.state = "counting";
+  body.dataset.param = param;
+
+  const asked = question();
+  asked.set("param", param);
+  let told: FieldValues;
+  try {
+    const answered = await fetch(`/g/fields/values?${asked.toString()}`, { headers: { accept: "application/json" } });
+    if (!answered.ok) throw new Error(`${answered.status}`);
+    told = (await answered.json()) as FieldValues;
+  } catch {
+    said.className = "filter-note warn";
+    said.textContent = `could not count ${label}`;
+    body.dataset.state = "failed";
+    return;
+  }
+
+  body.replaceChildren();
+  const naming = document.createElement("p");
+  naming.className = "filter-note";
+  // The raw key, said out loud. This is the spelling somebody would
+  // otherwise have had to know, and showing it is how they learn it.
+  naming.textContent = `${label} · ${param}`;
+  body.append(naming);
+
+  const list = document.createElement("ul");
+  list.className = "filter-list";
+  for (const one of told.options) {
+    const row = document.createElement("li");
+    row.dataset.option = one.value;
+    row.dataset.label = one.label;
+    const pick = document.createElement("button");
+    pick.type = "button";
+    pick.className = "filter-option";
+    pick.dataset.chosen = one.chosen ? "true" : "false";
+    pick.setAttribute("aria-pressed", one.chosen ? "true" : "false");
+    const name = document.createElement("span");
+    name.className = "filter-option-label";
+    name.textContent = one.label;
+    const tally = document.createElement("span");
+    tally.className = "filter-option-count";
+    tally.textContent = counted(one.count);
+    pick.append(name, tally);
+    // `any`, always: several values of ONE key OR. Asking for a file
+    // whose `SniffedFormat` is both png and mp4 answers nothing by
+    // construction -- the same reading `multi="any"` states for every
+    // dimension a file has exactly one of.
+    pick.addEventListener("click", () => {
+      go(toggled("param.is", "facet", "any", `${param}=${one.value}`, !one.chosen));
+    });
+    row.append(pick);
+    list.append(row);
+  }
+  body.append(list);
+
+  if (told.options.length === 0) {
+    const none = document.createElement("p");
+    none.className = "filter-note";
+    none.textContent = "nothing here holds a value for it";
+    body.append(none);
+  }
+  if (told.more > 0) {
+    const rest = document.createElement("p");
+    rest.className = "filter-note";
+    rest.textContent = `${counted(told.more)} more`;
+    body.append(rest);
+  }
+
+  const form = document.createElement("form");
+  form.className = "filter-range";
+  const typed = document.createElement("input");
+  typed.type = "text";
+  typed.value = `${param}=`;
+  typed.setAttribute("aria-label", `${label}, written key equals value`);
+  const apply = document.createElement("button");
+  apply.type = "submit";
+  apply.textContent = "apply";
+  form.append(typed, apply);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const wanted = typed.value.trim();
+    go(onlyClause("param.is", "facet", "any", wanted === "" ? null : wanted));
+  });
+  body.append(form);
+  body.dataset.state = "ready";
+}
+
 /** One field the catalog offered, as `/g/fields` sends it. */
 interface CatalogField {
   key: string;
@@ -534,17 +646,16 @@ function mountFind(drawer: HTMLElement, reveal: (key: string) => void): void {
     field.value = "";
     reveal(one.key);
     if (one.param === null) return;
-    // A discovered key is asked through `param.is`, whose control is a
-    // text box because there is no curated list of them. The spelling
-    // goes in for them -- remembering it is the thing this box exists
-    // to stop being a requirement -- and the caret lands after the `=`
-    // so the next keystroke is the VALUE.
+    // A discovered key is asked through `param.is`, and that section's
+    // own control is a text box because there is no curated list of
+    // THESE. So the section is rebuilt around the key that was chosen:
+    // its values, counted here, with the raw spelling said out loud
+    // above them -- which is how somebody learns the spelling instead of
+    // being required to know it.
     const section = findElement(drawer, '[data-filter="param.is"]', HTMLDetailsElement);
-    const input = section && findElement(section, 'input[type="text"]', HTMLInputElement);
-    if (!input) return;
-    input.value = `${one.param}=`;
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
+    const body = section && findElement(section, "[data-filter-body]", HTMLElement);
+    if (!body) return;
+    void drawParamValues(body, one.param, one.label);
   };
 
   const draw = (told: Catalog) => {

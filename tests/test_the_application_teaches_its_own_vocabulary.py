@@ -227,3 +227,56 @@ def test_the_list_is_bounded_and_says_how_much_it_cut(library):
     everything, none_left = catalog.catalog(library, resultset.parse(), most=500)
     assert none_left == 0
     assert len(everything) > 3
+
+
+# --- what one discovered key holds ------------------------------------
+
+
+def test_a_family_offers_its_members_values_together(library):
+    """`used_wildcards.0` and `.2` are one field, so they are one value
+    list: "which wildcards did these use" is a question about the
+    family, and answering it per index is the split this collapsed."""
+    found, _ = catalog.values(library, resultset.parse(), "used_wildcards", most=100)
+    held = {value for value, _ in found}
+    assert {"w0-0", "w1-0", "w2-0"} <= held, held
+
+
+def test_a_key_with_a_wildcard_in_its_name_matches_only_itself(library):
+    """`_` is a LIKE wildcard and `Exif_Offset` is a real key, so an
+    unescaped family match would sweep in every key that merely looks
+    like it. Two keys here differ by one character in exactly that
+    position."""
+    for at in (2, 4):
+        library.execute(
+            "INSERT INTO file_param(file_id,source,key,value_text) VALUES(?,'exif','Exif_Offset','mine')",
+            (at,),
+        )
+        library.execute(
+            "INSERT INTO file_param(file_id,source,key,value_text) VALUES(?,'exif','ExifXOffset','theirs')",
+            (at,),
+        )
+    library.commit()
+    found, _ = catalog.values(library, resultset.parse(), "Exif_Offset", most=100)
+    assert {value for value, _ in found} == {"mine"}, found
+
+
+def test_the_values_are_counted_against_this_question(library):
+    """Not against the library. A value is offered because it is present
+    in what is being looked at, so choosing it always leaves something."""
+    whole, _ = catalog.values(library, resultset.parse(), "sampler", most=100)
+    assert sum(count for _, count in whole) == 12
+
+    narrow = resultset.parse(kind="video")
+    none, _ = catalog.values(library, narrow, "sampler", most=100)
+    assert none == (), none
+
+
+def test_the_value_list_is_bounded_and_searchable(library):
+    """A key with nine hundred values is not a list anybody reads."""
+    few, more = catalog.values(library, resultset.parse(), "seed", most=3)
+    assert len(few) == 3
+    assert more == 9, more
+
+    one, none_left = catalog.values(library, resultset.parse(), "seed", search="1003", most=100)
+    assert [value for value, _ in one] == ["1003"]
+    assert none_left == 0

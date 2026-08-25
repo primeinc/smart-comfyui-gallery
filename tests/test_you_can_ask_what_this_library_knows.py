@@ -157,23 +157,70 @@ def test_choosing_a_named_field_lands_on_its_own_control(page: Page, live: Live,
     assert page.locator("[data-filter-found]").is_hidden(), "the list stayed open over the control it opened"
 
 
-def test_choosing_a_discovered_key_fills_in_the_spelling(page: Page, live: Live, unbroken):
-    """The whole defect, closed. The long-tail control is a text box
-    because there is no curated list of these -- so the key goes in for
-    them, and the caret lands after the `=` so the next keystroke is the
-    VALUE they actually came to type."""
+def _values_ready(page: Page) -> None:
+    page.wait_for_function(
+        '() => document.querySelector(\'[data-filter="param.is"] [data-filter-body]\')?.dataset.state === "ready"',
+        timeout=10_000,
+    )
+
+
+def _values(page: Page) -> list[str]:
+    return page.evaluate(
+        "() => [...document.querySelectorAll('[data-filter=\"param.is\"] [data-option]')].map(o => o.dataset.option)"
+    )
+
+
+def test_choosing_a_discovered_key_offers_its_values(page: Page, live: Live, unbroken):
+    """The whole defect, closed.
+
+    A curated dimension has carried its own counted values since the
+    drawer was built, because the vocabulary holds a statement per
+    dimension. The long tail never could -- there is no statement per
+    key, there is one statement for every key -- so its control was a
+    text box, and the values were something you had to arrive knowing.
+    """
     page.goto("/g")
     page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "sniff")
     page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
-    page.wait_for_function("() => document.querySelector('[data-filter=\"param.is\"]')?.open === true", timeout=10_000)
+    _values_ready(page)
+    # the raw spelling, said out loud: this is how somebody LEARNS it
+    # rather than being required to arrive knowing it
+    body = page.locator('[data-filter="param.is"] [data-filter-body]')
+    assert "SniffedFormat" in body.inner_text(), body.inner_text()
+    assert "png" in _values(page), _values(page)
+
+
+def test_a_value_is_counted_against_the_answer_on_screen(page: Page, live: Live, unbroken):
+    """Counted WITH the whole question, like every other list here, so
+    choosing a value always leaves something.
+
+    Shown by the count agreeing with the grid rather than by an absent
+    row: a question this key's files are all outside of offers no key
+    at all -- correctly, and there is then no control to look in. That
+    half is pinned where it can be set up,
+    tests/test_the_application_teaches_its_own_vocabulary.py.
+    """
+    page.goto("/g")
+    page.wait_for_selector("[data-grid]", timeout=10_000)
+    _find(page, "sniff")
+    page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
+    _values_ready(page)
+    tally = page.inner_text('[data-filter="param.is"] [data-option="png"] .filter-option-count')
+    assert int(tally.replace(",", "")) == WHOLE, tally
+
+
+def test_the_text_box_survives_as_the_way_past_the_list(page: Page, live: Live, unbroken):
+    """Not a leftover. A value this answer does not hold has no row here
+    by design, and somebody who knows exactly what they want should not
+    have to find it in a list first."""
+    page.goto("/g")
+    page.wait_for_selector("[data-grid]", timeout=10_000)
+    _find(page, "sniff")
+    page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
+    _values_ready(page)
     box = page.locator('[data-filter="param.is"] input[type="text"]')
     assert box.input_value() == "SniffedFormat=", box.input_value()
-    # and the caret is past it, so typing continues the value
-    assert page.evaluate(
-        '() => { const i = document.querySelector(\'[data-filter="param.is"] input[type="text"]\');'
-        " return i.selectionStart === i.value.length; }"
-    )
 
 
 def test_the_field_found_by_typing_actually_filters(page: Page, live: Live, unbroken):
@@ -185,9 +232,10 @@ def test_the_field_found_by_typing_actually_filters(page: Page, live: Live, unbr
 
     _find(page, "sniff")
     page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
-    box = page.locator('[data-filter="param.is"] input[type="text"]')
-    box.fill("SniffedFormat=png")
-    page.keyboard.press("Enter")
+    _values_ready(page)
+    # One click on a value, which is the whole point: nothing was typed,
+    # and nothing had to be known.
+    page.click('[data-filter="param.is"] [data-option="png"] button')
     page.wait_for_function(
         "() => new URLSearchParams(location.search).getAll('f').some(one => one.startsWith('param.is:'))",
         timeout=10_000,
