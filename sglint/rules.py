@@ -63,6 +63,69 @@ def parsed(source: pathlib.Path) -> ast.Module:
     return _parsed_as_of(source, (held.st_mtime_ns, held.st_size))
 
 
+def _code_only(source: pathlib.Path, held: str) -> str:
+    """`held` with COMMENTS and DOCSTRINGS blanked, offsets preserved.
+
+    A ban says what a module must not DO, and a comment is prose ABOUT
+    what it does. `db/evolution.py` may not DELETE, and a comment saying
+    "this module never DELETEs" is the module agreeing with the rule and
+    being failed for it -- and the failure then reads as an architecture
+    violation rather than a word, which is how `media_view.py:
+    "neighbour"` came to be DELETED rather than satisfied.
+
+    String literals are deliberately KEPT. `sg_web/story_view.py` may
+    not reach for SQL and SQL lives in a string; blanking those would
+    turn a real ban into a decoration. What goes is prose, not code.
+
+    Only Python: several of these files are Jinja templates, where there
+    is no such thing as a docstring and `{# #}` is not a Python comment.
+    Their text is returned as it stands.
+
+    Blanked with SPACES rather than removed, so a finding's line number
+    still points at the line it came from.
+    """
+    if source.suffix != ".py":
+        return held
+    import io as _io
+    import tokenize
+
+    starts = [0]
+    for line in held.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def at(row: int, col: int) -> int:
+        return starts[row - 1] + col
+
+    out = list(held)
+
+    def blank(begin: int, end: int) -> None:
+        for i in range(begin, min(end, len(out))):
+            if out[i] != chr(10):
+                out[i] = " "
+
+    try:
+        for token in tokenize.generate_tokens(_io.StringIO(held).readline):
+            if token.type == tokenize.COMMENT:
+                blank(at(*token.start), at(*token.end))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        # A file the tokenizer will not read is one every other rule here
+        # already fails on. The ban falls back to the whole text rather
+        # than silently checking nothing.
+        return held
+    for node in ast.walk(parsed(source)):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        first = node.body[0] if node.body else None
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+            and first.end_lineno is not None
+        ):
+            blank(at(first.lineno, first.col_offset), at(first.end_lineno, first.end_col_offset or 0))
+    return "".join(out)
+
+
 @dataclasses.dataclass(frozen=True)
 class Source:
     """One module a rule reads: what to call it, and its tree.
@@ -602,7 +665,7 @@ def rule_adapters(
                         )
                     )
     for relative, words in policy.MUST_NOT_CONTAIN.items():
-        held = (root / relative).read_text(encoding="utf-8")
+        held = _code_only(root / relative, (root / relative).read_text(encoding="utf-8"))
         for word in words:
             if word in held:
                 line = held[: held.index(word)].count("\n") + 1

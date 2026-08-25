@@ -235,9 +235,9 @@ def _rewrite(path: pathlib.Path, text: str) -> None:
     ("relative", "addition", "code"),
     [
         ("frontend/src/evolution.ts", "\nfetch('/x');\n", "SG406"),
-        ("db/evolution.py", "\n# generation_prompt\n", "SG406"),
-        ("db/stories.py", "\n# UPDATE story_snapshot\n", "SG406"),
-        ("sg_web/story_view.py", "\n# derived_\n", "SG406"),
+        ("db/evolution.py", '\n_x = "SELECT 1 FROM generation_prompt"\n', "SG406"),
+        ("db/stories.py", '\n_x = "UPDATE story_snapshot SET a = 1"\n', "SG406"),
+        ("sg_web/story_view.py", '\n_x = "SELECT 1 FROM derived_annotation"\n', "SG406"),
         ("story_renderers/formatting.py", "\nPOLICY_VERSION = 9\n", "SG406"),
         ("sg_web/templates/story.html", "\n{{ x|safe }}\n", "SG406"),
         ("story_renderers/claims.py", "\nPOLICY_VERSION = 9\n", "SG407"),
@@ -248,6 +248,32 @@ def test_each_text_pin_fires_on_the_shape_it_exists_for(tree, relative, addition
     _bend(tree / relative, addition)
     codes = {f.code for f in rules.rule_adapters(tree)}
     assert code in codes, codes
+
+
+def test_a_ban_reads_what_a_module_does_not_what_it_says(tree):
+    """A ban says what a module must not DO. A comment is prose ABOUT
+    what it does, and a module agreeing with its own rule -- "this one
+    never DELETEs" -- was being failed for saying so.
+
+    Not hypothetical: the failure reads as an architecture violation
+    rather than a word, and `sg_web/media_view.py` lost a line to it,
+    DELETED rather than satisfied.
+
+    A string literal still fires, and must: these bans are about
+    reaching for SQL, and SQL lives in a string. What stopped being
+    read is prose, not code.
+    """
+    view = tree / "sg_web" / "story_view.py"
+    whole = view.read_text(encoding="utf-8")
+
+    _rewrite(view, whole + "\n# this module never touches derived_ tables\n")
+    assert "SG406" not in {f.code for f in rules.rule_adapters(tree)}, "a comment failed the build"
+
+    _rewrite(view, whole + '\ndef _f():\n    """It reads no derived_ table."""\n')
+    assert "SG406" not in {f.code for f in rules.rule_adapters(tree)}, "a docstring failed the build"
+
+    _rewrite(view, whole + '\n_x = "SELECT 1 FROM derived_annotation"\n')
+    assert "SG406" in {f.code for f in rules.rule_adapters(tree)}, "a real reach for SQL stopped failing"
 
 
 def test_the_narrator_pins_fire_before_the_marker_and_on_the_signature(tree):

@@ -384,31 +384,36 @@ consequences the architecture should keep room for, not work.
   libraries that started at v1 or v2, which may be nobody. Decide
   whether that population exists before writing it.
 
-- **Thirty-two substring bans cannot tell a statement from a sentence.**
-  `sglint/policy.py` `MUST_NOT_CONTAIN` holds 59 banned tokens, and 32
-  of them name something this tree uses five or more times elsewhere:
-  `sg_web/story_view.py` bans `"FROM "` (731 uses elsewhere) and
-  `"execute("` (912); `db/evolution.py` bans `"DELETE"` (305) and
-  `"INSERT"` (212); `db/rendering.py` bans `"torch"` (37);
-  `sg_web/templates/story.html` bans `"similarity"` (231).
+- **Substring bans could not tell a statement from a sentence.** The
+  false-positive class is closed; the reclassification is not.
 
-  Each guards a real constraint -- evolution.py genuinely must not
-  write, story_view.py genuinely must not reach for SQL -- but by a
-  mechanism that reads prose. A comment saying "this module never
-  DELETEs" trips it, and the failure looks like an architecture
-  violation rather than a word. That already happened once, to
-  `media_view.py: "neighbour"`, which was deleted rather than satisfied.
+  `MUST_NOT_CONTAIN` searched the WHOLE file text, so a comment saying
+  "this module never DELETEs" was the module agreeing with its own rule
+  and being failed for saying so -- and the failure read as an
+  architecture violation rather than a word, which is how
+  `media_view.py: "neighbour"` came to be DELETED rather than
+  satisfied.
 
-  The 27 remaining bans are fine and should stay: `ARTIFACT_FILES`,
-  `workers=`, `import openai` and the rest appear nowhere else, so they
-  cannot fire innocently.
+  It reads code now (`rules._code_only`): comments and docstrings are
+  blanked, with spaces so line numbers still point where they came
+  from. **String literals are deliberately kept** -- `story_view.py`
+  may not reach for SQL and SQL lives in a string, so blanking those
+  would have turned a real ban into a decoration. Non-Python files are
+  left alone; a Jinja template has no docstrings and `{# #}` is not a
+  Python comment.
 
-  The file already carries the better mechanisms, so this is
-  reclassification rather than invention: `MUST_NOT_CALL_QUALIFIED` for
-  a call (AST), `MUST_NOT_CONTAIN_BEFORE` for "not above this marker",
-  `PACKAGE_FORBIDDEN_PATTERNS` for a regex with a stated reason. Each
-  prose-fragile ban should move to whichever states what it means, and
-  the ones that cannot should at least stop scanning comments.
+  Three cases in `test_sglint_has_teeth.py` had been injecting the
+  banned word as a COMMENT, which fired only because the rule read
+  prose. They inject SQL in a string now, which is the shape the test's
+  own name says it is about.
+
+  Still worth doing, and now optional rather than urgent: the 32 bans
+  that name something used five or more times elsewhere would each be
+  better as `MUST_NOT_CALL_QUALIFIED` (a call, by AST),
+  `MUST_NOT_CONTAIN_BEFORE` (not above this marker) or
+  `PACKAGE_FORBIDDEN_PATTERNS` (a regex with a stated reason). The
+  mechanisms exist; what is gone is the failure mode that made it
+  urgent.
 
 - ~~**A shared filename made the first scan quadratic.**~~ Fixed, and
   found while measuring the entry below. `mint` picked a free slug by
