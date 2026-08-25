@@ -55,6 +55,15 @@
                 <span class="matrix-state" data-state="{{ group.state }}">{{ group.state }}</span>
                 <progress class="matrix-progress"{% if group.total %} value="{{ group.done }}" max="{{ group.total }}"{% endif %}></progress>
                 <code class="matrix-count">{{ group.done }}{% if group.total is not none %}/{{ group.total }}{% endif %}</code>
+                {# On the fold, because the collection is the unit
+                   somebody wants to stop -- and since a schedule can
+                   start one at 3am, the thing to stop may be something
+                   nobody started by hand. #}
+                {% if group.state in ("running", "queued") %}
+                <button type="button" class="matrix-stop" data-stop-collection="{{ group.name }}"
+                        hx-post="/operations/collections/{{ group.name }}/stop" hx-target="#shell-notice" hx-swap="innerHTML"
+                        title="stop this collection: queued steps end now, a running one stops at its next item">stop</button>
+                {% endif %}
               </summary>
               <ol class="matrix matrix-steps">
                 {% for job in matrix if job.id in group.steps %}

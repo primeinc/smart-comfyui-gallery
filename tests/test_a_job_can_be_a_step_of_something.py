@@ -558,3 +558,100 @@ def test_a_catch_up_reads_the_files_its_own_walk_finds(tmp_path):
     assert files == 3, "the walk did not find the files"
     assert ingest_total == 3, "the ingest step decided its work before the walk in front of it ran"
     assert read == 3, "the files the walk found were never read"
+
+
+# --- and a collection can be stopped as one thing ----------------------------
+
+
+def test_stopping_a_collection_ends_what_is_queued_and_asks_what_is_running(tmp_path):
+    """Two states, and only one of them can stop itself.
+
+    A running step is ASKED: something is holding it and writing under
+    it, and a row marked terminal from outside would be a lie for as
+    long as that lasted. A queued step is settled here, because nothing
+    holds it -- and asking a row no worker will ever claim leaves a
+    cancel nobody honours, which reads as a collection permanently one
+    step short of finished with a stop somebody already pressed.
+    """
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            first, second, third = _chain(conn, "scan", "embed", "cluster_faces")
+            jobs.claim(conn, OWNER, NOW)  # the first is now running
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        told = client.post("/operations/collections/catch up/stop", headers={"accept": "text/html"})
+        assert told.status_code in (200, 201), told.text
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            rows = dict(conn.execute("SELECT id, state FROM job").fetchall())
+            asked = dict(conn.execute("SELECT id, cancel_requested FROM job").fetchall())
+        finally:
+            connect.close(conn)
+
+    assert rows[first] == "running", "a step being worked was marked terminal from outside"
+    assert asked[first] == 1, "the running step was not asked to stop"
+    assert rows[second] == "cancelled"
+    assert rows[third] == "cancelled"
+
+
+def test_stopping_leaves_other_collections_and_loose_jobs_alone(tmp_path):
+    """The unit is the collection. Stopping one is not stopping
+    everything queued."""
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            _chain(conn, "scan", "embed")
+            alone = jobs.submit(conn, "annotate", NOW)
+            other = jobs.submit(conn, "embed", NOW, collection="something else")
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        client.post("/operations/collections/catch up/stop")
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            rows = dict(conn.execute("SELECT id, state FROM job").fetchall())
+        finally:
+            connect.close(conn)
+
+    assert rows[alone] == "queued", "stopping a collection stopped a job that was not in one"
+    assert rows[other] == "queued", "stopping one collection stopped another"
+
+
+def test_stopping_a_collection_that_is_not_going_says_so(tmp_path):
+    """Not an error, and not silence. Pressing stop on something already
+    finished is a thing people do."""
+    with _console(tmp_path) as client:
+        told = client.post("/operations/collections/catch up/stop", headers={"accept": "text/html"})
+        assert told.status_code in (200, 201), told.text
+        assert "nothing running" in told.text
+
+
+def test_the_fold_offers_stop_only_while_there_is_something_to_stop(tmp_path):
+    """A settled collection has no stop button: an affordance that does
+    nothing teaches somebody it does nothing."""
+    from db import connect
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            made = _chain(conn, "scan", "embed")
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        assert 'data-stop-collection="catch up"' in client.get("/operations", headers={"accept": "text/html"}).text
+
+        client.post("/operations/collections/catch up/stop")
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert 'data-stop-collection="catch up"' not in page, "a stopped collection still offers to be stopped"
+        assert f'data-matrix-job="{made[0]}"' in page, "the steps vanished with the button"

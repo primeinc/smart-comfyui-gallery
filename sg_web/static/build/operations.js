@@ -835,6 +835,25 @@
         head2.appendChild(
           el("code", { class: "matrix-count" }, `${group.done}${group.total != null ? `/${group.total}` : ""}`)
         );
+        if (group.state === "running" || group.state === "queued") {
+          const stop = el(
+            "button",
+            {
+              type: "button",
+              class: "matrix-stop",
+              "data-stop-collection": group.name,
+              title: "stop this collection: queued steps end now, a running one stops at its next item"
+            },
+            "stop"
+          );
+          stop.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            stop.disabled = true;
+            await fetch(`/operations/collections/${encodeURIComponent(group.name)}/stop`, { method: "POST" });
+          });
+          head2.appendChild(stop);
+        }
         fold.appendChild(head2);
         const steps = el("ol", { class: "matrix matrix-steps" });
         for (const id of group.steps) {

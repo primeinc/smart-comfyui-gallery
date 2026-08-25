@@ -242,6 +242,9 @@ consequences the architecture should keep room for, not work.
   The console collapses: a collection is one row with a bar and its
   steps nested under it, open while it is running or has failed.
 
+  Stopping one is one press: queued steps end, a running one is asked
+  and stops at its next item boundary.
+
   What is left, in order of what it earns:
 
   - ~~**A chain is only as correct as its least lazy step.**~~ Done:
@@ -256,10 +259,6 @@ consequences the architecture should keep room for, not work.
     started twice, and the clock runs from the START so a long catch-up
     on a nightly schedule does not drift later every day.
 
-    Left: **cancelling a collection as a unit.** Today only a FAILING
-    step cancels what depended on it; there is no "stop this catch-up".
-    A schedule makes that matter more, because the thing to stop may be
-    something nobody started by hand.
 
   The original design note, for the parts not yet done:
 

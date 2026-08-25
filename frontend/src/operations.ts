@@ -370,6 +370,29 @@ type LiveReport = components["schemas"]["LiveReport"];
       head.appendChild(
         el("code", { class: "matrix-count" }, `${group.done}${group.total != null ? `/${group.total}` : ""}`),
       );
+      // On the fold, because the collection is the unit somebody wants
+      // to stop -- and a schedule can start one at 3am, so the thing to
+      // stop may be something nobody started by hand.
+      if (group.state === "running" || group.state === "queued") {
+        const stop = el(
+          "button",
+          {
+            type: "button",
+            class: "matrix-stop",
+            "data-stop-collection": group.name,
+            title: "stop this collection: queued steps end now, a running one stops at its next item",
+          },
+          "stop",
+        );
+        stop.addEventListener("click", async (event) => {
+          // The summary toggles the fold; stopping is not opening.
+          event.preventDefault();
+          event.stopPropagation();
+          stop.disabled = true;
+          await fetch(`/operations/collections/${encodeURIComponent(group.name)}/stop`, { method: "POST" });
+        });
+        head.appendChild(stop);
+      }
       fold.appendChild(head);
       const steps = el("ol", { class: "matrix matrix-steps" });
       for (const id of group.steps) {

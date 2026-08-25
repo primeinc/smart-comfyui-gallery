@@ -1439,6 +1439,19 @@ body {
   padding: 0 0 0 18px;
   border-left: 2px solid var(--line);
 }
+/* Stop, on the fold. Quiet until the row is hovered or focused: it is
+   the one control here that ends work, and a button that ends work
+   should not be the brightest thing in a list somebody is scanning. */
+.matrix-stop {
+  opacity: 0;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.matrix-collection > details > summary:hover .matrix-stop,
+.matrix-stop:focus-visible {
+  opacity: 1;
+}
+
 /* One failed step means the collection did not do what it was asked,
    whatever the others managed -- so it is coloured on the fold, where
    somebody scanning the list sees it without opening anything. */

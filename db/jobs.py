@@ -385,6 +385,52 @@ def cancel(conn, job_id: int, now: float | None = None) -> None:
         )
 
 
+def stop_collection(conn, collection: str, now: float) -> tuple[list[int], list[int]]:
+    """Stop a whole collection: `(asked, stopped)`.
+
+    Two things, because a collection's steps are in two states and only
+    one of them can stop itself.
+
+    A RUNNING step is asked, the way a single job is asked: it stops at
+    the next item boundary and settles itself, because something is
+    holding it and writing under it and a row marked terminal from
+    outside would be a lie for as long as that lasted.
+
+    A QUEUED step is settled here and now. Nothing holds it, nothing is
+    writing under it, and asking a row that no worker will ever claim
+    leaves a cancel nobody honours -- the console would show a
+    collection permanently one step short of finished with a stop
+    somebody already pressed.
+
+    One transaction, so it is atomic against a claim: SQLite has one
+    writer, and a worker taking the last queued step either commits
+    before this and finds itself asked, or after this and finds nothing
+    queued to take.
+
+    This exists because a schedule can start a collection nobody was
+    watching for. Stopping the eight rows by hand was already tedious
+    when a person had queued them; it is not an option at all for
+    something that began at 3am.
+    """
+    asked = []
+    for (job_id,) in conn.execute(
+        "SELECT id FROM job WHERE collection = ? AND state IN ('queued','running') ORDER BY id",
+        (collection,),
+    ).fetchall():
+        cancel(conn, job_id, now)
+        asked.append(int(job_id))
+    stopped = [
+        int(one)
+        for (one,) in conn.execute(
+            "UPDATE job SET state = 'cancelled', finished_at = ?,"
+            "               error = COALESCE(error, 'the collection was stopped')"
+            " WHERE collection = ? AND state = 'queued' RETURNING id",
+            (now, collection),
+        ).fetchall()
+    ]
+    return asked, stopped
+
+
 def cancelled(conn, job_id: int) -> bool:
     """What a runner checks between units."""
     row = conn.execute("SELECT cancel_requested FROM job WHERE id = ?", (job_id,)).fetchone()

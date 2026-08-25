@@ -1260,6 +1260,35 @@ def _schedules(conn) -> list[Scheduled]:
     ]
 
 
+@post("/collections/{collection:str}/stop", sync_to_thread=True)
+def stop_collection(state: State, collection: FromPath[str]) -> Template:
+    """Stop a whole collection, in one press.
+
+    Eight rows was already tedious to stop by hand when a person had
+    queued them. Since a schedule can start one at 3am, it is not an
+    option at all: the thing to stop may be something nobody started.
+
+    A running step is ASKED and stops at its next item boundary -- work
+    in flight is the runner's to end. Everything still queued is settled
+    here, because nothing holds it and a cancel no worker will ever
+    claim is a cancel nobody honours.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        asked, stopped = jobs.stop_collection(conn, collection, time.time())
+        conn.commit()
+    finally:
+        connect.close(conn)
+    if not asked:
+        notice = f"{collection}: nothing running"
+    else:
+        running = len(asked) - len(stopped)
+        notice = f"{collection}: stopped {len(stopped)} queued" + (
+            f", asked {running} running to stop" if running else ""
+        )
+    return Template(template_name="_operations_notice.html", context={"notice": notice, "error": None}, headers=VARIES)
+
+
 @post("/schedules/{collection:str}", sync_to_thread=True)
 def set_schedule(state: State, collection: FromPath[str], data: URLEncodedBody[ScheduleForm]) -> Template:
     """Set what runs without being asked, and how often.
@@ -1384,6 +1413,7 @@ router = Router(
         choose_primary,
         compare_clusterings,
         set_schedule,
+        stop_collection,
     ],
     exception_handlers={HTTPException: refused, Exception: failed},
 )
