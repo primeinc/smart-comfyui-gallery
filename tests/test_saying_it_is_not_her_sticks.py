@@ -706,3 +706,101 @@ def test_the_person_page_offers_it(tmp_path):
 
         page = client.get(f"/p/{slug[1]}", headers={"accept": "text/html"}).text
         assert f'data-same-as="{slug[1]}"' in page, "no way to say two people are one"
+
+
+# --- and the work a fresh clustering leaves behind --------------------------
+
+
+def _served(tmp_path, howmany: int = 2):
+    """A served library with `howmany` pictures in it."""
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from sg_web.app import build_app
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(howmany):
+        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+    client = TestClient(app=build_app(str(tmp_path / "run"), worker=False))
+    return client, root
+
+
+def test_the_people_page_puts_the_unnamed_first_and_names_them_in_place(tmp_path):
+    """Who is this?
+
+    A run mints one placeholder person per group nobody has named, and
+    they sorted into the same grid as everybody else -- so the people
+    somebody HAD named were scattered through the ones they had not, and
+    naming the rest meant finding them first.
+
+    Named in place, because twelve people should cost twelve names and
+    not twelve page loads.
+    """
+    import time as clock
+
+    from db import connect, naming
+
+    client, root = _served(tmp_path)
+    with client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            known = authored.person(conn, "Hannah", clock.time())
+            stranger = authored.person(conn, None, clock.time())
+            run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
+            files = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY id")]
+            derived.attribute(conn, files[0], known, run_id, MODEL[0], MODEL[1], face_count=1)
+            derived.attribute(conn, files[1], stranger, run_id, MODEL[0], MODEL[1], face_count=1)
+            derived.make_primary(conn, run_id)
+            conn.commit()
+            named = naming.entity_slug(conn, known)
+            unnamed = naming.entity_slug(conn, stranger)
+            assert named is not None
+            assert unnamed is not None
+        finally:
+            connect.close(conn)
+
+        told = client.get("/people", headers={"accept": "application/json"}).json()
+        held = {one["slug"]: one for one in told}
+        assert held[unnamed[1]]["name"] is None, "a placeholder is named '(unnamed)' rather than being unnamed"
+        assert held[named[1]]["name"] == "Hannah"
+
+        page = client.get("/people", headers={"accept": "text/html"}).text
+        assert f'data-unknown="{unnamed[1]}"' in page, "the unnamed group is not in the queue"
+        assert f'data-unknown="{named[1]}"' not in page, "somebody already named is in the queue"
+        # and the queue offers the name box beside the face
+        assert f'data-rename="{unnamed[1]}"' in page
+
+
+def test_a_person_with_no_clustered_face_is_not_pointed_at(tmp_path):
+    """`/avatar/<slug>` answers 404 for somebody no run found a face
+    for, which is a normal state -- so the index asks before it points
+    rather than drawing a broken image on every card."""
+    import time as clock
+
+    from db import connect
+
+    client, root = _served(tmp_path, 1)
+    with client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            who = authored.person(conn, "Hannah", clock.time())
+            run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
+            one = conn.execute("SELECT id FROM file").fetchone()[0]
+            # attributed, but no FACE was clustered -- the avatar route
+            # crops a detection and there is none
+            derived.attribute(conn, one, who, run_id, MODEL[0], MODEL[1], face_count=1)
+            derived.make_primary(conn, run_id)
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        told = client.get("/people", headers={"accept": "application/json"}).json()
+        assert told, "the control: the person is on the index"
+        assert told[0]["avatar"] is None, "the index points at an avatar that answers 404"
+        page = client.get("/people", headers={"accept": "text/html"}).text
+        assert "/avatar/" not in page, "the page points at one anyway"

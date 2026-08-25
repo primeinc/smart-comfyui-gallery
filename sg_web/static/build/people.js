@@ -811,6 +811,18 @@
         await say(refusal(error, "that name was refused"));
         return;
       }
+      const card = form.closest("[data-unknown]");
+      if (card instanceof HTMLElement) {
+        card.dataset.named = data.name;
+        const named = document.createElement("span");
+        named.className = "person-name";
+        named.textContent = data.name;
+        form.replaceWith(named);
+        const heading = document.querySelector("[data-unknown-faces] .analyze-of");
+        const left = document.querySelectorAll("[data-unknown]:not([data-named])").length;
+        if (heading) heading.textContent = left === 0 ? "all named" : `${left} unnamed`;
+        return;
+      }
       window.location.replace(`/p/${data.slug}`);
     });
     const grid = document.querySelector("[data-person-pictures]");

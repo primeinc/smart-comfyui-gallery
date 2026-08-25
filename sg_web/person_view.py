@@ -151,6 +151,9 @@ class PersonListed(Wire):
     name: str | None
     slug: str
     pictures: int
+    #: where their face is, or null when no run has clustered one --
+    #: `/avatar/<slug>` 404s for those, which is a normal state
+    avatar: str | None
     #: the first and last moment anything places them, when anything does
     first_seen: float | None
     last_seen: float | None
@@ -175,11 +178,17 @@ def people_index(state: State, request: Request) -> Template | Response:
     try:
         spans = pages.people_spans(conn)
         ids = {slug: person_id for person_id, slug in pages.people_ids(conn)}
+        # Asked once for the whole index rather than once per card: the
+        # route 404s for a person nothing has clustered a face for, and
+        # a page that points at one anyway draws a broken image where a
+        # face goes.
+        facing = pages.people_with_a_face(conn)
         told = [
             {
                 "name": name,
                 "slug": slug,
                 "pictures": pictures,
+                "avatar": f"/avatar/{slug}" if ids.get(slug) in facing else None,
                 "first_seen": spans.get(ids.get(slug, -1), (None, None))[0],
                 "last_seen": spans.get(ids.get(slug, -1), (None, None))[1],
             }
@@ -191,7 +200,18 @@ def people_index(state: State, request: Request) -> Template | Response:
         runs = pages.standings(conn) if not told else []
     finally:
         connect.close(conn)
-    return presented_page(request, told, page="people.html", context={"people": told, "runs": runs})
+    # The work still to do, first and apart. A clustering run mints one
+    # placeholder person per group nobody has named, and they sort into
+    # the same grid as everybody else -- so the twelve people somebody
+    # HAS named are scattered through forty they have not, and naming
+    # the rest means finding them.
+    unknown = [one for one in told if not one["name"]]
+    return presented_page(
+        request,
+        told,
+        page="people.html",
+        context={"people": [one for one in told if one["name"]], "unknown": unknown, "runs": runs},
+    )
 
 
 @get("/p/{slug:str}", sync_to_thread=True)

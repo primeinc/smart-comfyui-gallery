@@ -486,8 +486,12 @@ def lora_synergy(conn, lora_id: int):
 
 #: Counted per (file, person), so two faces of one person in one photograph
 #: are one picture. The old schema counted detections and needed a warning.
+#: The name as it IS, null and all. Coalescing to "(unnamed)" here made
+#: a placeholder indistinguishable from somebody a person had actually
+#: named "(unnamed)", and left the page unable to tell which of its
+#: cards are the work still to do.
 PEOPLE_BY_MOST = (
-    "SELECT COALESCE(p.name, '(unnamed)') AS name, e.slug,"
+    "SELECT p.name AS name, e.slug,"
     " count(DISTINCT fp.file_id) AS pictures"
     "  FROM person p JOIN entity e ON e.id = p.id"
     "  JOIN derived_file_person fp ON fp.person_id = p.id AND fp.run_id = ?"
@@ -736,6 +740,26 @@ def event_domain(conn, event_id: int):
 
 
 PEOPLE_IDS = "SELECT p.id, e.slug FROM person p JOIN entity e ON e.id = p.id"
+
+
+#: Who has a face to crop, for the whole index in one read.
+#:
+#: `/avatar/<slug>` answers 404 for a person no clustering run found a
+#: face for, which is a normal state -- so a page that points at one
+#: unconditionally draws a broken image where a face goes. Asked per
+#: person this would be one query per card; asked once it is a set.
+_PEOPLE_WITH_A_FACE = (
+    "SELECT DISTINCT c.person_id FROM derived_face_cluster c"
+    " JOIN derived_face_membership m ON m.cluster_id = c.id"
+    " JOIN derived_face_instance fi ON fi.id = m.face_id"
+    " JOIN derived_face_run run ON run.id = c.run_id AND run.is_primary = 1"
+    " WHERE c.person_id IS NOT NULL"
+)
+
+
+def people_with_a_face(conn) -> set[int]:
+    """Every person the primary run can show a face for."""
+    return {int(one) for (one,) in conn.execute(_PEOPLE_WITH_A_FACE)}
 
 
 def people_ids(conn):

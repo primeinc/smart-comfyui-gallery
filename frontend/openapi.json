@@ -16055,6 +16055,16 @@
                     "pictures": {
                         "type": "integer"
                     },
+                    "avatar": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "first_seen": {
                         "oneOf": [
                             {
@@ -16079,6 +16089,7 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
+                    "avatar",
                     "first_seen",
                     "last_seen",
                     "name",

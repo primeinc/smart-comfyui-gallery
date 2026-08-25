@@ -189,7 +189,9 @@ def test_the_wildcard_machine_caller_keeps_its_json(faces):
     assert told.json() == faces.get("/p/ana", headers=AS_MACHINE).json()
     index = faces.get("/people")
     assert index.headers["content-type"].startswith("application/json")
-    assert index.json() == [{"name": "Ana", "slug": "ana", "pictures": 2, "first_seen": None, "last_seen": None}]
+    assert index.json() == [
+        {"name": "Ana", "slug": "ana", "pictures": 2, "avatar": "/avatar/ana", "first_seen": None, "last_seen": None}
+    ]
 
 
 def test_the_people_index_renders_for_a_browser(faces):
@@ -515,7 +517,11 @@ def test_the_cluster_job_mints_a_person_for_an_unnamed_group(faces):
     people = client.get("/people").json()
     assert len(people) == 1, "one group of two faces; the singleton stays a face"
     minted = people[0]
-    assert minted["name"] == "(unnamed)"
+    # NULL, not the string "(unnamed)". The index used to coalesce, which
+    # made a placeholder indistinguishable from somebody actually named
+    # that -- and left the page unable to tell which of its cards are the
+    # work still to do.
+    assert minted["name"] is None
     assert minted["slug"].startswith("person-"), "an unnamed person is still addressable"
     assert minted["pictures"] == 2
 
@@ -565,7 +571,17 @@ def test_a_human_name_survives_the_apps_own_recluster(named_placeholder, faces):
 
     people = faces.get("/people").json()
     assert people == [
-        {"name": "Ana Torres", "slug": "ana-torres", "pictures": 2, "first_seen": None, "last_seen": None}
+        {
+            "name": "Ana Torres",
+            "slug": "ana-torres",
+            "pictures": 2,
+            # Where their face is, or null: the route 404s for a person
+            # nothing has clustered one for, so the page asks before it
+            # points rather than drawing a broken image.
+            "avatar": "/avatar/ana-torres",
+            "first_seen": None,
+            "last_seen": None,
+        }
     ], f"the application's own re-cluster lost the name the application accepted: {people}"
     assert len(faces.get("/p/ana-torres").json()["pictures"]) == 2
 

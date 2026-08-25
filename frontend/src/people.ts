@@ -99,10 +99,27 @@ const wayBack = (picture: string): HTMLElement => {
       await say(refusal(error, "that name was refused"));
       return;
     }
-    // REPLACE, never assign: the identity's address just moved, and the
-    // retired slug must not remain as a history stop -- Back from the
-    // renamed profile goes to /people in one step, not through a 301
-    // bounce off the old address.
+    // A card in the "who is this?" queue stays where it is. The whole
+    // point of naming in place is that twelve people cost twelve names
+    // rather than twelve page loads, and navigating to the profile of
+    // the one just named is the page load.
+    const card = form.closest("[data-unknown]");
+    if (card instanceof HTMLElement) {
+      card.dataset.named = data.name;
+      const named = document.createElement("span");
+      named.className = "person-name";
+      named.textContent = data.name;
+      form.replaceWith(named);
+      // The queue says how much is left, so somebody can see it ending.
+      const heading = document.querySelector("[data-unknown-faces] .analyze-of");
+      const left = document.querySelectorAll("[data-unknown]:not([data-named])").length;
+      if (heading) heading.textContent = left === 0 ? "all named" : `${left} unnamed`;
+      return;
+    }
+    // From the profile itself: REPLACE, never assign. The identity's
+    // address just moved, and the retired slug must not remain as a
+    // history stop -- Back from the renamed profile goes to /people in
+    // one step, not through a 301 bounce off the old address.
     window.location.replace(`/p/${data.slug}`);
   });
 

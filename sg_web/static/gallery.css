@@ -1439,6 +1439,30 @@ body {
   padding: 0 0 0 18px;
   border-left: 2px solid var(--line);
 }
+/* The work a fresh clustering leaves behind: one card per group nobody
+   has named, biggest first, named in place. */
+.unknown-faces {
+  margin: 0 0 24px;
+}
+.person-unknown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.person-unknown .person-rename {
+  display: flex;
+  gap: 4px;
+}
+.person-unknown .person-rename input {
+  min-width: 0;
+  flex: 1;
+}
+/* Named, and still on screen: the card stays where it was so the eye
+   does not have to find its place again after every name. */
+[data-named] {
+  opacity: 0.55;
+}
+
 /* Recurring terms: a cloud of ways to narrow, each carrying the count
    of FILES that asked for it. Quieter than the prompt panel above,
    because it is a reading of a convention rather than an identity. */

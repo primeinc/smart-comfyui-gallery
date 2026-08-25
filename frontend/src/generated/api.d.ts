@@ -2848,6 +2848,7 @@ export interface components {
             name: string | null;
             slug: string;
             pictures: number;
+            avatar: string | null;
             first_seen: number | null;
             last_seen: number | null;
         };

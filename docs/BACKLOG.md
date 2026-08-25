@@ -438,12 +438,14 @@ not a design decision anybody made; it is work nobody did.
   does merging two people ("same as someone else", which moves the
   durable claims and redirects the folded address).
 
-  Left: **reviewing unknown faces** -- the placeholder people minted per
-  unnamed cluster are addressable and there is no queue that walks them
-  -- and **choosing an exemplar**, which is today the highest-confidence
-  detection in the primary run and cannot be overridden. Neither is the
-  durability problem the first two were: a wrong avatar is a wrong
-  picture, not a wrong record.
+  Reviewing unknown faces ships too: the People page puts the unnamed
+  groups first, biggest first, and names them in place.
+
+  Left: **choosing an exemplar**, which is today the highest-confidence
+  detection in the primary run and cannot be overridden. Not the
+  durability problem the others were -- a wrong avatar is a wrong
+  picture, not a wrong record -- so it wants a control on the person
+  page ("use this face"), a column to remember it, and nothing else.
 
 - **A video with nobody in it is the most expensive video to look at.**
   Not a guess about the code -- it is what the code is for.
