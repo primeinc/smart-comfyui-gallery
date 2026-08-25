@@ -290,21 +290,11 @@ def test_a_migrated_database_gets_the_same_coverage(tmp_path):
     long way: built, stripped back to v31, and migrated forward through
     the real step.
     """
-    path = tmp_path / "gallery.db"
-    build.build(path)
-    conn = connect.connect(str(path))
-    try:
-        for (name,) in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'answer_moved_%'"
-        ).fetchall():
-            conn.execute(f"DROP TRIGGER {name}")
-        conn.execute("DROP TABLE answer_generation")
-        conn.execute("PRAGMA user_version = 31")
-        conn.commit()
-    finally:
-        connect.close(conn)
-
     from db import migrate
+    from tests import schemas
+
+    path = tmp_path / "gallery.db"
+    schemas.seed(path, 31)  # the schema that shipped as v31
 
     # `32 in`, not `== [32]`. What this test is about is that step 32 --
     # the one that writes the triggers -- really ran over a database that

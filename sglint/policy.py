@@ -63,11 +63,22 @@ SQL_STRUCTURE: dict[str, str] = {
     # trigger's name and its event are structure -- neither can be bound.
     "verb": "keyword",
     "short": "identifier",
-    # db/migrate.py, the step that widens job.kind: the column list of the
-    # table being rebuilt, read from `PRAGMA table_info` rather than
-    # written out -- which is what stopped that step inventing a `job`
+    # db/migrate.py `rebuilt`, the table-rebuild dance: the column list of
+    # the table being rebuilt, read from `PRAGMA table_info` rather than
+    # written out -- which is what stopped one step inventing a `job`
     # table with no `heartbeat_at`. Column names are structure.
     "named": "identifier",
+    "', '.join(named)": "identifier",
+    # the same list on the reading side, where a column the new table
+    # cannot simply carry over is an expression from the step's own
+    # `reading` literal (`CAST(inode AS TEXT)`). Both are structure.
+    "reads": "identifier",
+    # the transient name the old table is renamed to, f-string over
+    # `table`, which is an identifier three lines above.
+    "aside": "identifier",
+    # "" or a WHERE over module-literal predicates: an inverse narrowing a
+    # CHECK drops the rows the forward step's wider vocabulary allowed.
+    "only": "clause",
     # db/jobs.py: the one module-literal column list the active and recent
     # reads share, so both rows carry the same shape
     "_LISTED": "identifier",

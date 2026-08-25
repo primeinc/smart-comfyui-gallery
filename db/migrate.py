@@ -41,7 +41,7 @@ from __future__ import annotations
 import pathlib
 import shutil
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from .connect import APPLICATION_ID, USER_VERSION, connect
 
@@ -75,6 +75,90 @@ def step(from_version: int):
         return fn
 
     return register
+
+
+#: How to UN-do a step, by the version the step produces.
+#:
+#: Alembic calls this `downgrade` and puts it in the same file as the
+#: upgrade, which is the part worth copying: an inverse that lives
+#: somewhere else is an inverse nobody remembers to write. Ours lived in
+#: the test suite in FOUR copies, and three migrations in a row shipped
+#: with those fixtures broken -- the suite caught each one, which is the
+#: only reason it was not worse.
+#:
+#: The consumer today is the suite. Every migration test here builds
+#: today's schema and steps it BACKWARDS to the version it wants to
+#: migrate from -- which is the right shape, because a fixture written by
+#: hand drifts from schema.sql the moment either changes and `drift`
+#: would never see it. Rolling back a real upgrade is `restore` from the
+#: snapshot `migrate` takes, not this.
+#:
+def rebuilt(
+    conn: sqlite3.Connection,
+    table: str,
+    ddl: str,
+    *,
+    reading: dict[str, str] | None = None,
+    where: str = "",
+    indexes: Sequence[str] = (),
+) -> None:
+    """SQLite's move-and-copy dance, named once.
+
+    ALTER TABLE cannot widen a CHECK, drop a constraint, or change a
+    type, so the only way to change one is to build the new table beside
+    the old, copy the rows across, and drop the old -- the sequence the
+    SQLite docs number in twelve steps. It is written out sixteen times
+    above this line, once per step that needed it, and every one of those
+    is a chance to forget a piece.
+
+    `legacy_alter_table=ON` around the rename is the piece worth stating,
+    and so is its limit. Without it SQLite helpfully rewrites every
+    reference to the old name -- views, triggers, foreign keys -- to
+    follow the rename, which is precisely wrong when the name is about to
+    be handed back to a table those references were already right about.
+    With it, views and triggers are left alone; FOREIGN KEYS ARE NOT,
+    unless `foreign_keys` is also off. Measured on 3.47.1 and pinned by
+    SQLite's own alterlegacy.test 8.2, which asserts the child's DDL
+    reads `REFERENCES "ppp"` after the rename with both pragmas set.
+
+    So this refuses to run with keys on rather than leaving a `job_event`
+    that references `job_rebuilding` -- a table that no longer exists,
+    found by `PRAGMA foreign_key_check` two steps later and attributed to
+    the wrong migration. `migrate` turns them off before BEGIN for the
+    same reason; a fixture calling an inverse has to as well.
+
+    Columns are copied by what the old table ACTUALLY has intersected
+    with what the new one wants, never by a list written at the call
+    site: a hand-written list is how a rebuild invents a `job` table with
+    no `heartbeat_at`. `reading` supplies an expression for a column that
+    is not a straight carry-over (`{"fs_id": "CAST(inode AS TEXT)"}`);
+    anything it names is copied whether or not the old table has it.
+
+    The shipped steps above are deliberately NOT rewritten to call this.
+    They ran against real libraries and their being correct is a fact
+    about what happened, not about how they read. New work -- the
+    inverses below, and step 36 whenever it arrives -- uses this.
+    """
+    if conn.execute("PRAGMA foreign_keys").fetchone()[0]:
+        raise sqlite3.IntegrityError(
+            f"rebuilding {table} with foreign_keys ON would rewrite every child's "
+            f"REFERENCES to point at {table}_rebuilding. Turn them off first -- "
+            "outside a transaction, where the pragma is not silently ignored."
+        )
+    aside = f"{table}_rebuilding"
+    reading = reading or {}
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute(f"ALTER TABLE {table} RENAME TO {aside}")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(ddl)
+    had = {row[1] for row in conn.execute(f"PRAGMA table_info({aside})")}
+    named = [row[1] for row in conn.execute(f"PRAGMA table_info({table})") if row[1] in had or row[1] in reading]
+    reads = ", ".join(reading.get(one, one) for one in named)
+    only = f" WHERE {where}" if where else ""
+    conn.execute(f"INSERT INTO {table}({', '.join(named)}) SELECT {reads} FROM {aside}{only}")
+    conn.execute(f"DROP TABLE {aside}")
+    for one in indexes:
+        conn.execute(one)
 
 
 def version_of(conn: sqlite3.Connection) -> int:
@@ -2929,7 +3013,7 @@ def _an_answer_is_stale_only_when_an_answer_could_have_changed(conn: sqlite3.Con
 
 @step(32)
 def _the_walk_becomes_a_job(conn: sqlite3.Connection) -> None:
-    """v33 -> v34: `job.kind` admits 'walk'.
+    """v32 -> v33: `job.kind` admits 'walk'.
 
     The directory walk was the one expensive thing in this application
     that was not a job. Every cheaper sweep after it -- hashing,
@@ -2946,7 +3030,7 @@ def _the_walk_becomes_a_job(conn: sqlite3.Connection) -> None:
     `heartbeat_at`.
     """
     conn.execute("PRAGMA legacy_alter_table=ON")
-    conn.execute("ALTER TABLE job RENAME TO job_v33")
+    conn.execute("ALTER TABLE job RENAME TO job_v32")
     conn.execute("PRAGMA legacy_alter_table=OFF")
     conn.execute(
         """CREATE TABLE job (
@@ -2989,16 +3073,16 @@ def _the_walk_becomes_a_job(conn: sqlite3.Connection) -> None:
     finished_at      REAL
 ) STRICT"""
     )
-    named = ", ".join(row[1] for row in conn.execute("PRAGMA table_info(job_v33)"))
-    conn.execute(f"INSERT INTO job({named}) SELECT {named} FROM job_v33")
-    conn.execute("DROP TABLE job_v33")
+    named = ", ".join(row[1] for row in conn.execute("PRAGMA table_info(job_v32)"))
+    conn.execute(f"INSERT INTO job({named}) SELECT {named} FROM job_v32")
+    conn.execute("DROP TABLE job_v32")
     conn.execute("""CREATE INDEX job_state ON job(state)""")
     conn.execute("""CREATE INDEX job_target ON job(target_id)""")
 
 
 @step(33)
 def _a_verdict_names_what_it_judged(conn: sqlite3.Connection) -> None:
-    """v34 -> v35: `feedback` carries the producer it judged.
+    """v33 -> v34: `feedback` carries the producer it judged.
 
     The table records `annotation_kind` rather than the annotation's row
     on purpose -- the derived layer is disposable and the judgement has
@@ -3020,7 +3104,7 @@ def _a_verdict_names_what_it_judged(conn: sqlite3.Connection) -> None:
 
 @step(34)
 def _a_person_can_be_denied(conn: sqlite3.Connection) -> None:
-    """v35 -> v36: `person_assertion` can say a person is NOT in a file.
+    """v34 -> v35: `person_assertion` can say a person is NOT in a file.
 
     The positive claim was durable and re-applied after every rebuild;
     the negative one could not be spelled at all. `retract_person`

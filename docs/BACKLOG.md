@@ -269,6 +269,27 @@ consequences the architecture should keep room for, not work.
 
 ## Correctness
 
+- **A v1 or v2 library reaches today with the wrong derived-face
+  schema.** Measured 2026-08-25 by seeding from the schema that shipped
+  (`tests/schemas/v01.sql`, `v02.sql`) rather than by inverting today's:
+  after all 35 steps the file has no `derived_face_space`, neither
+  `derived_face_space_agrees` trigger, no `derived_file_hash_space`, and
+  still carries `derived_file_hash_phash`; `derived_face_instance` and
+  `derived_file_hash` differ from a fresh build.
+
+  Those objects entered `schema.sql` while it was stamped v3 and no step
+  was written for them. `@step(2)` says "purely additive for real this
+  time" and creates one table; `@step(3)` says "version 3 drifted during
+  development" and repairs that drift for `similarity_space` and
+  `derived_embedding` only.
+
+  Pinned by `KNOWN_DRIFT` in
+  `tests/test_a_database_survives_an_upgrade.py` so it cannot widen
+  silently, and NOT repaired: the fix is a step that reconciles those
+  objects on any database, and the population it would serve is
+  libraries that started at v1 or v2, which may be nobody. Decide
+  whether that population exists before writing it.
+
 - **Thirty-two substring bans cannot tell a statement from a sentence.**
   `sglint/policy.py` `MUST_NOT_CONTAIN` holds 59 banned tokens, and 32
   of them name something this tree uses five or more times elsewhere:

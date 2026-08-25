@@ -19,6 +19,7 @@ import sys
 import pytest
 
 from db import authored, build, collections, connect, migrate, scan
+from tests import schemas
 
 NOW = 1_700_000_000.0
 
@@ -331,143 +332,6 @@ def test_two_steps_cannot_claim_one_version(steps):
 # --- the REAL registry, not synthetic steps ---------------------------------
 
 
-def _pre_v10_core(conn) -> None:
-    """The pre-v10 shapes: no places, no media context, no events, and
-    the NARROWER kind vocabularies -- what step 9 exists to replace.
-    Minimal DDL on purpose: the forward step recreates everything with
-    schema.sql's text verbatim, and drift is judged after migration."""
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    conn.execute("PRAGMA legacy_alter_table=ON")
-    for table in (
-        "derived_prompt_embedding",
-        "derived_prompt_section",
-        "generation_prompt",
-        "story_render",
-        "story_plan",
-        "story_snapshot",
-        "derived_event_file",
-        "derived_event",
-        "derived_event_run",
-        "derived_context_state",
-        "derived_media_occurrence",
-        "derived_media_context",
-        "place",
-    ):
-        conn.execute(f"DROP TABLE {table}")
-    conn.execute("ALTER TABLE entity RENAME TO entity_keep")
-    conn.execute(
-        "CREATE TABLE entity (id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        " uuid BLOB NOT NULL UNIQUE CHECK (length(uuid) = 16),"
-        " kind TEXT NOT NULL CHECK (kind IN"
-        " ('file','folder','person','artifact','prompt','collection')),"
-        " slug TEXT NOT NULL, UNIQUE (kind, slug)) STRICT"
-    )
-    conn.execute("INSERT INTO entity(id, uuid, kind, slug) SELECT id, uuid, kind, slug FROM entity_keep")
-    conn.execute("DROP TABLE entity_keep")
-    conn.execute(
-        "CREATE TRIGGER entity_kind_is_permanent BEFORE UPDATE OF kind ON entity"
-        " WHEN NEW.kind <> OLD.kind BEGIN"
-        " SELECT RAISE(ABORT,'an entity cannot change kind'); END"
-    )
-    conn.execute("ALTER TABLE slug_history RENAME TO slug_history_keep")
-    conn.execute(
-        "CREATE TABLE slug_history (kind TEXT NOT NULL CHECK (kind IN"
-        " ('file','folder','person','artifact','prompt','collection')),"
-        " slug TEXT NOT NULL, entity_id INTEGER NOT NULL REFERENCES entity(id) ON DELETE CASCADE,"
-        " retired_at REAL NOT NULL, PRIMARY KEY (kind, slug, retired_at)) STRICT, WITHOUT ROWID"
-    )
-    conn.execute(
-        "INSERT INTO slug_history(kind, slug, entity_id, retired_at)"
-        " SELECT kind, slug, entity_id, retired_at FROM slug_history_keep"
-    )
-    conn.execute("DROP TABLE slug_history_keep")
-    conn.execute("CREATE INDEX slug_history_entity ON slug_history(entity_id)")
-    conn.execute("ALTER TABLE job RENAME TO job_keep")
-    conn.execute(
-        "CREATE TABLE job (id INTEGER PRIMARY KEY,"
-        " kind TEXT NOT NULL CHECK (kind IN"
-        " ('scan','hash','embed','detect_faces','cluster_faces','sample_frames','annotate','remix','zip')),"
-        " target_id INTEGER REFERENCES entity(id) ON DELETE SET NULL,"
-        " state TEXT NOT NULL CHECK (state IN ('queued','running','done','failed','cancelled')),"
-        " cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),"
-        " payload TEXT, total INTEGER, done_count INTEGER NOT NULL DEFAULT 0,"
-        " checkpoint TEXT, attempt INTEGER NOT NULL DEFAULT 0, owner TEXT,"
-        " fence INTEGER NOT NULL DEFAULT 0, lease_until REAL, heartbeat_at REAL,"
-        " error TEXT, created_at REAL NOT NULL, started_at REAL, finished_at REAL) STRICT"
-    )
-    conn.execute(
-        "INSERT INTO job SELECT id, kind, target_id, state, cancel_requested, payload, total,"
-        " done_count, checkpoint, attempt, owner, fence, lease_until, heartbeat_at,"
-        " error, created_at, started_at, finished_at FROM job_keep"
-    )
-    conn.execute("DROP TABLE job_keep")
-    conn.execute("CREATE INDEX job_state ON job(state)")
-    conn.execute("CREATE INDEX job_target ON job(target_id)")
-    # generation as it stood before v18: the two prompt columns
-    conn.execute("DROP TABLE generation")
-    conn.execute(
-        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
-        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
-        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
-        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
-        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
-    )
-    conn.execute("CREATE INDEX generation_workflow ON generation(workflow_id)")
-    conn.execute("CREATE INDEX generation_prompt   ON generation(prompt_id)")
-    conn.execute("CREATE INDEX generation_negative ON generation(negative_id)")
-    conn.execute("CREATE INDEX generation_seed     ON generation(seed)")
-    conn.commit()
-    conn.execute("PRAGMA legacy_alter_table=OFF")
-    conn.execute("PRAGMA foreign_keys=ON")
-
-
-def _pre_v7_collection(conn) -> None:
-    """The pre-v7 collection shape: rule text on the collection row
-    itself, guarded by CHECKs -- what step 6 exists to replace. The
-    rebuild drops the table's triggers and indexes with it; the forward
-    steps recreate every one, which is exactly what the drift check
-    proves. Runs against an EMPTY fresh build, so no FTS rows desync."""
-    conn.execute("DROP TABLE collection_rule")
-    # BOTH pragmas, both outside any transaction (each is silently
-    # ignored inside one): legacy_alter_table stops trigger/view
-    # rewriting, and foreign_keys=OFF stops the FK-reference rewrite the
-    # rename performs whenever keys are on -- with keys ON, other
-    # tables' stored DDL would name "collection_keep" forever, which the
-    # drift check rightly counts as a different schema. The migration
-    # runner gets this for free from its own keys-off contract.
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    conn.execute("PRAGMA legacy_alter_table=ON")
-    conn.execute("ALTER TABLE collection RENAME TO collection_keep")
-    conn.commit()
-    conn.execute("PRAGMA legacy_alter_table=OFF")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute(
-        """CREATE TABLE collection (
-    id          INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
-    parent_id   INTEGER REFERENCES collection(id) ON DELETE CASCADE,
-    name        TEXT NOT NULL,
-    kind        TEXT NOT NULL CHECK (kind IN ('album','flag','smart')),
-    color       TEXT,
-    description TEXT,
-    sql_text    TEXT,
-    nl_text     TEXT,
-    created_at  REAL NOT NULL,
-    CHECK (kind = 'smart' OR (sql_text IS NULL AND nl_text IS NULL)),
-    CHECK (kind <> 'smart' OR sql_text IS NOT NULL OR nl_text IS NOT NULL)
-) STRICT"""
-    )
-    conn.execute(
-        "INSERT INTO collection(id, parent_id, name, kind, color, description, created_at)"
-        " SELECT id, parent_id, name, kind, color, description, created_at FROM collection_keep"
-    )
-    conn.execute("DROP TABLE collection_keep")
-    conn.execute("CREATE INDEX collection_parent ON collection(parent_id, name COLLATE NOCASE)")
-
-
 def a_v1_smart_collection(conn, name: str, sql: str) -> int:
     """A smart row as v1 wrote it: rule text on the collection itself."""
     cid = scan.mint(conn, "collection", name)
@@ -478,100 +342,19 @@ def a_v1_smart_collection(conn, name: str, sql: str) -> int:
     return cid
 
 
-def _binary_sibling_indexes(conn) -> None:
-    """The pre-v5 index shapes: binary sibling uniqueness, bare
-    collection parent -- what step 4 exists to replace -- and the
-    pre-v6 tiebreak-less file_recent, step 5's subject."""
-    conn.execute("DROP INDEX folder_root_unique")
-    conn.execute("DROP INDEX folder_child_unique")
-    conn.execute("DROP INDEX collection_parent")
-    conn.execute(
-        "CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name)"
-        " WHERE parent_id IS NULL AND missing_since IS NULL"
-    )
-    conn.execute(
-        "CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name)"
-        " WHERE parent_id IS NOT NULL AND missing_since IS NULL"
-    )
-    conn.execute("CREATE INDEX collection_parent ON collection(parent_id)")
-    conn.execute("DROP INDEX file_recent")
-    conn.execute("CREATE INDEX file_recent ON file(mtime DESC) WHERE missing_since IS NULL")
-
-
-def _pre_v35_denial(conn) -> None:
-    """v35's change, inverted: a person can only be asserted, not denied."""
-    conn.execute("ALTER TABLE person_assertion DROP COLUMN stance")
-
-
-def _pre_v34_verdict_producer(conn) -> None:
-    """v34's change, inverted: a verdict names no producer.
-
-    The index first -- it is over the columns it would leave behind.
-    """
-    conn.execute("DROP INDEX IF EXISTS feedback_producer")
-    conn.execute("ALTER TABLE feedback DROP COLUMN model_id")
-    conn.execute("ALTER TABLE feedback DROP COLUMN model_version")
-
-
-def _pre_v32_answer_generation(conn) -> None:
-    """v32's change, inverted: no `answer_generation` and none of its
-    triggers.
-
-    Every database here is today's build stepped backwards, so a table
-    added in schema.sql has to be removed for the fixture to be the
-    version it claims -- otherwise step 31 creates it a second time and
-    the migration dies on `table answer_generation already exists`.
-    """
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'answer_moved_%'"
-    ).fetchall():
-        conn.execute(f"DROP TRIGGER {name}")
-    conn.execute("DROP TABLE IF EXISTS answer_generation")
-
-
-def _pre_v31_identifier(conn) -> None:
-    """v31's change, inverted: `fs_id TEXT` back to `inode`.
-
-    Every database here is today's build stepped backwards, so a column
-    renamed in schema.sql has to be un-renamed for the fixture to be the
-    version it claims. The declared type is left alone -- SQLite stores
-    what it is given, these fixtures give integers, and step 30's
-    `CAST(inode AS TEXT)` reads them the same either way. The INDEX has
-    to go with it: the forward step creates `folder_fs_id`, and a
-    fixture still carrying one under that name would collide.
-    """
-    conn.execute("DROP INDEX IF EXISTS folder_fs_id")
-    conn.execute("ALTER TABLE folder RENAME COLUMN fs_id TO inode")
-    conn.execute("ALTER TABLE file RENAME COLUMN fs_id TO inode")
-    conn.execute("CREATE UNIQUE INDEX folder_inode ON folder(root_id, inode) WHERE inode IS NOT NULL")
-
-
 def v1_database(tmp_path):
-    """Today's build, taken back to v1 by inverting the shipped steps."""
+    """The schema that shipped as v1, executed.
+
+    Not today's build with the steps inverted back down. That fixture
+    could not fail the way a real v1 database fails, because it started
+    from the answer: every object today's schema has, it had, whatever
+    the steps did or did not do on the way. It is why the drift check
+    below was green for thirty-five versions over a migration that
+    leaves a real v1 library with no `derived_face_space`
+    (KNOWN_DRIFT).
+    """
     path = tmp_path / "gallery.db"
-    _built(path)
-    conn = connect.connect(path, autocommit=True)
-    _pre_v10_core(conn)  # v10's change, inverted
-    conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
-    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
-    conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
-    conn.execute("DROP TABLE file_place")  # v28's addition; its indexes go with it
-    conn.execute("DROP TABLE derived_dupe_group")  # v3's addition; indexes go with it
-    for trigger in (
-        "collection_file_not_into_smart",
-        "collection_file_not_moved_into_smart",
-        "collection_with_members_stays_listed",
-    ):
-        conn.execute(f"DROP TRIGGER {trigger}")
-    _pre_v7_collection(conn)  # v7's change, inverted
-    _binary_sibling_indexes(conn)  # v5's change, inverted
-    _pre_v35_denial(conn)  # v35's change, inverted
-    _pre_v34_verdict_producer(conn)  # v34's change, inverted
-    _pre_v32_answer_generation(conn)  # v32's change, inverted
-    _pre_v31_identifier(conn)  # v31's change, inverted
-    conn.execute("PRAGMA user_version = 1")
-    conn.close()
+    schemas.seed(path, 1)
     return path
 
 
@@ -600,13 +383,18 @@ def a_file_row(conn):
 def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     """The real STEPS, executed: every other test here swaps in synthetic
     steps to prove the runner, which left the one migration that actually
-    ships executed by nothing. A v1 file must migrate to a database
-    indistinguishable from a fresh build, and every trigger the step
-    installs must fire -- including the moved-into one no other test
-    reaches."""
+    ships executed by nothing. A v1 file must migrate, and every trigger
+    the steps install must FIRE afterwards -- including the moved-into
+    one no other test reaches.
+
+    Behaviour only. Whether the result matches a fresh build is
+    `test_an_authentic_database_of_each_version_reaches_today`, and for
+    v1 it does not: see KNOWN_DRIFT. This test asserted `drift == []`
+    here for thirty-five versions and was believed, because the fixture
+    it asserted it about was today's build wearing a lower number.
+    """
     path = v1_database(tmp_path)
     assert migrate.migrate(path) == list(range(2, connect.USER_VERSION + 1))
-    assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
     try:
@@ -658,14 +446,19 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     to merge; deleting one is worse. The step refuses, names both
     spellings, and leaves the file at v4 with its rows intact."""
     path = tmp_path / "gallery.db"
-    _built(path)
+    # The schema that shipped as v4, which permits the twins because its
+    # sibling indexes are binary -- no inversion needed to say so.
+    schemas.seed(path, 4)
     conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys=ON")
-    _pre_v10_core(conn)  # v10's change, inverted: a genuine v4 file
-    _binary_sibling_indexes(conn)  # a genuine v4 file permits the twins
     root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', 0)").lastrowid
     assert root_id is not None
-    top = scan.ensure_folder(conn, root_id, None, "x")
+    # Straight INSERT rather than `scan.ensure_folder`: the scanner writes
+    # `fs_id`, a v31 column, and this database really is a v4 one. That is
+    # the cost of an authentic fixture and it is the point of one -- the
+    # inverted v4 accepted the scanner because it was today's schema.
+    top = scan.mint(conn, "folder", "x")
+    conn.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (top, root_id))
     for name in ("Vacation", "vacation"):
         twin = scan.mint(conn, "folder", name)
         # Straight INSERT: ensure_folder itself matches NOCASE and would
@@ -674,11 +467,6 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, ?, ?, 0)",
             (twin, root_id, top, name),
         )
-    _pre_v35_denial(conn)  # v35's change, inverted
-    _pre_v34_verdict_producer(conn)  # v34's change, inverted
-    _pre_v32_answer_generation(conn)  # v32's change, inverted
-    _pre_v31_identifier(conn)  # v31's change, inverted
-    conn.execute("PRAGMA user_version = 4")
     conn.close()
 
     with pytest.raises(sqlite3.IntegrityError, match="Vacation"):
@@ -915,29 +703,28 @@ def test_the_snapshot_of_a_whole_library_can_be_restored(tmp_path, steps):
 
 
 def v3_database_with_embeddings(tmp_path):
-    """A database in the exact v3 shape semantic search first shipped with:
-    embeddings keyed (file_id, space_id), no id of their own. Built by
-    reverting a fresh build's table to that generation's DDL verbatim."""
+    """A database in the exact v3 shape semantic search first shipped
+    with: embeddings keyed (file_id, space_id), no id of their own.
+
+    The schema that shipped as v3, executed -- not a fresh build with
+    that generation's DDL pasted back over it. The difference is not
+    tidiness: an inverted fixture has every OTHER object at today's
+    shape, so a step that forgets one is invisible to it.
+    """
     import numpy as np
 
     from db import similarity
     from vision.faiss_index import SpaceSpec
 
     path = tmp_path / "gallery.db"
-    _built(path)
+    schemas.seed(path, 3)
     conn = connect.connect(path)
-    _pre_v10_core(conn)  # v10's change, inverted
-    conn.execute("DROP TABLE job_event")  # v24's addition; its index goes with it
-    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
-    conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
-    conn.execute("DROP TABLE file_place")  # v28's addition; its indexes go with it
-    _pre_v7_collection(conn)  # v7's change, inverted
-    _binary_sibling_indexes(conn)  # v5's change, inverted: a real v3 file
     root = int(
         conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
     )
-    folder = scan.ensure_folder(conn, root, None, "x")
+    # Straight INSERT: the scanner writes `fs_id`, a v31 column.
+    folder = scan.mint(conn, "folder", "x")
+    conn.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (folder, root))
     files = []
     for name in ("dusk", "dawn"):
         fid = scan.mint(conn, "file", name)
@@ -960,6 +747,12 @@ def v3_database_with_embeddings(tmp_path):
     sid = similarity.space_id(conn, spec, NOW)
     conn.commit()
 
+    # The one object still written by hand, and the reason is in
+    # `@step(3)`: "version 3 drifted during development". The commit that
+    # LAST stamped v3 already carried the immutable-id rework that
+    # shipped as v4, so the vendored v3 is the late one. This reverts
+    # exactly that table to the shape semantic search first shipped with
+    # -- one object, against a database authentic in every other.
     conn.execute("DROP TABLE derived_embedding")
     conn.execute("""CREATE TABLE derived_embedding (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
@@ -996,11 +789,6 @@ END""")
             (fid, sid, vec.tobytes(), NOW),
         )
     conn.commit()
-    _pre_v35_denial(conn)  # v35's change, inverted
-    _pre_v34_verdict_producer(conn)  # v34's change, inverted
-    _pre_v32_answer_generation(conn)  # v32's change, inverted
-    _pre_v31_identifier(conn)  # v31's change, inverted
-    conn.execute("PRAGMA user_version = 3")
     conn.close()
     return path, files, spec, sid
 
@@ -1060,24 +848,24 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
     is not this schema's way. The step refuses, names the collection,
     and leaves the file at v7 with the rule intact."""
     path = tmp_path / "gallery.db"
-    _built(path)
+    # The schema that shipped as v7, which has none of the guards v8
+    # installs -- so the row below goes in without a trigger being
+    # dropped to let it.
+    schemas.seed(path, 7)
     conn = connect.connect(path, autocommit=True)
-    for trigger in (
-        "collection_rule_only_on_smart",
-        "collection_rule_stays_on_smart",
-        "collection_with_rule_stays_smart",
-    ):
-        conn.execute(f"DROP TRIGGER {trigger}")
-    album = collections.collection(conn, "Keepers", NOW)
+    # Straight INSERT rather than `collections.collection`: that writes
+    # `updated_at`, which v7's collection table does not have. An
+    # authentic fixture is the schema of its day, and today's writers
+    # speak today's columns.
+    album = scan.mint(conn, "collection", "Keepers")
+    conn.execute(
+        "INSERT INTO collection(id, parent_id, name, kind, created_at) VALUES(?, NULL, 'Keepers', 'album', ?)",
+        (album, NOW),
+    )
     conn.execute(
         "INSERT INTO collection_rule(collection_id, source_text, created_at, updated_at) VALUES(?, 'x', ?, ?)",
         (album, NOW, NOW),
     )
-    _pre_v35_denial(conn)  # v35's change, inverted
-    _pre_v34_verdict_producer(conn)  # v34's change, inverted
-    _pre_v32_answer_generation(conn)  # v32's change, inverted
-    _pre_v31_identifier(conn)  # v31's change, inverted
-    conn.execute("PRAGMA user_version = 7")
     conn.close()
 
     with pytest.raises(sqlite3.IntegrityError, match="Keepers"):
@@ -1154,7 +942,7 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     from db import derived
 
     path = tmp_path / "gallery.db"
-    _built(path)
+    schemas.seed(path, 25)  # the schema that shipped as v25: no derived_face_scan
     conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys = ON")
     file_id = a_file_row(conn)
@@ -1164,15 +952,6 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
         for i in range(1, 3)
     ]
     derived.record_faces(conn, file_id, "m", "1", "a" * 64, NOW, faces)
-    conn.execute("DROP TABLE derived_face_scan")
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
-    conn.execute("DROP INDEX IF EXISTS place_identity")
-    conn.execute("DROP TABLE file_place")
-    _pre_v35_denial(conn)  # v35's change, inverted
-    _pre_v34_verdict_producer(conn)  # v34's change, inverted
-    _pre_v32_answer_generation(conn)  # v32's change, inverted
-    _pre_v31_identifier(conn)  # v31's change, inverted
-    conn.execute("PRAGMA user_version = 25")
     conn.close()
 
     assert migrate.migrate(path) == list(range(26, connect.USER_VERSION + 1))
@@ -1199,7 +978,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
     from vision import thumbs
 
     path = tmp_path / "gallery.db"
-    _built(path)
+    schemas.seed(path, 29)  # the schema that shipped as v29
     conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -1223,11 +1002,6 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
             derived.record_faces(conn, file_id, "m", "1", sha, NOW, faces)
             derived.record_face_scan(conn, file_id, "m", "1", sha, NOW, 1)
             derived.record_hash(conn, file_id, sha, NOW, phash64=1)
-        _pre_v35_denial(conn)  # v35's change, inverted
-        _pre_v34_verdict_producer(conn)  # v34's change, inverted
-        _pre_v32_answer_generation(conn)  # v32's change, inverted
-        _pre_v31_identifier(conn)  # v31's change, inverted
-        conn.execute("PRAGMA user_version = 29")
     finally:
         conn.close()
     cache = tmp_path / thumbs.DIRNAME
@@ -1267,17 +1041,7 @@ def test_the_app_brings_an_older_database_forward_at_boot(tmp_path):
     burrow = tmp_path / "run"
     burrow.mkdir()
     path = db_path(burrow)
-    _built(path)
-    conn = connect.connect(path, autocommit=True)
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")
-    conn.execute("DROP INDEX IF EXISTS place_identity")
-    conn.execute("DROP TABLE file_place")
-    _pre_v35_denial(conn)  # v35's change, inverted
-    _pre_v34_verdict_producer(conn)  # v34's change, inverted
-    _pre_v32_answer_generation(conn)  # v32's change, inverted
-    _pre_v31_identifier(conn)  # v31's change, inverted
-    conn.execute("PRAGMA user_version = 26")
-    conn.close()
+    schemas.seed(path, 26)  # the schema that shipped as v26
 
     with TestClient(app=build_app(str(burrow), worker=False)) as client:
         assert client.get("/g", headers={"accept": "application/json"}).status_code == 200

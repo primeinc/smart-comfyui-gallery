@@ -186,6 +186,9 @@ mod web
 # The Python/browser JSON contract: OpenAPI out, TypeScript in (api.just)
 mod api
 
+# Authentic historical db/schema.sql, vendored for migration fixtures (schema.just)
+mod schema
+
 # Which faiss the app selects at runtime: the vendored GPU build
 # (vendor/faiss-gpu-win64, CUDA DLLs from the nvidia wheels) on
 # Windows+NVIDIA, else the installed faiss-cpu. The faiss_gpu setting

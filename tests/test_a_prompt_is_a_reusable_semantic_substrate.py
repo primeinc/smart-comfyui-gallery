@@ -34,6 +34,7 @@ from db import (
     context,
     derived,
     ingest,
+    migrate,
     planning,
     prompt_sections,
     prompts,
@@ -42,6 +43,7 @@ from db import (
     similarity,
     stories,
 )
+from tests import schemas
 from tests.staging import Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
@@ -741,57 +743,16 @@ def test_neighbours_answer_inside_one_space_and_policy_with_role_before_rank(lib
     assert client.get("/prompts/424242/neighbours", params={"space": "fake"}).status_code == 404
 
 
-def _back_to_v17(conn) -> None:
-    """Turn a freshly built database into a plausible v17 one.
+def _a_v17_database(path) -> None:
+    """A v17 database: the schema that shipped as v17, executed.
 
-    A hand-maintained UNDO list, and the reason to have exactly one of
-    it: both migration tests here carried their own copy, a step landed
-    that neither undid, and both broke together with an error about a
-    column that had been renamed three versions ago.
-
-    Nothing about this is clever. Each line names the version whose
-    addition it is removing, so the next migration adds one line HERE
-    and both tests keep meaning what they meant.
+    This was a hand-maintained UNDO list -- today's build with each
+    later step's addition dropped by name -- and it broke on three
+    migrations in a row, each time with an error about a column a step
+    had renamed. Its replacement adds nothing when a step lands, because
+    it does not describe today's schema at all.
     """
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
-        conn.execute(f"DROP TABLE {table}")
-    conn.execute("DROP TABLE job_event")  # v24's addition
-    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
-    conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
-    conn.execute("DROP TABLE file_place")  # v28's addition
-    # v30's rename: `fs_id TEXT` was `inode`. The NAME is what step 30
-    # reads -- it selects `CAST(inode AS TEXT)`, which is right over
-    # either type -- so the rename alone is a faithful enough v17 for a
-    # test about prompts.
-    conn.execute("ALTER TABLE folder RENAME COLUMN fs_id TO inode")
-    conn.execute("ALTER TABLE file RENAME COLUMN fs_id TO inode")
-    # v31's addition: the answer-currency counter and its triggers.
-    for (name,) in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'answer_moved_%'"
-    ).fetchall():
-        conn.execute(f"DROP TRIGGER {name}")
-    conn.execute("DROP TABLE answer_generation")
-    conn.execute(
-        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
-        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
-        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
-        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
-        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
-    )
-    for index in (
-        "generation_workflow ON generation(workflow_id)",
-        "generation_prompt ON generation(prompt_id)",
-        "generation_negative ON generation(negative_id)",
-        "generation_seed ON generation(seed)",
-    ):
-        conn.execute(f"CREATE INDEX {index}")
-    conn.execute("PRAGMA user_version = 17")
-    conn.commit()
-    conn.close()
+    schemas.seed(path, 17)
 
 
 def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
@@ -799,12 +760,10 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
     `original_*` parameters comes across with every prompt id intact,
     the roles filled, the originals interned, the FTS index whole, and
     the job vocabulary widened."""
-    from db import build, migrate, scan
+    from db import scan
 
     path = tmp_path / "old.db"
-    build.build(path)
-    conn = connect.connect(path)
-    _back_to_v17(conn)
+    _a_v17_database(path)
     conn = connect.connect(str(path))
     try:
         root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
@@ -1062,12 +1021,10 @@ def test_a_space_selector_is_exact_and_ambiguity_is_refused(library):
 
 
 def test_the_migration_carries_the_unsampler_prompt(tmp_path):
-    from db import build, migrate, scan
+    from db import scan
 
     path = tmp_path / "old.db"
-    build.build(path)
-    conn = connect.connect(path)
-    _back_to_v17(conn)
+    _a_v17_database(path)
     conn = connect.connect(str(path))
     try:
         root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
