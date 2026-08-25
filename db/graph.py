@@ -81,10 +81,17 @@ class Recipe:
         )
 
 
-def _link(value):
-    """The node id a value points at, or None if it is a literal.
+def _linked(value):
+    """`(node_id, slot)` a value points at, or None if it is a literal.
 
     Matches ComfyUI's own `is_link`: a two-item list, string then number.
+
+    The SLOT is kept, not discarded. A node that conditions both prompts --
+    ControlNetApplyAdvanced and the rest of `_BOTH_SIDES` -- returns the
+    positive chain on slot 0 and the negative chain on slot 1, so the slot
+    is the only thing that says which prompt a link carries. Dropping it
+    and following the first conditioning input reports a negative prompt as
+    the positive one: a wrong answer that looks like an answer.
     """
     if (
         isinstance(value, list)
@@ -93,8 +100,40 @@ def _link(value):
         and isinstance(value[1], (int, float))
         and not isinstance(value[1], bool)
     ):
-        return value[0]
+        return value[0], int(value[1])
     return None
+
+
+def _link(value):
+    """The node id a value points at, or None if it is a literal."""
+    held = _linked(value)
+    return None if held is None else held[0]
+
+
+#: Inputs that carry a conditioning onward, on nodes that take exactly one
+#: chain. Following any of them cannot confuse the two prompts.
+_ONE_SIDE: tuple[str, ...] = (
+    "conditioning",
+    "conditioning_1",
+    "conditioning_2",
+    "conditioning_to",
+    "conditioning_from",
+    "cond",
+)
+
+#: Inputs on a node that conditions BOTH prompts. Which one to follow is
+#: decided by the slot the link arrived on, never by order.
+_BOTH_SIDES: tuple[str, str] = ("positive", "negative")
+
+#: Nodes that DISCARD the words they are given. Walking through one reports
+#: the text it erased, which is worse than reporting nothing.
+#:
+#: `ConditioningZeroOut` is how a workflow says it has no negative prompt: it
+#: takes the POSITIVE conditioning and zeroes it, so the link exists and the
+#: text behind it is real, and following it put the positive prompt in the
+#: negative field of three ComfyUI_examples workflows -- sd3_anime_example,
+#: sd3_controlnet_example, sd3.5_large_canny_controlnet_example.
+_ERASERS: frozenset[str] = frozenset({"ConditioningZeroOut"})
 
 
 class _Graph:
@@ -147,7 +186,7 @@ class _Graph:
                 return found
         return None
 
-    def text_of(self, node_id, seen=None) -> str:
+    def text_of(self, node_id, seen=None, slot: int = 0) -> str:
         """The prompt a conditioning node encodes.
 
         Followed one link at a time rather than read directly: a workflow
@@ -155,22 +194,57 @@ class _Graph:
         node has the words a node or two upstream, and reading only the
         literal reports an empty prompt for the workflows most likely to
         have an interesting one.
+
+        A conditioning PASS-THROUGH is followed too. Reading only the text
+        inputs stopped at the first ControlNetApply, unCLIPConditioning,
+        ConditioningCombine or FluxGuidance in the way, because none of them
+        has an input named `text` -- and reported no positive prompt for a
+        workflow that plainly had one. Measured over the 92 prompt-bearing
+        files of comfyanonymous/ComfyUI_examples@f9431bb000ce: 22 returned a
+        negative prompt and no positive, which no real workflow does.
+
+        `slot` is the output the caller arrived through, and it is what
+        keeps the two prompts apart. A node holding both `positive` and
+        `negative` emits the positive chain on slot 0 and the negative on
+        slot 1, so the slot picks the input to follow. Following the first
+        conditioning input instead would report a negative prompt as the
+        positive one.
         """
         seen = seen if seen is not None else set()
         if node_id is None or node_id in seen:
             return ""
         seen.add(node_id)
+        if self.kind(node_id) in _ERASERS:
+            return ""
+        held = self.inputs(node_id)
         for name in ("text", "text_g", "string", "value", "prompt", "populated_text"):
-            held = self.inputs(node_id).get(name)
-            if held is None:
+            value = held.get(name)
+            if value is None:
                 continue
-            if _link(held) is None:
-                if isinstance(held, str) and held.strip():
-                    return held.strip()
+            onward = _linked(value)
+            if onward is None:
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
             else:
-                found = self.text_of(_link(held), seen)
+                found = self.text_of(onward[0], seen, onward[1])
                 if found:
                     return found
+
+        # No words here: this is a pass-through. Which way depends on
+        # whether the node carries one chain or both.
+        if all(name in held for name in _BOTH_SIDES):
+            side = _BOTH_SIDES[1] if slot == 1 else _BOTH_SIDES[0]
+            onward = _linked(held.get(side))
+            if onward is not None:
+                return self.text_of(onward[0], seen, onward[1])
+            return ""
+        for name in _ONE_SIDE:
+            onward = _linked(held.get(name))
+            if onward is None:
+                continue
+            found = self.text_of(onward[0], seen, onward[1])
+            if found:
+                return found
         return ""
 
 
@@ -179,7 +253,11 @@ def _samplers(graph: _Graph) -> list[str]:
         node_id
         for node_id in graph.nodes
         if "sampler" in graph.kind(node_id).lower()
-        and any(name in graph.inputs(node_id) for name in ("positive", "steps", "noise_seed", "seed"))
+        # `guider` is here because a custom sampler has none of the others:
+        # SamplerCustomAdvanced takes noise, guider, sampler, sigmas and a
+        # latent, so this listed it as not-a-sampler and a graph without a
+        # SaveImage node to walk back from lost it entirely.
+        and any(name in graph.inputs(node_id) for name in ("positive", "steps", "noise_seed", "seed", "guider"))
     ]
 
 
@@ -230,8 +308,30 @@ def read(payload) -> Recipe | None:
         scheduler = graph.value(sampler, "scheduler")
         out.scheduler = str(scheduler) if isinstance(scheduler, str) else None
 
-        out.positive = graph.text_of(graph.follow(sampler, "positive"))
-        out.negative = graph.text_of(graph.follow(sampler, "negative"))
+        # The slot each link arrives on rides with it: a node conditioning
+        # both prompts is told which one is being asked for.
+        held = graph.inputs(sampler)
+        for side in _BOTH_SIDES:
+            onward = _linked(held.get(side))
+            if onward is not None:
+                setattr(out, side, graph.text_of(onward[0], None, onward[1]))
+
+        # A custom sampler takes no prompt at all: it takes a GUIDER, and the
+        # conditioning hangs off that. Every flux workflow in
+        # comfyanonymous/ComfyUI_examples@f9431bb000ce is shaped this way --
+        # SamplerCustomAdvanced -> BasicGuider -> FluxGuidance ->
+        # CLIPTextEncode -- and reading only `positive` reported no prompt
+        # for 11 of them.
+        #
+        # A BasicGuider holds ONE chain, and it is the positive one. Asking
+        # it for a negative would hand back the positive prompt, so the
+        # negative is only read from a guider that has one (CFGGuider).
+        if not out.positive and not out.negative:
+            guider = _linked(held.get("guider"))
+            if guider is not None:
+                out.positive = graph.text_of(guider[0], None, 0)
+                if "negative" in graph.inputs(guider[0]):
+                    out.negative = graph.text_of(guider[0], None, 1)
 
         latent = graph.back(
             graph.follow(sampler, "latent_image"),

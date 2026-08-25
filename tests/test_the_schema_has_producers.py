@@ -1535,6 +1535,105 @@ def test_a_prompt_routed_through_another_node_is_still_found(db, a_library, tmp_
     )
 
 
+def test_a_prompt_behind_a_controlnet_is_still_found():
+    """A conditioning PASS-THROUGH is not the end of the walk.
+
+    ControlNetApply has no `text` input, so reading only the text-named
+    inputs stopped there and reported no positive prompt. Measured over
+    comfyanonymous/ComfyUI_examples@f9431bb000ce: 22 of 92 prompt-bearing
+    workflows returned a negative and no positive, which no real workflow
+    does.
+    """
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 1, "steps": 10, "positive": ["10", 0], "negative": ["7", 0]},
+            },
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "a fennec in a field"}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "hands, text, error"}},
+            "10": {"class_type": "ControlNetApply", "inputs": {"strength": 1.0, "conditioning": ["6", 0]}},
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "a fennec in a field"
+    assert recipe.negative == "hands, text, error"
+
+
+def test_a_node_conditioning_both_prompts_keeps_them_apart():
+    """ControlNetApplyAdvanced takes both prompts and returns the positive on
+    slot 0 and the negative on slot 1. Following its first conditioning input
+    instead of the slot reports the negative prompt as the positive one."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 1, "positive": ["10", 0], "negative": ["10", 1]},
+            },
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "a castle at dawn"}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, watermark"}},
+            "10": {
+                "class_type": "ControlNetApplyAdvanced",
+                "inputs": {"positive": ["6", 0], "negative": ["7", 0], "strength": 1.0},
+            },
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "a castle at dawn"
+    assert recipe.negative == "blurry, watermark"
+
+
+def test_a_zeroed_conditioning_reports_no_words():
+    """`ConditioningZeroOut` is how a workflow says it has no negative prompt:
+    it takes the POSITIVE conditioning and erases it. The link is real and the
+    text behind it is real, so walking through it puts the positive prompt in
+    the negative field -- which three ComfyUI_examples workflows did."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 1, "positive": ["6", 0], "negative": ["16", 0]},
+            },
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "happy cute anime fox girl"}},
+            "16": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}},
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "happy cute anime fox girl"
+    assert recipe.negative == ""
+
+
+def test_a_custom_sampler_takes_its_prompt_from_the_guider():
+    """SamplerCustomAdvanced has no `positive` input at all -- the conditioning
+    hangs off a guider. Every flux workflow is shaped this way, and reading
+    only `positive` reported no prompt for 11 of ComfyUI_examples' 92.
+
+    A BasicGuider holds ONE chain and it is the positive one, so the negative
+    stays empty rather than inheriting it."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "13": {
+                "class_type": "SamplerCustomAdvanced",
+                "inputs": {"noise": ["25", 0], "guider": ["22", 0], "sampler": ["16", 0]},
+            },
+            "22": {"class_type": "BasicGuider", "inputs": {"model": ["30", 0], "conditioning": ["26", 0]}},
+            "26": {"class_type": "FluxGuidance", "inputs": {"guidance": 3.5, "conditioning": ["6", 0]}},
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "cute anime girl with fennec ears"}},
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "cute anime girl with fennec ears"
+    assert recipe.negative == ""
+
+
 def test_a_graph_that_refers_to_itself_ends_the_walk(db):
     """A graph is meant to be acyclic. A malformed one is still a file
     somebody has in their library, and it must cost that file rather than
