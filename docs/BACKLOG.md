@@ -804,16 +804,28 @@ served with no database at all. Measured over one 60-cell page
     cacheable responses              0/60  -> 60/60
     fan-out                        285.8ms -> 178.4ms
 
-These surfaces still spell `/thumb/<slug>` and still pay a connection
-per picture. Each needs the content hash carried on the row its page
-already reads, then the same `thumbs.asset_url` call:
+The person, folder, album and artifact pages joined it:
+`thumbs.address` points a page of an answer at its assets from the
+`sha` and `kind` the ResultSet already read, and a folder page's
+thumbnails now open zero connections.
 
-- `person.html` and `_person_drawer.html`
-- `folder.html`, `album.html`, `artifact.html`, `artifacts.html`
-- `_timeline_surface.html` -- the densest of them all: session strips,
-  scrubber segments, month and day cells are dozens of thumbnails per
-  page, every one a connection
-- `frontend/src/timeline.ts` (two places)
+What is left is the TIMELINE, and it is the densest of them all --
+session strips, scrubber segments, month and day cells, frames and bins
+are dozens of thumbnails per page, every one a connection. It is not a
+fifth copy of the same edit, which is why it is still here:
+
+- Its pictures do not come from a ResultSet page. A dozen separate
+  statements in `sg_web/timeline_view.py` hand out bare SLUGS -- a
+  session's samples, a bin's sample, a day's hero, a month's hero, a
+  segment's strip, a scrubber face -- and none of them selects
+  `content_sha256`. So the work is a dozen statements widened, not one
+  call added.
+- Several are lists of slugs with no kind beside them, and
+  `asset_url` needs the kind to answer None for audio and documents.
+  A timeline of a mixed library would otherwise draw broken images
+  where the grid already knows not to.
+- `frontend/src/timeline.ts` builds two of these addresses in the
+  browser, so the shape it is handed has to change with the templates.
 
 Also not done:
 
