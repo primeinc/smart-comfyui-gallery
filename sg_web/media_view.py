@@ -130,6 +130,8 @@ def _assembled(
             total=found["total"] if found else None,
             previous=found["previous"] if found else None,
             next=found["next"] if found else None,
+            first=found["first"] if found else None,
+            last=found["last"] if found else None,
             filmstrip=_filmstrip(found, asked) if found else None,
         ),
         when=_when(conn, file_id),
@@ -685,6 +687,12 @@ class BrowsingContext(Wire):
     total: int | None
     previous: str | None
     next: str | None
+    #: the two ENDS of this answer, so a walk that WRAPS has an address
+    #: to wrap to. Whether it wraps is how a person arranged their viewer
+    #: (frontend/src/workspace.ts) -- it changes no membership and is in
+    #: no fingerprint; what the server owes is where the ends are.
+    first: str | None
+    last: str | None
     #: the few members either side of this one, or None when the item is
     #: not in the answer being walked -- the query defines the walk, and
     #: there is no other stretch of walk to invent for it

@@ -1703,6 +1703,8 @@ export interface components {
             total: number | null;
             previous: string | null;
             next: string | null;
+            first: string | null;
+            last: string | null;
             filmstrip: components["schemas"]["Filmstrip"] | null;
         };
         /** BulkFlag */

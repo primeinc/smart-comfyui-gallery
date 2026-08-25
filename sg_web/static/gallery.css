@@ -496,6 +496,16 @@ body {
   transition: opacity 160ms ease;
   z-index: 1;
 }
+/* An arrow at an END of the answer, pointing at the other end. It is in
+   the document whenever there is more than one member, and visible only
+   where this person turned wrapping on -- so the setting changes the
+   arrows on the picture already open, with no step and no reload.
+
+   `display: none` and not just transparent: this arrow is a link, and an
+   invisible one over a tenth of the stage would still take the click. */
+.viewer:not([data-wrap="on"]) .viewer-step[data-wraps] {
+  display: none;
+}
 .viewer-step-back {
   left: 0;
 }
@@ -3630,4 +3640,55 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 .ask-drop:focus-visible {
   color: var(--ink);
   outline: none;
+}
+
+/* --- the slideshow ---------------------------------------------------
+   The walk on a timer, so its controls sit with the other viewer acts
+   rather than becoming a surface of their own. Two settings and not
+   one: WRAP is what the arrows do at either end, LOOP is what the
+   slideshow does when it reaches the end, and a person wants them
+   separately. */
+.viewer-show {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+.viewer-show-set {
+  align-items: center;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 10px;
+  padding: 4px 9px;
+}
+.viewer-show-set[hidden] {
+  display: none;
+}
+.viewer-show-set label {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+.viewer-show-set select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 1px 4px;
+}
+.viewer-show-every {
+  color: var(--ink-muted);
+}
+/* Running is a state worth seeing from across the room: the picture is
+   about to change on its own, and a control that looks the same either
+   way is how somebody ends up wondering why. */
+.viewer-show[data-playing="yes"] .viewer-act[data-show-play] {
+  border-color: var(--accent);
+  color: var(--accent);
 }

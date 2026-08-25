@@ -37,6 +37,39 @@
     </div>
     <div class="viewer-acts">
       {% include "_media_authored.html" %}
+      {# The walk on a timer. Only where there IS a walk: a slideshow
+         over one picture is a button that does nothing.
+
+         Two settings, not one, because they answer different questions
+         and a person wants them apart -- WRAP is what the arrows do at
+         either end, LOOP is what the slideshow does when it reaches the
+         end. Both are how somebody arranged their viewer, so both live
+         in this browser (frontend/src/workspace.ts) and neither touches
+         the question in the URL. #}
+      {% if item.context.total and item.context.total > 1 %}
+      <div class="viewer-show" data-slideshow data-playing="no">
+        <div class="viewer-show-set" data-show-settings hidden>
+          <label class="viewer-show-every">
+            every
+            <select data-show-every aria-label="seconds each picture is shown">
+              {% for seconds in [2, 3, 5, 8, 15] %}
+              <option value="{{ seconds }}">{{ seconds }}s</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label title="what the ARROWS do at either end of the answer">
+            <input type="checkbox" data-show-wrap> wrap
+          </label>
+          <label title="what the SLIDESHOW does when it reaches the end">
+            <input type="checkbox" data-show-loop> loop
+          </label>
+        </div>
+        <button type="button" class="viewer-act" data-show-settings-toggle aria-expanded="false"
+                title="slideshow settings" aria-label="slideshow settings">&#9662;</button>
+        <button type="button" class="viewer-act" data-show-play aria-pressed="false"
+                title="slideshow (S)" aria-label="start the slideshow">&#9654;</button>
+      </div>
+      {% endif %}
       <button type="button" class="viewer-act" data-focus title="lights out (L)" aria-label="lights out">&#9633;</button>
       <button type="button" class="viewer-act" data-inspector-toggle aria-expanded="false"
               title="information (I)" aria-label="information">&#9432;</button>
@@ -56,9 +89,20 @@
 
   <div class="viewer-stage" data-quality="preview"
        data-stage='{{ item.stage.model_dump(mode="json") | tojson }}'>
+    {# Both arrows are rendered whenever there is more than one member.
+       The one at an END points at the OTHER end and is spelled
+       `data-nav-wrap`, NOT `data-nav`: `data-nav` means "a step you can
+       take right now", and every reader in the tree and the suite takes
+       it that way. The viewer promotes it to `data-nav` for a person who
+       turned wrapping on (frontend/src/viewer.ts), and the stylesheet
+       hides it for everyone else -- so the address is the server's to
+       spell and the arrangement stays the browser's to keep. #}
     {% if item.context.previous %}
     <a class="viewer-step viewer-step-back" data-nav="previous" rel="prev" aria-label="previous"
        href="/i/{{ item.context.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&lsaquo;</a>
+    {% elif item.context.last and item.context.total and item.context.total > 1 %}
+    <a class="viewer-step viewer-step-back" data-nav-wrap="previous" data-wraps aria-label="previous, from the end"
+       href="/i/{{ item.context.last }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&lsaquo;</a>
     {% endif %}
 
     {% if item.stage.kind == "video" %}
@@ -77,6 +121,9 @@
     {% if item.context.next %}
     <a class="viewer-step viewer-step-on" data-nav="next" rel="next" aria-label="next"
        href="/i/{{ item.context.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rsaquo;</a>
+    {% elif item.context.first and item.context.total and item.context.total > 1 %}
+    <a class="viewer-step viewer-step-on" data-nav-wrap="next" data-wraps aria-label="next, back to the start"
+       href="/i/{{ item.context.first }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rsaquo;</a>
     {% endif %}
 
     {% if not item.present %}<p class="viewer-warn">this file is not on disk right now</p>{% endif %}

@@ -68,6 +68,44 @@ export interface Workspace {
   /** Whether the compare tray is open or collapsed to its tab. */
   tray?: "open" | "closed";
   /**
+   * The walk on a timer: how long each picture is shown, in seconds.
+   *
+   * Workspace state, and the argument is worth stating because the
+   * viewer's own header says nothing here is persisted. Zoom and pan are
+   * how somebody is looking at ONE picture and belong to that picture.
+   * How fast the walk moves, and what happens at its ends, is an
+   * arrangement of the tool -- it survives the picture, and being asked
+   * it again every time you open a slideshow is the thing this avoids.
+   */
+  showEvery?: number;
+  /**
+   * Whether the slideshow is running.
+   *
+   * Here rather than in a variable BECAUSE the viewer is remounted on
+   * every step -- the overlay replaces its contents, the page navigates
+   * -- so a timer held in the module dies with each picture. Playing is
+   * a fact about the walk, not about the mount, and this is the only
+   * place with the walk's lifetime.
+   */
+  showPlaying?: boolean;
+  /**
+   * What the ARROWS do at either end of the answer.
+   *
+   * Off, the walk stops there. On, next from the last member is the
+   * first. Never a silent slide into a different question: crossing the
+   * end is this same answer starting again.
+   */
+  wrap?: boolean;
+  /**
+   * What the SLIDESHOW does when it reaches the end.
+   *
+   * Off, it stops and stays on the last picture. On, it starts again.
+   * Separate from `wrap` because they are different questions: somebody
+   * can want a slideshow that repeats all night and arrows that still
+   * tell them when they have seen everything.
+   */
+  loop?: boolean;
+  /**
    * Which inspector sections are disclosed, by their `data-panel` name.
    * Absent means "this person has never said", which is what lets a
    * generated picture and a photograph open different sections until

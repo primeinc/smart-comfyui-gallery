@@ -100,6 +100,8 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 40;
 /** How long the pointer must rest before the chrome fades. */
 const IDLE_MS = 2200;
+/** Seconds a slideshow shows each picture until somebody says otherwise. */
+const DEFAULT_EVERY = 5;
 /** Past this, the surrounding walk is not what anybody is looking at. */
 const ABSORBED = 1.35;
 
@@ -404,7 +406,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     lastWheel = now;
     rolled += by;
     if (spent || Math.abs(rolled) < NOTCH) return;
-    const step = findElement(root, `[data-nav="${rolled > 0 ? "next" : "previous"}"]`, HTMLAnchorElement);
+    const step = stepTo(rolled > 0 ? "next" : "previous");
     // An end of the walk is an answer, not a thing to force -- and the
     // gesture is spent either way, so leaning on the wheel at the last
     // picture does not fire again the moment a next one exists.
@@ -523,8 +525,21 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   // There is no T. It toggled a filmstrip nothing renders -- a key that
   // advertises a feature the viewer does not have is fake UI, and this
   // repo spends its effort deleting those. It comes back with the strip.
-  const stepping = (wanted: string) => () => {
-    const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
+  /**
+   * The anchor for a step, which is `[data-nav]` and nothing cleverer.
+   *
+   * `data-nav` means "a step you can take right now" -- to this file, to
+   * gallery.ts's overlay intercept, and to every browser test. Wrapping
+   * does not weaken that: the server spells the wrapping arrow
+   * `data-nav-wrap`, and it becomes a step only where this person turned
+   * wrapping on, by the promotion below. A hidden anchor that still said
+   * `data-nav` would be the DOM promising a step nothing could take.
+   */
+  const stepTo = (wanted: "next" | "previous"): HTMLAnchorElement | null =>
+    findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
+
+  const stepping = (wanted: "next" | "previous") => () => {
+    const step = stepTo(wanted);
     if (step) walk(step.href); // an end of the walk is an answer, not a step
   };
   const middle = (by: number) => () => zoomAbout(by, window.innerWidth / 2, window.innerHeight / 2);
@@ -538,10 +553,140 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
       { key: "-", by: "viewer: zoom out", run: middle(1 / 1.3) },
       { key: "ArrowRight", by: "viewer: next", run: stepping("next") },
       { key: "ArrowLeft", by: "viewer: previous", run: stepping("previous") },
+      { key: "s", by: "viewer: slideshow", run: () => playing(!isPlaying()) },
     ]),
   );
 
   onDocument("pointermove", wake);
+
+  // --- the slideshow ---------------------------------------------------------
+  //
+  // The walk on a timer, and nothing more than that: it takes the same
+  // step an arrow takes, to the same address, through the same `walk` the
+  // container gave us. There is no second ordering, no prefetch queue and
+  // no list of slugs -- which is what keeps it honest when the answer
+  // moves under it.
+  //
+  // Whether it is RUNNING lives in the workspace rather than in a variable
+  // here, because the viewer is remounted on every step: the overlay
+  // replaces its contents and the page navigates, so a timer held in this
+  // closure dies with each picture. Playing is a fact about the walk; this
+  // mount is one frame of it. That one decision is also what makes the
+  // slideshow work identically in both containers.
+  const shown = findElement(root, "[data-slideshow]", HTMLElement);
+  let ticking = 0;
+
+  const isPlaying = () => workspace().showPlaying === true;
+  const every = () => {
+    const held = workspace().showEvery;
+    return typeof held === "number" && held > 0 ? held : DEFAULT_EVERY;
+  };
+
+  /**
+   * Turn wrapping on or off, on the picture already open.
+   *
+   * Two things at once, and they have to stay together: the attribute
+   * the stylesheet reads, and the PROMOTION of the server's wrapping
+   * arrow into a real `data-nav` step. Without the second, `data-nav`
+   * would mean "an arrow the server drew" rather than "a step you can
+   * take", and everything that reads it -- the keys, the wheel, the
+   * overlay's click intercept, every browser test -- would have to
+   * remember to ask about wrap as well.
+   */
+  const wrapping = (on: boolean) => {
+    root.dataset.wrap = on ? "on" : "off";
+    for (const arrow of everyElement(root, "[data-nav-wrap]", HTMLAnchorElement)) {
+      if (on) arrow.dataset.nav = requireData(arrow, "navWrap");
+      else delete arrow.dataset.nav;
+    }
+  };
+
+  /** Step, or reach the end and answer the way `loop` says to. */
+  const advance = () => {
+    const step = findElement(root, '[data-nav="next"]:not([data-nav-wrap])', HTMLAnchorElement);
+    if (step) {
+      walk(step.href);
+      return;
+    }
+    // The end. `loop` decides this, NEVER `wrap`: wrap is what the arrows
+    // do, and somebody can reasonably want arrows that stop -- so they can
+    // tell when they have seen everything -- over a slideshow that repeats
+    // all night. So this reads the server's wrapping arrow directly rather
+    // than whatever wrap promoted, because there is only one first member
+    // and its address is the same either way.
+    const around = findElement(root, '[data-nav-wrap="next"]', HTMLAnchorElement);
+    if (workspace().loop === true && around) {
+      walk(around.href);
+      return;
+    }
+    playing(false);
+  };
+
+  const playing = (on: boolean) => {
+    window.clearTimeout(ticking);
+    remember({ showPlaying: on });
+    if (shown) {
+      shown.dataset.playing = on ? "yes" : "no";
+      const control = findElement(shown, "[data-show-play]", HTMLElement);
+      if (control) {
+        control.setAttribute("aria-pressed", on ? "true" : "false");
+        control.setAttribute("aria-label", on ? "pause the slideshow" : "start the slideshow");
+        control.textContent = on ? "⏸" : "▶";
+      }
+    }
+    // Never schedule where there is no walk to take: a one-member answer
+    // would otherwise sit ticking, reaching the end and stopping itself.
+    if (on && shown) ticking = window.setTimeout(advance, every() * 1000);
+  };
+
+  if (shown) {
+    const settings = findElement(shown, "[data-show-settings]", HTMLElement);
+    const opener = findElement(shown, "[data-show-settings-toggle]", HTMLElement);
+    const interval = findElement(shown, "[data-show-every]", HTMLSelectElement);
+    const wraps = findElement(shown, "[data-show-wrap]", HTMLInputElement);
+    const loops = findElement(shown, "[data-show-loop]", HTMLInputElement);
+
+    // The controls open holding what this person last said, because a
+    // slideshow whose speed resets every picture is a slideshow nobody
+    // can set.
+    const kept = workspace();
+    if (interval) interval.value = String(every());
+    if (wraps) wraps.checked = kept.wrap === true;
+    if (loops) loops.checked = kept.loop === true;
+    wrapping(kept.wrap === true);
+
+    if (opener && settings) {
+      onElement(opener, "click", () => {
+        settings.hidden = !settings.hidden;
+        opener.setAttribute("aria-expanded", settings.hidden ? "false" : "true");
+      });
+    }
+    const play = findElement(shown, "[data-show-play]", HTMLElement);
+    if (play) onElement(play, "click", () => playing(!isPlaying()));
+    if (interval) {
+      onElement(interval, "change", () => {
+        remember({ showEvery: Number(interval.value) });
+        // Re-arm at the new speed rather than waiting out the old one:
+        // changing 15s to 2s and then watching fifteen seconds pass looks
+        // exactly like a control that did nothing.
+        if (isPlaying()) playing(true);
+      });
+    }
+    if (wraps) {
+      onElement(wraps, "change", () => {
+        remember({ wrap: wraps.checked });
+        // The arrows change NOW, on the picture already open -- no step,
+        // no reload.
+        wrapping(wraps.checked);
+      });
+    }
+    if (loops) onElement(loops, "change", () => remember({ loop: loops.checked }));
+
+    // Pick the walk back up where the last mount left it. This IS the
+    // slideshow: every step is a fresh viewer that finds `showPlaying`
+    // still true and schedules the next one.
+    playing(isPlaying());
+  }
 
   // --- the filmstrip ---------------------------------------------------------
   // Rendered by the server in answer order, with the walked question
@@ -623,6 +768,13 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
      * key: one shared shell, one dismissal, and no competing listener.
      */
     unwind: () => {
+      // A running slideshow is the outermost thing the viewer is doing,
+      // and the first thing Escape should stop: a person reaching for it
+      // while pictures are moving means "stop", not "leave".
+      if (isPlaying()) {
+        playing(false);
+        return true;
+      }
       if (look.scale > 1 || look.x !== 0 || look.y !== 0) {
         frame("fit");
         return true;
@@ -639,6 +791,11 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
     },
     release: () => {
       window.clearTimeout(idle);
+      // The pending step goes with the mount that scheduled it. The NEXT
+      // mount schedules its own from `showPlaying`, so releasing here
+      // cannot stop the slideshow -- but leaving it would let a released
+      // viewer walk a container that has moved on.
+      window.clearTimeout(ticking);
       for (const off of bound) off();
       bound.length = 0;
     },

@@ -9645,6 +9645,26 @@
                             }
                         ]
                     },
+                    "first": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "filmstrip": {
                         "oneOf": [
                             {
@@ -9662,7 +9682,9 @@
                     "answer",
                     "currency",
                     "filmstrip",
+                    "first",
                     "in_answer",
+                    "last",
                     "next",
                     "ordinal",
                     "page",

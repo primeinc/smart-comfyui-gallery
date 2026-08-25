@@ -741,6 +741,7 @@
   var MIN_SCALE = 1;
   var MAX_SCALE = 40;
   var IDLE_MS = 2200;
+  var DEFAULT_EVERY = 5;
   var ABSORBED = 1.35;
   function mountViewer(root, walk) {
     const stageBox = findElement(root, "[data-stage]", HTMLElement);
@@ -886,7 +887,7 @@
       lastWheel = now;
       rolled += by;
       if (spent || Math.abs(rolled) < NOTCH) return;
-      const step = findElement(root, `[data-nav="${rolled > 0 ? "next" : "previous"}"]`, HTMLAnchorElement);
+      const step = stepTo(rolled > 0 ? "next" : "previous");
       spent = true;
       if (step) walk(step.href);
     };
@@ -937,8 +938,9 @@
       onElement(stageBox, "pointerup", release);
       onElement(stageBox, "pointercancel", release);
     }
+    const stepTo = (wanted) => findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
     const stepping = (wanted) => () => {
-      const step = findElement(root, `[data-nav="${wanted}"]`, HTMLAnchorElement);
+      const step = stepTo(wanted);
       if (step) walk(step.href);
     };
     const middle = (by) => () => zoomAbout(by, window.innerWidth / 2, window.innerHeight / 2);
@@ -951,10 +953,86 @@
         { key: "=", by: "viewer: zoom in", run: middle(1.3) },
         { key: "-", by: "viewer: zoom out", run: middle(1 / 1.3) },
         { key: "ArrowRight", by: "viewer: next", run: stepping("next") },
-        { key: "ArrowLeft", by: "viewer: previous", run: stepping("previous") }
+        { key: "ArrowLeft", by: "viewer: previous", run: stepping("previous") },
+        { key: "s", by: "viewer: slideshow", run: () => playing(!isPlaying()) }
       ])
     );
     onDocument("pointermove", wake);
+    const shown = findElement(root, "[data-slideshow]", HTMLElement);
+    let ticking = 0;
+    const isPlaying = () => workspace().showPlaying === true;
+    const every = () => {
+      const held = workspace().showEvery;
+      return typeof held === "number" && held > 0 ? held : DEFAULT_EVERY;
+    };
+    const wrapping = (on) => {
+      root.dataset.wrap = on ? "on" : "off";
+      for (const arrow of everyElement(root, "[data-nav-wrap]", HTMLAnchorElement)) {
+        if (on) arrow.dataset.nav = requireData(arrow, "navWrap");
+        else delete arrow.dataset.nav;
+      }
+    };
+    const advance = () => {
+      const step = findElement(root, '[data-nav="next"]:not([data-nav-wrap])', HTMLAnchorElement);
+      if (step) {
+        walk(step.href);
+        return;
+      }
+      const around = findElement(root, '[data-nav-wrap="next"]', HTMLAnchorElement);
+      if (workspace().loop === true && around) {
+        walk(around.href);
+        return;
+      }
+      playing(false);
+    };
+    const playing = (on) => {
+      window.clearTimeout(ticking);
+      remember({ showPlaying: on });
+      if (shown) {
+        shown.dataset.playing = on ? "yes" : "no";
+        const control = findElement(shown, "[data-show-play]", HTMLElement);
+        if (control) {
+          control.setAttribute("aria-pressed", on ? "true" : "false");
+          control.setAttribute("aria-label", on ? "pause the slideshow" : "start the slideshow");
+          control.textContent = on ? "\u23F8" : "\u25B6";
+        }
+      }
+      if (on && shown) ticking = window.setTimeout(advance, every() * 1e3);
+    };
+    if (shown) {
+      const settings = findElement(shown, "[data-show-settings]", HTMLElement);
+      const opener = findElement(shown, "[data-show-settings-toggle]", HTMLElement);
+      const interval = findElement(shown, "[data-show-every]", HTMLSelectElement);
+      const wraps = findElement(shown, "[data-show-wrap]", HTMLInputElement);
+      const loops = findElement(shown, "[data-show-loop]", HTMLInputElement);
+      const kept2 = workspace();
+      if (interval) interval.value = String(every());
+      if (wraps) wraps.checked = kept2.wrap === true;
+      if (loops) loops.checked = kept2.loop === true;
+      wrapping(kept2.wrap === true);
+      if (opener && settings) {
+        onElement(opener, "click", () => {
+          settings.hidden = !settings.hidden;
+          opener.setAttribute("aria-expanded", settings.hidden ? "false" : "true");
+        });
+      }
+      const play = findElement(shown, "[data-show-play]", HTMLElement);
+      if (play) onElement(play, "click", () => playing(!isPlaying()));
+      if (interval) {
+        onElement(interval, "change", () => {
+          remember({ showEvery: Number(interval.value) });
+          if (isPlaying()) playing(true);
+        });
+      }
+      if (wraps) {
+        onElement(wraps, "change", () => {
+          remember({ wrap: wraps.checked });
+          wrapping(wraps.checked);
+        });
+      }
+      if (loops) onElement(loops, "change", () => remember({ loop: loops.checked }));
+      playing(isPlaying());
+    }
     const strip2 = findElement(root, "[data-filmstrip-track]", HTMLElement);
     if (strip2) {
       const here = findElement(strip2, "[data-filmstrip-item][aria-current='true']", HTMLElement);
@@ -1006,6 +1084,10 @@
        * key: one shared shell, one dismissal, and no competing listener.
        */
       unwind: () => {
+        if (isPlaying()) {
+          playing(false);
+          return true;
+        }
         if (look.scale > 1 || look.x !== 0 || look.y !== 0) {
           frame("fit");
           return true;
@@ -1022,6 +1104,7 @@
       },
       release: () => {
         window.clearTimeout(idle);
+        window.clearTimeout(ticking);
         for (const off of bound) off();
         bound.length = 0;
       }

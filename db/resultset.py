@@ -1011,7 +1011,18 @@ def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
     disagree about what comes next.
     """
     neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
-    named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
+    # The two ENDS come along, because a walk that wraps needs an address
+    # for them and this is the only read that holds the whole ordered
+    # answer. Free: `held.ids` is already in hand, and the four ids go
+    # through the one `_named` the neighbours were already paying for.
+    #
+    # Whether wrapping happens is not decided here. It is how a person
+    # arranged their viewer (frontend/src/workspace.ts), it changes no
+    # membership and belongs in no fingerprint; the server's part is
+    # spelling where the ends ARE.
+    ends = [held.ids[0], held.ids[-1]] if held.ids else []
+    wanted = [one for one in [*neighbours, *ends] if one is not None]
+    named = {row["id"]: row["slug"] for row in _named(conn, wanted, 0)}
     return {
         "ordinal": position + 1,
         "page": position // bound.query.size + 1,
@@ -1021,6 +1032,8 @@ def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
         "qs": canonical(bound.query),
         "previous": named.get(neighbours[0]),
         "next": named.get(neighbours[1]),
+        "first": named.get(ends[0]) if ends else None,
+        "last": named.get(ends[1]) if ends else None,
     }
 
 
