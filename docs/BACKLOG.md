@@ -221,6 +221,46 @@ consequences the architecture should keep room for, not work.
   media kind and `trash`. Two names for one thing is a decision
   everybody reading the schema has to make again.
 
+- **Adding a root means pressing seven buttons in an order only the
+  application knows.** scan, then ingest, then context, then events,
+  then embed, then detect_faces, then cluster_faces, then annotate. The
+  order is real -- `cluster_faces` over an unembedded library is a job
+  that honestly settles `done` having clustered nothing -- and the
+  application knows it and makes a person re-derive it. Two places
+  already chain by hand (`precache_after_scan`, and `submit_ingest`
+  queueing a `scan`), which is the evidence that the need is real and
+  currently hand-rolled.
+
+  A **job collection** is a named recipe of jobs with declared edges,
+  submitted as one thing and reported as one thing. Three consequences,
+  and the middle one is the reason to build it:
+
+  - **The console collapses.** Ten rows become one with a bar, and the
+    little jobs stop mattering because they are steps rather than rows.
+  - **The order stops being knowledge a person carries.** The claim
+    gains a "every predecessor has settled" clause -- a WHERE, not a new
+    engine, since `jobs.claim` already filters on state.
+  - **Scheduling becomes possible at all.** A cron needs something to
+    NAME. "Every night, catch up" points at a collection; scheduling
+    individual kinds would mean re-deriving the order at 3am, which is
+    the same defect with a timer on it.
+
+  Grouping ALONE is not worth building. If a collection is only a label
+  over rows, the console gets quieter and a person still does not know
+  what to press. The dependency edge is the part that earns it.
+
+  What has to be decided before it is coded, because it is a product
+  question and not an implementation detail: **what a failed step does
+  to its collection.** A partial catch-up is normal and useful -- one
+  unreadable file must not abandon the other four thousand -- so the
+  likely answer is "report it, stop only the steps that depended on it,
+  let the rest finish". But that is a decision, and "the collection
+  failed" is the other defensible one.
+
+  Two smaller ones that follow: cancelling a collection has to cancel
+  its unstarted steps, and a collection must not become a second
+  scheduler -- the runner stays the only thing that runs jobs.
+
 - **Benchmarks in the UI.** `just bench thumbs-phases` and the other
   benchmark recipes write JSON that only a terminal ever sees. The
   operations console is where a run's own facts already live; these
