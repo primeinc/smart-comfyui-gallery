@@ -32,18 +32,64 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import hashlib
+import io
 import json
+import os
 import pathlib
+import tarfile
+import urllib.request
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: The pinned mirror. A path, a commit, and per-file checksums -- which
-#: together are the whole "fetch, don't vendor" contract: the bytes are
-#: somewhere else, and this says exactly which bytes.
-MIRROR = REPO.parent / "refs" / "exiftool" / "exiftool"
-IMAGES = MIRROR / "t" / "images"
-PINNED = "2200871d9cef988051d2a99d67df3bda6cbb30a8"  # tag 13.59
+#: Where the real media lives, and how it gets there.
+#:
+#: NOT `../refs`: a sibling of the repository is a directory on one
+#: machine. Pointing tests at it meant seven of eight skipped everywhere
+#: else and the suite went green having proved nothing -- which is worse
+#: than no tests, because it reads as coverage.
+#:
+#: Fetched from GitHub at a pinned tag instead, into a cache outside the
+#: repo. ExifTool is GPL-3 and its images are collected from mixed
+#: sources with real coordinates in them, so they are DOWNLOADED and
+#: never committed.
+CORPUS = pathlib.Path(os.environ.get("SG_CORPUS", REPO.parent / "sg-corpus"))
+IMAGES = CORPUS / "exiftool"
+TAG = "13.59"
+TARBALL = f"https://codeload.github.com/exiftool/exiftool/tar.gz/refs/tags/{TAG}"
 LOCKFILE = REPO / "tests" / "sourced.lock.json"
+
+#: How many files the tarball's `t/images` holds at that tag. A fetch
+#: that lands fewer is a fetch that went wrong, and silence about it
+#: would put a half-corpus behind every measurement.
+EXPECTED = 194
+
+
+def fetch(force: bool = False) -> pathlib.Path:
+    """Get the real media, once. Returns where it landed.
+
+    Idempotent: present and complete means no network. This is what lets
+    a test REQUIRE the corpus instead of skipping without it.
+    """
+    if not force and IMAGES.is_dir() and len(list(IMAGES.iterdir())) >= EXPECTED:
+        return IMAGES
+    IMAGES.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(TARBALL, timeout=300) as answer:
+        raw = answer.read()
+    got = 0
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if "/t/images/" not in member.name or not member.isfile():
+                continue
+            name = member.name.split("/t/images/", 1)[1]
+            if "/" in name:
+                continue
+            held = tar.extractfile(member)
+            if held is not None:
+                (IMAGES / name).write_bytes(held.read())
+                got += 1
+    if got < EXPECTED:
+        raise RuntimeError(f"{TARBALL} yielded {got} files, expected at least {EXPECTED}")
+    return IMAGES
 
 
 @dataclasses.dataclass(frozen=True)
@@ -102,38 +148,10 @@ INTENT: tuple[Specimen, ...] = (
 )
 
 
-def pinned_at() -> str | None:
-    """The mirror's commit, or None if it cannot be read.
-
-    Read out of `.git` directly rather than by running git. A test that
-    starts a program is a test that depends on PATH, on a timeout and on
-    somebody else's exit codes -- and the answer here is two files. None
-    rather than a guess: a corpus pinned to an unknown revision is not
-    pinned, and saying so is the point of asking.
-    """
-    head = MIRROR / ".git" / "HEAD"
-    if not head.is_file():
-        return None
-    said = head.read_text(encoding="utf-8").strip()
-    if not said.startswith("ref:"):
-        return said or None  # detached: HEAD already holds the sha
-    ref = said.partition(" ")[2].strip()
-    loose = MIRROR / ".git" / ref
-    if loose.is_file():
-        return loose.read_text(encoding="utf-8").strip() or None
-    # packed-refs: the ref was packed away, which is ordinary for a clone
-    packed = MIRROR / ".git" / "packed-refs"
-    if not packed.is_file():
-        return None
-    for line in packed.read_text(encoding="utf-8").splitlines():
-        if line.endswith(f" {ref}"):
-            return line.split(" ", 1)[0]
-    return None
-
-
 def available() -> bool:
-    """Whether the pinned mirror is present at the pinned revision."""
-    return IMAGES.is_dir() and pinned_at() == PINNED
+    """Whether the real media is on disk. Not a reason to skip -- a
+    reason to call `fetch()`."""
+    return IMAGES.is_dir() and len(list(IMAGES.iterdir())) >= EXPECTED
 
 
 def decodes(path: pathlib.Path) -> bool:
@@ -173,7 +191,7 @@ def lock() -> dict:
     return {
         "what": "Real media referenced by the corpus. NOT vendored -- ExifTool is GPL-3 and "
         "these images carry real GPS. The bytes stay in the pinned mirror.",
-        "source": {"repo": "exiftool/exiftool", "path": "t/images", "rev": PINNED, "tag": "13.59"},
+        "source": {"repo": "exiftool/exiftool", "path": "t/images", "tag": TAG, "url": TARBALL},
         "files": [
             {"name": one.name, "sha256": digest(path), "renders": decodes(path), "why": one.why}
             for one, path in specimens()

@@ -1673,14 +1673,28 @@ def test_a_role_cannot_be_updated_into_a_lie(db):
 def test_the_build_control_counts_real_tables(db):
     """The old threshold was `>= 30` over every table, and the three FTS indexes
     contribute seventeen shadow tables between them -- so a third of the schema
-    could be missing and the control still passed."""
+    could be missing and the control still passed.
+
+    Counted against schema.sql rather than against a number somebody typed.
+    A literal here is a tax on everyone who adds a table -- it was `62`, it
+    became `64` the day two arrived, and the only thing bumping it proves is
+    that somebody bumped it. The DDL already states how many tables it
+    declares; comparing the built file to its own source keeps the property
+    the threshold was for (the sweep really sees the schema) and catches a
+    second thing besides: a table in one and not the other.
+    """
+    declared = set(re.findall(r"^CREATE TABLE (\w+)", SCHEMA.read_text(encoding="utf-8"), re.MULTILINE))
     virt = virtual_table_names(db)
-    real = [
+    real = {
         r[0]
         for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if r[0] not in virt
-    ]
-    assert len(real) == 64, f"expected 64 real tables, found {len(real)}: {sorted(real)}"
+    }
+    assert declared, "no CREATE TABLE found in schema.sql; the count is not being read"
+    assert real == declared, {
+        "only in the built file": sorted(real - declared),
+        "only in schema.sql": sorted(declared - real),
+    }
 
 
 def test_the_time_doctrine_never_claims_a_wall_clock_is_utc(db):

@@ -3,8 +3,8 @@
   "source": {
     "repo": "exiftool/exiftool",
     "path": "t/images",
-    "rev": "2200871d9cef988051d2a99d67df3bda6cbb30a8",
-    "tag": "13.59"
+    "tag": "13.59",
+    "url": "https://codeload.github.com/exiftool/exiftool/tar.gz/refs/tags/13.59"
   },
   "files": [
     {

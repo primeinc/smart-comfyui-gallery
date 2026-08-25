@@ -40,7 +40,18 @@ pytestmark = pytest.mark.slow
 
 HERE = pathlib.Path(__file__).resolve().parent
 BASELINE = HERE / "reach_baseline.json"
-needs_mirror = pytest.mark.skipif(not sourced.available(), reason="the pinned exiftool mirror is not present")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _media():
+    """The real media, fetched once if it is not here.
+
+    NOT a skipif. Pointing these at `../refs` made seven of eight skip on
+    every machine but one, and a suite that skips its own subject is
+    green about nothing. The corpus is 1.1 MB from a pinned tag; if it
+    cannot be had, that is a failure, not an excuse.
+    """
+    return sourced.fetch()
 
 
 @pytest.fixture(scope="module")
@@ -51,16 +62,16 @@ def frozen() -> dict:
 # --- the pin ------------------------------------------------------------------
 
 
-@needs_mirror
 def test_the_sourced_files_are_the_bytes_that_were_locked():
     """The whole "fetch, don't vendor" contract, in one assertion.
 
-    The bytes live in somebody else's GPL-3 repository and carry real
-    coordinates, so they never enter ours. What we hold instead is a
-    commit and a checksum -- and a checksum nobody verifies is a comment.
+    The bytes come from somebody else's GPL-3 repository and carry real
+    coordinates, so they are downloaded and never committed. What we hold
+    instead is a tag and a checksum -- and a checksum nobody verifies is
+    a comment.
     """
     locked = json.loads(sourced.LOCKFILE.read_text(encoding="utf-8"))
-    assert locked["source"]["rev"] == sourced.PINNED
+    assert locked["source"]["tag"] == sourced.TAG
     on_disk = {one.name: path for one, path in sourced.specimens()}
     assert on_disk, "the mirror is present but no specimen resolved"
     for held in locked["files"]:
@@ -69,7 +80,6 @@ def test_the_sourced_files_are_the_bytes_that_were_locked():
         assert sourced.digest(path) == held["sha256"], f"{held['name']} is not the file that was locked"
 
 
-@needs_mirror
 def test_every_locked_file_says_why_it_is_here():
     """The intent label is the only claim this corpus makes about a file,
     and an unlabelled specimen is one nobody can decide to remove."""
@@ -78,7 +88,6 @@ def test_every_locked_file_says_why_it_is_here():
         assert held["why"].strip(), f"{held['name']} has no stated reason to exist"
 
 
-@needs_mirror
 def test_the_lockfile_records_which_files_have_pixels_and_is_right():
     """16 of these 35 are truncated to their metadata on purpose. A test
     asserting a thumbnail on one would be asserting against somebody
@@ -116,7 +125,6 @@ def test_what_must_be_covered_is_read_out_of_the_application():
     assert len(scan.KIND_BY_SUFFIX) > 90, "the suffix table shrank; the corpus's target moved"
 
 
-@needs_mirror
 def test_the_corpus_covers_a_kind_the_synthetic_one_never_wrote():
     """Audio is the plain case: the synthetic corpus writes none at all,
     because writing a real audio container is not something it does. The
@@ -132,7 +140,6 @@ def test_the_corpus_covers_a_kind_the_synthetic_one_never_wrote():
 # --- the measurement ----------------------------------------------------------
 
 
-@needs_mirror
 def test_the_sourced_files_reach_lines_the_synthetic_corpus_cannot(frozen):
     """The obligation, stated as a number.
 
@@ -147,7 +154,6 @@ def test_the_sourced_files_reach_lines_the_synthetic_corpus_cannot(frozen):
     assert closed > 100, f"the sourced files closed only {closed} of the frozen target"
 
 
-@needs_mirror
 def test_the_baseline_still_describes_these_readers(frozen):
     """The second coverage run the completion condition asks for.
 
@@ -180,3 +186,38 @@ def test_the_corpus_modules_assert_no_metadata_values():
         if held in one.read_text(encoding="utf-8")
     ]
     assert guilty == [], guilty
+
+
+# --- what the real files found -----------------------------------------------
+
+
+def test_a_stream_with_no_codec_context_is_not_a_crash():
+    """The defect real media found, and synthetic media could not.
+
+    `db/probe.py` guarded `video is not None` and then read
+    `video.codec_context.width` -- but a stream can EXIST and carry no
+    codec context. PyAV opens the container, reports a video stream, and
+    hands back one described by nothing.
+
+    Two files do it, both on suffixes `KIND_BY_SUFFIX` claims: a Canon
+    CR3 (ISOBMFF RAW) and a JPEG XL. Before the guard both raised
+    `AttributeError` out of a reader -- which is not a refusal any caller
+    can handle. Nothing in a generated corpus produces this, because the
+    generator writes containers its own library can describe.
+    """
+    from db import probe
+
+    for name in ("CanonRaw.cr3", "JXL.jxl"):
+        one = sourced.IMAGES / name
+        assert one.is_file(), f"{name} is missing from the fetched corpus"
+        got = probe.read(str(one))
+        assert got.width is None, "a container nothing describes has no width to report"
+        assert got.height is None
+
+
+def test_a_container_that_is_described_still_reports_its_shape():
+    """The other half: the guard must not have made every probe blind."""
+    from db import probe
+
+    got = probe.read(str(sourced.IMAGES / "QuickTime.mov"))
+    assert (got.width, got.height) == (320, 240)
