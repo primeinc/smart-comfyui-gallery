@@ -415,15 +415,6 @@ search answers with a set. What is NOT built:
     / `param.atmost` -- rather than widening one whose SQL compares the
     wrong column.
 
-- **A saved view is not a first-class thing.** Everything a question can
-  become is a collection today. People distinguish three: an **album**
-  (things I deliberately put together), a **smart collection** (a
-  dynamic grouping that behaves like a collection), and a **saved
-  view** ("that was a useful question, remember it"). They can share
-  one `GalleryQuery` underneath without being one product object. The
-  tell that this is missing: having composed a good question twice, the
-  only offer is "save view", which makes a collection.
-
 - **The analysis has no prompt-term view.** Exact prompt identity is
   built and counted. Recurring TERMS across an answer -- which is a
   different claim with a different error mode -- is not, and is

@@ -138,6 +138,10 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "places",
             "resultset",
             "settings",
+            # Remembered questions, listed on the page where questions
+            # are asked. Read only: the ADDRESS of a question, never a
+            # rule, so nothing here defines what one means.
+            "views",
             "vocabulary",
         }
     ),
@@ -207,6 +211,12 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "sample",
             "scan",
             "settings",
+            # Remembered questions. A saved view is the ADDRESS of a
+            # question and never a rule, so this module stores and lists
+            # spellings and defines no query semantics -- which is the
+            # same line the smart-collection route holds by sending the
+            # canonical spelling instead of a rule shape.
+            "views",
         }
     ),
 }

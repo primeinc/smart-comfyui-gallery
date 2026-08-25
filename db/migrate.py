@@ -3348,3 +3348,34 @@ def _a_root_is_a_library_or_the_trash(conn: sqlite3.Connection) -> None:
 ) STRICT""",
         indexes=(),
     )
+
+
+@step(39)
+def _a_question_can_be_remembered(conn: sqlite3.Connection) -> None:
+    """v39 -> v40: `saved_view`.
+
+    The third thing people mean by "save this". An album is what
+    somebody put together, a smart collection is a dynamic grouping that
+    behaves like one, and a saved view is "that was a useful question,
+    remember it" -- which had nowhere to go, so it became a collection
+    and put things that are not albums into somebody's album list.
+
+    Empty, and additive: a new table cannot disagree with anything.
+    """
+    conn.execute(
+        """CREATE TABLE saved_view (
+    id           INTEGER PRIMARY KEY,
+    -- NOCASE, like every other name a person types here: "Portraits"
+    -- and "portraits" are the same question asked twice, and the second
+    -- should replace the first rather than sit beside it.
+    name         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- The canonical query string, without a page: a remembered question
+    -- opens at its beginning, never at page 7 of an answer that has
+    -- since changed length.
+    qs           TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    -- So the list can put what somebody actually uses at the top. NULL
+    -- until it is opened once.
+    last_used_at REAL
+) STRICT"""
+    )

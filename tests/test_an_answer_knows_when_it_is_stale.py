@@ -44,13 +44,18 @@ NOW = 1_700_000_000.0
 #: The only tables that may leave an answer alone. Written out so the
 #: set is a decision somebody made, not whatever the code happens to do.
 #:
-#: All of it is OPERATIONAL: rows about what the application is doing,
-#: never about what is in the library. A job queued, a job's item
-#: finishing, a ledger line, and a schedule saying when a collection
-#: should next start -- none of them changes a single answer a page
-#: could give, and invalidating every cached answer because a worker
-#: picked up a thumbnail is how a busy library never serves a warm one.
-OPERATIONAL = {"job", "job_item", "job_event", "schedule"}
+#: Named for what they have in common, which is not where they came
+#: from: nothing in them can change what a page would ANSWER. Most are
+#: operational -- a job queued, an item finished, a ledger line, a
+#: schedule saying when a collection next starts -- and invalidating
+#: every cached answer because a worker picked up a thumbnail is how a
+#: busy library never serves a warm one.
+#:
+#: `saved_view` is authored rather than operational and belongs here for
+#: the same reason: it remembers a QUESTION. Asking one again returns
+#: whatever the library says at the time, so writing one down changes no
+#: answer -- and a trigger on it would be the schema claiming otherwise.
+CHANGES_NO_ANSWER = {"job", "job_item", "job_event", "schedule", "saved_view"}
 
 
 @pytest.fixture
@@ -85,7 +90,7 @@ def _eligible(conn) -> tuple[list[str], set[str]]:
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL%'")
     }
     shadow = tuple(f"{one}_" for one in virtual)
-    excused = set(virtual) | OPERATIONAL | {"answer_generation"}
+    excused = set(virtual) | CHANGES_NO_ANSWER | {"answer_generation"}
     must, skipped = [], set()
     for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         if name in excused or name.startswith(shadow):
@@ -117,7 +122,7 @@ def test_the_ledger_is_the_only_thing_excused(library):
     _path, conn = library
     _, skipped = _eligible(conn)
     virtual_and_shadow = {one for one in skipped if "fts" in one}
-    assert skipped - virtual_and_shadow == OPERATIONAL | {"answer_generation"}, skipped - virtual_and_shadow
+    assert skipped - virtual_and_shadow == CHANGES_NO_ANSWER | {"answer_generation"}, skipped - virtual_and_shadow
 
 
 def test_a_virtual_table_could_not_carry_one_anyway(library):

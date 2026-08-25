@@ -129,6 +129,54 @@ const asked = (spelled: string, take: number | null): Rule => {
     return Number.isFinite(total) && total > 0 ? total : 1;
   };
 
+  // Remember the CURRENT question, without making a collection of it.
+  //
+  // The third thing people mean by "save this", and the one that had
+  // nowhere to go: an album is what somebody put together, a smart
+  // collection is a dynamic grouping that behaves like one, and this
+  // has no members, no colour and nothing filed under it. It used to
+  // become a collection, which put a thing that is not an album into
+  // somebody's album list once per good question they had.
+  const rememberer = findElement(document, "[data-remember-view]", HTMLElement);
+  rememberer?.addEventListener("click", async () => {
+    const name = await askText("remember this question as", {
+      detail: "it goes in the strip below, and opens the question again -- it makes no collection",
+      placeholder: "portraits from June",
+      label: "name",
+    });
+    if (name === null) return;
+    // The URL's own parameters: the canonical spelling is what heals a
+    // retired slug to the live one, and the browser never invents one.
+    const { error } = await api.POST("/views", { body: { name, qs: window.location.search } });
+    if (error) {
+      await say(refusal(error, "that question was not remembered"));
+      return;
+    }
+    window.location.reload();
+  });
+
+  // Opening one says so, so the list can put what somebody actually
+  // uses at the top. `keepalive`, because this navigates: without it the
+  // request is cancelled by the page it is reporting the use of.
+  for (const link of everyElement(document, "[data-remembered-open]", HTMLElement)) {
+    link.addEventListener("click", () => {
+      const id = requireData(link, "rememberedOpen");
+      void fetch(`/views/${encodeURIComponent(id)}/opened`, { method: "POST", keepalive: true });
+    });
+  }
+
+  for (const drop of everyElement(document, "[data-forget-view]", HTMLElement)) {
+    drop.addEventListener("click", async () => {
+      const id = requireData(drop, "forgetView");
+      const held = await fetch(`/views/${encodeURIComponent(id)}/forget`, { method: "POST" });
+      if (!held.ok) {
+        await say("that question was not forgotten");
+        return;
+      }
+      drop.closest("[data-remembered-view]")?.remove();
+    });
+  }
+
   // Save the CURRENT question as a smart collection: the server
   // reconstructs the typed rule from the canonical spelling -- the browser
   // sends the URL's own parameters and a name, never a rule shape.

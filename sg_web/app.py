@@ -64,6 +64,7 @@ from db import (
     sample,
     scan,
     settings,
+    views,
 )
 from sg_web import (
     activity,
@@ -469,6 +470,91 @@ class CatchUpQueued(Wire):
     #: None only when `steps` is empty, which needs every submitter to
     #: decline at once.
     first: JobSnapshot | None = None
+
+
+class RememberedView(Wire):
+    """One question somebody asked to be reminded of."""
+
+    id: int
+    name: str
+    #: the canonical query string, without a page -- open it at /g?<qs>
+    qs: str
+    created_at: float
+    last_used_at: float | None
+
+
+class AskedView(Wire):
+    """The body of POST /views: a name, and the question's own spelling.
+
+    The spelling, never a rule. A saved view is not a collection and has
+    no membership to define -- it is the address of a question, and the
+    address is what heals a retired slug to the live one as it is
+    navigated (db/resultset.py `canonical`).
+    """
+
+    name: str
+    qs: str
+
+
+@get("/views", sync_to_thread=True)
+def saved_views(state: State) -> list[RememberedView]:
+    """Every remembered question, most recently USED first."""
+    conn = _connect(state.db_path)
+    try:
+        return [RememberedView(**row) for row in views.all_of(conn)]
+    finally:
+        connect.close(conn)
+
+
+@post("/views", sync_to_thread=True)
+def remember_view(state: State, data: AskedView) -> Response[RememberedView]:
+    """Remember this question under this name.
+
+    The third thing people mean by "save this", and the one that had
+    nowhere to go: an album is what somebody put together, a smart
+    collection is a dynamic grouping that behaves like one, and this has
+    no members, no colour and nothing filed under it. Making one a
+    collection put a thing that is not an album into somebody's album
+    list, once per good question they had.
+    """
+    conn = _connect(state.db_path)
+    try:
+        try:
+            made = views.remember(conn, data.name, data.qs, time.time())
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        held = next(one for one in views.all_of(conn) if one["id"] == made)
+    finally:
+        connect.close(conn)
+    return Response(RememberedView(**held), headers=VARIES)
+
+
+@post("/views/{view_id:int}/opened", sync_to_thread=True)
+def view_opened(state: State, view_id: FromPath[int]) -> Response[None]:
+    """Somebody went back to this one, so it sorts higher next time."""
+    conn = _connect(state.db_path)
+    try:
+        views.opened(conn, view_id, time.time())
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return Response(content=None, status_code=204)
+
+
+@post("/views/{view_id:int}/forget", sync_to_thread=True)
+def forget_view(state: State, view_id: FromPath[int]) -> Response[None]:
+    """Stop remembering it. 404 when there was nothing to forget, so a
+    second press is a refusal rather than a quiet success."""
+    conn = _connect(state.db_path)
+    try:
+        gone = views.forget(conn, view_id)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    if not gone:
+        raise NotFoundException(f"no saved view {view_id}")
+    return Response(content=None, status_code=204)
 
 
 @post("/jobs/catch-up", sync_to_thread=True)
@@ -1767,6 +1853,10 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             collection_view.albums_index,
             collection_authoring.make_album,
             collection_authoring.make_smart,
+            saved_views,
+            remember_view,
+            view_opened,
+            forget_view,
             collection_authoring.edit_definition,
             collection_authoring.replace_rule,
             collection_authoring.convert_collection,

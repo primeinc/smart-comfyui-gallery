@@ -2030,6 +2030,38 @@
       const total = mounted2 ? Number(requireData(mounted2, "total")) : Number.NaN;
       return Number.isFinite(total) && total > 0 ? total : 1;
     };
+    const rememberer = findElement(document, "[data-remember-view]", HTMLElement);
+    rememberer?.addEventListener("click", async () => {
+      const name = await askText("remember this question as", {
+        detail: "it goes in the strip below, and opens the question again -- it makes no collection",
+        placeholder: "portraits from June",
+        label: "name"
+      });
+      if (name === null) return;
+      const { error } = await api.POST("/views", { body: { name, qs: window.location.search } });
+      if (error) {
+        await say(refusal(error, "that question was not remembered"));
+        return;
+      }
+      window.location.reload();
+    });
+    for (const link of everyElement(document, "[data-remembered-open]", HTMLElement)) {
+      link.addEventListener("click", () => {
+        const id = requireData(link, "rememberedOpen");
+        void fetch(`/views/${encodeURIComponent(id)}/opened`, { method: "POST", keepalive: true });
+      });
+    }
+    for (const drop of everyElement(document, "[data-forget-view]", HTMLElement)) {
+      drop.addEventListener("click", async () => {
+        const id = requireData(drop, "forgetView");
+        const held2 = await fetch(`/views/${encodeURIComponent(id)}/forget`, { method: "POST" });
+        if (!held2.ok) {
+          await say("that question was not forgotten");
+          return;
+        }
+        drop.closest("[data-remembered-view]")?.remove();
+      });
+    }
     const saver = findElement(document, "[data-save-smart]", HTMLElement);
     saver?.addEventListener("click", async () => {
       const spelled2 = spelling();

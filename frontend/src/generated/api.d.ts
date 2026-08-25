@@ -379,6 +379,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Asynccallable */
+        get: operations["ViewsAsynccallable"];
+        put?: never;
+        /** RememberView */
+        post: operations["ViewsRememberView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/views/{view_id}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** ViewOpened */
+        post: operations["ViewsViewIdOpenedViewOpened"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/views/{view_id}/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** ForgetView */
+        post: operations["ViewsViewIdForgetForgetView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t/{slug}": {
         parameters: {
             query?: never;
@@ -1799,6 +1851,11 @@ export interface components {
             currency: string;
             total: number;
         };
+        /** AskedView */
+        AskedView: {
+            name: string;
+            qs: string;
+        };
         /** Attempt */
         Attempt: {
             at: number;
@@ -2851,6 +2908,14 @@ export interface components {
             slug: string;
             name: string;
             kind: string;
+        };
+        /** RememberedView */
+        RememberedView: {
+            id: number;
+            name: string;
+            qs: string;
+            created_at: number;
+            last_used_at: number | null;
         };
         /** RenderRequest */
         RenderRequest: {
@@ -4233,6 +4298,139 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionWriteAnswer"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ViewsAsynccallable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RememberedView"][];
+                };
+            };
+        };
+    };
+    ViewsRememberView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskedView"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RememberedView"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ViewsViewIdOpenedViewOpened: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    ViewsViewIdForgetForgetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null;
                 };
             };
             /** @description Bad request syntax or unsupported method */

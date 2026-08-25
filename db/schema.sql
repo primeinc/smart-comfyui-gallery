@@ -1734,6 +1734,37 @@ CREATE TABLE watched_folder (
     added_at  REAL NOT NULL
 ) STRICT, WITHOUT ROWID;
 
+-- A question worth asking again.
+--
+-- The third thing people mean, and the one that had nowhere to go.
+-- An ALBUM is what somebody deliberately put together; a SMART
+-- COLLECTION is a dynamic grouping that behaves like one -- it has
+-- members, an address, a place on the shelf, things filed under it. A
+-- SAVED VIEW is none of that: it is "that was a useful question,
+-- remember it", and making one a collection put five things that are
+-- not albums into somebody's album list.
+--
+-- They share a GalleryQuery underneath without being one product
+-- object, which is why this stores the canonical SPELLING
+-- (db/resultset.py `canonical`) rather than a rule: the spelling is
+-- entity-aware and heals a retired slug to the live one as it is
+-- navigated, so a view saved before a rename still answers.
+CREATE TABLE saved_view (
+    id           INTEGER PRIMARY KEY,
+    -- NOCASE, like every other name a person types here: "Portraits"
+    -- and "portraits" are the same question asked twice, and the second
+    -- should replace the first rather than sit beside it.
+    name         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- The canonical query string, without a page: a remembered question
+    -- opens at its beginning, never at page 7 of an answer that has
+    -- since changed length.
+    qs           TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    -- So the list can put what somebody actually uses at the top. NULL
+    -- until it is opened once.
+    last_used_at REAL
+) STRICT;
+
 CREATE TABLE setting (
     key TEXT PRIMARY KEY, value TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
@@ -2366,7 +2397,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 39;
+PRAGMA user_version   = 40;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

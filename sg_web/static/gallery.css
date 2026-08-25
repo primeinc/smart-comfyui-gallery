@@ -1439,6 +1439,37 @@ body {
   padding: 0 0 0 18px;
   border-left: 2px solid var(--line);
 }
+/* Remembered questions: a strip of ways IN, above the chips that say
+   what the current one is. Quiet -- these are bookmarks, not the
+   answer -- and the forget button only appears on the one hovered. */
+.ask-remembered {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+}
+.ask-remembered-one {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.ask-forget {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.ask-remembered-one:hover .ask-forget,
+.ask-forget:focus-visible {
+  opacity: 1;
+}
+
 /* Stop, on the fold. Quiet until the row is hovered or focused: it is
    the one control here that ends work, and a button that ends work
    should not be the brightest thing in a list somebody is scanning. */

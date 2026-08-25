@@ -67,13 +67,33 @@
          data-view="{{ one }}"{% if one == view %} aria-current="page"{% endif %}>{{ one }}</a>
       {% endfor %}
     </span>
+    {# Three things, said as three things. "save view" made a smart
+       COLLECTION, so remembering five good questions put five things
+       that are not albums into somebody's album list. #}
+    <button type="button" class="ask-save" data-remember-view
+            title="remember this question, without making a collection of it">remember</button>
     <button type="button" class="ask-save" data-save-smart
-            title="save this view as a smart collection">save view</button>
+            title="save this view as a smart collection: it gets members, an address and a place on the shelf">make a smart collection</button>
     <button type="button" class="ask-save" data-replace-smart
             title="make this view an existing smart collection's new rule">replace a rule</button>
     {% if not q %}<a class="ask-save" data-timeline-link href="/timeline{% if qs %}?{{ qs }}{% endif %}"
             title="these pictures on the timeline">on the timeline</a>{% endif %}
   </header>
+  {# The questions somebody asked to be reminded of, most recently used
+     first. Here rather than on the album shelf, because that is the
+     whole distinction: this is a bookmark on a question, not a
+     container with things in it. #}
+  {% if remembered %}
+  <nav class="ask-remembered" data-remembered aria-label="remembered questions">
+    {% for one in remembered %}
+    <span class="ask-remembered-one" data-remembered-view="{{ one.id }}">
+      <a href="/g?{{ one.qs }}" data-remembered-open="{{ one.id }}">{{ one.name }}</a>
+      <button type="button" class="ask-forget" data-forget-view="{{ one.id }}"
+              title="stop remembering {{ one.name }}" aria-label="forget {{ one.name }}">&times;</button>
+    </span>
+    {% endfor %}
+  </nav>
+  {% endif %}
   {# Chips are the question, visible, and each one removes only itself.
      Clicking the body of a chip opens the drawer AT that filter, so the
      relationship between the two is something a person can see rather

@@ -27,6 +27,7 @@ from litestar.response import Template
 
 from db import analysis, catalog, connect, discovery, naming, pages, places, resultset, settings, vocabulary
 from db import facets as facets_module
+from db import views as views_module
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.wire import Wire
@@ -176,6 +177,10 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         if listed:
             for row in listed:
                 row["thumb"] = thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"])
+        # Read INSIDE the connection, like everything else here: the
+        # context dict below is assembled after `close`, so anything
+        # asked for down there is asked of a closed database.
+        remembered = views_module.all_of(conn)
     finally:
         connect.close(conn)
     provenance = shape["provenance"] or {}
@@ -225,6 +230,10 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "qs": shape["qs"],
         "view": view,
         "views": VIEWS,
+        # The questions somebody asked to be reminded of, carried on the
+        # first paint: a remembered question is a way IN, and a list that
+        # arrives after the answer is a list nobody used to get to it.
+        "remembered": remembered,
         "analysis": described,
         "table": listed,
         "columns": _column_sorts(query, view),
