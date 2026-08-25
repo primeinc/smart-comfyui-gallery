@@ -841,3 +841,119 @@ def test_the_navigation_indexes_ask_answerable_questions(library):
     # And a trash root is a storage location, never a navigation shelf.
     conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/bin', 'trash', ?)", (NOW,))
     assert "trash" not in [kind for _, kind in pages.roots_shelf(conn)]
+
+
+# --- every column the table draws can order it -------------------------------
+
+
+def _total(page: str) -> int:
+    """What the grid says the answer holds. Read off the markup because
+    /g is a page: the count is `data-total` on the grid root."""
+    found = re.search(r'data-total="(\d+)"', page)
+    assert found is not None, "the grid did not say how many the answer holds"
+    return int(found.group(1))
+
+
+def _slugs(page: str) -> list[str]:
+    """The cells, in the order the page put them."""
+    return re.findall(r'a class="cell" href="/i/([^"?]+)', page)
+
+
+def test_a_joined_column_sorts_without_narrowing_the_answer(tmp_path):
+    """The decision this needed, and it is a product one.
+
+    A photograph has no sampler. Sorting by sampler over a library of
+    photographs could reasonably order them or narrow to the ones that
+    have one -- and narrowing is wrong HERE, because this application
+    says what a question is with visible chips. A sort that also dropped
+    rows would change what the answer holds with nothing on screen
+    admitting it: the count moves, and the only explanation is a heading
+    somebody clicked.
+
+    So they order last and say so by position, exactly as the moment
+    sorts already do for a file nothing has interpreted.
+    """
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from db import connect
+    from sg_web.app import build_app
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(3):
+        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            # exactly one of them is a generated picture
+            one = conn.execute("SELECT id FROM file ORDER BY name LIMIT 1").fetchone()[0]
+            conn.execute(
+                "INSERT INTO generation(file_id, tool, detection, sampler, steps, parser, parsed_at)"
+                " VALUES(?, 'test', 'marker', 'euler', 20, 'test', 0)",
+                (one,),
+            )
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        every = _total(client.get("/g", headers={"accept": "text/html"}).text)
+        assert every == 3, "the control"
+
+        for sort in ("sampler", "sampler-desc", "steps", "seed", "iso", "camera", "checkpoint", "rating"):
+            answered = client.get("/g", params={"sort": sort}, headers={"accept": "text/html"})
+            assert answered.status_code == 200, f"{sort}: {answered.text[:400]}"
+            assert _total(answered.text) == every, f"sorting by {sort} narrowed the answer"
+
+
+def test_the_one_that_has_it_comes_first(tmp_path):
+    """And the ordering is real, not merely accepted. The file with a
+    sampler leads ascending; the ones without follow."""
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from db import connect
+    from sg_web.app import build_app
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    for i in range(3):
+        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"q{i}.png")
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            last = conn.execute("SELECT id FROM file ORDER BY name DESC LIMIT 1").fetchone()[0]
+            conn.execute(
+                "INSERT INTO generation(file_id, tool, detection, sampler, steps, parser, parsed_at)"
+                " VALUES(?, 'test', 'marker', 'euler', 20, 'test', 0)",
+                (last,),
+            )
+            conn.commit()
+            named = conn.execute("SELECT slug FROM entity WHERE id = ?", (last,)).fetchone()[0]
+        finally:
+            connect.close(conn)
+
+        answered = client.get("/g", params={"sort": "sampler"}, headers={"accept": "text/html"})
+        assert _slugs(answered.text)[0] == named, "the only file with a sampler did not lead a sort by sampler"
+
+
+def test_every_column_the_table_draws_is_a_sortable_heading(tmp_path):
+    """No dead headings, and no sortable column the table cannot show.
+
+    A heading that is plain text beside ten that are links reads as a
+    column the answer cannot be ordered by, which was true and is the
+    thing that was fixed.
+    """
+    from db import resultset
+    from sg_web.gallery import TABLE_COLUMNS
+
+    assert {name for name, _, _ in TABLE_COLUMNS} == set(resultset.COLUMN_ORDERS), (
+        "a column the table offers is not a sort the ResultSet understands, or the other way round"
+    )

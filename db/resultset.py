@@ -73,6 +73,16 @@ import threading
 #: so by position, exactly as the moment sorts already do for a file
 #: nothing has interpreted. Dropping them would misreport what the
 #: answer holds, and calling them zero would invent a fact.
+#: A sort NEVER narrows the answer. Every join below is a LEFT join, so
+#: asking for "by sampler" over a library of photographs orders them and
+#: keeps them: a photograph has no sampler and sorts last, saying so by
+#: position.
+#:
+#: Narrowing would have been the other defensible answer and it is the
+#: wrong one here, because this application says what a question is with
+#: visible chips. A sort that also dropped rows would change what the
+#: answer HOLDS with nothing on screen admitting it -- the count would
+#: move, and the only explanation would be a heading somebody clicked.
 COLUMN_ORDERS: dict[str, str] = {
     "name": "f.name COLLATE NOCASE",
     "kind": "f.kind",
@@ -81,6 +91,50 @@ COLUMN_ORDERS: dict[str, str] = {
     #: area rather than an area of nothing.
     "pixels": "f.width * f.height",
     "length": "f.duration",
+    # The recipe's numbers.
+    "seed": "g.seed",
+    "steps": "g.steps",
+    "cfg": "g.cfg",
+    "sampler": "g.sampler",
+    "checkpoint": "ck.name COLLATE NOCASE",
+    # The camera's.
+    "camera": "cam.name COLLATE NOCASE",
+    "iso": "cap.iso",
+    "f_number": "cap.f_number",
+    "focal_length": "cap.focal_length",
+    # And what a person said. Bound to the ACTOR, which is why this one
+    # takes an argument in the ORDER BY as well as the WHERE: a rating
+    # is somebody's, and "sort by rating" means sort by MINE.
+    "rating": "r.rating",
+}
+
+#: What each sortable column needs joined to be reachable, keyed by the
+#: alias the expression above uses. Written once and shared, because two
+#: columns off one table must not join it twice.
+#:
+#: `?` is the actor, and the only one here: a sort by somebody else's
+#: rating is not a thing this offers.
+COLUMN_JOINS: dict[str, str] = {
+    "g": " LEFT JOIN generation g ON g.file_id = f.id",
+    "ck": (
+        " LEFT JOIN file_artifact fck ON fck.file_id = f.id AND fck.role = 'checkpoint' AND fck.ordinal = 0"
+        " LEFT JOIN artifact ck ON ck.id = fck.artifact_id"
+    ),
+    "cam": (
+        " LEFT JOIN file_artifact fcam ON fcam.file_id = f.id AND fcam.role = 'captured_with' AND fcam.ordinal = 0"
+        " LEFT JOIN artifact cam ON cam.id = fcam.artifact_id"
+    ),
+    "cap": " LEFT JOIN capture cap ON cap.file_id = f.id",
+    "r": " LEFT JOIN rating r ON r.file_id = f.id AND r.user_id = ?",
+}
+
+#: Which alias each column's expression reaches through, and how many
+#: arguments that join binds. Derived from the expression rather than
+#: restated, so a column cannot name a join it does not use.
+COLUMN_JOIN_OF: dict[str, str] = {
+    name: expression.split(".", 1)[0].split()[-1]
+    for name, expression in COLUMN_ORDERS.items()
+    if expression.split(".", 1)[0].split()[-1] in ("g", "ck", "cam", "cap", "r")
 }
 
 #: Each column, ascending and descending. A person who clicks a heading
@@ -812,8 +866,18 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
         name, _, backwards = bound.query.sort.partition("-")
         order = "DESC" if backwards else "ASC"
         column = COLUMN_ORDERS[name]
+        # A LEFT join, so ordering by a column most files do not have
+        # keeps them: a photograph has no sampler, sorts last, and says
+        # so by position. Narrowing here would change what the answer
+        # HOLDS with no chip on screen admitting it.
+        alias = COLUMN_JOIN_OF.get(name)
+        joined = COLUMN_JOINS[alias] if alias else ""
+        # The actor binds in the JOIN, which comes before the WHERE, so
+        # its argument goes first. Bound after, every other placeholder
+        # in the statement would be reading one position along.
+        args = ([bound.actor_id] if alias == "r" else []) + list(args)
         sql = (
-            f"SELECT f.id FROM file f WHERE {' AND '.join(where)}"
+            f"SELECT f.id FROM file f{joined} WHERE {' AND '.join(where)}"
             f" ORDER BY ({column}) IS NULL, {column} {order}, f.id {order}"
         )
         return [row[0] for row in conn.execute(sql, args)]

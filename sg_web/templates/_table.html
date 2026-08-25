@@ -38,19 +38,19 @@
         {% if has_length %}{{ column("length", "answer-num") }}{% endif %}
         {{ column("size", "answer-num") }}
         {% if has_recipe %}
-        <th scope="col">checkpoint</th>
-        <th scope="col">sampler</th>
-        <th scope="col" class="answer-num">steps</th>
-        <th scope="col" class="answer-num">cfg</th>
-        <th scope="col" class="answer-num">seed</th>
+        {{ column("checkpoint") }}
+        {{ column("sampler") }}
+        {{ column("steps", "answer-num") }}
+        {{ column("cfg", "answer-num") }}
+        {{ column("seed", "answer-num") }}
         {% endif %}
         {% if has_camera %}
-        <th scope="col">camera</th>
-        <th scope="col" class="answer-num">iso</th>
-        <th scope="col" class="answer-num">f</th>
-        <th scope="col" class="answer-num">mm</th>
+        {{ column("camera") }}
+        {{ column("iso", "answer-num") }}
+        {{ column("f_number", "answer-num") }}
+        {{ column("focal_length", "answer-num") }}
         {% endif %}
-        <th scope="col" class="answer-num">&starf;</th>
+        {{ column("rating", "answer-num") }}
       </tr>
     </thead>
     <tbody>

@@ -53,6 +53,11 @@ SQL_STRUCTURE: dict[str, str] = {
     # from the module's fixed patch vocabulary, every value bound
     "sets": "clause",
     "order": "keyword",
+    # db/resultset.py table sorts: the LEFT JOIN a sortable column needs
+    # to be reachable, chosen from COLUMN_JOINS -- a module literal, one
+    # entry per alias, and the only bound value in any of them (the
+    # actor, in `rating`) rides as a `?`.
+    "joined": "clause",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
     "column": "identifier",

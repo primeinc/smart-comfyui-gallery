@@ -420,22 +420,6 @@ search answers with a set. What is NOT built:
   different claim with a different error mode -- is not, and is
   deliberately absent rather than quietly mixed into the exact counts.
 
-- **The table sorts by five of its columns, not by the joined ones.**
-  Name, kind, size, pixels and length are sorts the ResultSet
-  understands (`resultset.COLUMN_ORDERS`), each with its reverse, each
-  total on `(column, f.id)`. What is not sortable is every column that
-  is a LEFT JOIN -- checkpoint, sampler, steps, cfg, seed, camera, iso,
-  aperture, focal length, and the authored rating.
-
-  Not a copy-paste of the five. Each needs the join in the ordering
-  statement, and `rating` needs the ACTOR bound into it, which means an
-  argument in the ORDER BY as well as the WHERE. And the NULL question
-  gets sharper: a photograph has no sampler, so "sort by sampler" is
-  mostly a list of files that have none -- the position is honest but
-  probably not what was wanted, and whether such a sort should also
-  narrow to the files that HAVE one is a product decision, not an
-  implementation detail.
-
 - **The comparison has no zoom, so it cannot have a synchronised one.**
   Flipping is built -- one at a time in the same pixels, lettered, Space
   and the arrows, every column decoded so the flip is a repaint -- which

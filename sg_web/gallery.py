@@ -48,14 +48,30 @@ VIEWS = ("gallery", "table", "analyze")
 #: library is a click somebody has to undo every time. The second click
 #: reverses either way and the heading says which way it is.
 #:
-#: Only columns that live on the file row. A recipe or a camera column
-#: is a LEFT JOIN, sortable and not sorted yet -- see docs/BACKLOG.md.
+#: Every column the table draws, including the LEFT-JOINed ones. A sort
+#: by a column most files lack does not narrow the answer -- they order
+#: last and say so by position -- because narrowing would change what
+#: the answer holds with no chip on screen admitting it.
 TABLE_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("name", "name", False),
     ("kind", "kind", False),
     ("size", "size", True),
     ("pixels", "pixels", True),
     ("length", "length", True),
+    # the recipe
+    ("checkpoint", "checkpoint", False),
+    ("sampler", "sampler", False),
+    ("steps", "steps", True),
+    ("cfg", "cfg", True),
+    ("seed", "seed", True),
+    # the camera
+    ("camera", "camera", False),
+    ("iso", "iso", True),
+    ("f_number", "f", True),
+    ("focal_length", "mm", True),
+    # and what a person said, which is theirs: "sort by rating" means
+    # sort by MINE, so the actor binds into the ordering statement.
+    ("rating", "&starf;", True),
 )
 
 
