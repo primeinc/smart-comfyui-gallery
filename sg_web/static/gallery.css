@@ -1428,6 +1428,31 @@ body {
    person is. The media inspector has had this since the claim could be
    made; the person's own page, which is where the wrong picture is
    noticed, had no way to say it. */
+/* A collection, folded to one row. The steps live under it rather than
+   beside it: eight rows where somebody asked for one thing made the
+   question "is this going well" a sum they had to do while it moved. */
+.matrix-collection > details > summary {
+  cursor: pointer;
+}
+.matrix-steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  border-left: 2px solid var(--line);
+}
+/* One failed step means the collection did not do what it was asked,
+   whatever the others managed -- so it is coloured on the fold, where
+   somebody scanning the list sees it without opening anything. */
+[data-collection-state="failed"] .matrix-state {
+  color: var(--danger);
+}
+
+/* The one sweep that is an answer rather than a choice. Everything
+   beside it needs somebody to already know which to press and when. */
+[data-launch-primary] > button:first-child {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Duplicate review. Read-only by design, so it is a reading surface:
    the copies, and beside each one what it is FILED under, which is the
    thing that would be lost if the wrong copy went. */

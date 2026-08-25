@@ -334,3 +334,44 @@ def test_a_job_that_is_nobodys_step_is_untouched(tmp_path):
         assert told["collections"] == []
         page = client.get("/operations", headers={"accept": "text/html"}).text
         assert f'data-matrix-job="{alone}"' in page
+
+
+def test_the_console_offers_it_first_and_pressing_it_queues_the_chain(tmp_path):
+    """The button, and where it is.
+
+    Twelve sweeps, each honest, each needing somebody to already know
+    which to press and when. This one is the answer to that question, so
+    it is not the thirteenth in the row -- it is the first.
+    """
+    from db import connect
+
+    with _console(tmp_path) as client:
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert 'data-launch="catch_up"' in page, "the console cannot start a catch-up"
+        assert "data-launch-primary" in page
+
+        told = client.post("/operations/jobs/catch_up", headers={"accept": "text/html"})
+        assert told.status_code in (200, 201), told.text
+        assert "nothing to do" not in told.text
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            steps = [
+                (one, after)
+                for one, after in conn.execute(
+                    "SELECT id, after_id FROM job WHERE collection = 'catch up' ORDER BY id"
+                ).fetchall()
+            ]
+        finally:
+            connect.close(conn)
+        assert steps, "the button queued nothing"
+        assert steps[0][1] is None
+        for (before, _), (_, after) in itertools.pairwise(steps):
+            assert after == before, "the button queued the steps ungated"
+
+
+def test_an_unknown_sweep_name_is_still_refused(tmp_path):
+    """The control: adding a launcher did not turn the name into
+    something the route accepts anything for."""
+    with _console(tmp_path) as client:
+        assert client.post("/operations/jobs/catch-up").status_code == 404, "the underscore name is the one that works"

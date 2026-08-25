@@ -112,7 +112,26 @@ def _events(state: State, conn) -> list[int]:
 #: find files, read them, fingerprint, thumbnail, group copies, embed, detect faces,
 #: cluster, interpret time, group events. Each launcher returns the job
 #: ids it queued -- the same db/runner.py entry points the JSON routes use.
+def _catch_up(state: State, conn) -> list[int]:
+    """Every step of the derivation chain, gated in order.
+
+    The twelve buttons beside this one are each honest and each require
+    knowing which to press and when: `cluster` over an unembedded
+    library settles `done` having clustered nothing, so pressing them
+    out of order does not look like a mistake. This is the order, and
+    the runner holds it (db/runner.py `catch_up`).
+    """
+    cache = str(home.thumbs_dir(pathlib.Path(state.home))) if settings.flag(conn, "thumbnail_precache") else None
+    return runner.catch_up(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache)
+
+
+#: What starts a sweep, in the order the buttons appear. `catch_up`
+#: first, and it is not one sweep among thirteen: it is the answer to
+#: the question the other twelve force a person to answer themselves --
+#: which of these, and in what order. The rest stay because knowing
+#: exactly what you want is a real thing to want.
 LAUNCHERS: dict[str, tuple[str, Launcher]] = {
+    "catch_up": ("bring the library up to date, in order", _catch_up),
     "ingest": ("read the metadata of every file not yet read", _ingest),
     "verify": ("verify every file's bytes", _verify),
     "phash": ("fingerprint every picture not yet fingerprinted", _phash),
