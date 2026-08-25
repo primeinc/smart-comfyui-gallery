@@ -240,6 +240,10 @@ mod api
 # Authentic historical db/schema.sql, vendored for migration fixtures (schema.just)
 mod schema
 
+# A decades-wide sample library on disk: mixed modalities, several
+# generator dialects, and the holes a real folder has (corpus.just)
+mod corpus
+
 # Which faiss the app selects at runtime: the vendored GPU build
 # (vendor/faiss-gpu-win64, CUDA DLLs from the nvidia wheels) on
 # Windows+NVIDIA, else the installed faiss-cpu. The faiss_gpu setting
