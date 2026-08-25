@@ -737,8 +737,9 @@ not a design decision anybody made; it is work nobody did.
 
   The human half shipped: `tag` and `file_tag` are authored tables
   (schema v42), `f=tag:eq:<word>` is a gallery dimension with AND and
-  OR, and the media inspector types one in. What is still missing is the
-  other reading of the same word.
+  OR, the media inspector types one in, and `/keywords` is the shelf that
+  folds two spellings into one or takes a word off every picture that
+  wears it. What is still missing is the other reading of the same word.
 
   `derived_annotation.kind = 'tag'` is permitted and never written, and
   that is the MODEL's tag -- it requires a `model_id`, a `model_version`
@@ -753,15 +754,12 @@ not a design decision anybody made; it is work nobody did.
   The same shape reverse geocoding needs below: evidence suggests, a
   person authors, and the two never share a table.
 
-  Two smaller things the human half left open, both deliberate:
+  One thing the human half left open, deliberately:
 
   - **A smart album cannot filter by keyword.** `collection_rule`'s
     stored format is versioned (`RULE_VERSION`), so a `tag` field there
     is a durable-format change with a migration of its own, not a line
     in the registry. Every other surface got the dimension for free.
-  - **No keyword management page.** `authored.rename_tag` folds one word
-    into another and is covered, but nothing calls it: renaming and
-    merging are `/albums`-shaped work with no surface yet.
 
 - **Metadata portability: OUT is done, IN and interop are not.**
 

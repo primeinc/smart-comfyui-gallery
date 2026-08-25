@@ -25,6 +25,7 @@ const options = {
   entryPoints: {
     dupes: "src/entries/dupes.ts",
     gallery: "src/entries/gallery.ts",
+    keywords: "src/entries/keywords.ts",
     people: "src/entries/people.ts",
     person: "src/entries/person.ts",
     media: "src/entries/media.ts",

@@ -26,6 +26,7 @@ SURFACES = (
     "/places",
     "/people",
     "/albums",
+    "/keywords",
     "/folders",
     "/stories",
 )
@@ -99,7 +100,8 @@ def crawl(client) -> list[str]:
     seen: set[str] = set()
     walked: dict[str, int] = {}
     queue: list[tuple[str, str]] = [
-        (p, "the front") for p in ("/g", "/timeline", "/people", "/places", "/albums", "/folders", "/operations")
+        (p, "the front")
+        for p in ("/g", "/timeline", "/people", "/places", "/albums", "/keywords", "/folders", "/operations")
     ]
     while queue:
         path, emitter = queue.pop(0)

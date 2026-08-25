@@ -1503,6 +1503,170 @@
                 "deprecated": false
             }
         },
+        "/keywords": {
+            "get": {
+                "summary": "KeywordsIndex",
+                "operationId": "KeywordsKeywordsIndex",
+                "responses": {
+                    "200": {
+                        "description": "Every keyword, commonest first, with how many pictures wear it",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/KeywordListed"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
+        "/keywords/rename": {
+            "post": {
+                "summary": "RenameKeyword",
+                "operationId": "KeywordsRenameRenameKeyword",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Renamed"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Document created, URL follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/KeywordListed"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request syntax or unsupported method",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status_code": {
+                                            "type": "integer"
+                                        },
+                                        "detail": {
+                                            "type": "string"
+                                        },
+                                        "extra": {
+                                            "additionalProperties": {},
+                                            "type": [
+                                                "null",
+                                                "object",
+                                                "array"
+                                            ]
+                                        }
+                                    },
+                                    "type": "object",
+                                    "required": [
+                                        "detail",
+                                        "status_code"
+                                    ],
+                                    "description": "Validation Exception",
+                                    "examples": [
+                                        {
+                                            "status_code": 400,
+                                            "detail": "Bad Request",
+                                            "extra": {}
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
+        "/keywords/forget": {
+            "post": {
+                "summary": "ForgetKeyword",
+                "operationId": "KeywordsForgetForgetKeyword",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Forgotten"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Document created, URL follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/KeywordListed"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request syntax or unsupported method",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status_code": {
+                                            "type": "integer"
+                                        },
+                                        "detail": {
+                                            "type": "string"
+                                        },
+                                        "extra": {
+                                            "additionalProperties": {},
+                                            "type": [
+                                                "null",
+                                                "object",
+                                                "array"
+                                            ]
+                                        }
+                                    },
+                                    "type": "object",
+                                    "required": [
+                                        "detail",
+                                        "status_code"
+                                    ],
+                                    "description": "Validation Exception",
+                                    "examples": [
+                                        {
+                                            "status_code": 400,
+                                            "detail": "Bad Request",
+                                            "extra": {}
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/albums/smart": {
             "post": {
                 "summary": "MakeSmart",
@@ -14513,6 +14677,23 @@
                 ],
                 "title": "FilterOptions"
             },
+            "Forgotten": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "pictures"
+                ],
+                "title": "Forgotten"
+            },
             "FreezeRequest": {
                 "properties": {
                     "event_id": {
@@ -15342,6 +15523,31 @@
                     "tag"
                 ],
                 "title": "Keyword"
+            },
+            "KeywordListed": {
+                "properties": {
+                    "tag": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "qs": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "label",
+                    "pictures",
+                    "qs",
+                    "tag"
+                ],
+                "title": "KeywordListed"
             },
             "LedgerHealth": {
                 "properties": {
@@ -17311,6 +17517,23 @@
                     "qs"
                 ],
                 "title": "RememberedView"
+            },
+            "Renamed": {
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "to": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "to"
+                ],
+                "title": "Renamed"
             },
             "RenderRequest": {
                 "properties": {

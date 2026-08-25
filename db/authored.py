@@ -288,6 +288,37 @@ def rename_tag(conn, name: str, to: str, now: float) -> int:
     return onto_id
 
 
+def forget_tag(conn, name: str, *, expecting: int | None = None) -> int:
+    """Take a keyword off every picture and delete it. Returns how many
+    pictures wore it.
+
+    The one gesture in the keyword vocabulary that destroys authored
+    work: retyping a word on two hundred pictures is not a recovery, so
+    this follows the same doctrine as removing a root rather than
+    inventing a lighter one. `expecting` is the count the caller was
+    LOOKING AT. If the number moved between the page being drawn and the
+    button being pressed -- another window, a bulk write -- the refusal
+    says so instead of taking more than somebody meant.
+
+    Passing None skips the check, which is for callers that have no
+    screen to have read a number off.
+    """
+    held = normalised(name)
+    found = conn.execute("SELECT id FROM tag WHERE tag = ?", (held,)).fetchone()
+    if not found:
+        raise ValueError(f"there is no keyword {name!r} to forget")
+    tag_id = int(found[0])
+    wearing = int(conn.execute("SELECT count(*) FROM file_tag WHERE tag_id = ?", (tag_id,)).fetchone()[0])
+    if expecting is not None and expecting != wearing:
+        raise ValueError(
+            f"{name!r} is on {wearing} picture(s) now, not the {expecting} you were shown"
+            " -- look again before forgetting it"
+        )
+    conn.execute("DELETE FROM file_tag WHERE tag_id = ?", (tag_id,))
+    conn.execute("DELETE FROM tag WHERE id = ?", (tag_id,))
+    return wearing
+
+
 TAGS_OF = (
     "SELECT t.tag, t.label FROM file_tag ft JOIN tag t ON t.id = ft.tag_id"
     " WHERE ft.file_id = ? ORDER BY t.label COLLATE NOCASE"

@@ -379,6 +379,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** KeywordsIndex */
+        get: operations["KeywordsKeywordsIndex"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keywords/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** RenameKeyword */
+        post: operations["KeywordsRenameRenameKeyword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keywords/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** ForgetKeyword */
+        post: operations["KeywordsForgetForgetKeyword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/albums/smart": {
         parameters: {
             query?: never;
@@ -2603,6 +2654,11 @@ export interface components {
             options: components["schemas"]["FilterOption"][];
             more: number;
         };
+        /** Forgotten */
+        Forgotten: {
+            name: string;
+            pictures: number;
+        };
         /** FreezeRequest */
         FreezeRequest: {
             event_id: number;
@@ -2749,6 +2805,13 @@ export interface components {
         Keyword: {
             tag: string;
             label: string;
+        };
+        /** KeywordListed */
+        KeywordListed: {
+            tag: string;
+            label: string;
+            pictures: number;
+            qs: string;
         };
         /** LedgerHealth */
         LedgerHealth: {
@@ -3134,6 +3197,11 @@ export interface components {
             qs: string;
             created_at: number;
             last_used_at: number | null;
+        };
+        /** Renamed */
+        Renamed: {
+            name: string;
+            to: string;
         };
         /** RenderRequest */
         RenderRequest: {
@@ -4547,6 +4615,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionWriteAnswer"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    KeywordsKeywordsIndex: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every keyword, commonest first, with how many pictures wear it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordListed"][];
+                };
+            };
+        };
+    };
+    KeywordsRenameRenameKeyword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Renamed"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordListed"][];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    KeywordsForgetForgetKeyword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Forgotten"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordListed"][];
                 };
             };
             /** @description Bad request syntax or unsupported method */

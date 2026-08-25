@@ -26,6 +26,7 @@
     <a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a>
     <a href="/places"{% if here == "/places" %} aria-current="page"{% endif %}>places</a>
     <a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a>
+    <a href="/keywords"{% if here == "/keywords" %} aria-current="page"{% endif %}>keywords</a>
     <a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a>
     <a href="/timeline"{% if here == "/timeline" %} aria-current="page"{% endif %}>timeline</a>
     <a href="/dupes"{% if here == "/dupes" %} aria-current="page"{% endif %}>duplicates</a>
