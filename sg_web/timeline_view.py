@@ -29,7 +29,7 @@ from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromQuery, QueryParameter
 from litestar.response import Redirect, Response, Template
 
-from db import connect, context, discovery, facets, pages, planning, rendering, resultset, settings, vocabulary
+from db import connect, context, facets, pages, planning, rendering, resultset, settings
 from sg_web import home, projecting
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
@@ -131,60 +131,59 @@ def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str
     return (sql, values), live
 
 
-def _scope_told(conn, question: resultset.GalleryQuery) -> dict | None:
+#: The comparison each scope states. Every one is equality except the
+#: rating floor, which is the only scope that names a bound rather than a
+#: value -- `rating from 4`, not `rating 4`.
+_SCOPE_OPS = {"rating_min": "gte"}
+
+
+def _scope_told(question: resultset.GalleryQuery) -> dict | None:
     """What the page says it is scoped to, or None for the whole library:
-    the canonical spelling and its parts, one per scope and facet."""
-    # `spelled` is what a person READS, and it comes from db/vocabulary.py
-    # because that is the module that exists so a label lives in one
-    # place. Two things went wrong when it did not:
-    #
-    #   * a scope part carried no `spelled` at all, and the template
-    #     tested `is defined` -- which is always true on a wire model,
-    #     since the field defaults to None. Every scoped timeline said
-    #     "showing only None" (folder, album, person, artifact, kind,
-    #     favorite, rating_min: seven of eight scopes).
-    #   * the fallback was `key=value`, so a bool would have read
-    #     `favorite=False` -- a chip printing a key, which is the exact
-    #     drift `db/vocabulary.py` opens by describing.
-    # An `id` dimension is stored by id because NAMES MOVE -- renaming a
-    # model is a thing people do and a bookmark has to survive it -- so
-    # its chip must be resolved against the row or it reads `place #11
-    # (gone)`, which is what it did the first time this went through
-    # `chip` with nothing to look in. `discovery.labels` is that lookup,
-    # already written and already what the gallery's chips use; the
-    # alternative was this adapter running its own statement, which is a
-    # thing it may not do and should not want to.
-    named = discovery.labels(conn, question)
-    parts = []
-    for key, value in (
-        ("folder", question.folder),
-        ("album", question.album),
-        ("person", question.person),
-        ("artifact", question.artifact),
-        ("kind", question.kind),
-        ("favorite", question.favorite),
-        ("rating_min", question.rating_min),
-    ):
-        if value is None:
-            continue
-        one = vocabulary.dimension(key)
-        spelled = vocabulary.chip(one, one.ops[0], value) if one else f"{key} {value}"
-        parts.append({"key": key, "value": value, "spelled": spelled})
-    for held in question.facets:
-        one = vocabulary.dimension(held.key)
-        if one is None:
-            parts.append({"key": held.key, "value": held.value, "spelled": facets.spell(held)})
-            continue
-        parts.append(
-            {
-                "key": held.key,
-                "value": held.value,
-                "spelled": vocabulary.chip(one, held.op, held.value, named.get(held.key)),
-            }
+    the canonical spelling and its parts, one per scope and facet.
+
+    Every part carries `spelled`. The template's fallback was
+    `key ~ "=" ~ value`, which printed the query string on the page: a
+    bool read `favorite=False`, and a facet -- which did carry a spelling
+    -- spelled itself `tag:eq:beach`, the URL rather than the sentence.
+    `facets.said` is the sentence.
+    """
+    parts = [
+        {"key": key, "value": value}
+        for key, value in (
+            ("folder", question.folder),
+            ("album", question.album),
+            ("person", question.person),
+            ("artifact", question.artifact),
+            ("kind", question.kind),
+            ("favorite", question.favorite),
+            ("rating_min", question.rating_min),
         )
+        if value is not None
+    ] + [{"key": one.key, "value": one.value, "spelled": facets.spell(one)} for one in question.facets]
     if not parts:
         return None
     return {"qs": resultset.canonical(question), "parts": parts}
+
+
+def _chips(conn, question: resultset.GalleryQuery) -> list[str]:
+    """The same scope, as sentences for the page to print.
+
+    NOT on the wire model, and that is the point. `spelled` there is the
+    ADDRESS -- a facet spells itself `tag:eq:beach`, which is the URL --
+    and the model is the machine's contract, asserted key-for-key by
+    tests/test_a_picture_has_a_place.py and
+    tests/test_the_timeline_is_the_way_in.py.
+
+    The page needs the sentence: `kind image`, not `kind=image`, and
+    `favorite yes`, not `favorite=True`. Same facts, rendered for a reader,
+    built from the same question the model was built from -- so the two
+    still cannot describe different surfaces.
+
+    Takes the CONNECTION because an id-valued clause has to be resolved to
+    a name while there is one: `place #11 (gone)` says the row was deleted
+    about a place that is sitting in the table.
+    """
+    return facets.chips(conn, question, _SCOPE_OPS)
 
 
 #: Which planner tells which kind of session's story; a kind with none
@@ -935,7 +934,7 @@ def _surface(
     scope, held = _scope(conn, state, asked)
     coverage = _coverage(conn, scope, held)
     extent = pages.timeline_extent(conn, scope)
-    scope_told = _scope_told(conn, held)
+    scope_told = _scope_told(held)
     if extent is None or extent[0] is None:
         return {
             "bin": bin_name or "day",
@@ -1870,7 +1869,7 @@ def pictures(
             {
                 "start": start,
                 "end": end,
-                "scope": _scope_told(conn, held),
+                "scope": _scope_told(held),
                 "qs": qs,
                 "total": total,
                 "pictures": [_picture(row, qs) for row in rows],
@@ -2039,6 +2038,9 @@ def timeline(
             return Redirect(path="/timeline?" + urllib.parse.urlencode(query), status_code=303)
         asked = _question(folder, album, person, artifact, kind, favorite, rating_min, f)
         told = _surface(conn, state, asked, start, end, snap=snap)
+        # While the connection is open: an id-valued clause needs a name,
+        # and there is nothing to resolve it with after the finally below.
+        chips = _chips(conn, asked)
     finally:
         connect.close(conn)
     # The same answer either way, stated once: the machine gets the model
@@ -2049,4 +2051,8 @@ def timeline(
         return Response(surface, headers=VARIES)
     drawn = surface.model_dump(mode="json")
     template = "_timeline_surface.html" if request.headers.get("hx-request") == "true" else "timeline.html"
-    return Template(template_name=template, context={"surface": drawn}, headers=VARIES)
+    return Template(
+        template_name=template,
+        context={"surface": drawn, "chips": chips},
+        headers=VARIES,
+    )

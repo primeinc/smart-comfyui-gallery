@@ -485,6 +485,64 @@ def spell(held: Facet) -> str:
     return f"{held.key}:{held.op}:{held.value}"
 
 
+def said(key: str, value, op: str = "eq", named: dict | None = None) -> str:
+    """One clause as a person reads it: `kind image`, `favorite yes`,
+    `rating from 4`, `keyword beach`, `place Lisbon`.
+
+    `spell` above is the URL form and this is the sentence; they are not
+    interchangeable and a surface printing the first is printing a query
+    string at a reader. A key with no dimension keeps `key=value`, because
+    inventing a label for it here is the drift db/vocabulary.py opens by
+    describing.
+
+    `named` resolves the id-valued dimensions. Without it an artifact or a
+    place reads `#11 (gone)`, which says the row was deleted about one that
+    is sitting there -- worse than the address it replaced. `chips` below
+    is how a caller with a connection gets it right.
+
+    It lives here rather than in the surface: an adapter may speak to
+    facets, and what a clause is CALLED belongs to the vocabulary, so the
+    two are joined on this side of the boundary (sglint SG402).
+    """
+    from . import vocabulary
+
+    dimension = vocabulary.dimension(key)
+    if dimension is None:
+        return f"{key}={value}"
+    return vocabulary.chip(dimension, op, value, named)
+
+
+def chips(conn, question, scopes: dict[str, str] | None = None) -> list[str]:
+    """Every clause a question carries, as sentences, names resolved.
+
+    One place, so a surface never writes its own `key=value` fallback --
+    which is how a page ends up printing `favorite=False` at a person.
+
+    `scopes` names the non-equality comparisons: `rating_min` states a
+    bound rather than a value, and reads `rating from 4`.
+    """
+    from . import discovery, vocabulary
+
+    scopes = scopes or {}
+    held = discovery.labels(conn, question)
+    said_for = []
+    for key, value in (
+        ("folder", question.folder),
+        ("album", question.album),
+        ("person", question.person),
+        ("artifact", question.artifact),
+        ("kind", question.kind),
+        ("favorite", question.favorite),
+        ("rating_min", question.rating_min),
+    ):
+        if value is None:
+            continue
+        one = vocabulary.dimension(key)
+        said_for.append(said(key, value, scopes.get(key, "eq"), held.get(key) if one else None))
+    said_for += [said(one.key, one.value, one.op, held.get(one.key)) for one in question.facets]
+    return said_for
+
+
 #: No facets: no conjunct, no values -- what every scoped reader takes
 #: by default.
 UNSCOPED: tuple[str, list] = ("", [])

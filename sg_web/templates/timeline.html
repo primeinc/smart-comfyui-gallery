@@ -15,7 +15,7 @@
   </header>
   <main class="stage">
     {% if surface.scope %}
-    <p class="places-line" data-timeline-scope="{{ surface.scope.qs }}">showing only {% for one in surface.scope.parts %}<code>{{ one.spelled or one.key ~ "=" ~ one.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/g?{{ surface.scope.qs }}">open in the gallery</a> &middot; <a href="/timeline">the whole library</a></p>
+    <p class="places-line" data-timeline-scope="{{ surface.scope.qs }}">showing only {% for one in chips %}<code>{{ one }}</code>{% if not loop.last %}, {% endif %}{% endfor %} &middot; <a href="/g?{{ surface.scope.qs }}">open in the gallery</a> &middot; <a href="/timeline">the whole library</a></p>
     {% endif %}
     <div id="timeline-swap">
       {% include "_timeline_surface.html" %}

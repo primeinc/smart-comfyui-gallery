@@ -652,10 +652,7 @@
       }
       await applied(
         list,
-        answered(
-          await api.POST("/keywords/forget", { body: { name, pictures } }),
-          "the keyword could not be forgotten"
-        )
+        answered(await api.POST("/keywords/forget", { body: { name, pictures } }), "the keyword could not be forgotten")
       );
     });
   })();
