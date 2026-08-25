@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+from typing import Any
 
 import pytest
 from litestar.testing import TestClient
@@ -42,7 +43,10 @@ def _instant(wall: float) -> float:
 def _attempt(**over) -> when.Verdict | None:
     """The i2i run's claims with `over` applied, judged; None when the
     generator left no claim."""
-    base = {
+    # Spelled out because a literal holding a str and two floats infers
+    # every value as their union, and `**` then offers that union to
+    # each of `judge_generation`'s differently-typed parameters.
+    base: dict[str, Any] = {
         "date_text": "2026-07-18",
         "name": "0947001-c5afa607-qwnImageEdit.png",
         "tool": "SwarmUI",

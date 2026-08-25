@@ -595,11 +595,12 @@ def submit_catch_up(state: State) -> CatchUpQueued:
         # and every other submit route hands the raw dict back, so nothing
         # ever validated it against the model that says `bool`. Naming the
         # answer is what made the disagreement visible.
-        return CatchUpQueued(
-            collection=runner.CATCH_UP,
-            steps=queued,
-            first=JobSnapshot(**(first | {"cancel_requested": bool(first["cancel_requested"])})),
-        )
+        # `submitted` answers an untyped dict, so the union below infers
+        # every value as `Unknown | bool` and offers that to each of
+        # JobSnapshot's differently-typed fields. Named, so the spread
+        # says what it is.
+        fields: dict[str, Any] = first | {"cancel_requested": bool(first["cancel_requested"])}
+        return CatchUpQueued(collection=runner.CATCH_UP, steps=queued, first=JobSnapshot(**fields))
     finally:
         connect.close(conn)
 
@@ -1780,6 +1781,14 @@ def _template_engine() -> JinjaTemplateEngine:
     # every stylesheet and script URL carries the newest mtime under
     # static/: a browser that cached yesterday's timeline.js fetches
     # today's, and a deploy that changed nothing keeps every cache warm
+    #
+    # ty reports this and the report is jinja2's, not ours: it never
+    # annotates the attribute -- `self.globals = DEFAULT_NAMESPACE.copy()`
+    # (jinja2/environment.py:353) -- so its type is inferred from a
+    # heterogeneous literal holding a range, a dict and a callable, and a
+    # str is not one of those. Adding to `globals` is the documented way
+    # to do this; spelling it any other way would contort our code around
+    # a missing annotation upstream.
     environment.globals["static_v"] = _static_version()
     engine = JinjaTemplateEngine.from_environment(environment)
     activity.register(engine)

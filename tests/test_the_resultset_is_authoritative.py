@@ -362,8 +362,11 @@ def test_an_album_is_a_scope(shelves):
 
 
 def test_malformed_questions_are_refused():
-    refused: dict[str, Any]
-    for refused, why in (
+    # The TABLE is annotated, not the loop variable: a declaration on the
+    # target does not reach a for-target, whose type comes from the
+    # iterable's elements. These really are request-shaped values of
+    # mixed type -- that is what `parse` takes and what it refuses.
+    cases: tuple[tuple[dict[str, Any], str], ...] = (
         ({"sort": "best"}, "sort must be"),
         ({"sort": "similarity"}, "needs a phrase"),
         ({"text": "a banana", "sort": "newest"}, "orders by similarity"),
@@ -371,7 +374,8 @@ def test_malformed_questions_are_refused():
         ({"size": 0}, "page size"),
         ({"size": resultset.MAX_PAGE_SIZE + 1}, "page size"),
         ({"kind": "picture"}, "kind must be"),
-    ):
+    )
+    for refused, why in cases:
         with pytest.raises(ValueError, match=why):
             resultset.parse(**refused)
 

@@ -514,7 +514,7 @@ consequences the architecture should keep room for, not work.
   Triaged 2026-08-25, and the count in this entry was the wrong unit.
   ty reported 89 diagnostics, but many are one call site reported once
   per overload: `test_the_resultset_is_authoritative.py:276` is eleven
-  of them. **48 distinct sites** was the real number, now **27** (57
+  of them. **48 distinct sites** was the real number, now **16** (26
   diagnostics).
 
   Two were the real bugs this entry named, and one of them is fixed:
@@ -555,17 +555,33 @@ consequences the architecture should keep room for, not work.
   - `metaparse/adapters.py:214`, `sg_web/collection_view.py:619` --
     `.rsplit` and `.append` on the union a heterogeneous literal infers.
 
-  Where the remaining 27 sit:
+  The test bulk is gone, and it was three annotations for 27
+  diagnostics. All the same shape -- a TABLE of request-shaped arguments
+  spread with `**` into a function whose parameters are differently
+  typed. One thing learned doing it: **a declaration on the loop
+  variable does not reach a for-target**, whose type comes from the
+  iterable's elements. `refused: dict[str, Any]` above
+  `for refused, why in (...)` had been written and did nothing;
+  annotating the TUPLE is what works.
 
-      tests/                          17 sites, in 9 files
-      sg_web/app.py                    5
-      db/planning.py                   4   -- the FROZEN plan dicts, above
-      vision/                          5
-      benchmarks/                      3
+  Where the remaining 16 sit, and they are the hard ones:
 
-  The tests are the bulk now and are mostly one shape: `resultset.parse`
-  handed a `str | int` where a parameter is `str | None`. Two files hold
-  21 of the diagnostics between them.
+      db/planning.py         4   the FROZEN plan dicts, above
+      tests/                 6   in 5 files
+      vision/                5   narrowing and transformers' own types
+      benchmarks/            3
+      sg_web/app.py          1   NOT ours, see below
+
+  `sg_web/app.py:1783` is jinja2's: it never annotates `Environment.
+  globals` -- `self.globals = DEFAULT_NAMESPACE.copy()`
+  (jinja2/environment.py:353) -- so the type is inferred from a
+  heterogeneous literal holding a range, a dict and a callable, and
+  assigning a str is reported. Adding to `globals` is the documented way
+  to do it; the code says so and stays idiomatic rather than contorting
+  around a missing annotation upstream. Reaching zero means a
+  suppression mechanism for exactly this, which `respect-type-ignore-
+  comments = false` currently forbids -- that is the decision left
+  before ty can join the fast gate.
 
 ## The query workspace, as far as it got
 

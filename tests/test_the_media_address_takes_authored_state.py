@@ -245,12 +245,16 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
         rated = {
             row[0] for row in conn.execute("SELECT file_id FROM rating WHERE user_id = ? AND rating >= 4", (mine,))
         }
-        constrained: dict[str, Any]
-        for constrained, expected in (
+        # the TABLE, not the loop variable: a for-target takes its type
+        # from the iterable's elements, so a declaration above it does
+        # not reach. `favorite` is request-shaped ("1") and `rating_min`
+        # a number -- which is what `parse` takes.
+        cases: tuple[tuple[dict[str, Any], set], ...] = (
             ({"favorite": "1"}, favorites),
             ({"rating_min": 4}, rated),
             ({"favorite": "1", "rating_min": 4}, favorites & rated),
-        ):
+        )
+        for constrained, expected in cases:
             seen.clear()
             resultset.describe(conn, "", resultset.parse(text="sunset", **constrained), 0.0, actor_id=mine)
             assert seen["allowed"] == expected, (
