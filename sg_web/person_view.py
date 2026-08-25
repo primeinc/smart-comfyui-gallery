@@ -282,6 +282,44 @@ class Merged(Wire):
     assertions: int
 
 
+class ChosenFace(Wire):
+    """The body of POST /p/{slug}/face: which picture to take it from.
+
+    `null` goes back to automatic, which is not "no avatar" -- it is the
+    highest-confidence detection they had before saying anything.
+    """
+
+    file: str | None = None
+
+
+@post("/p/{slug:str}/face", sync_to_thread=True)
+def choose_face(state: State, slug: FromPath[str], data: ChosenFace) -> Response[None]:
+    """Take this person's face from this picture.
+
+    The automatic choice is their highest-confidence detection in the
+    primary run: usually right, and sometimes a blurred profile in a
+    crowd. This is the only one of the four face corrections that is not
+    a durability problem -- a wrong avatar is a wrong picture, not a
+    wrong record -- so it is a preference, and clearing it is allowed.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        found = naming.resolve(conn, "person", slug)
+        if found is None:
+            raise NotFoundException(f"no person at /p/{slug}")
+        file_id = None
+        if data.file:
+            held = naming.resolve(conn, "file", data.file.strip().removeprefix("/i/"))
+            if held is None:
+                raise NotFoundException(f"no picture at /i/{data.file}")
+            file_id = held[0]
+        authored.choose_face(conn, found[0], file_id)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return Response(content=None, status_code=204)
+
+
 @post("/p/{slug:str}/same-as", sync_to_thread=True)
 def same_person(state: State, slug: FromPath[str], data: SameAs) -> Merged:
     """Say these two are one person.

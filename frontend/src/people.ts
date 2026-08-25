@@ -157,6 +157,37 @@ const wayBack = (picture: string): HTMLElement => {
     });
   }
 
+  // "Take their face from THIS one."
+  //
+  // Delegated at the grid beside the denial, and for the same reason it
+  // is here at all: this is where somebody is looking at the pictures,
+  // and the avatar being wrong is something you notice while looking at
+  // the right one.
+  const pictures = document.querySelector("[data-person-pictures]");
+  if (pictures instanceof HTMLElement) {
+    const whose = requireData(pictures, "personPictures");
+    pictures.addEventListener("click", async (event) => {
+      const button = closestFrom(event.target, "[data-person-face]", HTMLButtonElement);
+      if (!button) return;
+      const picture = requireData(button, "personFace");
+      const held = await api.POST("/p/{slug}/face", {
+        params: { path: { slug: whose } },
+        body: { file: picture },
+      });
+      if (held.error) {
+        await say(refusal(held.error, "that face was not chosen"));
+        return;
+      }
+      // The avatar is a cached content address, so the browser will hand
+      // back the one it already has. The cache-buster is on the IMG
+      // only -- nothing about the person's address changed.
+      for (const face of everyElement(document, ".person-face-big", HTMLImageElement)) {
+        face.src = `/avatar/${whose}?chosen=${Date.now()}`;
+      }
+      button.dataset.chosen = "";
+    });
+  }
+
   // "These two were always one person."
   //
   // Denying says "not them, in this picture". This says the other thing

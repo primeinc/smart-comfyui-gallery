@@ -1266,6 +1266,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/p/{slug}/face": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** ChooseFace */
+        post: operations["PSlugFaceChooseFace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -1979,6 +1996,10 @@ export interface components {
             /** @enum {string} */
             kind: "album" | "flag" | "smart";
             pictures: number;
+        };
+        /** ChosenFace */
+        ChosenFace: {
+            file?: string | null;
         };
         /** Collapsed */
         Collapsed: {
@@ -6228,6 +6249,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Merged"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    PSlugFaceChooseFace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChosenFace"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null;
                 };
             };
             /** @description Bad request syntax or unsupported method */

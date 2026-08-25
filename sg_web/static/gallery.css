@@ -1625,6 +1625,31 @@ body {
   color: var(--accent);
 }
 
+/* "Take their face from this one", beside the denial and quiet like it:
+   both are corrections, and a correction should not be the loudest
+   thing on a page of somebody's photographs. */
+.cell-face {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ground);
+  opacity: 0;
+  cursor: pointer;
+}
+.cell-shell:hover .cell-face,
+.cell-face:focus-visible,
+.cell-face[data-chosen] {
+  opacity: 1;
+}
+
 /* Where a face goes for somebody nothing has clustered one for. Their
    initial, in the same square: a person with no exemplar is a normal
    state, not a failure to render. */

@@ -804,3 +804,133 @@ def test_a_person_with_no_clustered_face_is_not_pointed_at(tmp_path):
         assert told[0]["avatar"] is None, "the index points at an avatar that answers 404"
         page = client.get("/people", headers={"accept": "text/html"}).text
         assert "/avatar/" not in page, "the page points at one anyway"
+
+
+# --- and whose face stands for them ------------------------------------------
+
+
+def _a_picture(conn, at: int, slug: str) -> None:
+    """A file nothing has looked at: no faces, no derived rows."""
+    conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(?,?,'file',?)", (at, bytes([at]) * 16, slug))
+    conn.execute(
+        "INSERT INTO file(id,folder_id,name,kind,size,mtime,content_sha256,first_seen_at,last_seen_at)"
+        " VALUES(?,1,?,'image',1,0,?,0,0)",
+        (at, f"{slug}.png", f"{at:064d}"),
+    )
+
+
+def test_choosing_a_face_names_a_picture_not_a_face(library):
+    """The durability the other three corrections have, and the reason
+    this one stores what it does.
+
+    The avatar is cropped from a `derived_face_instance`, and every one
+    of those is deleted by `derived.drop_all` and minted afresh by the
+    next detection. Remembering the FACE would remember something the
+    next re-detect destroys; remembering the PICTURE survives it, which
+    is the same trade `person_assertion` makes by naming a file and a
+    region rather than a cluster.
+    """
+    who = authored.person(library, "Hannah", NOW)
+    authored.choose_face(library, who, 3)
+    library.commit()
+
+    held = library.execute("SELECT exemplar_file_id FROM person WHERE id = ?", (who,)).fetchone()[0]
+    assert held == 3
+    columns = {row[1] for row in library.execute("PRAGMA table_info(person)")}
+    assert "exemplar_face_id" not in columns, "a face id would dangle at the next re-detect"
+
+
+def test_the_avatar_comes_from_the_chosen_picture(library):
+    """What it is for. Two faces of one person; the chosen picture wins
+    even when the other is the more confident detection."""
+    from sg_web import media
+
+    who = authored.person(library, "Hannah", NOW)
+    # Asserted, then clustered: `exemplar_face` crops a real detection,
+    # so the cluster has to hold faces rather than the file merely being
+    # attributed.
+    authored.assert_person(library, who, 2, 1, NOW)
+    library.commit()
+    run_id = _cluster(library)
+    derived.make_primary(library, run_id)
+    library.commit()
+
+    automatic = media.exemplar_face(library, who)
+    assert automatic is not None, "the control: there is a face to take"
+
+    every = {
+        one
+        for (one,) in library.execute(
+            "SELECT DISTINCT fi.file_id FROM derived_face_membership m"
+            " JOIN derived_face_instance fi ON fi.id = m.face_id"
+            " JOIN derived_face_cluster c ON c.id = m.cluster_id"
+            " WHERE c.person_id = ?",
+            (who,),
+        )
+    }
+    other = next(one for one in sorted(every) if one != automatic[1])
+    authored.choose_face(library, who, other)
+    library.commit()
+    chosen = media.exemplar_face(library, who)
+    assert chosen is not None
+    assert chosen[1] == other, "the chosen picture did not win"
+
+
+def test_a_chosen_picture_that_holds_no_face_falls_back(library):
+    """Rather than failing. A picture re-detected, cropped or replaced
+    may no longer hold a face of theirs, and somebody with no avatar
+    BECAUSE they expressed a preference is worse off than somebody who
+    never expressed one."""
+    from sg_web import media
+
+    who = authored.person(library, "Hannah", NOW)
+    authored.assert_person(library, who, 2, 1, NOW)
+    library.commit()
+    run_id = _cluster(library)
+    derived.make_primary(library, run_id)
+    library.commit()
+    automatic = media.exemplar_face(library, who)
+    assert automatic is not None
+
+    _a_picture(library, 90, "elsewhere")
+    authored.choose_face(library, who, 90)
+    library.commit()
+    held = media.exemplar_face(library, who)
+    assert held is not None, "expressing a preference took their face away"
+    assert held[1] == automatic[1]
+
+
+def test_clearing_it_is_the_automatic_choice_not_no_choice(library):
+    from sg_web import media
+
+    who = authored.person(library, "Hannah", NOW)
+    authored.assert_person(library, who, 2, 1, NOW)
+    library.commit()
+    run_id = _cluster(library)
+    derived.make_primary(library, run_id)
+    authored.choose_face(library, who, 2)
+    library.commit()
+
+    authored.choose_face(library, who, None)
+    library.commit()
+    assert media.exemplar_face(library, who) is not None
+
+
+def test_deleting_the_picture_leaves_the_person(library):
+    """SET NULL: deleting a picture is not a statement about a person,
+    so they go back to the automatic choice rather than disappearing
+    with it."""
+    who = authored.person(library, "Hannah", NOW)
+    # A picture with nothing else pointing at it, so this is about the
+    # person's column and not about somebody else's cascade.
+    _a_picture(library, 91, "going")
+    authored.choose_face(library, who, 91)
+    library.commit()
+
+    library.execute("PRAGMA foreign_keys = ON")
+    library.execute("DELETE FROM file WHERE id = 91")
+    library.commit()
+
+    held = library.execute("SELECT exemplar_file_id FROM person WHERE id = ?", (who,)).fetchone()
+    assert held is not None, "the person went with the picture"
+    assert held[0] is None

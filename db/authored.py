@@ -347,6 +347,23 @@ def deny_person(conn, person_id: int, file_id: int, user_id: int | None, now: fl
         )
 
 
+def choose_face(conn, person_id: int, file_id: int | None) -> None:
+    """Take this person's face from this picture, or go back to automatic.
+
+    A FILE and never a face. The avatar is cropped from a
+    `derived_face_instance`, and every one of those is deleted by
+    `derived.drop_all` and minted afresh by the next detection -- so
+    remembering the face would remember something the next re-detect
+    destroys. Naming the picture is the same durability
+    `person_assertion` gets by naming a file and a region rather than a
+    cluster.
+
+    `None` clears it, which is not "no avatar": it is the confident
+    automatic choice they had before saying anything.
+    """
+    conn.execute("UPDATE person SET exemplar_file_id = ? WHERE id = ?", (file_id, person_id))
+
+
 def merge_people(conn, keep_id: int, folded_id: int, user_id: int | None, now: float) -> dict:
     """Say two people are one, and keep it that way.
 

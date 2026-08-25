@@ -1486,6 +1486,27 @@
         shell.replaceWith(denied(picture, who));
       });
     }
+    const pictures = document.querySelector("[data-person-pictures]");
+    if (pictures instanceof HTMLElement) {
+      const whose = requireData(pictures, "personPictures");
+      pictures.addEventListener("click", async (event) => {
+        const button2 = closestFrom(event.target, "[data-person-face]", HTMLButtonElement);
+        if (!button2) return;
+        const picture = requireData(button2, "personFace");
+        const held = await api.POST("/p/{slug}/face", {
+          params: { path: { slug: whose } },
+          body: { file: picture }
+        });
+        if (held.error) {
+          await say(refusal(held.error, "that face was not chosen"));
+          return;
+        }
+        for (const face of everyElement(document, ".person-face-big", HTMLImageElement)) {
+          face.src = `/avatar/${whose}?chosen=${Date.now()}`;
+        }
+        button2.dataset.chosen = "";
+      });
+    }
     const folder = document.querySelector("[data-same-as]");
     if (folder instanceof HTMLElement) {
       const keeping = requireData(folder, "sameAs");

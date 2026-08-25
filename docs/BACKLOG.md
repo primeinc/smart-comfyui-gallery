@@ -433,20 +433,6 @@ not a design decision anybody made; it is work nobody did.
 
 ## Human workflows we have the data for and not the product
 
-- **Face correction: two of four.** Rejecting a bad match ships (deny,
-  on the picture and over every thumbnail on the person's page), and so
-  does merging two people ("same as someone else", which moves the
-  durable claims and redirects the folded address).
-
-  Reviewing unknown faces ships too: the People page puts the unnamed
-  groups first, biggest first, and names them in place.
-
-  Left: **choosing an exemplar**, which is today the highest-confidence
-  detection in the primary run and cannot be overridden. Not the
-  durability problem the others were -- a wrong avatar is a wrong
-  picture, not a wrong record -- so it wants a control on the person
-  page ("use this face"), a column to remember it, and nothing else.
-
 - **A video with nobody in it is the most expensive video to look at.**
   Not a guess about the code -- it is what the code is for.
   `harvest_video` samples a cadence, and *because* it found nothing it

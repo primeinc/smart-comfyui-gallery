@@ -1908,6 +1908,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             submit_cluster,
             person_view.name_person,
             person_view.same_person,
+            person_view.choose_face,
             cancel_job,
             jobs_feed,
             events_feed,

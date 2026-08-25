@@ -3379,3 +3379,27 @@ def _a_question_can_be_remembered(conn: sqlite3.Connection) -> None:
     last_used_at REAL
 ) STRICT"""
     )
+
+
+@step(40)
+def _a_person_can_choose_their_own_face(conn: sqlite3.Connection) -> None:
+    """v40 -> v41: `person.exemplar_file_id`.
+
+    The avatar is the highest-confidence detection in the primary run,
+    which is usually right and sometimes a blurred profile in a crowd,
+    and there was no way to say otherwise.
+
+    A FILE and not a face. A face is a derived row -- `drop_all` deletes
+    every `derived_face_instance` and a rebuild mints new ones -- so a
+    remembered face id would point at something the next re-detect
+    destroys. Naming the picture survives every rebuild, which is the
+    same reason `person_assertion` names a file and a region rather than
+    a cluster.
+
+    NULL for everybody, which is the automatic choice they already had.
+    """
+    conn.execute("ALTER TABLE person ADD COLUMN exemplar_file_id INTEGER REFERENCES file(id) ON DELETE SET NULL")
+    # For the reason `job_target` is indexed: SQLite checks every child
+    # table when a parent row goes, and an unindexed FK makes that a full
+    # scan of `person` per deleted file.
+    conn.execute("CREATE INDEX person_exemplar ON person(exemplar_file_id)")

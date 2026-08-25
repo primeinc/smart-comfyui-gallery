@@ -313,7 +313,35 @@ CREATE TABLE person (
     id         INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
     name       TEXT,
     created_at REAL NOT NULL
-) STRICT;
+, exemplar_file_id INTEGER REFERENCES file(id) ON DELETE SET NULL) STRICT;
+-- person.exemplar_file_id: which picture their face is taken FROM.
+--
+-- Spelled as ALTER TABLE leaves it, the convention this file holds for
+-- every added column (see file.ingested_sha256): SQLite stores the
+-- literal statement text and `build.drift` compares it.
+--
+-- A FILE and not a face, which is the whole point. `/avatar/<slug>`
+-- crops the highest-confidence detection in the primary run, and that
+-- is usually right and sometimes a blurred profile in a crowd. But a
+-- face is a DERIVED row: `derived.drop_all` deletes every
+-- `derived_face_instance` and a rebuild mints new ones, so a remembered
+-- face id would be a pointer at something the next re-detect destroys --
+-- exactly the mistake `person_assertion` exists to avoid by naming a
+-- file and a region rather than a cluster.
+--
+-- Naming the picture survives all of it. After any rebuild the avatar
+-- takes whichever face of theirs is in that picture, and if they are no
+-- longer found there it falls back to the confident one rather than
+-- showing nothing.
+--
+-- SET NULL, because deleting the picture is not a statement about the
+-- person: they simply go back to the automatic choice.
+--
+-- And indexed, for the reason `job_target` is: SQLite runs
+-- `SELECT 1 FROM child WHERE child_key = ?` against every child table
+-- when a parent row goes, so without this every file deletion scans
+-- every person.
+CREATE INDEX person_exemplar ON person(exemplar_file_id);
 
 -- One table, not one per kind. A checkpoint, a LoRA, a VAE, a ControlNet and a
 -- camera body are the same shape: a named thing that exists independently of
@@ -2397,7 +2425,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 40;
+PRAGMA user_version   = 41;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

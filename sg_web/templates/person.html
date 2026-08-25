@@ -78,6 +78,12 @@
         <button type="button" class="cell-deny" data-person-not-here="{{ pic.slug }}"
                 title="not {{ person.name or person.slug }} &mdash; and remember that"
                 aria-label="say this is not {{ person.name or person.slug }}">&times;</button>
+        {# The other thing worth saying while looking at somebody's
+           pictures. The avatar is the most confident detection, which is
+           usually right and sometimes a blurred profile in a crowd. #}
+        <button type="button" class="cell-face" data-person-face="{{ pic.slug }}"
+                title="take {{ person.name or person.slug }}'s face from this picture"
+                aria-label="use this picture for their face">&starf;</button>
         <a class="cell" href="/i/{{ pic.slug }}?{{ person.gallery.qs }}"
            data-slug="{{ pic.slug }}" data-kind="{{ pic.kind }}">
           {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ pic.kind }}" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
