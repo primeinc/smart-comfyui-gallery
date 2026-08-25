@@ -16756,13 +16756,24 @@
                     },
                     "moment": {
                         "type": "number"
+                    },
+                    "thumb": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
                     "moment",
-                    "slug"
+                    "slug",
+                    "thumb"
                 ],
                 "title": "TimelineMoment"
             },
@@ -16823,6 +16834,16 @@
                     "moment": {
                         "type": "number"
                     },
+                    "thumb": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "k": {
                         "type": "integer"
                     },
@@ -16840,7 +16861,8 @@
                     "moment",
                     "of",
                     "slug",
-                    "spelled"
+                    "spelled",
+                    "thumb"
                 ],
                 "title": "TimelineNth"
             },
@@ -17001,6 +17023,16 @@
                     "kind": {
                         "type": "string"
                     },
+                    "thumb": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "width": {
                         "oneOf": [
                             {
@@ -17079,6 +17111,7 @@
                     "ratio",
                     "sessions",
                     "slug",
+                    "thumb",
                     "width"
                 ],
                 "title": "TimelinePicture"

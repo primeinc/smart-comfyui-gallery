@@ -132,7 +132,13 @@ def test_the_answer_carries_the_content_hash(library):
 @pytest.fixture
 def served(tmp_path):
     """The real application over a real library, with the derivatives
-    rendered -- which is the steady state a person browses in."""
+    rendered -- which is the steady state a person browses in.
+
+    Which includes the human context. Without it `derived_media_context`
+    is empty and the timeline draws nothing at all -- and a test that
+    then finds no `<img>` reads exactly like a surface pointing at the
+    wrong address, rather than like a fixture that never built the thing
+    the surface is made of."""
     import time as clock
 
     from litestar.testing import TestClient
@@ -149,6 +155,9 @@ def served(tmp_path):
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         client.post("/jobs/ingest")
+        _drained(client, clock)
+        client.post("/jobs/context")
+        client.post("/jobs/events")
         _drained(client, clock)
         yield client, root
 
@@ -305,3 +314,29 @@ def test_a_folder_page_of_thumbnails_costs_no_connections(served):
         client.get(src)  # warm, so this measures delivery
     opened = _connections_during(lambda: [client.get(src) for src in sources])
     assert opened == 0, f"{len(sources)} folder thumbnails opened {opened} connections"
+
+
+def test_the_timeline_draws_content_addressed_assets(served):
+    """The densest surface in the application.
+
+    Session strips, scrubber segments, month and day cells, frames and
+    bins are dozens of thumbnails on one page, and every one of them
+    spelled `/thumb/<slug>` -- a route with a lookup behind it. It was
+    also the least mechanical to convert: its pictures do not come from
+    a ResultSet page, so a dozen statements had to carry the hash and
+    the kind rather than a bare slug.
+    """
+    client, _ = served
+    drawn = _pictures_on(client, "/timeline")
+    assert drawn, "the timeline drew no pictures"
+    for src in drawn:
+        assert _HEX64.match(src) is not None, f"the timeline points at {src}"
+
+
+def test_a_whole_timeline_of_thumbnails_costs_no_connections(served):
+    client, _ = served
+    sources = _pictures_on(client, "/timeline")
+    for src in sources:
+        client.get(src)  # warm, so this measures delivery
+    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    assert opened == 0, f"{len(sources)} timeline thumbnails opened {opened} connections"

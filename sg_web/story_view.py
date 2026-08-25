@@ -29,6 +29,7 @@ from db import connect, derived, evolution, facets, naming, pages, planning, ren
 from sg_web import home, submitting
 from sg_web.presenting import VARIES, presented_page, wants_json
 from sg_web.wire import Wire
+from vision import thumbs
 
 
 def _window(subject: dict) -> str | None:
@@ -308,7 +309,12 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
                 "name": member["name"],
                 "slug": slug,
                 "page": f"/i/{slug}" if slug else None,
-                "thumbnail": f"/thumb/{slug}" if slug else None,
+                # Content-addressed from the hash the frozen member
+                # already carries. `/thumb/<slug>` is a route with a
+                # lookup behind it, and a story is a page of heroes.
+                "thumbnail": thumbs.asset_url(member.get("content_sha256"), slug, medium=member.get("media_kind"))
+                if slug
+                else None,
                 "kind": member.get("media_kind"),
                 "said": None,
             }
@@ -734,7 +740,13 @@ def evolution_document(view: dict, *, render_id: int | None) -> EvolutionView:
                     kind=member["media"]["kind"],
                     content_sha256=member["media"]["content_sha256"],
                     slug=member["media"]["slug"],
-                    thumbnail=f"/thumb/{member['media']['slug']}" if member["media"]["slug"] else None,
+                    thumbnail=thumbs.asset_url(
+                        member["media"]["content_sha256"],
+                        member["media"]["slug"],
+                        medium=member["media"]["kind"],
+                    )
+                    if member["media"]["slug"]
+                    else None,
                     page=f"/i/{member['media']['slug']}" if member["media"]["slug"] else None,
                 ),
                 occurrence=_occurrence_of(member["occurrence"]),

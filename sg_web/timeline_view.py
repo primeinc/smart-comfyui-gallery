@@ -34,6 +34,7 @@ from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
 from sg_web.wire import Wire
+from vision import thumbs
 
 #: The surface's scope is a gallery question (db/resultset.py scope_of):
 #: its scopes and facets in the live spelling, unsorted, unpaged. The
@@ -256,7 +257,7 @@ def _session(conn, row, *, samples: bool, scope: resultset.GalleryQuery = WHOLE)
         "qs": _event_link(event_id, scope),
         "planner": planner,
         "tellable": planner in planning.PLANNERS,
-        "samples": pages.session_samples(conn, event_id) if samples else [],
+        "samples": _drawn(pages.session_samples(conn, event_id)) if samples else [],
         "people": [
             {"slug": slug, "name": name, "href": f"/p/{slug}", "pictures": int(count)}
             for slug, name, count in pages.session_people(conn, event_id)
@@ -318,6 +319,27 @@ UNIT = {
     "quarter": "quarter hour",
     "minute": "minute",
 }
+
+
+def _drawn(pictures) -> list[str]:
+    """The thumbnail addresses of `(slug, sha, kind)` rows, in order.
+
+    Every strip, cell, frame and segment on this surface draws pictures,
+    and until now each spelled `/thumb/<slug>` into its own markup -- a
+    route with a lookup behind it, once per picture, on the page that
+    draws the most of them. A content-addressed asset costs no
+    connection at all (vision/thumbs.py `asset_url`).
+
+    A file with no picture to take -- a sound, a document -- has no
+    address and is DROPPED here rather than drawn as a broken image.
+    That is a real difference from the grid, which keeps the cell and
+    says the kind in it: a scrubber segment is a row of forty-pixel
+    tiles with no room to say anything, and a strip is a sample of what
+    is there rather than a claim to be all of it.
+    """
+    from vision import thumbs
+
+    return [one for slug, sha, kind in pictures if (one := thumbs.asset_url(sha, slug, medium=kind)) is not None]
 
 
 #: Pictures one surface draws in place. Past it the page says how many
@@ -410,9 +432,14 @@ def _ticks(lo: float, hi: float) -> list[dict]:
 
 
 def _picture(row, qs: str) -> dict:
-    slug, name, kind, width, height, moment, precision, origin, wall, faces, sessions = row
+    slug, name, kind, width, height, moment, precision, origin, wall, sha, faces, sessions = row
     return {
         "slug": slug,
+        #: Where to draw it. Content-addressed from the hash this row
+        #: already carries, so a river of a thousand pictures costs no
+        #: connections; None for a medium with no picture to take, and
+        #: the cell says the kind instead.
+        "thumb": thumbs.asset_url(sha, slug, medium=kind),
         "name": name,
         "kind": kind,
         "width": width,
@@ -635,7 +662,7 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
         named = n > 0 and year != last_year and (y + h) - labelled_at >= 18
         if named:
             labelled_at = y + h
-        strip = faces.get(int(at)) or []
+        strip = _drawn(faces.get(int(at)) or [])
         label = _spell(at, name) if n else f"{u['units']} {unit}{'s' if u['units'] > 1 else ''} without pictures"
         segments.append(
             {
@@ -697,7 +724,7 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
                 {
                     "n": _utc(t).day,
                     "pictures": n,
-                    "hero": (samples.get(int(t)) or [None])[0],
+                    "hero": next(iter(_drawn(samples.get(int(t)) or [])), None),
                     "qs": _bin_link(t, 86_400, question) if n else None,
                     "spelled": _spell(t, "day"),
                     "today": _utc(t).strftime("%Y-%m-%d") == today,
@@ -891,7 +918,7 @@ def _surface(
                 "wall": wall,
                 "instant": instant,
                 "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
-                "samples": samples.get(int(at), []),
+                "samples": _drawn(samples.get(int(at), [])),
                 "qs": _bin_link(at, width, held),
                 "spelled": _spell(at, bin_name),
                 "finest": finest,
@@ -1078,6 +1105,10 @@ class TimelinePicture(Wire):
     slug: str
     name: str
     kind: str
+    #: where to draw it: content-addressed, so a river of a thousand
+    #: pictures costs no connections. None for a medium with no picture
+    #: to take, and the cell says the kind instead.
+    thumb: str | None
     width: int | None
     height: int | None
     faces: int
@@ -1160,6 +1191,9 @@ class TimelineSession(Wire):
     #: application actually has it
     planner: str | None
     tellable: bool
+    #: THUMBNAIL ADDRESSES, not slugs. Content-addressed, so drawing
+    #: them costs no database connection; a file with no picture to take
+    #: is absent rather than a broken image (`_drawn`).
     samples: list[str]
     people: list[TimelinePerson]
     people_total: int
@@ -1206,6 +1240,9 @@ class TimelineBin(Wire):
     wall: int
     instant: int
     origin: TimelineOrigin
+    #: THUMBNAIL ADDRESSES, not slugs. Content-addressed, so drawing
+    #: them costs no database connection; a file with no picture to take
+    #: is absent rather than a broken image (`_drawn`).
     samples: list[str]
     qs: str
     spelled: str
@@ -1279,6 +1316,9 @@ class TimelineCalendarDay(Wire):
 
     n: int
     pictures: int
+    #: THUMBNAIL ADDRESSES, not slugs. Content-addressed, so drawing
+    #: them costs no database connection; a file with no picture to take
+    #: is absent rather than a broken image (`_drawn`).
     hero: str | None
     qs: str | None
     spelled: str
@@ -1302,6 +1342,9 @@ class TimelineYearCell(Wire):
 
     month: str
     pictures: int
+    #: THUMBNAIL ADDRESSES, not slugs. Content-addressed, so drawing
+    #: them costs no database connection; a file with no picture to take
+    #: is absent rather than a broken image (`_drawn`).
     hero: str | None
     qs: str | None
     href: str
@@ -1371,6 +1414,9 @@ class TimelineSegment(Wire):
     year: int
     label: str
     pictures: int
+    #: THUMBNAIL ADDRESSES, not slugs. Content-addressed, so drawing
+    #: them costs no database connection; a file with no picture to take
+    #: is absent rather than a broken image (`_drawn`).
     face: str | None
     strip: list[str]
     y: float
@@ -1472,6 +1518,9 @@ class TimelineMoment(Wire):
 
     slug: str
     moment: float
+    #: where to draw it: content-addressed, so a strip of forty costs no
+    #: connection. None when the medium has no picture to take.
+    thumb: str | None
 
 
 class TimelineSpread(Wire):
@@ -1494,6 +1543,9 @@ class TimelineNth(Wire):
 
     slug: str
     moment: float
+    #: where to draw it: content-addressed, so a strip of forty costs no
+    #: connection. None when the medium has no picture to take.
+    thumb: str | None
     k: int
     of: int
     spelled: str
@@ -1619,7 +1671,12 @@ def spread(
     finally:
         connect.close(conn)
     return Response(
-        TimelineSpread(pictures=[TimelineMoment(slug=slug, moment=moment) for slug, moment in rows]),
+        TimelineSpread(
+            pictures=[
+                TimelineMoment(slug=slug, moment=moment, thumb=thumbs.asset_url(sha, slug, medium=kind))
+                for slug, moment, sha, kind in rows
+            ]
+        ),
         headers=VARIES,
     )
 
@@ -1654,9 +1711,16 @@ def nth(
         connect.close(conn)
     if found is None:
         raise NotFoundException("no picture in this range")
-    slug, moment = found
+    slug, moment, sha, medium = found
     return Response(
-        TimelineNth(slug=slug, moment=moment, k=min(max(0, k), n - 1), of=n, spelled=_spell(moment, "minute")),
+        TimelineNth(
+            slug=slug,
+            moment=moment,
+            thumb=thumbs.asset_url(sha, slug, medium=medium),
+            k=min(max(0, k), n - 1),
+            of=n,
+            spelled=_spell(moment, "minute"),
+        ),
         headers=VARIES,
     )
 

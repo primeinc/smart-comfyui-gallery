@@ -940,7 +940,7 @@
           strip.replaceChildren(
             ...data.pictures.map((p) => {
               const img = document.createElement("img");
-              img.src = `/thumb/${p.slug}`;
+              img.src = p.thumb ?? "";
               img.alt = "";
               img.loading = "lazy";
               img.draggable = false;
@@ -1004,7 +1004,7 @@
       }
       void nth(seg, y).then((told) => {
         if (!told) return;
-        img.src = `/thumb/${told.slug}`;
+        img.src = told.thumb ?? "";
         img.hidden = false;
         label.textContent = told.spelled;
         count.textContent = `${(told.k + 1).toLocaleString()} of ${told.of.toLocaleString()}`;

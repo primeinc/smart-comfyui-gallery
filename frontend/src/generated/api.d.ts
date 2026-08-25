@@ -2974,6 +2974,7 @@ export interface components {
         TimelineMoment: {
             slug: string;
             moment: number;
+            thumb: string | null;
         };
         /** TimelineMonthCap */
         TimelineMonthCap: {
@@ -2992,6 +2993,7 @@ export interface components {
         TimelineNth: {
             slug: string;
             moment: number;
+            thumb: string | null;
             k: number;
             of: number;
             spelled: string;
@@ -3038,6 +3040,7 @@ export interface components {
             slug: string;
             name: string;
             kind: string;
+            thumb: string | null;
             width: number | null;
             height: number | null;
             faces: number;

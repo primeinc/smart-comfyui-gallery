@@ -591,7 +591,10 @@ type Scope = Required<
           strip.replaceChildren(
             ...data.pictures.map((p) => {
               const img = document.createElement("img");
-              img.src = `/thumb/${p.slug}`;
+              // The address the server resolved, not one built from a
+              // slug: `/thumb/<slug>` is a route with a lookup behind
+              // it, and a segment strip is forty of them.
+              img.src = p.thumb ?? "";
               img.alt = "";
               img.loading = "lazy";
               img.draggable = false;
@@ -661,7 +664,7 @@ type Scope = Required<
     }
     void nth(seg, y).then((told) => {
       if (!told) return;
-      img.src = `/thumb/${told.slug}`;
+      img.src = told.thumb ?? "";
       img.hidden = false;
       label.textContent = told.spelled;
       count.textContent = `${(told.k + 1).toLocaleString()} of ${told.of.toLocaleString()}`;

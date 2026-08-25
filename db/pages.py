@@ -1018,8 +1018,14 @@ TIMELINE_DENSITY = _TIMELINE_DENSITY_HEAD + _TIMELINE_DENSITY_TAIL
 #: every bin; asked only when the page draws few enough bins to show
 #: them (db/pages.py timeline_samples).
 _TIMELINE_BIN_SAMPLES_HEAD = (
-    "SELECT bin, slug FROM ("
+    # `content_sha256` and `kind` ride along because the surface draws
+    # these: a thumbnail's address is content-addressed, and the kind is
+    # what says whether there is a picture to take at all. Both are
+    # columns of the `file` this already joins, so carrying them costs
+    # nothing and saves the caller a second read of the same rows.
+    "SELECT bin, slug, sha, kind FROM ("
     "  SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, e.slug,"
+    "   f.content_sha256 AS sha, f.kind AS kind,"
     "   row_number() OVER (PARTITION BY CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER)"
     "     ORDER BY " + HUMAN_MOMENT + ", mc.file_id) AS rn"
     "    FROM derived_media_context mc"
@@ -1034,7 +1040,10 @@ TIMELINE_BIN_SAMPLES = _TIMELINE_BIN_SAMPLES_HEAD + _TIMELINE_BIN_SAMPLES_TAIL
 
 #: A session's first members, by the grouper's own ordinal.
 SESSION_SAMPLES = (
-    "SELECT ef.event_id, e.slug FROM derived_event_file ef JOIN entity e ON e.id = ef.file_id"
+    "SELECT ef.event_id, e.slug, f.content_sha256, f.kind"
+    "  FROM derived_event_file ef"
+    "  JOIN entity e ON e.id = ef.file_id"
+    "  JOIN file f ON f.id = ef.file_id"
     " WHERE ef.event_id = ? AND ef.ordinal < ? ORDER BY ef.ordinal"
 )
 
@@ -1224,10 +1233,18 @@ def timeline_density(conn, bin_name: str, lo: float, hi: float, scope: tuple[str
 
 def timeline_samples(
     conn, bin_name: str, lo: float, hi: float, only=None, scope: tuple[str, list] = ("", [])
-) -> dict[int, list[str]]:
-    """`{bin: [slug, ...]}` -- the first SAMPLES_PER_BIN pictures of each
-    bin in [lo, hi); of the bins in `only` when the caller bounded the
-    strip (the busiest SAMPLED_BINS_MOST, sg_web/timeline_view.py)."""
+) -> dict[int, list[tuple[str, str | None, str]]]:
+    """`{bin: [(slug, sha, kind), ...]}` -- the first SAMPLES_PER_BIN
+    pictures of each bin in [lo, hi); of the bins in `only` when the
+    caller bounded the strip (the busiest SAMPLED_BINS_MOST,
+    sg_web/timeline_view.py).
+
+    A picture and not a slug, because the surface DRAWS these: the hash
+    is what makes a thumbnail's address content-addressed, and the kind
+    is what says whether there is a picture to take. Handing back a bare
+    slug is what left the timeline pointing at `/thumb/<slug>` -- a
+    route with a lookup behind it, once per picture, on the densest page
+    in the application."""
     import json as _json
 
     wanted = None if only is None else {int(at) for at in only}
@@ -1235,12 +1252,12 @@ def timeline_samples(
     anchor = _ANCHOR.get(bin_name, 0)
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
     held: dict[int, list[str]] = {}
-    for at, slug in conn.execute(
+    for at, slug, sha, kind in conn.execute(
         _TIMELINE_BIN_SAMPLES_HEAD + scope[0] + _TIMELINE_BIN_SAMPLES_TAIL,
         (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, *scope[1], SAMPLES_PER_BIN),
     ):
         if wanted is None or int(at) in wanted:
-            held.setdefault(int(at), []).append(slug)
+            held.setdefault(int(at), []).append((str(slug), sha, str(kind)))
     return held
 
 
@@ -1249,8 +1266,9 @@ def timeline_samples(
 #: pictures is shown by pictures from its whole length, as many as the
 #: asker can show, never a fixed few from its first minute.
 _TIMELINE_SPREAD_HEAD = (
-    "SELECT slug, moment FROM ("
+    "SELECT slug, moment, sha, kind FROM ("
     "  SELECT e.slug, " + HUMAN_MOMENT + " AS moment,"
+    "   f.content_sha256 AS sha, f.kind AS kind,"
     "   row_number() OVER (ORDER BY " + HUMAN_MOMENT + ", mc.file_id) AS rn,"
     "   count(*) OVER () AS cnt"
     "    FROM derived_media_context mc"
@@ -1262,8 +1280,10 @@ _TIMELINE_SPREAD_HEAD = (
 _TIMELINE_SPREAD_TAIL = ") WHERE (rn - 1) % max(1, (cnt + ? - 1) / ?) = 0 ORDER BY rn LIMIT ?"
 
 
-def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] = ("", [])) -> list[tuple[str, float]]:
-    """Up to `n` (slug, moment) of [lo, hi), spread evenly through it."""
+def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] = ("", [])) -> list[tuple]:
+    """Up to `n` (slug, moment, sha, kind) of [lo, hi), spread evenly
+    through it. The hash and kind because the caller DRAWS these -- see
+    `timeline_samples`."""
     return conn.execute(
         _TIMELINE_SPREAD_HEAD + scope[0] + _TIMELINE_SPREAD_TAIL,
         (context.POLICY_VERSION, lo, hi, *scope[1], n, n, n),
@@ -1275,7 +1295,7 @@ def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] 
 #: never by time: three thousand pictures in one minute of a week-long
 #: segment would map every position to the burst's first or last.
 _TIMELINE_NTH_HEAD = (
-    "SELECT e.slug, " + HUMAN_MOMENT + " AS moment"
+    "SELECT e.slug, " + HUMAN_MOMENT + " AS moment, f.content_sha256, f.kind"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     "  JOIN entity e ON e.id = mc.file_id"
@@ -1292,8 +1312,9 @@ _TIMELINE_RANGE_COUNT_HEAD = (
 
 
 def timeline_nth(conn, lo: float, hi: float, k: int, scope: tuple[str, list] = ("", [])):
-    """((slug, moment), n): the k-th of the n pictures in [lo, hi) in
-    moment order, k clamped into range; (None, 0) when it holds none."""
+    """((slug, moment, sha, kind), n): the k-th of the n pictures in
+    [lo, hi) in moment order, k clamped into range; (None, 0) when it
+    holds none."""
     n = int(
         conn.execute(_TIMELINE_RANGE_COUNT_HEAD + scope[0], (context.POLICY_VERSION, lo, hi, *scope[1])).fetchone()[0]
         or 0
@@ -1304,7 +1325,7 @@ def timeline_nth(conn, lo: float, hi: float, k: int, scope: tuple[str, list] = (
     row = conn.execute(
         _TIMELINE_NTH_HEAD + scope[0] + _TIMELINE_NTH_TAIL, (context.POLICY_VERSION, lo, hi, *scope[1], k)
     ).fetchone()
-    return (None, n) if row is None else ((str(row[0]), float(row[1])), n)
+    return (None, n) if row is None else ((str(row[0]), float(row[1]), row[2], str(row[3])), n)
 
 
 #: The picture at a moment: the NEAREST in time, either side -- what a
@@ -1335,8 +1356,12 @@ def timeline_at(conn, t: float, scope: tuple[str, list] = ("", [])) -> tuple[str
     return (str(row[0]), float(row[1]))
 
 
-def session_samples(conn, event_id: int) -> list[str]:
-    return [row[1] for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))]
+def session_samples(conn, event_id: int) -> list[tuple[str, str | None, str]]:
+    """`[(slug, sha, kind), ...]` -- see `timeline_samples` for why a
+    picture rather than a slug."""
+    return [
+        (str(row[1]), row[2], str(row[3])) for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))
+    ]
 
 
 def timeline_coverage(conn, scope: tuple[str, list] = ("", [])) -> tuple[int, int, int]:
@@ -1385,7 +1410,7 @@ def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("",
 #: by LIMIT, the caller says how many more there were.
 _TIMELINE_PICTURES_HEAD = (
     "SELECT e.slug, f.name, f.kind, f.width, f.height, " + HUMAN_MOMENT + " AS moment,"
-    " mc.time_precision, mc.origin, mc.local_at IS NOT NULL AS wall,"
+    " mc.time_precision, mc.origin, mc.local_at IS NOT NULL AS wall, f.content_sha256 AS sha,"
     " (SELECT count(*) FROM derived_face_instance fi WHERE fi.file_id = mc.file_id) AS faces,"
     " (SELECT group_concat(ef.event_id) FROM derived_event_file ef"
     "   JOIN derived_event ev ON ev.id = ef.event_id JOIN derived_event_run r ON r.id = ev.run_id"
