@@ -4999,11 +4999,15 @@
                 "operationId": "PeoplePeopleIndex",
                 "responses": {
                     "200": {
-                        "description": "Request fulfilled, document follows",
-                        "headers": {},
+                        "description": "Everyone, most pictures first",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/PersonListed"
+                                    },
+                                    "type": "array"
+                                }
                             }
                         }
                     }
@@ -5775,6 +5779,85 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/NamedPerson"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request syntax or unsupported method",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status_code": {
+                                            "type": "integer"
+                                        },
+                                        "detail": {
+                                            "type": "string"
+                                        },
+                                        "extra": {
+                                            "additionalProperties": {},
+                                            "type": [
+                                                "null",
+                                                "object",
+                                                "array"
+                                            ]
+                                        }
+                                    },
+                                    "type": "object",
+                                    "required": [
+                                        "detail",
+                                        "status_code"
+                                    ],
+                                    "description": "Validation Exception",
+                                    "examples": [
+                                        {
+                                            "status_code": 400,
+                                            "detail": "Bad Request",
+                                            "extra": {}
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
+        "/p/{slug}/same-as": {
+            "post": {
+                "summary": "SamePerson",
+                "operationId": "PSlugSameAsSamePerson",
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true,
+                        "deprecated": false
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SameAs"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Document created, URL follows",
+                        "headers": {},
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Merged"
                                 }
                             }
                         }
@@ -15358,6 +15441,27 @@
                 ],
                 "title": "MediaSurface"
             },
+            "Merged": {
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "folded": {
+                        "type": "string"
+                    },
+                    "assertions": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "assertions",
+                    "folded",
+                    "slug"
+                ],
+                "title": "Merged"
+            },
             "NamedItem": {
                 "properties": {
                     "id": {
@@ -15932,6 +16036,56 @@
                     "slug"
                 ],
                 "title": "Person"
+            },
+            "PersonListed": {
+                "properties": {
+                    "name": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "pictures": {
+                        "type": "integer"
+                    },
+                    "first_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "last_seen": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "first_seen",
+                    "last_seen",
+                    "name",
+                    "pictures",
+                    "slug"
+                ],
+                "title": "PersonListed"
             },
             "Pixels": {
                 "properties": {
@@ -16734,6 +16888,19 @@
                     "text"
                 ],
                 "title": "Said"
+            },
+            "SameAs": {
+                "properties": {
+                    "other": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "other"
+                ],
+                "title": "SameAs"
             },
             "ScheduleForm": {
                 "properties": {

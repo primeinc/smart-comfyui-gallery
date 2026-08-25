@@ -580,6 +580,30 @@
   async function say(message, framing = {}) {
     await ask(framed(message, "ok", null, framing), () => () => void 0);
   }
+  async function askChoice(question, choices, framing = {}) {
+    if (choices.length === 0) return null;
+    return ask(
+      // No affirmative in the feet: the choices are the affirmative.
+      framed(question, null, "cancel", { ...framing, submit: null }),
+      (body, box) => {
+        const list = document.createElement("div");
+        list.className = "ask-choices";
+        for (const [index, one] of choices.entries()) {
+          const control = button(one.label, one.value, "ask-choice");
+          control.autofocus = index === 0;
+          if (one.note !== void 0) {
+            const note = document.createElement("span");
+            note.className = "ask-choice-note";
+            note.textContent = one.note;
+            control.append(note);
+          }
+          list.append(control);
+        }
+        body.append(list);
+        return () => box.returnValue;
+      }
+    );
+  }
 
   // src/keys.ts
   var claimed = /* @__PURE__ */ new Map();
@@ -1448,6 +1472,37 @@
           return;
         }
         shell.replaceWith(denied(picture, who));
+      });
+    }
+    const folder = document.querySelector("[data-same-as]");
+    if (folder instanceof HTMLElement) {
+      const keeping = requireData(folder, "sameAs");
+      folder.addEventListener("click", async () => {
+        const shelf = await api.GET("/people", { headers: { accept: "application/json" } });
+        const others = (shelf.data ?? []).filter((one) => one.slug !== keeping);
+        if (others.length === 0) {
+          await say("there is nobody else to fold in");
+          return;
+        }
+        const chosen = await askChoice(
+          "who is the same person as this one?",
+          others.map((one) => ({
+            value: one.slug,
+            label: one.name ?? one.slug,
+            note: `${one.pictures} ${one.pictures === 1 ? "picture" : "pictures"} \xB7 /p/${one.slug}`
+          })),
+          { detail: "their pictures, names and corrections come here, and their address redirects here afterwards" }
+        );
+        if (chosen === null) return;
+        const { data, error } = await api.POST("/p/{slug}/same-as", {
+          params: { path: { slug: keeping } },
+          body: { other: chosen }
+        });
+        if (!data) {
+          await say(refusal(error, "those two were not merged"));
+          return;
+        }
+        window.location.replace(`/p/${data.slug}`);
       });
     }
     addressableOverlay({

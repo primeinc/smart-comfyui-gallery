@@ -5,7 +5,7 @@
 // collection, not a piece of media, so there are no arrows: the drawer
 // shows who they are and hands off to the full profile.
 import { api, refusal } from "./api";
-import { say } from "./ask";
+import { askChoice, say } from "./ask";
 import { closestFrom, everyElement, requireData, requireElement } from "./dom";
 import { addressableOverlay } from "./overlay";
 
@@ -137,6 +137,53 @@ const wayBack = (picture: string): HTMLElement => {
         return;
       }
       shell.replaceWith(denied(picture, who));
+    });
+  }
+
+  // "These two were always one person."
+  //
+  // Denying says "not them, in this picture". This says the other thing
+  // a durable naming model needs and did not have: a clustering run
+  // splits somebody into four, and a threshold cannot fix that without
+  // trading away somebody else's correct grouping. Said here it is
+  // local, permanent, and re-applied after every future run.
+  const folder = document.querySelector("[data-same-as]");
+  if (folder instanceof HTMLElement) {
+    const keeping = requireData(folder, "sameAs");
+    folder.addEventListener("click", async () => {
+      const shelf = await api.GET("/people", { headers: { accept: "application/json" } });
+      // Not this one: folding somebody into themselves is not a thing
+      // to be offered and then refused.
+      const others = (shelf.data ?? []).filter((one) => one.slug !== keeping);
+      if (others.length === 0) {
+        await say("there is nobody else to fold in");
+        return;
+      }
+      // Names, with the address underneath -- the same shape the
+      // smart-collection chooser uses, so nobody has to know the
+      // internal spelling of a person they named themselves.
+      const chosen = await askChoice(
+        "who is the same person as this one?",
+        others.map((one) => ({
+          value: one.slug,
+          label: one.name ?? one.slug,
+          note: `${one.pictures} ${one.pictures === 1 ? "picture" : "pictures"} · /p/${one.slug}`,
+        })),
+        { detail: "their pictures, names and corrections come here, and their address redirects here afterwards" },
+      );
+      if (chosen === null) return;
+      const { data, error } = await api.POST("/p/{slug}/same-as", {
+        params: { path: { slug: keeping } },
+        body: { other: chosen },
+      });
+      if (!data) {
+        await say(refusal(error, "those two were not merged"));
+        return;
+      }
+      // REPLACE: the folded address now redirects here, and leaving it
+      // in history would put a 301 between Back and wherever they came
+      // from.
+      window.location.replace(`/p/${data.slug}`);
     });
   }
 

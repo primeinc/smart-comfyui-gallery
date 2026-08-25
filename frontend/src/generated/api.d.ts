@@ -1249,6 +1249,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/p/{slug}/same-as": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** SamePerson */
+        post: operations["PSlugSameAsSamePerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -2703,6 +2720,12 @@ export interface components {
             authored: components["schemas"]["AuthoredState"];
             viewing: components["schemas"]["Viewing"];
         };
+        /** Merged */
+        Merged: {
+            slug: string;
+            folded: string;
+            assertions: number;
+        };
         /** NamedItem */
         NamedItem: {
             id: number;
@@ -2819,6 +2842,14 @@ export interface components {
             name: string | null;
             href: string;
             faces: number;
+        };
+        /** PersonListed */
+        PersonListed: {
+            name: string | null;
+            slug: string;
+            pictures: number;
+            first_seen: number | null;
+            last_seen: number | null;
         };
         /** Pixels */
         Pixels: {
@@ -2996,6 +3027,10 @@ export interface components {
             /** @enum {null|string} */
             verdict?: "right" | "wrong" | "unsure" | null;
             stale: boolean;
+        };
+        /** SameAs */
+        SameAs: {
+            other: string;
         };
         /** ScheduleForm */
         ScheduleForm: {
@@ -5674,13 +5709,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Request fulfilled, document follows */
+            /** @description Everyone, most pictures first */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PersonListed"][];
                 };
             };
         };
@@ -6151,6 +6186,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NamedPerson"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    PSlugSameAsSamePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SameAs"];
+            };
+        };
+        responses: {
+            /** @description Document created, URL follows */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Merged"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

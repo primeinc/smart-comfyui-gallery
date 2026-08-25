@@ -347,6 +347,74 @@ def deny_person(conn, person_id: int, file_id: int, user_id: int | None, now: fl
         )
 
 
+def merge_people(conn, keep_id: int, folded_id: int, user_id: int | None, now: float) -> dict:
+    """Say two people are one, and keep it that way.
+
+    The failure this answers is the ordinary one: a clustering run
+    splits somebody into four, and a threshold cannot fix it without
+    trading away somebody else's correct grouping. Saying it here is
+    local, permanent, and survives every future run -- the assertions
+    that move are re-applied by `seed_clusters_from_assertions`, which
+    is the whole reason authored claims live apart from derived ones.
+
+    What moves, and why each:
+
+    - **Assertions**, so the correction is durable. Never over one
+      already made about `keep`: a person who has said something about
+      the survivor said it about the survivor, and a merge is not the
+      moment to overrule them.
+    - **Inferred appearances**, so the page is right NOW rather than
+      after a re-run that may never come -- the same reason denying
+      withdraws an attribution instead of only recording a claim.
+    - **Clusters**, so the next run's groups point at the survivor
+      rather than at a person who no longer exists.
+    - **Verdicts**, so a correction somebody made about the folded
+      person still counts against the model that earned it.
+
+    And every ADDRESS the folded person ever had is re-pointed at the
+    survivor, so a bookmark, a shared link or an exported document keeps
+    working. `slug_history` already answers a retired slug with the
+    entity that holds it now, and the person route already redirects on
+    a hit; this makes a merge one more kind of retirement rather than a
+    new sort of hole.
+    """
+    if keep_id == folded_id:
+        raise ValueError("a person cannot be merged into themselves")
+    for one in (keep_id, folded_id):
+        if conn.execute("SELECT 1 FROM person WHERE id = ?", (one,)).fetchone() is None:
+            raise LookupError(f"no person {one}")
+
+    # OR IGNORE, then delete the rest: the primary keys are what refuse a
+    # duplicate, so this keeps whatever the survivor already had and
+    # drops the folded row rather than overwriting a person's own words.
+    moved = conn.execute(
+        "INSERT OR IGNORE INTO person_assertion(person_id, file_id, sample_id, region_id, user_id, created_at, stance)"
+        " SELECT ?, file_id, sample_id, region_id, ?, ?, stance FROM person_assertion WHERE person_id = ?",
+        (keep_id, user_id, now, folded_id),
+    ).rowcount
+    conn.execute(
+        "INSERT OR IGNORE INTO derived_file_person(file_id, person_id, run_id, model_id, model_version, face_count)"
+        " SELECT file_id, ?, run_id, model_id, model_version, face_count"
+        " FROM derived_file_person WHERE person_id = ?",
+        (keep_id, folded_id),
+    )
+    conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE person_id = ?", (keep_id, folded_id))
+    conn.execute("UPDATE feedback SET person_id = ? WHERE person_id = ?", (keep_id, folded_id))
+
+    # Every address it ever answered to, including the one it is
+    # answering to now.
+    conn.execute("UPDATE slug_history SET entity_id = ? WHERE entity_id = ?", (keep_id, folded_id))
+    held = conn.execute("SELECT slug FROM entity WHERE id = ?", (folded_id,)).fetchone()
+    if held is not None:
+        conn.execute(
+            "INSERT OR IGNORE INTO slug_history(kind, slug, entity_id, retired_at) VALUES('person', ?, ?, ?)",
+            (held[0], keep_id, now),
+        )
+    # CASCADE takes the person row and anything still pointing at it.
+    conn.execute("DELETE FROM entity WHERE id = ?", (folded_id,))
+    return {"kept": keep_id, "folded": folded_id, "assertions": int(moved or 0)}
+
+
 def retract_person(conn, person_id: int, file_id: int) -> None:
     """Withdraw a claim entirely -- neither said nor denied.
 

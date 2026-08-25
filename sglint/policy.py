@@ -467,7 +467,6 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
         "sg_web/artifact_view.py:workflows_index",
         "sg_web/folder_view.py:folder_page",
         "sg_web/folder_view.py:folders_index",
-        "sg_web/person_view.py:people_index",
         "sg_web/person_view.py:person_page",
         "sg_web/place_view.py:places_index",
         "sg_web/story_view.py:plan_document",

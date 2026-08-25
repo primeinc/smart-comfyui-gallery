@@ -22,6 +22,14 @@
                  aria-label="name" required>
           <button type="submit">name</button>
         </form>
+        {# The other correction. Denying says "not them, here"; this says
+           "these two were always one person" -- the ordinary failure of
+           face clustering, which a threshold cannot fix without trading
+           away somebody else's correct grouping. #}
+        <button type="button" class="person-same" data-same-as="{{ person.slug }}"
+                title="fold another person into this one: their pictures, their names and their corrections come here">
+          same as someone else
+        </button>
       </div>
     </section>
     <p class="places-line"><a href="{{ person.timeline }}" data-person-timeline>their timeline</a></p>

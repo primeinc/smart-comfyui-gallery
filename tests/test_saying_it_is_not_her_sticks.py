@@ -570,3 +570,139 @@ def test_the_correction_count_is_never_offered_as_a_rate(library):
     # and it stays out of the rated table, where a reader would compare
     # a tally against a percentage
     assert verdicts.by_producer(library) == []
+
+
+# --- and two people can be told they were always one -------------------------
+
+
+def test_merging_moves_the_durable_claims(library):
+    """The other correction, and the one the durable model was missing.
+
+    Denying says "not them, in this picture". A clustering run splitting
+    somebody into four is the ordinary failure, and a threshold cannot
+    fix it without trading away somebody else's correct grouping. Said
+    here it is local, permanent, and re-applied after every future run.
+    """
+    keep = authored.person(library, "Hannah", NOW)
+    folded = authored.person(library, "Hanna", NOW)
+    authored.assert_person(library, folded, 2, 1, NOW)
+    authored.assert_person(library, folded, 3, 1, NOW)
+    library.commit()
+
+    told = authored.merge_people(library, keep, folded, 1, NOW)
+    library.commit()
+
+    assert told["assertions"] == 2
+    held = {
+        (person_id, file_id)
+        for person_id, file_id in library.execute("SELECT person_id, file_id FROM person_assertion")
+    }
+    assert held == {(keep, 2), (keep, 3)}
+    assert library.execute("SELECT count(*) FROM person WHERE id = ?", (folded,)).fetchone()[0] == 0
+
+
+def test_a_merge_never_overrules_what_was_said_about_the_survivor(library):
+    """A person who has said something about the one being kept said it
+    about the one being kept, and a merge is not the moment to overrule
+    them."""
+    keep = authored.person(library, "Hannah", NOW)
+    folded = authored.person(library, "Hanna", NOW)
+    authored.deny_person(library, keep, 2, 1, NOW)
+    authored.assert_person(library, folded, 2, 1, NOW)
+    library.commit()
+
+    authored.merge_people(library, keep, folded, 1, NOW)
+    library.commit()
+
+    stance = library.execute(
+        "SELECT stance FROM person_assertion WHERE person_id = ? AND file_id = 2", (keep,)
+    ).fetchone()[0]
+    assert stance == "is_not", "the merge overwrote a denial somebody had made about the survivor"
+
+
+def test_the_folded_address_still_answers(library):
+    """A bookmark, a shared link or an exported document keeps working:
+    `slug_history` already answers a retired slug with the entity that
+    holds it now, so a merge is one more kind of retirement rather than
+    a new sort of hole."""
+    from db import naming
+
+    keep = authored.person(library, "Hannah", NOW)
+    folded = authored.person(library, "Hanna", NOW)
+    authored.assert_person(library, folded, 2, 1, NOW)
+    gone = naming.entity_slug(library, folded)
+    assert gone is not None
+    library.commit()
+
+    authored.merge_people(library, keep, folded, 1, NOW)
+    library.commit()
+
+    found = naming.resolve(library, "person", gone[1])
+    assert found is not None, "the folded person's address answers nothing"
+    assert found[0] == keep
+    assert found[1] is False, "it should redirect rather than serve"
+
+
+def test_a_correction_survives_the_merge_it_was_made_before(library):
+    """A verdict recorded against the folded person still counts against
+    the model that earned it."""
+    who = authored.person(library, "Hannah", NOW)
+    folded = authored.person(library, "Hanna", NOW)
+    run_id = _cluster(library)
+    derived.attribute(library, 2, folded, run_id, MODEL[0], MODEL[1], face_count=1)
+    library.commit()
+    authored.deny_person(library, folded, 2, 1, NOW)
+    library.commit()
+    assert _corrections(library) == [(MODEL[0], MODEL[1], 1, 1)]
+
+    authored.merge_people(library, who, folded, 1, NOW)
+    library.commit()
+    assert _corrections(library) == [(MODEL[0], MODEL[1], 1, 1)], "the correction was lost with the person"
+
+
+def test_the_pictures_move_now_rather_than_after_a_rerun(library):
+    """The same reason denying withdraws an attribution instead of only
+    recording a claim: the page reads `derived_file_person`, and a merge
+    that waited for a re-run would show a person still split."""
+    keep = authored.person(library, "Hannah", NOW)
+    folded = authored.person(library, "Hanna", NOW)
+    run_id = _cluster(library)
+    derived.attribute(library, 3, folded, run_id, MODEL[0], MODEL[1], face_count=1)
+    library.commit()
+
+    authored.merge_people(library, keep, folded, 1, NOW)
+    library.commit()
+
+    held = {row[0] for row in library.execute("SELECT person_id FROM derived_file_person")}
+    assert held == {keep}
+
+
+def test_a_person_cannot_be_merged_into_themselves(library):
+    who = authored.person(library, "Hannah", NOW)
+    library.commit()
+    with pytest.raises(ValueError, match="themselves"):
+        authored.merge_people(library, who, who, 1, NOW)
+
+
+def test_the_person_page_offers_it(tmp_path):
+    """Where the split is NOTICED: standing on one of them, looking at
+    half their pictures."""
+    import time as clock
+
+    from litestar.testing import TestClient
+
+    from db import connect, naming
+    from sg_web.app import build_app
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            who = authored.person(conn, "Hannah", clock.time())
+            conn.commit()
+            slug = naming.entity_slug(conn, who)
+            assert slug is not None
+        finally:
+            connect.close(conn)
+
+        page = client.get(f"/p/{slug[1]}", headers={"accept": "text/html"}).text
+        assert f'data-same-as="{slug[1]}"' in page, "no way to say two people are one"

@@ -433,14 +433,17 @@ not a design decision anybody made; it is work nobody did.
 
 ## Human workflows we have the data for and not the product
 
-- **Face correction.** The persistence model is arguably better than
-  anyone's -- an accepted name survives reclustering, which is the
-  whole point of separating authored claims from derived observations
-  -- and there is no workflow around it. Merging two clusters,
-  rejecting a bad match, reviewing unknown faces, choosing an exemplar:
-  Immich, PhotoPrism and LibrePhotos all expose these. A durable model
-  with no correction UI means the durability protects whatever mistake
-  was made first.
+- **Face correction: two of four.** Rejecting a bad match ships (deny,
+  on the picture and over every thumbnail on the person's page), and so
+  does merging two people ("same as someone else", which moves the
+  durable claims and redirects the folded address).
+
+  Left: **reviewing unknown faces** -- the placeholder people minted per
+  unnamed cluster are addressable and there is no queue that walks them
+  -- and **choosing an exemplar**, which is today the highest-confidence
+  detection in the primary run and cannot be overridden. Neither is the
+  durability problem the first two were: a wrong avatar is a wrong
+  picture, not a wrong record.
 
 - **A video with nobody in it is the most expensive video to look at.**
   Not a guess about the code -- it is what the code is for.

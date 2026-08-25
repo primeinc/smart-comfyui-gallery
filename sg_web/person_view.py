@@ -26,9 +26,10 @@ from __future__ import annotations
 import time
 import urllib.parse
 
-from litestar import Request, get, post
+from litestar import MediaType, Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath
 from litestar.response import Redirect, Response, Template
 
@@ -137,7 +138,36 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
         return told
 
 
-@get("/people", sync_to_thread=True)
+class PersonListed(Wire):
+    """One person on the index: who, where, how many, and when.
+
+    Named because a machine reads it and the browser is typed against
+    it. The route negotiates -- a page to a person, JSON to everything
+    else -- and a union that mixes a page with a JSON answer reaches
+    OpenAPI as the empty schema however precisely the arms are written,
+    so the answer is declared in `responses=` instead.
+    """
+
+    name: str | None
+    slug: str
+    pictures: int
+    #: the first and last moment anything places them, when anything does
+    first_seen: float | None
+    last_seen: float | None
+
+
+@get(
+    "/people",
+    responses={
+        200: ResponseSpec(
+            data_container=list[PersonListed],
+            description="Everyone, most pictures first",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+    sync_to_thread=True,
+)
 def people_index(state: State, request: Request) -> Template | Response:
     """Everyone, most pictures first -- rendered for a browser, the
     historical JSON list for everything else."""
@@ -210,6 +240,66 @@ class NewName(Wire):
     """The body of POST /p/{slug}/name."""
 
     name: str
+
+
+class SameAs(Wire):
+    """The body of POST /p/{slug}/same-as: the OTHER person's address.
+
+    The one at `slug` survives, because that is the page somebody is
+    standing on when they notice the split.
+    """
+
+    other: str
+
+
+class Merged(Wire):
+    """What one person is, after being told they were two."""
+
+    slug: str
+    #: the address that no longer names anybody, and now redirects here
+    folded: str
+    #: how many durable claims moved across
+    assertions: int
+
+
+@post("/p/{slug:str}/same-as", sync_to_thread=True)
+def same_person(state: State, slug: FromPath[str], data: SameAs) -> Merged:
+    """Say these two are one person.
+
+    The ordinary failure of face clustering is a split: one person
+    arrives as four, and a threshold cannot fix it without trading away
+    somebody else's correct grouping. Said here it is local, permanent
+    and survives every future run -- the claims move, and
+    `seed_clusters_from_assertions` re-applies them after each rebuild.
+
+    Every address the folded person answered to redirects here
+    afterwards, so a link somebody saved or shared keeps working. A
+    merge is one more kind of retirement rather than a new sort of hole.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        keep = naming.resolve(conn, "person", slug)
+        if keep is None:
+            raise NotFoundException(f"no person at /p/{slug}")
+        other = naming.resolve(conn, "person", data.other.strip().removeprefix("/p/"))
+        if other is None:
+            raise NotFoundException(f"no person at /p/{data.other}")
+        held = naming.entity_slug(conn, other[0])
+        try:
+            told = authored.merge_people(conn, keep[0], other[0], state.actor_id, time.time())
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        conn.commit()
+        live = naming.entity_slug(conn, keep[0])
+    finally:
+        connect.close(conn)
+    return Merged(
+        slug=live[1] if live else slug,
+        folded=held[1] if held else data.other,
+        assertions=told["assertions"],
+    )
 
 
 @post("/p/{slug:str}/name", sync_to_thread=True)
