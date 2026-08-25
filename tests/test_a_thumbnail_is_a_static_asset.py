@@ -169,12 +169,17 @@ def _drained(client, clock, timeout: float = 300.0) -> None:
         clock.sleep(0.05)
 
 
-def _connections_during(work):
+def _connections_during(monkeypatch, work):
     """How many SQLite connections the application opens while doing this.
 
     Counted at `db.connect.connect`, which every route reaches through,
     so the number is what the application really did rather than what
     this test believes about it.
+
+    `monkeypatch` rather than a try/finally around a module attribute:
+    it puts the real one back when an assertion inside `work` fails too,
+    and rebinding a module's `def` is not an assignment a type checker
+    will take.
     """
     seen = {"opened": 0}
     real = connect.connect
@@ -183,11 +188,11 @@ def _connections_during(work):
         seen["opened"] += 1
         return real(*args, **kwargs)
 
-    connect.connect = counting
+    monkeypatch.setattr(connect, "connect", counting)
     try:
         work()
     finally:
-        connect.connect = real
+        monkeypatch.undo()
     return seen["opened"]
 
 
@@ -201,7 +206,7 @@ def test_the_grid_points_at_content_addressed_assets(served):
         assert _HEX64.match(src) is not None, f"{src} is not a content-addressed asset"
 
 
-def test_serving_one_touches_no_database(served):
+def test_serving_one_touches_no_database(served, monkeypatch):
     """The number the whole change exists to move. Sixty cells were
     sixty connections; this asserts the per-asset cost is zero."""
     client, _ = served
@@ -209,22 +214,22 @@ def test_serving_one_touches_no_database(served):
     # warm it, so this measures DELIVERY rather than the render-on-miss
     assert client.get(src).status_code == 200
 
-    opened = _connections_during(lambda: client.get(src))
+    opened = _connections_during(monkeypatch, lambda: client.get(src))
     assert opened == 0, f"serving one derivative opened {opened} connections"
 
     # the control, on the same client, in the same test: the slug route
     # is the thing being replaced, and it does open one
-    was = _connections_during(lambda: client.get("/thumb/s0"))
+    was = _connections_during(monkeypatch, lambda: client.get("/thumb/s0"))
     assert was >= 1, "the slug route opens a connection; if it does not, this test proves nothing"
 
 
-def test_a_whole_page_of_thumbnails_costs_nothing_extra(served):
+def test_a_whole_page_of_thumbnails_costs_nothing_extra(served, monkeypatch):
     client, _ = served
     sources = [one for one in re.findall(r'<img src="([^"]+)"', client.get("/g").text) if "/thumbs/" in one]
     assert len(sources) >= 6
     for src in sources:
         client.get(src)  # warm
-    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    opened = _connections_during(monkeypatch, lambda: [client.get(src) for src in sources])
     assert opened == 0, f"{len(sources)} thumbnails opened {opened} connections"
 
 
@@ -331,7 +336,7 @@ def test_no_template_anywhere_still_spells_the_slug_route(served):
     assert spelt == [], f"templates building a slug thumbnail address themselves: {spelt}"
 
 
-def test_the_artifact_shelf_costs_no_connections(served):
+def test_the_artifact_shelf_costs_no_connections(served, monkeypatch):
     """A shelf of forty cards at four samples each was a hundred and
     sixty lookups nothing could cache."""
     client, _ = served
@@ -343,18 +348,18 @@ def test_the_artifact_shelf_costs_no_connections(served):
     for src in sources:
         assert _HEX64.match(src) is not None, f"the artifact shelf points at {src}"
         client.get(src)
-    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    opened = _connections_during(monkeypatch, lambda: [client.get(src) for src in sources])
     assert opened == 0, f"{len(sources)} shelf thumbnails opened {opened} connections"
 
 
-def test_a_folder_page_of_thumbnails_costs_no_connections(served):
+def test_a_folder_page_of_thumbnails_costs_no_connections(served, monkeypatch):
     """The number, on a surface other than the grid."""
     client, _ = served
     sources = _pictures_on(client, "/f/pics")
     assert len(sources) >= 6
     for src in sources:
         client.get(src)  # warm, so this measures delivery
-    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    opened = _connections_during(monkeypatch, lambda: [client.get(src) for src in sources])
     assert opened == 0, f"{len(sources)} folder thumbnails opened {opened} connections"
 
 
@@ -375,12 +380,12 @@ def test_the_timeline_draws_content_addressed_assets(served):
         assert _HEX64.match(src) is not None, f"the timeline points at {src}"
 
 
-def test_a_whole_timeline_of_thumbnails_costs_no_connections(served):
+def test_a_whole_timeline_of_thumbnails_costs_no_connections(served, monkeypatch):
     client, _ = served
     sources = _pictures_on(client, "/timeline")
     for src in sources:
         client.get(src)  # warm, so this measures delivery
-    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    opened = _connections_during(monkeypatch, lambda: [client.get(src) for src in sources])
     assert opened == 0, f"{len(sources)} timeline thumbnails opened {opened} connections"
 
 

@@ -465,7 +465,7 @@ def test_each_fingerprint_carries_its_own_producer(db):
     assert told == {"imagehash.phash": 0b1, "imagehash.dhash": 0b10}
 
 
-def test_a_failed_post_commit_sync_invalidates_the_space(db, tmp_path):
+def test_a_failed_post_commit_sync_invalidates_the_space(db, tmp_path, monkeypatch):
     """A space that took half a batch could answer with stale rows, so a
     failed application marks it unservable -- resident and snapshot both
     -- and the next align rebuilds it from committed truth."""
@@ -476,7 +476,7 @@ def test_a_failed_post_commit_sync_invalidates_the_space(db, tmp_path):
     def broken(*args, **kwargs):
         raise RuntimeError("the device fell over mid-batch")
 
-    manager.upsert = broken
+    monkeypatch.setattr(manager, "upsert", broken)
     similarity.apply_pending(db, manager)
     assert not manager.has(key), "a half-applied space is still answering"
     restored = IndexManager(tmp_path)

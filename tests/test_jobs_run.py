@@ -852,7 +852,7 @@ def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch
     )
 
 
-def test_the_qwen_adapter_takes_the_native_link_for_video():
+def test_the_qwen_adapter_takes_the_native_link_for_video(monkeypatch):
     """Video reaches the model as the FILE with sampling budgets -- the
     whole point of the media-aware seam. Calling the canonical poster
     frame instead would judge a clip by one picture and make the seam
@@ -867,7 +867,7 @@ def test_the_qwen_adapter_takes_the_native_link_for_video():
         seen.update({"instruction": instruction, "content": content})
         return np.zeros(1, dtype=np.float32)
 
-    backend._embed = record
+    monkeypatch.setattr(backend, "_embed", record)
 
     def never_the_frame():
         raise AssertionError("a video must go through its own path, not the poster frame")
@@ -879,7 +879,7 @@ def test_the_qwen_adapter_takes_the_native_link_for_video():
     assert (seen["content"]["fps"], seen["content"]["max_frames"]) == (qwen_vl.FPS, qwen_vl.MAX_FRAMES)
 
 
-def test_a_failed_decode_fails_the_item_and_embeds_nothing():
+def test_a_failed_decode_fails_the_item_and_embeds_nothing(monkeypatch):
     """The upstream wrapper swaps a failed decode for the literal text
     "NULL" to keep an evaluation batch alive; this adapter must NOT --
     a NULL vector in the space is a picture that answers queries about
@@ -894,7 +894,7 @@ def test_a_failed_decode_fails_the_item_and_embeds_nothing():
         called.append(content)
         return np.zeros(1, dtype=np.float32)
 
-    backend._embed = record
+    monkeypatch.setattr(backend, "_embed", record)
 
     def undecodable():
         raise ValueError("the bytes are not a picture")

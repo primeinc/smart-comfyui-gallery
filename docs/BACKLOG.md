@@ -621,13 +621,24 @@ consequences the architecture should keep room for, not work.
   say what actually happened and cost nothing, because a frozen version
   is frozen and both shapes are live for ever.
 
-  Where the remaining 18 sit, and they are the hard ones:
+  Six more went as one pattern: an attribute PATCHED with a
+  differently-typed function -- `backend._embed = record`,
+  `manager.upsert = broken`, `connect.connect = counting`. They are
+  `monkeypatch.setattr` now, which the checker does not object to and
+  which is better besides: it puts the real one back when an assertion
+  inside the patched region fails, where a hand-written try/finally
+  only does if somebody wrote it, and two of these had none.
 
-      tests/                 9   in 7 files
-      vision/                5   narrowing and transformers' own types
-      benchmarks/            3
-      db/planning.py         2   a planner union, unrelated to the plans
-      sg_web/app.py          1   NOT ours, see below
+  **11 errors left, in 8 places, and they are one puzzle each:**
+
+      vision/faces.py:177            narrowing a `Callable | Mapping`
+      vision/semantic/qwen_vl.py:358 transformers' own parameter type
+      db/planning.py:2098-2099       a planner union and a None default
+      benchmarks/browser_report.py   a str.join over mixed items
+      benchmarks/thumb_delivery.py   the same patch pattern, no pytest
+                                     fixture to reach for
+      tests/  2 sites               a judge_capture int/float, and an
+                                     `Unknown | int` iterated
 
   **The count that matters is 17 ERRORS, not 21 diagnostics.** ty exits
   0 when only warning-level violations remain

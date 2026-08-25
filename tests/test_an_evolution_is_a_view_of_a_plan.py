@@ -507,7 +507,7 @@ def test_a_thousand_members_are_o_n_work():
         connect.close(conn)
 
 
-def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
+def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser(monkeypatch):
     """An old plan under a newer prompt parser: the Explorer's prompt
     inputs are the MAIN texts the snapshot froze, so the metrics do not
     move when `prompt_sections.VERSION` does. The running parser is
@@ -533,15 +533,13 @@ def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
         def never(*_a, **_k):
             raise AssertionError("the running parser was consulted for a frozen main")
 
-        original_version = prompt_sections.VERSION
-        original_main = prompt_sections.main
-        try:
-            prompt_sections.VERSION = original_version + 1
-            prompt_sections.main = never
-            after = evolution.load(conn, plan_id, models_dir="unused")
-        finally:
-            prompt_sections.VERSION = original_version
-            prompt_sections.main = original_main
+        # `monkeypatch` rather than a try/finally: it restores on a
+        # failing assertion too, and rebinding a module's `def` and its
+        # VERSION literal is not an assignment a type checker will take.
+        monkeypatch.setattr(prompt_sections, "VERSION", prompt_sections.VERSION + 1)
+        monkeypatch.setattr(prompt_sections, "main", never)
+        after = evolution.load(conn, plan_id, models_dir="unused")
+        monkeypatch.undo()
         assert [m["prompt"] for m in after["members"]] == [m["prompt"] for m in before["members"]]
         assert [t["changes"] for t in after["transitions"]] == [t["changes"] for t in before["transitions"]]
         assert [m["metrics"] for m in after["members"]] == [m["metrics"] for m in before["members"]]
