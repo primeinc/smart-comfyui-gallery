@@ -436,6 +436,84 @@ not a design decision anybody made; it is work nobody did.
   with no correction UI means the durability protects whatever mistake
   was made first.
 
+- **"This is not that person" cannot be said, and would be ignored if
+  it were.** The positive claim is built and the doctrine around it is
+  the best thing in this schema: `person_assertion` is a human saying
+  "she is in this picture", and `db/derived.py` re-applies it after
+  every reclustering rather than re-guessing by centroid similarity.
+  The negative claim has nothing.
+
+  Three separate gaps, and they compound:
+
+  1. **No way to spell it.** `retract_person` DELETES the assertion,
+     which means "I take that back" -- and the next clustering run is
+     free to put it straight back, because nothing recorded that it was
+     wrong. A retraction is the absence of a claim; "not her" is a
+     claim, and there is no row for it.
+  2. **No route.** `feedback` in the schema takes
+     `target_kind='person'` with `verdict IN ('right','wrong','unsure')`
+     and `db/authored.py feedback()` writes it -- and NOTHING in
+     `sg_web/` calls it. There is no HTTP surface for a verdict of any
+     kind, on a person, a caption, a duplicate or a similarity. The
+     table is written only by tests.
+  3. **Nothing reads the verdict.** The one query anywhere that touches
+     `feedback` is `db/runner.py:1055`, and it only stops a judged
+     placeholder person from being garbage-collected. Whether the
+     verdict said `right` or `wrong` is never consulted by anything.
+
+  Also worth fixing while it is open: `feedback` points at a FILE, not
+  at a face. There is no `region_id` on it, so "the face in the corner
+  of this picture is not Sarah" is unspellable even in the table --
+  only "the person judgement about this file was wrong". A picture with
+  two faces cannot say which one is the mistake, which is the ordinary
+  case.
+
+  The reason this matters more than a correction UI: a negative claim
+  is the highest-value input clustering can take. A false merge is one
+  cannot-link edge away from being fixed for ever, on every future run,
+  where a threshold is a global compromise that trades somebody else's
+  correct grouping for this one. See the entry below.
+
+- **Every clustering knob is a constant in a module.** They are real
+  numbers somebody measured, and they are unreachable: per-embedder
+  operating points `0.48` / `0.55` / `0.40` (`default_cluster_threshold`,
+  vision/faces.py), `_LABEL_MATCH_THRESHOLD = 0.9` for a recomputed
+  cluster inheriting an old label, `min_det_score=0.5`, `min_face_px`,
+  and `FLOOR = 0.7` in db/detect.py. Changing one is an edit and a
+  restart.
+
+  The surface already exists and has precedent: `db/settings.py` is a
+  registry of rows read where they are used, written over HTTP, and
+  `dupe_threshold` / `dupe_dhash_verify` are already numeric settings
+  living there. So (b) -- expose them as settings -- is a small,
+  well-shaped piece of work: registry entries with defaults and ranges,
+  read at job submit the way `ort_providers` already is, plus the
+  operations console showing what a given run used.
+
+  Two things that must come with it, or it is a knob that quietly
+  corrupts the store:
+
+  - **A threshold is part of the producer identity.** `derived_face_run`
+    records the method; the operating point has to travel with it, or
+    two runs at two thresholds become indistinguishable rows and
+    "compare what the 2026 model confused" -- the reason this tree keeps
+    generations of observations at all -- stops being answerable.
+  - **Live-ish, not live.** Changing a threshold does not reshape the
+    graph that exists; it changes what the NEXT run computes. The honest
+    surface is "set it, then re-run, and here is what changed" -- a
+    preview of the delta against the current grouping, not a slider that
+    appears to move people around in real time.
+
+  And the harder half, which is why (a) is not simply better: a global
+  threshold cannot express "these two are the same and those two are
+  not". `db/grouping.py METHODS` takes a graph and vectors and no
+  constraints, so every authored claim is applied AFTER the fact, by
+  re-attachment. Feeding must-link / cannot-link edges into the graph
+  itself is the version worth wanting -- it makes each correction
+  permanent and local instead of trading it against a global compromise
+  -- and it needs the entry above to exist first, because there are no
+  cannot-link claims to feed it.
+
 - **A model that describes a picture does not know who is in it.**
   The library knows: `person_assertion` says this person appears in
   this file, optionally with the face region and the frame, signed by a
