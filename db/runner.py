@@ -996,6 +996,39 @@ def _ingest_item(conn, file_id: int, payload: dict, now: float) -> None:
         raise ValueError(out.unreadable)
 
 
+def chosen_threshold(conn) -> float | None:
+    """The operating point somebody asked for, or None for the measured one.
+
+    Validated HERE, at submit, so a bad value is a refused submit rather
+    than a job that fails on its third item -- the rule `dupe_threshold`
+    follows above.
+
+    The bounds are wide on purpose. This is somebody's own library and
+    the whole reason to expose the knob is to let them find out what a
+    different operating point does; the reason it is safe to let them is
+    that a new threshold writes a NEW run beside the old one
+    (schema.sql derived_face_run_identity), so nothing they had is
+    overwritten by finding out. What is refused is the range where the
+    answer is not interesting but broken: at 0 every face is everyone,
+    and at 1 nobody is anybody.
+    """
+    from . import settings as settings_module
+
+    raw = settings_module.value(conn, "face_cluster_threshold").strip().lower()
+    if raw in ("", "auto"):
+        return None
+    try:
+        threshold = float(raw)
+    except ValueError as bad:
+        raise ValueError(f"face_cluster_threshold must be a cosine similarity or 'auto', not {raw!r}") from bad
+    if not 0.0 < threshold < 1.0:
+        raise ValueError(
+            f"face_cluster_threshold must be between 0 and 1 exclusive, not {threshold}: "
+            "at 0 every face is the same person and at 1 no two faces ever are"
+        )
+    return threshold
+
+
 def submit_cluster(conn, now: float) -> int:
     """Group every embedding space's faces into people, as one job.
 
@@ -1005,6 +1038,11 @@ def submit_cluster(conn, now: float) -> int:
     job with nothing to do, which settles `done` honestly rather than
     being refused: "cluster an unindexed library" is an answer, not an
     error.
+
+    The operating point rides with them, pinned once here rather than
+    read per item: a setting changed while the job runs would otherwise
+    give two embedding spaces two different answers inside one run, and
+    the run row records a single threshold for both.
     """
     spaces = conn.execute(
         "SELECT DISTINCT model_id, model_version FROM derived_face_instance"
@@ -1014,7 +1052,7 @@ def submit_cluster(conn, now: float) -> int:
         conn,
         "cluster_faces",
         now,
-        payload={"spaces": [list(space) for space in spaces]},
+        payload={"spaces": [list(space) for space in spaces], "threshold": chosen_threshold(conn)},
         items=list(range(len(spaces))),
     )
 
@@ -1036,7 +1074,11 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     # Method and threshold pinned once and passed to BOTH calls: recomputing
     # the run identity from separately-spelled defaults is how a drift makes
     # the DELETE below clear a different run's attributions.
-    pinned = derived.threshold_for(model_id)
+    # What somebody asked for, else what was measured for this embedder.
+    # `.get`, because a job queued before this setting existed has no
+    # such key and must still cluster at the measured point.
+    asked = payload.get("threshold")
+    pinned = derived.threshold_for(model_id) if asked is None else float(asked)
     told.phase("clustering", model_id=model_id, model_version=model_version, threshold=pinned)
     derived.cluster(conn, model_id, model_version, now, method=derived.DEFAULT_METHOD, threshold=pinned)
     run_id = derived.run_for(conn, model_id, model_version, derived.DEFAULT_METHOD, pinned, now)

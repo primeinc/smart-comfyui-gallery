@@ -103,6 +103,24 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # positive pHash proposes (144 of 183 at pHash radius 16).
     # Validated at submit, 0..63.
     "dupe_dhash_verify": ("8", None),
+    # The cosine similarity at which two faces are taken to be the same
+    # person. "auto" is the measured per-embedder operating point
+    # (db/derived.py SAME_PERSON) and is what this should stay unless
+    # somebody is deliberately experimenting: the spaces are not
+    # comparable and one number is wrong for all but one of them.
+    #
+    # Getting it wrong is not a small error. docs/FACE_CLUSTERING.md
+    # measures SFace's 0.363 applied to ArcFace at a top-cluster share
+    # of 0.963 -- essentially the whole library welded into one person.
+    #
+    # It is safe to try anyway, and that is why it is offered: the
+    # threshold is part of a run's identity
+    # (schema.sql derived_face_run_identity), so clustering at a new one
+    # writes a NEW run beside the old rather than over it. The previous
+    # grouping is still there and can be made primary again. Read at
+    # submit and pinned into the payload, so changing it mid-job cannot
+    # give two embedding spaces two different answers in one run.
+    "face_cluster_threshold": ("auto", None),
     # Which held key makes the viewer's wheel walk to the next picture
     # instead of zooming (WheelModifier above). Read when a media page or
     # its overlay fragment is rendered, so a change applies to the next

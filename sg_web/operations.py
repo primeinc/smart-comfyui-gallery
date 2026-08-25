@@ -196,7 +196,7 @@ def _page_context(state: State) -> dict:
         return {
             "roots": _roots(conn),
             "settings": settings.snapshot(conn),
-            "clusterings": pages.clusterings(conn),
+            "clusterings": pages.standings(conn),
             "launchers": [
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
@@ -1063,7 +1063,7 @@ def choose_primary(state: State) -> Template:
     try:
         chosen = derived.choose_primary(conn)
         conn.commit()
-        runs = pages.clusterings(conn)
+        runs = pages.standings(conn)
     finally:
         connect.close(conn)
     return Template(

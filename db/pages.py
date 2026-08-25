@@ -641,17 +641,18 @@ def clusterings(conn):
 
 def standings(conn) -> list[dict]:
     """Every run with where it stands against the People page -- the
-    default, or the sentence saying why not (db/derived.py standing)."""
+    default, or the sentence saying why not (db/derived.py standing).
+
+    The whole run row, not a chosen few fields. It began as the four the
+    People page's empty state used, which meant the ONE place that says
+    "it chained: one group holds 96% of every face" could not also say
+    which threshold produced it -- and the threshold is the thing anyone
+    reading that sentence is about to change.
+    """
     from . import derived
 
     return [
-        {
-            "id": run["id"],
-            "model_id": run["model_id"],
-            "faces": run["faces"],
-            "clusters": run["clusters"],
-            "standing": derived.standing(conn, run["id"], run["model_id"], run["threshold"]),
-        }
+        run | {"standing": derived.standing(conn, run["id"], run["model_id"], run["threshold"])}
         for run in clusterings(conn)
     ]
 

@@ -809,3 +809,92 @@ def test_the_observation_name_and_the_file_name_stay_apart(db):
     )
     assert "beach.png" in told
     assert told.count("captioned") == 1
+
+
+# --- the operating point is reachable ----------------------------------------
+
+
+def test_the_face_threshold_is_a_setting_and_auto_means_measured(db):
+    """The knob, and its default.
+
+    Per-embedder operating points were constants in vision/faces.py:
+    changing one was an edit and a restart. "auto" keeps the measured
+    point (db/derived.py SAME_PERSON), which is what it should stay
+    unless somebody is deliberately experimenting -- the spaces are not
+    comparable and one number is wrong for all but one of them.
+    """
+    from db import runner, settings
+
+    assert settings.value(db, "face_cluster_threshold") == "auto"
+    assert runner.chosen_threshold(db) is None, "auto must not pin a number over the measured one"
+
+    settings.put(db, "face_cluster_threshold", "0.62")
+    assert runner.chosen_threshold(db) == pytest.approx(0.62)
+
+
+def test_a_threshold_that_could_not_mean_anything_is_refused_at_submit(db):
+    """Validated where `dupe_threshold` is, and for the same reason: a
+    bad value must be a refused submit, never a job that fails on its
+    third item.
+
+    The bounds are wide on purpose -- this is somebody's own library and
+    the point of the knob is finding out what a different point does.
+    What is refused is where the answer is not interesting but broken."""
+    from db import runner, settings
+
+    for bad in ("0", "1", "1.5", "-0.2", "tight"):
+        settings.put(db, "face_cluster_threshold", bad)
+        with pytest.raises(ValueError, match="face_cluster_threshold"):
+            runner.chosen_threshold(db)
+
+
+def test_the_operating_point_is_pinned_at_submit_not_read_per_item(db):
+    """One run, one threshold. Read per item, a setting changed while the
+    job runs gives two embedding spaces two different answers inside one
+    run -- and the run row records a single number for both."""
+    import numpy as np
+
+    from db import derived, runner, scan, settings
+
+    root = int(db.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x','library',0)").lastrowid or 0)
+    folder = scan.mint(db, "folder", "x")
+    db.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?,?,NULL,'x',0)", (folder, root))
+    file_id = scan.mint(db, "file", "one")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'one.png', 'image', 1, 0, ?, 0, 0)",
+        (file_id, folder, "a" * 64),
+    )
+    derived.record_faces(
+        db,
+        file_id,
+        "opencv/yunet+sface",
+        "1",
+        "a" * 64,
+        0.0,
+        [{"region": derived.region(db, 0.1, 0.1, 0.2, 0.2), "embedding": np.ones(4, np.float32).tobytes()}],
+    )
+    settings.put(db, "face_cluster_threshold", "0.71")
+    db.commit()
+
+    job = runner.submit_cluster(db, 0.0)
+    payload = json.loads(db.execute("SELECT payload FROM job WHERE id = ?", (job,)).fetchone()[0])
+    assert payload["threshold"] == pytest.approx(0.71)
+
+    # and changing it now cannot reach the job already queued
+    settings.put(db, "face_cluster_threshold", "auto")
+    db.commit()
+    payload = json.loads(db.execute("SELECT payload FROM job WHERE id = ?", (job,)).fetchone()[0])
+    assert payload["threshold"] == pytest.approx(0.71)
+
+
+def test_a_run_queued_before_the_setting_existed_still_clusters(db):
+    """`.get`, not `[]`. A job sitting in the queue from an older build
+    carries no threshold key, and it must cluster at the measured point
+    rather than fail on a KeyError nobody can act on."""
+    from db import derived
+
+    assert derived.threshold_for("opencv/yunet+arcface") == pytest.approx(0.48)
+    payload: dict = {"spaces": [["opencv/yunet+arcface", "1"]]}
+    asked = payload.get("threshold")
+    assert asked is None

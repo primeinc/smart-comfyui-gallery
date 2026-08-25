@@ -659,35 +659,29 @@ not a design decision anybody made; it is work nobody did.
   not be built as one: "not her" needs to constrain clustering, which a
   `wrong` verdict on a file cannot do. Same gesture, two destinations.
 
-- **Every clustering knob is a constant in a module.** They are real
-  numbers somebody measured, and they are unreachable: per-embedder
-  operating points `0.48` / `0.55` / `0.40` (`default_cluster_threshold`,
-  vision/faces.py), `_LABEL_MATCH_THRESHOLD = 0.9` for a recomputed
-  cluster inheriting an old label, `min_det_score=0.5`, `min_face_px`,
-  and `FLOOR = 0.7` in db/detect.py. Changing one is an edit and a
-  restart.
+- **The DETECTION knobs are still constants in a module.** The
+  clustering operating point is now the `face_cluster_threshold` setting
+  ("auto" for the measured per-embedder point), validated at submit,
+  pinned into the payload, and shown per run on the operations console
+  beside what it produced. The two guards it needed were already there
+  or are now: the threshold is part of `derived_face_run`'s identity, so
+  a new one writes a new run beside the old rather than over it; and the
+  console says plainly that it changes what the NEXT run computes.
 
-  The surface already exists and has precedent: `db/settings.py` is a
-  registry of rows read where they are used, written over HTTP, and
-  `dupe_threshold` / `dupe_dhash_verify` are already numeric settings
-  living there. So (b) -- expose them as settings -- is a small,
-  well-shaped piece of work: registry entries with defaults and ranges,
-  read at job submit the way `ort_providers` already is, plus the
-  operations console showing what a given run used.
+  Still unreachable, each an edit and a restart:
+  `_LABEL_MATCH_THRESHOLD = 0.9` (a recomputed cluster inheriting an old
+  label), `min_det_score=0.5`, `min_face_px=24` (both vision/faces.py),
+  and `FLOOR = 0.7` in db/detect.py. These are DETECTION rather than
+  grouping, so they have a property the threshold does not: changing one
+  changes which faces exist at all, and a face nothing detected cannot
+  be recovered by re-running the clustering. Exposing them needs the
+  re-detect path to be as cheap to undo as re-clustering is, and it is
+  not.
 
-  Two things that must come with it, or it is a knob that quietly
-  corrupts the store:
-
-  - **A threshold is part of the producer identity.** `derived_face_run`
-    records the method; the operating point has to travel with it, or
-    two runs at two thresholds become indistinguishable rows and
-    "compare what the 2026 model confused" -- the reason this tree keeps
-    generations of observations at all -- stops being answerable.
-  - **Live-ish, not live.** Changing a threshold does not reshape the
-    graph that exists; it changes what the NEXT run computes. The honest
-    surface is "set it, then re-run, and here is what changed" -- a
-    preview of the delta against the current grouping, not a slider that
-    appears to move people around in real time.
+  Also still missing: **a preview of the delta**. `pages.disagreements`
+  and `face_across_runs` compute exactly it -- the pictures two runs
+  describe differently -- and nothing on the console puts two runs side
+  by side.
 
   And the harder half, which is why (a) is not simply better: a global
   threshold cannot express "these two are the same and those two are
