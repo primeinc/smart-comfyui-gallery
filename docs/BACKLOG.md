@@ -207,34 +207,6 @@ consequences the architecture should keep room for, not work.
 
 ## Surfaces
 
-- **A slideshow.** The viewer already owns the walk -- `_located` gives
-  it ordinal, arrows and a window over the ordered answer, and the keys
-  registry gives it a place to claim one. A slideshow is that walk on a
-  timer: play/pause and an interval. The pieces are all there; nothing
-  has put them together.
-
-  Two settings, not one, because they answer different questions and a
-  person wants them separately:
-
-  - **wrap** -- what the ARROWS do at either end of the answer. Off,
-    the walk stops; on, next from the last member is the first.
-  - **loop** -- what the SLIDESHOW does when it reaches the end. Off,
-    it stops and stays on the last picture; on, it starts again.
-
-  Both are workspace state, not query state (`frontend/src/workspace.ts`):
-  they change how you move through an answer, never which files the
-  answer contains, so neither belongs in the URL or the fingerprint.
-  Wrap must stay honest about the boundary either way -- crossing the
-  end is the walk restarting, never a silent slide into a different
-  question.
-
-- **Three native dialogs left in the save-view path.**
-  `frontend/src/gallery.ts` still opens `window.prompt` to name a smart
-  collection, and again to pick which collection a rule replaces --
-  the second one pastes a comma-joined list of slugs into a text box
-  and asks you to type one back. The cutoff prompt is gone (the answer
-  supplies it); these two want a real control.
-
 - **`library` and `mount` are the same thing.** `root.kind` admits
   `library`, `mount` and `trash`, and nothing anywhere branches on the
   first two: `db/pages.py:276` selects `kind IN ('library','mount')`
@@ -302,12 +274,6 @@ consequences the architecture should keep room for, not work.
   claims to support: the neighbourhood under a FILTERED ResultSet, and
   under a SEMANTIC one. `sort=oldest` covers the non-default timed
   order; nothing covers those two.
-
-- **`unbroken` is opt-in.** The fixture that fails a browser test on
-  first-party HTTP failures and console errors has to be requested by
-  name, so a test author who forgets it gets no such check. It should be
-  the default for browser tests, with an explicit opt-out for tests that
-  exercise failure deliberately.
 
 - **No cold acceptance lane.** Nothing runs the documented bootstrap from
   a checkout with no `.venv`, no `node_modules` and no
@@ -526,7 +492,7 @@ not a design decision anybody made; it is work nobody did.
   opens a native browser prompt, and it refuses large result counts.
   We had both of those defects until this week.
 
-## Two flakes in the suite, characterised and not fixed
+## Three flakes in the suite, characterised and not fixed
 
 - **`test_writes_stay_linear.py` fails near its own tolerance.** The
   ratio gate is `< 2.0` and the measurements sit on it: across four runs
@@ -538,6 +504,18 @@ not a design decision anybody made; it is work nobody did.
   measuring noise, or repeated timings with a median. Ignoring it is
   worse than either: a gate that fails one run in three teaches people
   to re-run it.
+
+- **`test_browsing_does_not_stop_at_sixty.py` fails about one run in
+  four, on a different case each time.** Measured at both revisions
+  before it was believed: 4 runs at HEAD gave 1 failure, 3 runs with an
+  unrelated change gave 1 failure -- the same rate, so it is the suite's
+  and not any change's. Always the same shape: `_grew_to` times out at
+  15s waiting for the next page to append, and the case that loses
+  varies (`scrolling_to_the_end`, `it_keeps_going`,
+  `dropping_from_the_top`, `scrolling_back_up`). Alone, every one of
+  them passes. The trigger is a scroll-driven fetch racing the harness's
+  own scroll, so the fix is in the test: wait for the loader's own
+  signal rather than for a count to move.
 
 - **`test_the_bytes_are_served.py` fails whenever something earlier left
   a running event loop.** Not xdist, as this was previously recorded:
