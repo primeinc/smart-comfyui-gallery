@@ -31,16 +31,30 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
-def main() -> int:
+def main(against: str | None = None) -> int:
+    """Report what the application made of a corpus.
+
+    With no argument a small synthetic library is written and scanned, which
+    is what `just corpus prove` has always done. Given a path, that directory
+    is scanned INSTEAD -- the real corpus, unmodified, so a failure it causes
+    is a finding about the application rather than a reason to edit the files.
+    """
     from litestar.testing import TestClient
 
     from db import connect
     from sg_web.app import build_app
 
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="sg-corpus-"))
-    root = tmp / "library"
-    told = corpus.spread(root, scale="small")
-    print(f"wrote {told['files']} files + {told['duplicates']} duplicates under {root}\n")
+    if against:
+        root = pathlib.Path(against).resolve()
+        if not root.is_dir():
+            raise SystemExit(f"not a directory: {root}")
+        held = sum(1 for p in root.rglob("*") if p.is_file())
+        print(f"scanning {held} existing files under {root}\n")
+    else:
+        root = tmp / "library"
+        told = corpus.spread(root, scale="small")
+        print(f"wrote {told['files']} files + {told['duplicates']} duplicates under {root}\n")
 
     with TestClient(app=build_app(str(tmp / "run"), worker=False)) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
@@ -87,4 +101,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+
+    raise SystemExit(main(sys.argv[1] if len(sys.argv) > 1 else None))
