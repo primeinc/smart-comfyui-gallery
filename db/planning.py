@@ -1910,6 +1910,11 @@ PLANNERS = {
     FileHistoryPlanner.kind: FileHistoryPlanner,
 }
 
+#: What `plan_snapshot` is handed. Beside the registry deliberately: the
+#: two lists are the same list, and one drifting from the other is how a
+#: signature comes to name one planner while three reach it.
+Planner = GenerationHistoryPlanner | CaptureHistoryPlanner | FileHistoryPlanner
+
 
 # --- persistence and orchestration -------------------------------------------
 
@@ -1933,7 +1938,7 @@ def _verified_snapshot(conn, snapshot_id: int) -> tuple[dict, str]:
     return document, row[1]
 
 
-def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now: float) -> PlanRef:
+def plan_snapshot(conn, snapshot_id: int, planner: Planner, now: float) -> PlanRef:
     """Plan one verified snapshot under one policy and persist the
     result -- or return the existing row when the request (or the
     canonical plan) already exists. The planner never sees the

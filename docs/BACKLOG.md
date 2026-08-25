@@ -530,11 +530,30 @@ consequences the architecture should keep room for, not work.
   so the strip is proved to read the materialized ordering the grid
   read rather than re-running the fusion.
 
-- **No cold acceptance lane.** Nothing runs the documented bootstrap from
-  a checkout with no `.venv`, no `node_modules` and no
-  `sg_web/static/build`. `test_the_documented_launch_serves_a_whole_application.py`
-  tests the launcher's refusals in-process and says so; it is not that
-  lane.
+- ~~**No cold acceptance lane.**~~ `just acceptance-cold`.
+
+  `git checkout-index` writes what a CLONE would get -- no `.venv`, no
+  `node_modules`, no build output that is not committed -- and then the
+  two lines under "Run" in README.md are the only thing that happens: a
+  real process, a real socket, a real page.
+
+  What it catches and nothing else does: the README says "No Node, no
+  npm -- the browser bundles are committed", and every other lane here
+  builds them first (`web::build` is a dependency of test, check and
+  smoke). A bundle rebuilt and never committed is therefore invisible
+  everywhere except in a clone, where the symptom is a page that renders
+  with scripts that 404 -- the pictures arrive and nothing about them
+  works. So every `/static/` asset a rendered page names is fetched and
+  its status checked; four today, `gallery.js` among them.
+
+  Outside pytest deliberately, which is what
+  `test_the_documented_launch_serves_a_whole_application.py` already
+  said in its docstring -- it costs an install, and pytest is not where
+  that belongs. Run once end to end before this was written down: 200
+  on the page and on all four assets.
+
+  `grep`/`curl`/`seq` rather than `rg`: a lane that proves a cold
+  machine can run this must not need a tool a cold machine lacks.
 
 ## The gate's remaining hole
 
@@ -629,16 +648,36 @@ consequences the architecture should keep room for, not work.
   inside the patched region fails, where a hand-written try/finally
   only does if somebody wrote it, and two of these had none.
 
-  **11 errors left, in 8 places, and they are one puzzle each:**
+  **THREE errors left.** Five more went, and two of them were real
+  annotation defects rather than checker noise:
 
-      vision/faces.py:177            narrowing a `Callable | Mapping`
-      vision/semantic/qwen_vl.py:358 transformers' own parameter type
-      db/planning.py:2098-2099       a planner union and a None default
-      benchmarks/browser_report.py   a str.join over mixed items
-      benchmarks/thumb_delivery.py   the same patch pattern, no pytest
-                                     fixture to reach for
-      tests/  2 sites               a judge_capture int/float, and an
-                                     `Unknown | int` iterated
+  - `vision/faces.py` narrowed on `callable()`, which narrows to "some
+    callable" and loses the signature, so the call could not be checked
+    at all. It asks `isinstance(..., Mapping)` now -- the half with a
+    runtime-checkable ABC -- and both branches have a type.
+  - `plan_snapshot` was annotated `planner: GenerationHistoryPlanner`
+    and is handed any of THREE. A `Planner` union now sits beside the
+    `PLANNERS` registry, because the two lists are the same list and
+    one drifting from the other is how that happened.
+
+  The three that remain are each blocked on something outside this
+  tree, and none of them blocks the gate more than the others:
+
+      db/planning.py:2098   `maker(None, ...)` is safe because
+                            `if maker.uses_similarity` guards it, and a
+                            checker cannot see a guard on a class
+                            attribute. Annotating it `| None` would be a
+                            LIE: that planner reads `.similarity.name`.
+      qwen_vl.py:358        transformers types `apply_chat_template`
+                            more narrowly than it accepts.
+      thumb_delivery.py:86  a genuine RUFF/TY standoff: ty rejects the
+                            assignment, and ruff's B010 forbids the
+                            `setattr` the tests use through monkeypatch.
+                            No form satisfies both.
+
+  So the fast gate is three sites away, and all three want a decision
+  about SUPPRESSION rather than more typing -- which the overrides
+  mechanism above can now express, per file and with a reason.
 
   **The count that matters is 17 ERRORS, not 21 diagnostics.** ty exits
   0 when only warning-level violations remain

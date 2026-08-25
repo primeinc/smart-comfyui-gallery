@@ -18,6 +18,7 @@ import datetime
 import os
 import pathlib
 import struct
+from typing import Any
 
 import pytest
 from litestar.testing import TestClient
@@ -124,7 +125,7 @@ def test_a_real_canon_body_is_read_whole():
 
 
 def _judge(**over) -> when.Verdict:
-    base = {
+    base: dict[str, Any] = {
         "captured_at": FEB_10 + 8 * HOUR + 29 * MIN + 58,
         "subsec_ms": 170,
         "tz_offset_min": None,

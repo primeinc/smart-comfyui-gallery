@@ -173,9 +173,13 @@ class StubFaceBackend(FaceBackend):
     def detect(self, img: Image.Image) -> list:
         """Replay the pre-programmed detections for `img`; unknown images
         detect as no faces."""
-        if callable(self._source):
-            return list(self._source(img))
-        return list(self._source.get(image_key(img), []))
+        # Narrowed on Mapping rather than on `callable`: asking whether
+        # something is callable narrows to "some callable" and loses the
+        # signature, so the call below could not be checked at all. A
+        # Mapping is the half with a runtime-checkable ABC.
+        if isinstance(self._source, Mapping):
+            return list(self._source.get(image_key(img), []))
+        return list(self._source(img))
 
 
 def image_key(img: Image.Image) -> str:

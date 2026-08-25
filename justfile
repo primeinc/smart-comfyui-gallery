@@ -161,6 +161,57 @@ db-check:
 smoke *ARGS: web::build
     {{ python }} -m sg_web.smoke "$@"
 
+# The README's own two commands, on the tree AS COMMITTED.
+#
+# `git checkout-index` writes what a CLONE would get: no .venv, no
+# node_modules, no build output that is not committed. Then the two
+# lines under "Run" in README.md are the only thing that happens, and a
+# real process is asked for a real page over a real socket.
+#
+# What this catches and nothing else does: the README says "No Node, no
+# npm -- the browser bundles are committed", and every other lane in
+# this repo builds them first (`web::build` is a dependency of test,
+# check and smoke). So a bundle that was rebuilt and never committed is
+# invisible everywhere except here, and the symptom in a clone is a page
+# that renders with scripts that 404 -- the pictures arrive and nothing
+# about them works. Every asset a rendered page names is fetched below
+# for exactly that reason.
+#
+# Outside the suite deliberately: it installs, so it costs a network and
+# minutes, and pytest is not where a lane like that belongs.
+# tests/test_the_documented_launch_serves_a_whole_application.py says so
+# in its own docstring, and this is the lane it points at.
+[doc('The README bootstrap on a cold checkout: install, serve, fetch every asset')]
+[script]
+acceptance-cold:
+    set -eu
+    tree=$(mktemp -d)
+    home=$(mktemp -d)
+    port=8791
+    trap 'rm -rf "$tree" "$home"' EXIT
+    echo "cold checkout -> $tree"
+    git checkout-index -a -f --prefix="$tree/"
+    test ! -e "$tree/.venv" || { echo "the export carried a .venv; it is not a cold checkout"; exit 1; }
+    cd "$tree"
+    uv sync
+    uv run python -m sg_web --home "$home" --port "$port" &
+    served=$!
+    trap 'kill "$served" 2>&1 || true; rm -rf "$tree" "$home"' EXIT
+    for _ in $(seq 1 60); do
+      if curl -fsS "http://127.0.0.1:$port/g" -o /dev/null 2>&1; then break; fi
+      sleep 1
+    done
+    page=$(curl -fsS "http://127.0.0.1:$port/g")
+    echo "$page" | grep -q '<nav class="shell"' || { echo "the gallery did not render the shell"; exit 1; }
+    missing=0
+    for asset in $(echo "$page" | grep -o '\(src\|href\)="/static/[^"]*"' | sed 's/.*="//;s/"//' | sort -u); do
+      code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port$asset")
+      echo "  $code $asset"
+      [ "$code" = "200" ] || missing=1
+    done
+    [ "$missing" = "0" ] || { echo "an asset the page asks for is not in the committed tree"; exit 1; }
+    echo "cold checkout served every asset it asked for"
+
 # The repo-wide structural gates, on their own and in seconds: sglint's
 # rules (discovered scope: a package created tomorrow is swept the day it
 # is born) and the tooling checks. `just test` runs the tests too.

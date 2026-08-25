@@ -594,7 +594,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # few bits out is a copy the default radius missed (the crops
                 # land here); a radius where formerly-distinct groups fuse is
                 # the dial turned too far -- both read straight off the shelf.
-                ladder = []
+                ladder: list[dict] = []
                 for radius in (8, 12, 16, 24):
                     regrouped = regroup(radius)
                     wider = members_of(regrouped)

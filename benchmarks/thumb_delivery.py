@@ -77,6 +77,12 @@ def _counted_connections():
         seen["opened"] += 1
         return real(*args, **kwargs)
 
+    # ty reports this assignment -- a counting wrapper is not of
+    # `connect`'s exact type -- and there is no fix here that both tools
+    # accept: `setattr` is what the tests reach for through
+    # `monkeypatch`, and ruff's B010 forbids it with a constant
+    # attribute. Left as the assignment, which is the form ruff wants
+    # and the one this file's own restore mirrors.
     connect.connect = counting
     return seen, lambda: setattr(connect, "connect", real)
 

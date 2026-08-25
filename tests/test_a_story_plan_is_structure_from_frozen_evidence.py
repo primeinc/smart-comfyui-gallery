@@ -1030,7 +1030,9 @@ def test_the_v1_grammar_is_frozen_and_exception_proof(monkeypatch):
     never an exception."""
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
     document, sha = _snapshot(members)
-    plan = {**_planner().plan(document, sha), "v": 1}
+    # annotated because the dict holds an int beside lists and dicts,
+    # so `plan["claims"]` infers as their union and cannot be starred
+    plan: dict[str, typing.Any] = {**_planner().plan(document, sha), "v": 1}
     assert planning.validate_story_plan_v1(plan) == []
     monkeypatch.setattr(planning, "FORMAT_VERSION", 4)
     monkeypatch.setattr(planning, "PLANNERS", {})
