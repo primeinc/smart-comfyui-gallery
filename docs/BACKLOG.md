@@ -244,35 +244,16 @@ consequences the architecture should keep room for, not work.
     runner on the worker's own turn. A collection already going is never
     started twice, and the clock runs from the START so a long catch-up
     on a nightly schedule does not drift later every day.
-
-
-  The original design note, for the parts not yet done:
-
-  - **The console collapses.** Ten rows become one with a bar, and the
-    little jobs stop mattering because they are steps rather than rows.
-  - **The order stops being knowledge a person carries.** The claim
-    gains a "every predecessor has settled" clause -- a WHERE, not a new
-    engine, since `jobs.claim` already filters on state.
-  - **Scheduling becomes possible at all.** A cron needs something to
-    NAME. "Every night, catch up" points at a collection; scheduling
-    individual kinds would mean re-deriving the order at 3am, which is
-    the same defect with a timer on it.
-
-  Grouping ALONE is not worth building. If a collection is only a label
-  over rows, the console gets quieter and a person still does not know
-  what to press. The dependency edge is the part that earns it.
-
-  What has to be decided before it is coded, because it is a product
-  question and not an implementation detail: **what a failed step does
-  to its collection.** A partial catch-up is normal and useful -- one
-  unreadable file must not abandon the other four thousand -- so the
-  likely answer is "report it, stop only the steps that depended on it,
-  let the rest finish". But that is a decision, and "the collection
-  failed" is the other defensible one.
-
-  Two smaller ones that follow: cancelling a collection has to cancel
-  its unstarted steps, and a collection must not become a second
-  scheduler -- the runner stays the only thing that runs jobs.
+  - ~~**A scan says what it left undone.**~~ Done, and it was the
+    headline surviving at a smaller scale. A scan LISTS files and
+    derives nothing, so somebody who had just registered a library was
+    looking at pictures with no metadata, no search and no people --
+    while the button that fixes it sat in a different section further
+    down the page. The roots panel now names the sweeps still
+    outstanding with their counts and offers the chain in place
+    (`operations._behind`, `_operations_roots.html`). Sweep names and
+    never a total: a file missing both a reading and a caption is one
+    file and two sweeps.
 
 - **Benchmarks in the UI.** `just bench thumbs-phases` and the other
   benchmark recipes write JSON that only a terminal ever sees. The
@@ -764,18 +745,38 @@ not a design decision anybody made; it is work nobody did.
   opens a native browser prompt, and it refuses large result counts.
   We had both of those defects until this week.
 
-## Three flakes in the suite, characterised and not fixed
+## Three flakes in the suite: two closed, one unreproduced
 
-- **`test_writes_stay_linear.py` fails near its own tolerance.** The
-  ratio gate is `< 2.0` and the measurements sit on it: across four runs
-  it failed three times on three DIFFERENT cases (`writing a parsed
-  field` 2.0019, `rescanning an unchanged library` 2.1, `renaming a file`
-  2.4) and passed twice clean. Different case each time is the signature
-  of machine-load sensitivity, not of one path that regressed. It needs
-  either a bigger gap between SMALL and LARGE so the ratio is not
-  measuring noise, or repeated timings with a median. Ignoring it is
-  worse than either: a gate that fails one run in three teaches people
-  to re-run it.
+- **`test_writes_stay_linear.py` fails near its own tolerance, and the
+  suggested fix is the wrong one.** The ratio gate is `< 2.0` and the
+  reported failures sat on it: three of four runs, on three DIFFERENT
+  cases (`writing a parsed field` 2.0019, `rescanning an unchanged
+  library` 2.1, `renaming a file` 2.4).
+
+  Probed 2026-08-25, and it did not reproduce under either suspected
+  cause. Against a 600,000-object retained heap, gc-on vs gc-off: every
+  write case 0.93-1.06, no arm distinguishable. Against 16 of 16 cores
+  contended by confirmed-running spinner processes: 0.89-1.11, 0/6 over
+  the gate in every case. A full single-process `pytest tests/ -m slow`
+  passed clean. So the cause is neither collector pressure nor CPU
+  contention, and it is still unreproduced -- the earlier reading of
+  "machine-load sensitivity" is not supported by a measurement.
+
+  **Do not implement the repeated-timings-with-a-median fix.** It was
+  measured and it is worse. `timeit`'s own documentation
+  (`../refs/python/cpython/Doc/library/timeit.rst`, `Timer.repeat`)
+  argues for `min` over mean because interference only ever ADDS time --
+  but that reasoning is about ONE measurement, and this gate divides
+  two. Taking the min of each side independently lets a lucky-fast SMALL
+  swing the quotient: under contention min-of-3 widened the spread, to
+  0.67 on `writing a parsed field` and 0.59 on `deleting a file`, where
+  the single-shot ratios stayed inside 0.93-1.09.
+
+  What is left is to reproduce it at all. Until something does, the
+  honest options are a wider SMALL/LARGE gap so the ratio is not
+  measuring noise, or timing the pair inside one measurement rather than
+  as two. A gate that fails one run in three teaches people to re-run
+  it, so leaving it alone is the one thing that is not an option.
 
 - ~~**`test_browsing_does_not_stop_at_sixty.py` fails about one run in
   four.**~~ Fixed, and it was a PRODUCT bug rather than a test one: a
@@ -787,24 +788,6 @@ not a design decision anybody made; it is work nobody did.
   each and re-running: the pump re-arms when it finishes with the end
   still in reach, and a scroll asks where the window IS rather than
   waiting for an edge. Eight runs green, from one-in-three failing.
-
-- **`test_the_bytes_are_served.py` fails whenever something earlier left
-  a running event loop.** Not xdist, as this was previously recorded:
-  it reproduces on a plain single-process `pytest tests/ -m slow`.
-  `test_a_raw_latin1_range_octet_is_answered_not_crashed` raises
-  `asyncio.run() cannot be called from a running event loop`, and the
-  unawaited coroutine it leaves behind surfaces as a
-  RuntimeWarning inside whichever test the garbage collector reaches
-  next — most recently
-  `test_the_harness_owns_its_connections.py::test_a_kept_connection_is_held_rather_than_its_address`,
-  which has nothing to do with either. `filterwarnings = error` turns
-  that into a second failure some distance from its cause.
-
-  Isolation proves the ordering: both files pass alone, with the
-  pytest-playwright plugin loaded AND with `-p no:playwright`. Only the
-  full run fails. The fix is in the test, not the application — it
-  drives the ASGI app with `asyncio.run` and must instead use the loop
-  it is already inside.
 
 ## Thumbnail delivery: done for the gallery, not for every surface
 

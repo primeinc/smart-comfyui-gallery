@@ -67,6 +67,22 @@ def _weights(state: State, conn) -> str:
     return str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
 
 
+def _behind(missing: dict[str, int]) -> dict[str, int]:
+    """The sweeps with work outstanding, in the order the chain runs them.
+
+    Named sweeps rather than a total, because there is no honest total: a
+    file missing both a reading and a caption is ONE file and TWO sweeps,
+    and adding the counts would say two.
+
+    Anything not in `LAUNCHERS` still comes through, at the end. A sweep
+    added tomorrow must show as work nobody has done, not vanish from the
+    one place that says what is left.
+    """
+    ordered = [kind for kind in LAUNCHERS if missing.get(kind)]
+    ordered += [kind for kind, n in missing.items() if n and kind not in LAUNCHERS]
+    return {kind: missing[kind] for kind in ordered}
+
+
 def _ingest(state: State, conn) -> list[int]:
     job_id = runner.submit_ingest(conn, time.time())
     return [] if job_id is None else [job_id]
@@ -238,6 +254,7 @@ def _page_context(state: State) -> dict:
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
             "notice": None,
+            "behind": _behind(console_state.overview.coverage.missing),
             **console_state.model_dump(mode="json"),
             "last_event_id": console_state.overview.ledger.last_id,
             "now": now,
@@ -1130,11 +1147,12 @@ def add_root(state: State, data: URLEncodedBody[RootForm]) -> Template:
         library.add_root(conn, cleaned, data.kind, time.time())
         conn.commit()
         roots = _roots(conn)
+        behind = _behind(inspecting.coverage(conn, _weights(state, conn))["missing"])
     finally:
         connect.close(conn)
     return Template(
         template_name="_operations_roots.html",
-        context={"roots": roots, "notice": f"registered {cleaned}"},
+        context={"roots": roots, "notice": f"registered {cleaned}", "behind": behind},
         headers=VARIES,
     )
 
@@ -1156,6 +1174,11 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
             conn.commit()
             submitted(state, conn, precache)
         roots = _roots(conn)
+        # A scan LISTS files. Nothing here reads, fingerprints or captions
+        # one, so the person who just registered a library is looking at a
+        # gallery with no metadata, no search and no people -- and the
+        # button that fixes it is in a different section further down.
+        behind = _behind(inspecting.coverage(conn, _weights(state, conn))["missing"])
     finally:
         connect.close(conn)
     notice = (
@@ -1163,7 +1186,11 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
         f" {result.missing} missing, {result.ambiguous} ambiguous"
         + (f"; thumbnails queued as job #{precache}" if precache is not None else "")
     )
-    return Template(template_name="_operations_roots.html", context={"roots": roots, "notice": notice}, headers=VARIES)
+    return Template(
+        template_name="_operations_roots.html",
+        context={"roots": roots, "notice": notice, "behind": behind},
+        headers=VARIES,
+    )
 
 
 @dataclasses.dataclass
