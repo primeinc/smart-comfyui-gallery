@@ -28,10 +28,6 @@ import json
 
 from . import jobs, ledger, settings
 
-#: Job kinds whose item ids are file ids, so an item can be named and
-#: linked. `hash` with derive=groups runs one item that is not a file.
-_FILE_ITEM_KINDS = frozenset({"scan", "hash", "embed", "detect_faces", "context", "annotate"})
-
 #: The payload keys a launcher writes, as the console labels them.
 TERMINAL = ("done", "failed", "cancelled")
 
@@ -51,7 +47,7 @@ def _named_item(conn, kind: str, payload: dict | None, item_id: int | None) -> d
     if item_id is None:
         return None
     told: dict = {"id": item_id, "name": None, "href": None}
-    if kind in _FILE_ITEM_KINDS and not (kind == "hash" and (payload or {}).get("derive") == "groups"):
+    if kind in jobs.FILE_ITEMS and not (kind == "hash" and (payload or {}).get("derive") == "groups"):
         row = conn.execute(
             "SELECT f.name, e.slug FROM file f JOIN entity e ON e.id = f.id WHERE f.id = ?", (item_id,)
         ).fetchone()

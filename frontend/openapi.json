@@ -14957,11 +14957,15 @@
                             "$ref": "#/components/schemas/MatrixRow"
                         },
                         "type": "array"
+                    },
+                    "judged": {
+                        "$ref": "#/components/schemas/WhatTheThumbsSay"
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
+                    "judged",
                     "matrix",
                     "overview"
                 ],
@@ -15394,6 +15398,86 @@
                     "snapshot_id"
                 ],
                 "title": "PlanRequest"
+            },
+            "ProducerContest": {
+                "properties": {
+                    "kind": {
+                        "type": "string"
+                    },
+                    "shared": {
+                        "type": "integer"
+                    },
+                    "enough": {
+                        "type": "boolean"
+                    },
+                    "wrong": {
+                        "additionalProperties": {
+                            "type": "integer"
+                        },
+                        "type": "object"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "enough",
+                    "kind",
+                    "shared",
+                    "wrong"
+                ],
+                "title": "ProducerContest"
+            },
+            "ProducerJudged": {
+                "properties": {
+                    "model_id": {
+                        "type": "string"
+                    },
+                    "model_version": {
+                        "type": "string"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "right": {
+                        "type": "integer"
+                    },
+                    "wrong": {
+                        "type": "integer"
+                    },
+                    "unsure": {
+                        "type": "integer"
+                    },
+                    "judged": {
+                        "type": "integer"
+                    },
+                    "wrong_share": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "needs": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "judged",
+                    "kind",
+                    "model_id",
+                    "model_version",
+                    "needs",
+                    "right",
+                    "unsure",
+                    "wrong",
+                    "wrong_share"
+                ],
+                "title": "ProducerJudged"
             },
             "QueueHealth": {
                 "properties": {
@@ -18215,6 +18299,33 @@
                     "weight"
                 ],
                 "title": "Weighted"
+            },
+            "WhatTheThumbsSay": {
+                "properties": {
+                    "producers": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProducerJudged"
+                        },
+                        "type": "array"
+                    },
+                    "contests": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProducerContest"
+                        },
+                        "type": "array"
+                    },
+                    "floor": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "contests",
+                    "floor",
+                    "producers"
+                ],
+                "title": "WhatTheThumbsSay"
             },
             "When": {
                 "properties": {

@@ -61,6 +61,22 @@ JobKind = typing.Literal[
     "embed_prompts",
 ]
 
+#: The kinds whose `job_item.item_id` IS a file id.
+#:
+#: Beside `JobKind` because it is a fact ABOUT the vocabulary, and it
+#: was written down twice -- once in db/runner.py so the ledger could
+#: name an item, once in db/inspecting.py so the console could link one
+#: -- which is two places to forget when a kind is added.
+#:
+#: Guessing is unsafe rather than merely imprecise: `cluster_faces` and
+#: `events` number their items 0, 1, 2 as indices into a payload, so a
+#: lookup that assumed every item id were a file would put a real
+#: picture's name beside item 2 of a clustering run.
+#:
+#: `hash` is here with one exception its readers apply: `derive=groups`
+#: runs a single item that is not a file either.
+FILE_ITEMS = frozenset({"scan", "hash", "embed", "detect_faces", "context", "annotate"})
+
 #: Where one unit of a job stands, per db/schema.sql job_item.state.
 ItemState = typing.Literal["pending", "done", "failed"]
 

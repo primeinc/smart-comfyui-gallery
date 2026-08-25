@@ -1359,17 +1359,6 @@ def _embed_prompts_item(conn, prompt_id: int, payload: dict, now: float) -> None
     prompts.embed_item(conn, prompt_id, payload, now)
 
 
-#: The kinds whose `job_item.item_id` IS a file id.
-#:
-#: Written down because the console wants to say WHICH file an item is,
-#: and guessing is unsafe: `cluster_faces` numbers its items 0, 1, 2 as
-#: indices into its payload's spaces, and `events` does the same -- so a
-#: lookup that assumed every item id were a file would put a real
-#: picture's name beside item 2 of a clustering run. Only the parameter
-#: names said which was which, and a parameter name is not something
-#: another module can read.
-FILE_ITEMS = frozenset({"scan", "hash", "embed", "detect_faces", "annotate", "context"})
-
 #: What an item is called, for the ledger. One indexed lookup on a
 #: connection that is already open, next to per-item work measured in
 #: tens of milliseconds -- and it is the difference between a console
@@ -1379,7 +1368,7 @@ _ITEM_NAME = "SELECT name FROM file WHERE id = ?"
 
 
 def _item_named(conn, kind: str, item: int) -> str | None:
-    if kind not in FILE_ITEMS:
+    if kind not in jobs.FILE_ITEMS:
         return None
     row = conn.execute(_ITEM_NAME, (item,)).fetchone()
     return None if row is None else str(row[0])

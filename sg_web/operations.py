@@ -38,7 +38,7 @@ from litestar.params import FromPath, FromQuery, URLEncodedBody
 from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
-from db import connect, derived, inspecting, jobs, ledger, library, pages, prompts, runner, scan, settings
+from db import connect, derived, inspecting, jobs, ledger, library, pages, prompts, runner, scan, settings, verdicts
 from sg_web import console, home
 from sg_web.presenting import VARIES, wants_json
 from sg_web.submitting import submitted
@@ -250,6 +250,37 @@ def _state_of(state: State, conn, now: float) -> OperationsState:
             ledger=LedgerHealth(**held["ledger"]),
         ),
         matrix=[_matrix_row(state, row) for row in inspecting.matrix(conn, now)],
+        judged=_judged(conn),
+    )
+
+
+def _judged(conn) -> WhatTheThumbsSay:
+    """The verdicts, added up (db/verdicts.py)."""
+    return WhatTheThumbsSay(
+        producers=[
+            ProducerJudged(
+                model_id=one.model_id,
+                model_version=one.model_version,
+                kind=one.kind,
+                right=one.right,
+                wrong=one.wrong,
+                unsure=one.unsure,
+                judged=one.judged,
+                wrong_share=one.wrong_share,
+                needs=one.needs,
+            )
+            for one in verdicts.by_producer(conn)
+        ],
+        contests=[
+            ProducerContest(
+                kind=one.kind,
+                shared=one.shared,
+                enough=one.enough,
+                wrong={f"{model_id}@{model_version}": n for (model_id, model_version), n in one.wrong.items()},
+            )
+            for one in verdicts.contests(conn)
+        ],
+        floor=verdicts.ENOUGH,
     )
 
 
@@ -404,12 +435,69 @@ class MatrixRow(Wire):
     live: LiveReport | None
 
 
+class ProducerJudged(Wire):
+    """What one producer has been told about its own claims.
+
+    `wrong_share` is null below the floor, and `needs` says how many
+    more judgements it would take. Null, never zero: a zero would read
+    as "never wrong" for a model nobody has judged yet.
+    """
+
+    model_id: str
+    model_version: str
+    kind: str
+    right: int
+    wrong: int
+    unsure: int
+    judged: int
+    wrong_share: float | None
+    needs: int
+
+
+class ProducerContest(Wire):
+    """Two producers over the files BOTH were judged on.
+
+    The only comparison a biased verdict set supports. People judge what
+    they happen to look at and reach for `wrong` far sooner than for
+    `right`, so a raw error rate is a statement about which pictures got
+    opened; restricted to the shared files, the person, the day and the
+    pictures are the same on both sides.
+    """
+
+    kind: str
+    shared: int
+    enough: bool
+    #: "model_id@model_version" -> how many of the shared files it got
+    #: wrong. A mapping rather than two fields, because which producers
+    #: exist is a fact about the library and not about this contract.
+    wrong: dict[str, int]
+
+
+class WhatTheThumbsSay(Wire):
+    """The verdicts, added up -- and what they refuse to say.
+
+    Deliberately no headline verdict on any model. An error rate over a
+    sample nobody drew at random is not a measurement, and printing one
+    beside a name is how a number gets used to make a decision it cannot
+    support.
+    """
+
+    producers: list[ProducerJudged]
+    contests: list[ProducerContest]
+    #: how many verdicts a producer needs before a rate is shown at all
+    floor: int
+
+
 class OperationsState(Wire):
     """What the console re-reads after a reconnect, and what a machine
     asks: the health strip and every job worth showing."""
 
     overview: Overview
     matrix: list[MatrixRow]
+    #: What this library has been told about its own models. Empty until
+    #: somebody judges something, which is honest: no verdicts is not a
+    #: model with nothing wrong with it.
+    judged: WhatTheThumbsSay
 
 
 class NamedItem(Wire):

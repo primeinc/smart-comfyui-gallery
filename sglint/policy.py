@@ -155,6 +155,12 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "runner",
             "scan",
             "settings",
+            # The verdicts, added up. Admitted on the same terms as
+            # `inspecting`: a read-only aggregate that derives numbers
+            # from rows and writes nothing -- and one that deliberately
+            # never joins the derived layer it is about, so a rebuild
+            # cannot look like people changing their minds.
+            "verdicts",
         }
     ),
     # the composition root: it wires every seam and runs none of them

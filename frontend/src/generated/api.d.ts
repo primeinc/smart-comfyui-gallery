@@ -2600,6 +2600,7 @@ export interface components {
         OperationsState: {
             overview: components["schemas"]["Overview"];
             matrix: components["schemas"]["MatrixRow"][];
+            judged: components["schemas"]["WhatTheThumbsSay"];
         };
         /** Overview */
         Overview: {
@@ -2696,6 +2697,27 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ProducerContest */
+        ProducerContest: {
+            kind: string;
+            shared: number;
+            enough: boolean;
+            wrong: {
+                [key: string]: number;
+            };
+        };
+        /** ProducerJudged */
+        ProducerJudged: {
+            model_id: string;
+            model_version: string;
+            kind: string;
+            right: number;
+            wrong: number;
+            unsure: number;
+            judged: number;
+            wrong_share: number | null;
+            needs: number;
         };
         /** QueueHealth */
         QueueHealth: {
@@ -3280,6 +3302,12 @@ export interface components {
         Weighted: {
             name: string;
             weight: number | null;
+        };
+        /** WhatTheThumbsSay */
+        WhatTheThumbsSay: {
+            producers: components["schemas"]["ProducerJudged"][];
+            contests: components["schemas"]["ProducerContest"][];
+            floor: number;
         };
         /** When */
         When: {
