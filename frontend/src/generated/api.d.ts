@@ -2729,6 +2729,13 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** ProducerCorrected */
+        ProducerCorrected: {
+            model_id: string;
+            model_version: string;
+            corrections: number;
+            people: number;
+        };
         /** ProducerJudged */
         ProducerJudged: {
             model_id: string;
@@ -3329,6 +3336,7 @@ export interface components {
         WhatTheThumbsSay: {
             producers: components["schemas"]["ProducerJudged"][];
             contests: components["schemas"]["ProducerContest"][];
+            corrected: components["schemas"]["ProducerCorrected"][];
             floor: number;
         };
         /** When */

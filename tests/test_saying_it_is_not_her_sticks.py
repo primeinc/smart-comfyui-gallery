@@ -466,3 +466,107 @@ def test_withdrawing_does_not_put_the_name_back_by_itself(tmp_path):
         assert f'data-person-picture="{named[1]}"' not in page, (
             "the page shows a picture under this person that no run attributes to them"
         )
+
+
+# --- and the correction is evidence about the model that made it -------------
+
+
+def _corrections(conn) -> list[tuple[str, str, int, int]]:
+    from db import verdicts
+
+    return [(one.model_id, one.model_version, one.corrections, one.people) for one in verdicts.corrections(conn)]
+
+
+def test_putting_a_face_right_is_recorded_against_the_model_that_got_it_wrong(library):
+    """The whole point of collecting verdicts, for free.
+
+    Somebody correcting a face is already doing the work; until now the
+    only thing that learned from it was the next clustering run. The
+    thing that would tell them their face model is bad -- the verdict
+    aggregate -- never heard about the forty corrections they made.
+
+    Named by the producer that was corrected, copied off the attribution
+    before it is withdrawn, because after the delete nothing records
+    which model's output this was about.
+    """
+    who = authored.person(library, "Hannah", NOW)
+    run_id = _cluster(library)
+    derived.attribute(library, 2, who, run_id, MODEL[0], MODEL[1], face_count=1)
+    library.commit()
+
+    assert _corrections(library) == [], "nothing corrected yet"
+    authored.deny_person(library, who, 2, 1, NOW)
+    library.commit()
+    assert _corrections(library) == [(MODEL[0], MODEL[1], 1, 1)]
+
+
+def test_denying_a_person_no_run_ever_named_judges_nothing(library):
+    """The guard, and it is the one that keeps the number honest.
+
+    Denying is a claim about the picture; it is only a JUDGEMENT when a
+    model actually said the thing being denied. A denial over a file
+    nothing attributed would otherwise put a correction against a
+    producer that never spoke -- and the producer it happened to name
+    would be whichever one ran last.
+    """
+    who = authored.person(library, "Hannah", NOW)
+    library.commit()
+    authored.deny_person(library, who, 2, 1, NOW)
+    library.commit()
+    assert _corrections(library) == []
+    assert authored.denials(library) != [], "the claim itself is still recorded"
+
+
+def test_taking_the_denial_back_takes_the_correction_back(library):
+    """A verdict recorded because somebody denied a person is that
+    denial's evidence. Retracting the denial and leaving the verdict
+    would keep counting a mistake nobody says was one any more."""
+    who = authored.person(library, "Hannah", NOW)
+    run_id = _cluster(library)
+    derived.attribute(library, 2, who, run_id, MODEL[0], MODEL[1], face_count=1)
+    library.commit()
+    authored.deny_person(library, who, 2, 1, NOW)
+    library.commit()
+    assert _corrections(library) == [(MODEL[0], MODEL[1], 1, 1)]
+
+    authored.retract_person(library, who, 2)
+    library.commit()
+    assert _corrections(library) == []
+
+
+def test_denying_the_same_picture_twice_is_one_correction(library):
+    """One person has one opinion about one claim -- the rule
+    `retract_feedback` already holds for a caption."""
+    who = authored.person(library, "Hannah", NOW)
+    run_id = _cluster(library)
+    derived.attribute(library, 2, who, run_id, MODEL[0], MODEL[1], face_count=1)
+    library.commit()
+    authored.deny_person(library, who, 2, 1, NOW)
+    library.commit()
+    # the attribution is gone now, so the second denial judges nothing
+    # and must not add to a count it did not earn
+    authored.deny_person(library, who, 2, 1, NOW)
+    library.commit()
+    assert _corrections(library) == [(MODEL[0], MODEL[1], 1, 1)]
+
+
+def test_the_correction_count_is_never_offered_as_a_rate(library):
+    """The refusal, pinned. These verdicts are 100% `wrong` by
+    construction -- nobody clicks "yes that is her" on a face that is
+    simply right -- so there is no denominator and no share. A `Judged`
+    would compute one; a `Corrected` cannot be asked."""
+    from db import verdicts
+
+    who = authored.person(library, "Hannah", NOW)
+    run_id = _cluster(library)
+    derived.attribute(library, 2, who, run_id, MODEL[0], MODEL[1], face_count=1)
+    library.commit()
+    authored.deny_person(library, who, 2, 1, NOW)
+    library.commit()
+
+    one = verdicts.corrections(library)[0]
+    assert not hasattr(one, "wrong_share")
+    assert not hasattr(one, "judged")
+    # and it stays out of the rated table, where a reader would compare
+    # a tally against a percentage
+    assert verdicts.by_producer(library) == []

@@ -280,6 +280,15 @@ def _judged(conn) -> WhatTheThumbsSay:
             )
             for one in verdicts.contests(conn)
         ],
+        corrected=[
+            ProducerCorrected(
+                model_id=one.model_id,
+                model_version=one.model_version,
+                corrections=one.corrections,
+                people=one.people,
+            )
+            for one in verdicts.corrections(conn)
+        ],
         floor=verdicts.ENOUGH,
     )
 
@@ -473,6 +482,27 @@ class ProducerContest(Wire):
     wrong: dict[str, int]
 
 
+class ProducerCorrected(Wire):
+    """How many of a face producer's attributions people took back.
+
+    A COUNT, and there is deliberately no share beside it. A correction
+    is recorded only when somebody says a person is NOT in a picture, so
+    these verdicts are 100% `wrong` by construction -- nobody stops to
+    confirm a face that is simply right. There is no denominator, and a
+    percentage here would be the most confidently wrong number in the
+    application.
+
+    It costs the person nothing: they were correcting the picture
+    anyway, and the correction is the same click.
+    """
+
+    model_id: str
+    model_version: str
+    corrections: int
+    #: how many distinct people those corrections were about
+    people: int
+
+
 class WhatTheThumbsSay(Wire):
     """The verdicts, added up -- and what they refuse to say.
 
@@ -484,6 +514,11 @@ class WhatTheThumbsSay(Wire):
 
     producers: list[ProducerJudged]
     contests: list[ProducerContest]
+    #: Face producers whose attributions were corrected by hand. Counted
+    #: rather than rated, and kept apart from `producers` for that
+    #: reason: the two cannot go in one table without the reader
+    #: comparing a rate against a tally.
+    corrected: list[ProducerCorrected]
     #: how many verdicts a producer needs before a rate is shown at all
     floor: int
 

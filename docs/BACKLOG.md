@@ -546,8 +546,9 @@ not a design decision anybody made; it is work nobody did.
   a smaller claim than deciding a video has nobody in it, and it targets
   exactly the frames that are pure cost today.
 
-- **"This is not that person" cannot be said, and would be ignored if
-  it were.** The positive claim is built and the doctrine around it is
+- **A verdict on a similarity or a duplicate still cannot be given.**
+  (Was: "this is not that person" cannot be said -- that half shipped.)
+  The positive claim is built and the doctrine around it is
   the best thing in this schema: `person_assertion` is a human saying
   "she is in this picture", and `db/derived.py` re-applies it after
   every reclustering rather than re-guessing by centroid similarity.
@@ -555,21 +556,21 @@ not a design decision anybody made; it is work nobody did.
 
   Three separate gaps, and they compound:
 
-  1. **No way to spell it.** `retract_person` DELETES the assertion,
-     which means "I take that back" -- and the next clustering run is
-     free to put it straight back, because nothing recorded that it was
-     wrong. A retraction is the absence of a claim; "not her" is a
-     claim, and there is no row for it.
-  2. **No route.** `feedback` in the schema takes
-     `target_kind='person'` with `verdict IN ('right','wrong','unsure')`
-     and `db/authored.py feedback()` writes it -- and NOTHING in
-     `sg_web/` calls it. There is no HTTP surface for a verdict of any
-     kind, on a person, a caption, a duplicate or a similarity. The
-     table is written only by tests.
-  3. **Nothing reads the verdict.** The one query anywhere that touches
-     `feedback` is `db/runner.py:1055`, and it only stops a judged
-     placeholder person from being garbage-collected. Whether the
-     verdict said `right` or `wrong` is never consulted by anything.
+  1. ~~**No way to spell it.**~~ Shipped: `person_assertion.stance`,
+     `deny_person`, the route, and the control on the media inspector
+     and over every thumbnail on the person's own page.
+  2. **The similarity and duplicate arms.** The annotation arm ships
+     (`POST /i/{slug}/said/verdict`) and the person arm is now written
+     by correcting a face rather than by a separate gesture
+     (`db/authored.py deny_person`). A verdict on a SIMILARITY or a
+     DUPLICATE still has no surface, and shipping a general endpoint
+     whose remaining arms nothing exercises would be two contracts
+     nobody has tested.
+  3. **Only the annotation arm is rated.** `db/verdicts.py by_producer`
+     and `contests` read the annotation arm; corrections read as a
+     count (`corrections`), which is all a denial-only sample can
+     support. Nothing yet reads a verdict to CHANGE anything -- no
+     threshold moves, no model is deselected, no re-run is suggested.
 
   Also worth fixing while it is open: `feedback` points at a FILE, not
   at a face. There is no `region_id` on it, so "the face in the corner

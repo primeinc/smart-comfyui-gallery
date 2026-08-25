@@ -318,11 +318,33 @@ def deny_person(conn, person_id: int, file_id: int, user_id: int | None, now: fl
     from . import derived
 
     assert_person(conn, person_id, file_id, user_id, now, region_id=region_id, stance="is_not")
+    # Who said it, read before it is taken away -- after the delete
+    # nothing records which model's output was corrected.
+    said_so = derived.attributing_producers(conn, person_id, file_id)
     # And take the name off the picture NOW. The claim constrains the
     # next clustering run; `derived_file_person` is what the page reads,
     # so leaving it would show the picture contradicting what somebody
     # just said until a re-run that may never come.
-    derived.withdraw_attribution(conn, person_id, file_id)
+    gone = derived.withdraw_attribution(conn, person_id, file_id)
+    if not gone:
+        # Nothing was attributed, so no model got this wrong. Denying a
+        # person no run ever put here is a claim about the picture and
+        # not a judgement of anything -- recording one would put a
+        # correction against a producer that never spoke.
+        return
+    for model_id, model_version in said_so:
+        retract_person_feedback(conn, person_id, file_id, model_id, model_version, user_id)
+        feedback(
+            conn,
+            "person",
+            "wrong",
+            now,
+            file_id=file_id,
+            person_id=person_id,
+            user_id=user_id,
+            model_id=model_id,
+            model_version=model_version,
+        )
 
 
 def retract_person(conn, person_id: int, file_id: int) -> None:
@@ -331,11 +353,36 @@ def retract_person(conn, person_id: int, file_id: int) -> None:
     Different from denying, and the difference is what a re-run may do
     next: a retraction leaves no record, so clustering is free to decide
     it again; a denial is a record that stops it.
+
+    The correction goes with it. A verdict recorded because somebody
+    denied a person is that denial's evidence, so taking the denial back
+    and leaving the verdict standing would keep counting a mistake the
+    person no longer says was one.
     """
     conn.execute(
         "DELETE FROM person_assertion WHERE person_id = ? AND file_id = ?",
         (person_id, file_id),
     )
+    conn.execute(
+        "DELETE FROM feedback WHERE target_kind = 'person' AND person_id = ? AND file_id = ?",
+        (person_id, file_id),
+    )
+
+
+def retract_person_feedback(conn, person_id: int, file_id: int, model_id, model_version, user_id) -> int:
+    """Take back this actor's correction of one producer; returns how many.
+
+    Denying twice is one standing correction, not two -- the same rule
+    `retract_feedback` holds for a caption, and for the same reason: a
+    person has one opinion about one claim.
+    """
+    cursor = conn.execute(
+        "DELETE FROM feedback"
+        " WHERE target_kind = 'person' AND person_id = ? AND file_id = ?"
+        "   AND model_id IS ? AND model_version IS ? AND user_id IS ?",
+        (person_id, file_id, model_id, model_version, user_id),
+    )
+    return int(cursor.rowcount or 0)
 
 
 def denials(conn, file_id: int | None = None) -> list[tuple[int, int, int | None]]:

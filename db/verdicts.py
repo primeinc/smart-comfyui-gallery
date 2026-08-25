@@ -106,6 +106,60 @@ def by_producer(conn) -> list[Judged]:
 
 
 @dataclasses.dataclass(frozen=True)
+class Corrected:
+    """How many of a face producer's attributions people took back.
+
+    A COUNT and never a rate, and the reason is the bias rule above
+    taken to its limit. A correction is only ever recorded when
+    somebody says a person is NOT in a picture, so this producer's
+    verdicts are 100% `wrong` by construction -- nobody stops to click
+    "yes, that is her" on a face that is simply right. There is no
+    denominator, so there is no share to show, and putting one here
+    would be the most confidently wrong number in the application.
+
+    What it IS good for: a producer nobody has had to correct, beside
+    one corrected forty times, over the same library. That is a
+    comparison the bias survives, because the same person was doing the
+    same looking for both.
+    """
+
+    model_id: str
+    model_version: str
+    #: attributions taken back by hand
+    corrections: int
+    #: how many distinct people those corrections were about
+    people: int
+
+
+_CORRECTED = (
+    "SELECT model_id, model_version, count(*), count(DISTINCT person_id) FROM feedback"
+    " WHERE target_kind = 'person' AND verdict = 'wrong' AND model_id IS NOT NULL"
+    " GROUP BY model_id, model_version"
+)
+
+
+def corrections(conn) -> list[Corrected]:
+    """Every face producer somebody has corrected, most-corrected first.
+
+    Written by `authored.deny_person`, and only when the denial actually
+    withdrew an attribution a run had made: denying a person no run put
+    there judges nothing, and counting it would put a correction against
+    a producer that never spoke.
+    """
+    made = [
+        Corrected(
+            model_id=str(model_id),
+            model_version=str(model_version),
+            corrections=int(n),
+            people=int(distinct),
+        )
+        for model_id, model_version, n, distinct in conn.execute(_CORRECTED)
+    ]
+    made.sort(key=lambda one: (-one.corrections, one.model_id, one.model_version))
+    return made
+
+
+@dataclasses.dataclass(frozen=True)
 class Contest:
     """Two producers over the files where BOTH were judged.
 

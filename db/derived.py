@@ -1283,6 +1283,27 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
     return named
 
 
+def attributing_producers(conn, person_id: int, file_id: int) -> list[tuple[str, str]]:
+    """Which producers put this person on this file, most recent run first.
+
+    Read BEFORE withdrawing, because withdrawing is what makes the
+    answer interesting: a correction judges the model whose output was
+    corrected, and after the delete there is nothing left saying which
+    one that was.
+
+    Usually one. More than one means several runs agreed, and each of
+    them was told the same thing by the same correction.
+    """
+    return [
+        (str(model_id), str(model_version))
+        for model_id, model_version in conn.execute(
+            "SELECT DISTINCT model_id, model_version FROM derived_file_person"
+            " WHERE person_id = ? AND file_id = ? ORDER BY run_id DESC",
+            (person_id, file_id),
+        )
+    ]
+
+
 def withdraw_attribution(conn, person_id: int, file_id: int) -> int:
     """Take a person off a file in the INFERRED layer; returns rows gone.
 

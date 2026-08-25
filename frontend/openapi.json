@@ -15545,6 +15545,31 @@
                 ],
                 "title": "ProducerContest"
             },
+            "ProducerCorrected": {
+                "properties": {
+                    "model_id": {
+                        "type": "string"
+                    },
+                    "model_version": {
+                        "type": "string"
+                    },
+                    "corrections": {
+                        "type": "integer"
+                    },
+                    "people": {
+                        "type": "integer"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "corrections",
+                    "model_id",
+                    "model_version",
+                    "people"
+                ],
+                "title": "ProducerCorrected"
+            },
             "ProducerJudged": {
                 "properties": {
                     "model_id": {
@@ -18432,6 +18457,12 @@
                         },
                         "type": "array"
                     },
+                    "corrected": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProducerCorrected"
+                        },
+                        "type": "array"
+                    },
                     "floor": {
                         "type": "integer"
                     }
@@ -18440,6 +18471,7 @@
                 "type": "object",
                 "required": [
                     "contests",
+                    "corrected",
                     "floor",
                     "producers"
                 ],
