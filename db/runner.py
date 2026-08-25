@@ -1032,33 +1032,35 @@ def chosen_threshold(conn) -> float | None:
 def submit_cluster(conn, now: float) -> int:
     """Group every embedding space's faces into people, as one job.
 
-    One item per (model_id, model_version) that holds embedded faces. The
-    spaces ride in the payload -- `job_item` holds integers, so each item
-    is an index into that list, fixed at submit time. No spaces means a
-    job with nothing to do, which settles `done` honestly rather than
-    being refused: "cluster an unindexed library" is an answer, not an
-    error.
+    ONE item, and the spaces are found when it RUNS rather than now.
 
-    The operating point rides with them, pinned once here rather than
-    read per item: a setting changed while the job runs would otherwise
-    give two embedding spaces two different answers inside one run, and
-    the run row records a single threshold for both.
+    They used to be enumerated here, one item each. That is correct for
+    a job somebody presses on its own and wrong for a step in a chain,
+    which is the shape this now has to work in: queued behind
+    `detect_faces`, the spaces do not exist yet, so the enumeration
+    found none, the job queued zero items, and it settled `done` having
+    clustered nothing.
+
+    That is the exact failure the ordering exists to prevent -- a
+    library with no people in it and no row that looks wrong -- and
+    putting the steps in the right order does not fix it if the later
+    step decided what it was going to do before the earlier one ran.
+
+    The operating point is still pinned HERE, at submit. It is a setting
+    a person changes, not a fact about the library: reading it per space
+    would let a change mid-job give two spaces two answers inside one
+    run whose row records a single threshold for both.
     """
-    spaces = conn.execute(
-        "SELECT DISTINCT model_id, model_version FROM derived_face_instance"
-        " WHERE embedding IS NOT NULL ORDER BY model_id, model_version"
-    ).fetchall()
-    return jobs.submit(
-        conn,
-        "cluster_faces",
-        now,
-        payload={"spaces": [list(space) for space in spaces], "threshold": chosen_threshold(conn)},
-        items=list(range(len(spaces))),
-    )
+    return jobs.submit(conn, "cluster_faces", now, payload={"threshold": chosen_threshold(conn)}, items=[0])
 
 
 def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
-    """Cluster one embedding space and give every group a person.
+    """Cluster every embedding space, and give every group a person.
+
+    The spaces are read HERE, when the item runs: a step queued behind
+    face detection cannot know at submit time which spaces will exist by
+    the time it is claimed. `payload["spaces"]` is still honoured, so a
+    job queued by an older build keeps meaning what it meant.
 
     The run's whole answer is replaced -- clusters, inferred appearances,
     and the placeholder people minted for groups nobody has named. Names
@@ -1067,10 +1069,29 @@ def _cluster_item(conn, index: int, payload: dict, now: float) -> None:
     still unnamed after that get a fresh unnamed person, addressable at
     `/p/person-<short-id>` until somebody names them.
     """
+    named = payload.get("spaces")
+    if named is None:
+        named = [
+            [str(model_id), str(model_version)]
+            for model_id, model_version in conn.execute(
+                "SELECT DISTINCT model_id, model_version FROM derived_face_instance"
+                " WHERE embedding IS NOT NULL ORDER BY model_id, model_version"
+            )
+        ]
+        if not named:
+            # An answer, not an error: "cluster a library nothing has
+            # looked at" is a thing somebody can ask for.
+            report().phase("clustering", spaces=0)
+            return
+    for space in named:
+        _cluster_space(conn, space, payload, now)
+
+
+def _cluster_space(conn, space, payload: dict, now: float) -> None:
     from . import derived, naming
 
     told = report()
-    model_id, model_version = payload["spaces"][index]
+    model_id, model_version = space
     # Method and threshold pinned once and passed to BOTH calls: recomputing
     # the run identity from separately-spelled defaults is how a drift makes
     # the DELETE below clear a different run's attributions.
@@ -1451,7 +1472,69 @@ def _item_named(conn, kind: str, item: int) -> str | None:
     return None if row is None else str(row[0])
 
 
+def _walk_item(conn, index: int, payload: dict, now: float) -> None:
+    """One root, walked -- the same `scan.scan` the request runs.
+
+    The walk was the one expensive thing here that could not be QUEUED.
+    `POST /roots/{id}/scan` does it inline and is its own worker, which
+    is right for somebody who just pressed scan and is watching: the
+    answer is the counts, and they arrive when the walk is done.
+
+    Nothing unattended could ask for one. A nightly catch-up that cannot
+    walk derives forever over a library it never notices growing, which
+    is the most useless kind of scheduled job -- busy, and blind.
+
+    Same function, same reconciliation, same offline veto. `RootOffline`
+    is left to propagate: a root that cannot be read is a failed item,
+    and the alternative -- treating an unplugged drive as an empty
+    library -- is what `scan.scan` refuses at the top for the same reason.
+    """
+    from . import scan as scan_module
+
+    told = report()
+    root_id = int(payload["roots"][index])
+    path = conn.execute("SELECT path FROM root WHERE id = ?", (root_id,)).fetchone()
+    if path is None:
+        raise ValueError(f"no root {root_id} to walk")
+    told.phase("walking", root=root_id, path=path[0])
+    seen = {"spoken": 0}
+
+    def watch(folders: int, files: int, hashed: int) -> None:
+        # Phase reports, not checkpoints: a checkpoint is the ITEM
+        # boundary and this whole walk is one item. Throttled the way the
+        # request path throttles, so a large root does not spend its time
+        # writing about itself.
+        if files - seen["spoken"] < scan_module.WALK_EVERY:
+            return
+        seen["spoken"] = files
+        told.phase("walking", root=root_id, folders=folders, files=files, hashed=hashed)
+
+    result = scan_module.scan(conn, root_id, path[0], now, watch)
+    told.phase("walked", root=root_id, added=result.added, replaced=result.replaced, missing=result.missing)
+
+
+def submit_walk(conn, now: float, *, roots: list[int] | None = None) -> int | None:
+    """Walk every online root, as one job of one item each.
+
+    `roots` names them explicitly; without it, every root that is online
+    -- an offline one cannot be read, and `scan.scan` refuses to act on
+    that reading rather than marking a whole library missing.
+
+    None when there is nothing to walk, which is a library with no roots
+    registered.
+    """
+    named = (
+        roots
+        if roots is not None
+        else [one for (one,) in conn.execute("SELECT id FROM root WHERE online = 1 ORDER BY id")]
+    )
+    if not named:
+        return None
+    return jobs.submit(conn, "walk", now, payload={"roots": named}, items=list(range(len(named))))
+
+
 HANDLERS = {
+    "walk": _walk_item,
     "story_plan": _story_plan_item,
     "embed_prompts": _embed_prompts_item,
     "context": _context_item,
@@ -1807,9 +1890,19 @@ def catch_up(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None
     Returns the job ids in order. Empty means the library was already up
     to date, which is an answer and not a failure.
 
-    Not here: the walk. Finding files is per-root and already has its own
-    action, which queues its own scan -- this is the derivation chain
-    over what a walk has already found.
+    NOT here yet: the walk, though `submit_walk` now exists and the
+    runner can claim one. The reason is the same property that made
+    `cluster_faces` wrong until it stopped enumerating at submit --
+    `submit_ingest` picks its file ids HERE, so a walk in front of the
+    chain would discover files that no later step in the same chain has
+    any way to see. Leading with it would look like it worked and
+    quietly derive nothing over everything new.
+
+    A chain is only as correct as its least lazy step. Making the
+    file-enumerating steps decide their work when they run is what
+    unblocks it, and it is not free: per-file items are what give a
+    sweep of eighty thousand files its progress and its per-file failure
+    isolation.
     """
     from . import jobs
 

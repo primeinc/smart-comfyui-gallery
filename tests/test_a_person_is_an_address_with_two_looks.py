@@ -575,7 +575,14 @@ def test_a_human_name_survives_the_apps_own_recluster(named_placeholder, faces):
 
 def test_the_cluster_job_runs_every_embedding_space(faces):
     """The job mints addressable people for EVERY space's run, though
-    only one run is primary."""
+    only one run is primary.
+
+    ONE item, both spaces. They used to be one item each, enumerated at
+    submit -- which is right for a job somebody presses on its own and
+    wrong for a step in a chain: queued behind face detection, the
+    spaces do not exist yet, so it queued zero items and settled `done`
+    having clustered nothing. The spaces are found when the item runs.
+    """
     _second_space(faces, ("ana_1.png", "ana_2.png"), seed=9, box=0.6)
 
     with faces.websocket_connect("/ws/jobs") as feed:
@@ -585,7 +592,7 @@ def test_the_cluster_job_runs_every_embedding_space(faces):
         while state not in ("done", "failed", "cancelled"):
             state = feed.receive_json(timeout=10)["state"]
 
-    assert job["total"] == 2, "two embedding spaces, two items"
+    assert job["total"] == 1, "the spaces are found when the item runs, so there is one item"
     assert state == "done"
     conn = connect.connect(faces.app.state.db_path)
     try:

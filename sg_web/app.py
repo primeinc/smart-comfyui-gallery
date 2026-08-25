@@ -1424,11 +1424,10 @@ def forget_root(state: State, root_id: FromPath[int], confirm: FromQuery[str] = 
         connect.close(conn)
 
 
-#: How often the walk says where it is, in files. Every directory would
-#: be a write per folder, and a library of ten-thousand-file folders
-#: would report once an aeon; this is a number of files, so the cadence
-#: follows the work rather than the shape of the tree.
-WALK_EVERY = 250
+#: The cadence, from where the walk lives (db/scan.py). Imported rather
+#: than restated: two callers reporting at two rates would tell somebody
+#: about their library differently depending on which one they asked.
+WALK_EVERY = scan.WALK_EVERY
 
 
 @post("/roots/{root_id:int}/scan", sync_to_thread=True)

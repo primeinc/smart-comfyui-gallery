@@ -375,3 +375,129 @@ def test_an_unknown_sweep_name_is_still_refused(tmp_path):
     something the route accepts anything for."""
     with _console(tmp_path) as client:
         assert client.post("/operations/jobs/catch-up").status_code == 404, "the underscore name is the one that works"
+
+
+# --- a step decides what to do when it RUNS ----------------------------------
+
+
+def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path):
+    """The flaw putting the steps in order does not fix by itself.
+
+    `cluster_faces` used to enumerate embedding spaces at SUBMIT time.
+    Queued behind `detect_faces`, there were none yet -- so it queued
+    zero items and settled `done` having clustered nothing, which is the
+    exact failure the ordering exists to prevent: a library with no
+    people in it and no row that looks wrong.
+
+    Ordering is necessary and it is not sufficient. A step whose work
+    depends on an earlier step has to decide what that work IS when it
+    runs.
+    """
+    import numpy as np
+
+    from db import connect, derived, runner, scan
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            # a library with a file and no faces at all, then the chain
+            made = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/s','library',0)")
+            root = int(made.lastrowid or 0)
+            folder = scan.mint(conn, "folder", "s")
+            conn.execute(
+                "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?,?,NULL,'s',0)", (folder, root)
+            )
+            file_id = scan.mint(conn, "file", "one")
+            conn.execute(
+                "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+                " VALUES(?, ?, 'one.png', 'image', 1, 0, ?, 0, 0)",
+                (file_id, folder, "a" * 64),
+            )
+            conn.commit()
+
+            job = runner.submit_cluster(conn, NOW)
+            conn.commit()
+
+            # and NOW the faces arrive, the way detect_faces would have
+            # produced them after this job was already queued
+            derived.record_faces(
+                conn,
+                file_id,
+                "opencv/yunet+sface",
+                "1",
+                "a" * 64,
+                NOW,
+                [
+                    {
+                        "region": derived.region(conn, 0.1, 0.1, 0.2, 0.2),
+                        "embedding": np.ones(4, np.float32).tobytes(),
+                    }
+                ],
+            )
+            conn.commit()
+
+            while runner.run_next(conn, OWNER, NOW) is not None:
+                conn.commit()
+            conn.commit()
+
+            state = conn.execute("SELECT state FROM job WHERE id = ?", (job,)).fetchone()[0]
+            runs = conn.execute("SELECT count(*) FROM derived_face_run").fetchone()[0]
+        finally:
+            connect.close(conn)
+
+    assert state == "done"
+    assert runs == 1, "the step settled done having clustered a space that existed by the time it ran"
+
+
+def test_a_walk_can_be_queued_and_a_worker_claims_it(tmp_path):
+    """The walk becomes a job somebody does not have to be present for.
+
+    `POST /roots/{id}/scan` walks inline and is its own worker, which is
+    right for a person who just pressed it and is watching. Nothing
+    unattended could ask for one -- and a scheduled catch-up that cannot
+    walk derives forever over a library it never notices growing, which
+    is the most useless kind of scheduled job: busy, and blind.
+    """
+    from PIL import Image
+
+    from db import connect, runner
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    Image.new("RGB", (16, 12), (30, 90, 140)).save(root / "one.png")
+
+    with _console(tmp_path) as client:
+        client.post("/roots", json={"path": str(root)})
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            before = conn.execute("SELECT count(*) FROM file").fetchone()[0]
+            job = runner.submit_walk(conn, NOW)
+            assert job is not None, "a registered root is something to walk"
+            conn.commit()
+
+            # claimed by an ordinary worker turn, not by the request
+            turn = runner.run_next(conn, OWNER, NOW)
+            conn.commit()
+            assert turn is not None, "nothing claimed the walk"
+
+            state = conn.execute("SELECT state FROM job WHERE id = ?", (job,)).fetchone()[0]
+            after = conn.execute("SELECT count(*) FROM file").fetchone()[0]
+        finally:
+            connect.close(conn)
+
+    assert state == "done", "the walk did not settle"
+    assert before == 0
+    assert after == 1, "the walk found nothing it was queued to find"
+
+
+def test_walking_a_library_with_no_roots_is_nothing_to_do(tmp_path):
+    """Not an error. A library nobody has pointed at a folder yet is a
+    normal state, and the chain has to be able to say so."""
+    from db import connect, runner
+
+    with _console(tmp_path) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            assert runner.submit_walk(conn, NOW) is None
+        finally:
+            connect.close(conn)

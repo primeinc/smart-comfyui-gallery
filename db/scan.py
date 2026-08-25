@@ -860,6 +860,18 @@ class RootOffline(Exception):
     """The root could not be read, so nothing can be concluded about it."""
 
 
+#: How often a walk says where it is, in files. Every directory would
+#: be a write per folder, and a library of ten-thousand-file folders
+#: would report once an aeon; this is a number of files, so the cadence
+#: follows the work rather than the shape of the tree.
+#:
+#: Here rather than beside either caller, because there are two now --
+#: the request that walks inline and the worker that claims a queued one
+#: -- and a person watching should not be told about their library at
+#: two different rates depending on which asked.
+WALK_EVERY = 250
+
+
 def scan(conn, root_id: int, root_path, now: float, watch=None) -> ScanResult:
     """One pass: walk the root, decide, write.
 
