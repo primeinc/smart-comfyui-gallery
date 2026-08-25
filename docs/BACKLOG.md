@@ -1165,6 +1165,78 @@ not a design decision anybody made; it is work nobody did.
   opens a native browser prompt, and it refuses large result counts.
   We had both of those defects until this week.
 
+## Deferred on 2026-08-25, and it went nowhere until now
+
+Everything below was "recorded" in a commit message. Nothing reads a
+commit message. `git blame` says why a line is the way it is; it does
+not say what somebody decided not to build, and finding these needed
+knowing they existed and reading five commit bodies. That is the same
+defect as a green test over an untested path -- the feeling of having
+discharged an obligation without discharging it -- committed while
+writing instruments against exactly that. Recorded here because this
+file is the one with a reader.
+
+- **The corpus's coverage instrument counts a crash as coverage.**
+  `tests/reach.py` `watch()` suppresses every exception so the lines
+  executed before the raise still count. That is right for MEASURING
+  reach and wrong as the only lens: the `.jxl` crash above improved the
+  score. Nothing separates "reached this line" from "died on this line",
+  and a corpus that cannot tell those apart cannot report a regression.
+
+- **The 8 generator dialects are still fake.** `tests/corpus.py` writes
+  three payloads invented from memory (A1111, ComfyUI, SwarmUI) and
+  never touches the other five (NovelAI, Fooocus, InvokeAI, Easy
+  Diffusion, Draw Things). The ComfyUI graph it writes is structurally
+  invalid -- node "9" references a node "8" that does not exist -- so
+  `db/graph.py`'s back-walk never runs and only its fallback is
+  exercised, the one its own docstring calls "worse than reporting
+  nothing because it looks like an answer". Six of the eight writers are
+  cloned under `../refs/`; the two closed ones have format specs in
+  `../refs/receyuki/stable-diffusion-prompt-reader/sd_prompt_reader/format/`.
+
+- **`tests/reach.py` excludes `db/scan.py` from the measurement, and the
+  exclusion followed a bad number.** The first honest run was
+  `509/2162 = 23.5%`; dropping `scan.py` made it `502/1858 = 27.0%`. The
+  stated reason -- most of it takes a connection, not a path -- is true,
+  and it was applied only to the module dragging the average:
+  `db/probe.py` also has connection-taking functions and was kept. Either
+  apply it to both or to neither.
+
+- **The corpus mutation bucket buys nothing and is still there.**
+  Measured 35.1% with and without. ExifTool's corpus is already 134
+  truncated files, so the readers' failure arms were reached before
+  anything was broken on purpose. Keep it only if the specimen set ever
+  becomes all-valid; otherwise delete it.
+
+- **A demo corpus and a CI corpus are refused, not forgotten.** 134 of
+  the mirror's 194 files do not render and the median of those that do
+  is 8x8, so a gallery built on them is broken tiles. Different
+  acquisition, different optimisation target. The app-boots-and-serves
+  check is `sg_web/smoke.py` over the existing fixtures and already
+  works.
+
+- **The corpus is not a published dataset yet.** It now has a README, a
+  per-part licence table and three lockfiles carrying per-file
+  provenance (`docs/CORPUS_SOURCES.md`, `../sg-corpus/README.md`). Still
+  missing before anything is published: a version, a citation, an
+  intended-use statement, and a decision about which parts ship at all.
+  ExifTool's images are GPL-3 with mixed per-image provenance and carry
+  real coordinates (`Apple.jpg` 53.38N, `Google.jpg` 40.40N); they are
+  referenced by checksum and never vendored, and vendoring them "because
+  it is only 1.1 MB" reopens all of that.
+
+- **Refused for now, each true and each outside:** rotated video and
+  QuickTime dual timestamps (need a handset); the other 14 RAW suffixes
+  (`darktable-org/rawspeed`, raw.pixls.us); AVIF entirely; the audio tag
+  matrix (`quodlibet/mutagen` test data); hostile PDFs (`mozilla/pdf.js`
+  `test/pdfs/`); round-trip write-preservation, which is where
+  `db/authored.py` will actually break; fuzzing with the corpus as seed.
+
+- **`101 suffixes` is an overclaim no corpus fixes.** `KIND_BY_SUFFIX`
+  declares 101 and the corpus exercises a handful. Only editing the
+  claim fixes the claim: tier it into behaviourally-asserted,
+  smoke-only, and declared-unsupported.
+
 ## Three flakes in the suite: two closed, one unreproduced
 
 - **`test_writes_stay_linear.py` fails near its own tolerance, and the

@@ -112,8 +112,10 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 
 ```
 just check          ruff, sglint, format, pyright, repo hygiene, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
-just test           the fast tests, one module per worker (~20s)
-just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
+just test           collects nothing: conftest marks the whole suite slow, so this
+                    lane is empty by construction and exits clean. `just test-slow`
+                    is the suite.
+just test-slow      every test (real libraries, real browsers), four at a time
 just check-all      the gate, both test lanes, and the real run walked
 just smoke          every surface and real pictures over ~/.smartgallery (`--home` for another run)
 just audit          sglint code rules, `--repo` hygiene, the linter self-tests -- seconds
