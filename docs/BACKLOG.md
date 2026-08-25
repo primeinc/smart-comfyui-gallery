@@ -436,6 +436,68 @@ not a design decision anybody made; it is work nobody did.
   with no correction UI means the durability protects whatever mistake
   was made first.
 
+- **A model that describes a picture does not know who is in it.**
+  The library knows: `person_assertion` says this person appears in
+  this file, optionally with the face region and the frame, signed by a
+  user. The captioner is handed pixels and nothing else -- the
+  `Captioner` protocol is `describe(image) -> str` with no prompt
+  parameter at all (vision/captions.py) -- so a picture whose subject
+  has a name for years is still captioned "a woman standing on a
+  beach".
+
+  The mechanism exists at both ends. BLIP takes a conditional prefix
+  and continues it; Qwen-VL already runs under a system instruction
+  here (`MEDIA_INSTRUCTION`, vision/semantic/qwen_vl.py) and can be
+  told who is present and where their boxes are. What is missing is
+  the seam between the two, and the rules about what may cross it.
+
+  Four of those rules, because getting them wrong is worse than not
+  building this:
+
+  1. **Only a claim a human signed.** A name may enter a prompt only
+     where `person_assertion.user_id IS NOT NULL`. A caption is prose
+     somebody reads and believes, and it is searchable; a caption
+     naming the wrong person is worse than an unnamed one, and a
+     derived cluster match is not a good enough reason to write one.
+  2. **The prompt is part of the producer identity.**
+     `derived_annotation` is unique on `(file_id, kind, model_id,
+     model_version, region_id, sample_id)` -- the prompt is not in it.
+     So the same model captioning the same picture before and after a
+     person was named would collide and one would overwrite the other,
+     when they are two different observations of the kind this store
+     exists to keep both of. The name-set fed in has to be recorded and
+     has to participate in that uniqueness.
+  3. **Do not launder an authored claim into a derived one.** If the
+     model writes "Sarah at the beach", the word "Sarah" came from the
+     authored name, not from the model recognising anybody. Baking it
+     into derived text also freezes it: rename the person and every
+     caption is quietly wrong until something re-infers them. The
+     cheaper and more honest shape for DISPLAY is the opposite --
+     caption "a woman in a red coat", and substitute the current name
+     at render time from the assertion, so the name is always right and
+     never needs re-inference.
+  4. **Local only.** Face embeddings are biometric templates and this
+     tree already says so; a name plus a face crop leaving the machine
+     is the precise thing that doctrine forbids.
+
+  Which leaves the question of what feeding names to a model is
+  actually FOR, and it is worth answering before building it, because
+  the two answers want different work:
+
+  - **Better description.** Knowing two people are present and where
+    they are changes what a vision-language model attends to, which
+    improves the sentence whether or not it says a name. This is the
+    case for the prompt seam, and rule 3 above says the sentence can
+    still come back nameless.
+  - **Search.** "Sarah at the beach" is the thing somebody types, and
+    it fails today because the CLIP text encoder has never heard of
+    Sarah and never will -- no amount of captioning fixes that, since
+    the ranking is over image embeddings. The answer there is not the
+    caption model at all: it is the query splitting into
+    `person=sarah` (a filter the vocabulary already has) plus `q="at
+    the beach"` (the phrase). That belongs with the field catalog, and
+    it is probably the more valuable half.
+
 - **Duplicate review.** `/jobs/dupes` and `/dupes` detect groups.
   Nothing resolves them, and the naive resolution is the one to avoid:
   byte identity and organisational identity are different things. Three
