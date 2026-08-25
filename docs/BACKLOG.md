@@ -1146,12 +1146,36 @@ believe the list is complete this time.
 
 Also not done:
 
-- **Nothing is served by anything but Litestar.** The point of a
-  content-addressed immutable path is that a static server or a cache
-  in front can answer it without the application running at all;
-  `create_static_files_router` over the thumbs directory, or a Caddy
-  rule, would take even the ASGI dispatch out. Worth measuring before
-  assuming it matters at this scale.
+- **Nothing is served by anything but Litestar.** Measured 2026-08-25,
+  which this entry asked for before assuming it matters. It does, and
+  the mechanism it proposed is the wrong one.
+
+  Driving the ASGI app directly (no httpx, no server), best of three
+  runs of 300:
+
+      /thumbs/<sha>.webp   File, no database    1480 us
+      /settings            JSON, one database   5033 us
+      reading the file, nothing else              80 us
+
+  So an asset costs about **1.5 ms of application CPU** and a 60-cell
+  page about 89 ms of it -- on requests that touch no database at all.
+  And it is FIXED: 810 bytes and 101 KB both cost ~1400 us above the
+  file read, so it is dispatch, not streaming.
+
+  Read honestly: that is server CPU, not what a person waits. A browser
+  fetches sixty cells in parallel, and a real server adds its own cost
+  this in-process measurement does not have. But it is 89 ms per page
+  view that a cache in front would not spend at all.
+
+  **`create_static_files_router` over the thumbs directory would be a
+  regression, not the fix.** A miss on that path RENDERS
+  (`sg_web/app.py` asset_bytes), which is the only reason a fresh
+  library gets a slow grid instead of broken pictures -- a static
+  router 404s. The viable shape is a front server that tries the file
+  and FALLS BACK to the application on a miss (Caddy/nginx `try_files`),
+  which keeps the render. The docs also warn that the router's
+  directory is relative to the working directory, and the thumbs cache
+  is an absolute path under the run home.
 - **No sprite sheet or atlas, deliberately.** The measurement says the
   static fan-out is no longer material: sixty requests that touch no
   database and cache for a year are not the problem nine
