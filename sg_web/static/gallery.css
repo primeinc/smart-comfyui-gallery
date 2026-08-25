@@ -1428,6 +1428,79 @@ body {
    person is. The media inspector has had this since the claim could be
    made; the person's own page, which is where the wrong picture is
    noticed, had no way to say it. */
+/* Duplicate review. Read-only by design, so it is a reading surface:
+   the copies, and beside each one what it is FILED under, which is the
+   thing that would be lost if the wrong copy went. */
+.dupe-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.dupe-group h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+.dupe-count {
+  color: var(--ink-muted);
+  font-weight: normal;
+}
+.dupe-verdict {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+/* Not the same bytes is the case that must not be mistaken for the
+   safe one, so it is the one that is coloured. */
+[data-dupe-alike] b {
+  color: var(--danger);
+}
+.dupe-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cell-gap);
+}
+.dupe-member {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-width: 30rem;
+}
+.dupe-member[data-dupe-best] {
+  border-color: var(--accent);
+}
+.dupe-member .cell {
+  width: 96px;
+  flex: 0 0 96px;
+}
+.dupe-member-said {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.dupe-member-name {
+  word-break: break-word;
+}
+.dupe-member-filed {
+  color: var(--accent);
+}
+.dupe-best {
+  color: var(--accent);
+}
+
 /* Where a face goes for somebody nothing has clustered one for. Their
    initial, in the same square: a person with no exemplar is a normal
    state, not a failure to render. */

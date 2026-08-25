@@ -758,8 +758,15 @@ not a design decision anybody made; it is work nobody did.
     the beach"` (the phrase). That belongs with the field catalog, and
     it is probably the more valuable half.
 
-- **Duplicate review.** `/jobs/dupes` and `/dupes` detect groups.
-  Nothing resolves them, and the naive resolution is the one to avoid:
+- **Duplicate CONSOLIDATION.** The review shipped: `/dupes` is a page,
+  linked from the shell, showing every group, each copy's folder and the
+  collections it is filed under, and whether the copies are byte-
+  identical or merely alike -- with the post-state sentence ("3
+  placements, 1 payload, every collection still complete") offered only
+  where the bytes actually match. It is read-only and removes nothing.
+
+  What is left is the operation itself, and the naive version is still
+  the one to avoid:
   byte identity and organisational identity are different things. Three
   copies of one file in `Iowa 2019`, `Family` and `Old Backup` are one
   content and three placements, and a deduper that celebrates "1
@@ -773,6 +780,11 @@ not a design decision anybody made; it is work nobody did.
       Used by:  Iowa 2019  428/428 present
                 Family     113/113 present
       After:    3 placements, 1 stored payload, all collections complete
+
+  The page states the last line already. The missing half of the preview
+  is the collection-completeness count ("428/428 present"), which needs
+  a query nothing has: how many of a collection's members would still
+  resolve after a given consolidation.
 
   Hydrus is the deep reference for duplicate/alternate relationships;
   Immich for the review-and-keep flow.

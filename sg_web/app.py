@@ -618,15 +618,85 @@ def submit_dupes(state: State) -> dict:
         connect.close(conn)
 
 
+#: What a group is called when its members are byte-identical, and when
+#: they are only alike. The distinction decides whether consolidating is
+#: safe, so it is a fact the page states rather than a word it picks.
+IDENTICAL = "identical"
+ALIKE = "alike"
+
+
+def _dupe_group(conn, best_slug: str, best_name: str, copies: int) -> dict:
+    """One group as the review page needs it: the copies, where each
+    LIVES, and whether they are the same bytes.
+
+    The placements are why this is a review and not a delete button.
+    Three copies of one photograph filed under `Iowa 2019`, `Family` and
+    `Old Backup` are one content and three placements; a page that says
+    "3 copies" and nothing else invites somebody to remove two and leave
+    two collections quietly incomplete.
+
+    `payloads` is how many DISTINCT sets of bytes the group holds. These
+    groups are perceptual, so a re-encode, a resize and a crop can all
+    land in one: at 1 the copies really are one payload and consolidating
+    loses nothing, and above 1 they are alike but not the same, and
+    nothing here should suggest otherwise.
+    """
+    from vision import thumbs
+
+    found = naming.resolve(conn, "file", best_slug)
+    group_id = None if found is None else pages.dupe_group_of(conn, found[0])
+    members = [] if group_id is None else pages.dupe_members(conn, group_id)
+    payloads = {one["content_sha256"] for one in members if one["content_sha256"]}
+    return {
+        "slug": best_slug,
+        "name": best_name,
+        "copies": copies,
+        "payloads": len(payloads),
+        "kind": IDENTICAL if len(payloads) == 1 else ALIKE,
+        # The arithmetic said plainly, and only where it is true. Bytes
+        # that differ cannot be consolidated to one payload, so a group
+        # of merely-similar pictures is offered no such sentence.
+        "consolidates_to": len(members) if len(payloads) == 1 else None,
+        "members": [
+            {
+                "slug": one["slug"],
+                "name": one["name"],
+                "kind": one["kind"],
+                "folder": one["folder"],
+                "collections": one["collections"],
+                "distance": one["distance"],
+                "is_best": bool(one["is_best"]),
+                "verified": bool(one["verified"]),
+                "size": one["size"],
+                "thumb": thumbs.asset_url(one["content_sha256"], one["slug"], medium=one["kind"]),
+            }
+            for one in members
+        ],
+    }
+
+
 @get("/dupes", sync_to_thread=True)
-def dupes(state: State) -> list[dict]:
-    """Every group of perceptual copies, best face forward with a count --
-    the page that collapses copies-of-copies into pictures."""
+def dupes(state: State, request: Request) -> Template | Response:
+    """Every group of perceptual copies -- rendered for a browser, the
+    historical JSON list for everything else.
+
+    Detection has shipped since `/jobs/dupes`; seeing the result had no
+    surface at all. This one is deliberately READ-ONLY: it shows what is
+    duplicated, where each copy lives, and whether the copies are the
+    same bytes. Nothing here removes anything, because the operation
+    worth building is not "delete duplicates" but "consolidate redundant
+    storage while preserving every logical placement", and the preview is
+    the half that has to be right first.
+    """
     conn = _connect(state.db_path)
     try:
-        return _rows(pages.dupe_groups(conn), ("slug", "name", "copies"))
+        groups = pages.dupe_groups(conn)
+        if wants_json(request):
+            return Response(_rows(groups, ("slug", "name", "copies")), headers=VARIES)
+        told = [_dupe_group(conn, slug, name, copies) for slug, name, copies in groups]
     finally:
         connect.close(conn)
+    return presented_page(request, told, page="dupes.html", context={"groups": told})
 
 
 @post("/jobs/context", sync_to_thread=True)

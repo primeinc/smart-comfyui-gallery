@@ -808,6 +808,49 @@ DUPE_COPIES = (
 )
 
 
+#: Every present member of one group, with where it LIVES.
+#:
+#: The placements are the whole point of showing a group at all. Three
+#: copies of one photograph filed under `Iowa 2019`, `Family` and
+#: `Old Backup` are one content and three placements, and a review that
+#: shows only "3 copies" invites somebody to delete two of them and
+#: silently turn two complete collections into incomplete ones.
+#:
+#: `content_sha256` rides along because it decides whether the word
+#: "copy" is even honest. These groups are PERCEPTUAL: a re-encode, a
+#: resize and a different crop can all land in one. Identical bytes can
+#: be consolidated to one stored payload without losing anything; merely
+#: similar pictures cannot, and telling the two apart is the difference
+#: between a safe operation and a destructive one.
+DUPE_MEMBERS = (
+    "SELECT e.slug, f.name, f.content_sha256, f.size, fo.name AS folder,"
+    "       twin.distance, twin.is_best, twin.verified, f.kind,"
+    "       (SELECT group_concat(c.name, ' / ') FROM collection_file cf"
+    "          JOIN collection c ON c.id = cf.collection_id"
+    "         WHERE cf.file_id = f.id ORDER BY c.name) AS collections"
+    "  FROM derived_dupe_group twin"
+    "  JOIN file f ON f.id = twin.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = twin.file_id"
+    "  JOIN folder fo ON fo.id = f.folder_id"
+    " WHERE twin.group_id = ? ORDER BY twin.is_best DESC, f.name LIMIT ?"
+)
+
+#: The group a file belongs to. `dupe_groups` hands back the best's slug
+#: and nothing else, and the members above are keyed on the group.
+DUPE_GROUP_OF = "SELECT group_id FROM derived_dupe_group WHERE file_id = ?"
+
+
+def dupe_members(conn, group_id: int, limit: int = 120) -> list[dict]:
+    cursor = conn.execute(DUPE_MEMBERS, (group_id, limit))
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+def dupe_group_of(conn, file_id: int) -> int | None:
+    row = conn.execute(DUPE_GROUP_OF, (file_id,)).fetchone()
+    return None if row is None else int(row[0])
+
+
 def dupe_groups(conn, limit: int = 120):
     return conn.execute(DUPE_GROUPS, (limit,)).fetchall()
 

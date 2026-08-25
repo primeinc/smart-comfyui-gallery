@@ -2589,12 +2589,7 @@
                         "headers": {},
                         "content": {
                             "application/json": {
-                                "schema": {
-                                    "items": {
-                                        "type": "object"
-                                    },
-                                    "type": "array"
-                                }
+                                "schema": {}
                             }
                         }
                     }
