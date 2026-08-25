@@ -62,7 +62,39 @@ import threading
 #: time sorts follow the file table's own indexes; the moment sorts
 #: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
 #: timeline link opened -- with uninterpreted files last, never dropped.
-SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity")
+#: The COLUMN a table heading orders by, and the expression it orders
+#: on. One row per column rather than one branch per column: a sort is a
+#: closed vocabulary with one implementation each, and ten branches in
+#: `_timed_ids` is how two of them come to disagree about their
+#: tiebreak.
+#:
+#: Every expression may be NULL, and that is the point. A sound has no
+#: pixels and a photograph has no length; those files sort LAST and say
+#: so by position, exactly as the moment sorts already do for a file
+#: nothing has interpreted. Dropping them would misreport what the
+#: answer holds, and calling them zero would invent a fact.
+COLUMN_ORDERS: dict[str, str] = {
+    "name": "f.name COLLATE NOCASE",
+    "kind": "f.kind",
+    "size": "f.size",
+    #: The pixels ON DISK, so a file missing either dimension has no
+    #: area rather than an area of nothing.
+    "pixels": "f.width * f.height",
+    "length": "f.duration",
+}
+
+#: Each column, ascending and descending. A person who clicks a heading
+#: twice means "the other way round", so both directions are real sorts
+#: with their own spelling -- a URL that could only say "by size" would
+#: make the second click unspellable, and the question lives in the URL.
+COLUMN_SORTS = tuple(one for name in COLUMN_ORDERS for one in (name, f"{name}-desc"))
+
+#: The orders a query may ask for. "similarity" requires a phrase; the
+#: time sorts follow the file table's own indexes; the moment sorts
+#: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
+#: timeline link opened -- with uninterpreted files last, never dropped;
+#: the column sorts are what a table heading asks for.
+SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity", *COLUMN_SORTS)
 
 #: How much of a ranking is the ANSWER. `head` keeps the files that
 #: stand above their space's own middle (db/retrieval.py `head`); `all`
@@ -768,6 +800,21 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
             f" ON mc.file_id = f.id AND mc.policy_version = {int(POLICY_VERSION)}"
             f" WHERE {' AND '.join(where)}"
             f" ORDER BY {HUMAN_MOMENT} IS NULL, {HUMAN_MOMENT} {order}, f.id {order}"
+        )
+        return [row[0] for row in conn.execute(sql, args)]
+    if bound.query.sort in COLUMN_SORTS:
+        # A table heading. The ORDERING CONTRACT is the same one the time
+        # sorts keep: the column, then `f.id` IN THE SAME DIRECTION, so
+        # the order is TOTAL. Two files of equal size must not swap
+        # between two reads of one answer -- an ordinal that moves is a
+        # filmstrip that walks somewhere else and a page that shows a
+        # picture twice.
+        name, _, backwards = bound.query.sort.partition("-")
+        order = "DESC" if backwards else "ASC"
+        column = COLUMN_ORDERS[name]
+        sql = (
+            f"SELECT f.id FROM file f WHERE {' AND '.join(where)}"
+            f" ORDER BY ({column}) IS NULL, {column} {order}, f.id {order}"
         )
         return [row[0] for row in conn.execute(sql, args)]
     order = "ASC" if bound.query.sort == "oldest" else "DESC"

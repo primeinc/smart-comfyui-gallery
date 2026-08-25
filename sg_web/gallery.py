@@ -38,6 +38,51 @@ from sg_web.wire import Wire
 VIEWS = ("gallery", "table", "analyze")
 
 
+#: The table's sortable columns: the heading, and which way the FIRST
+#: click orders it.
+#:
+#: Text ascending, numbers descending, because they mean different
+#: things. "Sort by name" means start at A; "sort by size" almost always
+#: means show me what is huge, and opening on the smallest file in the
+#: library is a click somebody has to undo every time. The second click
+#: reverses either way and the heading says which way it is.
+#:
+#: Only columns that live on the file row. A recipe or a camera column
+#: is a LEFT JOIN, sortable and not sorted yet -- see docs/BACKLOG.md.
+TABLE_COLUMNS: tuple[tuple[str, str, bool], ...] = (
+    ("name", "name", False),
+    ("kind", "kind", False),
+    ("size", "size", True),
+    ("pixels", "pixels", True),
+    ("length", "length", True),
+)
+
+
+def _column_sorts(query: resultset.GalleryQuery, view: str) -> dict[str, dict]:
+    """Per sortable column: where its heading points, and which way this
+    answer is currently ordered by it.
+
+    Spelled by the server because the sort is part of the QUESTION --
+    it changes which pictures are on page one, so a click that reordered
+    the rows already fetched would be a table disagreeing with its own
+    pager. Reload, Back and a shared link all land on the same order for
+    the same reason every other filter does.
+    """
+    made: dict[str, dict] = {}
+    for name, label, biggest_first in TABLE_COLUMNS:
+        down = f"{name}-desc"
+        # Which way it is ordered NOW, or None when this is not the sort.
+        held = "asc" if query.sort == name else "desc" if query.sort == down else None
+        # Clicking reverses what is held, and otherwise opens the way
+        # this column is usually wanted.
+        wanted = name if held == "desc" else down if held == "asc" else (down if biggest_first else name)
+        spelled = resultset.canonical(dataclasses.replace(query, sort=wanted))
+        if view != "gallery":
+            spelled = f"{spelled}&view={view}" if spelled else f"view={view}"
+        made[name] = {"label": label, "href": f"/g?{spelled}" if spelled else "/g", "held": held}
+    return made
+
+
 def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str) -> str:
     """The question with one more clause, canonically spelled.
 
@@ -183,6 +228,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "views": VIEWS,
         "analysis": described,
         "table": listed,
+        "columns": _column_sorts(query, view),
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
         # the filter surface, drawn from the one vocabulary: the

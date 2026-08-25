@@ -1,3 +1,17 @@
+{# A sortable heading is a LINK carrying the reordered question, never a
+   click that reorders the rows already on screen: the sort decides which
+   pictures are on page one, so a client-side shuffle would be a table
+   disagreeing with its own pager. The arrow says which way, and reads
+   as words to a screen reader through aria-sort. #}
+{% macro column(name, extra="") %}
+{% set one = columns[name] %}
+<th scope="col"{% if extra %} class="{{ extra }}"{% endif %}
+    {% if one.held %}aria-sort="{{ "ascending" if one.held == "asc" else "descending" }}"{% endif %}>
+  <a class="answer-sort" href="{{ one.href }}" data-sort-by="{{ name }}"
+     {% if one.held %}data-sorted="{{ one.held }}"{% endif %}>{{ one.label
+     }}{% if one.held %}<span aria-hidden="true">{{ "&#9650;"|safe if one.held == "asc" else "&#9660;"|safe }}</span>{% endif %}</a>
+</th>
+{% endmacro %}
 {# The same members the grid would show, as FACTS rather than pictures.
 
    Cross-media by construction: a sound has no width, a photograph has no
@@ -18,11 +32,11 @@
     <thead>
       <tr>
         <th scope="col">picture</th>
-        <th scope="col">name</th>
-        <th scope="col">kind</th>
-        <th scope="col" class="answer-num">pixels</th>
-        {% if has_length %}<th scope="col" class="answer-num">length</th>{% endif %}
-        <th scope="col" class="answer-num">size</th>
+        {{ column("name") }}
+        {{ column("kind") }}
+        {{ column("pixels", "answer-num") }}
+        {% if has_length %}{{ column("length", "answer-num") }}{% endif %}
+        {{ column("size", "answer-num") }}
         {% if has_recipe %}
         <th scope="col">checkpoint</th>
         <th scope="col">sampler</th>

@@ -3766,3 +3766,22 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* A sortable heading. It is a link, so it says so on hover and focus;
+   the arrow is decorative -- `aria-sort` on the cell is what a screen
+   reader reads, which is the same fact said in the right place. */
+.answer-sort {
+  color: inherit;
+  display: inline-flex;
+  gap: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.answer-sort:hover,
+.answer-sort:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+.answer-sort[data-sorted] {
+  color: var(--accent);
+}

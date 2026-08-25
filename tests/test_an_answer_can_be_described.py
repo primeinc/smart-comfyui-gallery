@@ -341,6 +341,65 @@ def test_the_answer_decides_which_columns_exist(page: Page, live: Live, unbroken
     assert "length" in clips, "a clip has one"
 
 
+def _named(page: Page) -> list[str]:
+    return page.evaluate(
+        "() => [...document.querySelectorAll('[data-table] tbody .answer-name a')].map(a => a.textContent.trim())"
+    )
+
+
+def test_a_heading_reorders_the_answer_and_the_url_says_so(page: Page, live: Live, unbroken):
+    """A heading is a LINK carrying the reordered question, never a
+    click that shuffles the rows already on screen: the sort decides
+    which pictures are on page one, so a local shuffle would be a table
+    disagreeing with its own pager."""
+    _table(page)
+    page.click('[data-table] [data-sort-by="name"]')
+    page.wait_for_selector('[data-table] [data-sort-by="name"][data-sorted]', timeout=15_000)
+    assert "sort=name" in page.url, page.url
+    ascending = _named(page)
+    assert ascending == sorted(ascending, key=str.casefold), ascending
+
+
+def test_clicking_the_same_heading_turns_it_round(page: Page, live: Live, unbroken):
+    """Two clicks means the other way, and the heading says which way it
+    is -- to a reader by the arrow, and to a screen reader by aria-sort
+    on the cell, which is the same fact said in the right place."""
+    _table(page)
+    page.click('[data-table] [data-sort-by="name"]')
+    page.wait_for_selector('[data-table] [data-sort-by="name"][data-sorted="asc"]', timeout=15_000)
+    assert page.get_attribute('[data-table] th:has([data-sort-by="name"])', "aria-sort") == "ascending"
+    up = _named(page)
+
+    page.click('[data-table] [data-sort-by="name"]')
+    page.wait_for_selector('[data-table] [data-sort-by="name"][data-sorted="desc"]', timeout=15_000)
+    assert page.get_attribute('[data-table] th:has([data-sort-by="name"])', "aria-sort") == "descending"
+    assert _named(page) == list(reversed(up))
+
+
+def test_a_number_column_opens_at_the_big_end(page: Page, live: Live, unbroken):
+    """Text ascending, numbers descending, because they mean different
+    things: "sort by size" almost always means show me what is huge, and
+    opening on the smallest file is a click somebody undoes every time."""
+    _table(page)
+    page.click('[data-table] [data-sort-by="size"]')
+    page.wait_for_selector('[data-table] [data-sort-by="size"][data-sorted]', timeout=15_000)
+    assert "sort=size-desc" in page.url, page.url
+
+
+def test_the_order_survives_a_reload(page: Page, live: Live, unbroken):
+    """Because it is part of the question rather than something the page
+    is holding, which is what makes a shared link land on the order it
+    was shared in."""
+    _table(page)
+    page.click('[data-table] [data-sort-by="pixels"]')
+    page.wait_for_selector('[data-table] [data-sort-by="pixels"][data-sorted]', timeout=15_000)
+    was = _named(page)
+    page.reload()
+    page.wait_for_selector("[data-table]", timeout=15_000)
+    assert _named(page) == was
+    assert page.get_attribute('[data-table] th:has([data-sort-by="pixels"])', "aria-sort") is not None
+
+
 def test_a_row_is_a_way_into_the_picture(page: Page, live: Live, unbroken):
     """A table of facts about pictures still has to get you to one."""
     _table(page)
