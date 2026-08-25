@@ -1730,6 +1730,38 @@ CREATE TABLE setting (
     key TEXT PRIMARY KEY, value TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
 
+-- What runs without being asked, and how often.
+--
+-- A schedule points at a COLLECTION, never at a kind. Naming kinds would
+-- mean re-deriving the order at 3am -- which of scan, ingest, embed,
+-- detect_faces, cluster_faces, and in which sequence -- and that order is
+-- the thing job.after_id exists so nobody has to carry.
+--
+-- One row per collection, by the UNIQUE: two schedules for one act would
+-- disagree about when it last ran, and the guard against queueing a
+-- second catch-up over a draining first one is per-collection.
+--
+-- An interval in hours rather than a cron expression. A cron string is a
+-- small language, and a small language wants a parser, a validator and a
+-- way to say what it will do next; hours answer the question somebody
+-- actually has ("nightly", "twice a day") and can be shown as a time
+-- without interpreting anything.
+CREATE TABLE schedule (
+    id              INTEGER PRIMARY KEY,
+    collection      TEXT NOT NULL UNIQUE,
+    every_hours     REAL NOT NULL CHECK (every_hours > 0),
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    -- When this schedule last STARTED the collection, not when that
+    -- collection finished. The next run is measured from the start, so a
+    -- catch-up that takes three hours on a nightly schedule still runs
+    -- once a night rather than drifting later every day.
+    --
+    -- NULL means it has never run, which is due now: a schedule somebody
+    -- just turned on should not wait a full interval to prove it works.
+    last_started_at REAL,
+    created_at      REAL NOT NULL
+) STRICT;
+
 -- A deduplicated payload with no remaining referrer is garbage; without this it
 -- accumulates for the life of the library. RESTRICT protects referenced blobs,
 -- and says nothing about unreferenced ones.
@@ -2326,7 +2358,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 37;
+PRAGMA user_version   = 38;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

@@ -1991,6 +1991,37 @@ def catch_up(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None
     return queued
 
 
+def run_schedules(conn, now: float, *, models_dir: str, thumbs_dir: str | None = None) -> list[str]:
+    """Start whatever is due, and say what was started.
+
+    Called on the worker's own turn rather than by a timer of its own: a
+    second scheduler is a second thing that can be running when nobody
+    thinks anything is, and the runner is already the only thing that
+    runs jobs. A worker that is off starts nothing, which is what "off"
+    should mean.
+
+    The guard against starting a collection twice lives in
+    `scheduling.due` and is the load-bearing part -- a nightly catch-up
+    over a library that takes thirty hours would otherwise be seven
+    overlapping ones by Sunday.
+    """
+    from . import scheduling
+
+    started = []
+    for row in scheduling.due(conn, now):
+        if row["collection"] != CATCH_UP:
+            # `scheduling.RUNNABLE` refuses the others on write; this is
+            # the same refusal at the other end, because a row can also
+            # arrive from a restored backup written by a later build.
+            _logger.warning("schedule names %r, which this build cannot run", row["collection"])
+            continue
+        queued = catch_up(conn, now, models_dir=models_dir, thumbs_dir=thumbs_dir)
+        scheduling.started(conn, row["collection"], now)
+        started.append(row["collection"])
+        _logger.info("schedule: started %s (%d steps)", row["collection"], len(queued))
+    return started
+
+
 def _lazy_faces(conn, now: float, *, models_dir: str, thumbs_dir: str | None) -> int:
     """Face detection as a STEP: same payload, units counted on claim.
 

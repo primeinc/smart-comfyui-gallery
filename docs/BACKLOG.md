@@ -250,12 +250,16 @@ consequences the architecture should keep room for, not work.
     a catch-up reads the files its own walk found. Per-file items are
     kept -- only WHEN the list is made moved. Pressing a sweep on its own
     still counts at submit, so "nothing to do" is still said then.
-  - **Cancelling a collection** cancels its unstarted steps only when a
-    step FAILS. Cancelling a running step by hand does the same thing by
-    the same path, but nothing cancels a collection as a unit.
-  - **Scheduling.** Now possible AND now worth it: there is a name to
-    point at, and a catch-up finally notices files arriving, which is
-    the whole difference between a nightly job and a nightly no-op.
+  - ~~**Scheduling.**~~ Done: `schedule` is one row per collection, an
+    interval in hours, set on the operations console, started by the
+    runner on the worker's own turn. A collection already going is never
+    started twice, and the clock runs from the START so a long catch-up
+    on a nightly schedule does not drift later every day.
+
+    Left: **cancelling a collection as a unit.** Today only a FAILING
+    step cancels what depended on it; there is no "stop this catch-up".
+    A schedule makes that matter more, because the thing to stop may be
+    something nobody started by hand.
 
   The original design note, for the parts not yet done:
 

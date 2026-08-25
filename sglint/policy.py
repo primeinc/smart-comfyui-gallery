@@ -171,6 +171,12 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "prompts",
             "runner",
             "scan",
+            # What runs without being asked. The console is where a
+            # schedule is read and set; the RUNNER is the only thing
+            # that acts on one (`runner.run_schedules`), so this module
+            # never starts a collection itself -- it writes a row saying
+            # when one should start.
+            "scheduling",
             "settings",
             # The verdicts, added up. Admitted on the same terms as
             # `inspecting`: a read-only aggregate that derives numbers

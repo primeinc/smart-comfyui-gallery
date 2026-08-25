@@ -38,7 +38,21 @@ from litestar.params import FromPath, FromQuery, URLEncodedBody
 from litestar.response import Response, Template
 from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
-from db import connect, derived, inspecting, jobs, ledger, library, pages, prompts, runner, scan, settings, verdicts
+from db import (
+    connect,
+    derived,
+    inspecting,
+    jobs,
+    ledger,
+    library,
+    pages,
+    prompts,
+    runner,
+    scan,
+    scheduling,
+    settings,
+    verdicts,
+)
 from sg_web import console, home
 from sg_web.presenting import VARIES, wants_json
 from sg_web.submitting import submitted
@@ -218,6 +232,8 @@ def _page_context(state: State) -> dict:
             "settings": settings.snapshot(conn),
             "clusterings": runs,
             "primary": _primary(runs),
+            "schedules": [one.model_dump(mode="json") for one in _schedules(conn)],
+            "runnable": list(scheduling.RUNNABLE),
             "launchers": [
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
@@ -1192,6 +1208,91 @@ def choose_primary(state: State) -> Template:
     )
 
 
+class Scheduled(Wire):
+    """One thing that runs without being asked."""
+
+    collection: str
+    every_hours: float
+    enabled: bool
+    #: when it last STARTED its collection, never when that finished:
+    #: the next run is measured from the start, so a three-hour catch-up
+    #: on a nightly schedule still runs once a night rather than
+    #: drifting three hours later every day
+    last_started_at: float | None
+    #: when it is next due, null when it never runs. 0 means "now",
+    #: which is what a schedule somebody just turned on should be --
+    #: waiting a full interval to prove it works is not proof.
+    next_due: float | None
+    #: is its collection going right now. A due schedule whose collection
+    #: is already running does not start a second one.
+    running: bool
+
+
+@dataclasses.dataclass
+class ScheduleForm:
+    """The body of POST /operations/schedules/{collection}.
+
+    Form-encoded like the settings form beside it, not JSON: htmx posts
+    a form as a form, and reaching for an extension to make one console
+    control behave differently from the others is a second convention
+    for no gain.
+
+    `enabled` is a string because an unchecked checkbox sends NOTHING --
+    the absence is the answer, and a bool with a default would read a
+    missing field as True.
+    """
+
+    every_hours: str
+    enabled: str = ""
+
+
+def _schedules(conn) -> list[Scheduled]:
+    return [
+        Scheduled(
+            collection=row["collection"],
+            every_hours=row["every_hours"],
+            enabled=bool(row["enabled"]),
+            last_started_at=row["last_started_at"],
+            next_due=scheduling.next_due(row),
+            running=scheduling.running(conn, row["collection"]),
+        )
+        for row in scheduling.all_of(conn)
+    ]
+
+
+@post("/schedules/{collection:str}", sync_to_thread=True)
+def set_schedule(state: State, collection: FromPath[str], data: URLEncodedBody[ScheduleForm]) -> Template:
+    """Set what runs without being asked, and how often.
+
+    Hours rather than a cron expression. A cron string is a small
+    language, and a small language wants a parser, a validator and a way
+    to say what it will do next; hours answer the question somebody
+    actually has -- nightly, twice a day -- and can be shown as a time
+    without interpreting anything.
+    """
+    on = data.enabled.strip().lower() in ("true", "on", "1", "yes")
+    conn = connect.connect(state.db_path)
+    try:
+        try:
+            hours = float(data.every_hours)
+        except ValueError as bad:
+            raise ClientException(f"every-how-many-hours must be a number, not {data.every_hours!r}") from bad
+        try:
+            scheduling.put(conn, collection, hours, time.time(), enabled=on)
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+        rows = _schedules(conn)
+    finally:
+        connect.close(conn)
+    said = f"every {hours:g}h" if on else "off"
+    return Template(
+        template_name="_operations_schedules.html",
+        context={"schedules": rows, "runnable": scheduling.RUNNABLE, "notice": f"{collection}: {said}"},
+        headers=VARIES,
+    )
+
+
 def _primary(runs: list[dict]) -> int | None:
     """The run the site is showing, or None before anything is chosen.
 
@@ -1282,6 +1383,7 @@ router = Router(
         change_setting,
         choose_primary,
         compare_clusterings,
+        set_schedule,
     ],
     exception_handlers={HTTPException: refused, Exception: failed},
 )

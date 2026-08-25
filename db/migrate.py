@@ -3212,3 +3212,34 @@ def _a_job_can_be_a_step_of_something(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE job ADD COLUMN after_id INTEGER REFERENCES job(id) ON DELETE SET NULL")
     conn.execute("CREATE INDEX job_after ON job(after_id)")
     conn.execute("CREATE INDEX job_collection ON job(collection) WHERE collection IS NOT NULL")
+
+
+@step(37)
+def _something_can_run_without_being_asked(conn: sqlite3.Connection) -> None:
+    """v37 -> v38: `schedule`, one row per collection.
+
+    The DDL is schema.sql's block VERBATIM, comments included:
+    sqlite_master stores the literal statement text and `build.drift`
+    compares it, so a migrated database must be indistinguishable from a
+    fresh build down to the words a reader of `.schema` sees.
+
+    Empty. A schedule is something somebody asks for, and a library that
+    upgrades should not start doing work overnight because it upgraded.
+    """
+    conn.execute(
+        """CREATE TABLE schedule (
+    id              INTEGER PRIMARY KEY,
+    collection      TEXT NOT NULL UNIQUE,
+    every_hours     REAL NOT NULL CHECK (every_hours > 0),
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    -- When this schedule last STARTED the collection, not when that
+    -- collection finished. The next run is measured from the start, so a
+    -- catch-up that takes three hours on a nightly schedule still runs
+    -- once a night rather than drifting later every day.
+    --
+    -- NULL means it has never run, which is due now: a schedule somebody
+    -- just turned on should not wait a full interval to prove it works.
+    last_started_at REAL,
+    created_at      REAL NOT NULL
+) STRICT;"""
+    )
