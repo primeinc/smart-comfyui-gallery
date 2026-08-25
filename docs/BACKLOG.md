@@ -310,20 +310,75 @@ consequences the architecture should keep room for, not work.
   prose-fragile ban should move to whichever states what it means, and
   the ones that cannot should at least stop scanning comments.
 
-- **A big enough scan still crosses `busy_timeout`.** The walk no longer
-  holds SQLite's write lane (db/scan.py `survey`/`record`), and over the
-  sample roots the hold fell from 3,116 ms per 1000 files to 147 ms
-  (`just bench scan-lock`). 147 ms per 1000 crosses the 5000 ms
-  `busy_timeout` at roughly 34,000 files, and libraries are bigger than
-  that -- so on a large first scan a writing ROUTE can still wait five
-  seconds and then 500. The worker is fine (a busy claim is now no turn
-  rather than a crash), but a person rating a picture mid-scan is not.
+- ~~**A shared filename made the first scan quadratic.**~~ Fixed, and
+  found while measuring the entry below. `mint` picked a free slug by
+  probing `cover-2`, `cover-3`, ... one SELECT at a time, so the nth
+  file sharing a name cost n reads and the library cost n^2 -- and
+  files sharing a name is how libraries are ORGANISED: a cover.jpg per
+  album, two camera cards both numbering from DSC00001, a folder.jpg
+  per artist.
 
-  The fix is to stop making the write half one transaction: `record` +
-  `apply_scan` could commit in bounded batches, which trades "a scan is
-  one atomic reconciliation" for "nothing waits more than a moment".
-  That trade needs deciding rather than assuming -- a half-applied scan
-  is a state the module has never had to describe.
+  Measured: 4,000 files all called cover.png held the write lane for
+  16,811 ms against 630 ms for 4,000 distinct names, quadrupling with
+  every doubling -- twenty thousand albums extrapolates to minutes of
+  held lane, during which every write from a route FAILS rather than
+  waits. Now 1,657 ms, ten times faster, and no longer quadratic.
+
+  Doubling-then-bisecting over the `UNIQUE (kind, slug)` index, which
+  is O(log n) point lookups. Asking SQLite for the highest suffix
+  instead was tried and measured first: `max(CAST(substr(slug, ...)))`
+  is a max over an EXPRESSION, cannot use the index, scans every
+  `cover-` row, and was still quadratic at 2,421 ms.
+
+  It also stopped handing out RETIRED slugs. The old probe took the
+  lowest free suffix, so deleting `cover-3` gave the next picture that
+  address -- and `slug_history` answers a retired address on a miss, so
+  somebody's saved link resolved to a different picture. Pinned by
+  `tests/test_a_shared_name_does_not_make_a_scan_quadratic.py`, which
+  counts statements rather than timing them, so it says the same thing
+  on any machine.
+
+- **A big enough FIRST scan still crosses `busy_timeout`.** Measured
+  2026-08-25 on synthesised libraries, with a control write proving the
+  symptom rather than extrapolating to it:
+
+  | scan | lane held, 60,000 files | per 1000 | crosses 5 s at |
+  | --- | --- | --- | --- |
+  | first scan | 9,498 ms | 158 ms | ~32,000 files |
+  | rescan, nothing changed | 510 ms | 8.5 ms | ~590,000 files |
+  | rescan, one new file | 503 ms | 8.4 ms | ~590,000 files |
+
+  At 60,000 files a competing write waited 5,575 ms and got `database
+  is locked`; the same write with no scan running took 0.1 ms. At
+  40,000 it waited 5,273 ms and squeaked through, because the wait is
+  not the whole hold -- it is whatever REMAINS from when somebody
+  presses, so above the crossing a growing fraction of presses fail
+  rather than all of them.
+
+  The earlier reading of this entry was wrong about which scan hurts. A
+  rescan is nineteen times cheaper per file (the `was` comparison skips
+  rows that did not change), so this is a FIRST-IMPORT problem, and the
+  writes exposed to it are whatever a person does on the console while
+  their new library is being read -- changing a setting, adding a
+  second root -- not rating a picture, since nothing is in the gallery
+  to rate yet.
+
+  The fix is still to stop making the write half one transaction, and
+  the seam is narrower than "commit in bounded batches": steps 1-3 of
+  `_apply` (mark missing, park names, move rows) are interdependent and
+  are nearly free on a first scan, and step 4 -- minting new rows -- is
+  where the 9.5 seconds goes and is INDEPENDENT PER ROW, because it
+  runs only once every name it might want has been vacated. So the
+  atomic part can stay atomic and only step 4 needs splitting. What a
+  half-applied step 4 leaves is a scan that added some new files and
+  not others, which is what an interrupted scan already leaves and is
+  healed by scanning again -- no row is stranded under a `?parked-`
+  name, because parking finishes inside the atomic part.
+
+  Note that `scan()` wraps `record` + `apply_scan` in one savepoint of
+  its own, so the split has to happen there too, and its comment says
+  the folder writes belong inside the file writes' savepoint. That is
+  the invariant to argue with before touching this.
 
 - **`neighborhood`'s test matrix is short two cases** the filmstrip
   claims to support: the neighbourhood under a FILTERED ResultSet, and

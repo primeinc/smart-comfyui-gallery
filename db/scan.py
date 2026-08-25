@@ -274,6 +274,60 @@ def slugify(text: str) -> str:
     return _SLUG_STRIP.sub("-", ascii_only).strip("-")
 
 
+def _taken(conn, kind: str, slug: str) -> bool:
+    return conn.execute("SELECT 1 FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone() is not None
+
+
+def _free_slug(conn, kind: str, stem: str) -> str:
+    """`stem-N` for the first N nobody has used, found in ONE read.
+
+    Probing `stem-2`, `stem-3`, ... one SELECT at a time is quadratic in
+    the number of files sharing a name, and files sharing a name is how
+    libraries are ORGANISED: a cover.jpg in every album, a card of
+    photographs numbered from DSC00001 beside another card numbered the
+    same. Measured before this: 4,000 files all called cover.png held
+    SQLite's one write lane for 16.8 seconds against 0.6 for 4,000
+    distinct names, quadrupling with every doubling -- so twenty
+    thousand albums was minutes of held lane, and every write from a
+    route in that window fails rather than waits.
+
+    Found by doubling until a free suffix appears and then bisecting
+    back, so it costs O(log n) reads instead of n. Every read is a point
+    lookup on `UNIQUE (kind, slug)`, which is the one thing this table
+    is certainly indexed for. Asking SQLite for the highest suffix
+    instead -- `max(CAST(substr(slug, ...)))` over a range -- reads no
+    better, because a max over an EXPRESSION cannot use the index and
+    scans every `stem-` row: measured, that was still quadratic, 2.4
+    seconds at 4,000 where this is 0.4.
+
+    The number it lands on is the same one the old probe found, because
+    with no gaps the first free suffix is the only free suffix. Where
+    there ARE gaps it may return a later one, which is not a defect:
+    `slug_history` answers a retired address on a miss, so handing a
+    retired slug to a new entity would make somebody's saved link
+    resolve to a different picture -- the same reason this module
+    refuses to compute `max(id) + 1`.
+    """
+    prefix = f"{stem}-"
+
+    def taken(suffix: int) -> bool:
+        return _taken(conn, kind, f"{prefix}{suffix}")
+
+    if not taken(2):
+        return f"{prefix}2"
+    # `low` is taken and `high` is free, held across both loops.
+    low, high = 2, 4
+    while taken(high):
+        low, high = high, high * 2
+    while low + 1 < high:
+        middle = (low + high) // 2
+        if taken(middle):
+            low = middle
+        else:
+            high = middle
+    return f"{prefix}{high}"
+
+
 def mint(conn, kind: str, seed: str) -> int:
     """Create an entity and return its id.
 
@@ -292,10 +346,8 @@ def mint(conn, kind: str, seed: str) -> int:
     base = slugify(seed) or None
     identity = uuid.uuid4()
     slug = base or f"{kind}-{identity.hex[:6]}"
-    suffix = 1
-    while conn.execute("SELECT 1 FROM entity WHERE kind = ? AND slug = ?", (kind, slug)).fetchone():
-        suffix += 1
-        slug = f"{base or kind}-{suffix}"
+    if _taken(conn, kind, slug):
+        slug = _free_slug(conn, kind, base or kind)
     cursor = conn.execute(
         "INSERT INTO entity(uuid, kind, slug) VALUES(?, ?, ?)",
         (identity.bytes, kind, slug),
