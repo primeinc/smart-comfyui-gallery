@@ -1845,6 +1845,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/operations/export/verdicts.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ExportVerdicts */
+        get: operations["OperationsExportVerdictsJsonExportVerdicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations/schedules/{collection}": {
         parameters: {
             query?: never;
@@ -3548,6 +3565,18 @@ export interface components {
             model_id: string;
             model_version: string;
             verdict: string | null;
+        };
+        /** VerdictRow */
+        VerdictRow: {
+            judged: string;
+            verdict: string;
+            model_id: string | null;
+            model_version: string | null;
+            annotation_kind: string | null;
+            sha256: string | null;
+            other_sha256: string | null;
+            at: number;
+            note: string | null;
         };
         /** VideoStage */
         VideoStage: {
@@ -7664,6 +7693,43 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    OperationsExportVerdictsJsonExportVerdicts: {
+        parameters: {
+            query?: {
+                include?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerdictRow"][];
                 };
             };
             /** @description Bad request syntax or unsupported method */

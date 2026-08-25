@@ -343,7 +343,8 @@ def _links(page: str) -> list[str]:
     return [
         href.replace("&amp;", "&")
         for href in re.findall(r'href="([^"#]+)"', page)
-        if href.startswith("/") and not href.startswith(("/media/", "/thumb/", "/preview/", "/avatar/", "/static/"))
+        if href.startswith("/")
+        and not href.startswith(("/media/", "/thumb/", "/preview/", "/avatar/", "/static/", "/operations/export/"))
     ]
 
 

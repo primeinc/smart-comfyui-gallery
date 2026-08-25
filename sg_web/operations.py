@@ -507,6 +507,34 @@ class MatrixRow(Wire):
     after_id: int | None = None
 
 
+class VerdictRow(Wire):
+    """One judgement, as an eval set carries it.
+
+    A producer identity, what kind of claim it was, the verdict, the
+    bytes it was about and when. No path, no file name, no folder, no
+    person's name, no embedding -- so "this model got these 41 wrong"
+    leaves the machine with none of the media leaving with it.
+
+    `sha256` is null where the picture is gone: `feedback`'s pointers
+    are ON DELETE SET NULL on purpose, so a judgement outlives the
+    derived thing it judged and still says a model was wrong.
+
+    `note` is free text somebody typed and is null unless the export was
+    asked for it by name. The KEY is always here because a route's
+    answer has to describe itself; the VALUE is the part withheld.
+    """
+
+    judged: str
+    verdict: str
+    model_id: str | None
+    model_version: str | None
+    annotation_kind: str | None
+    sha256: str | None
+    other_sha256: str | None
+    at: float
+    note: str | None
+
+
 class ProducerJudged(Wire):
     """What one producer has been told about its own claims.
 
@@ -1394,6 +1422,34 @@ def compare_clusterings(state: State, left: FromPath[int], right: FromPath[int])
     )
 
 
+@get("/export/verdicts.json", sync_to_thread=True)
+def export_verdicts(state: State, include: FromQuery[str] = "") -> Response[list[VerdictRow]]:
+    """Every verdict, as an eval set that carries no pictures.
+
+    The cheapest valuable thing this library accumulates and the easiest
+    to share safely: forty judgements over YOUR pictures are worth more
+    than a leaderboard somebody else ran over theirs, and they can leave
+    the machine with none of the media leaving with them.
+
+    Under `/export/` because it is BYTES somebody saves and not a page
+    they land on -- the same distinction `/thumb/` and `/media/` are
+    under (tests/test_the_shell_mounts_every_surface.py `_links`).
+    """
+    wanted = tuple(one.strip() for one in include.split(",") if one.strip())
+    conn = connect.connect(state.db_path)
+    try:
+        try:
+            told = [VerdictRow(**row) for row in verdicts.exported(conn, include=wanted)]
+        except ValueError as refusal:
+            raise ClientException(str(refusal)) from refusal
+    finally:
+        connect.close(conn)
+    return Response(
+        content=told,
+        headers={"content-disposition": 'attachment; filename="verdicts.json"', **VARIES},
+    )
+
+
 def refused(request: Request, exc: HTTPException) -> Template:
     """A refusal, rendered where the person is looking: the shell notice,
     carrying the refusal's own status. htmx swaps 4xx/5xx into
@@ -1439,6 +1495,7 @@ router = Router(
         change_setting,
         choose_primary,
         compare_clusterings,
+        export_verdicts,
         set_schedule,
         stop_collection,
     ],

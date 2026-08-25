@@ -156,6 +156,18 @@
     {% if judged.producers or judged.corrected %}
     <section class="operations-section" data-operations-judged>
       <h2>what you have told it</h2>
+      {# Verdicts are the cheapest valuable thing this library
+         accumulates and the easiest to share safely: an eval set of
+         "this model got these 41 wrong" can leave the machine with none
+         of the media leaving with it. A producer, a kind, a verdict, the
+         bytes and a time -- no paths, no names, no note, because a note
+         is free text somebody typed and can hold anything. #}
+      <p class="operations-hint">
+        <a href="/operations/export/verdicts.json" download data-export-verdicts>take these with you</a> &mdash;
+        a producer, what kind of claim, the verdict, the bytes it was about and when.
+        No pictures, no paths, no names, and not the notes: those are yours and go only if you
+        <a href="/operations/export/verdicts.json?include=note" download data-export-verdicts-note>ask for them by name</a>.
+      </p>
       {% if judged.producers %}
       <p class="operations-hint">your own judgements on what the models said, over your own library — the only ground truth there is about them here. A rate needs {{ judged.floor }} verdicts before it is shown, because a sample this small is noise; and people judge what they look at, so these counts say as much about which pictures you opened as about any model.</p>
       <ul class="operations-judged">

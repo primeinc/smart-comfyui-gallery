@@ -39,6 +39,70 @@ import dataclasses
 ENOUGH = 10
 
 
+#: What a verdict export carries WITHOUT being asked, and the reason the
+#: list is this short.
+#:
+#: Verdicts are the cheapest valuable thing this application accumulates
+#: and the easiest to share safely: "this model got these 41 wrong" is
+#: an eval set, and it can leave the machine with none of the media
+#: leaving with it. So the default is a producer identity, what kind of
+#: claim it was, the verdict, the bytes it was about, and when.
+#:
+#: What is NOT here is the point. No paths, no file names, no folder, no
+#: person's name, no embeddings, no note. A note is free text somebody
+#: typed and can hold anything at all, so it is opt-in per field rather
+#: than something an export decides on their behalf.
+#:
+#: The content hash IS in the default, deliberately: without something
+#: joinable a row cannot be checked against a picture, and an eval set
+#: nobody can verify is not one. It names the bytes and nothing else --
+#: no path, and no way back to a name.
+EXPORTED = ("judged", "verdict", "model_id", "model_version", "annotation_kind", "sha256", "other_sha256", "at")
+
+#: Fields whose VALUE an export withholds until asked for by name.
+#:
+#: The key is always there and the shape is fixed -- a route's answer has
+#: to describe itself or nothing downstream can be typed against it
+#: (sglint SG413) -- so what is opt-in is the CONTENT, which is the part
+#: that could carry anything. A null note says "not asked for" and
+#: carries nothing either way.
+BY_REQUEST = ("note",)
+
+#: Every column the export reads, and the shape it hands back. LEFT JOIN
+#: because `feedback`'s pointers are ON DELETE SET NULL on purpose: a
+#: judgement outlives the derived thing it judged, and a row whose file
+#: is gone still says a model got something wrong.
+EXPORT = (
+    "SELECT f.target_kind AS judged, f.verdict, f.model_id, f.model_version,"
+    "       f.annotation_kind, one.content_sha256 AS sha256,"
+    "       two.content_sha256 AS other_sha256, f.created_at AS at, f.note"
+    "  FROM feedback f"
+    "  LEFT JOIN file one ON one.id = f.file_id"
+    "  LEFT JOIN file two ON two.id = f.other_file_id"
+    " ORDER BY f.created_at, f.id"
+)
+
+
+def exported(conn, *, include: tuple[str, ...] = ()) -> list[dict]:
+    """Every verdict, as an eval set that carries no pictures.
+
+    Every row is the same shape; `include` decides whether the fields in
+    `BY_REQUEST` carry their VALUE or a null. Anything else is refused
+    loudly, because an export that quietly ignored a field somebody
+    asked for would hand them a file they believe holds something it
+    does not.
+    """
+    unknown = [one for one in include if one not in BY_REQUEST]
+    if unknown:
+        raise ValueError(
+            f"an export adds {', '.join(BY_REQUEST)} by name and nothing else, not {', '.join(sorted(unknown))}"
+        )
+    withheld = tuple(one for one in BY_REQUEST if one not in include)
+    cursor = conn.execute(EXPORT)
+    columns = [c[0] for c in cursor.description]
+    return [{k: (None if k in withheld else v) for k, v in zip(columns, row, strict=True)} for row in cursor]
+
+
 @dataclasses.dataclass(frozen=True)
 class Judged:
     """What one producer was told about one kind of claim."""

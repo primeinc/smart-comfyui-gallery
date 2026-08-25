@@ -713,14 +713,32 @@ not a design decision anybody made; it is work nobody did.
      at all, and it is what makes the two entries below actionable
      rather than a settings page nobody knows how to set. Nothing reads
      the verdicts yet.
-  3. **Exportable without the pictures.** Verdicts are the cheapest
-     valuable thing this application accumulates and the easiest to
-     share safely: a row is a producer identity, a kind, a verdict, a
-     content hash and a timestamp. No pixels, no names, no paths, no
-     embeddings -- so an eval set of "this model got these 41 wrong"
-     leaves the machine without any of the media leaving with it. That
-     is the privacy-forward shape, and it should be the DEFAULT export,
-     with anything richer an explicit opt-in per field.
+  3. ~~**Exportable without the pictures.**~~ Shipped:
+     `GET /operations/export/verdicts.json`, offered under the panel
+     that adds the verdicts up, because an export nobody can find is
+     nearly one that does not exist. A row is a producer identity, what
+     kind of claim, the verdict, the bytes it was about and when.
+
+     The opt-in landed one step narrower than this entry imagined, and
+     the architecture is why. `SG413` requires a route's answer to
+     describe a shape the browser can be typed against, so the KEY set
+     is fixed and what `?include=note` decides is whether the note
+     carries its VALUE or a null -- the content is the part that could
+     hold anything, and it is the part withheld. Anything other than
+     `note` is refused with a 400 naming what it will add, because a
+     field quietly ignored hands somebody a file they believe holds
+     something it does not.
+
+     Under `/export/` because it is BYTES somebody saves rather than a
+     page they land on, which is the distinction `/thumb/` and `/media/`
+     already sit under; and inside the operations router because
+     `SG402` says `sg_web/app.py` may not speak `db.verdicts` and
+     `operations.py` is where verdicts already live.
+
+     Most of the tests are about ABSENCE, checked against the whole
+     serialised body rather than key by key: a column added to
+     `feedback` next year would ride along in a `SELECT *`, and a test
+     naming only today's keys would not notice.
 
   And then, once there is enough of it, **infer** rather than count.
   The yes/no data is the only ground truth this application will ever
