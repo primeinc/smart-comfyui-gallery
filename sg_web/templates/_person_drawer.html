@@ -2,7 +2,7 @@
      aria-label="{{ person.name or '(unnamed)' }}">
   <button class="lightbox-close" data-close aria-label="close">&times;</button>
   <div class="drawer-hero">
-    <img class="person-face person-face-big" src="/avatar/{{ person.slug }}" alt="">
+    {% if person.avatar %}<img class="person-face person-face-big" src="{{ person.avatar }}" alt="">{% else %}{# No clustered face to crop. The route answers 404 for that, correctly, and pointing at it anyway drew a broken image where a face goes. #}<span class="person-face person-face-big person-face-none" data-person-faceless aria-hidden="true">{{ (person.name or person.slug)[:1] | upper }}</span>{% endif %}
     <div>
       <h2>{{ person.name or "(unnamed)" }}</h2>
       <p class="person-count">{{ person.count }} pictures</p>

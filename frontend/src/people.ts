@@ -26,6 +26,60 @@ const spellDays = (root: ParentNode) => {
   }
 };
 
+/**
+ * What stands where a denied picture was.
+ *
+ * Not the thumbnail greyed out. The name is off the picture NOW
+ * (db/derived.py `withdraw_attribution`), so a cell still showing it
+ * under this person would contradict what was just said.
+ *
+ * Undo withdraws the CLAIM and nothing else, which is the honest thing
+ * and worth saying plainly: retracting deletes the record that this was
+ * wrong, so the next clustering run is free to decide it again -- but it
+ * does not put the name back, because no run has said so since. The
+ * picture returns to this page when clustering next names them in it.
+ */
+const denied = (picture: string, who: string): HTMLElement => {
+  const held = document.createElement("div");
+  held.className = "cell-denied";
+  held.dataset.personDenied = picture;
+
+  const what = document.createElement("span");
+  what.textContent = "not them";
+  held.append(what);
+
+  const undo = document.createElement("button");
+  undo.type = "button";
+  undo.className = "link";
+  undo.textContent = "undo";
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    const { data, error } = await api.POST("/i/{slug}/people/{person}/deny", {
+      params: { path: { slug: picture, person: who } },
+      body: { value: false },
+    });
+    if (!data) {
+      undo.disabled = false;
+      await say(refusal(error, "that was not withdrawn"));
+      return;
+    }
+    held.dataset.personDenied = "";
+    held.dataset.personWithdrawn = picture;
+    what.textContent = "withdrawn — they are named here again only when clustering next says so";
+    undo.replaceWith(wayBack(picture));
+  });
+  held.append(undo);
+  return held;
+};
+
+/** The way back to the picture itself, which is where the truth is. */
+const wayBack = (picture: string): HTMLElement => {
+  const link = document.createElement("a");
+  link.href = `/i/${picture}`;
+  link.textContent = "open the picture";
+  return link;
+};
+
 (() => {
   spellDays(document);
   new MutationObserver(() => spellDays(document)).observe(document.body, { childList: true, subtree: true });
@@ -51,6 +105,40 @@ const spellDays = (root: ParentNode) => {
     // bounce off the old address.
     window.location.replace(`/p/${data.slug}`);
   });
+
+  // "Not them", said on the page where somebody is actually reviewing
+  // who a person is.
+  //
+  // The claim could already be made -- db/authored.py `deny_person`, and
+  // the media inspector's chip has offered it since -- but only one
+  // picture at a time, from inside that picture. The wrong face is
+  // noticed HERE, looking at a wall of someone's photographs, and this
+  // page could only send you somewhere else to say so.
+  //
+  // Delegated, not bound per cell: the grid is server-rendered today and
+  // paged tomorrow, and a listener per cell would miss whatever arrives.
+  const grid = document.querySelector("[data-person-pictures]");
+  if (grid instanceof HTMLElement) {
+    const who = requireData(grid, "personPictures");
+    grid.addEventListener("click", async (event) => {
+      const button = closestFrom(event.target, "[data-person-not-here]", HTMLButtonElement);
+      if (!button) return;
+      const shell = closestFrom(button, "[data-person-picture]", HTMLElement);
+      if (!shell) return;
+      const picture = requireData(shell, "personPicture");
+      button.disabled = true;
+      const { data, error } = await api.POST("/i/{slug}/people/{person}/deny", {
+        params: { path: { slug: picture, person: who } },
+        body: { value: true },
+      });
+      if (!data) {
+        button.disabled = false;
+        await say(refusal(error, "that was not recorded"));
+        return;
+      }
+      shell.replaceWith(denied(picture, who));
+    });
+  }
 
   // The drawer is the person adapter over the AddressableOverlay: the
   // shell (overlay.ts) owns everything an overlay shares, a person is not

@@ -1376,6 +1376,42 @@
       node.dataset.spelled = "";
     }
   };
+  var denied = (picture, who) => {
+    const held = document.createElement("div");
+    held.className = "cell-denied";
+    held.dataset.personDenied = picture;
+    const what = document.createElement("span");
+    what.textContent = "not them";
+    held.append(what);
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "link";
+    undo.textContent = "undo";
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      const { data, error } = await api.POST("/i/{slug}/people/{person}/deny", {
+        params: { path: { slug: picture, person: who } },
+        body: { value: false }
+      });
+      if (!data) {
+        undo.disabled = false;
+        await say(refusal(error, "that was not withdrawn"));
+        return;
+      }
+      held.dataset.personDenied = "";
+      held.dataset.personWithdrawn = picture;
+      what.textContent = "withdrawn \u2014 they are named here again only when clustering next says so";
+      undo.replaceWith(wayBack(picture));
+    });
+    held.append(undo);
+    return held;
+  };
+  var wayBack = (picture) => {
+    const link = document.createElement("a");
+    link.href = `/i/${picture}`;
+    link.textContent = "open the picture";
+    return link;
+  };
   (() => {
     spellDays(document);
     new MutationObserver(() => spellDays(document)).observe(document.body, { childList: true, subtree: true });
@@ -1392,6 +1428,28 @@
       }
       window.location.replace(`/p/${data.slug}`);
     });
+    const grid = document.querySelector("[data-person-pictures]");
+    if (grid instanceof HTMLElement) {
+      const who = requireData(grid, "personPictures");
+      grid.addEventListener("click", async (event) => {
+        const button2 = closestFrom(event.target, "[data-person-not-here]", HTMLButtonElement);
+        if (!button2) return;
+        const shell = closestFrom(button2, "[data-person-picture]", HTMLElement);
+        if (!shell) return;
+        const picture = requireData(shell, "personPicture");
+        button2.disabled = true;
+        const { data, error } = await api.POST("/i/{slug}/people/{person}/deny", {
+          params: { path: { slug: picture, person: who } },
+          body: { value: true }
+        });
+        if (!data) {
+          button2.disabled = false;
+          await say(refusal(error, "that was not recorded"));
+          return;
+        }
+        shell.replaceWith(denied(picture, who));
+      });
+    }
     addressableOverlay({
       root: "[data-drawer-root]",
       trigger: "[data-person]",

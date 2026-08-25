@@ -33,7 +33,7 @@ from litestar.params import FromPath
 from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, facets, naming, pages, resultset, settings
-from sg_web import home
+from sg_web import home, media
 from sg_web.presenting import presented, presented_page, wants_json
 from sg_web.wire import Wire
 from vision import thumbs
@@ -67,6 +67,15 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
         told = {
             "slug": slug,
             "name": pages.person_name(conn, person_id),
+            # None when there is no clustered face to crop, and then no
+            # surface points at one. `/avatar/<slug>` answers 404 for a
+            # person with no exemplar -- correctly -- and the pages
+            # requested it unconditionally, so a person nothing has
+            # clustered a face for showed a broken image where their
+            # face goes. The same rule vision/thumbs.py `asset_url`
+            # states for a medium with no picture: a surface must be
+            # able to ask before it points.
+            "avatar": f"/avatar/{slug}" if media.exemplar_face(conn, person_id) is not None else None,
             "count": grid["total"],
             "sessions": [
                 {

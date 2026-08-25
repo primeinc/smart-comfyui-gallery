@@ -326,3 +326,143 @@ def test_the_page_offers_the_correction_beside_the_name(tmp_path):
 
         again = client.get(f"/i/{named[1]}", headers={"accept": "text/html"}).text
         assert f'data-person-deny="{person_slug[1]}"' not in again, "the name is still on the picture"
+
+
+def test_the_persons_own_page_offers_it_over_every_picture(tmp_path):
+    """And it is sayable from the page where the wrong picture is SEEN.
+
+    The claim has been makeable since it existed, and reachable from
+    exactly one place: the inspector of one picture, one picture at a
+    time. But nobody notices a wrong face by opening pictures one by one.
+    They notice it looking at a wall of somebody's photographs -- which
+    is this page, and this page could only send them somewhere else to
+    say so.
+
+    So every cell here carries it, over the thumbnail, addressed by the
+    picture's slug and the person whose page it is.
+    """
+    import time as clock
+
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from db import connect, naming
+    from sg_web.app import build_app
+
+    root = tmp_path / "pics"
+    root.mkdir()
+    for i in range(3):
+        Image.new("RGB", (16, 12), (30 * i, 90, 140)).save(root / f"p{i}.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            who = authored.person(conn, "Hannah", clock.time())
+            run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
+            slugs = []
+            for file_id, sha in conn.execute("SELECT id, content_sha256 FROM file ORDER BY id").fetchall():
+                derived.record_faces(
+                    conn,
+                    file_id,
+                    MODEL[0],
+                    MODEL[1],
+                    sha,
+                    clock.time(),
+                    [
+                        {
+                            "region": derived.region(conn, 0.1, 0.1, 0.3, 0.3),
+                            "embedding": np.ones(4, np.float32).tobytes(),
+                        }
+                    ],
+                )
+                derived.attribute(conn, file_id, who, run_id, MODEL[0], MODEL[1], face_count=1)
+                named = naming.entity_slug(conn, file_id)
+                assert named is not None
+                slugs.append(named[1])
+            derived.make_primary(conn, run_id)
+            conn.commit()
+            person_slug = naming.entity_slug(conn, who)
+            assert person_slug is not None
+        finally:
+            connect.close(conn)
+
+        page = client.get(f"/p/{person_slug[1]}", headers={"accept": "text/html"}).text
+        assert f'data-person-pictures="{person_slug[1]}"' in page, "the grid does not say whose it is"
+        for slug in slugs:
+            assert f'data-person-not-here="{slug}"' in page, f"no way to say it over {slug}"
+            assert f'data-person-picture="{slug}"' in page
+
+        # and saying it takes that picture off the person, leaving the others
+        told = client.post(f"/i/{slugs[0]}/people/{person_slug[1]}/deny", json={"value": True})
+        assert told.status_code in (200, 201), told.text
+        again = client.get(f"/p/{person_slug[1]}", headers={"accept": "text/html"}).text
+        assert f'data-person-picture="{slugs[0]}"' not in again, "the picture is still under this person"
+        for slug in slugs[1:]:
+            assert f'data-person-picture="{slug}"' in again, "denying one picture took the others too"
+
+
+def test_withdrawing_does_not_put_the_name_back_by_itself(tmp_path):
+    """What undo undoes, exactly -- because the page says so and the page
+    must be right.
+
+    Retracting deletes the record that the attribution was wrong, so the
+    next clustering run is free to decide it again. It does NOT restore
+    the attribution: no run has said so since, and inventing the row
+    would be the browser making up derived state. The picture comes back
+    to this page when clustering next names them in it, which is what
+    the withdrawn cell says in those words.
+    """
+    import time as clock
+
+    from litestar.testing import TestClient
+    from PIL import Image
+
+    from db import connect, naming
+    from sg_web.app import build_app
+
+    root = tmp_path / "pics"
+    root.mkdir()
+    Image.new("RGB", (16, 12), (30, 90, 140)).save(root / "one.png")
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        made = client.post("/roots", json={"path": str(root)}).json()
+        client.post(f"/roots/{made['id']}/scan")
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            file_id, sha = conn.execute("SELECT id, content_sha256 FROM file").fetchone()
+            who = authored.person(conn, "Hannah", clock.time())
+            derived.record_faces(
+                conn,
+                file_id,
+                MODEL[0],
+                MODEL[1],
+                sha,
+                clock.time(),
+                [{"region": derived.region(conn, 0.1, 0.1, 0.3, 0.3), "embedding": np.ones(4, np.float32).tobytes()}],
+            )
+            run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
+            derived.attribute(conn, file_id, who, run_id, MODEL[0], MODEL[1], face_count=1)
+            derived.make_primary(conn, run_id)
+            conn.commit()
+            named = naming.entity_slug(conn, file_id)
+            person_slug = naming.entity_slug(conn, who)
+            assert named is not None
+            assert person_slug is not None
+        finally:
+            connect.close(conn)
+
+        client.post(f"/i/{named[1]}/people/{person_slug[1]}/deny", json={"value": True})
+        client.post(f"/i/{named[1]}/people/{person_slug[1]}/deny", json={"value": False})
+
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            assert authored.denials(conn) == [], "the claim was not withdrawn"
+            still = conn.execute("SELECT count(*) FROM derived_file_person").fetchone()[0]
+            assert still == 0, "withdrawing invented an attribution no clustering run made"
+        finally:
+            connect.close(conn)
+
+        page = client.get(f"/p/{person_slug[1]}", headers={"accept": "text/html"}).text
+        assert f'data-person-picture="{named[1]}"' not in page, (
+            "the page shows a picture under this person that no run attributes to them"
+        )

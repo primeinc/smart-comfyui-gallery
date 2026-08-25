@@ -1424,6 +1424,59 @@ body {
   opacity: 1;
 }
 
+/* "not them", on the page where somebody is actually reviewing who a
+   person is. The media inspector has had this since the claim could be
+   made; the person's own page, which is where the wrong picture is
+   noticed, had no way to say it. */
+/* Where a face goes for somebody nothing has clustered one for. Their
+   initial, in the same square: a person with no exemplar is a normal
+   state, not a failure to render. */
+.person-face-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  color: var(--ink-muted);
+  font-size: 1.6rem;
+  text-transform: uppercase;
+}
+
+.cell-deny {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  opacity: 0;
+  cursor: pointer;
+}
+.cell-shell:hover .cell-deny,
+.cell-deny:focus-visible {
+  opacity: 1;
+}
+/* What is left where the picture was. Not the picture greyed out: the
+   name really is off it now, and a cell that still showed the thumbnail
+   under this person would be contradicting what was just said. */
+.cell-denied {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border: 1px dashed var(--muted);
+  border-radius: 4px;
+}
+
 .curate {
   position: fixed;
   bottom: 14px;
