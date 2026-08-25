@@ -972,6 +972,15 @@
     if (on) asked4.append("f", spelled2);
     return asked4;
   }
+  function toggledExact(key, op, param, value) {
+    const asked4 = question();
+    const mine = `${key}:${op}:${param}=`;
+    const rest = asked4.getAll("f").filter((one) => !one.startsWith(mine));
+    asked4.delete("f");
+    for (const one of rest) asked4.append("f", one);
+    if (value !== "") asked4.append("f", `${mine}${value}`);
+    return asked4;
+  }
   function onlyClause(key, carried, op, value) {
     const asked4 = question();
     if (carried === "scope") {
@@ -1178,6 +1187,28 @@
     form.append(clear);
     body.append(form);
   }
+  function drawParamRange(body, param, ops) {
+    for (const op of ops) {
+      if (op === "eq") continue;
+      const row = document.createElement("label");
+      row.className = "filter-range";
+      row.dataset.paramOp = op;
+      const said = document.createElement("span");
+      said.textContent = op === "gte" ? "at least" : "at most";
+      const box = document.createElement("input");
+      box.type = "number";
+      box.step = "any";
+      box.setAttribute("aria-label", `${param} ${said.textContent}`);
+      const held2 = question().getAll("f").find((one) => one.startsWith(`param.num:${op}:${param}=`));
+      if (held2) box.value = held2.slice(held2.lastIndexOf("=") + 1);
+      box.addEventListener("change", () => {
+        const wanted = box.value.trim();
+        go(toggledExact("param.num", op, param, wanted));
+      });
+      row.append(said, box);
+      body.append(row);
+    }
+  }
   async function fill(section) {
     const body = findElement(section, "[data-filter-body]", HTMLElement);
     const key = section.dataset.filter;
@@ -1324,9 +1355,21 @@
       field.value = "";
       reveal(one.key);
       if (one.param === null) return;
-      const section = findElement(drawer, '[data-filter="param.is"]', HTMLDetailsElement);
+      const section = findElement(drawer, `[data-filter="${one.key}"]`, HTMLDetailsElement);
       const body = section && findElement(section, "[data-filter-body]", HTMLElement);
       if (!body) return;
+      if (one.key === "param.num") {
+        body.replaceChildren();
+        body.dataset.param = one.param;
+        const said = document.createElement("p");
+        said.className = "filter-note";
+        said.dataset.paramSpelling = one.param;
+        said.textContent = one.param;
+        body.append(said);
+        drawParamRange(body, one.param, one.ops);
+        body.dataset.state = "ready";
+        return;
+      }
       void drawParamValues(body, one.param, one.label);
     };
     const draw2 = (told) => {

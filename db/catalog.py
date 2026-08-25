@@ -312,17 +312,31 @@ def discovered(
 
     made = []
     for (source, stem), one in held.items():
+        # A family whose members disagree about their type is mixed,
+        # which is exactly what the lattice means.
+        kind = "mixed" if len(one["kinds"]) > 1 else next(iter(one["kinds"]))
+        # A number-kinded key gets the comparisons a number has, through
+        # `param.num` -- which reads `fp.value_num`, the column the
+        # schema fills whenever a value parses as one. `param.is` reads
+        # `value_text` and can only mean equals: over text, 9 is more
+        # than 30.
+        #
+        # `mixed` stays on `param.is`. A family where some values parsed
+        # as numbers and some did not cannot be compared as numbers
+        # without quietly dropping the rest.
+        # `number` exactly: schema.sql CHECKs `value_kind IN
+        # ('text','number','mixed')`, so a longer list here would be
+        # guessing at kinds the column cannot hold.
+        numeric = kind == "number"
         made.append(
             Field(
-                key="param.is",
+                key="param.num" if numeric else "param.is",
                 param=stem,
                 label=_readable(stem),
                 group=source,
                 aliases=tuple(sorted({*one["raw"], stem.casefold(), source.casefold()})),
-                # A family whose members disagree about their type is
-                # mixed, which is exactly what the lattice means.
-                value_kind="mixed" if len(one["kinds"]) > 1 else next(iter(one["kinds"])),
-                ops=("eq", "any"),
+                value_kind=kind,
+                ops=("eq", "gte", "lte") if numeric else ("eq", "any"),
                 multi="any",
                 note="",
                 covered=one["covered"],

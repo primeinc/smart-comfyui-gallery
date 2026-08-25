@@ -398,22 +398,14 @@ search answers with a set. What is NOT built:
 
   What is not built:
 
-  - **A field does not choose its own operators yet.** The catalog
-    sends `value_kind` and `ops` per field and the surface ignores both
-    for discovered keys, which always get `is`. A number-kinded key --
-    `param_key.value_kind` says which, and `Steps` and `CFG scale` are
-    the obvious ones -- should offer above / below / between, which is
-    the machinery `drawRange` already has.
-
-    This one is not only a surface change, which is why it was not done
-    with the value list. `param.is` compares `fp.value_text` and admits
-    `eq` and `any` only (db/facets.py). A range wants `fp.value_num`,
-    which the schema populates when a value parses as a number and
-    already indexes for exactly this (`file_param_key_num ON
-    file_param(key, value_num) WHERE value_num IS NOT NULL`). So the
-    work is a second spec beside `param.is` -- call it `param.atleast`
-    / `param.atmost` -- rather than widening one whose SQL compares the
-    wrong column.
+  - ~~**A field does not choose its own operators yet.**~~ Done:
+    `param.num` compares `fp.value_num` beside `param.is`, a
+    number-kinded key is offered `eq`/`gte`/`lte` by the catalog, and
+    the Add-filter box draws it a range instead of a value list. One key
+    with three operators rather than the `param.atleast`/`param.atmost`
+    pair first sketched -- the operator is already the middle of the URL
+    spelling, so a key named "atleast" carrying `gte` says it twice and
+    leaves "at most" unspellable through it.
 
 - **The analysis has no prompt-term view.** Exact prompt identity is
   built and counted. Recurring TERMS across an answer -- which is a

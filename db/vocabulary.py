@@ -646,6 +646,19 @@ DIMENSIONS: tuple[Dimension, ...] = (
         multi="any",
         note="written key=value, for a field this application has no name of its own for",
     ),
+    Dimension(
+        key="param.num",
+        label="field above or below",
+        group="advanced",
+        carried="facet",
+        value_kind="numpair",
+        ops=("eq", "gte", "lte"),
+        multi="any",
+        note=(
+            "written key=number, for a field whose values parsed as numbers"
+            " -- `param.is` compares them as text, where 9 is more than 30"
+        ),
+    ),
 )
 
 BY_KEY: dict[str, Dimension] = {one.key: one for one in DIMENSIONS}

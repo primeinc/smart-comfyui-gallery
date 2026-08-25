@@ -133,6 +133,24 @@ function toggled(key: string, carried: string, op: string, value: string, on: bo
   return asked;
 }
 
+/**
+ * Replace one BOUND of one discovered key, leaving the rest alone.
+ *
+ * `onlyClause` is too broad here: `param.num:gte:steps=30` and
+ * `param.num:lte:steps=50` are one range and must coexist, and a bound
+ * on `cfg` must survive editing the one on `steps`. So the clause
+ * replaced is matched by key, operator AND parameter name.
+ */
+function toggledExact(key: string, op: string, param: string, value: string): URLSearchParams {
+  const asked = question();
+  const mine = `${key}:${op}:${param}=`;
+  const rest = asked.getAll("f").filter((one) => !one.startsWith(mine));
+  asked.delete("f");
+  for (const one of rest) asked.append("f", one);
+  if (value !== "") asked.append("f", `${mine}${value}`);
+  return asked;
+}
+
 /** Replace every clause of one dimension with a single new one. */
 function onlyClause(key: string, carried: string, op: string, value: string | null): URLSearchParams {
   const asked = question();
@@ -408,6 +426,39 @@ function drawRange(body: HTMLElement, key: string, carried: string, kind: string
   body.append(form);
 }
 
+/**
+ * Above / below, for one discovered key that holds numbers.
+ *
+ * The same shape `drawRange` draws for a curated numeric dimension, but
+ * the value it sends is a PAIR -- `steps=30` -- because the long tail is
+ * rows rather than columns, so naming the field costs a value of its own
+ * (db/facets.py `param.num`).
+ */
+function drawParamRange(body: HTMLElement, param: string, ops: string[]): void {
+  for (const op of ops) {
+    if (op === "eq") continue;
+    const row = document.createElement("label");
+    row.className = "filter-range";
+    row.dataset.paramOp = op;
+    const said = document.createElement("span");
+    said.textContent = op === "gte" ? "at least" : "at most";
+    const box = document.createElement("input");
+    box.type = "number";
+    box.step = "any";
+    box.setAttribute("aria-label", `${param} ${said.textContent}`);
+    const held = question()
+      .getAll("f")
+      .find((one) => one.startsWith(`param.num:${op}:${param}=`));
+    if (held) box.value = held.slice(held.lastIndexOf("=") + 1);
+    box.addEventListener("change", () => {
+      const wanted = box.value.trim();
+      go(toggledExact("param.num", op, param, wanted));
+    });
+    row.append(said, box);
+    body.append(row);
+  }
+}
+
 /** Fetch and draw one dimension, once. */
 async function fill(section: HTMLDetailsElement): Promise<void> {
   const body = findElement(section, "[data-filter-body]", HTMLElement);
@@ -646,15 +697,34 @@ function mountFind(drawer: HTMLElement, reveal: (key: string) => void): void {
     field.value = "";
     reveal(one.key);
     if (one.param === null) return;
-    // A discovered key is asked through `param.is`, and that section's
-    // own control is a text box because there is no curated list of
-    // THESE. So the section is rebuilt around the key that was chosen:
-    // its values, counted here, with the raw spelling said out loud
-    // above them -- which is how somebody learns the spelling instead of
-    // being required to know it.
-    const section = findElement(drawer, '[data-filter="param.is"]', HTMLDetailsElement);
+    const section = findElement(drawer, `[data-filter="${one.key}"]`, HTMLDetailsElement);
     const body = section && findElement(section, "[data-filter-body]", HTMLElement);
     if (!body) return;
+    // A number-kinded key gets the comparisons a number has. `Steps` and
+    // `CFG scale` are the obvious ones, and offering them a list of
+    // every value somebody ever generated at -- when what they want is
+    // "above 30" -- is a list nobody reads to the end of.
+    //
+    // The key is the catalog's, not a constant: a numeric field is
+    // asked through `param.num`, which compares `fp.value_num`, and a
+    // text one through `param.is`, which compares `fp.value_text`.
+    if (one.key === "param.num") {
+      body.replaceChildren();
+      body.dataset.param = one.param;
+      const said = document.createElement("p");
+      said.className = "filter-note";
+      said.dataset.paramSpelling = one.param;
+      said.textContent = one.param;
+      body.append(said);
+      drawParamRange(body, one.param, one.ops);
+      body.dataset.state = "ready";
+      return;
+    }
+    // A discovered TEXT key: that section's own control is a text box
+    // because there is no curated list of THESE. So the section is
+    // rebuilt around the key that was chosen: its values, counted here,
+    // with the raw spelling said out loud above them -- which is how
+    // somebody learns the spelling instead of being required to know it.
     void drawParamValues(body, one.param, one.label);
   };
 

@@ -280,3 +280,94 @@ def test_the_value_list_is_bounded_and_searchable(library):
     one, none_left = catalog.values(library, resultset.parse(), "seed", search="1003", most=100)
     assert [value for value, _ in one] == ["1003"]
     assert none_left == 0
+
+
+# --- a number-kinded field offers what a number has --------------------------
+
+
+def test_a_number_kinded_key_is_asked_as_a_number(library):
+    """The piece the catalog had and the surface ignored.
+
+    `param_key.value_kind` already records that `seed` holds numbers.
+    Every discovered key was offered `param.is` anyway, which compares
+    `fp.value_text` and can only ever mean equals -- and over text, 9 is
+    more than 30.
+    """
+    from db import catalog
+
+    found, _ = catalog.catalog(library, resultset.parse())
+    held = _need(found, "seed")
+    assert held.value_kind == "number"
+    assert held.key == "param.num", "a numeric key is still asked through the text comparison"
+    assert set(held.ops) == {"eq", "gte", "lte"}
+
+
+def test_a_text_key_keeps_the_comparison_it_can_answer(library):
+    """The control. `automaticvae` holds "True" on every file: there is
+    no ordering to offer, and offering one would be a range over strings."""
+    from db import catalog
+
+    found, _ = catalog.catalog(library, resultset.parse())
+    held = _need(found, "automaticvae")
+    assert held.key == "param.is"
+    assert set(held.ops) == {"eq", "any"}
+
+
+def test_a_mixed_family_is_not_compared_as_numbers(library):
+    """A family where some values parsed as numbers and some did not
+    cannot be ordered without quietly dropping the rest."""
+    from db import catalog
+
+    library.execute(
+        "INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(2,'generation','steps','a lot',NULL)"
+    )
+    library.execute(
+        "INSERT INTO file_param(file_id,source,key,value_text,value_num) VALUES(3,'generation','steps','30',30.0)"
+    )
+    library.commit()
+
+    found, _ = catalog.catalog(library, resultset.parse())
+    held = _need(found, "steps")
+    assert held.value_kind == "mixed"
+    assert held.key == "param.is", "a mixed family was offered a numeric comparison"
+
+
+def test_the_range_reads_the_column_the_schema_fills_for_it(library):
+    """`param.num` compares `fp.value_num` -- the column the schema
+    populates whenever a value parses as a number, and indexes for
+    exactly this."""
+    from db import facets
+
+    held = facets.facet("param.num", "gte", "seed=1005")
+    sql, bound = facets.predicate(held)
+    assert "fp.value_num >= ?" in sql
+    assert "value_text" not in sql
+    assert bound == ["seed", 1005], "the number was bound as text, which compares by type order"
+
+
+def test_asking_for_a_number_answers_by_magnitude(library):
+    """The whole point, end to end: nine is not more than thirty."""
+    held = resultset.page(library, "", resultset.parse(facets=["param.num:gte:seed=1010"]), 1, NOW)
+    every = resultset.page(library, "", resultset.parse(), 1, NOW)
+    assert 0 < held["total"] < every["total"], f"{held['total']} of {every['total']}"
+    kept = {
+        row[0] for row in library.execute("SELECT file_id FROM file_param WHERE key = 'seed' AND value_num >= 1010")
+    }
+    assert {one["id"] for one in held["items"]} == kept
+
+
+def test_a_range_over_a_key_nothing_parsed_matches_nothing(library):
+    """Honest rather than empty-by-accident: `value_num` is NULL for a
+    key that never parsed, and NULL is not greater than anything. The
+    catalog is what stops such a key being OFFERED a range."""
+    held = resultset.page(library, "", resultset.parse(facets=["param.num:gte:automaticvae=0"]), 1, NOW)
+    assert held["total"] == 0
+
+
+def test_a_range_refuses_a_value_that_is_not_a_number(library):
+    """Refused where it is written, not silently matched against
+    nothing."""
+    from db import facets
+
+    with pytest.raises(ValueError, match="number"):
+        facets.facet("param.num", "gte", "seed=lots")

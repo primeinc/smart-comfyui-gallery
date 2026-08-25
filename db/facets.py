@@ -332,6 +332,32 @@ REGISTRY: dict[str, _Spec] = {
         ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key = ? AND fp.value_text {op} ?)",
     ),
+    #: The same long tail, asked as a NUMBER: `steps=30` with `gte`.
+    #:
+    #: A second spec beside `param.is` rather than widening it, because
+    #: they compare different columns. `param.is` reads `fp.value_text`
+    #: and can only ever mean equals -- "steps at least 30" over text is
+    #: string comparison, where 9 is more than 30. This reads
+    #: `fp.value_num`, which the schema fills whenever a value parses as
+    #: a number and indexes for exactly this
+    #: (`file_param_key_num ON file_param(key, value_num)
+    #: WHERE value_num IS NOT NULL`).
+    #:
+    #: ONE key with three operators rather than the `param.atleast` /
+    #: `param.atmost` pair this was first sketched as: the operator is
+    #: already the middle of the URL spelling, so a key named "atleast"
+    #: carrying `gte` says it twice, and asking "at most" through it
+    #: would be unspellable.
+    #:
+    #: A key whose value never parsed as a number matches nothing here,
+    #: which is honest: `value_num` is NULL for those rows and NULL is
+    #: not greater than anything. The catalog is what stops it being
+    #: OFFERED -- `param_key.value_kind` says which keys are numbers.
+    "param.num": _Spec(
+        "numpair",
+        ("eq", "gte", "lte"),
+        "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key = ? AND fp.value_num {op} ?)",
+    ),
     # --- the bytes, which every medium has -----------------------------
     #: `file.width`/`file.height` are the PIXELS ON DISK, never what a
     #: recipe asked for (that is `generation.width`, and the two
@@ -396,6 +422,17 @@ def facet(key: str, op: str, raw: str) -> Facet:
         if not sign or not name.strip() or not held.strip():
             raise ValueError(f"{key} is written key=value, not {raw!r}")
         return Facet(key, op, f"{name.strip()}={held.strip()}")
+    if spec.value_kind == "numpair":
+        name, sign, held = raw.partition("=")
+        if not sign or not name.strip() or not held.strip():
+            raise ValueError(f"{key} is written key=number, not {raw!r}")
+        if _NUM.fullmatch(held.strip()) is None:
+            raise ValueError(f"{key} compares a number, and {held.strip()!r} is not one")
+        # Normalised the way every other number here is, so `steps=30`
+        # and `steps=30.0` are not two spellings of one question with two
+        # fingerprints.
+        made = float(held.strip())
+        return Facet(key, op, f"{name.strip()}={int(made) if made.is_integer() else made}")
     value = raw.strip()
     if not value:
         raise ValueError(f"{key} takes a non-empty value")
@@ -500,6 +537,13 @@ def bound_values(held: Facet) -> list:
     if spec.value_kind == "pair":
         name, _, value = str(held.value).partition("=")
         return [name, value]
+    if spec.value_kind == "numpair":
+        name, _, value = str(held.value).partition("=")
+        # Bound as a NUMBER: `value_num` is REAL, and a string bound
+        # against it compares by SQLite's type order rather than by
+        # magnitude -- every row would be on the wrong side.
+        made = float(value)
+        return [name, int(made) if made.is_integer() else made]
     return [held.value]
 
 
