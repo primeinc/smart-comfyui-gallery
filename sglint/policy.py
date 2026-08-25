@@ -162,8 +162,31 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/story_view.py": frozenset(
         {"connect", "derived", "evolution", "facets", "naming", "pages", "planning", "rendering", "settings", "stories"}
     ),
+    # `vocabulary` on the terms this table already states for it above:
+    # it spells what a key is CALLED and touches no connection. The
+    # timeline's scope line needs it for the reason gallery.py does --
+    # writing its own `key=value` fallback is how a surface ends up
+    # printing `favorite=False` at a person, which is the drift
+    # db/vocabulary.py opens by describing. It printed `None` for seven
+    # of eight scopes before this.
+    # `discovery` for `labels` ONLY -- narrower than gallery.py holds it
+    # for. An id-valued clause rides the URL as an id because names move,
+    # so the scope line has to resolve one or print `place #11 (gone)`.
+    # The alternative was this adapter running the lookup itself, which
+    # SG401 refuses and is right to.
     "sg_web/timeline_view.py": frozenset(
-        {"connect", "context", "facets", "pages", "planning", "rendering", "resultset", "settings"}
+        {
+            "connect",
+            "context",
+            "discovery",
+            "facets",
+            "pages",
+            "planning",
+            "rendering",
+            "resultset",
+            "settings",
+            "vocabulary",
+        }
     ),
     # `jobs` is vocabulary here, not a query path: the console spells
     # the job kinds and states the table constrains, and touches no

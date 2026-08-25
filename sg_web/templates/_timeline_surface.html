@@ -53,6 +53,7 @@
     <h1 class="stamp" data-window>{{ surface.window_spelled }}</h1>
     <p class="eyebrow surface-note" data-note>{{ surface.note }}</p>
     <nav class="surface-zoom" data-zoom aria-label="how much time to show">
+{% if not surface.presets | selectattr("current") | list %}<span data-custom title="the window you are on matches none of these">{{ surface.window_spelled }}</span>{% endif %}
       {% for held in surface.presets %}<a href="{{ held.href }}" data-preset="{{ held.name }}"{% if held.current %} data-current{% endif %} title="the last {{ held.name }}">{{ held.name }}</a>{% endfor %}
     </nav>
   </header>
@@ -81,7 +82,7 @@
       {% for s in surface.sessions %}<a class="frame" data-frame="{{ s.id }}" href="#session-{{ s.id }}" style="left:{{ s.x / 10 }}%;width:{{ s.w / 10 }}%" title="{{ s.title }} · {{ s.when }}"><span class="frame-strip">{% for src in s.samples[:4] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</span><span class="frame-label">{{ s.title }}</span></a>{% endfor %}
     </div>
     <div class="axis-samples" data-samples data-state="shown">
-      {% for b in surface.bins if b.samples %}<a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · see all {{ "{:,}".format(b.pictures) }}" data-bin-at="{{ b.at | int }}" style="left:{{ b.x / 10 }}%">{% for src in b.samples[:1] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</a>{% endfor %}
+      {% for b in surface.bins if b.samples %}<a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · see all {{ "{:,}".format(b.pictures) }}" data-bin-at="{{ b.at | int }}" style="left:{{ (b.x + b.w / 2) / 10 }}%">{% for src in b.samples[:1] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</a>{% endfor %}
     </div>
   </div>
 

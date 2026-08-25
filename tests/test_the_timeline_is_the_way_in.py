@@ -395,7 +395,13 @@ def test_the_surface_can_be_scoped_by_the_gallerys_facets(links):
     spelled = f"place.id:eq:{lisbon}"
     scoped = _density(links, bin="day", f=spelled)
     assert sum(b["pictures"] for b in scoped["bins"]) == 2 < all_pictures
-    assert scoped["scope"]["parts"] == [{"key": "place.id", "value": lisbon, "spelled": spelled}]
+    # The NAME, not the URL spelling. A place rides the question as an id
+    # because names move and a bookmark has to survive it, so a chip
+    # printing `place.id:eq:11` would be the database's answer to a
+    # question somebody asked in words. Resolving it through
+    # `vocabulary.chip` with nothing to look in reads `place #11 (gone)`,
+    # which is exactly what it did until `discovery.labels` was passed.
+    assert scoped["scope"]["parts"] == [{"key": "place.id", "value": lisbon, "spelled": "place Lisbon"}]
     assert scoped["scope"]["qs"] == f"f=place.id%3Aeq%3A{lisbon}"
     assert all("place.id%3Aeq%3A" in b["qs"] for b in scoped["bins"]), "every link carries the scope"
     assert all("place.id%3Aeq%3A" in s["qs"] for s in scoped["sessions"])

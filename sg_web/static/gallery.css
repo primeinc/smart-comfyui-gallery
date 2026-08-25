@@ -2091,8 +2091,27 @@ body {
 .surface-zoom a {
   color: var(--ink-muted);
 }
+/* WHERE YOU ARE, not just another link. Colour alone could not carry
+   it: `--imprint` is already the link colour, the major tick, the `now`
+   marker and the bar's hover, so "current" read as "clickable". The box
+   is the signal; the colour is the confirmation. */
 .surface-zoom a[data-current] {
   color: var(--imprint);
+  border: 1px solid currentcolor;
+  border-radius: var(--radius);
+  padding: 0 6px;
+  margin: 0 -6px;
+}
+/* And when NO preset matches -- which is every first visit, because the
+   opening window is tightened to where the pictures are and is never
+   exactly a month -- the control says so rather than looking like
+   nothing is selected. */
+.surface-zoom [data-custom] {
+  color: var(--ink-muted);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 0 6px;
+  cursor: default;
 }
 /* the axis: furniture, density, sessions as frames, pictures at their moment */
 .axis {
@@ -2267,11 +2286,16 @@ body {
   bottom: 52px;
   height: 40px;
 }
+/* CENTRED on its bar, not hung off the bar's left edge. A 40px
+   thumbnail anchored at the left of a 2px bar sits entirely to one side
+   of the thing it belongs to, and a reader pairs it with whichever bar
+   it happens to overlap instead. */
 .axis-samples .surface-sample {
   position: absolute;
   top: 0;
   width: 40px;
   height: 40px;
+  transform: translateX(-50%);
 }
 .axis-samples .surface-sample[hidden] {
   display: none;

@@ -29,7 +29,7 @@ from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromQuery, QueryParameter
 from litestar.response import Redirect, Response, Template
 
-from db import connect, context, facets, pages, planning, rendering, resultset, settings
+from db import connect, context, discovery, facets, pages, planning, rendering, resultset, settings, vocabulary
 from sg_web import home, projecting
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
@@ -131,22 +131,57 @@ def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str
     return (sql, values), live
 
 
-def _scope_told(question: resultset.GalleryQuery) -> dict | None:
+def _scope_told(conn, question: resultset.GalleryQuery) -> dict | None:
     """What the page says it is scoped to, or None for the whole library:
     the canonical spelling and its parts, one per scope and facet."""
-    parts = [
-        {"key": key, "value": value}
-        for key, value in (
-            ("folder", question.folder),
-            ("album", question.album),
-            ("person", question.person),
-            ("artifact", question.artifact),
-            ("kind", question.kind),
-            ("favorite", question.favorite),
-            ("rating_min", question.rating_min),
+    # `spelled` is what a person READS, and it comes from db/vocabulary.py
+    # because that is the module that exists so a label lives in one
+    # place. Two things went wrong when it did not:
+    #
+    #   * a scope part carried no `spelled` at all, and the template
+    #     tested `is defined` -- which is always true on a wire model,
+    #     since the field defaults to None. Every scoped timeline said
+    #     "showing only None" (folder, album, person, artifact, kind,
+    #     favorite, rating_min: seven of eight scopes).
+    #   * the fallback was `key=value`, so a bool would have read
+    #     `favorite=False` -- a chip printing a key, which is the exact
+    #     drift `db/vocabulary.py` opens by describing.
+    # An `id` dimension is stored by id because NAMES MOVE -- renaming a
+    # model is a thing people do and a bookmark has to survive it -- so
+    # its chip must be resolved against the row or it reads `place #11
+    # (gone)`, which is what it did the first time this went through
+    # `chip` with nothing to look in. `discovery.labels` is that lookup,
+    # already written and already what the gallery's chips use; the
+    # alternative was this adapter running its own statement, which is a
+    # thing it may not do and should not want to.
+    named = discovery.labels(conn, question)
+    parts = []
+    for key, value in (
+        ("folder", question.folder),
+        ("album", question.album),
+        ("person", question.person),
+        ("artifact", question.artifact),
+        ("kind", question.kind),
+        ("favorite", question.favorite),
+        ("rating_min", question.rating_min),
+    ):
+        if value is None:
+            continue
+        one = vocabulary.dimension(key)
+        spelled = vocabulary.chip(one, one.ops[0], value) if one else f"{key} {value}"
+        parts.append({"key": key, "value": value, "spelled": spelled})
+    for held in question.facets:
+        one = vocabulary.dimension(held.key)
+        if one is None:
+            parts.append({"key": held.key, "value": held.value, "spelled": facets.spell(held)})
+            continue
+        parts.append(
+            {
+                "key": held.key,
+                "value": held.value,
+                "spelled": vocabulary.chip(one, held.op, held.value, named.get(held.key)),
+            }
         )
-        if value is not None
-    ] + [{"key": one.key, "value": one.value, "spelled": facets.spell(one)} for one in question.facets]
     if not parts:
         return None
     return {"qs": resultset.canonical(question), "parts": parts}
@@ -900,7 +935,7 @@ def _surface(
     scope, held = _scope(conn, state, asked)
     coverage = _coverage(conn, scope, held)
     extent = pages.timeline_extent(conn, scope)
-    scope_told = _scope_told(held)
+    scope_told = _scope_told(conn, held)
     if extent is None or extent[0] is None:
         return {
             "bin": bin_name or "day",
@@ -1100,7 +1135,20 @@ def _surface(
     fine = sum(b["pictures"] for b in told_bins)
     coarse = sum(pictures for _, _, pictures in spans)
     unit = UNIT[bin_name]
-    note = f"{fine:,} pictures · each bar is a {unit}"
+    # The Y SCALE, which the surface drew and never stated: "each bar is
+    # a day" names the x unit and nothing named the other one, so a bar
+    # could be five pictures or five hundred and the only way to find out
+    # was to hover it.
+    note = f"{fine:,} pictures · each bar is a {unit} · tallest {most:,}"
+    if axis.collapsed:
+        # Said in the sentence as well as drawn as a band: somebody
+        # reading the note is owed the fact that the axis is not to
+        # scale, not only somebody looking at the picture of it.
+        note += (
+            f" · {len(axis.collapsed)} empty "
+            f"{'run' if len(axis.collapsed) == 1 else 'runs'} collapsed "
+            f"({', '.join(_nothing_for(one.seconds) for one in axis.collapsed)})"
+        )
     if coarse:
         note += f" · {coarse:,} are dated only to the day, shown as bands"
     if not every:
@@ -1822,7 +1870,7 @@ def pictures(
             {
                 "start": start,
                 "end": end,
-                "scope": _scope_told(held),
+                "scope": _scope_told(conn, held),
                 "qs": qs,
                 "total": total,
                 "pictures": [_picture(row, qs) for row in rows],

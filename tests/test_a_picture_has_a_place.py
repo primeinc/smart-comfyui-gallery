@@ -258,12 +258,16 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         page = client.get("/timeline", params={"folder": "deep"}, headers={"accept": "text/html"}).text
         assert 'data-timeline-scope="folder=deep"' in page
         assert client.get("/timeline/density", params={"bin": "day", "folder": "nowhere"}).status_code == 404
-        # a scope's value is its own address, so it carries no spelling --
-        # the field is there and null rather than absent, because a reader
-        # should not have to branch on which keys a part happens to have
+        # EVERY part carries its spelling now, scope and facet alike. It
+        # used to be null for a scope -- "its value is its own address" --
+        # and the template's fallback was `key=value`. That combination
+        # put the word `None` on a live page for seven of eight scopes:
+        # the wire model defaults `spelled` to None, so the template's
+        # `is defined` test was ALWAYS true and printed the literal. What
+        # a clause is called is db/vocabulary.py's, here as everywhere.
         assert client.get("/timeline/density", params={"bin": "day", "kind": "image"}, headers=AS_MACHINE).json()[
             "scope"
-        ]["parts"] == [{"key": "kind", "value": "image", "spelled": None}]
+        ]["parts"] == [{"key": "kind", "value": "image", "spelled": "kind image"}]
         smart = client.post("/albums/smart", json={"name": "Deep Ones", "folder": "deep"})
         assert smart.status_code == 201, smart.text
         ruled = client.get(
