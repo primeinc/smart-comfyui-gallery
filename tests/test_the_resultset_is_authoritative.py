@@ -173,6 +173,106 @@ def test_a_neighborhood_agrees_with_locate_about_the_walk(shelves):
     assert slugs[here + 1] == found["next"]
 
 
+def test_a_neighborhood_walks_a_FILTERED_answer_and_not_the_library(shelves):
+    """The filmstrip under a narrowed question.
+
+    The window and the arrows are the same read as the grid, so a
+    question that excludes pictures must exclude them here too. The
+    failure this guards is the tempting one: walking the LIBRARY around
+    the current picture and calling it the neighbourhood, which puts a
+    photograph in the strip that the answer the person is looking at
+    does not contain -- and makes `next` step out of their own search.
+
+    The filter is EVERY OTHER picture on purpose. A folder would have
+    done for coverage and would have proved nothing here: this fixture
+    stamps one folder entirely after the other, so a folder's pictures
+    are one contiguous run of the timed order and a strip that walked
+    the whole library around one of them would return exactly the same
+    seven. Checked, before this was written that way. Interleaving is
+    what gives the assertion something to catch.
+    """
+    conn = shelves["conn"]
+    whole = _q(size=5)
+
+    def walked(q, actor):
+        pages = resultset.describe(conn, "", q, NOW, actor_id=actor)["pages"]
+        return [
+            row["id"]
+            for n in range(1, pages + 1)
+            for row in resultset.page(conn, "", q, n, NOW, actor_id=actor)["items"]
+        ]
+
+    everything = walked(whole, None)
+    actor = int(
+        conn.execute(
+            "INSERT INTO user(username, password_hash, role, created_at) VALUES('ana', 'x', 'USER', 0) RETURNING id"
+        ).fetchone()[0]
+    )
+    for one in everything[::2]:
+        conn.execute("INSERT INTO favorite(file_id, user_id, created_at) VALUES(?, ?, 0)", (one, actor))
+    conn.commit()
+
+    narrowed = _q(favorite="1", size=5)  # request-shaped: 1 favorited, 0 not
+    only = walked(narrowed, actor)
+    assert only == everything[::2], "the filter is meant to take every other picture"
+    assert 0 < len(only) < len(everything)
+
+    middle = only[len(only) // 2]
+    told = resultset.neighborhood(conn, "", narrowed, middle, NOW, count=7, actor_id=actor)
+    assert told is not None
+    held = [row["id"] for row in told["items"]]
+    assert set(held) <= set(only), "the strip showed a picture the narrowed answer does not contain"
+    assert told["total"] == len(only), "the strip counted the library rather than the answer"
+
+    # and it is the narrowed answer's OWN slice, contiguous in ITS order
+    where = only.index(middle)
+    low = max(0, min(where - 3, len(only) - 7))
+    assert held == only[low : low + 7]
+
+    # the arrows agree with the strip, which is the whole point of one read
+    found = resultset.locate(conn, "", narrowed, middle, NOW, actor_id=actor)
+    assert found is not None
+    assert told["previous"] == found["previous"]
+    assert told["next"] == found["next"]
+
+
+def test_a_neighborhood_walks_a_SEMANTIC_answer_in_the_fused_order(shelves, monkeypatch):
+    """The filmstrip under a ranked question.
+
+    A semantic answer's order is materialized from the fused retrieval
+    and belongs to no SQL sort. The window has to be a slice of THAT,
+    and taking it must not re-run retrieval -- the strip reads the
+    materialized ordering the grid read, or the two disagree about what
+    comes next.
+    """
+    from db import retrieval
+
+    conn = shelves["conn"]
+    ranked = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
+    ranked = ranked[7:] + ranked[:7]  # an order no SQL sort produces
+    asked = []
+
+    def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        asked.append(phrase)
+        return retrieving.answered(ranked)
+
+    monkeypatch.setattr(retrieval, "query", fused)
+    q = _q(text="a banana", size=4)
+
+    resultset.describe(conn, "", q, NOW)
+    told = resultset.neighborhood(conn, "", q, ranked[9], NOW, count=7)
+    assert told is not None
+    assert [row["id"] for row in told["items"]] == ranked[6:13], "the strip is not the fused order"
+    assert told["ordinal"] == 10
+    assert len(asked) == 1, "the strip re-ran retrieval instead of reading the materialized ordering"
+
+    found = resultset.locate(conn, "", q, ranked[9], NOW)
+    assert found is not None
+    assert told["previous"] == found["previous"]
+    assert told["next"] == found["next"]
+    assert len(asked) == 1
+
+
 def test_a_file_outside_the_answer_has_no_neighborhood(shelves):
     """The query defines the walk. There is no other neighborhood to
     invent for an item the question does not contain."""

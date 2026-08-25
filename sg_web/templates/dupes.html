@@ -24,6 +24,21 @@
           <a href="/i/{{ group.slug }}">{{ group.name }}</a>
           <span class="dupe-count" data-dupe-copies="{{ group.copies }}">{{ group.copies }} copies</span>
         </h2>
+        {# The evidence, above the claim that rests on it. The verdict
+           below ends "every collection still complete", and that is a
+           sentence somebody is being asked to believe about their own
+           albums -- so the albums are named here, each with how whole it
+           is right now. A count short of its own total is a fact about
+           the library, not about consolidating, and seeing it here is
+           the point: it is the number that would move if the operation
+           were the naive one. #}
+        {% if group.placements %}
+        <p class="dupe-placements" data-dupe-placements>
+          Filed in:
+          {% for one in group.placements %}<span class="dupe-placement" data-dupe-placement="{{ one.name }}">{{ one.name }}
+            <code class="raw" data-placement-whole="{{ one.present }}/{{ one.members }}">{{ one.present }}/{{ one.members }} present</code></span>{% if not loop.last %}<span class="muted"> · </span>{% endif %}{% endfor %}
+        </p>
+        {% endif %}
         {# The distinction that decides whether consolidating is even
            safe. These groups are PERCEPTUAL: a re-encode, a resize and a
            different crop all land in one, and only identical bytes can

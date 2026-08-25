@@ -798,6 +798,10 @@ def _dupe_group(conn, best_slug: str, best_name: str, copies: int) -> dict:
     found = naming.resolve(conn, "file", best_slug)
     group_id = None if found is None else pages.dupe_group_of(conn, found[0])
     members = [] if group_id is None else pages.dupe_members(conn, group_id)
+    # The evidence for the sentence below, not decoration: "every
+    # collection still complete" is a claim, and these are the albums it
+    # is a claim about, with how whole each of them is right now.
+    placements = [] if group_id is None else pages.dupe_placements(conn, group_id)
     payloads = {one["content_sha256"] for one in members if one["content_sha256"]}
     return {
         "slug": best_slug,
@@ -809,6 +813,7 @@ def _dupe_group(conn, best_slug: str, best_name: str, copies: int) -> dict:
         # that differ cannot be consolidated to one payload, so a group
         # of merely-similar pictures is offered no such sentence.
         "consolidates_to": len(members) if len(payloads) == 1 else None,
+        "placements": placements,
         "members": [
             {
                 "slug": one["slug"],

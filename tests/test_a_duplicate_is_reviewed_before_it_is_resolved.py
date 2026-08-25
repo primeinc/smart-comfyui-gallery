@@ -87,6 +87,22 @@ def build_app_for(tmp_path):
     return build_app(str(tmp_path / "run"), worker=False)
 
 
+def _album(conn, name: str, *file_ids: int) -> int:
+    """One album, made once, holding all of these.
+
+    `collections.collection` is a CONSTRUCTOR and not a get-or-create --
+    two albums may share a name here, because the address is the slug --
+    so calling it per picture makes one album per picture and every
+    count in this file reads 1/1.
+    """
+    from db import collections
+
+    album = collections.collection(conn, name, clock.time())
+    for file_id in file_ids:
+        conn.execute("INSERT INTO collection_file VALUES(?, ?, ?)", (album, file_id, clock.time()))
+    return album
+
+
 def _filed(conn, file_id: int, name: str) -> None:
     from db import collections
 
@@ -155,6 +171,74 @@ def test_copies_that_are_only_alike_are_never_called_the_same(tmp_path):
         assert "data-dupe-alike" in page
         assert "not the same bytes" in page
         assert "placements, 1 payload" not in page, "it offered to collapse pictures that are not the same file"
+
+
+def test_the_page_says_how_whole_each_album_would_be_left(reviewed):
+    """The other half of the preview.
+
+    "every collection still complete" is a claim about somebody's own
+    albums, and until now the page asserted it with nothing beside it.
+    Each collection a copy is filed under is named here with how whole
+    it is: 6 of 6 present, which is the number the naive operation would
+    move and this one does not.
+    """
+    client, conn, by_name = reviewed
+    # albums with more in them than the copy, so the count means something
+    _album(conn, "Iowa 2019", by_name["iowa.png"], by_name["resized.png"])
+    _album(conn, "Family", by_name["family.png"])
+    conn.commit()
+
+    page = client.get("/dupes", headers={"accept": "text/html"}).text
+    assert "data-dupe-placements" in page, "the page claims completeness and shows none"
+    assert 'data-dupe-placement="Iowa 2019"' in page
+    assert 'data-dupe-placement="Family"' in page
+    assert 'data-placement-whole="2/2"' in page, "Iowa 2019 holds two pictures, both present"
+    assert 'data-placement-whole="1/1"' in page, "Family holds one"
+
+
+def test_an_album_already_short_of_its_own_says_so(reviewed):
+    """A file whose bytes are gone keeps its placement -- `missing_since`
+    and never a delete. So an album can be short of itself before
+    anybody consolidates anything, and the preview must show that
+    rather than rounding it up to complete: the whole use of the number
+    is that somebody can watch whether it moves.
+    """
+    client, conn, by_name = reviewed
+    _album(conn, "Iowa 2019", by_name["iowa.png"], by_name["resized.png"])
+    conn.execute("UPDATE file SET missing_since = ? WHERE id = ?", (NOW, by_name["resized.png"]))
+    conn.commit()
+
+    page = client.get("/dupes", headers={"accept": "text/html"}).text
+    assert 'data-placement-whole="1/2"' in page, "an album short of its own members read as complete"
+
+
+def test_a_copy_in_no_collection_adds_no_album(reviewed):
+    """Nothing is invented for a picture nobody filed."""
+    client, _conn, _by_name = reviewed
+    page = client.get("/dupes", headers={"accept": "text/html"}).text
+    assert "data-dupe-placements" not in page, "an album appeared for pictures in none"
+
+
+def test_two_copies_in_one_album_do_not_count_it_twice(reviewed):
+    """The arithmetic trap. Reaching the collection's other members by
+    JOINing them to the group's members multiplies the two: two copies
+    filed in one eight-picture album count sixteen. Measured on this
+    tree before the query was written that way -- 16 against 8."""
+    client, conn, by_name = reviewed
+    _album(conn, "One Shoot", *(by_name[n] for n in ("iowa.png", "family.png", "backup.png", "resized.png")))
+    conn.commit()
+
+    page = client.get("/dupes", headers={"accept": "text/html"}).text
+    assert 'data-placement-whole="4/4"' in page, "the album's own members were counted once per copy"
+    assert 'data-placement-whole="12/12"' not in page
+
+
+def test_the_machine_list_did_not_widen(reviewed):
+    """A route's answer shape only ever shrinks. The placements are for
+    the page; the historical JSON list is three keys and stays three."""
+    client, _conn, _by_name = reviewed
+    told = client.get("/dupes", headers={"accept": "application/json"}).json()
+    assert set(told[0]) == {"slug", "name", "copies"}
 
 
 def test_the_page_removes_nothing_and_offers_no_way_to(reviewed):

@@ -879,6 +879,35 @@ DUPE_MEMBERS = (
     " WHERE twin.group_id = ? ORDER BY twin.is_best DESC, f.name LIMIT ?"
 )
 
+#: Every collection a member of this group is filed under, and how whole
+#: each of those collections is.
+#:
+#: The other half of the preview. "3 placements, 1 payload" says what
+#: the GROUP becomes; this says what the collections AROUND it are, so
+#: the sentence somebody is being asked to trust -- consolidating
+#: redundant storage leaves every logical placement where it was -- is
+#: shown against the albums it would be true of rather than asserted.
+#:
+#: Two scalar subqueries and not a join to the collection's other
+#: members: a join multiplies the group's members by the collection's,
+#: so two copies filed in a 428-picture album count 856.
+#:
+#: `present` is the count that is not simply the row count, because a
+#: file whose bytes are gone keeps its placement (`missing_since`, never
+#: a delete). An album already short of its own members says so here,
+#: which is a fact about the library and not about consolidating.
+DUPE_PLACEMENTS = (
+    "SELECT c.name,"
+    "       (SELECT count(*) FROM collection_file cf WHERE cf.collection_id = c.id) AS members,"
+    "       (SELECT count(*) FROM collection_file cf JOIN file mf ON mf.id = cf.file_id"
+    "         WHERE cf.collection_id = c.id AND mf.missing_since IS NULL) AS present"
+    "  FROM collection c"
+    " WHERE c.id IN (SELECT cf.collection_id FROM collection_file cf"
+    "                  JOIN derived_dupe_group twin ON twin.file_id = cf.file_id"
+    "                 WHERE twin.group_id = ?)"
+    " ORDER BY c.name COLLATE NOCASE"
+)
+
 #: The group a file belongs to. `dupe_groups` hands back the best's slug
 #: and nothing else, and the members above are keyed on the group.
 DUPE_GROUP_OF = "SELECT group_id FROM derived_dupe_group WHERE file_id = ?"
@@ -886,6 +915,13 @@ DUPE_GROUP_OF = "SELECT group_id FROM derived_dupe_group WHERE file_id = ?"
 
 def dupe_members(conn, group_id: int, limit: int = 120) -> list[dict]:
     cursor = conn.execute(DUPE_MEMBERS, (group_id, limit))
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+def dupe_placements(conn, group_id: int) -> list[dict]:
+    """`[{name, members, present}]` for every collection this group touches."""
+    cursor = conn.execute(DUPE_PLACEMENTS, (group_id,))
     columns = [c[0] for c in cursor.description]
     return [dict(zip(columns, row, strict=True)) for row in cursor]
 

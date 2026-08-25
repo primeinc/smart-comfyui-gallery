@@ -444,10 +444,24 @@ consequences the architecture should keep room for, not work.
   the folder writes belong inside the file writes' savepoint. That is
   the invariant to argue with before touching this.
 
-- **`neighborhood`'s test matrix is short two cases** the filmstrip
-  claims to support: the neighbourhood under a FILTERED ResultSet, and
-  under a SEMANTIC one. `sort=oldest` covers the non-default timed
-  order; nothing covers those two.
+- ~~**`neighborhood`'s test matrix is short two cases.**~~ Both written,
+  and the filmstrip was right under both -- no bug, and now it cannot
+  regress unnoticed.
+
+  Worth recording how the FILTERED one nearly did not test anything. It
+  first narrowed by FOLDER, which reads like the obvious filter and
+  proves nothing here: the fixture stamps one folder entirely after the
+  other, so a folder's pictures are one contiguous run of the timed
+  order, and a strip that walked the whole LIBRARY around one of them
+  returned the identical seven. Checked before believing it. The filter
+  is every-other-picture now, so the excluded ones interleave: the same
+  library-walk leaks four pictures the person's answer does not
+  contain, which is what the assertion is for.
+
+  The SEMANTIC one ranks through the `retrieving.answered` double over a
+  ROTATED order no SQL sort produces, and asserts retrieval ran once --
+  so the strip is proved to read the materialized ordering the grid
+  read rather than re-running the fusion.
 
 - **No cold acceptance lane.** Nothing runs the documented bootstrap from
   a checkout with no `.venv`, no `node_modules` and no
@@ -854,8 +868,8 @@ not a design decision anybody made; it is work nobody did.
   placements, 1 payload, every collection still complete") offered only
   where the bytes actually match. It is read-only and removes nothing.
 
-  What is left is the operation itself, and the naive version is still
-  the one to avoid:
+  The operation itself is the part still missing, and the naive version
+  is the one to avoid:
   byte identity and organisational identity are different things. Three
   copies of one file in `Iowa 2019`, `Family` and `Old Backup` are one
   content and three placements, and a deduper that celebrates "1
@@ -870,10 +884,26 @@ not a design decision anybody made; it is work nobody did.
                 Family     113/113 present
       After:    3 placements, 1 stored payload, all collections complete
 
-  The page states the last line already. The missing half of the preview
-  is the collection-completeness count ("428/428 present"), which needs
-  a query nothing has: how many of a collection's members would still
-  resolve after a given consolidation.
+  ~~The missing half of the preview is the collection-completeness
+  count.~~ Shipped: `pages.dupe_placements` names every collection a
+  member of the group is filed under and how whole each one is right
+  now, rendered ABOVE the verdict rather than below it -- the evidence
+  before the claim it supports, because "every collection still
+  complete" is a sentence about somebody's own albums.
+
+  An album already short of its own members says so (`1/2`) instead of
+  rounding up. A file whose bytes are gone keeps its placement --
+  `missing_since`, never a delete -- so that number can be short before
+  anybody consolidates anything, and the whole use of showing it is
+  that somebody can watch whether the operation MOVES it.
+
+  Two scalar subqueries, not a join from the group's members to the
+  collection's: the join multiplies the two. Measured on this tree --
+  four copies filed in one four-picture album counted 16 -- and that is
+  the case one of the tests is.
+
+  What is left is the operation itself, still not built, and the naive
+  version is still the one to avoid.
 
   Hydrus is the deep reference for duplicate/alternate relationships;
   Immich for the review-and-keep flow.
