@@ -433,6 +433,7 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
     alongside = _thumbs_alongside(conn, told.job_id, file_id, cache) if kind != "video" else []
     if not alongside:
         told.phase("rendering-thumbnails", kind=kind, variants=len(thumbs.EDGES))
+        derive.stand_aside()
         derive.put_all(cache, *mine)
         return
 
@@ -442,8 +443,15 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
     # their own, which is true: by their turn the file is already there
     # and they take the `already-cached` return above.
     told.phase("rendering-thumbnails-together", pictures=len(alongside) + 1, variants=len(thumbs.EDGES))
+
+    def rendered(one):
+        # A person blocked on a cell outranks a queue guessing at what
+        # they will want next, and this fills every core while guessing.
+        derive.stand_aside()
+        return derive.put_all(cache, *one)
+
     with futures.ThreadPoolExecutor(max_workers=thumbs_in_flight()) as pool:
-        running = {pool.submit(derive.put_all, cache, *one): one for one in [mine, *alongside]}
+        running = {pool.submit(rendered, one): one for one in [mine, *alongside]}
         for done in futures.as_completed(running):
             if running[done] is mine:
                 done.result()  # this item's own failure is this item's verdict

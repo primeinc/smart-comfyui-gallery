@@ -146,9 +146,27 @@ consequences the architecture should keep room for, not work.
   a decode of a different shape does not belong inside a group whose
   size is bounded for somebody waiting on a cancel.
 
-  Interactive work should also outrank precache -- a browser waiting on
-  `/thumb/x` is real work and a speculative queue is not. That half is
-  still open; the scheduling lives in the worker.
+  ~~Interactive work should also outrank precache.~~ Done, and the
+  reason it became urgent is that rendering several at a time made it
+  worse: the queue now fills every core while GUESSING at what will be
+  wanted later. Measured on a grid of 30 misses served while a precache
+  ran, 4000x3000 throughout:
+
+      precache 1 in flight              1.25s   42 ms/cell
+      precache 8, not standing aside    1.81s   60 ms/cell
+      precache 8, standing aside        1.53s   51 ms/cell
+
+  So a browser blocked on a cell marks itself (`derive.waited_on`) and
+  the speculative side does not START another picture until nobody is
+  (`derive.stand_aside`). Half the regression, and the shortfall is
+  honest rather than a bug: a render already running cannot be
+  interrupted, so a person arriving mid-batch pays the tail of what is
+  in flight and no more. Bounded by `PATIENCE`, so a marker that leaks
+  costs the queue a pause and never the queue.
+
+  An Event rather than a lock or a semaphore, because the two sides want
+  different things: the person must NEVER wait -- they are the work
+  being prioritised -- and the queue only has to hold off starting.
 
   ~~Two requests for the same missing key render it twice.~~ Fixed and
   measured: four concurrent requests for one missing thumbnail rendered

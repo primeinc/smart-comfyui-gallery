@@ -40,9 +40,11 @@ ends up upside down.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
+import threading
 import typing
 
 import pyvips
@@ -50,6 +52,74 @@ import pyvips
 from vision import thumbs
 
 _logger = logging.getLogger(__name__)
+
+
+#: Somebody is blocked on a picture RIGHT NOW.
+#:
+#: A browser waiting on a cell is real work. The precache queue is a
+#: guess about what will be wanted later, and since it renders several
+#: at a time it fills every core while guessing. Measured on a grid of
+#: 30 misses served while a precache ran: 1.29s with the precache one in
+#: flight, 1.92s at eight -- so the faster queue made the page a person
+#: was actually looking at half again slower. The speculative side
+#: stands aside instead.
+#:
+#: An Event rather than a lock or a semaphore, because the two sides
+#: want different things: the person must NEVER wait (they are the work
+#: being prioritised), and the queue only has to not start another
+#: picture. A render already running is not interrupted -- there is
+#: nothing to interrupt it with -- so the most this costs a person is
+#: the tail of the pictures already in flight.
+class _Waiting:
+    """How many people are blocked on a picture, and a gate that is open
+    exactly when nobody is."""
+
+    __slots__ = ("count", "lock", "nobody")
+
+    def __init__(self) -> None:
+        self.count = 0
+        self.lock = threading.Lock()
+        self.nobody = threading.Event()
+        self.nobody.set()
+
+
+_WAITING = _Waiting()
+
+#: The longest the queue will stand aside for one picture. A marker that
+#: leaks -- a request killed between the halves of `waited_on` -- must
+#: cost the precache a pause, never the whole queue.
+PATIENCE = 5.0
+
+
+@contextlib.contextmanager
+def waited_on():
+    """Somebody is blocked on this render; the queue should stand aside.
+
+    Counted rather than flagged: a grid is thirty of these at once, and
+    the last one to finish is the one that decides when the queue may
+    carry on.
+    """
+    with _WAITING.lock:
+        _WAITING.count += 1
+        _WAITING.nobody.clear()
+    try:
+        yield
+    finally:
+        with _WAITING.lock:
+            _WAITING.count = max(0, _WAITING.count - 1)
+            if not _WAITING.count:
+                _WAITING.nobody.set()
+
+
+def stand_aside(patience: float = PATIENCE) -> None:
+    """Hold a speculative render back while a person is waiting.
+
+    Bounded, so this can only ever slow the queue down and never stop
+    it: past `patience` the picture is rendered anyway, which is exactly
+    the behaviour there was before any of this.
+    """
+    _WAITING.nobody.wait(patience)
+
 
 # pyvips narrates every operation at INFO -- "reducev: 15 point mask",
 # "threadpool completed with 3 workers" -- which is a dozen lines per

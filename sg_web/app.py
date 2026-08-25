@@ -1133,7 +1133,7 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         if not target.exists():
             # A browser asking for one variant needs only that one's
             # pixels; the precache job is the caller that renders both.
-            with _rendered_once(target):
+            with _rendered_once(target), derive.waited_on():
                 if not target.exists():  # whoever held the gate has just made it
                     derive.put_one(
                         cache, sha, pathlib.Path(path), kind, oriented.orientation_of(conn, file_id), variant
@@ -1195,13 +1195,15 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
         # By CONTENT, not by slug: the cache is keyed on the bytes, so
         # any present file carrying them will do, which is the whole
         # reason it is content-addressed.
+        from vision import derive
+
         try:
             # One render per missing file however many cells ask. A fresh
             # library's grid asks for sixty at once and reloads while they
             # are in flight; without this each ask decoded, resized and
             # encoded the same picture again, on its own connection,
             # competing with the precache job for the same CPU.
-            with _rendered_once(target):
+            with _rendered_once(target), derive.waited_on():
                 if not target.is_file():
                     _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
         except ValueError as unrenderable:
