@@ -305,6 +305,48 @@ def test_every_surface_that_draws_a_picture_points_at_the_asset(served):
         assert _HEX64.match(src) is not None, f"the folder page points at {src}"
 
 
+def test_no_template_anywhere_still_spells_the_slug_route(served):
+    """The check that finds the surface nobody thought of.
+
+    Naming the step was not enough: the artifacts shelf and the person
+    drawer went on spelling `/thumb/<slug>` into their own markup long
+    after "the artifact pages joined it" was written down, because
+    nothing looked at every template at once. A page-by-page test finds
+    the pages somebody remembered.
+
+    The ROUTE stays -- it is the honest fallback for a file ingest has
+    not hashed yet, and `asset_url` returns it on purpose. What must not
+    happen is a template building that address itself, where it cannot
+    know whether the file has been hashed.
+    """
+    import pathlib as _pathlib
+
+    here = _pathlib.Path(__file__).resolve().parents[1] / "sg_web" / "templates"
+    spelt = [
+        f"{one.name}: {line.strip()[:90]}"
+        for one in sorted(here.rglob("*.html"))
+        for line in one.read_text(encoding="utf-8").splitlines()
+        if 'src="/thumb/' in line or "src='/thumb/" in line
+    ]
+    assert spelt == [], f"templates building a slug thumbnail address themselves: {spelt}"
+
+
+def test_the_artifact_shelf_costs_no_connections(served):
+    """A shelf of forty cards at four samples each was a hundred and
+    sixty lookups nothing could cache."""
+    client, _ = served
+    # `/models`, because that is where the shelf lives -- one page per
+    # artifact kind, not one index over all of them.
+    sources = _pictures_on(client, "/models")
+    if not sources:
+        pytest.skip("this library has no model with pictures to sample")
+    for src in sources:
+        assert _HEX64.match(src) is not None, f"the artifact shelf points at {src}"
+        client.get(src)
+    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    assert opened == 0, f"{len(sources)} shelf thumbnails opened {opened} connections"
+
+
 def test_a_folder_page_of_thumbnails_costs_no_connections(served):
     """The number, on a surface other than the grid."""
     client, _ = served

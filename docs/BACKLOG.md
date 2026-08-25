@@ -824,23 +824,15 @@ The person, folder, album and artifact pages joined it:
 `sha` and `kind` the ResultSet already read, and a folder page's
 thumbnails now open zero connections.
 
-What is left is the TIMELINE, and it is the densest of them all --
-session strips, scrubber segments, month and day cells, frames and bins
-are dozens of thumbnails per page, every one a connection. It is not a
-fifth copy of the same edit, which is why it is still here:
+The timeline joined it too, and it was the densest: session strips,
+scrubber segments, month and day cells, frames and bins.
 
-- Its pictures do not come from a ResultSet page. A dozen separate
-  statements in `sg_web/timeline_view.py` hand out bare SLUGS -- a
-  session's samples, a bin's sample, a day's hero, a month's hero, a
-  segment's strip, a scrubber face -- and none of them selects
-  `content_sha256`. So the work is a dozen statements widened, not one
-  call added.
-- Several are lists of slugs with no kind beside them, and
-  `asset_url` needs the kind to answer None for audio and documents.
-  A timeline of a mixed library would otherwise draw broken images
-  where the grid already knows not to.
-- `frontend/src/timeline.ts` builds two of these addresses in the
-  browser, so the shape it is handed has to change with the templates.
+Two surfaces were missed by all of that and found by a check that reads
+every template at once rather than one page at a time -- the artifacts
+shelf and the person drawer both went on spelling `/thumb/<slug>` into
+their own markup long after "the artifact pages joined it" was written
+down here. That check now fails the build, which is the only reason to
+believe the list is complete this time.
 
 Also not done:
 

@@ -428,40 +428,60 @@ def artifacts_by_use(conn, kind: str):
     return conn.execute(ARTIFACTS_BY_USE, (kind,)).fetchall()
 
 
-#: A few pictures per artifact for its shelf card, newest first: the
-#: artifact's slug and the picture's, for every artifact of one kind.
+#: A few pictures per artifact for its shelf card, newest first.
+#:
+#: The picture's SHA and KIND come back with its slug, because that is
+#: what a content-addressed thumbnail is made of -- `/thumb/<slug>` is a
+#: route with a lookup behind it, so a shelf of forty cards at four
+#: samples each was a hundred and sixty connections nothing could cache.
+#: The kind is not optional: `asset_url` answers None for a medium with
+#: no picture to take, and without it a shelf over a mixed library draws
+#: broken images where the grid already knows not to.
 SHELF_SAMPLES_PER = 4
 ARTIFACT_SHELF_SAMPLES = (
-    "SELECT ae.slug, fe.slug FROM ("
+    "SELECT ae.slug, fe.slug, f.content_sha256, f.kind FROM ("
     "  SELECT fa.artifact_id, fa.file_id,"
     "         row_number() OVER (PARTITION BY fa.artifact_id ORDER BY f.mtime DESC, f.id DESC) AS n"
     "    FROM file_artifact fa JOIN file f ON f.id = fa.file_id AND f.missing_since IS NULL"
     "    JOIN artifact a ON a.id = fa.artifact_id WHERE a.kind = ?"
     ") ranked JOIN entity ae ON ae.id = ranked.artifact_id JOIN entity fe ON fe.id = ranked.file_id"
+    "  JOIN file f ON f.id = ranked.file_id"
     " WHERE ranked.n <= ? ORDER BY ranked.artifact_id, ranked.n"
 )
 WORKFLOW_SHELF_SAMPLES = (
-    "SELECT ae.slug, fe.slug FROM ("
+    "SELECT ae.slug, fe.slug, f2.content_sha256, f2.kind FROM ("
     "  SELECT g.workflow_id AS artifact_id, g.file_id,"
     "         row_number() OVER (PARTITION BY g.workflow_id ORDER BY f.mtime DESC, f.id DESC) AS n"
     "    FROM generation g JOIN file f ON f.id = g.file_id AND f.missing_since IS NULL"
     "   WHERE g.workflow_id IS NOT NULL"
     ") ranked JOIN entity ae ON ae.id = ranked.artifact_id JOIN entity fe ON fe.id = ranked.file_id"
+    "  JOIN file f2 ON f2.id = ranked.file_id"
     " WHERE ranked.n <= ? ORDER BY ranked.artifact_id, ranked.n"
 )
 
 
 def artifact_shelf_samples(conn, kind: str, per: int = SHELF_SAMPLES_PER) -> dict[str, list[str]]:
-    """`{artifact slug: [picture slug, ...]}` -- the newest few pictures
-    of every artifact of one kind, for the shelf's cards."""
+    """`{artifact slug: [thumbnail address, ...]}` -- the newest few
+    pictures of every artifact of one kind, for the shelf's cards.
+
+    Addresses, not slugs. A card's samples are pictures OF something in
+    the library, so they are content-addressed like every other grid on
+    the site: no lookup, no connection, cacheable for a year. A member
+    with no picture to take -- a sound, a document -- is left out rather
+    than pointed at, which is what `asset_url` answering None means.
+    """
+    from vision import thumbs
+
     rows = (
         conn.execute(WORKFLOW_SHELF_SAMPLES, (per,))
         if kind == "workflow"
         else conn.execute(ARTIFACT_SHELF_SAMPLES, (kind, per))
     )
     held: dict[str, list[str]] = {}
-    for artifact_slug, file_slug in rows:
-        held.setdefault(artifact_slug, []).append(file_slug)
+    for artifact_slug, file_slug, sha, medium in rows:
+        address = thumbs.asset_url(sha, file_slug, medium=medium)
+        if address is not None:
+            held.setdefault(artifact_slug, []).append(address)
     return held
 
 

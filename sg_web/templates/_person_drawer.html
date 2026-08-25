@@ -28,7 +28,10 @@
   {% endif %}
   <div class="drawer-strip">
     {% for pic in person.gallery["items"][:9] %}
-    <a href="/i/{{ pic.slug }}?{{ person.gallery.qs }}"><img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy"></a>
+    {# `pic.thumb`, which the view already resolved from the sha and kind
+       the ResultSet read (vision/thumbs.py `address`). The slug route is
+       a lookup per picture, and nine of them per drawer opening. #}
+    <a href="/i/{{ pic.slug }}?{{ person.gallery.qs }}">{% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ pic.kind }}" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}</a>
     {% endfor %}
   </div>
 </div>
