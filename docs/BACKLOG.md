@@ -474,6 +474,86 @@ not a design decision anybody made; it is work nobody did.
   where a threshold is a global compromise that trades somebody else's
   correct grouping for this one. See the entry below.
 
+- **A verdict on anything a model said has no surface, no aggregate and
+  no way out.** The table is general and was designed for this:
+  `feedback` judges an `annotation`, a `similarity`, a `duplicate` or a
+  `person`, with `verdict IN ('right','wrong','unsure')` and a free
+  note, and its pointers are ON DELETE SET NULL on purpose so dropping
+  the whole derived namespace leaves the judgement standing. It is the
+  one authored table whose subject is disposable. Nothing writes it but
+  a test.
+
+  Three things it should become, and they are separable:
+
+  1. **A thumb where the claim is SHOWN.** Not a review queue -- a
+     queue is a chore nobody does. The caption in the inspector, the
+     face chip on a picture, a duplicate group, a similar-to row: each
+     already renders a derived claim, and each is where somebody
+     already knows the answer. One click, no dialog, no confirmation,
+     reversible by clicking again. Minimally intrusive means it costs
+     nothing to ignore and one gesture to use.
+  2. **An aggregate that says what to change.** "BLIP base: 340
+     captions, 41 judged wrong" is the number that tells a person to
+     try another model; "arcface at 0.48: 12 merges rejected" tells
+     them to move a knob. This is the honest reason to collect
+     verdicts at all, and it is what makes the two entries below
+     actionable rather than a settings page nobody knows how to set.
+
+     One concrete gap in the way: `feedback` deliberately records
+     `annotation_kind` rather than the annotation's row, so it survives
+     the rebuild -- but that means it does NOT record which model
+     produced the thing judged. `derived_annotation` carries
+     `model_id`/`model_version`; the verdict must copy them at
+     judgement time, or after the next rebuild no verdict can be
+     attributed to the producer it was about, and the aggregate above
+     is unbuildable.
+  3. **Exportable without the pictures.** Verdicts are the cheapest
+     valuable thing this application accumulates and the easiest to
+     share safely: a row is a producer identity, a kind, a verdict, a
+     content hash and a timestamp. No pixels, no names, no paths, no
+     embeddings -- so an eval set of "this model got these 41 wrong"
+     leaves the machine without any of the media leaving with it. That
+     is the privacy-forward shape, and it should be the DEFAULT export,
+     with anything richer an explicit opt-in per field.
+
+  And then, once there is enough of it, **infer** rather than count.
+  The yes/no data is the only ground truth this application will ever
+  have about its own models on THIS library, and a count is the weakest
+  thing to do with it. What it can reasonably support:
+
+  - **Which producer to prefer.** Two caption models over the same
+    files with verdicts on both is a direct comparison on the corpus
+    that matters, not a benchmark somebody else ran. Same for two face
+    backends, whose embedding spaces never mix anyway.
+  - **Where a model fails.** Verdicts join to everything the library
+    already knows -- kind, capture time, folder, camera, whether it is
+    generated. "Wrong 8% overall, 40% on video frames" or "on this
+    folder" is a fact worth showing, and is the difference between
+    "captions are bad" and something a person can act on.
+  - **Which knob a rejection is about.** A rejected merge has a face
+    pair with a cosine distance. A run of rejections clustered just
+    above the operating point IS the argument for moving it, and it can
+    be stated as one: "17 of your 20 rejected merges scored between
+    0.48 and 0.52".
+
+  Three rules, because this is the kind of surface that lies
+  confidently:
+
+  - **It is a biased sample.** People judge what they look at, and they
+    click `wrong` more readily than `right`. So a raw error rate is
+    unpublishable; what is honest is a comparison BETWEEN producers
+    over the same judged set, where the bias is shared.
+  - **Say the n, and say nothing under it.** A model is not worse than
+    another on four verdicts. Below a floor, the surface should say how
+    many more judgements it would take, not show a number.
+  - **Never present a correlation as a cause.** "Wrong more often on
+    video" is an observation and should read as one, with the door to
+    the files it came from so somebody can go and look.
+
+  The negative person claim above is a special case of this and should
+  not be built as one: "not her" needs to constrain clustering, which a
+  `wrong` verdict on a file cannot do. Same gesture, two destinations.
+
 - **Every clustering knob is a constant in a module.** They are real
   numbers somebody measured, and they are unreachable: per-embedder
   operating points `0.48` / `0.55` / `0.40` (`default_cluster_threshold`,
