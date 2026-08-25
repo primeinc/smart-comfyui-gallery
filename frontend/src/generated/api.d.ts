@@ -2059,6 +2059,23 @@ export interface components {
             collections: components["schemas"]["CollectionSummary"][];
             tags: components["schemas"]["TagSummary"][];
         };
+        /** AxisSegment */
+        AxisSegment: {
+            t0: number;
+            t1: number;
+            x0: number;
+            x1: number;
+            skipped: boolean;
+        };
+        /** AxisSkipped */
+        AxisSkipped: {
+            x: number;
+            w: number;
+            lasted: string;
+            start: number;
+            end: number;
+            href?: string | null;
+        };
         /** BacklogFrame */
         BacklogFrame: {
             /** @constant */
@@ -3552,6 +3569,8 @@ export interface components {
             start: number;
             end: number;
             bin_seconds: number;
+            segments: components["schemas"]["AxisSegment"][];
+            skipped: components["schemas"]["AxisSkipped"][];
             bars: components["schemas"]["TimelineOverviewBar"][];
             brush: components["schemas"]["TimelineBrush"];
             years: components["schemas"]["TimelineOverviewYear"][];
@@ -3729,6 +3748,8 @@ export interface components {
             sampled: boolean;
             bins: components["schemas"]["TimelineBin"][];
             spans: components["schemas"]["TimelineSpan"][];
+            segments: components["schemas"]["AxisSegment"][];
+            skipped: components["schemas"]["AxisSkipped"][];
             note: string;
             sessions: components["schemas"]["TimelineSession"][];
             sessions_total: number;

@@ -42,7 +42,12 @@
 <section class="surface" data-surface data-composition="{{ surface.composition }}"
          data-window-start="{{ surface.start }}" data-window-end="{{ surface.end }}"
          {% if surface.extent %}data-extent-start="{{ surface.overview.start }}" data-extent-end="{{ surface.overview.end }}"{% endif %}
-         data-scope-qs="{{ surface.scope.qs if surface.scope else '' }}">
+         data-scope-qs="{{ surface.scope.qs if surface.scope else '' }}"
+         {# The axis, piecewise. The browser turns a click, a drag and a
+            pan back into a moment; without these it would invert through
+            a LINEAR axis the bars were not drawn on, and every gesture
+            would land in the wrong place the moment a run collapsed. #}
+         data-axis="{{ surface.segments | tojson | forceescape }}">
   {% if surface.extent %}
   <header class="surface-head">
     <h1 class="stamp" data-window>{{ surface.window_spelled }}</h1>
@@ -54,6 +59,12 @@
 
   <div class="axis" data-strip data-unit="{{ surface.unit }}" aria-label="pictures per {{ surface.unit }}; drag to pan, ctrl+wheel to zoom">
     <svg class="axis-stage" viewBox="0 0 1000 200" preserveAspectRatio="none" role="list">
+      {# The runs that hold nothing, drawn as a marked band instead of
+         as the blank they would otherwise be paid in pixels for. Blank
+         is ambiguous between "no pictures", "nothing dated this" and
+         "the render broke"; a hatched band with a duration is not.
+         Drawn FIRST so bars and ticks sit over it. #}
+      {% for gap in surface.skipped %}<a class="axis-skipped" data-axis-skipped href="{{ gap.href }}" data-lasted="{{ gap.lasted }}"><rect x="{{ gap.x }}" y="0" width="{{ gap.w }}" height="200"/><title>{{ gap.lasted }} with no pictures &mdash; open it anyway</title></a>{% endfor %}
       {% for tk in surface.ticks %}<g class="tick{% if tk.major %} major{% endif %}"><line x1="{{ tk.x }}" x2="{{ tk.x }}" y1="0" y2="200"/></g>{% endfor %}
       {% for held in surface.spans %}<rect class="band" x="{{ held.x }}" y="194" width="{{ held.w }}" height="6"><title>{{ held.pictures }} pictures dated only to {{ held.spelled }}</title></rect>{% endfor %}
       {% for b in surface.bins %}
@@ -64,6 +75,7 @@
       {% endfor %}
       {% if surface.now_x is not none %}<g class="now"><line x1="{{ surface.now_x }}" x2="{{ surface.now_x }}" y1="0" y2="200"/></g>{% endif %}
     </svg>
+    <div class="axis-skips" aria-hidden="true">{% for gap in surface.skipped %}<span style="left:{{ gap.x / 10 }}%;width:{{ gap.w / 10 }}%">{{ gap.lasted }}</span>{% endfor %}</div>
     <div class="axis-labels" aria-hidden="true">{% for tk in surface.ticks %}<span class="{% if tk.major %}major{% endif %}" style="left:{{ tk.x / 10 }}%">{{ tk.label }}</span>{% endfor %}{% if surface.now_x is not none %}<span class="now" style="left:{{ surface.now_x / 10 }}%">now</span>{% endif %}</div>
     <div class="axis-frames">
       {% for s in surface.sessions %}<a class="frame" data-frame="{{ s.id }}" href="#session-{{ s.id }}" style="left:{{ s.x / 10 }}%;width:{{ s.w / 10 }}%" title="{{ s.title }} · {{ s.when }}"><span class="frame-strip">{% for src in s.samples[:4] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</span><span class="frame-label">{{ s.title }}</span></a>{% endfor %}

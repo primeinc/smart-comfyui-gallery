@@ -2149,6 +2149,40 @@ body {
 .axis[data-settling] .bar {
   transform: scaleY(0.92);
 }
+/* A run of time holding nothing, drawn as a band rather than paid for
+   in blank pixels. Hatched rather than filled: a solid block reads as
+   data, and this is the absence of data. */
+.axis-skipped rect {
+  /* Flat, not hatched: the stage is preserveAspectRatio="none", so a
+     pattern would be stretched by whatever the viewport is today. A
+     wash and a dashed edge survive any aspect. */
+  fill: color-mix(in srgb, var(--ink-muted) 7%, transparent);
+  stroke: var(--line);
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+.axis-skipped:hover rect {
+  stroke: var(--ink-muted);
+}
+.axis-skips {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 24px;
+  pointer-events: none;
+  font-family: var(--stamp);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+.axis-skips span {
+  position: absolute;
+  top: 6px;
+  display: block;
+  text-align: center;
+  overflow: visible;
+  white-space: nowrap;
+  transform: translateY(80px) rotate(-90deg);
+}
 .axis-labels {
   position: absolute;
   inset: 0 0 auto;

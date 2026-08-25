@@ -763,6 +763,29 @@
     const NARROWEST = 3600;
     const W = 1e3;
     const surface = () => findElement(swap, "[data-surface]", HTMLElement);
+    const bands = () => {
+      const held = surface()?.dataset.axis;
+      if (!held) return [];
+      try {
+        const told = JSON.parse(held);
+        return Array.isArray(told) ? told : [];
+      } catch {
+        return [];
+      }
+    };
+    const timeAtFraction = (fraction, start, end) => {
+      const held = bands();
+      const x = Math.min(W, Math.max(0, fraction * W));
+      if (!held.length) return start + x / W * (end - start);
+      for (const one of held) {
+        if (x < one.x1) {
+          const drawn = one.x1 - one.x0;
+          if (drawn <= 0) return one.t0;
+          return one.t0 + (x - one.x0) / drawn * (one.t1 - one.t0);
+        }
+      }
+      return end;
+    };
     const read = () => {
       const s = surface();
       if (!s || s.dataset.extentStart === void 0) return null;
@@ -1020,7 +1043,10 @@
         pan.axis.setPointerCapture(event.pointerId);
       }
       const width = pan.end - pan.start;
-      const dt = (pan.x - event.clientX) / pan.px * width;
+      const box = pan.axis.getBoundingClientRect();
+      const was = timeAtFraction((pan.x - box.left) / pan.px, pan.start, pan.end);
+      const now = timeAtFraction((event.clientX - box.left) / pan.px, pan.start, pan.end);
+      const dt = was - now;
       let end = pull(pan.held, pan.end + dt);
       end = Math.min(pan.held.extentEnd, Math.max(pan.held.extentStart + width, end));
       live(end - width, end, true);
@@ -1059,7 +1085,7 @@
         e.preventDefault();
         const width = held.end - held.start;
         const box = stage.getBoundingClientRect();
-        const at = held.start + (e.clientX - box.left) / (box.width || 1) * width;
+        const at = stage.matches("[data-strip]") || stage.closest("[data-strip]") ? timeAtFraction((e.clientX - box.left) / (box.width || 1), held.start, held.end) : held.start + (e.clientX - box.left) / (box.width || 1) * width;
         let start;
         let end;
         if (e.shiftKey) {

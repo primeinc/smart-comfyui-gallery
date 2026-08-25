@@ -30,7 +30,7 @@ from litestar.params import FromQuery, QueryParameter
 from litestar.response import Redirect, Response, Template
 
 from db import connect, context, facets, pages, planning, rendering, resultset, settings
-from sg_web import home
+from sg_web import home, projecting
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
 from sg_web.wire import Wire
@@ -390,13 +390,20 @@ def _next_month(d: datetime.datetime) -> datetime.datetime:
     return datetime.datetime(d.year + (d.month == 12), d.month % 12 + 1, 1, tzinfo=datetime.UTC)
 
 
-def _ticks(lo: float, hi: float) -> list[dict]:
+def _ticks(lo: float, hi: float, axis: projecting.Projection | None = None) -> list[dict]:
     """The axis's furniture: a tick per step of the zoom with its label,
-    major at the calendar boundary above it (midnight, the 1st, January)."""
+    major at the calendar boundary above it (midnight, the 1st, January).
+
+    Placed THROUGH the projection, so a tick inside a run of collapsed
+    time lands inside its band rather than where elapsed time would have
+    put it -- furniture that disagreed with the bars would be worse than
+    no furniture.
+    """
     span = hi - lo
+    held = axis or projecting.linear(lo, hi, float(_W))
 
     def x(t: float) -> float:
-        return round(((t - lo) / span) * _W, 2)
+        return round(held.x(t), 2)
 
     out: list[dict] = []
     if span > 183 * 86_400:
@@ -603,6 +610,28 @@ def _lasted(seconds: float) -> str:
     if seconds < 2 * 86_400:
         return f"{seconds / 3_600:.1f} h"
     return f"{round(seconds / 86_400)} days"
+
+
+def _nothing_for(seconds: float) -> str:
+    """How long a collapsed run was, in the unit a person would use.
+
+    Not `_lasted`, which tops out at days because a SESSION lasting days
+    is the longest a session gets. A gap is the other extreme: the run
+    this exists for is twenty-two years, and "8203 days" is a number
+    nobody converts.
+    """
+    days = seconds / 86_400
+    for most, per, unit in (
+        (2.0, 1 / 24, "hour"),
+        (14.0, 1.0, "day"),
+        (70.0, 7.0, "week"),
+        (365.0, 30.44, "month"),
+        (float("inf"), 365.25, "year"),
+    ):
+        if days < most:
+            n = max(1, round(days / per))
+            return f"{n} {unit}" if n == 1 else f"{n} {unit}s"
+    return ""
 
 
 def _river(groups: list[_Group]) -> list[dict]:
@@ -890,6 +919,8 @@ def _surface(
             "sampled": True,
             "bins": [],
             "spans": [],
+            "segments": [],
+            "skipped": [],
             "note": "",
             "sessions": [],
             "sessions_total": 0,
@@ -955,7 +986,19 @@ def _surface(
     # rows are oldest first (db/pages.py _TIMELINE_SESSIONS_TAIL); the tail is the latest
     listed = rows[-SESSIONS_MOST:] if len(rows) > SESSIONS_MOST else rows
     sessions = [_session(conn, row, samples=len(listed) <= SESSIONS_SAMPLED_MOST, scope=held) for row in listed]
-    span = max(1.0, hi - lo)
+    # The axis. Built from the bins that came back non-empty and the
+    # spans too coarse to have landed in one -- everything that holds a
+    # picture -- so the runs holding nothing can stop taking the page.
+    axis = projecting.projected(
+        lo,
+        hi,
+        [(float(at), float(at) + width) for at, *_ in bins]
+        # a claim too coarse for the bin still HOLDS its granule: a
+        # picture known only to the day occupies that day, and a gap
+        # invented across it would collapse content
+        + [(float(s), float(s) + _SPAN[precision]) for s, precision, _ in spans],
+        width=float(_W),
+    )
     for one in sessions:
         one["when"] = _span(one["start"], one["end"] + 1)
         one["happened"] = HAPPENED.get(one["kind"], one["kind"].replace("_", " "))
@@ -965,8 +1008,8 @@ def _surface(
         one["company"] = {"named": named, "others": others}
         one["lasted"] = _lasted(one["end"] - one["start"])
         # the session's frame on the axis, clipped to the window
-        x0 = max(0.0, ((one["start"] - lo) / span) * _W)
-        x1 = min(float(_W), ((one["end"] + 1 - lo) / span) * _W)
+        x0 = axis.x(one["start"])
+        x1 = axis.x(one["end"] + 1)
         one["x"], one["w"] = round(x0, 2), round(max(2.0, x1 - x0), 2)
     window_qs = _link(
         held, facets.facet("context.moment", "gte", str(int(lo))), facets.facet("context.moment", "lt", str(int(hi)))
@@ -974,7 +1017,6 @@ def _surface(
     picture_rows, pictures_total = ([], 0) if lean else pages.timeline_pictures(conn, lo, hi, PICTURES_MOST, scope)
     drawn_rows = [_picture(row, window_qs) for row in picture_rows]
     most = max([1, *(pictures for _, pictures, *_ in bins)])
-    bar_w = max(1.0, (width / span) * _W - 0.5)
     finest = bin_name == "minute"
     told_bins: list[_Bin] = []
     for at, pictures, wall, instant, captured, generated, mixed, imported in bins:
@@ -990,33 +1032,54 @@ def _surface(
             "spelled": _spell(at, bin_name),
             "finest": finest,
             "href": f"/g?{_bin_link(at, width, held)}" if finest else _window_url(held, at, at + width),
-            "x": round(((at - lo) / span) * _W, 2),
-            "w": round(bar_w, 2),
+            "x": round(axis.x(at), 2),
+            "w": round(max(1.0, axis.x(at + width) - axis.x(at) - 0.5), 2),
             "h": round(h, 2),
             "wall_h": round((wall / pictures) * h, 2) if pictures else 0,
         }
         told_bins.append(told)
-    whole_span = max(1.0, whole_hi - whole_lo)
     overview_most = max([1, *(pictures for _, pictures, *_ in overview_bins)])
+    # The scrubber's axis, collapsed on the same rule. This is the
+    # twenty-four-year case: a library holding one scanned photograph
+    # from 2002 spends nine tenths of its navigation control on years
+    # that hold nothing, and the handle for THIS month ends a hairline
+    # nobody can take hold of.
+    whole_axis = projecting.projected(
+        whole_lo,
+        whole_hi,
+        [(float(at), float(at) + overview_width) for at, *_ in overview_bins],
+        width=float(_W),
+    )
     overview = {
         "start": whole_lo,
         "end": whole_hi,
+        "segments": whole_axis.told(),
+        "skipped": [
+            {
+                "x": round(one.x0, 2),
+                "w": round(one.x1 - one.x0, 2),
+                "lasted": _nothing_for(one.seconds),
+                "start": one.t0,
+                "end": one.t1,
+            }
+            for one in whole_axis.collapsed
+        ],
         "bin_seconds": overview_width,
         "bars": [
             {
                 "at": at,
                 "pictures": pictures,
                 "spelled": _spell(at, "week"),
-                "x": round(((at - whole_lo) / whole_span) * _W, 2),
+                "x": round(whole_axis.x(at), 2),
                 # a week of a decade-long library is a sliver; a burst must still read as a mark
-                "w": round(max(3.0, (overview_width / whole_span) * _W), 2),
+                "w": round(max(3.0, whole_axis.x(at + overview_width) - whole_axis.x(at)), 2),
                 "h": round(max(1.0, _height(pictures, overview_most, 36)), 2),
             }
             for at, pictures, *_ in overview_bins
         ],
         "brush": {
-            "x": round(((lo - whole_lo) / whole_span) * _W, 2),
-            "w": round(max(2.0, ((hi - lo) / whole_span) * _W), 2),
+            "x": round(whole_axis.x(lo), 2),
+            "w": round(max(2.0, whole_axis.x(hi) - whole_axis.x(lo)), 2),
         },
     }
     presets = []
@@ -1062,14 +1125,33 @@ def _surface(
     overview["years"] = [
         {
             "year": y,
-            "x": round(((datetime.datetime(y, 1, 1, tzinfo=datetime.UTC).timestamp() - whole_lo) / whole_span) * _W, 2),
+            "x": round(whole_axis.x(datetime.datetime(y, 1, 1, tzinfo=datetime.UTC).timestamp()), 2),
         }
         for y in range(_utc(whole_lo).year + 1, _utc(whole_hi).year + 1)
     ]
     return {
         "composition": composition,
-        "ticks": _ticks(lo, hi),
-        "now_x": round(((time.time() - lo) / span) * _W, 2) if lo <= time.time() < hi else None,
+        "ticks": _ticks(lo, hi, axis),
+        "now_x": round(axis.x(time.time()), 2) if lo <= time.time() < hi else None,
+        #: The window axis as the browser must invert it: a click, a drag
+        #: and a pan all turn x back into a moment, and a piecewise axis
+        #: the server kept to itself would put every gesture in the wrong
+        #: year (frontend/src/timeline.ts).
+        "segments": axis.told(),
+        #: The runs that hold nothing and are drawn as a band saying so.
+        #: Blank pixels are ambiguous between "no pictures", "nothing
+        #: dated" and "the render broke"; a label is not.
+        "skipped": [
+            {
+                "x": round(one.x0, 2),
+                "w": round(one.x1 - one.x0, 2),
+                "lasted": _nothing_for(one.seconds),
+                "start": one.t0,
+                "end": one.t1,
+                "href": _window_url(held, one.t0, one.t1),
+            }
+            for one in axis.collapsed
+        ],
         "pictures_total": pictures_total,
         "pictures_drawn": len(drawn_rows),
         "groups": groups,
@@ -1103,8 +1185,8 @@ def _surface(
                 "precision": precision,
                 "pictures": pictures,
                 "spelled": _spell(s, "day" if precision == "day" else "hour"),
-                "x": round(((s - lo) / span) * _W, 2),
-                "w": round(max(1.0, (_SPAN[precision] / span) * _W), 2),
+                "x": round(axis.x(s), 2),
+                "w": round(max(1.0, axis.x(s + _SPAN[precision]) - axis.x(s)), 2),
             }
             for s, precision, pictures in spans
         ],
@@ -1426,6 +1508,38 @@ class TimelineYearRow(Wire):
     months: list[TimelineYearCell]
 
 
+class AxisSegment(Wire):
+    """One run of a horizontal axis: `[t0, t1)` drawn from `x0` to `x1`.
+
+    The browser turns a click, a drag and a pan back into a moment, so a
+    piecewise axis has to travel or every gesture lands in the wrong
+    year. `skipped` is a run that holds nothing and was collapsed --
+    which the vertical rail beside this has always done ("empty bins run
+    together", `_scrubber`) and the horizontal surfaces never did.
+    """
+
+    t0: float
+    t1: float
+    x0: float
+    x1: float
+    skipped: bool
+
+
+class AxisSkipped(Wire):
+    """A collapsed run, as the band that replaces it says it.
+
+    Blank pixels are ambiguous between "no pictures", "nothing dated
+    this" and "the render broke". `lasted` is the sentence that is not.
+    """
+
+    x: float
+    w: float
+    lasted: str
+    start: float
+    end: float
+    href: str | None = None
+
+
 class TimelineOverviewBar(Wire):
     """One week of the whole extent. A week of a decade-long library is a
     sliver, so a burst is drawn at a floor width rather than vanishing."""
@@ -1459,6 +1573,9 @@ class TimelineOverview(Wire):
     start: float
     end: float
     bin_seconds: int
+    #: the strip's own axis, collapsed on the same rule as the window's
+    segments: list[AxisSegment]
+    skipped: list[AxisSkipped]
     bars: list[TimelineOverviewBar]
     brush: TimelineBrush
     years: list[TimelineOverviewYear]
@@ -1558,6 +1675,11 @@ class TimelineSurface(Wire):
     sampled: bool
     bins: list[TimelineBin]
     spans: list[TimelineSpan]
+    #: the window's axis, so the browser inverts x through the same
+    #: piecewise function the bars were drawn with
+    segments: list[AxisSegment]
+    #: the runs it collapsed, each drawn as a band that says how long
+    skipped: list[AxisSkipped]
     #: what the surface says of itself, in one line
     note: str
     sessions: list[TimelineSession]

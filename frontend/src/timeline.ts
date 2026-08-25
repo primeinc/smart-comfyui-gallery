@@ -111,6 +111,46 @@ type Scope = Required<
   const W = 1000;
 
   const surface = () => findElement(swap, "[data-surface]", HTMLElement);
+
+  /**
+   * The window's axis, piecewise, exactly as the server drew it.
+   *
+   * Empty runs of time are collapsed to a fixed band (sg_web/projecting.py),
+   * so a fraction of the strip's width is NOT a fraction of its elapsed
+   * time. Inverting linearly would put every click, drag and pan in the
+   * wrong place the moment a run collapsed -- and silently, because the
+   * answer would still be a plausible moment.
+   *
+   * Falls back to linear when the attribute is absent or unreadable: an
+   * older fragment in the swap, or a surface with nothing to collapse,
+   * must still pan.
+   */
+  type Band = { t0: number; t1: number; x0: number; x1: number; skipped: boolean };
+  const bands = (): Band[] => {
+    const held = surface()?.dataset.axis;
+    if (!held) return [];
+    try {
+      const told: unknown = JSON.parse(held);
+      return Array.isArray(told) ? (told as Band[]) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  /** The moment at a fraction (0..1) of the strip's width. */
+  const timeAtFraction = (fraction: number, start: number, end: number): number => {
+    const held = bands();
+    const x = Math.min(W, Math.max(0, fraction * W));
+    if (!held.length) return start + (x / W) * (end - start);
+    for (const one of held) {
+      if (x < one.x1) {
+        const drawn = one.x1 - one.x0;
+        if (drawn <= 0) return one.t0;
+        return one.t0 + ((x - one.x0) / drawn) * (one.t1 - one.t0);
+      }
+    }
+    return end;
+  };
   const read = (): WindowState | null => {
     const s = surface();
     if (!s || s.dataset.extentStart === undefined) return null;
@@ -440,7 +480,13 @@ type Scope = Required<
       pan.axis.setPointerCapture(event.pointerId);
     }
     const width = pan.end - pan.start;
-    const dt = ((pan.x - event.clientX) / pan.px) * width;
+    // Both pointer positions through the axis, then the difference. A
+    // delta in x is a constant delta in time only while the axis is
+    // uniform, and it stops being uniform the moment a run collapses.
+    const box = pan.axis.getBoundingClientRect();
+    const was = timeAtFraction((pan.x - box.left) / pan.px, pan.start, pan.end);
+    const now = timeAtFraction((event.clientX - box.left) / pan.px, pan.start, pan.end);
+    const dt = was - now;
     let end = pull(pan.held, pan.end + dt);
     end = Math.min(pan.held.extentEnd, Math.max(pan.held.extentStart + width, end));
     live(end - width, end, true);
@@ -482,7 +528,12 @@ type Scope = Required<
       e.preventDefault();
       const width = held.end - held.start;
       const box = stage.getBoundingClientRect();
-      const at = held.start + ((e.clientX - box.left) / (box.width || 1)) * width;
+      // Through the axis, not through the width: on a collapsed strip
+      // the pointer's fraction is not the moment's fraction.
+      const at =
+        stage.matches("[data-strip]") || stage.closest("[data-strip]")
+          ? timeAtFraction((e.clientX - box.left) / (box.width || 1), held.start, held.end)
+          : held.start + ((e.clientX - box.left) / (box.width || 1)) * width;
       let start: number;
       let end: number;
       if (e.shiftKey) {

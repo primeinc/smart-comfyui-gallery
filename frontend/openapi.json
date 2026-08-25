@@ -11573,6 +11573,74 @@
                 ],
                 "title": "AuthoredState"
             },
+            "AxisSegment": {
+                "properties": {
+                    "t0": {
+                        "type": "number"
+                    },
+                    "t1": {
+                        "type": "number"
+                    },
+                    "x0": {
+                        "type": "number"
+                    },
+                    "x1": {
+                        "type": "number"
+                    },
+                    "skipped": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "skipped",
+                    "t0",
+                    "t1",
+                    "x0",
+                    "x1"
+                ],
+                "title": "AxisSegment"
+            },
+            "AxisSkipped": {
+                "properties": {
+                    "x": {
+                        "type": "number"
+                    },
+                    "w": {
+                        "type": "number"
+                    },
+                    "lasted": {
+                        "type": "string"
+                    },
+                    "start": {
+                        "type": "number"
+                    },
+                    "end": {
+                        "type": "number"
+                    },
+                    "href": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "end",
+                    "lasted",
+                    "start",
+                    "w",
+                    "x"
+                ],
+                "title": "AxisSkipped"
+            },
             "BacklogFrame": {
                 "properties": {
                     "frame": {
@@ -19199,6 +19267,18 @@
                     "bin_seconds": {
                         "type": "integer"
                     },
+                    "segments": {
+                        "items": {
+                            "$ref": "#/components/schemas/AxisSegment"
+                        },
+                        "type": "array"
+                    },
+                    "skipped": {
+                        "items": {
+                            "$ref": "#/components/schemas/AxisSkipped"
+                        },
+                        "type": "array"
+                    },
                     "bars": {
                         "items": {
                             "$ref": "#/components/schemas/TimelineOverviewBar"
@@ -19222,6 +19302,8 @@
                     "bin_seconds",
                     "brush",
                     "end",
+                    "segments",
+                    "skipped",
                     "start",
                     "years"
                 ],
@@ -20035,6 +20117,18 @@
                         },
                         "type": "array"
                     },
+                    "segments": {
+                        "items": {
+                            "$ref": "#/components/schemas/AxisSegment"
+                        },
+                        "type": "array"
+                    },
+                    "skipped": {
+                        "items": {
+                            "$ref": "#/components/schemas/AxisSkipped"
+                        },
+                        "type": "array"
+                    },
                     "note": {
                         "type": "string"
                     },
@@ -20145,9 +20239,11 @@
                     "sampled",
                     "scope",
                     "scrubber",
+                    "segments",
                     "sessions",
                     "sessions_sampled",
                     "sessions_total",
+                    "skipped",
                     "spans",
                     "start",
                     "start_spelled",
