@@ -38,7 +38,7 @@
  * steps is the case the second exists for.
  */
 
-import { everyElement, findElement } from "./dom";
+import { closestFrom, everyElement, findElement } from "./dom";
 import { register } from "./keys";
 import { remember, workspace } from "./workspace";
 
@@ -201,6 +201,16 @@ function showComparison(held: Kept[]): void {
   bar.className = "compare-view-bar";
   const said = document.createElement("span");
   said.className = "compare-view-said";
+  // What the glass is doing, and a way back to fit that is not a
+  // gesture: a control that only responds to double-click is one
+  // somebody has to be told about.
+  const zoom = document.createElement("button");
+  zoom.type = "button";
+  zoom.className = "compare-zoom";
+  zoom.dataset.compareZoom = "";
+  zoom.title = "back to fit";
+  zoom.textContent = "fit";
+  zoom.addEventListener("click", () => zoomTo(1, 0.5, 0.5));
   const close = document.createElement("button");
   close.type = "button";
   close.className = "compare-view-close";
@@ -214,7 +224,7 @@ function showComparison(held: Kept[]): void {
   modes.className = "compare-modes";
   modes.setAttribute("role", "group");
   modes.setAttribute("aria-label", "how to compare");
-  bar.append(said, modes, close);
+  bar.append(said, modes, zoom, close);
 
   const strip = document.createElement("div");
   strip.className = "compare-view-strip";
@@ -250,6 +260,114 @@ function showComparison(held: Kept[]): void {
   }
   sheet.append(bar, strip);
   document.body.append(sheet);
+
+  // --- one shared magnifying glass ---------------------------------------
+  //
+  // Flipping answers "did this change". This answers the other half, and
+  // it is the half a light table is actually for: zoom into a detail on
+  // one and the others follow, so two 4k generations are compared at the
+  // grain rather than at the thumbnail.
+  //
+  // The shared transform is the SAME FRACTION OF EACH FRAME, not the
+  // same absolute scale. Two readings were available and they only
+  // differ when the pictures differ in size:
+  //
+  //   same scale     one image pixel is one screen pixel on both. Right
+  //                  for judging print detail; over a 4k beside a 1k it
+  //                  shows a quarter of the smaller one's frame, so the
+  //                  two columns are no longer showing the same part of
+  //                  the same picture.
+  //   same fraction  both show the middle 30% of themselves. The columns
+  //                  keep answering "here is that region, in each" --
+  //                  which is the question a comparison is.
+  //
+  // For two generations of one prompt, which is the ordinary case here,
+  // the dimensions match and the two are identical.
+  //
+  // `transform-origin` in PERCENT is that semantic exactly: a fraction
+  // of the element, whatever the element's size. Panning moves the
+  // origin, so nothing here has to know how big any picture is.
+  const glass = { scale: 1, x: 0.5, y: 0.5 };
+
+  const magnify = () => {
+    for (const column of everyElement(strip, "[data-compare-column]", HTMLElement)) {
+      const shown = column.querySelector<HTMLElement>(".compare-frame > *");
+      if (!shown) continue;
+      shown.style.transformOrigin = `${glass.x * 100}% ${glass.y * 100}%`;
+      shown.style.transform = glass.scale === 1 ? "" : `scale(${glass.scale})`;
+    }
+    strip.dataset.zoomed = String(glass.scale !== 1);
+    zoom.textContent = glass.scale === 1 ? "fit" : `${Math.round(glass.scale * 100)}%`;
+    zoom.setAttribute("aria-label", glass.scale === 1 ? "fit" : `zoomed to ${Math.round(glass.scale * 100)}%`);
+  };
+
+  const clamp = (n: number) => Math.min(1, Math.max(0, n));
+
+  /** Zoom about a point, given as a fraction of the frame. */
+  const zoomTo = (scale: number, x: number, y: number) => {
+    glass.scale = Math.min(16, Math.max(1, scale));
+    // At fit there is nothing to be off-centre about, and leaving a
+    // stale origin behind makes the NEXT zoom start somewhere nobody
+    // pointed at.
+    if (glass.scale === 1) {
+      glass.x = 0.5;
+      glass.y = 0.5;
+    } else {
+      glass.x = clamp(x);
+      glass.y = clamp(y);
+    }
+    magnify();
+  };
+
+  const fractionIn = (frame: HTMLElement, event: { clientX: number; clientY: number }) => {
+    const box = frame.getBoundingClientRect();
+    return { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height };
+  };
+
+  strip.addEventListener(
+    "wheel",
+    (event) => {
+      const frame = closestFrom(event.target, ".compare-frame", HTMLElement);
+      if (!frame) return;
+      // Only the gestures this acts on. A page that preventDefaults
+      // every wheel takes scrolling away from somebody who meant it.
+      event.preventDefault();
+      const where = fractionIn(frame, event);
+      zoomTo(glass.scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15), where.x, where.y);
+    },
+    { passive: false },
+  );
+
+  // Drag to move the shared glass. In FRACTIONS of the frame, so a drag
+  // over the wide column moves the narrow one by the same proportion of
+  // itself rather than by the same pixels.
+  let dragging: { x: number; y: number; frame: HTMLElement } | null = null;
+  strip.addEventListener("pointerdown", (event) => {
+    if (glass.scale === 1) return;
+    const frame = closestFrom(event.target, ".compare-frame", HTMLElement);
+    if (!frame) return;
+    dragging = { x: event.clientX, y: event.clientY, frame };
+    frame.setPointerCapture(event.pointerId);
+  });
+  strip.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const box = dragging.frame.getBoundingClientRect();
+    // Divided by the scale: at 8x a hand-sized drag should move the
+    // picture by a hand, not by eight of them.
+    glass.x = clamp(glass.x - (event.clientX - dragging.x) / box.width / glass.scale);
+    glass.y = clamp(glass.y - (event.clientY - dragging.y) / box.height / glass.scale);
+    dragging = { ...dragging, x: event.clientX, y: event.clientY };
+    magnify();
+  });
+  const letGo = () => {
+    dragging = null;
+  };
+  strip.addEventListener("pointerup", letGo);
+  strip.addEventListener("pointercancel", letGo);
+
+  // Double-click is back to fit, which is the gesture the viewer already
+  // uses for the same thing.
+  strip.addEventListener("dblclick", () => zoomTo(1, 0.5, 0.5));
 
   // --- the two ways of looking -------------------------------------------
   let mode: "side" | "flip" = workspace().compareMode === "flip" ? "flip" : "side";

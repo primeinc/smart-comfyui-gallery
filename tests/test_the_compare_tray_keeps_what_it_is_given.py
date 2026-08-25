@@ -394,3 +394,105 @@ def test_the_chosen_mode_is_how_this_person_arranged_it(page: Page, live: Live, 
     page.click("[data-compare-open]")
     page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
     assert _shown(page) == ["A"], "it opened flipped, where it was left"
+
+
+# --- one glass over all of them ---------------------------------------------
+
+
+def _opened(page: Page) -> None:
+    _gallery(page)
+    _keep_cell(page, "alpha.png")
+    _keep_cell(page, "bravo.png")
+    page.click("[data-compare-open]")
+    page.wait_for_selector("[data-compare-view]", timeout=5_000)
+
+
+def _wait_zoomed(page: Page) -> None:
+    page.wait_for_function(
+        "() => document.querySelector('.compare-view-strip').dataset.zoomed === 'true'",
+        timeout=5_000,
+    )
+
+
+def _glasses(page: Page) -> list[dict]:
+    """What each column's picture is showing, as the browser computes it."""
+    return page.evaluate(
+        "() => [...document.querySelectorAll('[data-compare-column] .compare-frame > *')].map(one => {"
+        "  const held = getComputedStyle(one);"
+        "  return { transform: held.transform, origin: held.transformOrigin };"
+        "})"
+    )
+
+
+def test_zooming_one_zooms_all_of_them(page: Page, live: Live, unbroken):
+    """The half a light table is actually for. Flipping answers "did this
+    change"; this answers "look at THIS, in each of them" -- so two 4k
+    generations are compared at the grain rather than at the thumbnail."""
+    _opened(page)
+    assert {one["transform"] for one in _glasses(page)} == {"none"}, "the control: nothing is zoomed yet"
+
+    page.hover("[data-compare-column] .compare-frame")
+    page.mouse.wheel(0, -240)
+    _wait_zoomed(page)
+
+    held = _glasses(page)
+    assert len(held) == 2
+    assert held[0]["transform"] == held[1]["transform"], "the columns are magnified differently"
+    assert held[0]["transform"] != "none"
+
+
+def test_the_glass_is_the_same_fraction_of_each_frame(page: Page, live: Live, unbroken):
+    """The decision this needed. Two readings were available and they
+    differ only when the pictures differ in size: the same absolute
+    scale, or the same fraction of each frame.
+
+    The same fraction, so both columns keep showing the same PART of
+    themselves -- which is the question a comparison is. The same
+    absolute scale over a 4k beside a 1k shows a quarter of the smaller
+    one's frame, which compares their sizes rather than their content.
+    """
+    _opened(page)
+    page.hover("[data-compare-column] .compare-frame")
+    page.mouse.wheel(0, -240)
+    _wait_zoomed(page)
+
+    held = _glasses(page)
+    # A percentage origin is a FRACTION of the element, so two pictures
+    # of different sizes are magnified about the same relative point.
+    said = page.evaluate(
+        "() => [...document.querySelectorAll('[data-compare-column] .compare-frame > *')]"
+        ".map(one => one.style.transformOrigin)"
+    )
+    assert all(one.count("%") == 2 for one in said), said
+    assert said[0] == said[1], "the columns are magnified about different points"
+    # `held` is the computed style: the same fraction over two different
+    # frames is two different pixel origins, which is the point.
+    assert all(one["transform"] != "none" for one in held)
+
+
+def test_it_says_how_far_in_it_is_and_offers_the_way_back(page: Page, live: Live, unbroken):
+    """A control that only answers a double-click is one somebody has to
+    be told about."""
+    _opened(page)
+    assert page.inner_text("[data-compare-zoom]").strip() == "fit"
+
+    page.hover("[data-compare-column] .compare-frame")
+    page.mouse.wheel(0, -240)
+    page.wait_for_function("() => document.querySelector('[data-compare-zoom]').textContent !== 'fit'", timeout=5_000)
+    assert "%" in page.inner_text("[data-compare-zoom]")
+
+    page.click("[data-compare-zoom]")
+    page.wait_for_function("() => document.querySelector('[data-compare-zoom]').textContent === 'fit'", timeout=5_000)
+    assert {one["transform"] for one in _glasses(page)} == {"none"}
+
+
+def test_it_never_zooms_out_past_fit(page: Page, live: Live, unbroken):
+    """There is nothing below fit to see. Scrolling down at fit should
+    leave the pictures alone rather than shrinking them into their own
+    frames."""
+    _opened(page)
+    page.hover("[data-compare-column] .compare-frame")
+    page.mouse.wheel(0, 600)
+    page.wait_for_timeout(200)
+    assert {one["transform"] for one in _glasses(page)} == {"none"}
+    assert page.inner_text("[data-compare-zoom]").strip() == "fit"

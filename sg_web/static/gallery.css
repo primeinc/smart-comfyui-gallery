@@ -3592,6 +3592,21 @@ body[data-filters="open"] .stage {
   flex: 1;
   justify-content: center;
   min-height: 0;
+  /* The glass magnifies inside the frame, so what leaves the frame is
+     gone rather than overlapping the column beside it. */
+  overflow: hidden;
+}
+/* Grab, only where there is something to move. At fit the picture fills
+   its frame and dragging it would do nothing, and a cursor that promises
+   otherwise is a control that lies. */
+[data-zoomed="true"] .compare-frame {
+  cursor: grab;
+}
+[data-zoomed="true"] .compare-frame:active {
+  cursor: grabbing;
+}
+.compare-zoom {
+  font-variant-numeric: tabular-nums;
 }
 .compare-column img,
 .compare-column video {

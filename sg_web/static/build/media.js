@@ -1509,6 +1509,13 @@
     bar.className = "compare-view-bar";
     const said = document.createElement("span");
     said.className = "compare-view-said";
+    const zoom = document.createElement("button");
+    zoom.type = "button";
+    zoom.className = "compare-zoom";
+    zoom.dataset.compareZoom = "";
+    zoom.title = "back to fit";
+    zoom.textContent = "fit";
+    zoom.addEventListener("click", () => zoomTo(1, 0.5, 0.5));
     const close = document.createElement("button");
     close.type = "button";
     close.className = "compare-view-close";
@@ -1519,7 +1526,7 @@
     modes.className = "compare-modes";
     modes.setAttribute("role", "group");
     modes.setAttribute("aria-label", "how to compare");
-    bar.append(said, modes, close);
+    bar.append(said, modes, zoom, close);
     const strip2 = document.createElement("div");
     strip2.className = "compare-view-strip";
     for (const [at2, one] of held.entries()) {
@@ -1545,6 +1552,67 @@
     }
     sheet.append(bar, strip2);
     document.body.append(sheet);
+    const glass = { scale: 1, x: 0.5, y: 0.5 };
+    const magnify = () => {
+      for (const column of everyElement(strip2, "[data-compare-column]", HTMLElement)) {
+        const shown = column.querySelector(".compare-frame > *");
+        if (!shown) continue;
+        shown.style.transformOrigin = `${glass.x * 100}% ${glass.y * 100}%`;
+        shown.style.transform = glass.scale === 1 ? "" : `scale(${glass.scale})`;
+      }
+      strip2.dataset.zoomed = String(glass.scale !== 1);
+      zoom.textContent = glass.scale === 1 ? "fit" : `${Math.round(glass.scale * 100)}%`;
+      zoom.setAttribute("aria-label", glass.scale === 1 ? "fit" : `zoomed to ${Math.round(glass.scale * 100)}%`);
+    };
+    const clamp = (n) => Math.min(1, Math.max(0, n));
+    const zoomTo = (scale, x, y) => {
+      glass.scale = Math.min(16, Math.max(1, scale));
+      if (glass.scale === 1) {
+        glass.x = 0.5;
+        glass.y = 0.5;
+      } else {
+        glass.x = clamp(x);
+        glass.y = clamp(y);
+      }
+      magnify();
+    };
+    const fractionIn = (frame, event) => {
+      const box = frame.getBoundingClientRect();
+      return { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height };
+    };
+    strip2.addEventListener(
+      "wheel",
+      (event) => {
+        const frame = closestFrom(event.target, ".compare-frame", HTMLElement);
+        if (!frame) return;
+        event.preventDefault();
+        const where = fractionIn(frame, event);
+        zoomTo(glass.scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15), where.x, where.y);
+      },
+      { passive: false }
+    );
+    let dragging = null;
+    strip2.addEventListener("pointerdown", (event) => {
+      if (glass.scale === 1) return;
+      const frame = closestFrom(event.target, ".compare-frame", HTMLElement);
+      if (!frame) return;
+      dragging = { x: event.clientX, y: event.clientY, frame };
+      frame.setPointerCapture(event.pointerId);
+    });
+    strip2.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      const box = dragging.frame.getBoundingClientRect();
+      glass.x = clamp(glass.x - (event.clientX - dragging.x) / box.width / glass.scale);
+      glass.y = clamp(glass.y - (event.clientY - dragging.y) / box.height / glass.scale);
+      dragging = { ...dragging, x: event.clientX, y: event.clientY };
+      magnify();
+    });
+    const letGo = () => {
+      dragging = null;
+    };
+    strip2.addEventListener("pointerup", letGo);
+    strip2.addEventListener("pointercancel", letGo);
+    strip2.addEventListener("dblclick", () => zoomTo(1, 0.5, 0.5));
     let mode = workspace().compareMode === "flip" ? "flip" : "side";
     let at = 0;
     const columns = () => everyElement(strip2, "[data-compare-column]", HTMLElement);

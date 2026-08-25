@@ -388,46 +388,10 @@ every dimension where both readings mean something, value lists on
 (`param.has`, `param.is`), and a cut on the semantic ranking so a
 search answers with a set. What is NOT built:
 
-- **The field catalog is built; two pieces of it are not.** One
-  searchable list over the curated vocabulary and every discovered
-  metadata key now answers the Add-filter box (db/catalog.py,
-  `/g/fields`, frontend/src/filters.ts `mountFind`). Indexed families
-  collapse, the observed type comes from `param_key.value_kind`, and
-  ranking is by what would cut THIS answer, with a camera's plumbing
-  ranked down rather than hidden.
-
-  What is not built:
-
-  - ~~**A field does not choose its own operators yet.**~~ Done:
-    `param.num` compares `fp.value_num` beside `param.is`, a
-    number-kinded key is offered `eq`/`gte`/`lte` by the catalog, and
-    the Add-filter box draws it a range instead of a value list. One key
-    with three operators rather than the `param.atleast`/`param.atmost`
-    pair first sketched -- the operator is already the middle of the URL
-    spelling, so a key named "atleast" carrying `gte` says it twice and
-    leaves "at most" unspellable through it.
-
 - **The analysis has no prompt-term view.** Exact prompt identity is
   built and counted. Recurring TERMS across an answer -- which is a
   different claim with a different error mode -- is not, and is
   deliberately absent rather than quietly mixed into the exact counts.
-
-- **The comparison has no zoom, so it cannot have a synchronised one.**
-  Flipping is built -- one at a time in the same pixels, lettered, Space
-  and the arrows, every column decoded so the flip is a repaint -- which
-  was the half that answers "did this change". What is still missing is
-  the half digiKam's Light Table is actually the reference for: zooming
-  into a detail on one and having the other follow, so two 4k
-  generations can be compared at the grain rather than at the thumbnail.
-
-  The viewer already owns zoom and pan over one picture
-  (frontend/src/viewer.ts: fit / fill / actual / free, with a tether so
-  a zoomed picture cannot be flung off screen). The comparison shows
-  `object-fit: contain` and nothing else. So the work is not new
-  arithmetic, it is deciding what a shared transform MEANS across
-  pictures of different shapes -- same scale, or same fraction of each
-  frame? -- and those give different answers for a 3:2 beside a square,
-  which is exactly the pair somebody is comparing.
 
 ## Modalities the schema allows and nothing produces
 
