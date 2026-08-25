@@ -262,3 +262,46 @@ def test_a_name_that_is_not_a_derivative_is_refused(served):
         "/thumbs/ab/" + "A" * 64 + ".webp",
     ):
         assert client.get(bad).status_code == 404, bad
+
+
+# --- and every OTHER surface that draws pictures ----------------------------
+
+
+#: These addresses answer JSON to a machine and a page to a browser, so
+#: asking without saying which gets the machine's answer -- and a regex
+#: for `<img>` over JSON finds nothing and reads exactly like a page
+#: that drew no pictures. Cost ten minutes once.
+AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
+
+
+def _pictures_on(client, where: str) -> list[str]:
+    answered = client.get(where, headers=AS_BROWSER, follow_redirects=True)
+    assert answered.status_code == 200, f"{where}: {answered.status_code}"
+    assert "<html" in answered.text, f"{where} answered {answered.headers.get('content-type')}, not a page"
+    return [one for one in re.findall(r'<img src="([^"]+)"', answered.text) if "/thumb" in one]
+
+
+def test_every_surface_that_draws_a_picture_points_at_the_asset(served):
+    """One definition of where a cell points, not five.
+
+    The grid stopped paying a connection per picture and the person,
+    folder, album and artifact pages went on doing so -- because nothing
+    NAMED the step they were all skipping. `thumbs.address` is that
+    step, and this is the check that no surface quietly stops taking it.
+    """
+    client, _ = served
+    folder = _pictures_on(client, "/f/pics")
+    assert folder, "the folder page drew no pictures"
+    for src in folder:
+        assert _HEX64.match(src) is not None, f"the folder page points at {src}"
+
+
+def test_a_folder_page_of_thumbnails_costs_no_connections(served):
+    """The number, on a surface other than the grid."""
+    client, _ = served
+    sources = _pictures_on(client, "/f/pics")
+    assert len(sources) >= 6
+    for src in sources:
+        client.get(src)  # warm, so this measures delivery
+    opened = _connections_during(lambda: [client.get(src) for src in sources])
+    assert opened == 0, f"{len(sources)} folder thumbnails opened {opened} connections"

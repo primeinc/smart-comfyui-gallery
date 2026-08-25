@@ -36,6 +36,7 @@ from litestar.response import Redirect, Response, Template
 from db import connect, facets, library, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page, wants_json
+from vision import thumbs
 
 
 @get("/folders", sync_to_thread=True)
@@ -128,7 +129,9 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
                 for place_id, place_slug, name, kind, pictures in pages.folder_places(conn, folder_id)
             ],
             "gallery": {
-                "items": grid["items"],
+                # Content-addressed, so the page's pictures cost no
+                # connection at all (vision/thumbs.py `address`).
+                "items": thumbs.address(grid["items"]),
                 "total": grid["total"],
                 "pages": grid["pages"],
                 "qs": grid["qs"],

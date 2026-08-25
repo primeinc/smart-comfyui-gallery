@@ -64,7 +64,7 @@
     <div class="grid">
       {% for pic in person.gallery["items"] %}
       <a class="cell" href="/i/{{ pic.slug }}?{{ person.gallery.qs }}">
-        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
+        {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
         <span class="cell-name">{{ pic.name }}</span>
       </a>
       {% endfor %}

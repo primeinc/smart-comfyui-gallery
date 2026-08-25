@@ -36,6 +36,7 @@ from db import authored, connect, facets, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented, presented_page, wants_json
 from sg_web.wire import Wire
+from vision import thumbs
 
 
 def _wall(conn, event_id: int) -> bool:
@@ -114,7 +115,9 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                 for f, fs, p in pages.person_across_folders(conn, person_id)
             ],
             "gallery": {
-                "items": grid["items"],
+                # Content-addressed, so the page's pictures cost no
+                # connection at all (vision/thumbs.py `address`).
+                "items": thumbs.address(grid["items"]),
                 "total": grid["total"],
                 "pages": grid["pages"],
                 "qs": grid["qs"],

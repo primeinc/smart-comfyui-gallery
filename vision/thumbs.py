@@ -244,3 +244,23 @@ def asset_url(sha: str | None, slug: str, variant: str = "thumb", medium: str | 
         return f"/{variant}/{slug}"
     suffix = "" if variant == "thumb" else f".{variant}"
     return f"/thumbs/{sha[:2]}/{sha}{suffix}.webp"
+
+
+def address(rows: list[dict]) -> list[dict]:
+    """Point every row of an answer at its thumbnail, in place.
+
+    The one step between "the ResultSet returned these" and "a template
+    renders them", and it exists because four surfaces had each written
+    `/thumb/<slug>` into their own markup. That address is a route with
+    a slug lookup behind it -- a database connection per picture -- and
+    the grid stopped paying it while the person, folder, album and
+    artifact pages went on doing so, because nothing named the step they
+    were all skipping.
+
+    In place and returning the same list, so a caller can wrap the
+    expression it already had. `sha` and `kind` come out of the row the
+    ResultSet already read, so this is arithmetic and not a query.
+    """
+    for row in rows:
+        row["thumb"] = asset_url(row.get("sha"), row["slug"], medium=row.get("kind"))
+    return rows

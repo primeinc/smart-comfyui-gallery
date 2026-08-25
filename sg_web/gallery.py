@@ -186,8 +186,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
     # already carried the content hash out of its own row read, so this
     # is arithmetic rather than a query -- and it is what stops sixty
     # cells being sixty connections (vision/thumbs.py `asset_url`).
-    for item in shape["items"]:
-        item["thumb"] = thumbs.asset_url(item.get("sha"), item["slug"], medium=item["kind"])
+    thumbs.address(shape["items"])
     return {
         "items": shape["items"],
         "page": shape["page"],
