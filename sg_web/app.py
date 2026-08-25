@@ -25,9 +25,10 @@ import os
 import pathlib
 import re
 import sqlite3
+import threading
 import time
 from collections.abc import Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Literal
 
 from litestar import Litestar, Request, delete, get, post, route, websocket
@@ -1050,6 +1051,60 @@ def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream |
     )
 
 
+#: One in-flight render per missing derivative, and everybody else
+#: waits for it. Keyed on the target PATH, which is what both render
+#: paths already compute and what the answer is: two requests wanting
+#: the same file are the same work.
+#:
+#: The dict is emptied as gates are released, so it holds what is being
+#: rendered right now rather than everything ever asked for. Same shape
+#: as `resultset._MONITORS`: a module dict, one module lock over it.
+class _Render:
+    """A gate over one target, and the count of who still wants it."""
+
+    __slots__ = ("lock", "wanted")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.wanted = 0
+
+
+_RENDERS: dict[pathlib.Path, _Render] = {}
+_RENDERS_LOCK = threading.Lock()
+
+
+@contextmanager
+def _rendered_once(target: pathlib.Path):
+    """Hold the gate for `target`, waiting if somebody else has it.
+
+    The caller must re-check that the file is still missing INSIDE this,
+    because the whole point is that by the time a waiter is let in, the
+    render it was waiting for has usually happened.
+
+    Per process, deliberately. The bytes are written to a staging name
+    carrying the pid and thread id and then `os.replace`d (vision/
+    thumbs.py), so two processes racing produce identical bytes and a
+    replace that changes nothing -- a cross-process lock would buy
+    correctness that is already held, at the cost of a lock file to
+    leak. What this removes is the WASTE: four cells asking for one
+    missing thumbnail decoded, resized and encoded it four times, each
+    on its own database connection.
+    """
+    with _RENDERS_LOCK:
+        gate = _RENDERS.get(target)
+        if gate is None:
+            gate = _RENDERS[target] = _Render()
+        gate.wanted += 1
+    try:
+        with gate.lock:
+            yield
+    finally:
+        with _RENDERS_LOCK:
+            gate.wanted -= 1
+            if not gate.wanted:
+                _RENDERS.pop(target, None)
+
+
 def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Response[bytes] | Redirect:
     """Serve one cached raster variant, rendering it on first request.
 
@@ -1078,7 +1133,11 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
         if not target.exists():
             # A browser asking for one variant needs only that one's
             # pixels; the precache job is the caller that renders both.
-            derive.put_one(cache, sha, pathlib.Path(path), kind, oriented.orientation_of(conn, file_id), variant)
+            with _rendered_once(target):
+                if not target.exists():  # whoever held the gate has just made it
+                    derive.put_one(
+                        cache, sha, pathlib.Path(path), kind, oriented.orientation_of(conn, file_id), variant
+                    )
     finally:
         connect.close(conn)
     return Response(content=target.read_bytes(), media_type="image/webp")
@@ -1137,7 +1196,14 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
         # any present file carrying them will do, which is the whole
         # reason it is content-addressed.
         try:
-            _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
+            # One render per missing file however many cells ask. A fresh
+            # library's grid asks for sixty at once and reloads while they
+            # are in flight; without this each ask decoded, resized and
+            # encoded the same picture again, on its own connection,
+            # competing with the precache job for the same CPU.
+            with _rendered_once(target):
+                if not target.is_file():
+                    _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
         except ValueError as unrenderable:
             # A file with no decodable frame has no thumbnail, and that
             # is a 404 rather than a defect: the request asked for a

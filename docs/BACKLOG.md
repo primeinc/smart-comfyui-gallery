@@ -115,9 +115,24 @@ consequences the architecture should keep room for, not work.
   the database worker as the thing that commits. Benchmark 1/2/4/8 in
   flight rather than picking a number.
 
-  Interactive work should also outrank precache — a browser waiting on
-  `/thumb/x` is real work and a speculative queue is not — and two
-  requests for the same missing key currently render it twice.
+  Interactive work should also outrank precache -- a browser waiting on
+  `/thumb/x` is real work and a speculative queue is not. That half is
+  still open; the scheduling lives in the worker.
+
+  ~~Two requests for the same missing key render it twice.~~ Fixed and
+  measured: four concurrent requests for one missing thumbnail rendered
+  it four times, started within 1 ms of each other, each decoding,
+  resizing and encoding the same picture on its own database
+  connection. Now one render and four answers (`app._rendered_once`).
+  Per FILE rather than one lock over all rendering, which would have
+  serialised a fresh library's whole grid behind one picture at a time
+  -- pinned by a test where two different pictures must meet inside the
+  renderer at a `threading.Barrier`, which they cannot do if one is
+  waiting for the other.
+
+  Per process, deliberately: the bytes land through a staging name and
+  `os.replace`, so racing writers produce identical bytes and a replace
+  that changes nothing. This was never a correctness bug, only waste.
 
 - **RAW takes whichever preview LibRaw calls the default.** A raw file
   can hold several embedded previews; LibRaw knows them all through
