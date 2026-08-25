@@ -678,10 +678,13 @@ not a design decision anybody made; it is work nobody did.
   re-detect path to be as cheap to undo as re-clustering is, and it is
   not.
 
-  Also still missing: **a preview of the delta**. `pages.disagreements`
-  and `face_across_runs` compute exactly it -- the pictures two runs
-  describe differently -- and nothing on the console puts two runs side
-  by side.
+  `pages.disagreements` is now the console's "what changed against the
+  primary", bounded and saying how many more there are.
+  `pages.face_across_runs` -- per FACE, how big a group each run put it
+  in -- is still called by nothing. It answers a different question from
+  the per-picture view and a sharper one: a face one run puts with fifty
+  others and another puts alone is where two clusterings actually
+  differ, and no picture-level diff surfaces it.
 
   And the harder half, which is why (a) is not simply better: a global
   threshold cannot express "these two are the same and those two are

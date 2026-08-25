@@ -193,10 +193,12 @@ def _page_context(state: State) -> dict:
     conn = connect.connect(state.db_path, read_only=True)
     try:
         console_state = _state_of(state, conn, now)
+        runs = pages.standings(conn)
         return {
             "roots": _roots(conn),
             "settings": settings.snapshot(conn),
-            "clusterings": pages.standings(conn),
+            "clusterings": runs,
+            "primary": _primary(runs),
             "launchers": [
                 {"kind": kind, "label": label, "again": kind in AGAIN} for kind, (label, _) in LAUNCHERS.items()
             ],
@@ -1068,7 +1070,52 @@ def choose_primary(state: State) -> Template:
         connect.close(conn)
     return Template(
         template_name="_operations_clusterings.html",
-        context={"clusterings": runs, "notice": f"primary run: {chosen}"},
+        context={"clusterings": runs, "primary": _primary(runs), "notice": f"primary run: {chosen}"},
+        headers=VARIES,
+    )
+
+
+def _primary(runs: list[dict]) -> int | None:
+    """The run the site is showing, or None before anything is chosen.
+
+    Which is the only run worth comparing AGAINST: the question somebody
+    has while looking at a list of thresholds is always "is this one
+    better than what I am living with".
+    """
+    return next((run["id"] for run in runs if run["is_primary"]), None)
+
+
+@get("/clusterings/{left:int}/against/{right:int}", sync_to_thread=True)
+def compare_clusterings(state: State, left: FromPath[int], right: FromPath[int]) -> Template:
+    """The pictures two clusterings describe differently.
+
+    The other half of a reachable threshold. Changing it writes a new run
+    beside the old (schema.sql derived_face_run_identity), which makes
+    trying one safe -- and left somebody with two runs, two numbers, and
+    no way to see what actually moved between them.
+
+    The disagreement is the answer, not the counts: one threshold welds
+    strangers together and another splits one person into four, and both
+    read as "more groups" or "fewer groups" until you put the two
+    answers on the same photograph.
+
+    Bounded, and it says by how much. `db/pages.py disagreements` returns
+    the total alongside the page, because "these are the only twelve" and
+    "the first fifty of nine thousand" are opposite answers to the
+    question being asked.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        runs = {run["id"]: run for run in pages.standings(conn)}
+        for one in (left, right):
+            if one not in runs:
+                raise NotFoundException(f"no clustering run #{one}")
+        held = pages.disagreements(conn, left, right)
+    finally:
+        connect.close(conn)
+    return Template(
+        template_name="_operations_compare.html",
+        context={"left": runs[left], "right": runs[right], "held": held},
         headers=VARIES,
     )
 
@@ -1117,6 +1164,7 @@ router = Router(
         scan_root,
         change_setting,
         choose_primary,
+        compare_clusterings,
     ],
     exception_handlers={HTTPException: refused, Exception: failed},
 )

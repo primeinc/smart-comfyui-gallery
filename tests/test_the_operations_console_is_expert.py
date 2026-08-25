@@ -898,3 +898,145 @@ def test_a_run_queued_before_the_setting_existed_still_clusters(db):
     payload: dict = {"spaces": [["opencv/yunet+arcface", "1"]]}
     asked = payload.get("threshold")
     assert asked is None
+
+
+# --- and two runs can be put side by side ------------------------------------
+
+
+def _two_runs(conn):
+    """One file both runs name, one they disagree about, one only one names."""
+    import numpy as np
+
+    from db import derived, scan
+
+    root = int(conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/c','library',0)").lastrowid or 0)
+    folder = scan.mint(conn, "folder", "c")
+    conn.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?,?,NULL,'c',0)", (folder, root))
+    files = []
+    for i in range(3):
+        file_id = scan.mint(conn, "file", f"c{i}")
+        conn.execute(
+            "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+            " VALUES(?, ?, ?, 'image', 1, 0, ?, 0, 0)",
+            (file_id, folder, f"c{i}.png", f"{i:064d}"),
+        )
+        derived.record_faces(
+            conn,
+            file_id,
+            "opencv/yunet+sface",
+            "1",
+            f"{i:064d}",
+            0.0,
+            [{"region": derived.region(conn, 0.1, 0.1, 0.2, 0.2), "embedding": np.ones(4, np.float32).tobytes()}],
+        )
+        files.append(file_id)
+    hannah = authored_module().person(conn, "Hannah", 0.0)
+    ivan = authored_module().person(conn, "Ivan", 0.0)
+    left = derived.run_for(conn, "opencv/yunet+sface", "1", derived.DEFAULT_METHOD, 0.55, 0.0)
+    right = derived.run_for(conn, "opencv/yunet+sface", "1", derived.DEFAULT_METHOD, 0.40, 0.0)
+    # agree about the first, disagree about the second, only left names the third
+    derived.attribute(conn, files[0], hannah, left, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[0], hannah, right, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[1], hannah, left, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[1], ivan, right, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[2], ivan, left, "opencv/yunet+sface", "1", face_count=1)
+    conn.commit()
+    return left, right, hannah, ivan, files
+
+
+def authored_module():
+    from db import authored
+
+    return authored
+
+
+def test_two_runs_are_compared_by_what_they_say_about_the_same_picture(db):
+    """The other half of a reachable threshold.
+
+    Trying one is safe because a new threshold writes a new run beside
+    the old. That left somebody with two runs, two numbers, and no way
+    to see what moved -- and the counts cannot tell them, because "more
+    groups" is both what a threshold that split one person in four does
+    and what one that stopped welding strangers does.
+    """
+    from db import pages
+
+    left, right, _hannah, _ivan, files = _two_runs(db)
+    held = pages.disagreements(db, left, right)
+
+    assert held["total"] == 2, "the picture both name the same way is not a disagreement"
+    named = {one["name"]: (one["left_says"], one["right_says"]) for one in held["pictures"]}
+    assert named["c1.png"] == ("Hannah", "Ivan")
+    assert named["c2.png"] == ("Ivan", None), "a run naming nobody is an answer, not a missing value"
+    assert "c0.png" not in named
+    assert {one["id"] for one in held["pictures"]} == {files[1], files[2]}
+
+
+def test_both_columns_spell_their_people_the_same_readable_way(db):
+    """Side by side, so spelled alike -- and by NAME.
+
+    Without an ORDER BY, `group_concat` concatenates in scan order,
+    which for this WITHOUT ROWID table is person_id: the order the
+    people were CREATED in. That is consistent between the two columns,
+    so the comparison is sound either way -- this is not a correctness
+    fix and should not be mistaken for one. It is that "Ivan, Hannah" is
+    the order somebody happened to be added to the library in, and a
+    reader scanning two columns for a name is looking alphabetically.
+
+    Measured on 3.47.1: unordered both sides read "Ivan,Hannah".
+    """
+    from db import authored, derived, pages
+
+    left, right, hannah, _ivan, files = _two_runs(db)
+    # Created LAST and sorting FIRST, which is the only arrangement that
+    # can tell the two orders apart. Named alike and the test passes
+    # whether or not the query orders anything.
+    aaron = authored.person(db, "Aaron", 0.0)
+    assert aaron > hannah, "the fixture must create Aaron after Hannah for this to discriminate"
+    for who in (hannah, aaron):
+        derived.attribute(db, files[0], who, left, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(db, files[0], hannah, right, "opencv/yunet+sface", "1", face_count=1)
+    db.commit()
+
+    held = pages.disagreements(db, left, right)
+    said = {one["name"]: one["left_says"] for one in held["pictures"]}
+    assert said["c0.png"] == "Aaron,Hannah", said["c0.png"]
+
+
+def test_the_comparison_says_how_many_it_did_not_show(db):
+    """A bounded list alone cannot tell "these are the only twelve" from
+    "the first fifty of nine thousand", and those are opposite answers to
+    the question being asked."""
+    from db import pages
+
+    left, right, _hannah, _ivan, _files = _two_runs(db)
+    held = pages.disagreements(db, left, right, limit=1)
+    assert held["shown"] == 1
+    assert held["total"] == 2, "the total must survive the limit"
+
+
+def test_the_console_offers_the_comparison_and_renders_it(tmp_path):
+    """Reachable from the panel where the threshold is changed, against
+    the run the site is actually showing."""
+    from db import connect, derived
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        conn = connect.connect(client.app.state.db_path)
+        try:
+            left, right, _hannah, _ivan, _files = _two_runs(conn)
+            derived.make_primary(conn, left)
+            conn.commit()
+        finally:
+            connect.close(conn)
+
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert f'data-compare-run="{right}"' in page, "no way to compare from the panel"
+        assert f'data-compare-run="{left}"' not in page, "the primary has nothing to be compared against"
+
+        told = client.get(f"/operations/clusterings/{left}/against/{right}", headers={"accept": "text/html"})
+        assert told.status_code == 200, told.text
+        assert 'data-compare-total="2"' in told.text
+        assert "Hannah" in told.text
+        assert "Ivan" in told.text
+
+        assert client.get(f"/operations/clusterings/{left}/against/424242").status_code == 404

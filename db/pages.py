@@ -596,10 +596,23 @@ RUNS = (
 #: The disagreement is the point -- one threshold welds strangers together and
 #: another splits one person in four, and the only way to see which is
 #: happening is to put the two answers side by side on the same photograph.
+#: ORDER BY inside each group_concat spells both columns the same way,
+#: which matters because a person reads them side by side.
+#:
+#: Not a correctness fix, and it is worth saying which it is not: the
+#: comparison is sound without it. `derived_file_person` is WITHOUT
+#: ROWID keyed (file_id, person_id, run_id), so both runs are visited in
+#: the same person_id order and the two strings are always spelled
+#: consistently with each other. Measured on 3.47.1: unordered, both
+#: sides read "Ivan,Hannah"; ordered, both read "Hannah,Ivan".
+#:
+#: What it fixes is that person_id order is the order people were
+#: CREATED in, which is meaningless to the reader and differs from the
+#: order they would look for a name in.
 RUNS_DISAGREE = """
-    SELECT f.name,
-           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS left_says,
-           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS right_says
+    SELECT f.id, f.name,
+           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS left_says,
+           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS right_says
       FROM derived_file_person fp
       JOIN person p ON p.id = fp.person_id
       JOIN file f ON f.id = fp.file_id
@@ -607,6 +620,24 @@ RUNS_DISAGREE = """
      GROUP BY f.id
     HAVING IFNULL(left_says, '') <> IFNULL(right_says, '')
      ORDER BY f.name
+     LIMIT ?
+"""
+
+#: How many pictures the two describe differently, whether or not they
+#: all fit on a page. A count of what was truncated is the difference
+#: between "they agree about everything else" and "we stopped looking".
+RUNS_DISAGREE_TOTAL = """
+    SELECT count(*) FROM (
+      SELECT f.id,
+             group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS left_says,
+             group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS right_says
+        FROM derived_file_person fp
+        JOIN person p ON p.id = fp.person_id
+        JOIN file f ON f.id = fp.file_id
+       WHERE fp.run_id IN (?, ?)
+       GROUP BY f.id
+      HAVING IFNULL(left_says, '') <> IFNULL(right_says, '')
+    )
 """
 
 #: How the same face was grouped by each run. A face one run puts with
@@ -657,9 +688,28 @@ def standings(conn) -> list[dict]:
     ]
 
 
-def disagreements(conn, left: int, right: int):
-    """The pictures two runs describe differently."""
-    return conn.execute(RUNS_DISAGREE, (left, right, left, right)).fetchall()
+#: How many disagreements a comparison shows before it says how many
+#: more there are. A run that chained disagrees with a sane one about
+#: most of the library, and rendering eighty thousand rows to say so
+#: helps nobody.
+DISAGREEMENTS_SHOWN = 50
+
+
+def disagreements(conn, left: int, right: int, limit: int = DISAGREEMENTS_SHOWN) -> dict:
+    """The pictures two runs describe differently, bounded, with the total.
+
+    Both numbers, always. The bounded list alone cannot tell "these are
+    the only twelve" from "here are the first fifty of nine thousand",
+    and those are opposite answers to the question somebody is asking
+    when they compare two thresholds.
+    """
+    rows = conn.execute(RUNS_DISAGREE, (left, right, left, right, limit)).fetchall()
+    total = conn.execute(RUNS_DISAGREE_TOTAL, (left, right, left, right)).fetchone()[0]
+    return {
+        "pictures": [{"id": one[0], "name": one[1], "left_says": one[2], "right_says": one[3]} for one in rows],
+        "shown": len(rows),
+        "total": int(total),
+    }
 
 
 def face_across_runs(conn, left: int, right: int, limit: int = 20):
