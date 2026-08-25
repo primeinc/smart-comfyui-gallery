@@ -65,6 +65,18 @@ export interface Workspace {
    * five thumbnails would be five round trips for text already on screen.
    */
   compare?: Array<{ slug: string; name: string }>;
+  /**
+   * How a comparison is shown: everything at once, or one at a time in
+   * the same place.
+   *
+   * Two different questions, which is why it is a choice rather than a
+   * better default. SIDE BY SIDE answers "how do these differ", and you
+   * read it by moving your eyes. FLIP answers "did this change", and
+   * you read it by NOT moving them -- the pictures occupy the same
+   * pixels, so a small difference that side-by-side hides in the
+   * saccade is the only thing that moves.
+   */
+  compareMode?: "side" | "flip";
   /** Whether the compare tray is open or collapsed to its tab. */
   tray?: "open" | "closed";
   /**

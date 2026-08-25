@@ -1391,6 +1391,9 @@
     shown.alt = one.name;
     return shown;
   }
+  function letter(at) {
+    return String.fromCharCode(65 + at % 26);
+  }
   function showComparison(held) {
     const old = document.querySelector("[data-compare-view]");
     if (old) old.remove();
@@ -1403,34 +1406,86 @@
     const bar = document.createElement("header");
     bar.className = "compare-view-bar";
     const said = document.createElement("span");
-    said.textContent = `${held.length} side by side`;
+    said.className = "compare-view-said";
     const close = document.createElement("button");
     close.type = "button";
     close.className = "compare-view-close";
     close.dataset.compareViewClose = "";
     close.setAttribute("aria-label", "stop comparing");
     close.textContent = "\xD7";
-    bar.append(said, close);
+    const modes = document.createElement("div");
+    modes.className = "compare-modes";
+    modes.setAttribute("role", "group");
+    modes.setAttribute("aria-label", "how to compare");
+    bar.append(said, modes, close);
     const strip = document.createElement("div");
     strip.className = "compare-view-strip";
-    for (const one of held) {
+    for (const [at2, one] of held.entries()) {
       const column = document.createElement("figure");
       column.className = "compare-column";
       column.dataset.compareColumn = one.slug;
+      column.dataset.at = String(at2);
+      column.dataset.letter = letter(at2);
       const frame = document.createElement("div");
       frame.className = "compare-frame";
       const shown = playable(one);
       frame.append(shown);
       const label = document.createElement("figcaption");
+      const named = document.createElement("b");
+      named.className = "compare-letter";
+      named.textContent = letter(at2);
       const link = document.createElement("a");
       link.href = `/i/${one.slug}`;
       link.textContent = one.name;
-      label.append(link);
+      label.append(named, link);
       column.append(frame, label);
       strip.append(column);
     }
     sheet.append(bar, strip);
     document.body.append(sheet);
+    let mode = workspace().compareMode === "flip" ? "flip" : "side";
+    let at = 0;
+    const columns = () => everyElement(strip, "[data-compare-column]", HTMLElement);
+    const paint = () => {
+      sheet.dataset.mode = mode;
+      const all = columns();
+      at = (at % all.length + all.length) % all.length;
+      for (const [index, column] of all.entries()) {
+        column.hidden = mode === "flip" && index !== at;
+        column.dataset.showing = String(mode === "side" || index === at);
+      }
+      const one = held[at];
+      said.textContent = mode === "side" ? `${held.length} side by side` : `${letter(at)} of ${held.length} \xB7 ${one ? one.name : ""}`;
+      for (const button2 of everyElement(modes, "[data-compare-mode]", HTMLElement)) {
+        button2.setAttribute("aria-pressed", String(button2.dataset.compareMode === mode));
+      }
+    };
+    for (const [name, words, why] of [
+      ["side", "side by side", "every one at once: how do these differ"],
+      ["flip", "flip", "one at a time in the same place: did this change"]
+    ]) {
+      const button2 = document.createElement("button");
+      button2.type = "button";
+      button2.className = "compare-mode";
+      button2.dataset.compareMode = name;
+      button2.title = why;
+      button2.textContent = words;
+      button2.addEventListener("click", () => {
+        mode = name;
+        remember({ compareMode: name });
+        paint();
+      });
+      modes.append(button2);
+    }
+    const step = (by) => {
+      at += by;
+      if (mode !== "flip") {
+        mode = "flip";
+        remember({ compareMode: "flip" });
+      }
+      paint();
+    };
+    paint();
     const dismiss = () => sheet.remove();
     close.addEventListener("click", dismiss);
     sheet.addEventListener("click", (event) => {
@@ -1438,7 +1493,22 @@
     });
     sheet.tabIndex = -1;
     sheet.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") dismiss();
+      if (event.key === "Escape") {
+        dismiss();
+        return;
+      }
+      if (event.key === " " || event.key === "f" || event.key === "F") {
+        event.preventDefault();
+        step(1);
+        return;
+      }
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        step(1);
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        step(-1);
+      }
     });
     sheet.focus();
   }

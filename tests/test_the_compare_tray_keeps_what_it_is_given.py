@@ -291,3 +291,106 @@ def test_a_clip_is_kept_and_compared_as_a_clip(page: Page, live: Live, unbroken)
     assert shown == ["img", "video"], shown
     # and the clip is playable rather than a poster in disguise
     assert page.locator("[data-compare-column] video").get_attribute("controls") is not None
+
+
+# --- one at a time, in the same place ---------------------------------------
+
+
+def _compare(page: Page) -> None:
+    _gallery(page)
+    _keep_cell(page, "alpha.png")
+    _keep_cell(page, "bravo.png")
+    page.click("[data-compare-open]")
+    page.wait_for_selector("[data-compare-view]", timeout=5_000)
+
+
+def _shown(page: Page) -> list[str]:
+    """The columns actually on screen, by their letter."""
+    return page.evaluate(
+        "() => [...document.querySelectorAll('[data-compare-column]')]"
+        ".filter(c => !c.hidden).map(c => c.dataset.letter)"
+    )
+
+
+def test_side_by_side_is_still_what_it_opens_as(page: Page, live: Live, unbroken):
+    """The two modes answer different questions, so neither is a better
+    default -- and the one that was there stays the one it opens as."""
+    _compare(page)
+    assert page.get_attribute("[data-compare-view]", "data-mode") == "side"
+    assert _shown(page) == ["A", "B"]
+
+
+def test_flipping_shows_one_at_a_time_in_the_same_place(page: Page, live: Live, unbroken):
+    """The whole point. Side by side answers "how do these differ" and
+    you read it by moving your eyes; flip answers "did this change" and
+    you read it by NOT moving them."""
+    _compare(page)
+    page.click('[data-compare-mode="flip"]')
+    page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
+    assert _shown(page) == ["A"]
+
+    page.keyboard.press(" ")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('[data-compare-column]')]"
+        ".filter(c => !c.hidden)[0].dataset.letter === 'B'",
+        timeout=5_000,
+    )
+    assert _shown(page) == ["B"]
+
+
+def test_the_hidden_one_stays_built_so_the_flip_is_instant(page: Page, live: Live, unbroken):
+    """Swapping the `src` of one element would make the browser fetch
+    and decode on the flip, and a flip you can WATCH happen is worse
+    than useless: the delay is the only thing your eye reports, and it
+    is not a fact about the pictures."""
+    _compare(page)
+    page.click('[data-compare-mode="flip"]')
+    page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
+    held = page.evaluate(
+        "() => [...document.querySelectorAll('[data-compare-column] img')]"
+        ".map(i => ({src: i.getAttribute('src'), done: i.complete && i.naturalWidth > 0}))"
+    )
+    assert len(held) == 2, held
+    assert all(one["done"] for one in held), "a hidden column was not decoded; the flip would stutter"
+    assert held[0]["src"] != held[1]["src"], "both columns point at their own picture"
+
+
+def test_stepping_is_flipping_even_before_the_mode_was_found(page: Page, live: Live, unbroken):
+    """Somebody who presses the key without finding the button gets what
+    they were reaching for."""
+    _compare(page)
+    page.keyboard.press("ArrowRight")
+    page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
+    assert _shown(page) == ["B"]
+
+
+def test_the_letter_does_not_change_when_the_mode_does(page: Page, live: Live, unbroken):
+    """ "B is sharper" has to keep meaning the same picture across a
+    switch, or the naming is worse than no naming."""
+    _compare(page)
+    side = page.evaluate(
+        "() => Object.fromEntries([...document.querySelectorAll('[data-compare-column]')]"
+        ".map(c => [c.dataset.letter, c.dataset.compareColumn]))"
+    )
+    page.click('[data-compare-mode="flip"]')
+    page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
+    flipped = page.evaluate(
+        "() => Object.fromEntries([...document.querySelectorAll('[data-compare-column]')]"
+        ".map(c => [c.dataset.letter, c.dataset.compareColumn]))"
+    )
+    assert side == flipped, (side, flipped)
+
+
+def test_the_chosen_mode_is_how_this_person_arranged_it(page: Page, live: Live, unbroken):
+    """Workspace state: it survives closing the comparison and opening
+    another, because it is how somebody set their tool up rather than
+    part of any one comparison."""
+    _compare(page)
+    page.click('[data-compare-mode="flip"]')
+    page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
+    page.keyboard.press("Escape")
+    page.wait_for_selector("[data-compare-view]", state="detached", timeout=5_000)
+
+    page.click("[data-compare-open]")
+    page.wait_for_selector('[data-compare-view][data-mode="flip"]', timeout=5_000)
+    assert _shown(page) == ["A"], "it opened flipped, where it was left"

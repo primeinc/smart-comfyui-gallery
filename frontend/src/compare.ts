@@ -28,6 +28,14 @@
  * IT IS ORDERED, AND THE ORDER IS THE COMPARISON. Dragging a thumbnail
  * moves it; the comparison shows them left to right in exactly that
  * order. "Swap these two" is a drag rather than a mode.
+ *
+ * And it shows them two ways, because they answer different questions.
+ * SIDE BY SIDE answers "how do these differ", and you read it by moving
+ * your eyes. FLIP answers "did this change", and you read it by NOT
+ * moving them: the pictures occupy the same pixels, so a small
+ * difference that side-by-side loses in the saccade is the only thing
+ * on screen that moves. Two generations of one prompt at different
+ * steps is the case the second exists for.
  */
 
 import { everyElement, findElement } from "./dom";
@@ -158,12 +166,25 @@ function playable(one: Kept): HTMLElement {
 
 // --- the comparison itself --------------------------------------------------
 
+/** A, B, C … -- what a kept picture is called while comparing. */
+function letter(at: number): string {
+  return String.fromCharCode(65 + (at % 26));
+}
+
 /**
- * Everything kept, side by side, above everything else.
+ * Everything kept, above everything else -- side by side, or one at a
+ * time in the same place.
  *
  * `object-fit: contain` per column and nothing else: the whole value of
  * a comparison is that the pictures are shown the same way, so nothing
  * here crops, scales one to another, or picks a "primary".
+ *
+ * EVERY column is built in both modes, and flipping changes which one
+ * is shown -- never the `src` of one element. Swapping a source makes
+ * the browser fetch and decode on the flip, and a flip you can watch
+ * happen is worse than useless: the delay is the only thing your eye
+ * reports, and it is not a fact about the pictures. Built once, they
+ * are decoded once and the change is a repaint.
  */
 function showComparison(held: Kept[]): void {
   const old = document.querySelector("[data-compare-view]");
@@ -179,21 +200,30 @@ function showComparison(held: Kept[]): void {
   const bar = document.createElement("header");
   bar.className = "compare-view-bar";
   const said = document.createElement("span");
-  said.textContent = `${held.length} side by side`;
+  said.className = "compare-view-said";
   const close = document.createElement("button");
   close.type = "button";
   close.className = "compare-view-close";
   close.dataset.compareViewClose = "";
   close.setAttribute("aria-label", "stop comparing");
   close.textContent = "×";
-  bar.append(said, close);
+  // How to show them. A choice and not a better default: the two modes
+  // answer different questions, and which one somebody wants is a fact
+  // about what they are looking for.
+  const modes = document.createElement("div");
+  modes.className = "compare-modes";
+  modes.setAttribute("role", "group");
+  modes.setAttribute("aria-label", "how to compare");
+  bar.append(said, modes, close);
 
   const strip = document.createElement("div");
   strip.className = "compare-view-strip";
-  for (const one of held) {
+  for (const [at, one] of held.entries()) {
     const column = document.createElement("figure");
     column.className = "compare-column";
     column.dataset.compareColumn = one.slug;
+    column.dataset.at = String(at);
+    column.dataset.letter = letter(at);
     // The media sits in a FRAME rather than directly in the column.
     // The frame is what takes the column's share of the height, so
     // every column is the same height and the pictures line up; the
@@ -205,15 +235,80 @@ function showComparison(held: Kept[]): void {
     const shown = playable(one);
     frame.append(shown);
     const label = document.createElement("figcaption");
+    // The letter is how a person says which one they mean -- "B is
+    // sharper" -- and it is the same letter in both modes, so switching
+    // does not renumber what somebody was just talking about.
+    const named = document.createElement("b");
+    named.className = "compare-letter";
+    named.textContent = letter(at);
     const link = document.createElement("a");
     link.href = `/i/${one.slug}`;
     link.textContent = one.name;
-    label.append(link);
+    label.append(named, link);
     column.append(frame, label);
     strip.append(column);
   }
   sheet.append(bar, strip);
   document.body.append(sheet);
+
+  // --- the two ways of looking -------------------------------------------
+  let mode: "side" | "flip" = workspace().compareMode === "flip" ? "flip" : "side";
+  let at = 0;
+
+  const columns = () => everyElement(strip, "[data-compare-column]", HTMLElement);
+
+  const paint = () => {
+    sheet.dataset.mode = mode;
+    const all = columns();
+    at = ((at % all.length) + all.length) % all.length;
+    for (const [index, column] of all.entries()) {
+      // `hidden`, not display:none in a class: the element stays built
+      // and decoded either way, which is the whole reason a flip is
+      // instant. A video also keeps playing rather than restarting.
+      column.hidden = mode === "flip" && index !== at;
+      column.dataset.showing = String(mode === "side" || index === at);
+    }
+    const one = held[at];
+    said.textContent =
+      mode === "side" ? `${held.length} side by side` : `${letter(at)} of ${held.length} · ${one ? one.name : ""}`;
+    for (const button of everyElement(modes, "[data-compare-mode]", HTMLElement)) {
+      button.setAttribute("aria-pressed", String(button.dataset.compareMode === mode));
+    }
+  };
+
+  for (const [name, words, why] of [
+    ["side", "side by side", "every one at once: how do these differ"],
+    ["flip", "flip", "one at a time in the same place: did this change"],
+  ] as const) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "compare-mode";
+    button.dataset.compareMode = name;
+    button.title = why;
+    button.textContent = words;
+    button.addEventListener("click", () => {
+      mode = name;
+      remember({ compareMode: name });
+      paint();
+    });
+    modes.append(button);
+  }
+
+  /** Move to the next kept picture, and switch to flip if it is not on.
+   *
+   * Stepping IS flipping, so a person who presses the key without
+   * having found the mode button gets what they were reaching for.
+   */
+  const step = (by: number) => {
+    at += by;
+    if (mode !== "flip") {
+      mode = "flip";
+      remember({ compareMode: "flip" });
+    }
+    paint();
+  };
+
+  paint();
 
   const dismiss = () => sheet.remove();
   close.addEventListener("click", dismiss);
@@ -233,7 +328,25 @@ function showComparison(held: Kept[]): void {
   // and when it closes there is nothing to unregister.
   sheet.tabIndex = -1;
   sheet.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") dismiss();
+    if (event.key === "Escape") {
+      dismiss();
+      return;
+    }
+    // Space is the flip. It is what a hand rests on, and flipping is
+    // the one thing somebody does over and over here -- the value of
+    // the mode is in the repetition, and a two-key reach kills it.
+    if (event.key === " " || event.key === "f" || event.key === "F") {
+      event.preventDefault();
+      step(1);
+      return;
+    }
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      step(1);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      step(-1);
+    }
   });
   sheet.focus();
 }

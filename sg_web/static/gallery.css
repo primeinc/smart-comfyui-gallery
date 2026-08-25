@@ -3785,3 +3785,56 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 .answer-sort[data-sorted] {
   color: var(--accent);
 }
+
+/* --- comparing one at a time -----------------------------------------
+   The flip. Its whole value is that the pictures occupy the SAME pixels
+   -- a difference side-by-side loses in the saccade is then the only
+   thing on screen that moves -- so the shown column takes the full
+   width and nothing shifts as it changes.
+
+   `[hidden]` does the hiding, which means the other columns stay built
+   and decoded: a flip that fetched would be a delay your eye reports as
+   if it were a fact about the picture. */
+.compare-view[data-mode="flip"] .compare-view-strip {
+  overflow-x: hidden;
+}
+.compare-view[data-mode="flip"] .compare-column {
+  flex: 1 1 100%;
+}
+.compare-modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.compare-mode {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+}
+.compare-mode:hover {
+  color: var(--ink);
+}
+.compare-mode[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--ground);
+}
+/* Which one this is, so "B is sharper" is a sentence somebody can say.
+   The same letter in both modes: switching must not renumber what
+   somebody was just talking about. */
+.compare-letter {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+.compare-view-said {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
