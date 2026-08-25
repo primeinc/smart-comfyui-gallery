@@ -336,11 +336,30 @@ consequences the architecture should keep room for, not work.
     never a total: a file missing both a reading and a caption is one
     file and two sweeps.
 
-- **Benchmarks in the UI.** `just bench thumbs-phases` and the other
-  benchmark recipes write JSON that only a terminal ever sees. The
-  operations console is where a run's own facts already live; these
-  belong there too, so throughput is something you can look at rather
-  than something you have to run.
+- ~~**Benchmarks in the UI.**~~ Shipped, narrower than this entry
+  assumed, and the files are why.
+
+  There are TWENTY-THREE documents under `benchmarks/results/` and **no
+  key is shared by all of them** -- calibration sweeps, recall tables,
+  backend equivalence evidence. Rendering "the benchmark JSON" would
+  have been a JSON viewer. Exactly THREE measure throughput and agree on
+  a shape, because one script writes them (`benchmarks/job_phases.py`):
+  scan, embed and annotate. Those are on the console now, with their
+  rate, the item count, the wall time, the cores they used and where
+  the time went by phase.
+
+  Two things the entry did not name and the files made necessary:
+
+  - **Four of the twenty-three carry real filesystem paths.** Not the
+    three shown -- but that is a fact about today, so it is asserted
+    against the FILES as well as the rendered page, and a later
+    benchmark that starts recording paths fails the test rather than
+    quietly reaching a screen.
+  - **None of them carries a timestamp.** A rate on screen with no date
+    is a claim about whatever the tree looked like when somebody last
+    ran the recipe, and this tree moves -- thumbnails went 4.64 to 23.55
+    files a second in one afternoon. The file's mtime is shown and the
+    panel says the numbers were RECORDED, not observed.
 
 ## Correctness
 

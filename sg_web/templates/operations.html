@@ -153,6 +153,44 @@
        support. What is shown is the count, a rate only past the floor,
        and the one comparison the bias survives: two producers over the
        files BOTH were judged on. #}
+    {# Throughput you can look at instead of a recipe you have to run.
+       Three of the twenty-three files under benchmarks/results/ measure
+       a job's rate; the rest are calibration and evidence with no
+       shape in common, and four of them carry real filesystem paths.
+
+       Said as a RECORDING and dated, because these files carry no
+       timestamp of their own and the code moves: a rate on screen with
+       no date is a claim about whatever the tree looked like when
+       somebody last ran the recipe. #}
+    {% if measured %}
+    <section class="operations-section" data-operations-measured>
+      <h2>how fast it went, last time anybody measured</h2>
+      <p class="operations-hint">recorded by <code class="raw">just bench</code>, not observed now &mdash; the code has
+        moved since whichever of these is oldest, and nothing here re-runs on its own.</p>
+      <ul class="operations-measured">
+        {% for one in measured %}
+        <li data-measured="{{ one.kind }}">
+          <span class="k">{{ one.kind }}</span>
+          <span class="v" data-measured-rate="{{ "%.2f" | format(one.items_per_second) }}">
+            {{ "%.2f" | format(one.items_per_second) }} a second</span>
+          <code class="raw">{% if one.items %}{{ one.items }} items in {{ "%.1f" | format(one.wall_ms / 1000) }}s ·
+            {% endif %}{% if one.cores_busy is not none %}{{ "%.1f" | format(one.cores_busy) }} of
+            {{ one.cpu_count }} cores · {% endif %}recorded
+            <time data-measured-at="{{ one.recorded_at }}">{{ one.recorded_at | int }}</time></code>
+          {% if one.phases %}
+          <ul class="operations-measured-phases">
+            {% for phase in one.phases %}
+            <li data-measured-phase="{{ phase.phase }}">{{ phase.phase }}
+              <code class="raw">{{ "%.0f" | format(phase.ms) }} ms · {{ (phase.share * 100) | round | int }}%</code></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
     {# Two exports, opposite shapes, side by side -- which is how
        somebody sees they are different things. One is for SHARING and
        carries no name; the other is for CUSTODY and carries every one.

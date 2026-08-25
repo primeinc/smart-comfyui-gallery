@@ -24,6 +24,7 @@ questions about media, this page runs the library.
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 import pathlib
 import time
@@ -256,6 +257,7 @@ def _page_context(state: State) -> dict:
             ],
             "notice": None,
             "behind": _behind(console_state.overview.coverage.missing),
+            "measured": [one.model_dump(mode="json") for one in _recorded()],
             **console_state.model_dump(mode="json"),
             "last_event_id": console_state.overview.ledger.last_id,
             "now": now,
@@ -548,6 +550,84 @@ class FaceExport(Wire):
     person: str
     name: str | None
     spaces: list[FaceSpace]
+
+
+#: The benchmarks that measure THROUGHPUT, and the job each one is
+#: about. Three of twenty-three, and the number is the point: the rest
+#: of `benchmarks/results/` are calibration and evidence documents with
+#: nothing in common -- no key is shared by all of them -- and four
+#: carry real filesystem paths, which is not something a page should
+#: put on screen. These three agree on a shape because one script
+#: (benchmarks/job_phases.py) writes them.
+MEASURED = {"job_scan.json": "scan", "embed_job.json": "embed", "job_annotate.json": "annotate"}
+
+#: Where those files land. Absent in an installed copy that ships no
+#: benchmarks, and then the panel simply does not appear.
+RESULTS = pathlib.Path(__file__).resolve().parent.parent / "benchmarks" / "results"
+
+
+class Phase(Wire):
+    """Where one job's time went."""
+
+    phase: str
+    ms: float
+    share: float
+
+
+class Measured(Wire):
+    """A RECORDING of one job's throughput, not a live reading.
+
+    `recorded_at` is the file's own mtime and is not decoration: these
+    files carry no timestamp of their own, and a rate shown without one
+    is a claim about code that may have changed since. The surface says
+    when, and says that it was measured rather than observed.
+    """
+
+    kind: str
+    items_per_second: float
+    items: int | None
+    wall_ms: float | None
+    cores_busy: float | None
+    cpu_count: int | None
+    recorded_at: float
+    phases: list[Phase]
+
+
+def _recorded(root: pathlib.Path = RESULTS) -> list[Measured]:
+    """The last recorded throughput of each measured job."""
+    told: list[Measured] = []
+    for name, kind in MEASURED.items():
+        one = root / name
+        if not one.is_file():
+            continue
+        try:
+            held = json.loads(one.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as unreadable:
+            # A half-written or hand-edited result is not worth taking
+            # the console down for; it is simply not shown.
+            _logger.info("%s could not be read as a benchmark result (%s)", one, unreadable)
+            continue
+        rate = held.get("items_per_second")
+        if rate is None:
+            continue
+        phases = sorted(
+            ((k, float(v.get("total_ms", 0.0))) for k, v in (held.get("by_phase") or {}).items()),
+            key=lambda pair: -pair[1],
+        )
+        whole = sum(ms for _, ms in phases) or 1.0
+        told.append(
+            Measured(
+                kind=kind,
+                items_per_second=float(rate),
+                items=held.get("pictures") or held.get("files"),
+                wall_ms=held.get("wall_ms"),
+                cores_busy=held.get("cores_busy"),
+                cpu_count=held.get("cpu_count"),
+                recorded_at=one.stat().st_mtime,
+                phases=[Phase(phase=k, ms=ms, share=ms / whole) for k, ms in phases[:4]],
+            )
+        )
+    return sorted(told, key=lambda one: one.kind)
 
 
 class Named(Wire):
