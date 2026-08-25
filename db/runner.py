@@ -20,10 +20,12 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+import os
 import sqlite3
 import time
 import traceback
 from collections.abc import Callable
+from concurrent import futures
 
 from . import jobs, ledger
 
@@ -351,6 +353,62 @@ def precache_after_scan(conn, now: float, result, *, thumbs_dir: str) -> int | N
     return submit_thumbs(conn, now, thumbs_dir=thumbs_dir)
 
 
+def _thumbs_alongside(conn, job_id: int, file_id: int, cache) -> list[tuple]:
+    """Upcoming items of this job worth rendering beside this one.
+
+    The same bargain `_Ahead` makes for vectors, and a cheaper one. The
+    runner still works one item at a time -- started, committed, worked
+    and settled on its own -- and what moves is only WHEN the pixels are
+    computed. Where a vector has to be held in memory because writing a
+    row ahead would not be safe, a thumbnail's result IS a file in a
+    content-addressed cache: rendering one early is exactly what the job
+    would have produced, and an item whose turn never comes has simply
+    got its thumbnail sooner. So nothing is held and nothing is undone
+    by a cancel.
+
+    Resolved HERE, on the connection's own thread. sqlite refuses
+    cross-thread use, so the pool is handed paths, hashes and
+    orientation tags, never a cursor.
+
+    Bounded by megapixels as well as by count for the reason the encoder
+    is: cancellation is checked BETWEEN items, so an unbounded group is
+    an unbounded wait for somebody who asked the job to stop.
+
+    Skipped: anything with no recorded hash, because the cache is keyed
+    on it and hashing ahead is reading a whole file to speculate; and
+    video, which is a seek and a decode of a different shape and never
+    joins a batch here for the same reason it never joins one there.
+    """
+    import pathlib
+
+    from vision import thumbs
+
+    from . import detect, oriented
+
+    budget = BATCH_MEGAPIXELS
+    found: list[tuple] = []
+    room = thumbs_in_flight() - 1
+    for item in jobs.pending(conn, job_id):
+        if len(found) >= room:
+            break
+        if item == file_id:
+            continue
+        row = conn.execute("SELECT kind, content_sha256, width, height FROM file WHERE id = ?", (item,)).fetchone()
+        if row is None or row[0] == "video" or row[1] is None:
+            continue
+        kind, sha = row[0], row[1]
+        if kind not in thumbs.PICTURED:
+            continue
+        if all(thumbs.path_for(cache, sha, variant).exists() for variant in thumbs.EDGES):
+            continue
+        budget -= _megapixels(row[2:])
+        if budget < 0:
+            break
+        path = detect.path_of(conn, item)
+        found.append((sha, pathlib.Path(path), kind, oriented.orientation_of(conn, item)))
+    return found
+
+
 def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
     import pathlib
 
@@ -368,11 +426,35 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
     if all(thumbs.path_for(cache, sha, variant).exists() for variant in thumbs.EDGES):
         told.observe("already-cached")
         return
-    told.phase("rendering-thumbnails", kind=kind, variants=len(thumbs.EDGES))
     # derive picks the decoder: libvips for what it reads, Pillow for the
     # rest. Bounded by the largest variant either way, because every
     # smaller one is taken off it rather than off the source again.
-    derive.put_all(cache, sha, pathlib.Path(path), kind, oriented.orientation_of(conn, file_id))
+    mine = (sha, pathlib.Path(path), kind, oriented.orientation_of(conn, file_id))
+    alongside = _thumbs_alongside(conn, told.job_id, file_id, cache) if kind != "video" else []
+    if not alongside:
+        told.phase("rendering-thumbnails", kind=kind, variants=len(thumbs.EDGES))
+        derive.put_all(cache, *mine)
+        return
+
+    # Reported ONCE, against the item that triggered it, and named so it
+    # cannot be read as this item's own cost -- the same accounting
+    # `_Ahead` states for batched encoding. The others render no phase of
+    # their own, which is true: by their turn the file is already there
+    # and they take the `already-cached` return above.
+    told.phase("rendering-thumbnails-together", pictures=len(alongside) + 1, variants=len(thumbs.EDGES))
+    with futures.ThreadPoolExecutor(max_workers=thumbs_in_flight()) as pool:
+        running = {pool.submit(derive.put_all, cache, *one): one for one in [mine, *alongside]}
+        for done in futures.as_completed(running):
+            if running[done] is mine:
+                done.result()  # this item's own failure is this item's verdict
+                continue
+            why = done.exception()
+            if why is not None:
+                # A picture rendered AHEAD is speculative. Its failure
+                # says nothing about the item being worked, and reporting
+                # it here would blame the wrong file -- it meets its own
+                # failure, attributed to itself, when its turn comes.
+                _logger.info("job #%d: rendering ahead skipped a picture (%s)", told.job_id, why)
 
 
 def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False) -> list[int]:
@@ -418,6 +500,32 @@ def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False)
         payload = {"models_dir": models_dir, "choice": [provider, model, configured]}
         made.append(jobs.submit(conn, "embed", now, payload=payload, items=items))
     return made
+
+
+#: How many thumbnails to render at once, and why this number.
+#:
+#: libvips already uses every core to calculate ONE image
+#: (../refs/libvips/libvips/doc/using-threads.md, "Threads"), so the
+#: obvious reading is that a second file in flight can only fight the
+#: first. Measured, that is wrong: one thumbnail is not enough work to
+#: fill sixteen cores, and the win is across files rather than inside
+#: one. On 32 pictures of 4000x3000, per file:
+#:
+#:      1 in flight    4.70 files/sec   1.0x
+#:      2              9.72             2.1x
+#:      4             17.99             3.8x
+#:      8             28.20             6.0x   <- the knee
+#:     12             27.74             5.9x
+#:     16             25.47             5.4x
+#:
+#: Past the knee the two thread pools oversubscribe and it gets slower,
+#: so this is half the cores rather than all of them -- the measured
+#: best on a 16-core machine -- and never fewer than two, because one
+#: would silently turn the whole thing back off. libvips is documented
+#: thread-safe for this: images are immutable and shareable, and only
+#: the drawing operators and Regions are not.
+def thumbs_in_flight() -> int:
+    return max(2, min(8, (os.cpu_count() or 2) // 2))
 
 
 #: How many source megapixels one batch may decode. The count alone is

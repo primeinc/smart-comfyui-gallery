@@ -106,14 +106,45 @@ consequences the architecture should keep room for, not work.
     owed: a page that is right, or a page that is quick and cannot
     hurt them. The machinery for the second already exists.
 
-- **Thumbnails are still serial.** 6.76 files/sec over the real library
-  (`just bench thumbs-phases`), up from 1.80, but one worker renders one
-  file at a time. `run_next()` loops over every pending item, so a 20,000
-  file precache owns the only background worker for an hour. Decode,
-  resize and encode are all per-file work with nothing shared, so this is
-  the next win: claim a bounded batch, render a few concurrently, keep
-  the database worker as the thing that commits. Benchmark 1/2/4/8 in
-  flight rather than picking a number.
+- ~~**Thumbnails are still serial.**~~ Fixed. An item now renders its
+  own thumbnails and the next few of its job's pending items beside
+  them, so those are on disk when their turn comes and take the
+  `already-cached` return. The runner still works ONE item at a time --
+  started, committed, worked and settled on its own -- which is what
+  resumability, cancellation at a boundary and per-item failure all rest
+  on. Only WHEN the pixels are computed moved.
+
+  The same bargain `_Ahead` makes for vectors, and a cheaper one: a
+  vector must be held in memory because a row written ahead would not be
+  safe, while a thumbnail's result IS a file in a content-addressed
+  cache. Rendering one early is exactly what the job would have
+  produced, so nothing is held and a cancel undoes nothing.
+
+  Benchmarked 1/2/4/8 as this entry asked, end to end through
+  `run_next`, 32 pictures at 4000x3000:
+
+      1 in flight     4.64 files/sec
+      2               9.55            2.1x
+      4              16.95            3.7x
+      8              23.55            5.1x
+
+  The renderer alone measured the same shape and found the knee: 8 gives
+  6.0x, 12 gives 5.9x and 16 gives 5.4x, because past it the two thread
+  pools oversubscribe. So the number is half the cores, capped at eight,
+  never below two.
+
+  Worth recording that the obvious reading was wrong: libvips already
+  uses every core to calculate ONE image
+  (`../refs/libvips/libvips/doc/using-threads.md`), which sounds like an
+  argument that a second file in flight can only fight the first. One
+  thumbnail is not enough work to fill sixteen cores; the win is across
+  files, and libvips is documented thread-safe for exactly that -- its
+  own example runs fifty threads resizing at once. Only the drawing
+  operators and Regions are not.
+
+  Video stays on the single path, as it does for embedding: a seek and
+  a decode of a different shape does not belong inside a group whose
+  size is bounded for somebody waiting on a cancel.
 
   Interactive work should also outrank precache -- a browser waiting on
   `/thumb/x` is real work and a speculative queue is not. That half is
