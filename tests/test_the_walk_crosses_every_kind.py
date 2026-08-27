@@ -31,7 +31,9 @@ import pytest
 from PIL import Image
 from playwright.sync_api import Page
 
+from db import facets
 from tests.conftest import Live
+from vision import thumbs
 
 pytestmark = pytest.mark.slow
 
@@ -64,9 +66,12 @@ KIND_OF = {
     "h_fourth.png": "image",
 }
 
-#: The kinds with no picture to take. These are the cells that used to
-#: ask for a raster the route refuses.
-UNPICTURED = {"audio", "document"}
+#: The kinds with no picture to take -- the COMPLEMENT of
+#: `vision/thumbs.py PICTURED` within the kind vocabulary, computed so a
+#: sixth kind cannot be in neither set and quietly uncovered by the
+#: assertions below. These are the cells that used to ask for a raster
+#: the route refuses.
+UNPICTURED = set(facets.KINDS) - set(thumbs.PICTURED)
 
 
 def _pdf(words: str) -> bytes:

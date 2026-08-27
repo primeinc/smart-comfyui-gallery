@@ -27,7 +27,7 @@ import traceback
 from collections.abc import Callable
 from concurrent import futures
 
-from . import connect, jobs, ledger
+from . import connect, jobs, ledger, vocabulary
 
 _logger = logging.getLogger(__name__)
 
@@ -245,7 +245,7 @@ def submit_faces(
 def face_items(conn, *, everything: bool = False) -> list[int]:
     """Every present picture and video no detector has looked at for its
     current bytes -- or all of them, said so."""
-    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL" + vocabulary.PICTURE_SQL
     if not everything:
         sql += (
             " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
@@ -257,7 +257,7 @@ def face_items(conn, *, everything: bool = False) -> list[int]:
 def caption_items(conn, model: str, *, everything: bool = False) -> list[int]:
     """Every present picture and video this model has not captioned for
     its current bytes -- or all of them, said so."""
-    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL" + vocabulary.PICTURE_SQL
     args: tuple = ()
     if not everything:
         sql += (
@@ -286,7 +286,7 @@ def submit_phash(conn, now: float, *, everything: bool = False) -> int | None:
     """
     from . import similarity
 
-    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL" + vocabulary.PICTURE_SQL
     args: tuple = ()
     found = None if everything else similarity._current_space_of(conn, similarity.PHASH)
     if found is not None:
@@ -345,8 +345,9 @@ def submit_thumbs(conn, now: float, *, thumbs_dir: str) -> int | None:
     items = [
         file_id
         for file_id, sha in conn.execute(
-            "SELECT id, content_sha256 FROM file WHERE missing_since IS NULL"
-            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id DESC"
+            "SELECT f.id, f.content_sha256 FROM file f WHERE f.missing_since IS NULL"
+            + vocabulary.PICTURE_SQL
+            + " ORDER BY f.id DESC"
         )
         if sha is None or any(not thumbs.path_for(cache, sha, kind).exists() for kind in thumbs.EDGES)
     ]
@@ -498,7 +499,7 @@ def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False)
 
     from . import retrieval
 
-    present = "SELECT f.id FROM file f WHERE f.missing_since IS NULL AND f.kind IN ('image', 'animated_image', 'video')"
+    present = "SELECT f.id FROM file f WHERE f.missing_since IS NULL" + vocabulary.PICTURE_SQL
     made = []
     for provider, model, configured in retrieval.choices(conn):
         found = None

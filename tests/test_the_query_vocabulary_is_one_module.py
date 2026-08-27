@@ -457,3 +457,17 @@ def test_the_planner_states_the_same_vocabularies_the_library_does(library):
 
     assert frozenset(context.TIME_BASES) == planning._BASES
     assert frozenset(facets.KINDS) == planning._MEDIA_KINDS
+
+
+def test_the_kinds_with_pixels_are_one_set(library):
+    """`vision/thumbs.py PICTURED` and `db/vocabulary.py VISUAL` state
+    the same three kinds, twice, because the import is forbidden: vision
+    must not import db (vision/semantic/__init__.py states the rule). So
+    the pair is held here, the way `facets.KINDS` is held above -- and
+    the SQL conjunct the sweeps append is checked to be BUILT from it."""
+    from db import vocabulary
+    from vision import thumbs
+
+    assert tuple(thumbs.PICTURED) == tuple(vocabulary.VISUAL)
+    for kind in vocabulary.VISUAL:
+        assert f"'{kind}'" in vocabulary.PICTURE_SQL

@@ -49,7 +49,7 @@ from litestar.params import FromPath, FromQuery
 from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, derived, naming, pages, places, resultset, settings
-from db.resultset import canonical
+from db.resultset import MediaKind, canonical
 from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import presented
@@ -296,12 +296,6 @@ def where_of(conn, file_id: int) -> Where | None:
         qs=spelled,
         timeline=f"/timeline?{spelled}",
     )
-
-
-#: What a file can be. db/schema.sql:185 constrains `file.kind` to exactly
-#: this list, and sglint SG709 holds the two together, so the browser
-#: narrows on a closed set rather than on `string`.
-MediaKind = Literal["image", "animated_image", "video", "audio", "document"]
 
 
 class Pixels(Wire):

@@ -60,17 +60,28 @@ GROUPS: tuple[tuple[str, str], ...] = (
     ("advanced", "advanced metadata"),
 )
 
-#: Every file kind. A dimension that names no kinds applies to all of
-#: them, which is the default because most questions are cross-media:
-#: favorite, rating, folder, album, people, place and date mean the same
-#: thing about a photograph, a video and a document.
-EVERY_KIND = ("image", "animated_image", "video", "audio", "document")
+#: Every file kind -- `db/facets.py KINDS`, not a copy of it (this was
+#: the third Python copy of the tuple). A dimension that names no kinds
+#: applies to all of them, which is the default because most questions
+#: are cross-media: favorite, rating, folder, album, people, place and
+#: date mean the same thing about a photograph, a video and a document.
+EVERY_KIND = tuple(facets_module.KINDS)
 
 #: The kinds that have pixels -- width, height and aspect are facts
-#: about these and about nothing else.
+#: about these and about nothing else. `vision/thumbs.py PICTURED`
+#: states the same three and cannot import them: vision must not import
+#: db (vision/semantic/__init__.py states the rule), so the pair is held
+#: by test_the_kinds_with_pixels_are_one_set instead.
 VISUAL = ("image", "animated_image", "video")
 #: The kinds that have a length.
 TIMED = ("animated_image", "video", "audio")
+
+#: VISUAL as the SQL conjunct every pixels-only sweep appends, over the
+#: file alias `f`. BUILT from the tuple: six hand-written copies of this
+#: clause existed across db/inspecting.py and db/runner.py, and
+#: db/inspecting.py's own comment records what happens when the count
+#: and the queue disagree about what a picture is.
+PICTURE_SQL = " AND f.kind IN (" + ", ".join(f"'{one}'" for one in VISUAL) + ")"
 
 
 @dataclasses.dataclass(frozen=True)

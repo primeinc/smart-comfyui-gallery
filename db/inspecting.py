@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 
-from . import ingest, jobs, ledger, settings
+from . import ingest, jobs, ledger, settings, vocabulary
 
 
 def _json(text):
@@ -68,7 +68,7 @@ def _target(conn, target_id: int | None) -> dict | None:
 #: the cache pins, so it needs the models directory; without one it is
 #: not counted rather than guessed.
 _PRESENT = "SELECT count(*) FROM file f WHERE f.missing_since IS NULL"
-_PICTURE = " AND f.kind IN ('image', 'animated_image', 'video')"
+_PICTURE = vocabulary.PICTURE_SQL
 _MISSING = {
     # Stale by BYTES or by READER, the same rule the sweep queues on
     # (db/runner.py submit_ingest). Counted differently from what is

@@ -425,6 +425,7 @@ WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
         "ItemState": ("job_item", "state"),
     },
     "db/ledger.py": {"EventType": ("job_event", "type"), "Severity": ("job_event", "severity")},
+    "db/resultset.py": {"MediaKind": ("file", "kind")},
     "sg_web/media_view.py": {"PlaceKind": ("place", "kind")},
 }
 

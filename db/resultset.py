@@ -57,6 +57,7 @@ import json
 import re
 import sqlite3
 import threading
+import typing
 
 #: The orders a query may ask for. "similarity" requires a phrase; the
 #: time sorts follow the file table's own indexes; the moment sorts
@@ -157,8 +158,19 @@ SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity", *COLUMN_SO
 #: Only a phrase ranks anything, so only a phrase carries a depth.
 DEPTHS = ("head", "all")
 
-#: The file kinds a query may filter to -- the vocabulary of file.kind.
-KINDS = ("image", "animated_image", "video", "audio", "document")
+#: What a file can be, as the ONE Literal. db/schema.sql constrains
+#: `file.kind` to exactly this list and sglint SG709 holds this
+#: declaration against that CHECK (sglint/policy.py WIRE_VOCABULARIES);
+#: the wire type in sg_web/media_view.py imports it rather than
+#: restating it -- five Python copies of the tuple existed, one of them
+#: the one the browser contract is generated from, and only two were
+#: held together by anything.
+MediaKind = typing.Literal["image", "animated_image", "video", "audio", "document"]
+
+#: The file kinds a query may filter to -- DERIVED: a bare Literal's
+#: arguments come back in declared order (python/cpython
+#: Doc/library/typing.rst:3595-3613 get_args).
+KINDS = typing.get_args(MediaKind)
 
 DEFAULT_PAGE_SIZE = 60
 MAX_PAGE_SIZE = 400
