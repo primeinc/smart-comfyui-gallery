@@ -11,16 +11,29 @@ where a migration runner either holds or loses the data.
 """
 
 import gc
+import itertools
 import pathlib
 import shutil
 import sqlite3
 import sys
+import uuid
 
 import pytest
 
 from db import authored, build, collections, connect, migrate, scan
 from tests import schemas
-from tests.staging import NOW
+from tests.staging import NOW, migrated
+
+
+@pytest.fixture
+def pinned_identity(monkeypatch):
+    """Deterministic entity uuids while a test stages its fixture.
+
+    `scan.mint` draws uuid4, so a staged database's logical content --
+    and with it `migrated`'s cache key -- was different every run, and
+    the cached replay could never be found again."""
+    counter = itertools.count(1)
+    monkeypatch.setattr(scan.uuid, "uuid4", lambda: uuid.UUID(int=next(counter)))
 
 
 @pytest.fixture
@@ -359,7 +372,13 @@ def v1_database(tmp_path):
 
 def a_file_row(conn):
     root = int(
-        conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
+        # The uuid stated, not left to the schema's randomblob(16) default:
+        # the staged fixture is `migrated`'s cache key, and one random blob
+        # made every replay unfindable on the next run.
+        conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('Z:/x', 'library', ?, ?)", (NOW, b"\x01" * 16)
+        ).lastrowid
+        or 0
     )
     # Straight INSERT, not `scan.ensure_folder`: this row goes into a
     # database that has been stepped BACK to an older shape, and the
@@ -393,7 +412,7 @@ def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     it asserted it about was today's build wearing a lower number.
     """
     path = v1_database(tmp_path)
-    assert migrate.migrate(path) == list(range(2, connect.USER_VERSION + 1))
+    assert migrated(path) == list(range(2, connect.USER_VERSION + 1))
 
     conn = connect.connect(path)
     try:
@@ -719,7 +738,12 @@ def v3_database_with_embeddings(tmp_path):
     schemas.seed(path, 3)
     conn = connect.connect(path)
     root = int(
-        conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', ?)", (NOW,)).lastrowid or 0
+        # The uuid stated, not the schema's randomblob(16): the fixture
+        # feeds `migrated`'s cache key, which a random blob drifts.
+        conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('Z:/x', 'library', ?, ?)", (NOW, b"\x03" * 16)
+        ).lastrowid
+        or 0
     )
     # Straight INSERT: the scanner writes `fs_id`, a v31 column.
     folder = scan.mint(conn, "folder", "x")
@@ -792,7 +816,7 @@ END""")
     return path, files, spec, sid
 
 
-def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
+def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path, pinned_identity):
     """The hostile v3 -> v4 gate: a database built with the old
     derived_embedding shape migrates to one indistinguishable from a fresh
     build, every vector survives byte-for-byte under a freshly minted
@@ -813,7 +837,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path):
         ro.close()
     assert len(before) == 2
 
-    assert migrate.migrate(path) == list(range(4, connect.USER_VERSION + 1))
+    assert migrated(path) == list(range(4, connect.USER_VERSION + 1))
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -878,7 +902,7 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
         conn.close()
 
 
-def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp_path):
+def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp_path, pinned_identity):
     """Under v20 a capture row WITH an offset stored the instant (the
     reader folded the zone in); from v21 `captured_at` is the camera's
     wall clock with the zone beside it. A library upgraded without
@@ -891,10 +915,12 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
     from db import scan, when
 
     path, _files, _spec, _sid = v3_database_with_embeddings(tmp_path)
-    migrate.migrate(path, target=20)
+    migrated(path, target=20)
     conn = connect.connect(path)
     try:
-        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/z', 'library', 0)").lastrowid
+        root_id = conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('C:/z', 'library', 0, ?)", (b"\x02" * 16,)
+        ).lastrowid
         folder = scan.mint(conn, "folder", "z")
         conn.execute(
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'z', 0)", (folder, root_id)
@@ -914,7 +940,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == list(range(21, connect.USER_VERSION + 1))
+    assert migrated(path) == list(range(21, connect.USER_VERSION + 1))
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
@@ -931,7 +957,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         connect.close(conn)
 
 
-def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
+def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path, pinned_identity):
     """A v25 library's whole-still face instances prove a detector looked
     at those bytes: v26 records the pass with its face count, so the
     next faces sweep leaves those files alone. A face-free file left no
@@ -953,7 +979,7 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path):
     derived.record_faces(conn, file_id, "m", "1", "a" * 64, NOW, faces)
     conn.close()
 
-    assert migrate.migrate(path) == list(range(26, connect.USER_VERSION + 1))
+    assert migrated(path) == list(range(26, connect.USER_VERSION + 1))
     assert build.drift(path) == []
     ro = connect.connect(path, read_only=True)
     try:
@@ -1007,6 +1033,9 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
     for sha in ("b" * 64, "c" * 64, "d" * 64):
         thumbs.put_all(cache, sha, Image.new("RGB", (40, 30), (9, 9, 9)))
 
+    # Live, never `migrated`: the v30 step DELETES thumbnail files, and a
+    # cached database replay cannot replay a filesystem side effect --
+    # on a cache hit the staged thumbnails would survive their own test.
     assert migrate.migrate(path) == list(range(30, connect.USER_VERSION + 1))
     assert not any(thumbs.path_for(cache, "b" * 64, kind).exists() for kind in thumbs.EDGES), "the portrait RAW's go"
     for sha in ("c" * 64, "d" * 64):

@@ -31,6 +31,7 @@ one. A test that only read, or only wrote the database, costs nothing.
 from __future__ import annotations
 
 import contextlib
+import functools
 import pathlib
 import sqlite3
 from collections.abc import Callable, Generator
@@ -145,12 +146,7 @@ def _corpus_key(corpus: pathlib.Path) -> str:
     the corpus. Any edit rekeys; a stale constant can never vouch for
     new code."""
     import hashlib
-    import importlib.util
-    import pkgutil
 
-    import db as db_package
-    import metaparse as metaparse_package
-    import vision as vision_package
     from db import library
 
     key = hashlib.sha256()
@@ -162,6 +158,25 @@ def _corpus_key(corpus: pathlib.Path) -> str:
         if entry.is_file() and entry.name != library.MARKER:
             stat = entry.stat()
             key.update(f"{entry.relative_to(corpus)}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+    key.update(_code_key().encode())
+    return key.hexdigest()[:16]
+
+
+@functools.cache
+def _code_key() -> str:
+    """The exact bytes of every module of db/, metaparse/ and vision/,
+    hashed -- the code half of every derivation key. Cached per process:
+    the code cannot change mid-run, and reading ~85 files per cache
+    probe made every probe cost what it was built to save."""
+    import hashlib
+    import importlib.util
+    import pkgutil
+
+    import db as db_package
+    import metaparse as metaparse_package
+    import vision as vision_package
+
+    key = hashlib.sha256()
     for package in (db_package, metaparse_package, vision_package):
         names = [package.__name__]
         names += [found.name for found in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}.")]
@@ -170,7 +185,7 @@ def _corpus_key(corpus: pathlib.Path) -> str:
             if spec is not None and spec.origin is not None and spec.origin != "namespace":
                 key.update(name.encode())
                 key.update(pathlib.Path(spec.origin).read_bytes())
-    return key.hexdigest()[:16]
+    return key.hexdigest()
 
 
 def corpus_measurement(corpus: pathlib.Path, name: str, measure: Callable[[], str]) -> str:
@@ -192,6 +207,54 @@ def corpus_measurement(corpus: pathlib.Path, name: str, measure: Callable[[], st
     text = measure()
     target.write_text(text, encoding="utf-8")
     return text
+
+
+def migrated(path: pathlib.Path, target: int | None = None) -> list[int]:
+    """`migrate.migrate(path)`, cached across runs.
+
+    Replaying thirty shipped steps over an unchanged fixture with
+    unchanged code recomputes a constant, exactly like re-deriving a
+    frozen corpus. The key is the database's LOGICAL content -- iterdump,
+    the schema and rows as SQL -- plus the exact code of db/, so any
+    edit to a step or to what the test staged replays for real. Not the
+    file's bytes: sqlite lays the same logic out differently from one
+    process to the next, and a key that drifts rebuilds the constant
+    forever while reporting nothing. Only a replay that SUCCEEDED is
+    cached; a refusal is a behaviour a test asserts live.
+    """
+    import hashlib
+    import json
+    import shutil
+
+    from db import migrate
+
+    key = hashlib.sha256()
+    src = connect.connect(path, read_only=True)
+    try:
+        for line in src.iterdump():
+            # sqlite_stat* is query history, not the fixture: `PRAGMA
+            # optimize` on close writes rows that vary with whatever ran
+            # on the connection, and keying on them drifted a fresh key
+            # every run -- an unbounded cache with a 0% hit rate.
+            if "sqlite_stat" in line:
+                continue
+            key.update(line.encode())
+    finally:
+        src.close()
+    key.update(str(target).encode())
+    key.update(_code_key().encode())
+    stem = f"migrated-{key.hexdigest()[:16]}"
+    held_db = _snapshot_dir() / f"{stem}.db"
+    held_steps = _snapshot_dir() / f"{stem}.json"
+    if held_db.exists() and held_steps.exists():
+        print(f"migration snapshot HIT {held_db.name}")
+        shutil.copyfile(held_db, path)
+        return json.loads(held_steps.read_text(encoding="utf-8"))
+    print(f"migration snapshot BUILD {held_db.name}")
+    applied = migrate.migrate(path) if target is None else migrate.migrate(path, target=target)
+    shutil.copyfile(path, held_db)
+    held_steps.write_text(json.dumps(applied), encoding="utf-8")
+    return applied
 
 
 def corpus_snapshot(corpus: pathlib.Path, build: Callable[[pathlib.Path], pathlib.Path]) -> pathlib.Path:

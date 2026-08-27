@@ -32,12 +32,27 @@ edited -- a historical record that gets corrected is not one.
 
 from __future__ import annotations
 
+import functools
 import pathlib
+import shutil
 import sqlite3
+import tempfile
 
 from db.connect import close, connect
 
 HERE = pathlib.Path(__file__).parent / "schemas"
+
+#: One seeded master per version per process: executing a historical
+#: schema onto disk costs hundreds of milliseconds and eight tests do it,
+#: while a closed database file is a file and copies in single digits.
+_MASTERS: dict[int, pathlib.Path] = {}
+
+
+@functools.cache
+def _master_dir() -> tempfile.TemporaryDirectory:
+    """The masters' home for this process; the finalizer removes it."""
+    return tempfile.TemporaryDirectory(prefix="sg-schema-masters-")
+
 
 #: What `_prove` treats as a version that does not carry to today, rather
 #: than as the check itself breaking. Everything a bad schema or a step
@@ -69,18 +84,23 @@ def seed(path, version: int) -> None:
     from it a quiet lie, which is the failure this whole module exists
     to stop.
     """
-    # Through db.connect, the way `build.build` writes a fresh one: a raw
-    # sqlite3.connect leaves the schema's foreign keys inert, and a
-    # fixture whose keys were never on is not the database it claims.
-    conn = connect(path)
-    try:
-        conn.executescript(sql(version))
-        conn.commit()
-        stamped = conn.execute("PRAGMA user_version").fetchone()[0]
-        if stamped != version:
-            raise AssertionError(f"tests/schemas/v{version:02d}.sql stamps user_version={stamped}")
-    finally:
-        close(conn)
+    master = _MASTERS.get(version)
+    if master is None:
+        master = pathlib.Path(_master_dir().name) / f"v{version:02d}.db"
+        # Through db.connect, the way `build.build` writes a fresh one: a raw
+        # sqlite3.connect leaves the schema's foreign keys inert, and a
+        # fixture whose keys were never on is not the database it claims.
+        conn = connect(master)
+        try:
+            conn.executescript(sql(version))
+            conn.commit()
+            stamped = conn.execute("PRAGMA user_version").fetchone()[0]
+            if stamped != version:
+                raise AssertionError(f"tests/schemas/v{version:02d}.sql stamps user_version={stamped}")
+        finally:
+            close(conn)
+        _MASTERS[version] = master
+    shutil.copy(master, path)
 
 
 def _prove() -> int:
