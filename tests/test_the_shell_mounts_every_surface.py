@@ -354,10 +354,12 @@ def test_the_gallery_header_offers_no_operations(served):
 
 
 def _links(page: str) -> list[str]:
-    """Every same-site href a page emits that is a landing, not bytes."""
+    """Every same-site ANCHOR a page emits that is a landing, not bytes.
+    Anchors only: a <link> in the head (manifest, icons, splash images)
+    carries an href a person cannot click."""
     return [
         href.replace("&amp;", "&")
-        for href in re.findall(r'href="([^"#]+)"', page)
+        for href in re.findall(r'<a [^>]*?href="([^"#]+)"', page)
         if href.startswith("/")
         and not href.startswith(("/media/", "/thumb/", "/preview/", "/avatar/", "/static/", "/operations/export/"))
     ]

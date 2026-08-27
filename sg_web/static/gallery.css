@@ -2962,6 +2962,16 @@ body {
   margin-left: auto;
 }
 
+.shell-install {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 10px;
+}
+
 .activity {
   position: relative;
 }

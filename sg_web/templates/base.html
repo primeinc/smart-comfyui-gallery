@@ -10,11 +10,33 @@
      where the person is looking instead of vanishing into the console. #}
   <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true,"target":"#shell-notice"},{"code":"...","swap":true}]}'>
   <link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
+  {# The installable-app surface. One manifest link is all a page may
+     carry; the route says the JSON MIME type out loud (sg_web/app.py
+     manifest). iOS ignores manifest icons entirely, so the apple-touch
+     lines exist beside them, and iOS draws no launch screen it is not
+     handed -- the startup-image set is generated from the same table
+     (sg_web/branding.py SPLASH) that names these files. #}
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#14151a">
+  <link rel="apple-touch-icon" href="/static/pwa/apple-touch-icon-180.png">
+  <meta name="apple-mobile-web-app-title" content="SmartGallery">
+  <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-440x956@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-430x932@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-420x912@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-402x874@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-393x852@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-390x844@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-375x812@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-414x896@3x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/static/pwa/splash-414x896@2x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/static/pwa/splash-375x667@2x.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/static/pwa/splash-1024x1366@2x.png">
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="/static/gallery.css?v={{ static_v }}">
   {% block styles %}{% endblock %}
   <script src="/static/htmx-2.0.7.min.js?v={{ static_v }}" defer></script>
   <script src="/static/htmx-ext-ws-2.0.3.js?v={{ static_v }}" defer></script>
+  <script src="/static/build/shell.js?v={{ static_v }}" defer></script>
   {% block scripts %}{% endblock %}
 </head>
 <body hx-ext="ws">
@@ -32,6 +54,9 @@
     <a href="/timeline"{% if here == "/timeline" %} aria-current="page"{% endif %}>timeline</a>
     <a href="/dupes"{% if here == "/dupes" %} aria-current="page"{% endif %}>duplicates</a>
     <a class="shell-operations" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>operations</a>
+    {# Hidden until frontend/src/install.ts has a stashed Chromium
+       prompt to spend; Safari and Firefox never reveal it. #}
+    <button type="button" class="shell-install" data-install hidden>install app</button>
     <details class="activity" data-activity ws-connect="/ws/jobs?as=html">
       {% with jobs = activity_jobs(), oob = false %}
       {% set live = jobs | rejectattr("settled") | list %}
@@ -43,6 +68,13 @@
   {# The one place an answer to an htmx request lands when it is a
      notice rather than a swap: refusals, and operations' receipts. #}
   <p id="shell-notice" class="shell-notice" data-shell-notice aria-live="polite"></p>
+  {# iOS has no install prompt of any kind: the manual gesture is the
+     only path, so the shell says it once, dismissably, and only on an
+     iOS browser outside the installed app (install.ts gates it). #}
+  <p class="shell-notice" data-install-ios hidden>
+    keep this gallery as an app: Share <span aria-hidden="true">→</span> Add to Home Screen
+    <button type="button" class="link" data-dismiss>dismiss</button>
+  </p>
   {% block body %}{% endblock %}
 </body>
 </html>

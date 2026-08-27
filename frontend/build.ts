@@ -28,6 +28,7 @@ const options = {
     keywords: "src/entries/keywords.ts",
     people: "src/entries/people.ts",
     person: "src/entries/person.ts",
+    shell: "src/entries/shell.ts",
     media: "src/entries/media.ts",
     collection: "src/entries/collection.ts",
     timeline: "src/entries/timeline.ts",

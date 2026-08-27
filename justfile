@@ -73,6 +73,14 @@ prove-push: web::build
     fi
     {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile --testmon --testmon-forceselect
 
+# The PWA's rasters, drawn from the mark: icons, the iOS splash set,
+# and the install-sheet screenshots photographed off the real app over
+# a generated library (sg_web/branding.py). Run after changing the
+# palette, the mark, or the gallery's look; commit what it writes.
+[doc('Regenerate the PWA icons, iOS splash set, and install screenshots')]
+pwa-assets:
+    {{ python }} -m sg_web.branding all
+
 # Every test alone, one process each: a test that leans on a sibling's
 # writes passes in module order and fails here -- which is exactly how
 # the affected-test selector (prove-push) will eventually run it. Slow

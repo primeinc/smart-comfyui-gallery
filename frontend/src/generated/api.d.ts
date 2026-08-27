@@ -1488,6 +1488,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/manifest.webmanifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Manifest */
+        get: operations["ManifestWebmanifestManifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sw.js": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ServiceWorker */
+        get: operations["SwJsServiceWorker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/thumb/{slug}": {
         parameters: {
             query?: never;
@@ -7023,6 +7057,58 @@ export interface operations {
         };
     };
     FaviconIcoFavicon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File Download */
+            200: {
+                headers: {
+                    /** @description File size in bytes */
+                    "content-length"?: string;
+                    /** @description Last modified data-time in RFC 2822 format */
+                    "last-modified"?: string;
+                    /** @description Entity tag */
+                    etag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "": string;
+                };
+            };
+        };
+    };
+    ManifestWebmanifestManifest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File Download */
+            200: {
+                headers: {
+                    /** @description File size in bytes */
+                    "content-length"?: string;
+                    /** @description Last modified data-time in RFC 2822 format */
+                    "last-modified"?: string;
+                    /** @description Entity tag */
+                    etag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "": string;
+                };
+            };
+        };
+    };
+    SwJsServiceWorker: {
         parameters: {
             query?: never;
             header?: never;

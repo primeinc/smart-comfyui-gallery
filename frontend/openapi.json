@@ -6780,6 +6780,100 @@
                 "deprecated": false
             }
         },
+        "/manifest.webmanifest": {
+            "get": {
+                "summary": "Manifest",
+                "operationId": "ManifestWebmanifestManifest",
+                "responses": {
+                    "200": {
+                        "description": "File Download",
+                        "headers": {
+                            "content-length": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "description": "File size in bytes",
+                                "required": false,
+                                "deprecated": false
+                            },
+                            "last-modified": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                "description": "Last modified data-time in RFC 2822 format",
+                                "required": false,
+                                "deprecated": false
+                            },
+                            "etag": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "description": "Entity tag",
+                                "required": false,
+                                "deprecated": false
+                            }
+                        },
+                        "content": {
+                            "": {
+                                "schema": {
+                                    "type": "string",
+                                    "contentMediaType": "application/octet-stream"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
+        "/sw.js": {
+            "get": {
+                "summary": "ServiceWorker",
+                "operationId": "SwJsServiceWorker",
+                "responses": {
+                    "200": {
+                        "description": "File Download",
+                        "headers": {
+                            "content-length": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "description": "File size in bytes",
+                                "required": false,
+                                "deprecated": false
+                            },
+                            "last-modified": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                "description": "Last modified data-time in RFC 2822 format",
+                                "required": false,
+                                "deprecated": false
+                            },
+                            "etag": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "description": "Entity tag",
+                                "required": false,
+                                "deprecated": false
+                            }
+                        },
+                        "content": {
+                            "": {
+                                "schema": {
+                                    "type": "string",
+                                    "contentMediaType": "application/octet-stream"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/thumb/{slug}": {
             "get": {
                 "summary": "ThumbBytes",

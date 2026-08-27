@@ -1253,6 +1253,35 @@ def favicon() -> File:
     )
 
 
+@get("/manifest.webmanifest", sync_to_thread=False)
+def manifest() -> File:
+    """The web app manifest, with its MIME type said explicitly: HTML's
+    manifest processing fails only when Content-Type is not a JSON type
+    (whatwg/html source:28862), and Chromium then silently refuses to
+    install -- guessing by suffix is how .webmanifest becomes
+    octet-stream on Windows. Fetched at install time, not page load."""
+    return File(
+        path=pathlib.Path(__file__).resolve().parent / "static" / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        content_disposition_type="inline",
+        headers={"cache-control": "no-cache"},
+    )
+
+
+@get("/sw.js", sync_to_thread=False)
+def service_worker() -> File:
+    """The service worker, at the root ON PURPOSE: its registration
+    scope is bounded by the script's own path, so /static/sw.js could
+    only ever govern /static. `no-cache` keeps update checks honest --
+    the browser's byte-for-byte comparison runs against HTTP's copy."""
+    return File(
+        path=pathlib.Path(__file__).resolve().parent / "static" / "sw.js",
+        media_type="text/javascript",
+        content_disposition_type="inline",
+        headers={"cache-control": "no-cache"},
+    )
+
+
 def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) -> None:
     """Render one missing derivative from any file with those bytes."""
     from vision import derive, thumbs
@@ -2078,6 +2107,8 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             media_bytes,
             asset_bytes,
             favicon,
+            manifest,
+            service_worker,
             thumb_bytes,
             preview_bytes,
             avatar_bytes,
