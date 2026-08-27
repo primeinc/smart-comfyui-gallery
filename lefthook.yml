@@ -1,0 +1,42 @@
+# Git hooks, so the gates run without anybody remembering to run them.
+#
+# This exists because they were not run. `just check` is the ten-second
+# gate and it deliberately EXCLUDES pyright and repo hygiene, which live in
+# `just check-deep` (137s + 9.3s, justfile:114-120). A session's worth of
+# work reported "gate clean" from the cheap half while `check-deep` was
+# failing with four pyright errors nobody had asked it about.
+#
+# So: the fast gate on every commit, and the expensive one on push, where
+# waiting two minutes is the right trade because the alternative is finding
+# out later.
+#
+# `LEFTHOOK=0 git commit` skips, deliberately and visibly.
+
+min_version: 1.10.0
+
+# A missing binary must FAIL, not silently pass. Without this the hook is a
+# file that exits 0 when lefthook is not installed, which is the same shape
+# as a test lane that collects nothing and exits clean.
+assert_lefthook_installed: true
+
+pre-commit:
+  # Sequential: `just check` already runs its own lanes in parallel and
+  # rebuilds sg_web/static/build first, and two of those at once would walk
+  # the same directory.
+  piped: true
+  jobs:
+    - name: gate
+      run: just check
+      fail_text: "`just check` failed. Fix it or LEFTHOOK=0 to commit anyway."
+
+pre-push:
+  # Stop at the first failure: check-deep is 146 seconds and there is no
+  # value in also waiting for the suite to tell you the same push is bad.
+  piped: true
+  jobs:
+    - name: deep gate
+      run: just check-deep
+      fail_text: "pyright or repo hygiene failed -- the half `just check` does not run."
+    - name: suite
+      run: just test-slow
+      fail_text: "the suite failed. `just test` runs ZERO tests; this is the one that runs."
