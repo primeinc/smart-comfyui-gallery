@@ -1843,7 +1843,7 @@ def run_next(
     )
     committed()
 
-    def spoke(state: str, moved) -> None:
+    def spoke(state: str, moved, doing: str | None = None) -> None:
         # `cancel_requested` rides every delta so a subscriber that saw the
         # cancel asked for keeps seeing it asked for until the job settles;
         # the row is read, never remembered.
@@ -1857,8 +1857,27 @@ def run_next(
                 "cancel_requested": 1 if jobs.cancelled(conn, job_id) else 0,
                 # the hash kind's mode, so the activity surface words it
                 "derive": (json.loads(raw) if raw else {}).get("derive"),
+                # what the item is inside right now, or None at a boundary
+                "doing": doing,
             }
         )
+
+    def sounded(event: dict) -> None:
+        """The handler's voice: every frame to the events channel, and a
+        beginning or progressing phase additionally onto the delta feed
+        as `doing` -- the activity row every page mounts renders it, so
+        a one-item job says which phase it is inside instead of holding
+        at "running, 0 / 1" for its whole life."""
+        tell_event(event)
+        if not event.get("pending"):
+            return
+        if event["type"] == "phase.started":
+            said = event["phase"]
+        elif event["type"] == "phase.progress" and event["message"]:
+            said = f"{event['phase']}: {event['message']}" if event["phase"] else event["message"]
+        else:
+            return
+        spoke("running", jobs.progress(conn, job_id), doing=said)
 
     opened = jobs.progress(conn, job_id)
     started = tick()
@@ -1935,7 +1954,7 @@ def run_next(
             data={"item_name": named} if named else None,
         )
         committed()
-        told = Report(job_id, item, tick, tell_event)
+        told = Report(job_id, item, tick, sounded)
         token = _REPORT.set(told)
         try:
             handler(conn, item, payload, now)

@@ -303,6 +303,9 @@ class JobDeltaFrame(Wire):
     total: int | None
     cancel_requested: bool
     derive: str | None
+    #: the phase the running item is inside (db/runner.py `sounded`);
+    #: None at item boundaries and on terminal deltas
+    doing: str | None
 
 
 #: What arrives on /ws/jobs. Discriminated on `type` -- not `frame`,
@@ -343,6 +346,7 @@ def _job_delta(told: Mapping[str, Any]) -> JobDeltaFrame:
         total=told["total"],
         cancel_requested=bool(told["cancel_requested"]),
         derive=told.get("derive"),
+        doing=told.get("doing"),
     )
 
 
@@ -1236,6 +1240,19 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
     )
 
 
+@get("/favicon.ico", sync_to_thread=False)
+def favicon() -> File:
+    """The browser's blind probe, answered. Every page links the SVG
+    (base.html), but tools and clients that never read HTML ask HERE --
+    without this route each visit logged a 404 traceback."""
+    return File(
+        path=pathlib.Path(__file__).resolve().parent / "static" / "favicon.ico",
+        media_type="image/x-icon",
+        content_disposition_type="inline",
+        headers={"cache-control": "private, max-age=86400"},
+    )
+
+
 def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) -> None:
     """Render one missing derivative from any file with those bytes."""
     from vision import derive, thumbs
@@ -2060,6 +2077,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             change_setting,
             media_bytes,
             asset_bytes,
+            favicon,
             thumb_bytes,
             preview_bytes,
             avatar_bytes,

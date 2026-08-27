@@ -9,6 +9,7 @@
      `htmx.config.responseHandling`): a refused form shows its reason
      where the person is looking instead of vanishing into the console. #}
   <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true,"target":"#shell-notice"},{"code":"...","swap":true}]}'>
+  <link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="/static/gallery.css?v={{ static_v }}">
   {% block styles %}{% endblock %}

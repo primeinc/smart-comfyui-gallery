@@ -1471,6 +1471,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/favicon.ico": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Favicon */
+        get: operations["FaviconIcoFavicon"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/thumb/{slug}": {
         parameters: {
             query?: never;
@@ -2724,6 +2741,7 @@ export interface components {
             total: number | null;
             cancel_requested: boolean;
             derive: string | null;
+            doing: string | null;
         };
         /** JobDetail */
         JobDetail: {
@@ -7000,6 +7018,32 @@ export interface operations {
                             [key: string]: unknown;
                         } | unknown[];
                     };
+                };
+            };
+        };
+    };
+    FaviconIcoFavicon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File Download */
+            200: {
+                headers: {
+                    /** @description File size in bytes */
+                    "content-length"?: string;
+                    /** @description Last modified data-time in RFC 2822 format */
+                    "last-modified"?: string;
+                    /** @description Entity tag */
+                    etag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "": string;
                 };
             };
         };

@@ -75,7 +75,8 @@ function isDelta(value: unknown): value is ReadableJobDelta {
     num(value.done) &&
     numOrNull(value.total) &&
     bool(value.cancel_requested) &&
-    strOrNull(value.derive)
+    strOrNull(value.derive) &&
+    strOrNull(value.doing)
   );
 }
 

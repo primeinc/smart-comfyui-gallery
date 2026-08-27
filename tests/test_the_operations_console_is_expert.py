@@ -668,6 +668,35 @@ def test_the_activity_surface_words_the_hash_kinds_mode_too():
     assert activity.delta_view(delta)["what"] == "group perceptual copies across 3 pictures"
 
 
+def test_a_phase_speaks_on_the_delta_feed_while_it_is_true(db):
+    """The activity row's live line: a beginning or progressing phase
+    rides the DELTA feed as `doing`, not only the events channel -- a
+    one-item clustering held at "running, 0 / 1" for its whole life
+    because its phases were audible only to the expert console."""
+    jobs.submit(db, "embed", NOW, items=[1])
+    said = Spoken()
+    runner.run_next(db, "w1", NOW + 1, handlers={"embed": Reporting()}, on_progress=said.progress)
+    doing = [(d["state"], d["doing"]) for d in said.deltas]
+    assert doing[0] == ("running", None), "the claim is a boundary, not a phase"
+    assert ("running", "decoding") in doing
+    assert ("running", "decoding: 48 / 220 frames") in doing, "progress carries its phase and its own words"
+    assert ("running", "embedding") in doing
+    assert doing[-1] == ("done", None), "a terminal delta clears the line"
+
+
+def test_the_activity_row_renders_the_doing_line_only_while_there_is_one(tmp_path):
+    from sg_web import activity
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        engine = client.app.template_engine
+        delta = {"job": 5, "kind": "embed", "state": "running", "done": 0, "total": 1, "doing": "clustering"}
+        row = activity.render_delta(engine, delta, {5})
+        assert "job-doing" in row
+        assert "clustering" in row
+        settled = activity.render_delta(engine, {**delta, "state": "done", "doing": None}, {5})
+        assert "job-doing" not in settled
+
+
 def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
     conn = fresh_schema()
     from db import settings

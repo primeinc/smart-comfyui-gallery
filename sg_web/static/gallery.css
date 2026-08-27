@@ -2998,7 +2998,7 @@ body {
 .job {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "kind state" "progress progress" "count cancel";
+  grid-template-areas: "kind state" "progress progress" "count cancel" "doing doing";
   gap: 2px 10px;
   padding: 6px 12px;
   border-top: 1px solid var(--line);
@@ -3032,6 +3032,14 @@ body {
   grid-area: count;
   font-size: 12px;
   color: var(--ink-muted);
+}
+.job-doing {
+  grid-area: doing;
+  font-size: 12px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .job-cancel {
   grid-area: cancel;

@@ -118,6 +118,22 @@ def test_every_browser_page_carries_the_same_navigation(served):
     assert not re.search(r'href="/people"[^>]*aria-current="page"', gallery)
 
 
+def test_the_site_has_a_face(served):
+    """Every rendered page links the icon, and the blind probe -- a
+    client asking /favicon.ico without reading any HTML -- gets the
+    rasterized one instead of a 404 traceback per visit in the log."""
+    client, _ = served
+    page = client.get("/g", headers=AS_BROWSER).text
+    assert 'rel="icon"' in page
+    assert "/static/favicon.svg" in page
+    probed = client.get("/favicon.ico")
+    assert probed.status_code == 200
+    assert probed.headers["content-type"].startswith("image/x-icon")
+    assert probed.content[:4] == b"\x00\x00\x01\x00", "an ICO container, not a mislabeled bitmap"
+    linked = client.get("/static/favicon.svg")
+    assert linked.status_code == 200
+
+
 def test_machine_representations_carry_no_shell(served):
     """Negotiation is untouched: JSON callers and htmx fragments never
     receive the document. And the index routes negotiate through the one

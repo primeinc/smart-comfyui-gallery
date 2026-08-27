@@ -6733,6 +6733,53 @@
                 "deprecated": false
             }
         },
+        "/favicon.ico": {
+            "get": {
+                "summary": "Favicon",
+                "operationId": "FaviconIcoFavicon",
+                "responses": {
+                    "200": {
+                        "description": "File Download",
+                        "headers": {
+                            "content-length": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "description": "File size in bytes",
+                                "required": false,
+                                "deprecated": false
+                            },
+                            "last-modified": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                "description": "Last modified data-time in RFC 2822 format",
+                                "required": false,
+                                "deprecated": false
+                            },
+                            "etag": {
+                                "schema": {
+                                    "type": "string"
+                                },
+                                "description": "Entity tag",
+                                "required": false,
+                                "deprecated": false
+                            }
+                        },
+                        "content": {
+                            "": {
+                                "schema": {
+                                    "type": "string",
+                                    "contentMediaType": "application/octet-stream"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/thumb/{slug}": {
             "get": {
                 "summary": "ThumbBytes",
@@ -14996,6 +15043,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "doing": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,
@@ -15003,6 +15060,7 @@
                 "required": [
                     "cancel_requested",
                     "derive",
+                    "doing",
                     "done",
                     "job",
                     "kind",

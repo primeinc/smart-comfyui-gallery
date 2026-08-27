@@ -42,7 +42,15 @@ RECENT = jobs.RECENT
 
 
 def _view(
-    id_: int, kind: str, state: str, done: int, total: int | None, cancel_requested: int, derive=None, where=None
+    id_: int,
+    kind: str,
+    state: str,
+    done: int,
+    total: int | None,
+    cancel_requested: int,
+    derive=None,
+    where=None,
+    doing: str | None = None,
 ) -> dict:
     return {
         "id": id_,
@@ -51,6 +59,10 @@ def _view(
         "state": state,
         "done": done,
         "total": total,
+        #: the phase the running item is inside (db/runner.py `sounded`)
+        #: -- live deltas only; a cold row cannot know it, because pending
+        #: reports reach the ledger at the item boundary, not before
+        "doing": doing,
         "cancelling": bool(cancel_requested) and state not in jobs.TERMINAL,
         "settled": state in jobs.TERMINAL,
     }
@@ -83,6 +95,7 @@ def delta_view(delta: Mapping[str, Any]) -> dict:
         delta.get("cancel_requested", 0),
         delta.get("derive"),
         delta.get("path"),
+        delta.get("doing"),
     )
 
 
