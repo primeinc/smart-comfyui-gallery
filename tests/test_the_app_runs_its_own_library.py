@@ -12,6 +12,7 @@ from litestar.testing import TestClient
 
 from db import connect, library, naming, scan
 from sg_web.app import build_app
+from tests.staging import settled
 
 
 def scene(sky, ground, feature):
@@ -47,15 +48,11 @@ MEADOW = (
 )
 
 
-def settled(feed, job_id: int) -> str:
-    """ONE job's terminal state off the feed. The feed carries every
-    job's deltas -- a scan queues the thumbnail job ahead of whatever
-    the test asked for -- so a reader that takes the first terminal
-    state it sees is reading somebody else's."""
-    while True:
-        delta = feed.receive_json(timeout=10)
-        if delta.get("job") == job_id and delta["state"] in ("done", "failed", "cancelled"):
-            return delta["state"]
+#: Waiting happens on the ROW (tests/staging.settled), never on delta
+#: frames: the worker legitimately pauses a job mid-drain under load
+#: ("paused after 1 items; the next turn resumes it"), so a fixed
+#: inter-frame timeout is a coin flip on a saturated runner. The one
+#: test about being SPOKEN to on the feed keeps its own socket below.
 
 
 def test_the_recipe_axis_is_produced_and_served(tmp_path):
@@ -82,11 +79,9 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
     with TestClient(app=build_app(str(tmp_path / "run"))) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
-        with client.websocket_connect("/ws/jobs") as feed:
-            assert feed.receive_json(timeout=10)["type"] == "snapshot"
-            job = client.post("/jobs/ingest").json()
-            assert (job["kind"], job["total"]) == ("scan", 2)
-            assert settled(feed, job["id"]) == "done"
+        job = client.post("/jobs/ingest").json()
+        assert (job["kind"], job["total"]) == ("scan", 2)
+        assert settled(client, job["id"]) == "done"
         told = client.get(f"/jobs/{job['id']}").json()
         assert (told["state"], told["failed_count"]) == ("done", 0)
 
@@ -177,10 +172,8 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
 
         def drained_ingest(*, everything: bool = False) -> dict:
-            with client.websocket_connect("/ws/jobs") as feed:
-                assert feed.receive_json(timeout=10)["type"] == "snapshot"
-                job_id = client.post("/jobs/ingest", params={"everything": str(everything).lower()}).json()["id"]
-                settled(feed, job_id)
+            job_id = client.post("/jobs/ingest", params={"everything": str(everything).lower()}).json()["id"]
+            settled(client, job_id)
             return client.get(f"/jobs/{job_id}").json()
 
         first = drained_ingest()
@@ -218,11 +211,9 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
     with TestClient(app=build_app(str(tmp_path / "run"))) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
-        with client.websocket_connect("/ws/jobs") as feed:
-            assert feed.receive_json(timeout=10)["type"] == "snapshot"
-            job = client.post("/jobs/phash").json()
-            assert (job["kind"], job["total"]) == ("hash", 2)
-            assert settled(feed, job["id"]) == "done"
+        job = client.post("/jobs/phash").json()
+        assert (job["kind"], job["total"]) == ("hash", 2)
+        assert settled(client, job["id"]) == "done"
         told = client.get(f"/jobs/{job['id']}").json()
         assert (told["state"], told["failed_count"]) == ("done", 0)
 
@@ -254,13 +245,11 @@ def test_a_scan_queues_the_thumbnails_of_what_it_found(tmp_path):
 
     with TestClient(app=build_app(str(tmp_path / "run"))) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
-        with client.websocket_connect("/ws/jobs") as feed:
-            assert feed.receive_json(timeout=10)["type"] == "snapshot"
-            swept = client.post(f"/roots/{made['id']}/scan").json()
-            assert swept["added"] == 2
-            job = client.get(f"/jobs/{swept['precache']}").json()
-            assert (job["kind"], job["total"]) == ("hash", 2)
-            assert settled(feed, job["id"]) == "done"
+        swept = client.post(f"/roots/{made['id']}/scan").json()
+        assert swept["added"] == 2
+        job = client.get(f"/jobs/{swept['precache']}").json()
+        assert (job["kind"], job["total"]) == ("hash", 2)
+        assert settled(client, job["id"]) == "done"
         cache = tmp_path / "run" / "thumbs"
         conn = connect.connect(client.app.state.db_path)
         shas = [row[0] for row in conn.execute("SELECT content_sha256 FROM file")]
@@ -289,10 +278,8 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 4
 
         def drained(route: str) -> None:
-            with client.websocket_connect("/ws/jobs") as feed:
-                assert feed.receive_json(timeout=10)["type"] == "snapshot"
-                job_id = client.post(route).json()["id"]
-                settled(feed, job_id)
+            job_id = client.post(route).json()["id"]
+            settled(client, job_id)
             told = client.get(f"/jobs/{job_id}").json()
             assert (told["state"], told["failed_count"]) == ("done", 0), route
 
@@ -335,10 +322,8 @@ def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path):
         client.post(f"/roots/{made['id']}/scan")
 
         def drained(route: str) -> None:
-            with client.websocket_connect("/ws/jobs") as feed:
-                assert feed.receive_json(timeout=10)["type"] == "snapshot"
-                job_id = client.post(route).json()["id"]
-                settled(feed, job_id)
+            job_id = client.post(route).json()["id"]
+            settled(client, job_id)
             told = client.get(f"/jobs/{job_id}").json()
             assert (told["state"], told["failed_count"]) == ("done", 0), route
 
@@ -377,9 +362,7 @@ def test_resolution_beats_bytes_for_the_dupe_representative(tmp_path):
         client.post(f"/roots/{made['id']}/scan")
 
         def drained(route: str) -> None:
-            with client.websocket_connect("/ws/jobs") as feed:
-                assert feed.receive_json(timeout=10)["type"] == "snapshot"
-                settled(feed, client.post(route).json()["id"])
+            settled(client, client.post(route).json()["id"])
 
         drained("/jobs/phash")
         drained("/jobs/dupes")

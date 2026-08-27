@@ -110,10 +110,15 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     return conn
 
 
-def settled(client: TestClient, job_id: int, timeout: float = 30.0) -> str:
+def settled(client: TestClient, job_id: int, timeout: float = 120.0) -> str:
     """ONE job's terminal state, read off its row. The feed carries every
     job's deltas, so a reader that takes the first terminal state it
-    sees may be reading somebody else's; the row cannot be mistaken."""
+    sees may be reading somebody else's; the row cannot be mistaken.
+
+    The deadline is for HANGS, not pacing -- polling returns the moment
+    the row settles. 120 because a paused-and-resumed job on a
+    saturated `-n 4` runner legitimately outlived 30, three pushes in
+    a row."""
     import time
 
     deadline = time.monotonic() + timeout

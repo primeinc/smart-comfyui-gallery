@@ -53,15 +53,13 @@ def served(tmp_path_factory):
 
 
 def _drained(client, job_ids) -> None:
-    """Wait on the feed until every named job reaches a terminal state."""
-    pending = set(job_ids)
-    with client.websocket_connect("/ws/jobs") as feed:
-        snap = feed.receive_json(timeout=10)
-        pending &= {row["id"] for row in snap["jobs"]}
-        while pending:
-            delta = feed.receive_json(timeout=30)
-            if delta["state"] in TERMINAL:
-                pending.discard(delta["job"])
+    """Wait until every named job reaches a terminal state -- on the
+    ROW (tests/staging.settled), not on delta frames: a paused-and-
+    resumed job under a saturated runner outlives any fixed inter-frame
+    timeout, and this helper only waits, it asserts nothing about the
+    feed. The feed's own behaviour has its own tests below."""
+    for job_id in job_ids:
+        settled(client, job_id)
 
 
 def _state_of(frame: str) -> str:
@@ -184,9 +182,10 @@ def test_cold_load_renders_the_persisted_jobs(served):
     finally:
         client.post("/settings/worker", json={"value": "on"})
     _drained(client, [job_id])
-    # settled, it stays on the cold list as what it became
-    settled = client.get("/g", headers=AS_BROWSER).text
-    assert re.search(rf'id="job-{job_id}"[^>]*data-state="cancelled"', settled)
+    # settled, it stays on the cold list as what it became -- the page,
+    # named so it cannot shadow the imported wait helper
+    cooled = client.get("/g", headers=AS_BROWSER).text
+    assert re.search(rf'id="job-{job_id}"[^>]*data-state="cancelled"', cooled)
 
 
 def test_the_html_feed_is_the_same_feed_rendered(served):
