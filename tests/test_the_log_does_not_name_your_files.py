@@ -36,6 +36,11 @@ def test_a_user_path_is_redacted_to_its_kind_and_a_stable_token():
 
 def test_a_posix_path_and_a_bare_media_filename_are_redacted_too():
     assert "holiday" not in redaction.said("/home/somebody/pics/holiday.png: refused")
+    # a NAS-hosted library is an ordinary place for pictures to live
+    shared = redaction.said("\\\\nas\\photos\\summer 2019\\holiday 12.jpg: unreadable")
+    assert "nas" not in shared
+    assert "holiday" not in shared
+    assert shared.endswith(": unreadable")
     said = redaction.said("item 41 (holiday 12.jpg) failed: truncated")
     assert "holiday" not in said
     assert said.startswith("item 41 (")
@@ -130,5 +135,7 @@ def test_the_factory_rewrites_records_and_logged_tracebacks(caplog):
         assert "somebody" not in told
         assert ".jpg>" in told
         assert "ValueError" in told, "the traceback itself still arrives"
+        for record in caplog.records:
+            assert "Users" not in record.pathname, "%(pathname)s in a handler format must not name anybody"
     finally:
         logging.setLogRecordFactory(was)

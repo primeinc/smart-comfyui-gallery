@@ -87,6 +87,10 @@ _OURS = tuple(
 #: `s:` until this, and a mangled format string raises inside logging,
 #: whose last-resort handler prints raw frames past this module.
 _WINDOWS_PATH = re.compile(r"(?<![\w])[A-Za-z]:[\\/](?![\\/])[^:<>\"|?*\n]*")
+#: A network share: `\\nas\photos\...`. No drive colon, so the same
+#: run-to-colon-or-EOL policy; a NAS-hosted library is an ordinary
+#: place for a media collection to live.
+_UNC_PATH = re.compile(r"(?<![\w\\])\\\\[^:<>\"|?*\n]+")
 _POSIX_PATH = re.compile(r"(?<![\w:])/(?:[^/\s]+/)+[^/\s:]+")
 #: A bare token that ends in a suffix the application claims. Two
 #: shapes: spaceless anywhere, and spaced only inside parentheses --
@@ -119,6 +123,7 @@ def _path(match: re.Match) -> str:
 def said(text: str) -> str:
     """`text` with every user path and media filename replaced."""
     text = _WINDOWS_PATH.sub(_path, text)
+    text = _UNC_PATH.sub(_path, text)
     text = _POSIX_PATH.sub(_path, text)
     text = _NAMED_IN_PARENS.sub(lambda m: f"({_hidden(m.group(1))})", text)
     return _MEDIA_NAME.sub(lambda m: _hidden(m.group(0)), text)
@@ -158,6 +163,11 @@ def install() -> None:
         # to stderr, OUTSIDE this factory. Non-strings pass through so
         # `%d` directives keep formatting.
         record.msg = said(str(record.msg)) if record.msg else record.msg
+        # `%(pathname)s` in any handler's format would print the
+        # emitting file's absolute path, username included; relativize
+        # it the same as a frame. (`filename` and `module`, derived at
+        # init, are already bare names.)
+        record.pathname = said(record.pathname)
         if isinstance(record.args, dict):
             record.args = {key: said(one) if isinstance(one, str) else one for key, one in record.args.items()}
         elif record.args:
