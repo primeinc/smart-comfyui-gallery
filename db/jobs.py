@@ -621,7 +621,13 @@ def active(conn) -> list[dict]:
     return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
-def recent(conn, limit: int = 12) -> list[dict]:
+#: How many settled jobs the cold list carries beside the active ones --
+#: beside the function it bounds; the justification lived in
+#: sg_web/activity.py while the default sat here unnamed.
+RECENT = 12
+
+
+def recent(conn, limit: int = RECENT) -> list[dict]:
     """The last `limit` settled jobs, newest first -- so a page opened
     after a sweep finished shows the same rows a page that watched it
     does. Walks the primary key backwards and stops at `limit`: no sort

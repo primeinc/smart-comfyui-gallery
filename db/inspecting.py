@@ -31,6 +31,13 @@ from . import ingest, jobs, ledger, settings, vocabulary, when
 #: The settled-jobs window the overview counts, named beside the result
 #: key that spells it (`settled_24h`) so the two move together.
 SETTLED_WINDOW = when.DAY
+#: How many settled jobs the matrix shows beside the active ones, and
+#: how many ledger events a job detail carries -- named, the convention
+#: sg_web/activity.py RECENT already follows for the same shape.
+MATRIX_RECENT = 30
+JOB_RECENT_EVENTS = 50
+#: A page of one job's items; the ceiling is ledger.PAGE_MOST.
+ITEMS_PAGE = 200
 
 
 def _json(text):
@@ -234,7 +241,7 @@ def _lifecycle(row: dict, now: float) -> dict:
     }
 
 
-def matrix(conn, now: float, *, recent: int = 30) -> list[dict]:
+def matrix(conn, now: float, *, recent: int = MATRIX_RECENT) -> list[dict]:
     """Every active job then the settled tail, each with the numbers the
     matrix shows. Two bounded statements, no sort of the table."""
     cursor = conn.execute(_MATRIX + " WHERE j.state IN ('queued','running') ORDER BY j.created_at")
@@ -245,7 +252,7 @@ def matrix(conn, now: float, *, recent: int = 30) -> list[dict]:
     return [{**row, "derived": _lifecycle(row, now), "settled": row["state"] in jobs.TERMINAL} for row in rows]
 
 
-def job_detail(conn, job_id: int, now: float, *, recent_events: int = 50) -> dict:
+def job_detail(conn, job_id: int, now: float, *, recent_events: int = JOB_RECENT_EVENTS) -> dict:
     """One job, whole. LookupError when there is no such job."""
     cursor = conn.execute(
         "SELECT id, kind, target_id, state, cancel_requested, payload, total, done_count, checkpoint, attempt,"
@@ -338,7 +345,7 @@ def job_detail(conn, job_id: int, now: float, *, recent_events: int = 50) -> dic
     return told
 
 
-def events(conn, *, job_id: int | None = None, after: int = 0, limit: int = 500) -> dict:
+def events(conn, *, job_id: int | None = None, after: int = 0, limit: int = ledger.PAGE_DEFAULT) -> dict:
     """A page of the ledger, ascending by id: the whole ledger or one
     job's. `next_after` is the cursor for the following page, None when
     this page reached the head."""
@@ -356,13 +363,13 @@ def events(conn, *, job_id: int | None = None, after: int = 0, limit: int = 500)
     }
 
 
-def events_before(conn, before: int, *, job_id: int | None = None, limit: int = 500) -> list[dict]:
+def events_before(conn, before: int, *, job_id: int | None = None, limit: int = ledger.PAGE_DEFAULT) -> list[dict]:
     """The `limit` events with id < `before`, ascending: the page above
     the one a reader holds. Walks the index backwards and stops."""
     return ledger.before(conn, before, job_id=job_id, limit=limit)
 
 
-def items(conn, job_id: int, *, state: str | None = None, after: int = 0, limit: int = 200) -> dict:
+def items(conn, job_id: int, *, state: str | None = None, after: int = 0, limit: int = ITEMS_PAGE) -> dict:
     """A page of one job's items by state, in item order; each named and
     linked when the kind's items are files."""
     if state is not None and state not in ("pending", "done", "failed"):

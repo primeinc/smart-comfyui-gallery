@@ -38,6 +38,11 @@ from .context import HUMAN_MOMENT
 
 #: How many rows a grid asks for at once.
 PAGE = 60
+#: How many rows a list surface shows before it says "and N more" --
+#: two grid pages: enough to answer "what is in here", small enough
+#: that a folder of thousands never becomes one answer. Five functions
+#: carried the bare number.
+LIST_MOST = 120
 
 
 # --- the grid --------------------------------------------------------------
@@ -229,7 +234,7 @@ BREADCRUMB = """
 """
 
 
-def folder_files(conn, folder_id: int, limit: int = 120):
+def folder_files(conn, folder_id: int, limit: int = LIST_MOST):
     """COLLATE NOCASE to match `file_in_folder`, which is what makes this an
     ordered walk rather than a sort -- and the order a person expects, since
     the platform's own filesystem is case-insensitive."""
@@ -736,7 +741,13 @@ def disagreements(conn, left: int, right: int, limit: int = DISAGREEMENTS_SHOWN)
     }
 
 
-def face_across_runs(conn, left: int, right: int, limit: int = 20):
+#: How many of the disagreeing faces the comparison lists in person --
+#: a row of crops is scanned, not read, so it stays shorter than the
+#: disagreement list above it.
+FACES_ACROSS_RUNS_SHOWN = 20
+
+
+def face_across_runs(conn, left: int, right: int, limit: int = FACES_ACROSS_RUNS_SHOWN):
     """Per face, how big a group each run put it in. The faces where those
     two numbers differ most are where the two clusterings actually differ."""
     return conn.execute(FACE_ACROSS_RUNS, (left, left, right, right, limit)).fetchall()
@@ -913,7 +924,7 @@ DUPE_PLACEMENTS = (
 DUPE_GROUP_OF = "SELECT group_id FROM derived_dupe_group WHERE file_id = ?"
 
 
-def dupe_members(conn, group_id: int, limit: int = 120) -> list[dict]:
+def dupe_members(conn, group_id: int, limit: int = LIST_MOST) -> list[dict]:
     cursor = conn.execute(DUPE_MEMBERS, (group_id, limit))
     columns = [c[0] for c in cursor.description]
     return [dict(zip(columns, row, strict=True)) for row in cursor]
@@ -931,11 +942,11 @@ def dupe_group_of(conn, file_id: int) -> int | None:
     return None if row is None else int(row[0])
 
 
-def dupe_groups(conn, limit: int = 120):
+def dupe_groups(conn, limit: int = LIST_MOST):
     return conn.execute(DUPE_GROUPS, (limit,)).fetchall()
 
 
-def dupe_copies(conn, file_id: int, limit: int = 120):
+def dupe_copies(conn, file_id: int, limit: int = LIST_MOST):
     return conn.execute(DUPE_COPIES, (file_id, limit)).fetchall()
 
 
@@ -996,7 +1007,7 @@ ALBUM_PRESENT = (
 )
 
 
-def album_files(conn, collection_id: int, limit: int = 120):
+def album_files(conn, collection_id: int, limit: int = LIST_MOST):
     return conn.execute(ALBUM_FILES, (collection_id, limit)).fetchall()
 
 
@@ -1663,13 +1674,24 @@ def timeline_months(conn, scope: tuple[str, list] = ("", [])):
     ).fetchall()
 
 
-def timeline_days(conn, limit: int = 400, scope: tuple[str, list] = ("", [])):
+#: How many day rows the timeline reads at once -- over a year of
+#: distinct days, which the river view then groups. NOT
+#: db/resultset.py MAX_PAGE_SIZE, whose 400 is a page of files; the
+#: collision is numeric coincidence, said here so nobody has to guess.
+TIMELINE_DAYS_MOST = 400
+#: How many session rows one timeline answer carries. The view's
+#: SESSIONS_MOST (sg_web/timeline_view.py) reads THIS, so the number
+#: beside the justification is the number that bounds the query.
+TIMELINE_EVENTS_MOST = 200
+
+
+def timeline_days(conn, limit: int = TIMELINE_DAYS_MOST, scope: tuple[str, list] = ("", [])):
     return conn.execute(
         _TIMELINE_DAYS_HEAD + scope[0] + _TIMELINE_DAYS_TAIL, (context.POLICY_VERSION, *scope[1], limit)
     ).fetchall()
 
 
-def timeline_events(conn, limit: int = 200, scope: tuple[str, list] = ("", [])):
+def timeline_events(conn, limit: int = TIMELINE_EVENTS_MOST, scope: tuple[str, list] = ("", [])):
     return conn.execute(
         _TIMELINE_EVENTS_HEAD + _members_in(scope) + _TIMELINE_EVENTS_TAIL,
         (context.POLICY_VERSION, *scope[1], limit),
@@ -1758,13 +1780,18 @@ def places_shelf(conn):
 
 #: Every place anyone has named, for the picker. Bounded.
 PLACES_NAMED = "SELECT p.name, p.kind FROM place p ORDER BY p.name COLLATE NOCASE LIMIT ?"
+#: The picker's bound: places are typed by a person one at a time, so
+#: thousands is already a library nobody hand-entered -- the limit
+#: exists to keep an absurd table from becoming one answer, not to
+#: page an expected one.
+PLACES_MOST = 5_000
 
 
 def media_place(conn, file_id: int):
     return conn.execute(MEDIA_PLACE, (file_id, context.POLICY_VERSION)).fetchone()
 
 
-def places_named(conn, limit: int = 5000):
+def places_named(conn, limit: int = PLACES_MOST):
     return conn.execute(PLACES_NAMED, (limit,)).fetchall()
 
 
@@ -1820,7 +1847,7 @@ STORY_KINDS = (
 )
 
 
-def stories(conn, limit: int = 60, kind: str | None = None):
+def stories(conn, limit: int = PAGE, kind: str | None = None):
     if kind is None:
         return conn.execute(STORIES + _STORIES_NEWEST, (limit,)).fetchall()
     return conn.execute(STORIES + _STORIES_OF_KIND + _STORIES_NEWEST, (kind, limit)).fetchall()

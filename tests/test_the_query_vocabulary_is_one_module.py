@@ -459,6 +459,22 @@ def test_the_planner_states_the_same_vocabularies_the_library_does(library):
     assert frozenset(facets.KINDS) == planning._MEDIA_KINDS
 
 
+def test_every_time_basis_has_its_words(library):
+    """The two per-basis label maps cover exactly the vocabulary.
+
+    `db/planning.py _BASIS_WORDS` and `story_renderers/claims.py
+    _BASIS_PHRASE` keep per-basis prose beside their renderers, which is
+    where prose belongs -- but ungated, a basis added to
+    `db/context.py TIME_BASES` fell through `.get(basis, basis)` and the
+    surface printed the raw token. Both maps once shared TIME_BASES' old
+    dead seventh member's absence by luck rather than by assertion."""
+    from db import context, planning
+    from story_renderers import claims
+
+    assert set(planning._BASIS_WORDS) == set(context.TIME_BASES)
+    assert set(claims._BASIS_PHRASE) == set(context.TIME_BASES)
+
+
 def test_the_kinds_with_pixels_are_one_set(library):
     """`vision/thumbs.py PICTURED` and `db/vocabulary.py VISUAL` state
     the same three kinds, twice, because the import is forbidden: vision

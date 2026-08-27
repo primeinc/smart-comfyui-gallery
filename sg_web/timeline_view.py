@@ -206,8 +206,11 @@ _SPAN = when.SPAN
 #: Sessions one answer lists -- a whole library's extent can touch
 #: thousands; the page lists the most recent this many, says how many
 #: more there are, and the person narrows the window. Never a silent
-#: cut. Every listed session carries its thumbnails.
-SESSIONS_MOST = 200
+#: cut. Every listed session carries its thumbnails. The number is the
+#: query's own bound (db/pages.py TIMELINE_EVENTS_MOST): this paragraph
+#: used to justify a 200 that sat on the other side of the seam from
+#: the 200 that actually limited the read.
+SESSIONS_MOST = pages.TIMELINE_EVENTS_MOST
 SESSIONS_SAMPLED_MOST = SESSIONS_MOST
 #: How much time a first visit shows: the last month that holds pictures,
 #: clipped to the library -- never the whole library at once.

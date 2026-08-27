@@ -760,6 +760,15 @@ ALL_ALONE = 0.95
 #: against every grouped face, which is what the definition requires. This
 #: caps the cost of judging a run regardless of library size.
 SILHOUETTE_SAMPLE = 20_000
+#: Rows per block when the silhouette matrices are walked: the peak
+#: allocation is block x faces, and 4096 keeps it in tens of megabytes
+#: at library scale. It was typed four times across the two loops,
+#: which had to be edited in step.
+_BLOCK = 4096
+#: One page of annotation search hits -- the same size as a grid page
+#: (db/resultset.py DEFAULT_PAGE_SIZE), stated here because this module
+#: keeps its imports lazy and a default argument cannot.
+_ANNOTATIONS_PAGE = 60
 
 #: Below this, the groups are not meaningfully apart -- a face sits about as
 #: close to somebody else's centre as to its own -- and a run that scores it
@@ -915,8 +924,8 @@ def health(conn, run_id: int) -> dict:
     own = np.einsum("ij,ij->i", sample, centres[sample_index])
     if len(ids) > 1:
         nearest = np.empty(len(sample), dtype=np.float32)
-        for start in range(0, len(sample), 4096):
-            block = slice(start, start + 4096)
+        for start in range(0, len(sample), _BLOCK):
+            block = slice(start, start + _BLOCK)
             against = sample[block] @ centres.T
             against[np.arange(against.shape[0]), sample_index[block]] = -1.0
             nearest[block] = against.max(axis=1)
@@ -933,8 +942,8 @@ def health(conn, run_id: int) -> dict:
         by_cluster = np.argsort(index, kind="stable")
         sorted_unit, sorted_index = unit[by_cluster], index[by_cluster]
         sums = np.zeros((len(sample), len(ids)), dtype=np.float64)
-        for start in range(0, grouped, 4096):
-            block = slice(start, start + 4096)
+        for start in range(0, grouped, _BLOCK):
+            block = slice(start, start + _BLOCK)
             dist = 1.0 - sample @ sorted_unit[block].T
             here = sorted_index[block]
             bounds = np.flatnonzero(np.diff(here, prepend=here[0] - 1))
@@ -1523,7 +1532,7 @@ def said_first(conn, file_ids, *, prefer: str | None = None) -> dict[int, str]:
     return told
 
 
-def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
+def search_annotations(conn, text: str, limit: int = _ANNOTATIONS_PAGE) -> list[dict]:
     """Find a picture by what a model said about it."""
     quoted = '"' + text.replace('"', '""') + '"'
     cursor = conn.execute(

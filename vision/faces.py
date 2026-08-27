@@ -138,6 +138,15 @@ class FaceDetection:
             self.dim = int(arr.shape[0])
 
 
+#: The shared operating point both backends construct with -- one edit
+#: moves it. `DEFAULT_MIN_DET_SCORE` is the detector-confidence floor;
+#: `DEFAULT_MIN_FACE_PX` is the noise-floor face size: YuNet detects
+#: down to ~10px, and boxes near that floor are featureless, embed into
+#: one generic region, and chain unrelated clusters together.
+DEFAULT_MIN_DET_SCORE = 0.5
+DEFAULT_MIN_FACE_PX = 24
+
+
 class FaceBackend(ABC):
     """Face detector + per-face embedder over a single image."""
 
@@ -222,8 +231,8 @@ class OpenCVFaceBackend(FaceBackend):
     def __init__(
         self,
         models_dir: str,
-        min_det_score: float = 0.5,
-        min_face_px: int = 24,
+        min_det_score: float = DEFAULT_MIN_DET_SCORE,
+        min_face_px: int = DEFAULT_MIN_FACE_PX,
         detect_max_side: int = 1600,
         embedder: str = "auto",
         *,
@@ -409,8 +418,8 @@ class InsightFaceBackend(FaceBackend):
     def __init__(
         self,
         models_dir: str,
-        min_det_score: float = 0.5,
-        min_face_px: int = 24,
+        min_det_score: float = DEFAULT_MIN_DET_SCORE,
+        min_face_px: int = DEFAULT_MIN_FACE_PX,
         providers: str = "auto",
         *,
         provision: bool = False,

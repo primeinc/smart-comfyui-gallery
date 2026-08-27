@@ -36,8 +36,9 @@ from jinja2 import pass_context
 from db import connect, jobs
 from sg_web import console
 
-#: How many settled jobs the cold list carries beside the active ones.
-RECENT = 12
+#: How many settled jobs the cold list carries -- db/jobs.py RECENT,
+#: which sits beside the read it bounds.
+RECENT = jobs.RECENT
 
 
 def _view(

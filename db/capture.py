@@ -125,6 +125,19 @@ _NOT_A_FINDING = frozenset({"params", "binaries", "unrecorded", "homeless", "unr
 #: without turning, and 3 is a half turn.
 TRANSPOSED = frozenset({5, 6, 7, 8})
 
+#: The most entries one IFD is read with. The format's own ceiling is
+#: 65535 (the count is a uint16); this is a policy about attacker-
+#: supplied bytes -- a real camera or editor writes dozens of entries,
+#: and a count in the thousands is a corrupt or hostile structure worth
+#: refusing before the 12-bytes-per-entry walk, not a picture.
+_MOST_IFD_ENTRIES = 4096
+
+#: How many leading bytes are searched for the Canon CNDA thumbnail.
+#: The atom sits inside `CNTH` under `moov/udta`, which Canon writes at
+#: the head of the file; four megabytes covers every observed layout
+#: while keeping the read bounded on files where the atom is absent.
+_CNDA_SEARCH_BYTES = 4_000_000
+
 
 @dataclass
 class Capture:
@@ -443,7 +456,7 @@ def _ifd(tiff: bytes, offset: int, endian: str) -> dict[int, tuple[int, int, int
     entries: dict[int, tuple[int, int, int]] = {}
     try:
         n = struct.unpack_from(endian + "H", tiff, offset)[0]
-        if n > 4096:
+        if n > _MOST_IFD_ENTRIES:
             return {}
         for i in range(n):
             tag, typ, count, word = struct.unpack_from(endian + "HHII", tiff, offset + 2 + i * 12)
@@ -621,7 +634,7 @@ def _quicktime_clock(text) -> float | None:
         return None
 
 
-def _canon_thumbnail(path, limit: int = 4_000_000) -> bytes | None:
+def _canon_thumbnail(path, limit: int = _CNDA_SEARCH_BYTES) -> bytes | None:
     """The JPEG inside the CNDA atom of a Canon MOV, or None. The atom
     sits near the start of the file (inside `CNTH` under `moov/udta`);
     the first `limit` bytes are searched and the JPEG runs from its SOI

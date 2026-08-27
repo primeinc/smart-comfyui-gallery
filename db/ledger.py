@@ -57,6 +57,9 @@ SEVERITIES: tuple[Severity, ...] = typing.get_args(Severity)
 
 #: Most rows one read returns. A caller wanting more pages.
 PAGE_MOST = 2_000
+#: The page a reader gets when it does not ask -- the ceiling is named
+#: above, and the default was unnamed at three signatures.
+PAGE_DEFAULT = 500
 
 _COLUMNS = "id, job_id, at, type, item_id, phase, severity, message, data"
 
@@ -139,7 +142,7 @@ def since(conn, after: int, *, limit: int = PAGE_MOST) -> list[dict]:
     return [_row(row) for row in rows]
 
 
-def latest(conn, *, limit: int = 500) -> list[dict]:
+def latest(conn, *, limit: int = PAGE_DEFAULT) -> list[dict]:
     """The newest `limit` events, ascending -- the cold tape."""
     rows = conn.execute(
         "SELECT " + _COLUMNS + " FROM job_event ORDER BY id DESC LIMIT ?", (min(int(limit), PAGE_MOST),)

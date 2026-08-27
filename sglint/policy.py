@@ -431,6 +431,26 @@ WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
 
 SURFACE_FORBIDDEN_WORDS: tuple[str, ...] = ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "/search")
 
+# --- SG80x: the repo sweep's own sanity floors ------------------------------------------------
+
+#: Below this many tracked files the git sweep declares itself blind
+#: (SG800) rather than passing on a repository it cannot be seeing --
+#: this repo tracks several hundred, so a double-digit answer means the
+#: command ran somewhere wrong.
+TRACKED_MINIMUM: int = 100
+#: The same self-doubt for the line-ending parse: fewer entries than
+#: this, or fewer LF files than LF_MINIMUM, means `i/<eolinfo>` was not
+#: parsed, not that the tree changed character.
+ENDINGS_MINIMUM: int = 100
+LF_MINIMUM: int = 50
+#: How long one git subprocess may run before the sweep is called hung.
+#: Fifteen minutes is far past any healthy `ls-files` or checkout-index
+#: on this tree; the value exists to fail eventually, not to pace.
+GIT_TIMEOUT_SECONDS: int = 900
+#: How much of a failed checkout's stderr a finding carries -- enough
+#: to name the cause, bounded so one finding cannot become a dump.
+STDERR_SHOWN: int = 200
+
 #: The shell every full page is a child of, and how a page says so.
 SHELL_TEMPLATE = "base.html"
 EXTENDS_SHELL = '{% extends "base.html" %}'

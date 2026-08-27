@@ -17,6 +17,7 @@ import tempfile
 import tomllib
 import typing
 
+from . import policy
 from .rules import REPO_ROOT, Finding
 
 Git = typing.Callable[..., "subprocess.CompletedProcess[str]"]
@@ -34,7 +35,12 @@ def real_git(*args: str, cwd: pathlib.Path | None = None) -> subprocess.Complete
     if git is None:
         raise FileNotFoundError("git is not on PATH")
     return subprocess.run(
-        [git, *args], cwd=str(cwd or REPO_ROOT), capture_output=True, text=True, timeout=900, check=False
+        [git, *args],
+        cwd=str(cwd or REPO_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=policy.GIT_TIMEOUT_SECONDS,
+        check=False,
     )
 
 
@@ -50,7 +56,7 @@ def rule_index(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -> list[Find
     found: list[Finding] = []
     at = root / ".gitignore"
     tracked = _lines(git("ls-files"))
-    if len(tracked) <= 100 or "db/schema.sql" not in tracked:
+    if len(tracked) <= policy.TRACKED_MINIMUM or "db/schema.sql" not in tracked:
         return [
             Finding(
                 at, 1, 0, "SG800", f"git lists {len(tracked)} tracked files; the sweep is not seeing the repository"
@@ -106,7 +112,7 @@ def rule_line_endings(git: Git = real_git, root: pathlib.Path = REPO_ROOT, *, ch
     found: list[Finding] = []
     at = root / ".gitattributes"
     endings = committed_line_endings(git)
-    if len(endings) <= 100 or sum(1 for k in endings.values() if k == "lf") <= 50:
+    if len(endings) <= policy.ENDINGS_MINIMUM or sum(1 for k in endings.values() if k == "lf") <= policy.LF_MINIMUM:
         found.append(
             Finding(at, 1, 0, "SG800", "the index reading finds too few lf files; the parse misses i/<eolinfo>")
         )
@@ -127,7 +133,11 @@ def rule_line_endings(git: Git = real_git, root: pathlib.Path = REPO_ROOT, *, ch
                 if done.returncode != 0:
                     found.append(
                         Finding(
-                            at, 1, 0, "SG806", f"checkout-index failed under autocrlf={autocrlf}: {done.stderr[:200]}"
+                            at,
+                            1,
+                            0,
+                            "SG806",
+                            f"checkout-index failed under autocrlf={autocrlf}: {done.stderr[: policy.STDERR_SHOWN]}",
                         )
                     )
                     continue

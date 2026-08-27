@@ -1215,6 +1215,10 @@ def locate(
 #: number that costs nothing to honour. Zero and negatives clamp UP to
 #: one, because a window of nothing is not a window.
 NEIGHBORHOOD_MOST = 51
+#: The filmstrip a viewer opens with when it does not ask: seven each
+#: side of the member fills the strip on ordinary windows without
+#: paying for the ceiling above.
+NEIGHBORHOOD_DEFAULT = 15
 
 
 def neighborhood(
@@ -1223,7 +1227,7 @@ def neighborhood(
     query: GalleryQuery,
     file_id: int,
     now: float,
-    count: int = 15,
+    count: int = NEIGHBORHOOD_DEFAULT,
     *,
     actor_id: int | None = None,
 ) -> dict | None:
