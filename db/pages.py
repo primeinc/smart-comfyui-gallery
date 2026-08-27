@@ -1181,9 +1181,11 @@ _SESSION_MEMBER_IN_SCOPE = (
 _TIMELINE_DENSITY_HEAD = (
     "SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, count(*) AS pictures,"
     " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant,"
-    " sum(mc.origin = 'captured') AS captured, sum(mc.origin = 'generated') AS generated,"
-    " sum(mc.origin = 'mixed') AS mixed, sum(mc.origin = 'imported') AS imported"
-    "  FROM derived_media_context mc"
+    # one counting column per origin, in ORIGINS order -- the reader
+    # zips the tail of each row against the same tuple, so a fifth
+    # origin is counted and carried without either side being edited
+    + "".join(f" sum(mc.origin = '{one}') AS {one}," for one in context.ORIGINS).rstrip(",")
+    + "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     " WHERE mc.policy_version = ?"
     "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
@@ -1340,8 +1342,20 @@ BINS = {
     "minute": int(when.MINUTE),
 }
 #: Where each bin's grid starts: Monday for the week, the epoch otherwise.
-MONDAY = 345_600
+#: The epoch was a Thursday, so the first Monday is four days in.
+MONDAY = 4 * int(when.DAY)
 _ANCHOR = {"week": MONDAY}
+
+
+def binned(name: str, lo: float, hi: float) -> tuple[int, int]:
+    """The half-open window of whole `name` bins covering [lo, hi]: lo
+    floored to its bin, hi's bin kept whole. The rounding was written
+    out at five call sites -- `int(x // 3600) * 3600` with the width
+    typed twice in each -- where a width can only be BINS' own."""
+    width = BINS[name]
+    return int(lo // width) * width, int(hi // width) * width + width
+
+
 #: Bins sampled for the thumbnail strip: every bin up to this many; past
 #: it, the busiest this many -- a strip always, never an apology.
 SAMPLED_BINS_MOST = 120

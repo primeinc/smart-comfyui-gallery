@@ -26,7 +26,11 @@ from __future__ import annotations
 
 import json
 
-from . import ingest, jobs, ledger, settings, vocabulary
+from . import ingest, jobs, ledger, settings, vocabulary, when
+
+#: The settled-jobs window the overview counts, named beside the result
+#: key that spells it (`settled_24h`) so the two move together.
+SETTLED_WINDOW = when.DAY
 
 
 def _json(text):
@@ -162,7 +166,7 @@ def overview(conn, now: float, *, models_dir: str | None = None) -> dict:
     ]
     last_heartbeat = running[1]
     settled_24h = conn.execute(
-        "SELECT state, count(*) FROM job WHERE finished_at >= ? GROUP BY state", (now - 86_400,)
+        "SELECT state, count(*) FROM job WHERE finished_at >= ? GROUP BY state", (now - SETTLED_WINDOW,)
     ).fetchall()
     return {
         "now": now,

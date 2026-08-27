@@ -40,8 +40,7 @@ def _window(subject: dict) -> str | None:
     held = when.get("local") or when.get("instant")
     if not held:
         return None
-    start = int(held[0] // 3600) * 3600
-    end = int(held[-1] // 3600) * 3600 + 3600
+    start, end = pages.binned("hour", held[0], held[-1])
     return "/timeline?" + urllib.parse.urlencode({"bin": "hour", "start": start, "end": end})
 
 

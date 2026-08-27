@@ -96,7 +96,7 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                     "timeline": (
                         "/timeline?"
                         + urllib.parse.urlencode(
-                            {"bin": "hour", "start": int(start // 3600) * 3600, "end": int(end // 3600) * 3600 + 3600}
+                            dict(zip(("start", "end"), pages.binned("hour", start, end), strict=True), bin="hour")
                         )
                         if start is not None and end is not None
                         else None

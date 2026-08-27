@@ -15,7 +15,10 @@ import datetime
 #: The range dash, U+2013: a typographic fact decided once.
 EN_DASH = "\u2013"
 
-_MONTHS = (
+#: Public: sg_web/timeline_view.py spells its calendar from this same
+#: tuple, which is exactly the "decided once, here" this module's
+#: docstring promises.
+MONTHS = (
     "January",
     "February",
     "March",
@@ -44,7 +47,7 @@ def day_label(epoch: float | None, *, utc: bool = False) -> str | None:
     if epoch is None:
         return None
     moment = datetime.datetime.fromtimestamp(epoch, datetime.UTC)
-    told = f"{_MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
+    told = f"{MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
     return f"{told} UTC" if utc else told
 
 
@@ -64,9 +67,9 @@ def day_range(start: float | None, end: float | None, *, utc: bool = False) -> s
     if (first.year, first.month, first.day) == (last.year, last.month, last.day):
         return day_label(start, utc=utc)
     if (first.year, first.month) == (last.year, last.month):
-        return f"{_MONTHS[first.month - 1]} {first.day}{EN_DASH}{last.day}, {first.year}{suffix}"
+        return f"{MONTHS[first.month - 1]} {first.day}{EN_DASH}{last.day}, {first.year}{suffix}"
     if first.year == last.year:
-        opening, closing = f"{_MONTHS[first.month - 1]} {first.day}", f"{_MONTHS[last.month - 1]} {last.day}"
+        opening, closing = f"{MONTHS[first.month - 1]} {first.day}", f"{MONTHS[last.month - 1]} {last.day}"
         return f"{opening} {EN_DASH} {closing}, {first.year}{suffix}"
     return f"{day_label(start)} {EN_DASH} {day_label(end)}{suffix}"
 

@@ -34,6 +34,7 @@ from sg_web import home, projecting
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
 from sg_web.wire import Wire
+from story_renderers import formatting
 from vision import thumbs
 
 #: The surface's scope is a gallery question (db/resultset.py scope_of):
@@ -109,7 +110,7 @@ def _session_range(conn, f: list[str] | None) -> tuple[list[str], int, int] | No
     span = pages.session_span(conn, named)
     if span is None:
         raise NotFoundException(f"no session {named}")
-    return rest, int(span[0] // 3600) * 3600, int(span[1] // 3600) * 3600 + 3600
+    return (rest, *pages.binned("hour", span[0], span[1]))
 
 
 def _scope(conn, state: State, asked: resultset.GalleryQuery) -> tuple[tuple[str, list], resultset.GalleryQuery]:
@@ -210,25 +211,32 @@ SESSIONS_MOST = 200
 SESSIONS_SAMPLED_MOST = SESSIONS_MOST
 #: How much time a first visit shows: the last month that holds pictures,
 #: clipped to the library -- never the whole library at once.
-OPENING = 30 * 86_400
+OPENING = 30 * when.DAY
 #: The presets beside the window, each ending at the newest picture.
-PRESETS = (("1w", 7 * 86_400), ("1m", 30 * 86_400), ("3m", 91 * 86_400), ("1y", 365 * 86_400), ("all", None))
+#: `1m` and `1y` are the mean month and year the bars themselves are
+#: drawn from (db/pages.py BINS): they were 30 and 365 days, so the
+#: preset labelled `1y` selected a window narrower than the year bin.
+PRESETS = (("1w", 7 * when.DAY), ("1m", when.MONTH), ("3m", 3 * when.MONTH), ("1y", when.YEAR), ("all", None))
 #: The zoom follows the window's width: enough bars to see the shape,
 #: never more than the strip samples thumbnails for.
 #: `when.YEAR` is the Gregorian mean (365.2425 days). 31_557_600 -- the
 #: JULIAN year, 365.25 days -- was typed here twice, so the bars were
 #: drawn against one length of year and the zoom boundaries decided by
 #: another.
+#: Half a year: the span above which the day zoom ends and the axis
+#: labels months instead of days. It was `183 * 86_400` at both sites --
+#: one number doing two jobs, derived from nothing.
+MONTH_LABELS_ABOVE = when.YEAR / 2
 _ZOOM = (
     ("minute", 6 * when.HOUR),
     ("quarter", 2 * when.DAY),
     ("hour", 14 * when.DAY),
-    ("day", 183 * when.DAY),
+    ("day", MONTH_LABELS_ABOVE),
     ("week", 12 * when.YEAR),
     ("month", 120 * when.YEAR),
 )
 #: The narrowest window the surface opens on.
-NARROWEST = 3_600
+NARROWEST = int(when.HOUR)
 #: The drawing's width in its own units (the SVG viewBox).
 _W = 1000
 
@@ -391,27 +399,19 @@ def _drawn(pictures) -> list[str]:
 PICTURES_MOST = 2_000
 #: At the week zoom the body is month sheets; finer, it is the river.
 CALENDAR_AT = "week"
-_MONTHS = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
+#: `story_renderers/formatting.py MONTHS`, whose docstring promises the
+#: month spelling is decided once -- this module was the second chooser.
+_MONTHS = formatting.MONTHS
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+#: Axis tick furniture: up to each window width (left), a tick every
+#: step (right). In `db/when.py`'s units -- five rows of raw seconds
+#: carried no derivation in a module whose other ladders all do.
 _TICK_STEPS = (
-    (3_600, 300),
-    (6 * 3_600, 1_800),
-    (2 * 86_400, 3 * 3_600),
-    (14 * 86_400, 86_400),
-    (float("inf"), 7 * 86_400),
+    (when.HOUR, 5 * when.MINUTE),
+    (6 * when.HOUR, 30 * when.MINUTE),
+    (2 * when.DAY, 3 * when.HOUR),
+    (14 * when.DAY, when.DAY),
+    (float("inf"), 7 * when.DAY),
 )
 
 
@@ -450,10 +450,10 @@ def _ticks(lo: float, hi: float, axis: projecting.Projection | None = None) -> l
         return round(held.x(t), 2)
 
     out: list[dict] = []
-    if span > 183 * 86_400:
+    if span > MONTH_LABELS_ABOVE:
         # months up to three years; past that only the years, else the
         # labels pile into one another
-        years_only = span > 3 * 366 * 86_400
+        years_only = span > 3 * when.YEAR
         d = _utc(lo)
         d = datetime.datetime(d.year, d.month, 1, tzinfo=datetime.UTC)
         while d.timestamp() < hi:
@@ -472,10 +472,10 @@ def _ticks(lo: float, hi: float, axis: projecting.Projection | None = None) -> l
     t = -(-int(lo) // step) * step
     while t < hi:
         d = _utc(t)
-        midnight = t % 86_400 == 0
+        midnight = t % when.DAY == 0
         day_label = f"{d.day} {d.strftime('%b').upper()}"
-        if step >= 86_400:
-            out.append({"x": x(t), "label": day_label, "major": d.day <= step // 86_400})
+        if step >= when.DAY:
+            out.append({"x": x(t), "label": day_label, "major": d.day <= step // when.DAY})
         else:
             out.append({"x": x(t), "label": day_label if midnight else d.strftime("%H:%M"), "major": midnight})
         t += step
@@ -649,11 +649,11 @@ def _leads(pictures: list[dict]) -> list[dict]:
 def _lasted(seconds: float) -> str:
     if seconds < 90:
         return "a minute"
-    if seconds < 3_600:
-        return f"{round(seconds / 60)} min"
-    if seconds < 2 * 86_400:
-        return f"{seconds / 3_600:.1f} h"
-    return f"{round(seconds / 86_400)} days"
+    if seconds < when.HOUR:
+        return f"{round(seconds / when.MINUTE)} min"
+    if seconds < 2 * when.DAY:
+        return f"{seconds / when.HOUR:.1f} h"
+    return f"{round(seconds / when.DAY)} days"
 
 
 def _nothing_for(seconds: float) -> str:
@@ -870,12 +870,12 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
                     "n": _utc(t).day,
                     "pictures": n,
                     "hero": next(iter(_drawn(samples.get(int(t)) or [])), None),
-                    "qs": _bin_link(t, 86_400, question) if n else None,
+                    "qs": _bin_link(t, pages.BINS["day"], question) if n else None,
                     "spelled": _spell(t, "day"),
                     "today": _utc(t).strftime("%Y-%m-%d") == today,
                 }
             )
-            t += 86_400
+            t += pages.BINS["day"]
         months.append(
             {"year": d.year, "month": _MONTHS[d.month - 1], "lead": d.weekday(), "pictures": total, "days": days}
         )
@@ -885,7 +885,9 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
 
 
 #: The widest window that draws month sheets; wider, the body is years.
-SHEETS_WIDEST = 2 * 366 * 86_400
+#: In the same year the bins are drawn from -- it was a hand-typed leap
+#: year, `2 * 366 * 86_400`.
+SHEETS_WIDEST = 2 * when.YEAR
 
 
 def _years(told_bins: list[_Bin], lo: float, hi: float, question: resultset.GalleryQuery) -> list[dict]:
@@ -1064,14 +1066,17 @@ def _surface(
     most = max([1, *(pictures for _, pictures, *_ in bins)])
     finest = bin_name == "minute"
     told_bins: list[_Bin] = []
-    for at, pictures, wall, instant, captured, generated, mixed, imported in bins:
+    for at, pictures, wall, instant, *by_origin in bins:
         h = _height(pictures, most, 100)
         told: _Bin = {
             "at": at,
             "pictures": pictures,
             "wall": wall,
             "instant": instant,
-            "origin": {"captured": captured, "generated": generated, "mixed": mixed, "imported": imported},
+            # the counting columns come back in ORIGINS order because the
+            # statement is BUILT over the same tuple (db/pages.py
+            # _TIMELINE_DENSITY_HEAD); this dict retyped all four members
+            "origin": dict(zip(context.ORIGINS, by_origin, strict=True)),
             "samples": _drawn(samples.get(int(at), [])),
             "qs": _bin_link(at, width, held),
             "spelled": _spell(at, bin_name),

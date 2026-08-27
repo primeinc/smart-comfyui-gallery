@@ -863,6 +863,7 @@ def _when(conn, file_id: int) -> When | None:
     day_qs = urllib.parse.urlencode(
         [("f", facets.spell(facets.facet("context.local_day", "eq", local_day))), ("sort", "moment")]
     )
+    day_lo, day_hi = pages.binned("day", moment, moment)
     return When(
         moment=moment,
         local_at=local_at,
@@ -877,10 +878,7 @@ def _when(conn, file_id: int) -> When | None:
         origin=origin,
         local_day=local_day,
         day_qs=day_qs,
-        timeline="/timeline?"
-        + urllib.parse.urlencode(
-            {"bin": "hour", "start": int(moment // 86400) * 86400, "end": int(moment // 86400) * 86400 + 86400}
-        ),
+        timeline="/timeline?" + urllib.parse.urlencode({"bin": "hour", "start": day_lo, "end": day_hi}),
         sessions=[
             WhenSession(
                 id=event_id,
@@ -896,7 +894,7 @@ def _when(conn, file_id: int) -> When | None:
                 # story is told (the timeline owns the tell button)
                 timeline="/timeline?"
                 + urllib.parse.urlencode(
-                    {"bin": "hour", "start": int(start // 3600) * 3600, "end": int(end // 3600) * 3600 + 3600}
+                    dict(zip(("start", "end"), pages.binned("hour", start, end), strict=True), bin="hour")
                 ),
             )
             for event_id, kind, start, end, pictures, render_id in pages.media_sessions(conn, file_id)

@@ -210,7 +210,7 @@ class GenerationSessionGrouper:
     settings: typing.ClassVar[dict] = {"gap_minutes": 30}
 
     def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
-        return _gapped(held, "generation_session", self.settings["gap_minutes"] * 60.0)
+        return _gapped(held, "generation_session", self.settings["gap_minutes"] * when.MINUTE)
 
 
 class CaptureSessionGrouper:
@@ -226,7 +226,7 @@ class CaptureSessionGrouper:
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
     def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
-        return _gapped(held, "capture_session", self.settings["gap_minutes"] * 60.0)
+        return _gapped(held, "capture_session", self.settings["gap_minutes"] * when.MINUTE)
 
 
 class FileSessionGrouper:
@@ -245,7 +245,7 @@ class FileSessionGrouper:
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
     def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
-        return _gapped(held, "file_session", self.settings["gap_minutes"] * 60.0)
+        return _gapped(held, "file_session", self.settings["gap_minutes"] * when.MINUTE)
 
 
 #: The grouping adapters this build runs, in one place. The events job
