@@ -30,9 +30,9 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import connect, ingest, resultset, scan
 from metaparse import containers
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 #: A ComfyUI API graph, in the shape its `prompt` tag carries: node id ->
 #: {class_type, inputs}. Small, and enough for the adapter to recognise.

@@ -24,9 +24,9 @@ from PIL import Image
 
 from db import collections, connect, library, resultset, scan
 from tests import retrieving
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 def _paint(root: pathlib.Path, folder: str, name: str, tint: int) -> None:

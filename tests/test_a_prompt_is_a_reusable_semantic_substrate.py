@@ -44,12 +44,10 @@ from db import (
     stories,
 )
 from tests import schemas
-from tests.staging import Stage, staged
+from tests.staging import HOUR, NOW, Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 
 

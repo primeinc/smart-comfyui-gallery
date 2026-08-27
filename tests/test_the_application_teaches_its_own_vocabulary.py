@@ -28,11 +28,9 @@ import uuid
 import pytest
 
 from db import catalog, resultset
-from tests.staging import fresh_schema
+from tests.staging import NOW, fresh_schema
 
 pytestmark = pytest.mark.slow
-
-NOW = 1_700_000_000.0
 
 
 def _file(conn, at: int) -> int:

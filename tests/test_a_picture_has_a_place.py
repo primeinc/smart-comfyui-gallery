@@ -16,6 +16,7 @@ from PIL import Image
 
 from db import connect, runner
 from sg_web.app import build_app
+from tests.staging import HOUR, JUNE_10
 
 AS_MACHINE = {"accept": "application/json"}
 
@@ -166,7 +167,7 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
 
     root = tmp_path / "lib"
     root.mkdir()
-    at = 1_686_355_200.0 + 14 * 3600
+    at = JUNE_10 + 14 * HOUR
     for i in range(3):
         path = root / f"Screenshot 2023-06-10 at 14.{i * 5:02d}.00.png"
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(path)

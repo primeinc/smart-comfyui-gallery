@@ -33,9 +33,9 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, discovery, facets, ingest, resultset, scan, vocabulary
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 def _recipe(checkpoint: str, lora: str, sampler: str, steps: int) -> str:

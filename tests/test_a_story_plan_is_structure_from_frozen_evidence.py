@@ -48,10 +48,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, events, ingest, planning, rendering, runner, scan, stories
-from tests.staging import Stage, staged
+from tests.staging import HOUR, NOW, Stage, staged
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 
 

@@ -13,9 +13,9 @@ import pytest
 from PIL import Image
 
 from db import connect, derived, retrieval, scan, settings
+from tests.staging import NOW
 from vision import semantic
 
-NOW = 1_700_000_000.0
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 CLIP = ("openclip", "ViT-B-32", "laion2b_s34b_b79k")
 

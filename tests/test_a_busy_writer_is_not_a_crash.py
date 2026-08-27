@@ -34,9 +34,9 @@ import threading
 import pytest
 
 from db import connect, jobs, runner
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 #: A kind the schema admits. `job.kind` is a closed vocabulary, so an
 #: invented one is refused by a CHECK before any of this can be measured.

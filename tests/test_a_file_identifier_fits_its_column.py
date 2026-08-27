@@ -38,9 +38,9 @@ import pytest
 from PIL import Image
 
 from db import connect, scan
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 #: The largest value SQLite's INTEGER holds.
 LARGEST = 0x7FFFFFFFFFFFFFFF

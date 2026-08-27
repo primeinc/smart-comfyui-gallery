@@ -37,9 +37,9 @@ import uuid
 import pytest
 
 from db import build, connect, resultset
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 #: The only tables that may leave an answer alone. Written out so the
 #: set is a decision somebody made, not whatever the code happens to do.

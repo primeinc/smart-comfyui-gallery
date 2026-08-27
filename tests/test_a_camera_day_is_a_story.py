@@ -26,11 +26,9 @@ from PIL import ExifTags, Image
 
 from db import capture, connect, ingest, planning, rendering, runner, stories, when
 from sg_web.app import build_app
+from tests.staging import DAY, HOUR, NOW
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
-DAY = 86400.0
 FEB_10 = 1_360_454_400.0  # 2013-02-10 00:00 as a wall clock
 RAW = pathlib.Path("C:/ComfyUI/output/sample-datasets/RAW")
 

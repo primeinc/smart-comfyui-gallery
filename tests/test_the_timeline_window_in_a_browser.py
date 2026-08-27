@@ -13,6 +13,7 @@ from PIL import Image
 from playwright.sync_api import FloatRect, Page
 
 from tests.conftest import Live
+from tests.staging import HOUR, JUNE_10
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser_context_args(viewport={"width": 1200, "height": 800})]
 
@@ -23,7 +24,7 @@ def write_library(root) -> None:
     """Nine days five days apart, a pair of pictures a minute apart on
     each (enough for a group to form); the name carries the clock
     (14:0j:0i) and the file's mtime says the same moment."""
-    base_at = 1_686_355_200.0 + 14 * 3600
+    base_at = JUNE_10 + 14 * HOUR
     for i in range(DAYS):
         for j in range(2):
             at = base_at + i * 5 * 86400 + j * 60 + i
@@ -63,7 +64,7 @@ def overview_box(page: Page) -> FloatRect:
 
 def moments() -> list[float]:
     """Every moment `write_library` wrote, from the same numbers."""
-    base_at = 1_686_355_200.0 + 14 * 3600
+    base_at = JUNE_10 + 14 * HOUR
     return [base_at + i * 5 * 86400 + j * 60 + i for i in range(DAYS) for j in range(2)]
 
 

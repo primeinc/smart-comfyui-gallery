@@ -17,9 +17,9 @@ import pathlib
 import pytest
 
 from db import connect, scan
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 @pytest.fixture

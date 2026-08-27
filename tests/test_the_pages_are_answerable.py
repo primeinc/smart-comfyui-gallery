@@ -24,9 +24,9 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import authored, collections, connect, context, ingest, lineage, naming, pages, scan
 from tests import staging
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 A1111 = (
     "a brass diving helmet at dusk <lora:filmGrain:0.35>\n"

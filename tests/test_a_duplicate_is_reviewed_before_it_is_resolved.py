@@ -30,10 +30,9 @@ from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, naming
+from tests.staging import NOW
 
 pytestmark = pytest.mark.slow
-
-NOW = 1_700_000_000.0
 
 
 def _library(root: pathlib.Path) -> None:

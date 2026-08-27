@@ -17,9 +17,8 @@ from PIL import Image
 
 from db import collections, connect, naming, runner
 from sg_web.app import build_app
+from tests.staging import JUNE_10, NOW
 
-NOW = 1_700_000_000.0
-JUNE_10 = 1_686_355_200.0  # 2023-06-10 00:00 as a wall clock
 FIRST = JUNE_10 + 14 * 3600 + 23 * 60 + 1
 LAST = JUNE_10 + 2 * 86400 + 9 * 3600
 AS_MACHINE = {"accept": "application/json"}

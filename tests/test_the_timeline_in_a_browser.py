@@ -15,15 +15,18 @@ from PIL import Image
 from playwright.sync_api import Page
 
 from tests.conftest import Live
+from tests.staging import JUNE_10 as _JUNE_10
 
 pytestmark = pytest.mark.slow
 
 FILES = 6
-DAY = 1_686_355_200  # 2023-06-10
+# int on purpose: the URL below spells whole seconds, and the surface
+# echoes them back as the float the assertions append '.0' to.
+JUNE_10 = int(_JUNE_10)
 
 
 def write_library(root) -> None:
-    base_at = DAY + 14 * 3600  # 14:00, stamped names every five minutes
+    base_at = JUNE_10 + 14 * 3600  # 14:00, stamped names every five minutes
     for i in range(FILES):
         path = root / f"Screenshot 2023-06-10 at 14.{i * 5:02d}.0{i}.png"
         Image.new("RGB", (8, 8), (30 * i, 70, 130)).save(path)
@@ -52,9 +55,9 @@ def _settled(api, job_id, timeout=60.0) -> str:
 
 def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, live: Live):
     # a day-wide window; the scrubber's month opens the month
-    page.goto(f"/timeline?start={DAY}&end={DAY + 86400}")
+    page.goto(f"/timeline?start={JUNE_10}&end={JUNE_10 + 86400}")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-    assert page.get_attribute("[data-surface]", "data-window-start") == f"{DAY}.0"
+    assert page.get_attribute("[data-surface]", "data-window-start") == f"{JUNE_10}.0"
     page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
     page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
     assert page.locator("[data-sessions] .session-strip img").count() >= 1
@@ -68,14 +71,14 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, li
     assert page.get_attribute("[data-surface]", "data-window-start") == f"{bar_at}.0"
     page.go_back()
     page.wait_for_function(
-        "(d) => new URLSearchParams(location.search).get('start') === d", arg=str(DAY), timeout=10_000
+        "(d) => new URLSearchParams(location.search).get('start') === d", arg=str(JUNE_10), timeout=10_000
     )
     page.wait_for_function(
-        "(d) => document.querySelector('[data-surface]').dataset.windowStart === d", arg=f"{DAY}.0", timeout=10_000
+        "(d) => document.querySelector('[data-surface]').dataset.windowStart === d", arg=f"{JUNE_10}.0", timeout=10_000
     )
     page.reload()
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-    assert page.get_attribute("[data-surface]", "data-window-start") == f"{DAY}.0"
+    assert page.get_attribute("[data-surface]", "data-window-start") == f"{JUNE_10}.0"
     href = page.get_attribute("[data-sessions] .session [data-session-open]", "data-session-pictures")
     assert href is not None
     assert "event.id%3Aeq%3A" in href
@@ -217,7 +220,7 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
         server.on_message(from_server)
 
     page.route_web_socket("**/ws/jobs", route)
-    page.goto(f"/timeline?start={DAY}&end={DAY + 86400}")
+    page.goto(f"/timeline?start={JUNE_10}&end={JUNE_10 + 86400}")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
     # mark the surface on screen; a re-read replaces the node with a fresh
     # one, and nothing else on this page removes the mark

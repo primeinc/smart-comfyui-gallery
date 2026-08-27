@@ -22,9 +22,7 @@ from PIL import Image
 from db import connect, inspecting, jobs, ledger, runner
 from sg_web import console
 from sg_web.app import build_app
-from tests.staging import fresh_schema
-
-NOW = 1_700_000_000.0
+from tests.staging import NOW, fresh_schema
 
 
 @pytest.fixture

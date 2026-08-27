@@ -21,12 +21,10 @@ from __future__ import annotations
 import pytest
 
 from db import jobs, scheduling
-from tests.staging import fresh_schema
+from tests.staging import HOUR, NOW, fresh_schema
 
 pytestmark = pytest.mark.slow
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 NIGHTLY = 24.0
 
 

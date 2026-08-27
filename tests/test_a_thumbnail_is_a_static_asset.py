@@ -34,10 +34,10 @@ import pytest
 from PIL import Image
 
 from db import connect, ingest, resultset, scan
+from tests.staging import NOW
 from vision import thumbs
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 _HEX64 = re.compile(r"^/thumbs/([0-9a-f]{2})/([0-9a-f]{64})(\.preview)?\.webp$")
 

@@ -34,8 +34,6 @@ from PIL import Image
 from db import connect
 from sg_web.app import build_app
 
-NOW = 1_700_000_000.0
-
 
 @pytest.fixture
 def served(tmp_path):

@@ -19,10 +19,9 @@ from PIL import ExifTags, Image
 from PIL.TiffImagePlugin import IFDRational
 
 from db import capture, scan
-from tests.staging import fresh_schema
+from tests.staging import NOW, fresh_schema
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 @pytest.fixture

@@ -25,10 +25,7 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, connect, context, facets, ingest, naming, resultset
 from tests import retrieving
-from tests.staging import Stage, staged
-
-NOW = 1_700_000_000.0
-HOUR = 3600.0
+from tests.staging import HOUR, NOW, Stage, staged
 
 
 def _library(root: pathlib.Path) -> None:

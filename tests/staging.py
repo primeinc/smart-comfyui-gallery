@@ -38,10 +38,22 @@ from dataclasses import dataclass, field
 
 from litestar.testing import TestClient
 
-from db import connect
+from db import connect, when
 from sg_web.app import build_app
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
+
+#: The suite's fixed clock. It was declared, identically, in 38 test
+#: modules; a fixture clock is one fact about the whole suite.
+NOW = 1_700_000_000.0
+#: The fixture anchor instant, 2023-06-10 00:00 UTC. Six modules spelled
+#: it four ways, one of them under the name DAY.
+JUNE_10 = 1_686_355_200.0
+#: db/when.py's own units, re-exported so a fixture and the code under
+#: test cannot mean different lengths of an hour -- eleven modules typed
+#: HOUR and five DAY, and three different years coexisted here once.
+HOUR = when.HOUR
+DAY = when.DAY
 _MASTERS: dict[str, sqlite3.Connection] = {}
 #: Connections that outlive the test that opened them on purpose -- a
 #: module's master built inside a function-scoped fixture. conftest closes

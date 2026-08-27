@@ -21,9 +21,7 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, collections, connect, ingest, naming, resultset
 from tests import retrieving
-from tests.staging import Stage, staged
-
-NOW = 1_700_000_000.0
+from tests.staging import NOW, Stage, staged
 
 
 def _library(root: pathlib.Path) -> None:

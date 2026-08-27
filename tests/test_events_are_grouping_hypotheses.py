@@ -23,10 +23,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, events, ingest, pages, runner
-from tests.staging import Stage, staged
+from tests.staging import HOUR, NOW, Stage, staged
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 Y2023 = 1_685_577_600.0  # 2023-06-01
 Y2026 = 1_787_308_800.0  # 2026-08-19

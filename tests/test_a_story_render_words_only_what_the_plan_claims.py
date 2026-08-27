@@ -25,9 +25,8 @@ import story_renderers
 from db import planning, rendering, stories
 from story_renderers import claims as wording
 from story_renderers import formatting
+from tests.staging import HOUR, NOW
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 JULY_18 = 1_784_332_800.0  # 2026-07-18 00:00 as a wall clock
 

@@ -23,13 +23,9 @@ import pytest
 from PIL import Image
 
 from db import connect, context, ingest, pages, runner, stories
-from tests.staging import Stage, staged
+from tests.staging import DAY, HOUR, JUNE_10, NOW, Stage, staged
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
-DAY = 86400.0
-JUNE_10 = 1_686_355_200.0  # 2023-06-10 00:00 as a wall clock
 
 
 def _instant(wall: float) -> float:

@@ -20,8 +20,7 @@ import pytest
 
 from db import authored, build, collections, connect, migrate, scan
 from tests import schemas
-
-NOW = 1_700_000_000.0
+from tests.staging import NOW
 
 
 @pytest.fixture

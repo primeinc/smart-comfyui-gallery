@@ -17,11 +17,10 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import authored, collections, connect, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
 from db import similarity as similarity_module
-from tests.staging import fresh_schema
+from tests.staging import NOW, fresh_schema
 from vision import decode
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 @pytest.fixture
