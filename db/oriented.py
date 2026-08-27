@@ -120,7 +120,7 @@ def for_derivatives(path, want: int, orientation: int | None) -> Image.Image:
 
     `want` is the LARGEST derivative being rendered, not the smallest:
     every smaller one comes off it (vision/thumbs.put_all), so one decode
-    at 1440 serves both the preview and the 512 thumb.
+    at the preview edge serves every variant (vision/thumbs.py EDGES).
 
     The tag is a parameter rather than a lookup because the caller who
     knows the path already read it once (`orientation_of`), and libvips

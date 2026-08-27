@@ -1266,13 +1266,13 @@ def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) ->
 
 @get("/thumb/{slug:str}", sync_to_thread=True)
 def thumb_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirect:
-    """The grid cell: longest side 512, upright, aspect kept."""
+    """The grid cell: longest side `thumbs.EDGES["thumb"]`, upright, aspect kept."""
     return _variant_bytes(state, slug, "thumb", "/thumb")
 
 
 @get("/preview/{slug:str}", sync_to_thread=True)
 def preview_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirect:
-    """The lightbox image: longest side 1440, upright, aspect kept."""
+    """The lightbox image: longest side `thumbs.EDGES["preview"]`, upright, aspect kept."""
     return _variant_bytes(state, slug, "preview", "/preview")
 
 

@@ -1232,6 +1232,17 @@ file is the one with a reader.
   `test/pdfs/`); round-trip write-preservation, which is where
   `db/authored.py` will actually break; fuzzing with the corpus as seed.
 
+- **The generated contract carries types, not values.** Five server
+  constants reach the browser as transcriptions held by eye --
+  `db/jobs.py TERMINAL` (timeline.ts SETTLED), `db/ledger.py PAGE_MOST`
+  (operations.ts TAPE_PAGE), `sg_web/timeline_view.py NARROWEST` and
+  `_W`, `db/resultset.py MAX_PAGE_SIZE` (timeline.ts TILES_MOST). Each
+  copy now names its source (MAGIC-FUCKUPS.json, the five `partial`
+  rows), but the honest fix is one value channel: emit them into the
+  OpenAPI document (or a constants payload the shell already ships) and
+  import them, so a changed server value is a type error instead of a
+  stale clamp.
+
 - **`101 suffixes` was an overclaim, and it is now measured.** The corpus
   reads 97 of the 99 the application claims. Two of the original 101 were
   deleted, not covered: `.cin` and `.ari` had no LibRaw decoder at all
