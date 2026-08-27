@@ -38,7 +38,7 @@ import pytest
 from PIL import Image
 
 from db import connect, scan
-from tests.staging import NOW
+from tests.staging import NOW, fresh_schema
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 
@@ -110,10 +110,8 @@ def test_an_integer_column_would_have_taken_the_wrong_answer_quietly():
 @pytest.mark.parametrize("value", IDENTIFIERS)
 def test_the_column_stores_and_matches_it(value):
     """Equality is the only operation this value has to support."""
-    conn = connect.memory()
+    conn = fresh_schema()
     try:
-        conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-        conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'Z:/x','library',0)")
         held = scan.fs_id(value)
         folder = scan.mint(conn, "folder", "x")
@@ -139,9 +137,7 @@ def library(tmp_path):
     (root / "inner").mkdir(parents=True)
     Image.new("RGB", (8, 8), (10, 20, 30)).save(root / "top.png")
     Image.new("RGB", (8, 8), (40, 50, 60)).save(root / "inner" / "deep.png")
-    conn = connect.memory()
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = fresh_schema()
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
     conn.commit()
     yield conn, root

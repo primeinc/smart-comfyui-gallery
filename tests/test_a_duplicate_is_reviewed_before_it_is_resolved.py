@@ -30,7 +30,7 @@ from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, naming
-from tests.staging import NOW
+from tests.staging import NOW, staged
 
 pytestmark = pytest.mark.slow
 
@@ -59,25 +59,39 @@ def _grouped(conn, best: int, others: list[int], *, distance: int = 0) -> None:
         )
 
 
+def _setup(stage):
+    """The dupe group written once; the snapshot carries it to every test."""
+    conn = stage.conn()
+    try:
+        by_name = {
+            name: file_id for file_id, name in conn.execute("SELECT id, name FROM file ORDER BY name").fetchall()
+        }
+        # the three that really are one payload
+        _grouped(conn, by_name["backup.png"], [by_name["family.png"], by_name["iowa.png"]])
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with staged(tmp_path_factory, "dupes", _library, _setup) as stage:
+        yield stage
+
+
 @pytest.fixture
-def reviewed(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
-    _library(root)
-    with TestClient(app=build_app_for(tmp_path)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            by_name = {
-                name: file_id for file_id, name in conn.execute("SELECT id, name FROM file ORDER BY name").fetchall()
-            }
-            # the three that really are one payload
-            _grouped(conn, by_name["backup.png"], [by_name["family.png"], by_name["iowa.png"]])
-            conn.commit()
-            yield client, conn, by_name
-        finally:
-            connect.close(conn)
+def reviewed(_world):
+    """One served world per module instead of one boot per test: 17
+    setups at ~230ms each were the whole cost of this file."""
+    _world.restore()
+    conn = _world.conn()
+    try:
+        by_name = {
+            name: file_id for file_id, name in conn.execute("SELECT id, name FROM file ORDER BY name").fetchall()
+        }
+        yield _world.client, conn, by_name
+    finally:
+        connect.close(conn)
 
 
 def build_app_for(tmp_path):

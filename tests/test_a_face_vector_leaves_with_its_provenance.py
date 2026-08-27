@@ -25,11 +25,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import authored, connect, derived
-from sg_web.app import build_app
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
@@ -51,16 +50,16 @@ def _clustered(conn, person_id: int, face_ids, *, dim: int = 4):
     return run, cluster
 
 
-@pytest.fixture
-def known(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _library(root):
     for i in range(3):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        conn = connect.connect(client.app.state.db_path)
+
+
+def _setup(stage):
+    """Faces, the cluster and the capture times written once; the
+    snapshot carries them to every test."""
+    conn = stage.conn()
+    try:
         ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
         for n, file_id in enumerate(ids):
             derived.record_faces(
@@ -84,7 +83,26 @@ def known(tmp_path):
         for file_id, when in zip(ids[:2], (1_600_000_000.0, 1_700_000_000.0), strict=True):
             conn.execute("INSERT INTO capture(file_id, captured_at, parsed_at) VALUES(?, ?, 0)", (file_id, when))
         conn.commit()
-        yield client, conn, sarah, ids
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with staged(tmp_path_factory, "face-export", _library, _setup) as stage:
+        yield stage
+
+
+@pytest.fixture
+def known(_world):
+    """One served world per module instead of one boot per test."""
+    _world.restore()
+    conn = _world.conn()
+    try:
+        sarah = conn.execute("SELECT id FROM person").fetchone()[0]
+        ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
+        yield _world.client, conn, sarah, ids
+    finally:
         connect.close(conn)
 
 

@@ -20,25 +20,31 @@ from __future__ import annotations
 import time as clock
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import authored, connect, discovery, naming
-from sg_web.app import build_app
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
 
-@pytest.fixture
-def library(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _write(root):
     for i in range(2):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        yield client
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with staged(tmp_path_factory, "name-split", _write) as stage:
+        yield stage
+
+
+@pytest.fixture
+def library(_world):
+    """One served world per module instead of one boot per test: every
+    test writes its own people, and the restore takes them back out."""
+    _world.restore()
+    return _world.client
 
 
 def _people(client, *names: str | None) -> dict[str, str]:
