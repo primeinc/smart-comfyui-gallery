@@ -142,6 +142,11 @@ def test_a_favorite_moves_the_currency_but_not_the_answer(kept):
     so a favorite invalidates the projection -- but the re-answered
     question orders the same files, and the answer hash says so. A
     membership write against the walked album is the opposite case."""
+    # Its own arrangement: the walked file is filed and favorited HERE.
+    # It used to lean on a sibling test's writes, which held until the
+    # affected-test selector ran this test without its module-mates.
+    kept.post("/i/pic-1/collections/keep", json={"value": True})
+    kept.post("/i/pic-1/favorite", json={"value": True})
     before = kept.get("/g", params={"album": "keep"})
     held = dict(re.findall(r'data-(currency|answer)="([^"]*)"', before.text))
     kept.post("/i/pic-1/favorite", json={"value": False})

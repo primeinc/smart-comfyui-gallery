@@ -73,6 +73,41 @@ prove-push: web::build
     fi
     {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile --testmon --testmon-forceselect
 
+# Every test alone, one process each: a test that leans on a sibling's
+# writes passes in module order and fails here -- which is exactly how
+# the affected-test selector (prove-push) will eventually run it. Slow
+# by construction (an import and a world per test); an audit, not a
+# gate. Failures are listed at the end, and the exit code says so.
+[doc('Run every test in its own process; order-dependent tests fail here first')]
+[script]
+audit-isolation:
+    cd "$(git rev-parse --show-toplevel)"
+    # -q -q -q: pytest.ini pins -vv and verbosity is a counter; net -1
+    # is the one level where --collect-only prints one id per line.
+    listed=$({{ python }} -m pytest tests/ --collect-only -q -q -q --no-header)
+    tests=$(printf '%s\n' "$listed" | sed -n 's/^\(tests\/[^ ]*::[^ ]*\)$/\1/p')
+    total=$(printf '%s\n' "$tests" | sed '/^$/d' | wc -l)
+    if [ "$total" -eq 0 ]; then
+        echo "collection produced no test ids; refusing to report an empty audit as clean"
+        printf '%s\n' "$listed"
+        exit 2
+    fi
+    kept=$(mktemp)
+    broke=0
+    while IFS= read -r test; do
+        [ -n "$test" ] || continue
+        if ! one=$({{ python }} -m pytest "$test" -q --no-header -p no:cacheprovider 2>&1); then
+            broke=$((broke + 1))
+            echo "ALONE-FAILS: $test"
+            printf '=== %s ===\n%s\n' "$test" "$one" >> "$kept"
+        fi
+    done <<< "$tests"
+    echo "order-dependence audit: $total tests, $broke fail alone"
+    if [ "$broke" -gt 0 ]; then
+        echo "full output of each failure: $kept"
+        exit 1
+    fi
+
 # Ruff over the Python, Biome over the browser source (biome.json: the
 # first-party JS and CSS, never the vendored htmx), and this repository's
 # own structural rules (sglint).
