@@ -94,10 +94,7 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                     # the session's hour window on the timeline, where its
                     # story is told; None while the session has no time
                     "timeline": (
-                        "/timeline?"
-                        + urllib.parse.urlencode(
-                            dict(zip(("start", "end"), pages.binned("hour", start, end), strict=True), bin="hour")
-                        )
+                        "/timeline?" + urllib.parse.urlencode(pages.hour_window_qs(start, end))
                         if start is not None and end is not None
                         else None
                     ),

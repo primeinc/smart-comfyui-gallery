@@ -211,3 +211,50 @@ def over(files: Iterable[pathlib.Path]) -> Reached:
         # exists to measure is not a measurement.
         held.watch(lambda p=one: _judged(when, capture.read(p)))
     return held
+
+
+def refreeze(note: str) -> dict:
+    """Re-measure and rewrite `tests/reach_baseline.json`.
+
+    The baseline is self-describing: its `corpus` block names the
+    generator, seed and scale it was measured over, and the refreeze
+    reads them back rather than letting the procedure drift from the
+    record. `note` becomes the `refrozen` field -- a refreeze without a
+    stated reason is a number that agrees with itself.
+
+    Run through `just corpus refreeze-reach`, never re-typed inline.
+    """
+    import json
+    import tempfile
+
+    from tests import corpus
+
+    baseline = REPO / "tests" / "reach_baseline.json"
+    old = json.loads(baseline.read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory() as scratch:
+        root = pathlib.Path(scratch) / "spread"
+        root.mkdir()
+        corpus.spread(root, seed=old["corpus"]["seed"], scale=old["corpus"]["scale"])
+        files = sorted(p for p in root.rglob("*") if p.is_file())
+        held = over(files)
+    tally = held.tally()
+    new = dict(old)
+    new["refrozen"] = note
+    new["corpus"] = dict(old["corpus"], files=len(files))
+    new["totals"] = {
+        "reached": sum(r for r, _ in tally.values()),
+        "executable": sum(e for _, e in tally.values()),
+    }
+    new["per_module"] = {name: {"reached": r, "executable": e} for name, (r, e) in sorted(tally.items())}
+    new["unreached"] = held.unreached()
+    with open(baseline, "w", encoding="utf-8", newline="") as f:
+        json.dump(new, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    return {"old": old["totals"], "new": new["totals"], "files": len(files)}
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or not sys.argv[1].strip():
+        raise SystemExit("a refreeze states its reason: python -m tests.reach '<why the readers changed>'")
+    told = refreeze(sys.argv[1].strip())
+    print(f"refrozen: {told['old']} -> {told['new']} over {told['files']} files")

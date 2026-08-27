@@ -892,10 +892,7 @@ def _when(conn, file_id: int) -> When | None:
                 story=f"/stories/renders/{render_id}" if render_id is not None else None,
                 # the session's hour window on the timeline: where its
                 # story is told (the timeline owns the tell button)
-                timeline="/timeline?"
-                + urllib.parse.urlencode(
-                    dict(zip(("start", "end"), pages.binned("hour", start, end), strict=True), bin="hour")
-                ),
+                timeline="/timeline?" + urllib.parse.urlencode(pages.hour_window_qs(start, end)),
             )
             for event_id, kind, start, end, pictures, render_id in pages.media_sessions(conn, file_id)
         ],

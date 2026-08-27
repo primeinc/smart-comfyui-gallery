@@ -1367,6 +1367,15 @@ def binned(name: str, lo: float, hi: float) -> tuple[int, int]:
     return int(lo // width) * width, int(hi // width) * width + width
 
 
+def hour_window_qs(start: float, end: float) -> dict:
+    """A session's timeline-link query: the hour window of [start, end],
+    `bin` first -- the parameter ORDER is part of the link's spelling
+    (tests assert `/timeline?bin=hour&start=`), so the dict is built
+    here once rather than at each surface."""
+    lo, hi = binned("hour", start, end)
+    return {"bin": "hour", "start": lo, "end": hi}
+
+
 #: Bins sampled for the thumbnail strip: every bin up to this many; past
 #: it, the busiest this many -- a strip always, never an apology.
 SAMPLED_BINS_MOST = 120

@@ -40,8 +40,7 @@ def _window(subject: dict) -> str | None:
     held = when.get("local") or when.get("instant")
     if not held:
         return None
-    start, end = pages.binned("hour", held[0], held[-1])
-    return "/timeline?" + urllib.parse.urlencode({"bin": "hour", "start": start, "end": end})
+    return "/timeline?" + urllib.parse.urlencode(pages.hour_window_qs(held[0], held[-1]))
 
 
 @get("/stories", sync_to_thread=True)

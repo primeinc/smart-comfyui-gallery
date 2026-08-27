@@ -165,7 +165,7 @@ def test_the_baseline_still_describes_these_readers(frozen):
     tally = held.tally()
     assert tally, "nothing was measured"
     assert sum(e for _, e in tally.values()) == frozen["totals"]["executable"], (
-        "the readers changed size; re-freeze tests/reach_baseline.json before trusting it"
+        "the readers changed size; `just corpus refreeze-reach '<why>'` before trusting it"
     )
 
 

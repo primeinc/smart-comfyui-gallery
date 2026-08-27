@@ -172,6 +172,16 @@ spans DIR=default_root:
     cd "$(git rev-parse --show-toplevel)"
     SG_CORPUS="$1" {{ python }} -m pytest tests/test_the_corpus_spans_the_shape.py -m slow
 
+# The reach baseline is frozen on purpose; re-freezing it is a deliberate
+# act with a stated reason, never a side effect. The measurement re-reads
+# the baseline's own corpus block (generator, seed, scale), so the
+# procedure cannot drift from the record.
+[doc('Re-measure tests/reach_baseline.json; NOTE says why the readers changed')]
+[script]
+refreeze-reach NOTE:
+    cd "$(git rev-parse --show-toplevel)"
+    {{ python }} -m tests.reach "$1"
+
 # Every part, in order. What `docs/CORPUS_CONTRACT.md` calls the corpus.
 [doc('Assemble the whole corpus into DIR: fetched, commons, gathered, generated')]
 [script]
