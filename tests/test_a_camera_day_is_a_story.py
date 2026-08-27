@@ -26,7 +26,7 @@ from PIL import ExifTags, Image
 
 from db import capture, connect, ingest, planning, rendering, runner, stories, when
 from sg_web.app import build_app
-from tests.staging import DAY, HOUR, NOW
+from tests.staging import DAY, HOUR, NOW, corpus_snapshot
 
 MIN = 60.0
 FEB_10 = 1_360_454_400.0  # 2013-02-10 00:00 as a wall clock
@@ -450,59 +450,71 @@ def test_the_v3_grammar_stays_frozen_and_v4_rejects_bent_capture_facts():
 @pytest.mark.skipif(not RAW.exists(), reason="the RAW sample library is not on this machine")
 @pytest.mark.slow
 def test_a_real_canon_day_becomes_acts_sessions_and_a_story(tmp_path):
-    """2013-02-10: 356 files from one 5D Mark III -- CR2+JPG pairs and
+    """2013-02-10: 451 files from one 5D Mark III -- CR2+JPG pairs and
     one MOV. Every pair is one act; the MOV is an act with the still's
     facts; the maker zone makes every claim an instant; sessions form
     over acts; the plan and the render say what the camera did."""
-    root = RAW / "2013-02-10"
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, root)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            files = conn.execute("SELECT count(*) FROM file").fetchone()[0]
-            occurrences = conn.execute(
-                "SELECT count(*), count(DISTINCT act_key) FROM derived_media_occurrence WHERE kind = 'capture'"
-            ).fetchone()
-            assert occurrences[0] == files, "every file, the MOV included, has a capture occurrence"
-            pairs = conn.execute(
-                "SELECT count(*) FROM (SELECT act_key FROM derived_media_occurrence WHERE kind = 'capture'"
-                " GROUP BY act_key HAVING count(*) = 2)"
-            ).fetchone()[0]
-            assert occurrences[1] == files - pairs
-            assert pairs > 100
-            zones = conn.execute(
-                "SELECT DISTINCT tz_offset_min, time_precision FROM derived_media_occurrence WHERE kind = 'capture'"
-            ).fetchall()
-            assert zones == [(-300, "subsecond")], "the maker note's zone and the subsecond clock, on every file"
-            supports = conn.execute(
-                "SELECT supports, count(*) FROM derived_media_occurrence WHERE kind = 'capture' GROUP BY supports"
-            ).fetchall()
-            assert all('"maker_timezone"' in s and '"mtime_write_consistent"' in s for s, _ in supports), supports
-            events = conn.execute(
-                "SELECT e.id, (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id)"
-                " FROM derived_event e WHERE e.kind = 'capture_session' ORDER BY 2 DESC"
-            ).fetchall()
-            assert events
-            assert sum(n for _, n in events) == files
-            first_pair = conn.execute(
-                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
-                " WHERE ef.event_id = ? ORDER BY ef.ordinal LIMIT 2",
-                (events[0][0],),
-            ).fetchall()
-            assert first_pair[0][0].endswith(".CR2"), "inside one act the RAW leads"
-            assert first_pair[0][0][:-4] == first_pair[1][0][:-4]
-            snap = stories.snapshot_event(conn, events[0][0], NOW + 30 * HOUR)
-            conn.commit()
-            document = stories.load_snapshot(conn, snap.id)
-            plan = planning.CaptureHistoryPlanner().plan(document, snap.sha256)
-            assert planning.validate_current_plan(plan, document, snap.sha256) == []
-            kinds = {c["kind"] for c in plan["claims"]}
-            assert {"burst", "exposure_range", "equipment", "renditions", "video_clip"} <= kinds, kinds
-            assert plan["subject"]["label_hint"].startswith("Canon EOS 5D Mark III session")
-            render = rendering.TemplateStoryRenderer("memory").render(
-                document, plan, snap.sha256, planning.identity(plan)[1]
-            )
-            assert rendering.violations(render, plan, document, snap.sha256, planning.identity(plan)[1]) == []
-            assert "with the Canon EOS 5D Mark III from February 10, 2013" in render["title"]
-        finally:
-            connect.close(conn)
+    import shutil
+
+    def built(home: pathlib.Path) -> pathlib.Path:
+        with TestClient(app=build_app(str(home), worker=False)) as client:
+            _library(client, RAW / "2013-02-10")
+            return pathlib.Path(client.app.state.db_path)
+
+    # The derivation is a constant of frozen bytes and current code;
+    # tests/staging.corpus_snapshot builds it once per (corpus, code)
+    # and hands the copy back in milliseconds -- a fresh build hashes
+    # 9 GB of CR2 and cost this test 11.3 of its 11.6 seconds. The
+    # assertions below run in full either way, on a working copy
+    # because snapshot_event writes.
+    working = tmp_path / "day.db"
+    shutil.copyfile(corpus_snapshot(RAW / "2013-02-10", built), working)
+    conn = connect.connect(str(working))
+    try:
+        files = conn.execute("SELECT count(*) FROM file").fetchone()[0]
+        occurrences = conn.execute(
+            "SELECT count(*), count(DISTINCT act_key) FROM derived_media_occurrence WHERE kind = 'capture'"
+        ).fetchone()
+        assert occurrences[0] == files, "every file, the MOV included, has a capture occurrence"
+        pairs = conn.execute(
+            "SELECT count(*) FROM (SELECT act_key FROM derived_media_occurrence WHERE kind = 'capture'"
+            " GROUP BY act_key HAVING count(*) = 2)"
+        ).fetchone()[0]
+        assert occurrences[1] == files - pairs
+        assert pairs > 100
+        zones = conn.execute(
+            "SELECT DISTINCT tz_offset_min, time_precision FROM derived_media_occurrence WHERE kind = 'capture'"
+        ).fetchall()
+        assert zones == [(-300, "subsecond")], "the maker note's zone and the subsecond clock, on every file"
+        supports = conn.execute(
+            "SELECT supports, count(*) FROM derived_media_occurrence WHERE kind = 'capture' GROUP BY supports"
+        ).fetchall()
+        assert all('"maker_timezone"' in s and '"mtime_write_consistent"' in s for s, _ in supports), supports
+        events = conn.execute(
+            "SELECT e.id, (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id)"
+            " FROM derived_event e WHERE e.kind = 'capture_session' ORDER BY 2 DESC"
+        ).fetchall()
+        assert events
+        assert sum(n for _, n in events) == files
+        first_pair = conn.execute(
+            "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+            " WHERE ef.event_id = ? ORDER BY ef.ordinal LIMIT 2",
+            (events[0][0],),
+        ).fetchall()
+        assert first_pair[0][0].endswith(".CR2"), "inside one act the RAW leads"
+        assert first_pair[0][0][:-4] == first_pair[1][0][:-4]
+        snap = stories.snapshot_event(conn, events[0][0], NOW + 30 * HOUR)
+        conn.commit()
+        document = stories.load_snapshot(conn, snap.id)
+        plan = planning.CaptureHistoryPlanner().plan(document, snap.sha256)
+        assert planning.validate_current_plan(plan, document, snap.sha256) == []
+        kinds = {c["kind"] for c in plan["claims"]}
+        assert {"burst", "exposure_range", "equipment", "renditions", "video_clip"} <= kinds, kinds
+        assert plan["subject"]["label_hint"].startswith("Canon EOS 5D Mark III session")
+        render = rendering.TemplateStoryRenderer("memory").render(
+            document, plan, snap.sha256, planning.identity(plan)[1]
+        )
+        assert rendering.violations(render, plan, document, snap.sha256, planning.identity(plan)[1]) == []
+        assert "with the Canon EOS 5D Mark III from February 10, 2013" in render["title"]
+    finally:
+        connect.close(conn)

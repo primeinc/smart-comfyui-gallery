@@ -29,12 +29,12 @@ from __future__ import annotations
 import logging
 import pathlib
 import sqlite3
-import threading
 
 import pytest
 
 from db import connect, jobs, runner
 from tests.staging import NOW
+from tests.staging import Holding as _Holding
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 
@@ -55,42 +55,6 @@ def library(tmp_path):
     connect.close(conn)
 
 
-class _Holding:
-    """Another writer with the lane, the way a long scan has it."""
-
-    def __init__(self, path: pathlib.Path):
-        self._path = path
-        self._held = threading.Event()
-        self._release = threading.Event()
-        self._failed: Exception | None = None
-        self._thread = threading.Thread(target=self._hold, daemon=True)
-
-    def _hold(self) -> None:
-        conn = connect.connect(str(self._path))
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute("INSERT INTO job(kind, state, created_at) VALUES(?, 'queued', 0)", (KIND,))
-            self._held.set()
-            self._release.wait(30)
-            conn.rollback()
-        except (sqlite3.Error, OSError) as why:  # surfaced by __enter__, never swallowed
-            self._failed = why
-            self._held.set()
-        finally:
-            connect.close(conn)
-
-    def __enter__(self):
-        self._thread.start()
-        assert self._held.wait(10), "the other writer never started"
-        if self._failed is not None:
-            raise AssertionError(f"the other writer could not take the lane: {self._failed!r}")
-        return self
-
-    def __exit__(self, *_):
-        self._release.set()
-        self._thread.join(10)
-
-
 def _blocked(conn) -> sqlite3.OperationalError | None:
     """Try to write; hand back the refusal if there is one."""
     try:
@@ -105,7 +69,7 @@ def test_the_lane_really_is_held(library):
     """The control. Everything below is about behaviour under SQLITE_BUSY,
     so a run where nothing was busy would prove nothing at all."""
     path, conn = library
-    conn.execute("PRAGMA busy_timeout=200")
+    conn.execute("PRAGMA busy_timeout=50")
     with _Holding(path):
         refused = _blocked(conn)
     assert refused is not None, "the write went through, so the lane was never held"
@@ -116,7 +80,7 @@ def test_the_lane_really_is_held(library):
 def test_a_busy_database_is_no_turn_rather_than_an_exception(library):
     """The defect, stated: this used to raise out of `run_next`."""
     path, conn = library
-    conn.execute("PRAGMA busy_timeout=200")
+    conn.execute("PRAGMA busy_timeout=50")
     with _Holding(path):
         assert runner.run_next(conn, owner="worker-test", now=NOW) is None
     conn.rollback()
@@ -126,7 +90,7 @@ def test_it_says_so_at_info_rather_than_as_a_traceback(library, caplog):
     """Quiet, but not silent: somebody watching a long scan should be
     able to find out why the worker is idle."""
     path, conn = library
-    conn.execute("PRAGMA busy_timeout=200")
+    conn.execute("PRAGMA busy_timeout=50")
     with caplog.at_level(logging.INFO, logger="db.runner"), _Holding(path):
         assert runner.run_next(conn, owner="worker-test", now=NOW) is None
     conn.rollback()
@@ -136,26 +100,62 @@ def test_it_says_so_at_info_rather_than_as_a_traceback(library, caplog):
     assert any("busy" in one.getMessage() for one in said), [o.getMessage() for o in said]
 
 
-def test_a_console_click_during_a_long_write_is_a_503_not_a_500(tmp_path):
-    """The HTTP half of this module's claim. The worker answers a held
-    lane with "no turn this pass"; a console form gets the same honesty
-    as a 503 with a retry message -- reported from a real run, where
-    POST /operations/jobs/events answered a 500 traceback instead."""
-    from litestar.testing import TestClient
+def test_the_console_seam_words_busy_as_503_and_nothing_else():
+    """The HTTP half of this module's claim, at its seam: the handler
+    that turns a busy lane into a 503 with a retry message -- reported
+    from a real run, where POST /operations/jobs/events answered a 500
+    traceback instead. The handler is pure logic; a whole application
+    boot bought this proof nothing but 11.3 seconds. The wired,
+    lane-actually-held pass lives where an app already runs
+    (test_the_shell_mounts_every_surface)."""
+    from types import SimpleNamespace
 
-    from sg_web import home
-    from sg_web.app import build_app
+    from sg_web import operations
 
-    burrow = tmp_path / "home"
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        db_path = home.db_path(home.home(str(burrow)))
-        with _Holding(db_path):
-            answer = client.post("/operations/jobs/events")
-        assert answer.status_code == 503
-        assert "busy" in answer.text
-        assert "Traceback" not in answer.text
-        released = client.post("/operations/jobs/events")
-        assert released.status_code == 200, "the lane freed; the same click works"
+    request = SimpleNamespace(method="POST", url=SimpleNamespace(path="/operations/jobs/events"))
+    answer = operations.busy(request, _real_busy_error())
+    assert answer.status_code == 503
+    assert "busy" in answer.context["error"]
+    # Built by hand, so it carries no sqlite_errorname -- exactly the
+    # shape of an OperationalError that is not backpressure.
+    defect = operations.busy(request, sqlite3.OperationalError("no such table: job"))
+    assert defect.status_code == 500, "an OperationalError that is not backpressure must stay a defect"
+
+
+def _real_busy_error(tmp=None) -> sqlite3.OperationalError:
+    """An OperationalError the C layer stamped SQLITE_BUSY: only SQLite
+    itself sets `sqlite_errorname`, so the seam test cannot fake one.
+    Two plain connections on one file, no threads, milliseconds."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = str(pathlib.Path(tmpdir) / "lane.db")
+        holder = connect.connect(path)
+        prober = connect.connect(path)
+        prober.execute("PRAGMA busy_timeout=1")
+        try:
+            holder.execute("CREATE TABLE t(x)")
+            holder.commit()
+            holder.execute("BEGIN IMMEDIATE")
+            holder.execute("INSERT INTO t VALUES(1)")
+            with pytest.raises(sqlite3.OperationalError) as caught:
+                prober.execute("BEGIN IMMEDIATE")
+            why = caught.value
+            assert why.sqlite_errorname == "SQLITE_BUSY", why.sqlite_errorname
+            return why
+        finally:
+            holder.rollback()
+            connect.close(prober)
+            connect.close(holder)
+
+
+def test_the_console_router_registers_the_busy_handler():
+    """The wiring, pinned structurally: the operations Router hands
+    sqlite3.OperationalError to `busy`. Without this, the seam test
+    above could pass against a handler nothing ever calls."""
+    from sg_web import operations
+
+    assert operations.router.exception_handlers[sqlite3.OperationalError] is operations.busy
 
 
 def test_a_free_database_still_claims_the_job(library):

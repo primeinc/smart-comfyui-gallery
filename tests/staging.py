@@ -130,6 +130,116 @@ def settled(client: TestClient, job_id: int, timeout: float = 120.0) -> str:
         time.sleep(0.02)
 
 
+def corpus_snapshot(corpus: pathlib.Path, build: Callable[[pathlib.Path], pathlib.Path]) -> pathlib.Path:
+    """A frozen corpus's derived database, built once and reused across
+    runs. Ingesting a real corpus is disk-bound -- hashing 9 GB of CR2
+    bytes takes seconds however the code is arranged -- but the corpus
+    never changes and the derivation is deterministic, so rebuilding it
+    every run recomputes a constant.
+
+    The key is honest or the cache is a lie: the corpus listing
+    (name, size, mtime) AND the exact bytes of the code that interprets
+    them -- every module of db/, metaparse/ and vision/, enumerated
+    through the import system (pkgutil + find_spec, nothing executed),
+    which is what those packages ARE to the derivation. Any edit
+    rebuilds; a stale snapshot can never vouch for new code. Not a
+    filesystem sweep and not a git call, because a test that globs
+    source or starts a program is SG007/SG006's whole subject; this is
+    a cache fingerprint, not an assertion about source. Assertions
+    still run every time -- only the constant is cached, under
+    .pytest_cache beside the suite's other cross-run state.
+
+    `build(home)` performs the full derivation into `home` and returns
+    the database path; the snapshot is a copy of that file.
+    """
+    import hashlib
+    import importlib.util
+    import pkgutil
+    import shutil
+    import tempfile
+
+    import db as db_package
+    import metaparse as metaparse_package
+    import vision as vision_package
+    from db import library
+
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    key = hashlib.sha256()
+    for entry in sorted(corpus.rglob("*")):
+        # The root marker is the APPLICATION's writing -- registering
+        # the corpus as a root re-stamps it on every build, and keying
+        # on it made every run see a "changed corpus" and rebuild the
+        # 11-second constant forever.
+        if entry.is_file() and entry.name != library.MARKER:
+            stat = entry.stat()
+            key.update(f"{entry.relative_to(corpus)}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+    for package in (db_package, metaparse_package, vision_package):
+        names = [package.__name__]
+        names += [found.name for found in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}.")]
+        for name in sorted(names):
+            spec = importlib.util.find_spec(name)
+            if spec is not None and spec.origin is not None and spec.origin != "namespace":
+                key.update(name.encode())
+                key.update(pathlib.Path(spec.origin).read_bytes())
+    cache_dir = repo / ".pytest_cache" / "corpus-snapshots"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    target = cache_dir / f"{corpus.name}-{key.hexdigest()[:16]}.db"
+    # Said out loud on every decision: a key that silently drifts makes
+    # every run rebuild an 11-second constant while reporting nothing.
+    if target.exists():
+        print(f"corpus snapshot HIT {target.name}")
+        return target
+    strayed = sorted(stale.name for stale in cache_dir.glob(f"{corpus.name}-*.db"))
+    print(f"corpus snapshot BUILD {target.name}; replacing {strayed or 'nothing'}")
+    for stale in cache_dir.glob(f"{corpus.name}-*.db"):
+        stale.unlink()
+    with tempfile.TemporaryDirectory(prefix="sg-corpus-") as tmp:
+        built = build(pathlib.Path(tmp) / "run")
+        shutil.copyfile(built, target)
+    return target
+
+
+class Holding:
+    """Another writer with SQLite's one write lane, the way a long scan
+    has it: a thread takes BEGIN IMMEDIATE and keeps it until released.
+    Shared here because two modules prove busy-lane behaviour -- the
+    worker's (test_a_busy_writer...) and the console's HTTP seam."""
+
+    def __init__(self, path: pathlib.Path):
+        import threading
+
+        self._path = path
+        self._held = threading.Event()
+        self._release = threading.Event()
+        self._failed: Exception | None = None
+        self._thread = threading.Thread(target=self._hold, daemon=True)
+
+    def _hold(self) -> None:
+        conn = connect.connect(str(self._path))
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("INSERT INTO job(kind, state, created_at) VALUES('hash', 'queued', 0)")
+            self._held.set()
+            self._release.wait(30)
+            conn.rollback()
+        except (sqlite3.Error, OSError) as why:  # surfaced by __enter__, never swallowed
+            self._failed = why
+            self._held.set()
+        finally:
+            connect.close(conn)
+
+    def __enter__(self):
+        self._thread.start()
+        assert self._held.wait(10), "the other writer never started"
+        if self._failed is not None:
+            raise AssertionError(f"the other writer could not take the lane: {self._failed!r}")
+        return self
+
+    def __exit__(self, *_):
+        self._release.set()
+        self._thread.join(10)
+
+
 def _listing(root: pathlib.Path) -> dict[pathlib.Path, tuple[int, int]]:
     return {
         p.relative_to(root): (p.stat().st_size, p.stat().st_mtime_ns) for p in sorted(root.rglob("*")) if p.is_file()

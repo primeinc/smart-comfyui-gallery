@@ -118,6 +118,29 @@ def test_every_browser_page_carries_the_same_navigation(served):
     assert not re.search(r'href="/people"[^>]*aria-current="page"', gallery)
 
 
+def test_a_console_click_during_a_long_write_is_a_503_not_a_500(served, monkeypatch):
+    """A held write lane through the WHOLE stack: request in, litestar
+    routing, the operations router's exception seam, template out. The
+    handler itself is unit-proven where it lives
+    (test_a_busy_writer_is_not_a_crash); this pass rides an application
+    this module already booted, so its cost is the held-lane wait and
+    nothing else. The 50ms timeout reaches every request connection
+    through the one constant they all read (db/connect.py _prepared,
+    per connection, at request time)."""
+    from db import connect
+    from tests.staging import Holding
+
+    client, _ = served
+    monkeypatch.setattr(connect, "LOCK_WAIT_SECONDS", 0.05)
+    with Holding(pathlib.Path(client.app.state.db_path)):
+        answer = client.post("/operations/jobs/events")
+    assert answer.status_code == 503
+    assert "busy" in answer.text
+    assert "Traceback" not in answer.text
+    released = client.post("/operations/jobs/events")
+    assert released.status_code == 200, "the lane freed; the same click works"
+
+
 def test_the_site_has_a_face(served):
     """Every rendered page links the icon, and the blind probe -- a
     client asking /favicon.ico without reading any HTML -- gets the

@@ -103,7 +103,13 @@ def live(request, tmp_path_factory):
     os.environ["PATH"] = str(REPO / ".venv" / "Scripts") + os.pathsep + (before["PATH"] or "")
     try:
         with (
-            run_app(workdir=REPO, app="tests.live_app:create_app", capture_output=False) as url,
+            # 50ms poll, not litestar's 1s default: the readiness loop
+            # sleeps retry_timeout between probes (litestar
+            # subprocess_client.py:54-60), so a ~1.5s boot was rounded
+            # up to whole seconds in EVERY browser module's setup.
+            run_app(
+                workdir=REPO, app="tests.live_app:create_app", capture_output=False, retry_count=600, retry_timeout=0.05
+            ) as url,
             httpx.Client(base_url=url, timeout=10) as api,
         ):
             prepare = getattr(request.module, "prepare", None)

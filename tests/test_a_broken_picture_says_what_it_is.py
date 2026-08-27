@@ -107,7 +107,13 @@ def test_an_image_that_is_not_a_thumbnail_is_not_touched(page: Page, live: Live)
         img.src = '/static/there-is-no-such-file.png';
         document.body.append(img);
     }""")
-    page.wait_for_timeout(500)
+    # The moment the swap could have happened, not a fixed 500ms: the
+    # handler acts synchronously inside the img's error event, and
+    # `complete` goes true once that event has fired.
+    page.wait_for_function(
+        "() => { const img = document.getElementById('not-a-thumbnail'); return img !== null && img.complete; }",
+        timeout=10_000,
+    )
     assert page.locator("#not-a-thumbnail").count() == 1, "an unrelated image was replaced"
 
 
