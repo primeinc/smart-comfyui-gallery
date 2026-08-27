@@ -30,10 +30,10 @@ Redacted, kept, and the stated boundary:
             each redacted name's suffix, so the kind survives; and a
             short stable hash per name, so two lines about one file
             still correlate.
-  boundary  uvicorn's access log spells request URLs, whose entity
-            slugs are derived from names. That line is uvicorn's
-            format, not a record this module half-covers -- stated
-            here rather than silently partial.
+  gone      uvicorn's per-request access log, whose URLs spell entity
+            slugs derived from media names -- an access log IS a list
+            of what the library holds, so the launcher disables it
+            unless `--log-user-paths` (sg_web/__main__.py).
 """
 
 from __future__ import annotations
@@ -125,7 +125,25 @@ def said(text: str) -> str:
 
 
 def install() -> None:
-    """Wrap the current record factory, once (idempotent)."""
+    """Everything a served process emits, redacted. Idempotent.
+
+    Three channels, because the record factory alone cannot reach them
+    all: log records (the factory below), uncaught exceptions
+    (sys.excepthook -- a crashed boot prints its traceback outside
+    logging, python/cpython Doc/library/sys.rst:443-447), and logging's
+    own last-resort handler, which prints raw frames whenever a
+    FORMATTER raises -- the one printer no factory can launder, so
+    `logging.raiseExceptions = False` silences it (the record is lost;
+    the leak is not)."""
+    logging.raiseExceptions = False
+    if not getattr(sys.excepthook, "sg_redacts", False):
+
+        def crashed(kind, value, trace) -> None:
+            sys.stderr.write(said("".join(traceback.format_exception(kind, value, trace))))
+
+        crashed.sg_redacts = True
+        sys.excepthook = crashed
+
     current = logging.getLogRecordFactory()
     if getattr(current, "sg_redacts", False):
         return

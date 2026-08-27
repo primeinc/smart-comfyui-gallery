@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import sys
 
 from sg_web import redaction
 
@@ -77,6 +78,34 @@ def test_a_token_the_application_does_not_claim_is_not_a_filename():
     assert redaction.said("checkpoint dreamshaper_v8.safetensors loaded") == (
         "checkpoint dreamshaper_v8.safetensors loaded"
     )
+
+
+def test_a_crash_and_the_last_resort_printer_are_covered_too(capsys):
+    """The two channels the record factory cannot reach: an uncaught
+    exception prints through sys.excepthook, and a raising FORMATTER
+    prints through logging's last-resort handler -- the first is
+    wrapped, the second silenced (`logging.raiseExceptions`), because
+    it is the one printer nothing can launder."""
+    was_hook, was_raise = sys.excepthook, logging.raiseExceptions
+    was_factory = logging.getLogRecordFactory()
+    try:
+        redaction.install()
+        assert logging.raiseExceptions is False
+
+        def _takes_the_process_down() -> None:
+            raise ValueError(f"{A_USER_FILE} took the process down")
+
+        try:
+            _takes_the_process_down()
+        except ValueError:
+            sys.excepthook(*sys.exc_info())
+        told = capsys.readouterr().err
+        assert "grandad" not in told
+        assert "somebody" not in told
+        assert "ValueError" in told
+    finally:
+        sys.excepthook, logging.raiseExceptions = was_hook, was_raise
+        logging.setLogRecordFactory(was_factory)
 
 
 def test_the_factory_rewrites_records_and_logged_tracebacks(caplog):

@@ -229,7 +229,11 @@ def main() -> None:
     parser.add_argument(
         "--log-user-paths",
         action="store_true",
-        help="log real paths and media filenames (default: redacted, sg_web/redaction.py)",
+        help=(
+            "log real paths and media filenames, and the per-request access log"
+            " (default: redacted and no access log -- request URLs carry slugs,"
+            " which are derived from filenames; sg_web/redaction.py)"
+        ),
     )
     asked = parser.parse_args()
     # `--host` and `--public` are two ways to say the same thing, so
@@ -269,8 +273,23 @@ def main() -> None:
     # migration's, a refused database's) is already covered. Process-
     # global on purpose and only HERE: a served run is one process with
     # one launcher, where the flag was or was not typed.
+    #
+    # A refused boot is a SystemExit whose message names the database
+    # path -- under the home directory, so under a username -- and it
+    # never passes through logging. Redacted here, the same as a line.
+    #
+    # `access_log` rides the same flag (uvicorn/main.py:520): each
+    # request line spells the URL, whose entity slugs are derived from
+    # media filenames -- an access log IS a list of what the library
+    # holds, so by default there is none.
     if not asked.log_user_paths:
         redaction.install()
+        try:
+            served = build_app(asked.home)
+        except SystemExit as refused:
+            raise SystemExit(redaction.said(str(refused))) from None
+        uvicorn.run(served, host=host, port=asked.port, access_log=False)
+        return
     uvicorn.run(build_app(asked.home), host=host, port=asked.port)
 
 
