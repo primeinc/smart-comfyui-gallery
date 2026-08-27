@@ -484,8 +484,13 @@ file and failed nothing.
 `identify.cpp:3256`) are real LibRaw formats. Neither is in
 raw.pixls.us's CC0 archive (1870 samples; `.iiq` 35 as control), exiftool's
 `t/images` (194 files; `PhaseOne.iiq` as control), or rawsamples.ch's Kodak
-listing (`.KDC`/`.DCR` as control). They stay UNSATISFIED and the gate
-fails on them. That is the gate working.
+listing (`.KDC`/`.DCR` as control). Those searches are recorded as evidence
+in `tests/needs.py BLOCKED`, the two needs are BLOCKED_EXTERNALLY, and the
+gate is green in this -- the repository's intended -- state. It cannot rot
+into an excuse: `test_an_excuse_cannot_outlive_its_gap` fails the moment a
+corpus file reads either suffix while the row still stands, and
+`tests/rawsamples.py` re-asks the archive on every fetch. A gate red by
+design was tried first; it lasted one push before it taught `LEFTHOOK=0`.
 
 ## Not findings
 

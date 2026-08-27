@@ -7,8 +7,8 @@
   "corpus": "C:\\Users\\will\\dev\\sg-corpus",
   "corpus_files": 1490,
   "totals": {
-    "SATISFIED": 129,
-    "UNSATISFIED": 2
+    "BLOCKED_EXTERNALLY": 2,
+    "SATISFIED": 129
   },
   "needs": [
     {
@@ -140,11 +140,11 @@
     {
       "need": "suffix:.cap",
       "kind": "image",
-      "state": "UNSATISFIED",
+      "state": "BLOCKED_EXTERNALLY",
       "files": 0,
       "read": 0,
       "example": null,
-      "why": "no file with this suffix in the corpus"
+      "why": "Phase One .cap: LibRaw reads it, and no sample archive offers one"
     },
     {
       "need": "suffix:.cr2",
@@ -410,11 +410,11 @@
     {
       "need": "suffix:.k25",
       "kind": "image",
-      "state": "UNSATISFIED",
+      "state": "BLOCKED_EXTERNALLY",
       "files": 0,
       "read": 0,
       "example": null,
-      "why": "no file with this suffix in the corpus"
+      "why": "Kodak DC25 .k25: LibRaw reads it (cameralist.cpp:513), and no sample archive offers one"
     },
     {
       "need": "suffix:.kdc",

@@ -246,6 +246,50 @@ def _served_db() -> pathlib.Path | None:
 #: could never do.
 INTERACTIONS = {"location_basis": ("authored",)}
 
+#: Needs the corpus cannot close because the WORLD offers no specimen --
+#: each with the evidence that obtaining one was attempted, and where.
+#: `docs/CORPUS_SHAPE.md`: a declared value is reached by a real file or
+#: it is BLOCKED_EXTERNALLY with evidence; there is no third state.
+#:
+#: This is not an exceptions table. Three properties keep it honest, and
+#: `tests/test_the_corpus_spans_the_shape.py` holds all three: a row
+#: must carry evidence with a positive control, a row whose need a
+#: corpus file now reaches FAILS the gate -- the excuse dies the day the
+#: gap closes -- and `tests/rawsamples.py` retries blocked suffixes on
+#: every fetch, so a row is challenged on every run, never filed.
+BLOCKED: dict[str, dict] = {
+    "suffix:.cap": {
+        "why": "Phase One .cap: LibRaw reads it, and no sample archive offers one",
+        "evidence": (
+            {
+                "source": "raw.pixls.us CC0 set (1870 of 2016 samples)",
+                "control": ".iiq: 35 samples present",
+                "checked": "2026-08-25",
+            },
+            {
+                "source": "exiftool t/images (194 files)",
+                "control": "PhaseOne.iiq present",
+                "checked": "2026-08-25",
+            },
+        ),
+    },
+    "suffix:.k25": {
+        "why": "Kodak DC25 .k25: LibRaw reads it (cameralist.cpp:513), and no sample archive offers one",
+        "evidence": (
+            {
+                "source": "raw.pixls.us CC0 set (1870 of 2016 samples)",
+                "control": ".kdc and .dcr present",
+                "checked": "2026-08-25",
+            },
+            {
+                "source": "rawsamples.ch Kodak listing",
+                "control": ".KDC and .DCR listed",
+                "checked": "2026-08-25",
+            },
+        ),
+    },
+}
+
 
 def performed(db_path: pathlib.Path) -> collections.Counter:
     """What the application concludes when a person asserts a place.
@@ -391,6 +435,15 @@ def measure(root: pathlib.Path | None = None, db_path: pathlib.Path | None = Non
                 }
             )
 
+    # The block register applies to what was MEASURED as unreached, and
+    # only that: a need a file now satisfies keeps SATISFIED, so a stale
+    # excuse is visible to the gate instead of silently absorbing it.
+    for one in needs:
+        held = BLOCKED.get(one["need"])
+        if held is not None and one["state"] == "UNSATISFIED":
+            one["state"] = "BLOCKED_EXTERNALLY"
+            one["why"] = held["why"]
+
     tally = collections.Counter(one["state"] for one in needs)
     held = {
         "what": "Coverage the application declares, and what the corpus actually reads.",
@@ -408,7 +461,7 @@ if __name__ == "__main__":
     got = measure()
     print(f"{got['corpus_files']} files under {got['corpus']}")
     print(f"needs: {sum(got['totals'].values())}   {got['totals']}")
-    for state in ("UNSATISFIED", "PARTIAL"):
+    for state in ("UNSATISFIED", "PARTIAL", "BLOCKED_EXTERNALLY"):
         rows = [one for one in got["needs"] if one["state"] == state]
         if not rows:
             continue

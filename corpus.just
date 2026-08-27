@@ -163,9 +163,9 @@ needs DIR=default_root:
 #
 # A number written into a lockfile can be satisfied by writing a bigger
 # number. `tests/test_the_corpus_spans_the_shape.py` re-measures and asserts
-# every declared value is reached by a real file or named in its `ALLOWED`
-# table with a reason -- and asserts the reverse too, so an excuse cannot
-# outlive the gap it was written for.
+# every declared value is reached by a real file or BLOCKED_EXTERNALLY in
+# `tests/needs.py BLOCKED` with evidence -- and asserts the reverse too, so
+# an excuse cannot outlive the gap it was written for.
 [doc('Fail if the corpus does not span the shape the application declares')]
 [script]
 spans DIR=default_root:

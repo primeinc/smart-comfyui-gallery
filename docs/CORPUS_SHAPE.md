@@ -118,5 +118,7 @@ IT` are not terminal states. `docs/CORPUS_CONTRACT.md` holds the rule; this
 file holds the enumeration it applies to.
 
 Measured by `tests/needs.py`, frozen in `tests/needs.lock.json`, and gated by
-a test that fails when a declared value is reached by nothing — so the
-number cannot be satisfied by writing a larger report.
+a test that fails when a declared value is reached by nothing and not
+blocked with evidence — so the number cannot be satisfied by writing a
+larger report. The block register (`tests/needs.py BLOCKED`) is held from
+both sides: no evidence, no excuse; gap closes, excuse fails.

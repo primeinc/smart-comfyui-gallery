@@ -1237,8 +1237,10 @@ file is the one with a reader.
   deleted, not covered: `.cin` and `.ari` had no LibRaw decoder at all
   (`docs/CORPUS_FINDINGS.md` APP-11), so the claim was the defect. The
   remaining two, `.cap` and `.k25`, are real LibRaw formats with no sample
-  found in three archives; they stay UNSATISFIED and
-  `tests/test_the_corpus_spans_the_shape.py` fails on them by design.
+  found in three archives; they are BLOCKED_EXTERNALLY in `tests/needs.py
+  BLOCKED` with that search evidence, `tests/rawsamples.py` retries them on
+  every fetch, and the gate fails the day a sample lands while the excuse
+  still stands.
 
   The tiering this asked for turned out to be the wrong instrument. A tier
   named "smoke-only" or "declared-unsupported" is a place to put a suffix

@@ -47,7 +47,9 @@ CC0 = "co"
 
 ALLOWED = ("https://raw.pixls.us/",)
 
-AGENT = "smart-comfyui-gallery-corpus/1.0 (https://github.com/primeinc/smart-comfyui-gallery;)"
+#: The `+url` form is the contact, per the same convention Wikimedia's
+#: UA policy accepts -- a reachable page in place of an address.
+AGENT = "smart-comfyui-gallery-corpus/1.0 (+https://github.com/primeinc/smart-comfyui-gallery)"
 
 #: raw.pixls.us is one volunteer's server, not a CDN.
 PAUSE = 0.5
@@ -151,10 +153,15 @@ def wanted() -> set[str]:
     if not ledger.is_file():
         raise RuntimeError(f"run `just corpus needs` first: {ledger} does not exist")
     held = json.loads(ledger.read_text(encoding="utf-8"))
+    # BLOCKED_EXTERNALLY is retried on purpose: the block register in
+    # `tests/needs.py` survives only while the world still offers no
+    # specimen, and this fetch is what challenges that on every run. The
+    # day the archive gains a `.cap`, this closes the gap and the gate's
+    # reverse assertion retires the excuse.
     return {
         one["need"].removeprefix("suffix:")
         for one in held["needs"]
-        if one["need"].startswith("suffix:") and one["state"] in ("UNSATISFIED", "PARTIAL")
+        if one["need"].startswith("suffix:") and one["state"] in ("UNSATISFIED", "PARTIAL", "BLOCKED_EXTERNALLY")
     }
 
 

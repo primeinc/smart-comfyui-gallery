@@ -16,13 +16,16 @@ or a generator added to the application becomes a failure here without
 anybody remembering to update a list -- and no value can be quietly dropped
 from the denominator to make the number look better.
 
-**There is no escape hatch.** Every declared value must be reached by a real
-file, measured through the real readers. There was a table of allowed
-exceptions here and it filled up with two different things wearing one word:
-files nobody had written yet, and values the application declares and cannot
-produce. Neither is an exception -- the first is work and the second is a
-false claim -- so the table is gone and the only ways to make this test pass
-are to write the file or to stop declaring the value.
+**A blocked need is a state, not a failure.** A test that is red in the
+repository's intended state gates nothing: it cannot sit in a hook, and it
+trains everybody to pass the bypass flag. So a value no obtainable file can
+reach is BLOCKED_EXTERNALLY, declared in `tests/needs.py BLOCKED` with the
+searches that failed and their positive controls -- and the register is held
+from both sides by `test_an_excuse_cannot_outlive_its_gap`: a row without
+evidence fails, and a row whose gap a corpus file has since closed fails.
+An earlier `ALLOWED` table here had neither property and filled up with
+deferrals wearing the word "blocked"; the reverse assertion and the evidence
+requirement are what make this one a measurement instead of an excuse.
 """
 
 from __future__ import annotations
@@ -39,25 +42,18 @@ pytestmark = pytest.mark.slow
 
 CORPUS = pathlib.Path(os.environ.get("SG_CORPUS", pathlib.Path(__file__).resolve().parent.parent.parent / "sg-corpus"))
 
-#: THERE IS NO ESCAPE HATCH, deliberately.
+#: The three honest fixes for an unreached value, in the order to try them:
 #:
-#: This was a table of values allowed to go unreached, each with a reason.
-#: It filled up. Half its rows were things nobody had got to yet wearing the
-#: word "blocked", and the other half were values the APPLICATION DECLARES
-#: AND CANNOT PRODUCE -- `time_precision:hour`, `location_basis:sidecar`,
-#: `location_basis:inferred`, `time_basis:first_seen` -- which is not a
-#: corpus gap at all. No file closes those, so no amount of acquisition
-#: makes the test pass, and leaving them excused made the vocabulary look
-#: findable instead of false.
+#:   the corpus lacks a file        -> write or fetch the file
+#:   the app declares a lie         -> delete the declaration
+#:     (`time_precision:hour` and three friends went this way in v44)
+#:   the world offers no specimen   -> a `tests/needs.py BLOCKED` row,
+#:     with evidence, held by test_an_excuse_cannot_outlive_its_gap
 #:
-#: Both halves have exactly one honest fix and it is never a table here:
-#:
-#:   the corpus lacks a file   -> write or fetch the file
-#:   the app declares a lie    -> delete the declaration
-#:
-#: `docs/BACKLOG.md` reached the same conclusion about the suffix count
-#: before this file existed: "an overclaim no corpus fixes -- only editing
-#: the claim fixes the claim."
+#: An `ALLOWED` table here once tried to be the third fix without the
+#: evidence or the reverse assertion, and it filled up with the first two
+#: wearing the word "blocked". The register survives only because both
+#: properties are enforced below.
 
 
 @pytest.fixture(scope="module")
@@ -122,8 +118,9 @@ def test_every_suffix_the_app_claims_has_a_file(measured):
     Two of the four were the application over-claiming -- LibRaw decodes
     neither Phantom Cine nor ARRI, and both are gone from
     `vision/decode.py RAW_SUFFIXES`. The other two are real formats
-    LibRaw reads, with no sample in the corpus, and this is meant to fail
-    until somebody finds one.
+    LibRaw reads with no obtainable sample: BLOCKED_EXTERNALLY in
+    `needs.BLOCKED`, evidence attached, retried by `tests/rawsamples.py`
+    on every fetch.
     """
     missing = _unreached(measured, "suffix:")
     assert not missing, (
@@ -149,6 +146,30 @@ def test_every_precision_and_origin_is_reached_or_named(measured):
         one for prefix in ("time_precision:", "location_basis:", "origin:") for one in _unreached(measured, prefix)
     ]
     assert not missing, f"interpretation values nothing reached: {missing}"
+
+
+def test_an_excuse_cannot_outlive_its_gap(measured):
+    """`needs.BLOCKED` rows die the day their gap closes.
+
+    A register of excuses is exactly the escape hatch this file once
+    deleted -- unless it is held from both sides. Held here: a row must
+    name a need the application still declares, must carry evidence with
+    a source, a positive control and a date, and must still be blocked.
+    A blocked suffix that a corpus file now reads is a stale excuse and
+    fails the same as a gap; `tests/rawsamples.py` retries blocked
+    suffixes on every fetch, so the challenge is standing, not annual.
+    """
+    by_need = {one["need"]: one for one in measured["needs"]}
+    for need, held in needs.BLOCKED.items():
+        assert need in by_need, f"{need} is excused and no longer declared; delete the BLOCKED row"
+        assert held["evidence"], f"{need} is excused without evidence"
+        for row in held["evidence"]:
+            for field in ("source", "control", "checked"):
+                assert row.get(field), f"{need}: evidence needs a {field}; got {row}"
+        state = by_need[need]["state"]
+        assert state == "BLOCKED_EXTERNALLY", (
+            f"{need} is {state} but sits in needs.BLOCKED: the excuse outlived its gap; delete the row"
+        )
 
 
 def test_the_shape_is_read_from_the_application_not_from_a_list():
