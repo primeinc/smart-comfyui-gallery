@@ -34,7 +34,7 @@ import pathlib
 
 import pytest
 
-from tests import reach, sourced
+from tests import reach, sourced, staging
 
 pytestmark = pytest.mark.slow
 
@@ -100,10 +100,19 @@ def test_the_lockfile_records_which_files_have_pixels_and_is_right():
     """
     locked = json.loads(sourced.LOCKFILE.read_text(encoding="utf-8"))
     on_disk = {one.name: path for one, path in sourced.specimens()}
+    # Decoding 35 real files costs ~1.1s and depends only on their bytes
+    # and the decoders; the measurement is cached under that exact key.
+    rendered = json.loads(
+        staging.corpus_measurement(
+            sourced.IMAGES,
+            "renders-now",
+            lambda: json.dumps({name: sourced.decodes(path) for name, path in sorted(on_disk.items())}),
+        )
+    )
     wrong = [
-        f"{held['name']}: locked renders={held['renders']}, now {sourced.decodes(on_disk[held['name']])}"
+        f"{held['name']}: locked renders={held['renders']}, now {rendered[held['name']]}"
         for held in locked["files"]
-        if held["name"] in on_disk and sourced.decodes(on_disk[held["name"]]) != held["renders"]
+        if held["name"] in on_disk and rendered[held["name"]] != held["renders"]
     ]
     assert wrong == [], wrong
     assert any(not held["renders"] for held in locked["files"]), (
@@ -142,10 +151,21 @@ def test_the_corpus_covers_a_kind_the_synthetic_one_never_wrote():
 
 @pytest.fixture(scope="module")
 def measured():
-    """One traced pass over the specimens, read by both tests below:
-    the runs were identical, and tracing 35 real files costs ~1.3s --
-    two verdicts about one measurement do not justify measuring twice."""
-    return reach.over([path for _one, path in sourced.specimens()])
+    """One traced pass over the specimens, read by both tests below --
+    and cached across runs: tracing 35 real files costs ~1.3s, and with
+    neither the corpus nor a reader changed it recomputes a constant.
+    `corpus_measurement` keys on both, so any edit re-measures."""
+    files = [path for _one, path in sourced.specimens()]
+    told = json.loads(
+        staging.corpus_measurement(
+            sourced.IMAGES,
+            "reach-lines",
+            lambda: json.dumps({name: sorted(lines) for name, lines in reach.over(files).lines.items()}),
+        )
+    )
+    held = reach.Reached()
+    held.lines = {name: set(lines) for name, lines in told.items()}
+    return held
 
 
 def test_the_sourced_files_reach_lines_the_synthetic_corpus_cannot(frozen, measured):

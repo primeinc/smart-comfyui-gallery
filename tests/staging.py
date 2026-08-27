@@ -130,6 +130,70 @@ def settled(client: TestClient, job_id: int, timeout: float = 120.0) -> str:
         time.sleep(0.02)
 
 
+def _snapshot_dir() -> pathlib.Path:
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    cache_dir = repo / ".pytest_cache" / "corpus-snapshots"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _corpus_key(corpus: pathlib.Path) -> str:
+    """The honest cache key: the corpus listing (name, size, mtime) AND
+    the exact bytes of every module of db/, metaparse/ and vision/,
+    enumerated through the import system (pkgutil + find_spec, nothing
+    executed) -- which is what those packages ARE to any derivation over
+    the corpus. Any edit rekeys; a stale constant can never vouch for
+    new code."""
+    import hashlib
+    import importlib.util
+    import pkgutil
+
+    import db as db_package
+    import metaparse as metaparse_package
+    import vision as vision_package
+    from db import library
+
+    key = hashlib.sha256()
+    for entry in sorted(corpus.rglob("*")):
+        # The root marker is the APPLICATION's writing -- registering
+        # the corpus as a root re-stamps it on every build, and keying
+        # on it made every run see a "changed corpus" and rebuild the
+        # 11-second constant forever.
+        if entry.is_file() and entry.name != library.MARKER:
+            stat = entry.stat()
+            key.update(f"{entry.relative_to(corpus)}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+    for package in (db_package, metaparse_package, vision_package):
+        names = [package.__name__]
+        names += [found.name for found in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}.")]
+        for name in sorted(names):
+            spec = importlib.util.find_spec(name)
+            if spec is not None and spec.origin is not None and spec.origin != "namespace":
+                key.update(name.encode())
+                key.update(pathlib.Path(spec.origin).read_bytes())
+    return key.hexdigest()[:16]
+
+
+def corpus_measurement(corpus: pathlib.Path, name: str, measure: Callable[[], str]) -> str:
+    """A frozen corpus's measured constant, cached across runs.
+
+    The same contract as `corpus_snapshot`, for measurements that are
+    text rather than a database: re-measuring an unchanged corpus with
+    unchanged readers recomputes a constant, so the JSON `measure()`
+    returns is stored under the corpus+code key and handed back until
+    either moves."""
+    target = _snapshot_dir() / f"{name}-{_corpus_key(corpus)}.json"
+    if target.exists():
+        print(f"corpus measurement HIT {target.name}")
+        return target.read_text(encoding="utf-8")
+    strayed = sorted(stale.name for stale in target.parent.glob(f"{name}-*.json"))
+    print(f"corpus measurement BUILD {target.name}; replacing {strayed or 'nothing'}")
+    for stale in target.parent.glob(f"{name}-*.json"):
+        stale.unlink()
+    text = measure()
+    target.write_text(text, encoding="utf-8")
+    return text
+
+
 def corpus_snapshot(corpus: pathlib.Path, build: Callable[[pathlib.Path], pathlib.Path]) -> pathlib.Path:
     """A frozen corpus's derived database, built once and reused across
     runs. Ingesting a real corpus is disk-bound -- hashing 9 GB of CR2
@@ -152,38 +216,11 @@ def corpus_snapshot(corpus: pathlib.Path, build: Callable[[pathlib.Path], pathli
     `build(home)` performs the full derivation into `home` and returns
     the database path; the snapshot is a copy of that file.
     """
-    import hashlib
-    import importlib.util
-    import pkgutil
     import shutil
     import tempfile
 
-    import db as db_package
-    import metaparse as metaparse_package
-    import vision as vision_package
-    from db import library
-
-    repo = pathlib.Path(__file__).resolve().parent.parent
-    key = hashlib.sha256()
-    for entry in sorted(corpus.rglob("*")):
-        # The root marker is the APPLICATION's writing -- registering
-        # the corpus as a root re-stamps it on every build, and keying
-        # on it made every run see a "changed corpus" and rebuild the
-        # 11-second constant forever.
-        if entry.is_file() and entry.name != library.MARKER:
-            stat = entry.stat()
-            key.update(f"{entry.relative_to(corpus)}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
-    for package in (db_package, metaparse_package, vision_package):
-        names = [package.__name__]
-        names += [found.name for found in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}.")]
-        for name in sorted(names):
-            spec = importlib.util.find_spec(name)
-            if spec is not None and spec.origin is not None and spec.origin != "namespace":
-                key.update(name.encode())
-                key.update(pathlib.Path(spec.origin).read_bytes())
-    cache_dir = repo / ".pytest_cache" / "corpus-snapshots"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    target = cache_dir / f"{corpus.name}-{key.hexdigest()[:16]}.db"
+    cache_dir = _snapshot_dir()
+    target = cache_dir / f"{corpus.name}-{_corpus_key(corpus)}.db"
     # Said out loud on every decision: a key that silently drifts makes
     # every run rebuild an 11-second constant while reporting nothing.
     if target.exists():
