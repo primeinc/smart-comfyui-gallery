@@ -11,17 +11,28 @@
     </nav>
   </header>
   <main class="stage">
-    {# Who is this? The work a fresh clustering leaves behind.
+    {# The people somebody has NAMED are who this page is for, and they
+       come first. A clustering run mints one placeholder person per
+       group nobody has named -- often forty of them -- and a queue of
+       strangers must not bury the twelve people you actually know. #}
+    {% if people %}
+    <div class="person-grid" data-people>
+      {% for one in people %}
+      <a class="person-card" href="/p/{{ one.slug }}" data-person="{{ one.slug }}">
+        {% if one.avatar %}<img class="person-face" src="{{ one.avatar }}" alt="" loading="lazy">{% else %}<span class="person-face person-face-none" aria-hidden="true">{{ (one.name or "?")[:1] | upper }}</span>{% endif %}
+        <span class="person-name">{{ one.name }}</span>
+        <span class="person-count">{{ one.pictures }} pictures</span>
+        {% if one.last_seen is not none %}<span class="person-seen" data-person-seen><time data-epoch="{{ one.first_seen }}">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
 
-       A run mints one placeholder person per group nobody has named,
-       and they used to sort into the same grid as everybody else -- so
-       the twelve people somebody HAS named were scattered through forty
-       they had not, and naming the rest meant finding them first.
-
-       Biggest first, because the group with forty faces is the one
-       worth a name and the group with one may be a stranger in the
-       background of a photograph. Naming happens HERE, in place: twelve
-       people should cost twelve names, not twelve page loads. #}
+    {# Who is this? The work a fresh clustering leaves behind, biggest
+       first: the group with forty faces is the one worth a name, and
+       the group with one may be a stranger in the background of a
+       photograph. Naming happens HERE, in place: twelve people should
+       cost twelve names, not twelve page loads. #}
     {% if unknown %}
     <section class="unknown-faces" data-unknown-faces>
       <h2>who is this? <span class="analyze-of">{{ unknown | length }} unnamed</span></h2>
@@ -43,18 +54,7 @@
     </section>
     {% endif %}
 
-    {% if people %}
-    <div class="person-grid" data-people>
-      {% for one in people %}
-      <a class="person-card" href="/p/{{ one.slug }}" data-person="{{ one.slug }}">
-        {% if one.avatar %}<img class="person-face" src="{{ one.avatar }}" alt="" loading="lazy">{% else %}<span class="person-face person-face-none" aria-hidden="true">{{ (one.name or "?")[:1] | upper }}</span>{% endif %}
-        <span class="person-name">{{ one.name }}</span>
-        <span class="person-count">{{ one.pictures }} pictures</span>
-        {% if one.last_seen is not none %}<span class="person-seen" data-person-seen><time data-epoch="{{ one.first_seen }}">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
-      </a>
-      {% endfor %}
-    </div>
-    {% elif not unknown and runs %}
+    {% if not people and not unknown and runs %}
     <p class="empty">clustered, but no run is the People page's default:</p>
     <ul class="empty" data-clusterings-standing>
       {% for run in runs %}
@@ -62,7 +62,7 @@
       {% endfor %}
     </ul>
     <p class="empty">a sounder run comes from a better embedder: set <code>face_backend</code> on <a href="/operations">operations</a>, run face detection, then clustering.</p>
-    {% elif not unknown %}
+    {% elif not people and not unknown %}
     <p class="empty">nobody clustered yet — <a href="/operations">run face detection, then clustering</a>.</p>
     {% endif %}
   </main>

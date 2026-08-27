@@ -197,11 +197,10 @@ def people_index(state: State, request: Request) -> Template | Response:
         runs = pages.standings(conn) if not told else []
     finally:
         connect.close(conn)
-    # The work still to do, first and apart. A clustering run mints one
-    # placeholder person per group nobody has named, and they sort into
-    # the same grid as everybody else -- so the twelve people somebody
-    # HAS named are scattered through forty they have not, and naming
-    # the rest means finding them.
+    # The work still to do, apart and AFTER the named: a clustering run
+    # mints one placeholder person per group nobody has named, and a
+    # queue of forty strangers must not bury the twelve people somebody
+    # HAS named (people.html holds the order).
     unknown = [one for one in told if not one["name"]]
     return presented_page(
         request,

@@ -202,6 +202,24 @@ def test_the_people_index_renders_for_a_browser(faces):
     assert "2 pictures" in page.text
 
 
+def test_named_people_stand_before_the_naming_queue(faces):
+    """A run mints one placeholder per group nobody has named -- often
+    dozens -- and a queue of strangers must not bury the people somebody
+    HAS named: the named grid renders first, who-is-this after."""
+    conn = connect.connect(faces.app.state.db_path)
+    run_id = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()[0]
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    minted = naming.claim(conn, "person", "")
+    conn.execute("INSERT INTO person(id, name, created_at) VALUES(?, NULL, 0)", (minted,))
+    derived.attribute(conn, files["ben_1.png"], minted, run_id, "test/embedder", "1")
+    conn.commit()
+    connect.close(conn)
+    page = faces.get("/people", headers=AS_BROWSER).text
+    assert "data-people" in page
+    assert "data-unknown-faces" in page
+    assert page.index("data-people") < page.index("data-unknown-faces")
+
+
 def test_naming_still_mints_the_new_address(faces):
     told = faces.post("/p/ana/name", json={"name": "Ana Torres"})
     assert told.status_code < 300

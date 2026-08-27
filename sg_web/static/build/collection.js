@@ -732,7 +732,7 @@
     return isRecord(value) && value.type === "snapshot" && Array.isArray(value.jobs) && value.jobs.every(isJob);
   }
   function isDelta(value) {
-    return isRecord(value) && value.type === "delta" && num(value.job) && str(value.kind) && str(value.state) && num(value.done) && numOrNull(value.total) && bool(value.cancel_requested) && strOrNull(value.derive);
+    return isRecord(value) && value.type === "delta" && num(value.job) && str(value.kind) && str(value.state) && num(value.done) && numOrNull(value.total) && bool(value.cancel_requested) && strOrNull(value.derive) && strOrNull(value.doing);
   }
   function decodeJobFrame(payload) {
     if (typeof payload !== "string") return null;
