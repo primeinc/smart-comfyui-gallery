@@ -41,16 +41,42 @@ _logger = logging.getLogger(__name__)
 #: file, never the scan around it.
 TIMEOUT = 30.0
 
-#: The RAW family, decoded through LibRaw. The list is immich's
-#: (immich-app/immich@f88fb62 server/src/utils/mime-types.ts:4-35), which is
-#: LibRaw's coverage spelled as suffixes.
+#: The RAW family, decoded through LibRaw.
+#:
+#: Started as immich's list (immich-app/immich@f88fb62
+#: server/src/utils/mime-types.ts:4-35) and was described here as "LibRaw's
+#: coverage spelled as suffixes". It is not that. immich's table maps a
+#: suffix to the MIME TYPES IT SERVES; whether LibRaw decodes the bytes is
+#: a different question, and the two disagree.
+#:
+#: `.cin` and `.ari` were the disagreements, and both are gone.
+#:
+#: immich spells them `image/x-phantom-cin` and `image/x-arriflex-ari` --
+#: a high-speed camera's VIDEO format and a cinema camera's -- and LibRaw
+#: decodes neither. Searched LibRaw@HEAD src/, internal/ and libraw/:
+#: `cineon` 0 hits; `phantom` 1, which is "DJI Phantom4 Pro/Pro+" at
+#: cameralist.cpp:310; `\bARRI\b|ARRIFLEX|\bAlexa\b` 0. A bare `arri`
+#: search returns 3 and every one is the word `barrier`.
+#:
+#: Controls in the same trees with the same flags, because 0 hits alone
+#: is not absence: a format LibRaw really does read leaves a trail --
+#: Sigma 102 hits across 7 files, Hasselblad 16 files including its own
+#: decoder and model module, Phase One 15.
+#:
+#: The corpus HAD a real Arri Alexa Mini frame, CC0 from raw.pixls.us,
+#: and LibRaw answered `Unsupported file format or not RAW file`. That
+#: read as a corpus problem for as long as the claim stood. It was the
+#: claim.
+#:
+#: `.cap` (Phase One) and `.k25` (Kodak DC25 -- cameralist.cpp:513,
+#: identify.cpp:3256) stay: LibRaw reads both. Neither has a sample in
+#: the corpus, and that is a corpus gap the ledger reports, not a claim
+#: to edit.
 RAW_SUFFIXES = frozenset(
     {
         ".3fr",
-        ".ari",
         ".arw",
         ".cap",
-        ".cin",
         ".cr2",
         ".cr3",
         ".crw",
