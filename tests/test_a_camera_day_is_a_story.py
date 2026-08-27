@@ -14,9 +14,11 @@ renderer words exactly those claims. The real RAW library proves it on
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import os
 import pathlib
+import shutil
 import struct
 from typing import Any
 
@@ -25,6 +27,7 @@ from litestar.testing import TestClient
 from PIL import ExifTags, Image
 
 from db import capture, connect, ingest, planning, rendering, runner, stories, when
+from sg_web import home as sg_home
 from sg_web.app import build_app
 from tests.staging import DAY, HOUR, NOW, corpus_snapshot
 
@@ -224,6 +227,27 @@ def _library(client, root) -> None:
     _drain(client)
 
 
+@contextlib.contextmanager
+def _derived(tmp_path, root):
+    """A client over the derived library, the derivation cached across
+    runs: scan + ingest + jobs run once per (tree, code) through
+    `corpus_snapshot`, and every later run seeds a fresh home with the
+    snapshot before boot -- the app migrates and serves an existing
+    gallery.db as its ordinary first act."""
+
+    def built(run):
+        with TestClient(app=build_app(str(run), worker=False)) as inner:
+            _library(inner, root)
+            return pathlib.Path(inner.app.state.db_path)
+
+    snap = corpus_snapshot(root, built)
+    run = tmp_path / "run"
+    where = sg_home.db_path(sg_home.home(str(run)))
+    shutil.copyfile(snap, where)
+    with TestClient(app=build_app(str(run), worker=False)) as client:
+        yield client
+
+
 def _pair(root, stem: str, wall: float, *, subsec="00", lens="EF24-105mm", iso=400):
     """One shutter press kept twice: a RAW-standing PNG and its JPEG,
     the same EXIF in both, mtime the camera's own write."""
@@ -238,7 +262,7 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
     pairs share an act key; the session has eight members but four
     acts, members ordered act by act; the lone pair is one act and no
     session."""
-    root = tmp_path / "lib"
+    root = tmp_path / "acts"
     root.mkdir()
     start = FEB_10 + 8 * HOUR
     _pair(root, "IMG_0001", start, subsec="00")
@@ -246,8 +270,7 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
     _pair(root, "IMG_0003", start + 2, subsec="10")
     _pair(root, "IMG_0004", start + 15 * MIN, subsec="00", lens="EF70-200mm", iso=1600)
     _pair(root, "IMG_0009", start + 9 * HOUR, subsec="00")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, root)
+    with _derived(tmp_path, root) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             keys = conn.execute(
@@ -351,13 +374,12 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
 
 @pytest.mark.slow
 def test_a_capture_plan_is_durable_work_without_loading_any_weights(tmp_path):
-    root = tmp_path / "lib"
+    root = tmp_path / "planned"
     root.mkdir()
     start = FEB_10 + 8 * HOUR
     _pair(root, "IMG_0001", start)
     _pair(root, "IMG_0002", start + 30)
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, root)
+    with _derived(tmp_path, root) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'capture_session'").fetchone()[0]

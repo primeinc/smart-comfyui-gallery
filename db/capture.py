@@ -56,9 +56,12 @@ import hashlib
 import math
 import struct
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from PIL import ExifTags, Image
+from PIL import ExifTags
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 from metaparse.containers import decode_user_comment
 from vision import decode
@@ -414,6 +417,10 @@ def read(path, image: Image.Image | None = None) -> Capture:
     bare Exception (Image.py:79) and so escapes an `except OSError`. Nothing
     between here and the caller caught any of them.
     """
+    # PIL.Image is imported where a picture is read, the way `av` is in
+    # read_video: 23ms of import (-X importtime) every app boot was paying.
+    from PIL import Image
+
     out = Capture()
     try:
         if image is not None:
@@ -600,6 +607,8 @@ def read_video(path) -> Capture:
     out = Capture()
     atom = _canon_thumbnail(path)
     if atom is not None:
+        from PIL import Image
+
         try:
             with decode.open_bytes(atom) as image:
                 _read_image(image, path, out)

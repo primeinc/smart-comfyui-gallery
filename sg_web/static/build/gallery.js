@@ -1,5 +1,133 @@
 "use strict";
 (() => {
+  // src/dom.ts
+  function requireElement(root, selector, type) {
+    const found = root.querySelector(selector);
+    if (!(found instanceof type)) {
+      throw new Error(`expected ${selector} to be ${type.name}, found ${describe(found)}`);
+    }
+    return found;
+  }
+  function findElement(root, selector, type) {
+    const found = root.querySelector(selector);
+    return found instanceof type ? found : null;
+  }
+  function everyElement(root, selector, type) {
+    return [...root.querySelectorAll(selector)].filter((node) => node instanceof type);
+  }
+  function closestFrom(target, selector, type) {
+    if (!(target instanceof Element)) return null;
+    const found = target.closest(selector);
+    return found instanceof type ? found : null;
+  }
+  function requireData(node, key) {
+    const held2 = node.dataset[key];
+    if (held2 === void 0) {
+      throw new Error(`expected a data-${key} on ${node.tagName.toLowerCase()}`);
+    }
+    return held2;
+  }
+  function describe(found) {
+    return found === null ? "nothing" : found.constructor.name;
+  }
+  function isPlainClick(event, link) {
+    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
+  }
+
+  // src/recipe.ts
+  function fit(field) {
+    if (field.clientWidth === 0) return;
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight}px`;
+  }
+  async function copied(button2, text) {
+    const was = button2.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button2.textContent = "copied";
+      button2.dataset.done = "true";
+    } catch {
+      button2.textContent = "cannot copy";
+    }
+    setTimeout(() => {
+      button2.textContent = was;
+      delete button2.dataset.done;
+    }, 1200);
+  }
+  function scratchOf(root, named) {
+    const section = findElement(root, `[data-recipe-field="${named}"]`, HTMLElement);
+    const field = section && findElement(section, "[data-scratch]", HTMLTextAreaElement);
+    return field ? field.value : "";
+  }
+  function wholeRecipe(root) {
+    const lines = [];
+    const prompt = scratchOf(root, "prompt");
+    if (prompt.trim()) lines.push(prompt.trim());
+    const negative = scratchOf(root, "negative");
+    if (negative.trim()) lines.push(`Negative prompt: ${negative.trim()}`);
+    const pairs = [];
+    for (const value of everyElement(root, "[data-recipe-key]", HTMLElement)) {
+      const key = value.dataset.recipeKey ?? "";
+      const text = (value.dataset.recipeValue ?? value.textContent ?? "").trim();
+      if (key && text) pairs.push(`${key}: ${text}`);
+    }
+    const checkpoint = findElement(root, "[data-recipe-checkpoint]", HTMLElement);
+    if (checkpoint) pairs.push(`Model: ${(checkpoint.textContent ?? "").trim()}`);
+    const loras = [...everyElement(root, ".recipe-lora", HTMLElement)].map((row) => {
+      const name = row.querySelector("span:not(.recipe-label)")?.textContent?.trim() ?? "";
+      const weight = row.querySelector(".recipe-weight")?.textContent?.trim();
+      return { name, tag: weight ? `<lora:${name}:${weight}>` : `<lora:${name}>` };
+    }).filter((lora) => lora.name && !prompt.includes(`<lora:${lora.name}`)).map((lora) => lora.tag);
+    if (loras.length) pairs.push(`Loras: ${loras.join(" ")}`);
+    if (pairs.length) lines.push(pairs.join(", "));
+    return lines.join("\n");
+  }
+  function mountRecipe(root) {
+    const panel = findElement(root, "[data-recipe]", HTMLElement);
+    if (!panel) return;
+    for (const section of everyElement(panel, "[data-recipe-field]", HTMLElement)) {
+      const field = findElement(section, "[data-scratch]", HTMLTextAreaElement);
+      const revert = findElement(section, "[data-revert]", HTMLElement);
+      if (!field) continue;
+      const original = field.value;
+      fit(field);
+      field.addEventListener("input", () => {
+        fit(field);
+        if (revert) revert.hidden = field.value === original;
+      });
+      if (revert) {
+        revert.addEventListener("click", () => {
+          field.value = original;
+          fit(field);
+          revert.hidden = true;
+          field.focus();
+        });
+      }
+      const copy = findElement(section, "[data-copy]", HTMLElement);
+      if (copy) copy.addEventListener("click", () => void copied(copy, field.value));
+    }
+    const all = findElement(panel, "[data-copy-all]", HTMLElement);
+    if (all) all.addEventListener("click", () => void copied(all, wholeRecipe(panel)));
+    const refit = () => {
+      for (const field of everyElement(panel, "[data-scratch]", HTMLTextAreaElement)) fit(field);
+    };
+    panel.addEventListener("toggle", refit);
+    new MutationObserver(refit).observe(root, { attributeFilter: ["data-inspector"] });
+    refit();
+  }
+
+  // src/analyze.ts
+  function mountAnalyze(root) {
+    const panel = findElement(root, "[data-analyze]", HTMLElement);
+    if (!panel) return;
+    for (const button2 of everyElement(panel, "[data-copy-prompt]", HTMLElement)) {
+      const use = button2.closest("[data-prompt]");
+      const text = use && findElement(use, "[data-prompt-text]", HTMLElement);
+      if (!text) continue;
+      button2.addEventListener("click", () => void copied(button2, text.textContent ?? ""));
+    }
+  }
+
   // ../node_modules/openapi-fetch/dist/index.mjs
   var PATH_PARAM_RE = /\{[^{}]+\}/g;
   var supportsRequestInitExt = () => {
@@ -489,40 +617,6 @@
     return fallback;
   }
 
-  // src/dom.ts
-  function requireElement(root, selector, type) {
-    const found = root.querySelector(selector);
-    if (!(found instanceof type)) {
-      throw new Error(`expected ${selector} to be ${type.name}, found ${describe(found)}`);
-    }
-    return found;
-  }
-  function findElement(root, selector, type) {
-    const found = root.querySelector(selector);
-    return found instanceof type ? found : null;
-  }
-  function everyElement(root, selector, type) {
-    return [...root.querySelectorAll(selector)].filter((node) => node instanceof type);
-  }
-  function closestFrom(target, selector, type) {
-    if (!(target instanceof Element)) return null;
-    const found = target.closest(selector);
-    return found instanceof type ? found : null;
-  }
-  function requireData(node, key) {
-    const held2 = node.dataset[key];
-    if (held2 === void 0) {
-      throw new Error(`expected a data-${key} on ${node.tagName.toLowerCase()}`);
-    }
-    return held2;
-  }
-  function describe(found) {
-    return found === null ? "nothing" : found.constructor.name;
-  }
-  function isPlainClick(event, link) {
-    return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && link?.getAttribute("target") !== "_blank";
-  }
-
   // src/ask.ts
   var DISMISSED = "";
   var TAKEN = "ok";
@@ -621,100 +715,6 @@
         return () => box.returnValue;
       }
     );
-  }
-
-  // src/recipe.ts
-  function fit(field) {
-    if (field.clientWidth === 0) return;
-    field.style.height = "auto";
-    field.style.height = `${field.scrollHeight}px`;
-  }
-  async function copied(button2, text) {
-    const was = button2.textContent;
-    try {
-      await navigator.clipboard.writeText(text);
-      button2.textContent = "copied";
-      button2.dataset.done = "true";
-    } catch {
-      button2.textContent = "cannot copy";
-    }
-    setTimeout(() => {
-      button2.textContent = was;
-      delete button2.dataset.done;
-    }, 1200);
-  }
-  function scratchOf(root, named) {
-    const section = findElement(root, `[data-recipe-field="${named}"]`, HTMLElement);
-    const field = section && findElement(section, "[data-scratch]", HTMLTextAreaElement);
-    return field ? field.value : "";
-  }
-  function wholeRecipe(root) {
-    const lines = [];
-    const prompt = scratchOf(root, "prompt");
-    if (prompt.trim()) lines.push(prompt.trim());
-    const negative = scratchOf(root, "negative");
-    if (negative.trim()) lines.push(`Negative prompt: ${negative.trim()}`);
-    const pairs = [];
-    for (const value of everyElement(root, "[data-recipe-key]", HTMLElement)) {
-      const key = value.dataset.recipeKey ?? "";
-      const text = (value.dataset.recipeValue ?? value.textContent ?? "").trim();
-      if (key && text) pairs.push(`${key}: ${text}`);
-    }
-    const checkpoint = findElement(root, "[data-recipe-checkpoint]", HTMLElement);
-    if (checkpoint) pairs.push(`Model: ${(checkpoint.textContent ?? "").trim()}`);
-    const loras = [...everyElement(root, ".recipe-lora", HTMLElement)].map((row) => {
-      const name = row.querySelector("span:not(.recipe-label)")?.textContent?.trim() ?? "";
-      const weight = row.querySelector(".recipe-weight")?.textContent?.trim();
-      return { name, tag: weight ? `<lora:${name}:${weight}>` : `<lora:${name}>` };
-    }).filter((lora) => lora.name && !prompt.includes(`<lora:${lora.name}`)).map((lora) => lora.tag);
-    if (loras.length) pairs.push(`Loras: ${loras.join(" ")}`);
-    if (pairs.length) lines.push(pairs.join(", "));
-    return lines.join("\n");
-  }
-  function mountRecipe(root) {
-    const panel = findElement(root, "[data-recipe]", HTMLElement);
-    if (!panel) return;
-    for (const section of everyElement(panel, "[data-recipe-field]", HTMLElement)) {
-      const field = findElement(section, "[data-scratch]", HTMLTextAreaElement);
-      const revert = findElement(section, "[data-revert]", HTMLElement);
-      if (!field) continue;
-      const original = field.value;
-      fit(field);
-      field.addEventListener("input", () => {
-        fit(field);
-        if (revert) revert.hidden = field.value === original;
-      });
-      if (revert) {
-        revert.addEventListener("click", () => {
-          field.value = original;
-          fit(field);
-          revert.hidden = true;
-          field.focus();
-        });
-      }
-      const copy = findElement(section, "[data-copy]", HTMLElement);
-      if (copy) copy.addEventListener("click", () => void copied(copy, field.value));
-    }
-    const all = findElement(panel, "[data-copy-all]", HTMLElement);
-    if (all) all.addEventListener("click", () => void copied(all, wholeRecipe(panel)));
-    const refit = () => {
-      for (const field of everyElement(panel, "[data-scratch]", HTMLTextAreaElement)) fit(field);
-    };
-    panel.addEventListener("toggle", refit);
-    new MutationObserver(refit).observe(root, { attributeFilter: ["data-inspector"] });
-    refit();
-  }
-
-  // src/analyze.ts
-  function mountAnalyze(root) {
-    const panel = findElement(root, "[data-analyze]", HTMLElement);
-    if (!panel) return;
-    for (const button2 of everyElement(panel, "[data-copy-prompt]", HTMLElement)) {
-      const use = button2.closest("[data-prompt]");
-      const text = use && findElement(use, "[data-prompt-text]", HTMLElement);
-      if (!text) continue;
-      button2.addEventListener("click", () => void copied(button2, text.textContent ?? ""));
-    }
   }
 
   // src/endless.ts

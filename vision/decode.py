@@ -31,8 +31,10 @@ import importlib
 import logging
 import os
 import pathlib
+import typing
 
-from PIL import Image
+if typing.TYPE_CHECKING:
+    from PIL import Image
 
 _logger = logging.getLogger(__name__)
 
@@ -103,14 +105,24 @@ RAW_SUFFIXES = frozenset(
     }
 )
 
-#: Display-matrix rotation -> the lossless transpose that undoes it.
-#: `VideoFrame.rotation` is counter-clockwise; Pillow's ROTATE_* are
-#: counter-clockwise too, so the mapping is direct.
-_TURNS = {
-    90: Image.Transpose.ROTATE_90,
-    180: Image.Transpose.ROTATE_180,
-    270: Image.Transpose.ROTATE_270,
-}
+
+@functools.cache
+def _turns() -> dict:
+    """Display-matrix rotation -> the lossless transpose that undoes it.
+    `VideoFrame.rotation` is counter-clockwise; Pillow's ROTATE_* are
+    counter-clockwise too, so the mapping is direct.
+
+    A function so PIL.Image is imported when a frame needs turning, the
+    way `av` is: 23ms of import (-X importtime) every app boot was paying
+    for a table only a decode ever reads.
+    """
+    from PIL import Image
+
+    return {
+        90: Image.Transpose.ROTATE_90,
+        180: Image.Transpose.ROTATE_180,
+        270: Image.Transpose.ROTATE_270,
+    }
 
 
 @functools.cache
@@ -141,6 +153,8 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
     would turn the frame a second time: every portrait CR2 sideways.
     """
     ensure_decoders()
+    from PIL import Image
+
     if pathlib.Path(path).suffix.lower() in RAW_SUFFIXES:
         import numpy as np
         import rawpy
@@ -227,6 +241,8 @@ def open_bounded(path: str | os.PathLike[str], want: int, *, edge: str = "longes
         if preview is not None:
             return preview
         return open_still(path)
+    from PIL import Image
+
     opened = Image.open(path)
     _draft_to_edge(opened, want, edge)
     return opened
@@ -298,6 +314,8 @@ def open_header(path: str | os.PathLike[str]) -> Image.Image:
     with no RAW development: a CR2 opens as the TIFF it is, so its
     orientation tag is readable; the pixels of a RAW are open_still's."""
     ensure_decoders()
+    from PIL import Image
+
     return Image.open(path)
 
 
@@ -307,6 +325,8 @@ def open_bytes(data: bytes) -> Image.Image:
     import io
 
     ensure_decoders()
+    from PIL import Image
+
     return Image.open(io.BytesIO(data))
 
 
@@ -346,6 +366,8 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
             _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
             return None
     ensure_decoders()
+    from PIL import Image
+
     try:
         with Image.open(path) as image:
             return int(image.size[0]), int(image.size[1])
@@ -368,7 +390,7 @@ def is_animated(image: Image.Image) -> bool:
 def _upright(frame) -> Image.Image:
     """A decoded video frame, turned the way the display matrix asks."""
     image = frame.to_image()
-    turn = _TURNS.get(int(frame.rotation) % 360)
+    turn = _turns().get(int(frame.rotation) % 360)
     return image if turn is None else image.transpose(turn)
 
 

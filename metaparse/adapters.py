@@ -24,8 +24,6 @@ import logging
 import re
 from typing import ClassVar, NotRequired, TypedDict
 
-from defusedxml import minidom
-
 from .containers import RawMetadata, load_raw
 from .model import ParsedMetadata, set_param, size_string
 
@@ -547,6 +545,11 @@ class DrawThingsAdapter:
     def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         if not raw.xmp:
             return None
+        # defusedxml is imported where an XMP packet exists to parse: 17ms
+        # of import (-X importtime) every app boot was paying for the one
+        # dialect that writes XMP.
+        from defusedxml import minidom
+
         try:
             dom = minidom.parseString(raw.xmp)
             nodes = dom.getElementsByTagName("exif:UserComment")

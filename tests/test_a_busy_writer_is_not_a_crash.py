@@ -43,14 +43,28 @@ SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 KIND = "hash"
 
 
-@pytest.fixture
-def library(tmp_path):
-    """A real file on disk: two connections cannot contend over
-    `:memory:`, where each connection IS its own database."""
-    path = tmp_path / "gallery.db"
+@pytest.fixture(scope="module")
+def _master(tmp_path_factory):
+    """The schema written to disk once: executescript onto a file costs
+    ~55ms per run, and every test here starts from exactly this."""
+    path = tmp_path_factory.mktemp("busy-master") / "master.db"
     conn = connect.connect(str(path))
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
     conn.commit()
+    connect.close(conn)
+    return path
+
+
+@pytest.fixture
+def library(tmp_path, _master):
+    """A real file on disk: two connections cannot contend over
+    `:memory:`, where each connection IS its own database. A closed
+    database file is a file; the copy is the whole setup."""
+    import shutil
+
+    path = tmp_path / "gallery.db"
+    shutil.copy(_master, path)
+    conn = connect.connect(str(path))
     yield path, conn
     connect.close(conn)
 
@@ -69,7 +83,7 @@ def test_the_lane_really_is_held(library):
     """The control. Everything below is about behaviour under SQLITE_BUSY,
     so a run where nothing was busy would prove nothing at all."""
     path, conn = library
-    conn.execute("PRAGMA busy_timeout=50")
+    conn.execute("PRAGMA busy_timeout=5")
     with _Holding(path):
         refused = _blocked(conn)
     assert refused is not None, "the write went through, so the lane was never held"
@@ -80,7 +94,7 @@ def test_the_lane_really_is_held(library):
 def test_a_busy_database_is_no_turn_rather_than_an_exception(library):
     """The defect, stated: this used to raise out of `run_next`."""
     path, conn = library
-    conn.execute("PRAGMA busy_timeout=50")
+    conn.execute("PRAGMA busy_timeout=5")
     with _Holding(path):
         assert runner.run_next(conn, owner="worker-test", now=NOW) is None
     conn.rollback()
@@ -90,7 +104,7 @@ def test_it_says_so_at_info_rather_than_as_a_traceback(library, caplog):
     """Quiet, but not silent: somebody watching a long scan should be
     able to find out why the worker is idle."""
     path, conn = library
-    conn.execute("PRAGMA busy_timeout=50")
+    conn.execute("PRAGMA busy_timeout=5")
     with caplog.at_level(logging.INFO, logger="db.runner"), _Holding(path):
         assert runner.run_next(conn, owner="worker-test", now=NOW) is None
     conn.rollback()

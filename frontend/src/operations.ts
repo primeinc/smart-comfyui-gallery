@@ -13,7 +13,7 @@
 // which the embedded tape and the embedded head disagree.
 import { api } from "./api";
 import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
-import { type Frame, type ReadableEvent, type ReadablePendingFrame, decodeFrame } from "./frames";
+import { decodeFrame, type Frame, type ReadableEvent, type ReadablePendingFrame } from "./frames";
 import type { components } from "./generated/api";
 
 declare global {

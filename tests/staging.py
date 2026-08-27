@@ -260,6 +260,23 @@ class Stage:
     held: dict = field(default_factory=dict)
     rebuilds: int = 0
     _rebuild: Callable[[], Stage] | None = None
+    #: An idle reader whose only job is `PRAGMA data_version`: the value
+    #: moves when any OTHER connection commits (sqlite/sqlite@HEAD
+    #: src/sqlite.h.in:1181-1196), and every write a test makes goes
+    #: through the app's connections, never this one. It must never
+    #: write -- its own changes are the one thing the pragma omits.
+    _monitor: sqlite3.Connection | None = None
+    _seen_version: int | None = None
+
+    def _data_version(self) -> int:
+        if self._monitor is None:
+            self._monitor = connect.connect(self.db, read_only=True)
+        return self._monitor.execute("PRAGMA data_version").fetchone()[0]
+
+    def close_monitor(self) -> None:
+        if self._monitor is not None:
+            self._monitor.close()
+            self._monitor = None
 
     def snapshot(self) -> None:
         """Freeze the database and the library's identity as they are."""
@@ -275,6 +292,7 @@ class Stage:
         finally:
             connect.close(src)
         self.library = _listing(self.root)
+        self._seen_version = self._data_version()
 
     def restore(self) -> None:
         """The snapshot back under the running application. No request is
@@ -288,9 +306,15 @@ class Stage:
                     cached.unlink()
         if _listing(self.root) != self.library:
             assert self._rebuild is not None
+            self.close_monitor()
             fresh = self._rebuild()
             self.__dict__.update(fresh.__dict__)
             self.rebuilds += 1
+            return
+        # A test that committed nothing left the database as the snapshot
+        # made it, and `data_version` is the proof: the monitor never
+        # writes, so an unchanged value means no other connection did.
+        if self._seen_version is not None and self._data_version() == self._seen_version:
             return
         # Through the backup API, not a file copy: a connection a test
         # leaked still holds the -wal open on Windows, and the backup
@@ -305,6 +329,8 @@ class Stage:
                 connect.close(dst)
         finally:
             src.close()
+        # The backup itself is another connection's write; rebase on it.
+        self._seen_version = self._data_version()
 
     def conn(self) -> sqlite3.Connection:
         return connect.connect(self.db)
@@ -323,6 +349,7 @@ def staged(
     disk; `setup(stage)` does the module's once-only preparation through
     the client or a connection; the result is snapshotted and yielded."""
     opened: list[TestClient] = []
+    built: list[Stage] = []
 
     def build() -> Stage:
         base = tmp_path_factory.mktemp(name)
@@ -353,10 +380,13 @@ def staged(
         if setup is not None:
             setup(stage)
         stage.snapshot()
+        built.append(stage)
         return stage
 
     try:
         yield build()
     finally:
+        for stage in built:
+            stage.close_monitor()
         for client in reversed(opened):
             client.__exit__(None, None, None)

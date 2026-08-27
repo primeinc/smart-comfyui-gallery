@@ -516,6 +516,37 @@
     return found === null ? "nothing" : found.constructor.name;
   }
 
+  // src/jobframes.ts
+  function isRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+  var num = (value) => typeof value === "number" && Number.isFinite(value);
+  var str = (value) => typeof value === "string";
+  var bool = (value) => typeof value === "boolean";
+  var numOrNull = (value) => value === null || num(value);
+  var strOrNull = (value) => value === null || str(value);
+  function isJob(value) {
+    return isRecord(value) && num(value.id) && str(value.kind) && str(value.state) && bool(value.cancel_requested) && numOrNull(value.total) && num(value.done_count) && num(value.created_at) && numOrNull(value.finished_at) && strOrNull(value.derive);
+  }
+  function isSnapshot(value) {
+    return isRecord(value) && value.type === "snapshot" && Array.isArray(value.jobs) && value.jobs.every(isJob);
+  }
+  function isDelta(value) {
+    return isRecord(value) && value.type === "delta" && num(value.job) && str(value.kind) && str(value.state) && num(value.done) && numOrNull(value.total) && bool(value.cancel_requested) && strOrNull(value.derive) && strOrNull(value.doing);
+  }
+  function decodeJobFrame(payload) {
+    if (typeof payload !== "string") return null;
+    let held;
+    try {
+      held = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+    if (isSnapshot(held)) return held;
+    if (isDelta(held)) return held;
+    return null;
+  }
+
   // src/ask.ts
   var DISMISSED = "";
   var TAKEN = "ok";
@@ -623,37 +654,6 @@
         }
       });
     }
-  }
-
-  // src/jobframes.ts
-  function isRecord(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-  var num = (value) => typeof value === "number" && Number.isFinite(value);
-  var str = (value) => typeof value === "string";
-  var bool = (value) => typeof value === "boolean";
-  var numOrNull = (value) => value === null || num(value);
-  var strOrNull = (value) => value === null || str(value);
-  function isJob(value) {
-    return isRecord(value) && num(value.id) && str(value.kind) && str(value.state) && bool(value.cancel_requested) && numOrNull(value.total) && num(value.done_count) && num(value.created_at) && numOrNull(value.finished_at) && strOrNull(value.derive);
-  }
-  function isSnapshot(value) {
-    return isRecord(value) && value.type === "snapshot" && Array.isArray(value.jobs) && value.jobs.every(isJob);
-  }
-  function isDelta(value) {
-    return isRecord(value) && value.type === "delta" && num(value.job) && str(value.kind) && str(value.state) && num(value.done) && numOrNull(value.total) && bool(value.cancel_requested) && strOrNull(value.derive) && strOrNull(value.doing);
-  }
-  function decodeJobFrame(payload) {
-    if (typeof payload !== "string") return null;
-    let held;
-    try {
-      held = JSON.parse(payload);
-    } catch {
-      return null;
-    }
-    if (isSnapshot(held)) return held;
-    if (isDelta(held)) return held;
-    return null;
   }
 
   // src/timeline.ts

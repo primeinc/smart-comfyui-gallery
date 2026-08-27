@@ -36,8 +36,10 @@ from __future__ import annotations
 
 import os
 import pathlib
+from typing import TYPE_CHECKING
 
-from PIL import Image, ImageOps
+if TYPE_CHECKING:
+    from PIL import Image
 
 #: Longest side per raster variant, in pixels. Thumb serves grid cells
 #: well under half its size on high-density screens; preview covers a
@@ -118,6 +120,8 @@ def fit(image: Image.Image, edge: int) -> Image.Image:
     """
     if max(image.size) <= edge:
         return image
+    from PIL import Image
+
     scale = edge / max(image.size)
     size = (max(1, round(image.size[0] * scale)), max(1, round(image.size[1] * scale)))
     return image.resize(size, Image.Resampling.LANCZOS, reducing_gap=3.0)
@@ -175,6 +179,8 @@ def put_avatar(
     right = min(width, round(centre_x + side / 2))
     bottom = min(height, round(centre_y + side / 2))
     face = image.crop((left, top, right, bottom))
+    from PIL import ImageOps
+
     return write(target, ImageOps.fit(face, (AVATAR, AVATAR)))
 
 

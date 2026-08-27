@@ -35,9 +35,6 @@ import os
 from dataclasses import dataclass, field
 from fractions import Fraction
 
-import pypdf
-import pypdf.errors
-
 _logger = logging.getLogger(__name__)
 
 #: Seconds to wait for bytes before an unreadable file is a finding.
@@ -181,7 +178,14 @@ def document(path) -> Probed:
     An encrypted PDF raises `FileNotDecryptedError`, a subclass of
     `PdfReadError` and so of `PyPdfError` (pypdf/errors.py:19-49). That is a
     fact about the file, reported, not an error to end a scan with.
+
+    pypdf is imported here, the way `av` is above: 90ms of import
+    (pypdf.filters alone 26ms, measured with -X importtime) that only a
+    scan meeting a PDF ever needs, and every app boot was paying it.
     """
+    import pypdf
+    import pypdf.errors
+
     out = Probed()
     try:
         reader = pypdf.PdfReader(os.fspath(path))

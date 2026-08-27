@@ -114,6 +114,11 @@
          {% if item.stage.shown %}width="{{ item.stage.shown.width }}" height="{{ item.stage.shown.height }}"{% endif %}>
     {% elif item.stage.kind == "audio" %}
     <audio data-stage-media src="{{ item.stage.src }}" controls></audio>
+    {% elif item.stage.kind == "document" %}
+    {# The browser ships a PDF renderer and /media types the bytes by
+       their sniff, so the stage hosts that renderer. The link inside is
+       the whole stage only where frames cannot render. #}
+    <iframe class="viewer-document" data-stage-media src="{{ item.stage.src }}" title="{{ item.name }}"></iframe>
     {% else %}
     <a class="viewer-download" data-stage-media href="{{ item.stage.original }}">download {{ item.name }}</a>
     {% endif %}

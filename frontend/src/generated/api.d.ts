@@ -2381,6 +2381,7 @@ export interface components {
         DocumentStage: {
             /** @constant */
             kind: "document";
+            src: string;
             original: string;
         };
         /** EarlierEvents */

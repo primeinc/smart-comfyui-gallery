@@ -457,8 +457,8 @@ EXTENDS_SHELL = '{% extends "base.html" %}'
 
 #: The functions that open a connection meant to outlive the call, and why.
 #: SG103 takes returning or yielding as a transfer; it does not take storing
-#: one, because that would let any leak be hidden inside an object. These two
-#: are the real thing, and each says what it is for.
+#: one, because that would let any leak be hidden inside an object. Every
+#: entry is the real thing, and each says what it is for.
 CONNECTION_KEPT: frozenset[str] = frozenset(
     {
         # One read-only monitor per database file, shared by every
@@ -469,6 +469,11 @@ CONNECTION_KEPT: frozenset[str] = frozenset(
         # Building it costs 11ms and ~250 tests start from a 0.5ms copy of
         # it; closing it would make every one of them pay again.
         "tests/staging.py:fresh_schema",
+        # The Stage's data_version monitor: an idle reader whose whole
+        # purpose is outliving each test to see other connections'
+        # commits, so a restore nothing wrote through is skipped.
+        # Stage.close_monitor owns its end, at module teardown.
+        "tests/staging.py:_data_version",
     }
 )
 

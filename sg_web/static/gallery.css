@@ -450,6 +450,16 @@ body {
   will-change: transform;
 }
 
+/* The document stage hosts the browser's own PDF renderer: a frame
+   filling the stage, not a picture sized by its pixels -- `auto` on an
+   iframe is 300x150. */
+.viewer-stage iframe[data-stage-media] {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
 /* A picture being examined belongs on top of the furniture around it:
    zoomed, the stage is the thing being done and the filmstrip and the
    inspector are in its way.

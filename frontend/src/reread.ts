@@ -13,8 +13,8 @@
  * problem. A correction too expensive to apply is not a correction.
  */
 import { api, refusal } from "./api";
-import { everyElement, requireData } from "./dom";
 import { say } from "./ask";
+import { everyElement, requireData } from "./dom";
 
 /** How often to ask a small job whether it is finished. */
 const POLL_MS = 400;

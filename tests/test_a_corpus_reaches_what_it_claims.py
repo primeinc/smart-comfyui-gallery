@@ -140,7 +140,15 @@ def test_the_corpus_covers_a_kind_the_synthetic_one_never_wrote():
 # --- the measurement ----------------------------------------------------------
 
 
-def test_the_sourced_files_reach_lines_the_synthetic_corpus_cannot(frozen):
+@pytest.fixture(scope="module")
+def measured():
+    """One traced pass over the specimens, read by both tests below:
+    the runs were identical, and tracing 35 real files costs ~1.3s --
+    two verdicts about one measurement do not justify measuring twice."""
+    return reach.over([path for _one, path in sourced.specimens()])
+
+
+def test_the_sourced_files_reach_lines_the_synthetic_corpus_cannot(frozen, measured):
     """The obligation, stated as a number.
 
     The synthetic corpus closes 0 of its own frozen list, by
@@ -149,20 +157,18 @@ def test_the_sourced_files_reach_lines_the_synthetic_corpus_cannot(frozen):
     argument for sourcing rather than generating more.
     """
     target = {name: set(lines) for name, lines in frozen["unreached"].items()}
-    held = reach.over([path for _one, path in sourced.specimens()])
-    closed = sum(len(target.get(name, set()) & got) for name, got in held.lines.items())
+    closed = sum(len(target.get(name, set()) & got) for name, got in measured.lines.items())
     assert closed > 100, f"the sourced files closed only {closed} of the frozen target"
 
 
-def test_the_baseline_still_describes_these_readers(frozen):
-    """The second coverage run the completion condition asks for.
+def test_the_baseline_still_describes_these_readers(frozen, measured):
+    """The second verdict over the module's one coverage run.
 
     If the readers changed size the frozen list is about a different
     program, and every number derived from it is stale -- so that is
     checked before anything is concluded from it.
     """
-    held = reach.over([path for _one, path in sourced.specimens()])
-    tally = held.tally()
+    tally = measured.tally()
     assert tally, "nothing was measured"
     assert sum(e for _, e in tally.values()) == frozen["totals"]["executable"], (
         "the readers changed size; `just corpus refreeze-reach '<why>'` before trusting it"

@@ -2,15 +2,16 @@
 // the server's ResultSet answers; this file maps pointer geometry onto
 // page numbers and renders what it is told. Hooks are semantic data
 // attributes, never style classes.
+
+import { mountAnalyze } from "./analyze";
 import { api, refusal } from "./api";
 import { askChoice, askText, say } from "./ask";
 import { closestFrom, everyElement, findElement, isPlainClick, requireData, requireElement } from "./dom";
-import { mountAnalyze } from "./analyze";
 import { mountEndless } from "./endless";
 import { mountFilters } from "./filters";
 import type { components } from "./generated/api";
 import { addressableOverlay } from "./overlay";
-import { type Viewer, mountViewer } from "./viewer";
+import { mountViewer, type Viewer } from "./viewer";
 
 type PeekView = components["schemas"]["PeekView"];
 

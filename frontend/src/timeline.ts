@@ -12,11 +12,12 @@
 // Everything else -- the mosaics in the scrubber, the picture under the
 // pointer -- is asked for through the generated client, so the shapes come
 // from the application's own contract.
-import { mountReread } from "./reread";
+
 import { api, refusal } from "./api";
 import { closestFrom, everyElement, findElement, requireData } from "./dom";
 import type { components, paths } from "./generated/api";
 import { decodeJobFrame } from "./jobframes";
+import { mountReread } from "./reread";
 
 type JobKind = components["schemas"]["JobListed"]["kind"];
 type JobState = components["schemas"]["JobListed"]["state"];

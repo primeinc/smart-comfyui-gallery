@@ -400,10 +400,15 @@ class SoundStage(Wire):
 
 
 class DocumentStage(Wire):
-    """Everything else: an address to fetch, and no picture to take
-    (sg_web/app.py `_variant_bytes` says so rather than serving a favicon)."""
+    """A document: the browser's own PDF renderer is the viewer.
+
+    No raster preview exists to take (sg_web/app.py `_variant_bytes` says
+    so), but /media types the bytes `application/pdf` from the sniff, so
+    an embedded frame displays the file itself."""
 
     kind: Literal["document"]
+    #: what the embedded frame is fed -- the original, typed by its bytes
+    src: str
     original: str
 
 
@@ -447,7 +452,7 @@ def _stage(slug: str, kind: MediaKind, width, height, duration) -> Stage:
         )
     if kind == "audio":
         return SoundStage(kind="audio", src=original, original=original, duration=duration)
-    return DocumentStage(kind="document", original=original)
+    return DocumentStage(kind="document", src=original, original=original)
 
 
 class Person(Wire):

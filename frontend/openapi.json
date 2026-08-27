@@ -13027,6 +13027,9 @@
                         "type": "string",
                         "const": "document"
                     },
+                    "src": {
+                        "type": "string"
+                    },
                     "original": {
                         "type": "string"
                     }
@@ -13035,7 +13038,8 @@
                 "type": "object",
                 "required": [
                     "kind",
-                    "original"
+                    "original",
+                    "src"
                 ],
                 "title": "DocumentStage"
             },

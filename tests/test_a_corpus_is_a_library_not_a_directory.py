@@ -149,40 +149,34 @@ def test_the_muddled_ones_really_do_disagree(written):
     assert abs(found.captured_at - _as_wall(muddled[0].stat().st_mtime)) > 300 * 86_400
 
 
-def test_the_same_seed_writes_the_same_bytes(tmp_path):
+def _digest(root):
+    import hashlib
+
+    held = hashlib.sha256()
+    for one in sorted(root.rglob("*")):
+        if one.is_file():
+            held.update(one.relative_to(root).as_posix().encode())
+            held.update(one.read_bytes())
+    return held.hexdigest()
+
+
+def test_the_same_seed_writes_the_same_bytes(written, tmp_path):
     """Deterministic, or a fixture built from it cannot be compared with
-    itself and every measurement drifts for reasons nobody can name."""
-    import hashlib
-
-    def digest(root):
-        held = hashlib.sha256()
-        for one in sorted(root.rglob("*")):
-            if one.is_file():
-                held.update(one.relative_to(root).as_posix().encode())
-                held.update(one.read_bytes())
-        return held.hexdigest()
-
-    first, second = tmp_path / "a", tmp_path / "b"
-    corpus.spread(first, scale="small", seed=7)
-    corpus.spread(second, scale="small", seed=7)
-    assert digest(first) == digest(second)
+    itself and every measurement drifts for reasons nobody can name.
+    Compared against THE FIXTURE -- the claim's own subject -- so the
+    proof costs one write, not two."""
+    root, _told = written
+    again = tmp_path / "again"
+    corpus.spread(again, scale="small")
+    assert _digest(root) == _digest(again)
 
 
-def test_a_different_seed_writes_a_different_library(tmp_path):
+def test_a_different_seed_writes_a_different_library(written, tmp_path):
     """And it is a seed rather than a decoration."""
-    import hashlib
-
-    def digest(root):
-        held = hashlib.sha256()
-        for one in sorted(root.rglob("*")):
-            if one.is_file():
-                held.update(one.read_bytes())
-        return held.hexdigest()
-
-    first, second = tmp_path / "a", tmp_path / "b"
-    corpus.spread(first, scale="small", seed=7)
-    corpus.spread(second, scale="small", seed=8)
-    assert digest(first) != digest(second)
+    root, _told = written
+    other = tmp_path / "other"
+    corpus.spread(other, scale="small", seed=8)
+    assert _digest(root) != _digest(other)
 
 
 def test_it_holds_both_kinds_of_duplicate(written):
