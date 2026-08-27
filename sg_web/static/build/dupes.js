@@ -654,6 +654,9 @@
     }
   }
 
+  // src/zoom.ts
+  var TRAY_MAX_SCALE = 16;
+
   // src/compare.ts
   var MOST = 8;
   function kept() {
@@ -788,7 +791,7 @@
     };
     const clamp = (n) => Math.min(1, Math.max(0, n));
     const zoomTo = (scale, x, y) => {
-      glass.scale = Math.min(16, Math.max(1, scale));
+      glass.scale = Math.min(TRAY_MAX_SCALE, Math.max(1, scale));
       if (glass.scale === 1) {
         glass.x = 0.5;
         glass.y = 0.5;

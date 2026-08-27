@@ -36,6 +36,13 @@ type LiveReport = components["schemas"]["LiveReport"];
   const OVERSCAN = 12;
   //: how many of the newest rows the cold read asks for
   const TAPE_COLD = 500;
+  //: the backfill page: the server's ledger ceiling (db/ledger.py
+  //: PAGE_MOST). The generated contract carries types, not values, so
+  //: this copy is held by eye -- lowering PAGE_MOST means lowering this.
+  const TAPE_PAGE = 2000;
+  //: how long the console coalesces overview refreshes; the same order
+  //: as reread.ts POLL_MS, but a different decision
+  const RENDER_DEBOUNCE_MS = 400;
 
   // --- state ----------------------------------------------------------------
   const held: ReadableEvent[] = []; // every event, ascending by id
@@ -259,7 +266,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     // every id in (after, before): pages until caught up, never samples
     let cursor = after;
     while (cursor < before - 1) {
-      const { data } = await api.GET("/operations/events", { params: { query: { after: cursor, limit: 2000 } } });
+      const { data } = await api.GET("/operations/events", { params: { query: { after: cursor, limit: TAPE_PAGE } } });
       if (!data) return;
       let advanced = false;
       for (const e of data.events) {
@@ -292,7 +299,7 @@ type LiveReport = components["schemas"]["LiveReport"];
     overviewTimer = window.setTimeout(() => {
       overviewTimer = null;
       void loadOverview();
-    }, 400);
+    }, RENDER_DEBOUNCE_MS);
   }
 
   async function loadOverview(): Promise<void> {

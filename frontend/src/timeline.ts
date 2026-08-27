@@ -112,8 +112,22 @@ type Scope = Required<
 (() => {
   const swap = findElement(document, "#timeline-swap", HTMLElement);
   if (!swap) return;
+  // sg_web/timeline_view.py NARROWEST, transcribed: the server enforces
+  // this floor and the payload does not carry it. A server that widens
+  // its floor gets client drags this clamp quietly narrows -- held by
+  // eye until a value channel exists.
   const NARROWEST = 3600;
+  // sg_web/timeline_view.py _W: the SVG viewBox width the server drew
+  // the axis in. Every click, drag and pan maps through this; same
+  // transcription caveat as NARROWEST.
   const W = 1000;
+  //: reconnect delay after the job feed closes -- the server closes
+  //: with code 1011 expecting the client back (sg_web/app.py, the
+  //: /ws/jobs close contract)
+  const RECONNECT_MS = 2000;
+  //: the most tiles one bin's strip requests; tracks the server's page
+  //: ceiling (db/resultset.py MAX_PAGE_SIZE) by eye, not by accident
+  const TILES_MOST = 400;
 
   const surface = () => findElement(swap, "[data-surface]", HTMLElement);
 
@@ -306,7 +320,7 @@ type Scope = Required<
         }
         if (SETTLED.has(frame.state) && INVALIDATES.has(frame.kind)) revalidate();
       };
-      feed.onclose = () => window.setTimeout(open, 2000);
+      feed.onclose = () => window.setTimeout(open, RECONNECT_MS);
       feed.onerror = () => feed.close();
     };
     open();
@@ -630,7 +644,7 @@ type Scope = Required<
       const rows = Math.max(1, Math.floor(box.height / (TILE + 1)));
       strip.style.setProperty("--cols", String(cols));
       strip.style.setProperty("--tile", `${TILE}px`);
-      const n = Math.min(400, cols * rows);
+      const n = Math.min(TILES_MOST, cols * rows);
       strip.dataset.filled = String(n);
       void api
         .GET("/timeline/spread", {
@@ -817,7 +831,10 @@ type Scope = Required<
 
   // --- the size of the pictures ----------------------------------------------
   // ctrl+wheel or a pinch over the days resizes the rows, and the size is
-  // the viewer's from then on; a plain wheel is the page's
+  // the viewer's from then on; a plain wheel is the page's. The bounds
+  // are layout, not derivation: 120 keeps a row's thumbnails readable,
+  // 520 approaches the preview edge (vision/thumbs.py EDGES) past which
+  // a row would upscale its tiles, 200 is the comfortable start.
   const ROW = { least: 120, most: 520, fallback: 200, key: "timeline.row" };
   const rowOf = (): number => {
     try {

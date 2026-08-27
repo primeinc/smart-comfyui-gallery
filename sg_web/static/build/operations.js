@@ -554,6 +554,8 @@
     const ROW_H = 24;
     const OVERSCAN = 12;
     const TAPE_COLD = 500;
+    const TAPE_PAGE = 2e3;
+    const RENDER_DEBOUNCE_MS = 400;
     const held = [];
     const ids = /* @__PURE__ */ new Set();
     const head = Number(requireData(root, "lastEventId"));
@@ -747,7 +749,7 @@
     async function fill(after, before) {
       let cursor = after;
       while (cursor < before - 1) {
-        const { data } = await api.GET("/operations/events", { params: { query: { after: cursor, limit: 2e3 } } });
+        const { data } = await api.GET("/operations/events", { params: { query: { after: cursor, limit: TAPE_PAGE } } });
         if (!data) return;
         let advanced = false;
         for (const e of data.events) {
@@ -777,7 +779,7 @@
       overviewTimer = window.setTimeout(() => {
         overviewTimer = null;
         void loadOverview();
-      }, 400);
+      }, RENDER_DEBOUNCE_MS);
     }
     async function loadOverview() {
       const { data } = await api.GET("/operations/overview");

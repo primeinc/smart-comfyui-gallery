@@ -30,6 +30,7 @@ import type { components } from "./generated/api";
 import { register } from "./keys";
 import { mountRecipe } from "./recipe";
 import { panelState, remember, rememberPanel, workspace } from "./workspace";
+import { MAX_SCALE } from "./zoom";
 
 type Stage = components["schemas"]["MediaSurface"]["stage"];
 type Pixels = components["schemas"]["Pixels"];
@@ -97,7 +98,6 @@ export interface Viewer {
 export type Walk = (href: string) => void;
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 40;
 /** How long the pointer must rest before the chrome fades. */
 const IDLE_MS = 2200;
 /** Seconds a slideshow shows each picture until somebody says otherwise. */

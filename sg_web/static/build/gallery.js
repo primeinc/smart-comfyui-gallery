@@ -1649,6 +1649,10 @@
     return { root, open, close };
   }
 
+  // src/zoom.ts
+  var MAX_SCALE = 40;
+  var TRAY_MAX_SCALE = 16;
+
   // src/viewer.ts
   var FIT = { framing: "fit", scale: 1, x: 0, y: 0 };
   function isStill(stage) {
@@ -1663,7 +1667,6 @@
     return Math.max(box.width / fitted.width, box.height / fitted.height);
   }
   var MIN_SCALE = 1;
-  var MAX_SCALE = 40;
   var IDLE_MS = 2200;
   var DEFAULT_EVERY = 5;
   var ABSORBED = 1.35;
@@ -2919,7 +2922,7 @@
     };
     const clamp = (n) => Math.min(1, Math.max(0, n));
     const zoomTo = (scale, x, y) => {
-      glass.scale = Math.min(16, Math.max(1, scale));
+      glass.scale = Math.min(TRAY_MAX_SCALE, Math.max(1, scale));
       if (glass.scale === 1) {
         glass.x = 0.5;
         glass.y = 0.5;

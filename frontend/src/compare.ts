@@ -41,6 +41,7 @@
 import { closestFrom, everyElement, findElement } from "./dom";
 import { register } from "./keys";
 import { remember, workspace } from "./workspace";
+import { TRAY_MAX_SCALE } from "./zoom";
 
 /** One piece of media, kept. */
 export interface Kept {
@@ -305,7 +306,7 @@ function showComparison(held: Kept[]): void {
 
   /** Zoom about a point, given as a fraction of the frame. */
   const zoomTo = (scale: number, x: number, y: number) => {
-    glass.scale = Math.min(16, Math.max(1, scale));
+    glass.scale = Math.min(TRAY_MAX_SCALE, Math.max(1, scale));
     // At fit there is nothing to be off-centre about, and leaving a
     // stale origin behind makes the NEXT zoom start somewhere nobody
     // pointed at.

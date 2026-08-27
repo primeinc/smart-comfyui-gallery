@@ -762,6 +762,8 @@
     if (!swap) return;
     const NARROWEST = 3600;
     const W = 1e3;
+    const RECONNECT_MS = 2e3;
+    const TILES_MOST = 400;
     const surface = () => findElement(swap, "[data-surface]", HTMLElement);
     const bands = () => {
       const held = surface()?.dataset.axis;
@@ -896,7 +898,7 @@
           }
           if (SETTLED.has(frame.state) && INVALIDATES.has(frame.kind)) revalidate();
         };
-        feed.onclose = () => window.setTimeout(open, 2e3);
+        feed.onclose = () => window.setTimeout(open, RECONNECT_MS);
         feed.onerror = () => feed.close();
       };
       open();
@@ -1160,7 +1162,7 @@
         const rows = Math.max(1, Math.floor(box.height / (TILE + 1)));
         strip.style.setProperty("--cols", String(cols));
         strip.style.setProperty("--tile", `${TILE}px`);
-        const n = Math.min(400, cols * rows);
+        const n = Math.min(TILES_MOST, cols * rows);
         strip.dataset.filled = String(n);
         void api.GET("/timeline/spread", {
           params: {
@@ -1444,6 +1446,9 @@
     }
   }
 
+  // src/zoom.ts
+  var TRAY_MAX_SCALE = 16;
+
   // src/compare.ts
   var MOST = 8;
   function kept() {
@@ -1578,7 +1583,7 @@
     };
     const clamp = (n) => Math.min(1, Math.max(0, n));
     const zoomTo = (scale, x, y) => {
-      glass.scale = Math.min(16, Math.max(1, scale));
+      glass.scale = Math.min(TRAY_MAX_SCALE, Math.max(1, scale));
       if (glass.scale === 1) {
         glass.x = 0.5;
         glass.y = 0.5;
