@@ -56,7 +56,7 @@ from db import (
     settings,
     verdicts,
 )
-from sg_web import console, home
+from sg_web import console, home, redaction
 from sg_web.presenting import VARIES, wants_json
 from sg_web.submitting import submitted
 from sg_web.wire import Wire
@@ -1368,6 +1368,9 @@ def add_root(state: State, data: URLEncodedBody[RootForm]) -> Template:
     try:
         library.add_root(conn, cleaned, data.kind, time.time())
         conn.commit()
+        # a root registered while the server runs is somebody's data
+        # from this moment on; boot-time learning covered the others
+        redaction.learn_sensitive(cleaned)
         roots = _roots(conn)
         behind = _behind(inspecting.coverage(conn, _weights(state, conn))["missing"])
     finally:

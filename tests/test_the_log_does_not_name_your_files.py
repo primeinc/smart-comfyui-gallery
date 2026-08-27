@@ -101,6 +101,67 @@ def test_a_vendored_load_line_is_relativized():
     assert told == "vendored GPU faiss loaded from <app>\\vendor\\faiss-gpu-win64"
 
 
+# --- what the application teaches it -----------------------------------------
+
+
+@pytest.fixture
+def learned():
+    """Snapshot the learned registries; tests teach, teardown forgets."""
+    sensitive, routes = redaction._SENSITIVE[:], redaction._ROUTES[:]
+    yield
+    redaction._SENSITIVE[:], redaction._ROUTES[:] = sensitive, routes
+
+
+def test_a_learned_root_hides_even_inside_the_apps_tree(learned):
+    """Knowledge beats the code-prefix table: a root the app registered
+    is somebody's data wherever it sits."""
+    redaction.learn_sensitive(str(_REPO / "vendor"))
+    told = redaction.said(f"loaded from {_REPO}\\vendor\\weights.bin")
+    assert "<app>" not in told
+    assert "vendor" not in told
+    assert told.startswith("loaded from <")
+
+
+def test_a_served_route_of_literals_stays_readable(learned):
+    redaction.learn_routes([("operations", "jobs", "events")])
+    assert redaction.said("POST /operations/jobs/events failed") == "POST /operations/jobs/events failed"
+
+
+def test_a_route_parameter_is_hashed_and_a_kept_one_is_not(learned):
+    redaction.learn_routes([("i", None), ("operations", "jobs", True)])
+    slugged = redaction.said("GET /i/nan-and-grandad-jpg")
+    assert slugged.startswith("GET /i/<")
+    assert "grandad" not in slugged
+    assert redaction.said("POST /operations/jobs/17") == "POST /operations/jobs/17"
+
+
+def test_a_query_string_is_hashed_whole(learned):
+    redaction.learn_routes([("timeline",)])
+    told = redaction.said("GET /timeline?folder=summer-2019&sort=moment")
+    assert told.startswith("GET /timeline?<")
+    assert "summer" not in told
+
+
+def test_an_unlearned_url_still_fails_closed(learned):
+    told = redaction.said("/home/somebody/pictures: refused")
+    assert "somebody" not in told
+
+
+def test_build_app_teaches_home_root_and_routes(tmp_path, learned):
+    """The registries are fed by the application itself, never typed."""
+    import os
+
+    from sg_web.app import build_app
+
+    burrow = tmp_path / "home"
+    build_app(str(burrow), worker=False)
+    assert any(os.path.normcase(str(burrow)) in one for one in redaction._SENSITIVE)
+    assert redaction.said("POST /operations/jobs/events failed") == "POST /operations/jobs/events failed"
+    slugged = redaction.said("GET /i/nan-and-grandad-jpg answered 404")
+    assert "grandad" not in slugged
+    assert slugged.startswith("GET /i/<")
+
+
 # --- the factory, one channel per test --------------------------------------
 
 

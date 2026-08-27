@@ -34,6 +34,15 @@ Redacted, kept, and the stated boundary:
             slugs derived from media names -- an access log IS a list
             of what the library holds, so the launcher disables it
             unless `--log-user-paths` (sg_web/__main__.py).
+  learned   what the APPLICATION knows, layered over the lexical rules
+            (which stay as the fail-closed floor): the home directory
+            and every registered library root are hidden by knowledge
+            (`learn_sensitive`, fed by sg_web/app.py at boot and by the
+            add-root form), and URLs are rendered against the served
+            route table (`learn_routes`) -- literal segments stay
+            readable because routes are code, parameter segments are
+            hashed because slugs are data. A URL matching no learned
+            route falls through to the floor.
 """
 
 from __future__ import annotations
@@ -100,6 +109,10 @@ _POSIX_PATH = re.compile(r"(?<![\w:])/(?:[^/\s]+/)+[^/\s:]+")
 _SUFFIXES = "|".join(re.escape(one) for one in sorted(scan.KIND_BY_SUFFIX))
 _MEDIA_NAME = re.compile(rf"[^\s\\/:*?\"<>|()]+(?:{_SUFFIXES})(?![\w.])", re.IGNORECASE)
 _NAMED_IN_PARENS = re.compile(rf"\(([^()\n]+(?:{_SUFFIXES}))\)(?![\w.])", re.IGNORECASE)
+#: A URL-shaped token, tried against the learned route table before the
+#: POSIX rule sees it: a match renders structurally, a miss falls
+#: through to the fail-closed floor untouched.
+_URL = re.compile(r"(?<![\w:.@])/[A-Za-z0-9_.~\-]+(?:/[A-Za-z0-9_.~\-]*)*(?:\?[^\s\"'<>()\[\]{}]*)?")
 
 
 def _hidden(token: str) -> str:
@@ -110,23 +123,93 @@ def _hidden(token: str) -> str:
 
 def _path(match: re.Match) -> str:
     token = match.group(0).rstrip(". ")
+    tail = match.group(0)[len(token) :]
     normed = os.path.normcase(token)
+    # What the application registered as somebody's data wins over the
+    # code-prefix table: a root inside the tree hides, never relativizes.
+    for prefix in _SENSITIVE:
+        if normed.startswith(prefix):
+            return _hidden(token) + tail
     for prefix, label in _OURS:
         if normed.startswith(prefix):
             # normcase preserves length, so the slice is the original
             # spelling's remainder -- a frame stays navigable while the
             # prefix that names a person is gone.
-            return label + token[len(prefix) :] + match.group(0)[len(token) :]
-    return _hidden(token) + match.group(0)[len(token) :]
+            return label + token[len(prefix) :] + tail
+    return _hidden(token) + tail
+
+
+def _spoken_route(token: str) -> str | None:
+    """A learned route, rendered: literals kept, parameters hashed, the
+    query hashed whole (its values are search phrases, facets, slugs).
+    None when no learned shape fits."""
+    path, mark, query = token.partition("?")
+    segments = [one for one in path.split("/") if one]
+    for shape in _ROUTES:
+        if len(shape) != len(segments):
+            continue
+        if any(want != have for want, have in zip(shape, segments, strict=True) if isinstance(want, str)):
+            continue
+        spoken = "".join(
+            "/" + (have if isinstance(want, str) or want is True else f"<{naming.short_hash(have)}>")
+            for want, have in zip(shape, segments, strict=True)
+        )
+        return spoken + (f"?<{naming.short_hash(query)}>" if mark else "")
+    return None
 
 
 def said(text: str) -> str:
-    """`text` with every user path and media filename replaced."""
+    """`text` with every user path and media filename replaced.
+
+    Rendered routes are parked behind sentinels while the path rules
+    run: a rendered route is still path-shaped, and the first version
+    let the POSIX rule eat its own colleague's output."""
+    spoken: list[str] = []
+
+    def _route(match: re.Match) -> str:
+        told = _spoken_route(match.group(0))
+        if told is None:
+            return match.group(0)
+        spoken.append(told)
+        return f"\x00{len(spoken) - 1}\x00"
+
+    text = _URL.sub(_route, text)
     text = _WINDOWS_PATH.sub(_path, text)
     text = _UNC_PATH.sub(_path, text)
     text = _POSIX_PATH.sub(_path, text)
     text = _NAMED_IN_PARENS.sub(lambda m: f"({_hidden(m.group(1))})", text)
-    return _MEDIA_NAME.sub(lambda m: _hidden(m.group(0)), text)
+    text = _MEDIA_NAME.sub(lambda m: _hidden(m.group(0)), text)
+    for index, told in enumerate(spoken):
+        text = text.replace(f"\x00{index}\x00", told)
+    return text
+
+
+#: What the application has TOLD this module, layered over the lexical
+#: rules above. `_SENSITIVE` holds normcased prefixes of the home
+#: directory and every registered root -- hidden by knowledge, checked
+#: before the code-prefix table so a root inside the tree hides rather
+#: than relativizes. `_ROUTES` holds one shape per served route: a str
+#: is a literal segment kept as code, True keeps a parameter whose
+#: values carry no user data (numbers, the code vocabularies), None
+#: hashes one. Both are learned, never typed here, so neither can
+#: drift from what the application actually serves.
+_SENSITIVE: list[str] = []
+_ROUTES: list[tuple[str | bool | None, ...]] = []
+
+
+def learn_sensitive(path: str) -> None:
+    """Register a prefix everything under which is somebody's data."""
+    normed = os.path.normcase(path).rstrip("\\/")
+    if normed and normed not in _SENSITIVE:
+        _SENSITIVE.append(normed)
+
+
+def learn_routes(shapes) -> None:
+    """Register served route shapes: str literal / True keep / None hash."""
+    for shape in shapes:
+        held = tuple(shape)
+        if held and held not in _ROUTES:
+            _ROUTES.append(held)
 
 
 #: What install() put in place, held by IDENTITY: idempotence without

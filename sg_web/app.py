@@ -84,6 +84,7 @@ from sg_web import (
     operations,
     person_view,
     place_view,
+    redaction,
     story_view,
     timeline_view,
     wire,
@@ -1834,9 +1835,14 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     purpose: it is process-global, and a builder the test suite calls
     hundreds of times must not change what an unrelated test's logger
     says depending on execution order. The launcher installs it
-    (sg_web/__main__.py), which is every path a served run takes.
+    (sg_web/__main__.py), which is every path a served run takes. What
+    IS done here is teaching: the home directory, every registered
+    root, and the served route table are handed to the redactor, so
+    when it is installed it hides by knowledge and keeps route
+    structure readable. Teaching mutates no logging state.
     """
     base = home.home(home_dir)
+    redaction.learn_sensitive(str(base))
     where = home.db_path(base)
     if not where.exists():
         connect.create(where)
@@ -1862,6 +1868,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     try:
         actor_id = authored.local_actor(opening, time.time())
         opening.commit()
+        # every registered library root is somebody's data by definition
+        for _root_id, root_path, _kind, _online in library.roots(opening):
+            redaction.learn_sensitive(str(root_path))
     finally:
         connect.close(opening)
 
@@ -2091,4 +2100,20 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     app.state.home = str(base)
     app.state.db_path = str(where)
     app.state.actor_id = actor_id
+    # The route table, as shapes the redactor can render URLs against:
+    # a literal segment is code and stays readable; a parameter keeps
+    # its value only when it cannot carry user data -- numbers, and the
+    # two code vocabularies spelled as {kind} and {key}. Every other
+    # parameter (slugs, names, collections) hashes. Derived from
+    # `app.routes` (litestar routes/base.py `path_components`), never
+    # typed, so the shapes cannot drift from what is served.
+    redaction.learn_routes(
+        tuple(
+            segment
+            if isinstance(segment, str)
+            else (segment.type in (int, float) or segment.name in ("kind", "key")) or None
+            for segment in route.path_components
+        )
+        for route in app.routes
+    )
     return app
