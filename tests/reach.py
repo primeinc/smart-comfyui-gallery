@@ -130,6 +130,26 @@ class Reached:
         }
 
 
+def _judged(when, held):
+    """`judge_capture` over what `capture.read` returned, or None.
+
+    Keyword-only, like `judge_file`, and it was called positionally: the
+    call raised TypeError, `watch()` swallowed it, and the richest reader
+    in the set contributed nothing to the measurement while looking as
+    though it had been driven.
+    """
+    if held is None:
+        return None
+    return when.judge_capture(
+        captured_at=held.captured_at,
+        subsec_ms=held.subsec_ms,
+        tz_offset_min=held.tz_offset_min,
+        maker_tz_offset_min=held.maker_tz_offset_min,
+        mtime=None,
+        btime=None,
+    )
+
+
 def _closed(image):
     """Open, then close. `decode.open_still` hands back a live handle, and
     leaking one per file makes a ResourceWarning at collection -- which
@@ -161,7 +181,18 @@ def over(files: Iterable[pathlib.Path]) -> Reached:
             lambda p=one, k=kind: decode.dimensions(p, k) if k else None,
             lambda p=one: _closed(decode.open_still(p)),
             lambda p=spelled: adapters.parse_file(p, allow_stealth=True),
-            lambda p=one: when.judge_file(p.name, [q.name for q in p.parents[:3]]),
+            # KEYWORDS. `judge_file` and `judge_capture` are keyword-only
+            # (db/when.py:425-431, :490-498) and were called positionally
+            # here, so both raised TypeError -- which `watch()` suppresses
+            # on purpose, so they reported no coverage and no complaint.
+            # Two of the ten readers were measured as zero for as long as
+            # this file has existed.
+            lambda p=one: when.judge_file(
+                name=p.name,
+                folders=[q.name for q in p.parents[:3]],
+                mtime=p.stat().st_mtime,
+                btime=None,
+            ),
             lambda p=one: when.judge_filesystem(p.stat().st_mtime, None),
             lambda n=one.name: when.name_stamp(n),
             lambda n=one.name: when.swarm_stamp(n),
@@ -178,5 +209,5 @@ def over(files: Iterable[pathlib.Path]) -> Reached:
         # `JXL.jxl` does exactly that: pillow-jxl raises RuntimeError out
         # of `capture.read`. A measurement that dies on the files it
         # exists to measure is not a measurement.
-        held.watch(lambda p=one: when.judge_capture(capture.read(p)) if capture.read(p) else None)
+        held.watch(lambda p=one: _judged(when, capture.read(p)))
     return held
