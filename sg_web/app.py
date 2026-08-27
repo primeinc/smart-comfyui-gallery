@@ -1165,7 +1165,9 @@ ASSET_VARIANTS = {"thumb": "", "preview": ".preview"}
 #: The same vocabulary, read the other way, for a URL that arrives.
 ASSET_VARIANTS_BY_SUFFIX = {suffix: name for name, suffix in ASSET_VARIANTS.items()}
 
-_ASSET_NAME = re.compile(r"^([0-9a-f]{64})(\.preview)?\.webp$")
+#: The hash half is db/naming.py's one sha256 spelling, embedded in this
+#: route's own grammar rather than restated.
+_ASSET_NAME = re.compile(rf"^({naming.SHA256_HEX_PATTERN})(\.preview)?\.webp$")
 
 
 @get("/thumbs/{shard:str}/{name:str}", sync_to_thread=True, name="asset")
@@ -1241,13 +1243,13 @@ def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) ->
     try:
         found = pages.file_of_content(conn, sha)
         if found is None:
-            raise NotFoundException(f"nothing present carries the bytes {sha[:12]}")
+            raise NotFoundException(f"nothing present carries the bytes {naming.short_sha(sha)}")
         file_id, kind = found
         if kind not in thumbs.PICTURED:
             raise NotFoundException(f"a {kind} has no {variant}")
         path = detect.path_of(conn, file_id)
         if not os.path.isfile(path):
-            raise NotFoundException(f"the bytes behind {sha[:12]} are offline")
+            raise NotFoundException(f"the bytes behind {naming.short_sha(sha)} are offline")
         derive.put_one(
             home.thumbs_dir(pathlib.Path(state.home)),
             sha,
@@ -1259,7 +1261,7 @@ def _render_asset(state: State, sha: str, variant: str, target: pathlib.Path) ->
     finally:
         connect.close(conn)
     if not target.is_file():
-        raise NotFoundException(f"the {variant} of {sha[:12]} could not be rendered")
+        raise NotFoundException(f"the {variant} of {naming.short_sha(sha)} could not be rendered")
 
 
 @get("/thumb/{slug:str}", sync_to_thread=True)

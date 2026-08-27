@@ -98,6 +98,8 @@ def policy_digest(*facts) -> str:
     import hashlib
     import json
 
+    # 12 on purpose, not db/naming.py's 16: this digest rides inside a
+    # space KEY beside other tokens, and vision does not import db.
     return hashlib.sha256(json.dumps(facts, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()[:12]
 
 

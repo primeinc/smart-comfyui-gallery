@@ -175,11 +175,11 @@ def act_key(body_serial: str | None, local_at: float, name: str) -> str:
     -- `666A0200` for both `666A0200.CR2` and `666A0200.JPG`). Two files
     that agree on all three are one act wherever they were copied; two
     frames of a burst differ in the clock, two bodies in the serial."""
-    import hashlib
+    from . import naming
 
     stem = name.rsplit(".", 1)[0].lower() if "." in name else name.lower()
     spelled = f"{body_serial or ''}|{local_at:.3f}|{stem}"
-    return hashlib.sha256(spelled.encode()).hexdigest()[:16]
+    return naming.short_hash(spelled)
 
 
 def _folder_names(conn) -> dict[int, list[str]]:

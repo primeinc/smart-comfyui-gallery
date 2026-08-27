@@ -59,7 +59,7 @@ import story_renderers
 from story_renderers import claims as wording
 from story_renderers import formatting
 
-from . import planning, stories
+from . import naming, planning, stories
 from .stories import canonical, digest
 
 FORMAT_VERSION = 1
@@ -345,7 +345,8 @@ def _keys(node, exact: set[str], optional: set[str], where: str, bad: list[str])
     return True
 
 
-_SHA = re.compile(r"^[0-9a-f]{64}$")
+#: The one sha256 spelling rule (db/naming.py); three modules stated it.
+_SHA = naming.SHA256_HEX
 _SECTION_ID = re.compile(r"^section-[0-9]{3,}$")
 _PHASE_ID = re.compile(r"^phase-[0-9]{3,}$")
 

@@ -34,6 +34,7 @@ from metaparse.typed import GenerationParams
 
 from . import capture as capture_module
 from . import graph as graph_module
+from . import naming
 from . import probe as probe_module
 from . import prompts as prompts_module
 from .scan import mint
@@ -380,13 +381,8 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
     workflow_id = None
     if raw is not None and raw.text.get("workflow"):
         graph = raw.text["workflow"]
-        workflow_id = artifact(
-            conn,
-            "workflow",
-            f"graph-{hashlib.sha256(graph.encode()).hexdigest()[:12]}",
-            now,
-            sha=hashlib.sha256(graph.encode()).hexdigest(),
-        )
+        graph_sha = hashlib.sha256(graph.encode()).hexdigest()
+        workflow_id = artifact(conn, "workflow", f"graph-{naming.short_sha(graph_sha)}", now, sha=graph_sha)
         out.artifacts.append(("workflow", "graph"))
 
     # What the tool said it loaded, with the role it loaded it into and the

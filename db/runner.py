@@ -27,7 +27,7 @@ import traceback
 from collections.abc import Callable
 from concurrent import futures
 
-from . import connect, jobs, ledger, vocabulary
+from . import connect, jobs, ledger, naming, vocabulary
 
 _logger = logging.getLogger(__name__)
 
@@ -199,7 +199,10 @@ def _verify_item(conn, file_id: int, payload: dict, now: float) -> None:
     told.phase("hashing-bytes")
     actual = scan.sha256_of(detect.path_of(conn, file_id))
     if actual != stored[0]:
-        raise ValueError(f"bytes changed behind the library's back: recorded {stored[0][:12]}, found {actual[:12]}")
+        raise ValueError(
+            f"bytes changed behind the library's back:"
+            f" recorded {naming.short_sha(stored[0])}, found {naming.short_sha(actual)}"
+        )
 
 
 def submit_faces(

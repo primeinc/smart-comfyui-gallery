@@ -45,13 +45,12 @@ interpretations, not history.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 import typing
 
 from vision.decode import RAW_SUFFIXES
 
-from . import context, when
+from . import context, naming, when
 
 #: How coarse each precision is, in seconds. A member enters gap
 #: arithmetic at the finest CONSISTENT reading it has: its refined
@@ -255,14 +254,14 @@ GROUPERS = (GenerationSessionGrouper(), CaptureSessionGrouper(), FileSessionGrou
 
 
 def settings_hash(grouper) -> str:
-    return hashlib.sha256(json.dumps(grouper.settings, sort_keys=True).encode()).hexdigest()[:16]
+    return naming.short_hash(json.dumps(grouper.settings, sort_keys=True))
 
 
 def member_hash(uuids) -> str:
     """The membership's identity: ordered file uuids, hashed -- change
     one member or their order and every consumer sees a different
     event."""
-    return hashlib.sha256(",".join(uuids).encode()).hexdigest()[:16]
+    return naming.short_hash(",".join(uuids))
 
 
 def _shared_place(conn, file_ids, policy: int) -> int | None:

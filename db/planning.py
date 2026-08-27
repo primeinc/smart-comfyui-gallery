@@ -56,7 +56,7 @@ import math
 import re
 import typing
 
-from . import prompt_sections
+from . import naming, prompt_sections
 from .stories import canonical, digest
 
 FORMAT_VERSION = 7
@@ -1455,7 +1455,8 @@ STORY_PLAN_V7: StoryPlan = {
     "claims": STORY_PLAN_V6["claims"] | frozenset({"located"}),
 }
 _ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
-_SHA = re.compile(r"^[0-9a-f]{64}$")
+#: The one sha256 spelling rule (db/naming.py); three modules stated it.
+_SHA = naming.SHA256_HEX
 
 
 def _number(value) -> bool:
@@ -1906,7 +1907,7 @@ def request_identity(
 
 
 def settings_hash(settings: dict) -> str:
-    return hashlib.sha256(canonical(dict(sorted(settings.items()))).encode("utf-8")).hexdigest()[:16]
+    return naming.short_hash(canonical(dict(sorted(settings.items()))))
 
 
 PLANNERS = {

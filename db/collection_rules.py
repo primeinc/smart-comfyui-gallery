@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 
 from . import facets as facets_module
+from . import naming
 
 #: What this build AUTHORS. Reading is wider: `_KNOWN_VERSIONS` -- a
 #: stored v1 rule keeps meaning exactly what it meant, and "versioned"
@@ -149,11 +149,9 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     return rule
 
 
-#: Exactly 32 hex characters by FULLMATCH -- bytes.fromhex skips ASCII
-#: whitespace, so a length check after decoding lets spaces hide inside
-#: a stored reference. The same lesson the selection-key parser already
-#: paid for; a durable format does not get to relearn it.
-_UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
+#: The one uuid spelling rule (db/naming.py, where the fullmatch lesson
+#: is recorded once instead of twice).
+_UUID_HEX = naming.UUID_HEX
 
 #: The durable vocabulary, EXACT per version: a stored rule carrying a
 #: key this build does not understand means something this build cannot

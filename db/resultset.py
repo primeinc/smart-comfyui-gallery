@@ -52,12 +52,12 @@ from __future__ import annotations
 import atexit
 import contextlib
 import dataclasses
-import hashlib
 import json
-import re
 import sqlite3
 import threading
 import typing
+
+from . import naming
 
 #: The orders a query may ask for. "similarity" requires a phrase; the
 #: time sorts follow the file table's own indexes; the moment sorts
@@ -330,7 +330,7 @@ def fingerprint(query: GalleryQuery) -> str:
     on `_bound_fingerprint`, over stable entity ids, so a renamed
     person's two spellings stay one cached question."""
     told = json.dumps(dataclasses.asdict(query), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(told.encode()).hexdigest()[:16]
+    return naming.short_hash(told)
 
 
 # --- data currency ----------------------------------------------------------
@@ -746,7 +746,7 @@ def _bound_fingerprint(bound: _Bound) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-    return hashlib.sha256(told.encode()).hexdigest()[:16]
+    return naming.short_hash(told)
 
 
 def scope_of(
@@ -1028,7 +1028,7 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: i
     made = Projection(
         fingerprint=key[1],
         currency=key[2],
-        answer=hashlib.sha256(",".join(str(file_id) for file_id in ids).encode()).hexdigest()[:16],
+        answer=naming.short_hash(",".join(str(file_id) for file_id in ids)),
         ids=tuple(ids),
         ordinal={file_id: position for position, file_id in enumerate(ids)},
         provenance=provenance,
@@ -1271,10 +1271,9 @@ def neighborhood(
 #: absurd payload is refused instead of exercised.
 SUBSET_MOST = 5_000
 
-#: Exactly 32 hex characters -- a fullmatch, because bytes.fromhex
-#: skips whitespace and a raw-length check alone lets two spaces hide
-#: INSIDE a 32-character spelling and decode to 15 bytes.
-_HEX_UUID = re.compile(r"[0-9a-fA-F]{32}")
+#: The one uuid spelling rule (db/naming.py, where the fullmatch lesson
+#: is recorded once instead of twice).
+_HEX_UUID = naming.UUID_HEX
 
 
 @dataclasses.dataclass(frozen=True)

@@ -128,6 +128,9 @@ def policy_hash(provider: str, model: str, checkpoint: str) -> str:
 
     policy = query_policy(provider, model, checkpoint)
     spelled = json.dumps(policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    # 24 on purpose, wider than db/naming.py's 16: this token is stored
+    # as provenance on every prompt vector and never re-derived, so it
+    # takes the extra width while it is cheap.
     return "q" + hashlib.sha256(spelled.encode("utf-8")).hexdigest()[:24]
 
 
