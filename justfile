@@ -90,6 +90,13 @@ pwa-assets:
 [script]
 audit-isolation:
     cd "$(git rev-parse --show-toplevel)"
+    # The audit serves the LIVE working tree to real browsers for an
+    # hour. An edit or a rebuild underneath it (build-web clears
+    # static/build before rewriting) makes every later measurement a
+    # picture of a torn tree -- ten phantom failures, all one 404. So
+    # the tree is fingerprinted first and every verdict is refused if
+    # it moved: an invalid audit must say so, not report ghosts.
+    opened=$(git rev-parse 'HEAD^{tree}'; git status --porcelain)
     # -q -q -q: pytest.ini pins -vv and verbosity is a counter; net -1
     # is the one level where --collect-only prints one id per line.
     listed=$({{ python }} -m pytest tests/ --collect-only -q -q -q --no-header)
@@ -110,6 +117,10 @@ audit-isolation:
             printf '=== %s ===\n%s\n' "$test" "$one" >> "$kept"
         fi
     done <<< "$tests"
+    if [ "$(git rev-parse 'HEAD^{tree}'; git status --porcelain)" != "$opened" ]; then
+        echo "INVALID: the tree changed while the audit ran; nothing above is a verdict"
+        exit 3
+    fi
     echo "order-dependence audit: $total tests, $broke fail alone"
     if [ "$broke" -gt 0 ]; then
         echo "full output of each failure: $kept"
