@@ -1,0 +1,1162 @@
+{
+  "what": "Coverage the application declares, and what the corpus actually reads.",
+  "enumerated_from": [
+    "db/scan.py KIND_BY_SUFFIX",
+    "metaparse/adapters.py MARKER_ADAPTERS + HEURISTIC_ADAPTERS"
+  ],
+  "corpus": "C:\\Users\\will\\dev\\sg-corpus",
+  "corpus_files": 1490,
+  "totals": {
+    "SATISFIED": 129,
+    "UNSATISFIED": 2
+  },
+  "needs": [
+    {
+      "need": "suffix:.3fr",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Hasselblad - H3D - 16bit (4_3).3FR",
+      "why": ""
+    },
+    {
+      "need": "suffix:.3gp",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.3gp",
+      "why": ""
+    },
+    {
+      "need": "suffix:.3gpp",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.3gpp",
+      "why": ""
+    },
+    {
+      "need": "suffix:.aac",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/AAC.aac",
+      "why": ""
+    },
+    {
+      "need": "suffix:.aif",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/AIFF.aif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.aiff",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.aiff",
+      "why": ""
+    },
+    {
+      "need": "suffix:.apng",
+      "kind": "animated_image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.apng",
+      "why": ""
+    },
+    {
+      "need": "suffix:.arw",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Sony - ILCE-7S - 14bit 14bit compressed (3_2).ARW",
+      "why": ""
+    },
+    {
+      "need": "suffix:.asf",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.asf",
+      "why": ""
+    },
+    {
+      "need": "suffix:.au",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.au",
+      "why": ""
+    },
+    {
+      "need": "suffix:.avi",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "exiftool/Pentax.avi",
+      "why": ""
+    },
+    {
+      "need": "suffix:.avif",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.avif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.bmp",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/BMP.bmp",
+      "why": ""
+    },
+    {
+      "need": "suffix:.caf",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.caf",
+      "why": ""
+    },
+    {
+      "need": "suffix:.cap",
+      "kind": "image",
+      "state": "UNSATISFIED",
+      "files": 0,
+      "read": 0,
+      "example": null,
+      "why": "no file with this suffix in the corpus"
+    },
+    {
+      "need": "suffix:.cr2",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 101,
+      "read": 4,
+      "example": "exiftool/CanonRaw.cr2",
+      "why": ""
+    },
+    {
+      "need": "suffix:.cr3",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "raw-cameras/Canon - EOS R6 - 3_2.CR3",
+      "why": ""
+    },
+    {
+      "need": "suffix:.crw",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "raw-cameras/Canon - EOS D30 - RAW (3_2).CRW",
+      "why": ""
+    },
+    {
+      "need": "suffix:.dcr",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Kodak - DCS760C - 12bit (3_2).DCR",
+      "why": ""
+    },
+    {
+      "need": "suffix:.dib",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.dib",
+      "why": ""
+    },
+    {
+      "need": "suffix:.divx",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.divx",
+      "why": ""
+    },
+    {
+      "need": "suffix:.dng",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 34,
+      "read": 4,
+      "example": "exiftool/DNG.dng",
+      "why": ""
+    },
+    {
+      "need": "suffix:.erf",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Epson - R-D1 - 12bit (3_2).ERF",
+      "why": ""
+    },
+    {
+      "need": "suffix:.f4v",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.f4v",
+      "why": ""
+    },
+    {
+      "need": "suffix:.fff",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Hasselblad - H4D-40 - 16bit (4_3).fff",
+      "why": ""
+    },
+    {
+      "need": "suffix:.flac",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/FLAC.flac",
+      "why": ""
+    },
+    {
+      "need": "suffix:.flv",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/Flash.flv",
+      "why": ""
+    },
+    {
+      "need": "suffix:.gif",
+      "kind": "animated_image",
+      "state": "SATISFIED",
+      "files": 7,
+      "read": 4,
+      "example": "exiftool/GIF.gif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.heic",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/QuickTime.heic",
+      "why": ""
+    },
+    {
+      "need": "suffix:.heics",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.heics",
+      "why": ""
+    },
+    {
+      "need": "suffix:.heif",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.heif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.heifs",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.heifs",
+      "why": ""
+    },
+    {
+      "need": "suffix:.hif",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.hif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.iiq",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/PhaseOne.iiq",
+      "why": ""
+    },
+    {
+      "need": "suffix:.j2k",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.j2k",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jfif",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.jfif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jif",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.jif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jp2",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/Jpeg2000.jp2",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jpe",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.jpe",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jpeg",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "commons/500px photo (59943458).jpeg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jpf",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.jpf",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jpg",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 530,
+      "read": 4,
+      "example": "commons/' 68 Alfa Romeo 33 Stradale air scoops.jpg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jpx",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.jpx",
+      "why": ""
+    },
+    {
+      "need": "suffix:.jxl",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 3,
+      "read": 3,
+      "example": "encoded/encoded.jxl",
+      "why": ""
+    },
+    {
+      "need": "suffix:.k25",
+      "kind": "image",
+      "state": "UNSATISFIED",
+      "files": 0,
+      "read": 0,
+      "example": null,
+      "why": "no file with this suffix in the corpus"
+    },
+    {
+      "need": "suffix:.kdc",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Kodak - DC120 - 8bit (4_3).kdc",
+      "why": ""
+    },
+    {
+      "need": "suffix:.m2t",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.m2t",
+      "why": ""
+    },
+    {
+      "need": "suffix:.m2ts",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.m2ts",
+      "why": ""
+    },
+    {
+      "need": "suffix:.m2v",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.m2v",
+      "why": ""
+    },
+    {
+      "need": "suffix:.m4a",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/QuickTime.m4a",
+      "why": ""
+    },
+    {
+      "need": "suffix:.m4v",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.m4v",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mjpeg",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mjpeg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mjpg",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mjpg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mka",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mka",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mkv",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "encoded/encoded.mkv",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mov",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/QuickTime.mov",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mp2",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mp2",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mp3",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/MP3.mp3",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mp4",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 19,
+      "read": 4,
+      "example": "generated/generated/comfy/2026-01/comfy_00000223.mp4",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mpe",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mpe",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mpeg",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mpeg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mpg",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mpg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mpo",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.mpo",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mrw",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "raw-cameras/Minolta - DiMAGE 5 - 4_3.MRW",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mts",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/M2TS.mts",
+      "why": ""
+    },
+    {
+      "need": "suffix:.mxf",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/MXF.mxf",
+      "why": ""
+    },
+    {
+      "need": "suffix:.nef",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/Nikon.nef",
+      "why": ""
+    },
+    {
+      "need": "suffix:.nrw",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Nikon - Coolpix P330 - 12bit 12bit compressed ((7)) (4_3).NRW",
+      "why": ""
+    },
+    {
+      "need": "suffix:.oga",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.oga",
+      "why": ""
+    },
+    {
+      "need": "suffix:.ogg",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "exiftool/FLAC.ogg",
+      "why": ""
+    },
+    {
+      "need": "suffix:.ogm",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.ogm",
+      "why": ""
+    },
+    {
+      "need": "suffix:.ogv",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.ogv",
+      "why": ""
+    },
+    {
+      "need": "suffix:.opus",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/Opus.opus",
+      "why": ""
+    },
+    {
+      "need": "suffix:.orf",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Olympus - E-10 - 16bit (4_3).ORF",
+      "why": ""
+    },
+    {
+      "need": "suffix:.ori",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Olympus - E-M5 Mark II - 16bit 16bit _normal_ (4_3).ORI",
+      "why": ""
+    },
+    {
+      "need": "suffix:.pdf",
+      "kind": "document",
+      "state": "SATISFIED",
+      "files": 3,
+      "read": 3,
+      "example": "exiftool/PDF.pdf",
+      "why": ""
+    },
+    {
+      "need": "suffix:.pef",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Pentax - _ist DL - 12bit (3_2).PEF",
+      "why": ""
+    },
+    {
+      "need": "suffix:.png",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 569,
+      "read": 4,
+      "example": "comfyui/2_pass_pose_worship.png",
+      "why": ""
+    },
+    {
+      "need": "suffix:.psd",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/Photoshop.psd",
+      "why": ""
+    },
+    {
+      "need": "suffix:.qt",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.qt",
+      "why": ""
+    },
+    {
+      "need": "suffix:.raf",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "raw-cameras/Fujifilm - X-S1 - 12bit 12bit uncompressed (4_3).RAF",
+      "why": ""
+    },
+    {
+      "need": "suffix:.rm",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "encoded/encoded.rm",
+      "why": ""
+    },
+    {
+      "need": "suffix:.rmvb",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.rmvb",
+      "why": ""
+    },
+    {
+      "need": "suffix:.rw2",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/Panasonic.rw2",
+      "why": ""
+    },
+    {
+      "need": "suffix:.rwl",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Leica - D-LUX 5 - 1_1.RWL",
+      "why": ""
+    },
+    {
+      "need": "suffix:.sr2",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Sony - DSC-R1 - 14bit 14bit uncompressed (3_2).SR2",
+      "why": ""
+    },
+    {
+      "need": "suffix:.srf",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Sony - DSC-F828 - 4_3.SRF",
+      "why": ""
+    },
+    {
+      "need": "suffix:.srw",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "raw-cameras/Samsung - EX1 - 14bit (4_3).SRW",
+      "why": ""
+    },
+    {
+      "need": "suffix:.tif",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "exiftool/ExifTool.tif",
+      "why": ""
+    },
+    {
+      "need": "suffix:.tiff",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.tiff",
+      "why": ""
+    },
+    {
+      "need": "suffix:.ts",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.ts",
+      "why": ""
+    },
+    {
+      "need": "suffix:.vob",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.vob",
+      "why": ""
+    },
+    {
+      "need": "suffix:.wav",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "exiftool/RIFF.wav",
+      "why": ""
+    },
+    {
+      "need": "suffix:.weba",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.weba",
+      "why": ""
+    },
+    {
+      "need": "suffix:.webm",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.webm",
+      "why": ""
+    },
+    {
+      "need": "suffix:.webp",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 6,
+      "read": 4,
+      "example": "exiftool/RIFF.webp",
+      "why": ""
+    },
+    {
+      "need": "suffix:.wma",
+      "kind": "audio",
+      "state": "SATISFIED",
+      "files": 1,
+      "read": 1,
+      "example": "encoded/encoded.wma",
+      "why": ""
+    },
+    {
+      "need": "suffix:.wmv",
+      "kind": "video",
+      "state": "SATISFIED",
+      "files": 2,
+      "read": 2,
+      "example": "encoded/encoded.wmv",
+      "why": ""
+    },
+    {
+      "need": "suffix:.x3f",
+      "kind": "image",
+      "state": "SATISFIED",
+      "files": 3,
+      "read": 3,
+      "example": "raw-cameras/Sigma - DP1 - 3_2.X3F",
+      "why": ""
+    },
+    {
+      "need": "dialect:SwarmUI",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 177,
+      "example": "dialects/swarm.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:NovelAI",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": "dialects/novel.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:Fooocus",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": "dialects/fooocus.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:InvokeAI",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": "dialects/invoke.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:Easy Diffusion",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": "dialects/easy.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:Draw Things",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": "dialects/drawthings.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:ComfyUI",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 165,
+      "example": "comfyui/2_pass_pose_worship.png",
+      "why": ""
+    },
+    {
+      "need": "dialect:A1111 / Forge",
+      "kind": "generated",
+      "state": "SATISFIED",
+      "files": 54,
+      "example": "dialects/a1111.png",
+      "why": ""
+    },
+    {
+      "need": "kind:animated_image",
+      "kind": "kind",
+      "state": "SATISFIED",
+      "files": 12,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "kind:audio",
+      "kind": "kind",
+      "state": "SATISFIED",
+      "files": 16,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "kind:document",
+      "kind": "kind",
+      "state": "SATISFIED",
+      "files": 3,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "kind:image",
+      "kind": "kind",
+      "state": "SATISFIED",
+      "files": 1288,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "kind:video",
+      "kind": "kind",
+      "state": "SATISFIED",
+      "files": 50,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_basis:capture",
+      "kind": "time_basis",
+      "state": "SATISFIED",
+      "files": 788,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_basis:embedded",
+      "kind": "time_basis",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_basis:filename",
+      "kind": "time_basis",
+      "state": "SATISFIED",
+      "files": 170,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_basis:folder",
+      "kind": "time_basis",
+      "state": "SATISFIED",
+      "files": 183,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_basis:btime",
+      "kind": "time_basis",
+      "state": "SATISFIED",
+      "files": 79,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_basis:mtime",
+      "kind": "time_basis",
+      "state": "SATISFIED",
+      "files": 148,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:decade",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 2,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:year",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 3,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:month",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 153,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:day",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 26,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:minute",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:second",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 403,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "time_precision:subsecond",
+      "kind": "time_precision",
+      "state": "SATISFIED",
+      "files": 781,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "location_basis:gps",
+      "kind": "location_basis",
+      "state": "SATISFIED",
+      "files": 82,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "location_basis:authored",
+      "kind": "location_basis",
+      "state": "SATISFIED",
+      "files": 0,
+      "example": null,
+      "why": "no file carries this: produced by a person, and produced when asked"
+    },
+    {
+      "need": "origin:captured",
+      "kind": "origin",
+      "state": "SATISFIED",
+      "files": 787,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "origin:generated",
+      "kind": "origin",
+      "state": "SATISFIED",
+      "files": 400,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "origin:mixed",
+      "kind": "origin",
+      "state": "SATISFIED",
+      "files": 1,
+      "example": null,
+      "why": ""
+    },
+    {
+      "need": "origin:imported",
+      "kind": "origin",
+      "state": "SATISFIED",
+      "files": 181,
+      "example": null,
+      "why": ""
+    }
+  ]
+}

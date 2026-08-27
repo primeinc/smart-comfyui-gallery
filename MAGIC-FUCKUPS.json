@@ -1,0 +1,857 @@
+{
+  "audited": "smart-comfyui-gallery @ branch frontend-typescript, working tree as of 2026-08-25. First-party Python and TypeScript under db/, metaparse/, sg_web/, sglint/, story_renderers/, vision/, tests/, benchmarks/, frontend/src/. Excluded: .venv, node_modules, vendor, sg_web/static/build, sg_web/static/*.min.js, frontend/src/generated/api.d.ts (generated), and the verbatim schema DDL text embedded in db/migrate.py. Audited for improper variable usage only: magic numbers, magic strings, duplicated constants, and hardcoded values that should be named or derived. Every reported literal was opened and read at the cited line.",
+  "totals": {
+    "high": 27,
+    "medium": 34,
+    "low": 23,
+    "by_klass": {
+      "inconsistent-duplicate": 16,
+      "duplicated-vocabulary": 16,
+      "repeated-literal": 14,
+      "should-be-derived": 10,
+      "unexplained-literal": 28
+    }
+  },
+  "findings": [
+    {
+      "file": "db/facets.py",
+      "line": 149,
+      "literal": "WHEN 'subsecond' THEN 0 WHEN 'second' THEN 1 WHEN 'minute' THEN 60 WHEN 'hour' THEN 3600",
+      "concept": "the granule->seconds table, restated as a SQL CASE",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "db/when.py:526-534 SPAN is the declared single table: subsecond 0.001, second 1.0, minute 60.0, hour 3600.0, day 86400.0, month 2_629_746, year 31_556_952, decade 315_569_520. This CASE gives subsecond 0 (not 0.001) and, per db/facets.py:150, collapses EVERY coarse precision to 2147483647. db/pages.py:1359-1361 _FINE_ENOUGH admits 'decade', 'year' and 'month' as real precisions, and db/facets.py:139-143's own comment says `lte:<bin width>` is exactly 'fine enough for this bin' -- so a decade-precision claim (315_569_520 s per when.SPAN) tests as 2147483647 and is excluded from every bin narrower than INT_MAX, which is every bin. Same word, two tables, and the second one lost three rungs.",
+      "fix": "Generate the CASE arms from when.SPAN at import time (a module-level f-string joining `WHEN '<name>' THEN <int(seconds)>` over when.SPAN), so a rung added to when.SPAN cannot be missing here. Name it db/facets.py GRANULE_SECONDS_SQL."
+    },
+    {
+      "file": "db/facets.py",
+      "line": 150,
+      "literal": "WHEN 'day' THEN 86400 ELSE 2147483647 END",
+      "concept": "the coarse-precision fallback in the granule CASE",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "Continuation of db/facets.py:149. 2147483647 is INT32_MAX standing in for 'coarser than a day', but db/when.py:526-528 has real seconds for month, year and decade and db/pages.py:1359 relies on them. No comment derives 2147483647.",
+      "fix": "Replace with generated arms for month/year/decade from when.SPAN; keep a named `_UNKNOWN_GRANULE` only for a precision the table does not contain."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 375,
+      "literal": "2_000",
+      "concept": "the ceiling on rows one ledger read returns",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "db/ledger.py:59 declares `PAGE_MOST = 2_000` as 'Most rows one read returns'. This module already imports ledger and already uses ledger.PAGE_MOST for exactly this clamp 33 lines earlier at db/inspecting.py:342. Line 375 retypes the number instead, so raising PAGE_MOST silently leaves the item pager behind.",
+      "fix": "`limit = max(1, min(int(limit), ledger.PAGE_MOST))`, matching db/inspecting.py:342."
+    },
+    {
+      "file": "db/planning.py",
+      "line": 1145,
+      "literal": "frozenset({\"capture\", \"embedded\", \"filename\", \"folder\", \"mtime\", \"btime\"})",
+      "concept": "the time-basis vocabulary",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "db/context.py:58 declares TIME_BASES = (\"capture\", \"embedded\", \"filename\", \"folder\", \"btime\", \"mtime\", \"first_seen\") -- SEVEN members. This copy has six: 'first_seen' is missing. The docstring above it (db/planning.py:1143-1144) claims it is \"the time bases a file occurrence may rest on (db/schema.sql derived_media_occurrence.basis)\", and db/migrate.py:3512 shows that CHECK does include 'first_seen'. tests/needs.py:85 and tests/test_the_corpus_spans_the_shape.py:141 gate context.TIME_BASES only; nothing holds _BASES against it.",
+      "fix": "`_BASES = frozenset(context.TIME_BASES)`. db/planning.py already imports from the db package."
+    },
+    {
+      "file": "db/scan.py",
+      "line": 860,
+      "literal": "900",
+      "concept": "SQL bound-parameter batch size for an IN clause",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "The same concept -- how many ids fit in one `... IN (?,?,...)` -- is 500 at db/evolution.py:131, db/prompts.py:190, db/prompts.py:371, db/retrieval.py:374 and db/runner.py:929. Upstream fixes the real ceiling: ../refs/sqlite/sqlite/src/sqliteLimit.h:189-191 defines SQLITE_MAX_VARIABLE_NUMBER as 32766 at the commit db/connect.py:174 already cites (sqlite/sqlite@b09c88c14). Neither 900 nor 500 is that number, a fraction of it, or derived from anything else stated in the repo, and nothing says why the scan path may use 900 while five others may not.",
+      "fix": "One module-level `PARAM_BATCH` in db/connect.py beside the other per-connection facts, derived from the limit the driver reports (`getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)`, whose compile-time default is ../refs/sqlite/sqlite/src/sqliteLimit.h:190) with a documented margin. Every call site reads it."
+    },
+    {
+      "file": "db/scan.py",
+      "line": 861,
+      "literal": "900",
+      "concept": "SQL bound-parameter batch size, restated as the slice bound",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "The same literal on the next line (`untouched[start : start + 900]`), so the loop step and the slice width are two independent copies that must agree. Same divergence against the five 500 sites listed for db/scan.py:860.",
+      "fix": "Read PARAM_BATCH (db/connect.py) in both the range() step and the slice."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 197,
+      "literal": "{\"day\": 86_400, \"hour\": 3_600, \"minute\": 60}",
+      "concept": "the granule->seconds table, third Python copy",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "db/when.py:526-534 SPAN holds eight rungs; db/pages.py:1333-1340 BINS holds nine (derived from when); db/facets.py:149-150 holds a fourth as SQL. This _SPAN holds three, so a surface that reaches it for 'week', 'quarter', 'month', 'year' or 'decade' -- all of which db/pages.py:1333-1340 and sg_web/timeline_view.py:212-219 name -- gets a KeyError or a silent miss rather than a width.",
+      "fix": "Delete _SPAN and read db/pages.py BINS, which is already the derived table for exactly this surface."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 217,
+      "literal": "12 * 31_557_600",
+      "concept": "a year in seconds, as the zoom ladder's week-bin ceiling",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "31_557_600 is the JULIAN mean year (365.25*86400). db/when.py:521 defines YEAR = 365.2425 * DAY = 31_556_952 (Gregorian mean), and db/when.py:505-509 names 31_557_600 explicitly as the wrong hand-written value that was purged from db/pages.py. db/pages.py:1328-1331 repeats the same warning. This line is a live fourth copy of the constant the comment claims was eliminated: the zoom ladder switches to week bins at a boundary 648 s/year wider than the bin widths db/pages.py:1334 computes from when.YEAR.",
+      "fix": "Import when and write `12 * when.YEAR`; delete the literal. The single calendar constant lives in db/when.py (SECOND/MINUTE/HOUR/DAY/YEAR/MONTH/DECADE)."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 218,
+      "literal": "120 * 31_557_600",
+      "concept": "a year in seconds, as the zoom ladder's month-bin ceiling",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "Same Julian/Gregorian split as sg_web/timeline_view.py:217. db/when.py:521 YEAR = 31_556_952; db/when.py:507 documents 31_557_600 as the value that disagreed. Two adjacent lines of the same tuple both carry it.",
+      "fix": "`120 * when.YEAR`. Same import as line 217."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 662,
+      "literal": "30.44",
+      "concept": "days per month, for spelling how long a gap was",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "db/when.py:522 defines MONTH = YEAR / 12.0 = 2_629_746 s = 30.436875 days. 30.44 is a fourth hand-rounded mean month, and db/pages.py:1335 uses int(when.MONTH) for the bin the same gap is drawn in. tests/test_the_timeline_draws_any_span.py:31 uses a FIFTH value (30 days flat).",
+      "fix": "Derive: `when.MONTH / when.DAY`. Delete the literal."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 663,
+      "literal": "365.25",
+      "concept": "days per year, for spelling how long a gap was",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "The _nothing_for ladder converts a gap in days to a unit word. 365.25 is the Julian year again, against db/when.py:521 YEAR = 365.2425 * DAY. The same module disagrees with itself: lines 217-218 use 31_557_600 (=365.25 d) while db/pages.py:1334 draws its bars from when.YEAR (=365.2425 d), so the bar and the words beside it are computed off two different years.",
+      "fix": "Derive: `when.YEAR / when.DAY`. Better, replace the whole (most, per, unit) table with one derived from when.SPAN."
+    },
+    {
+      "file": "tests/test_empty_time_does_not_get_the_pixels.py",
+      "line": 43,
+      "literal": "YEAR = 365 * DAY",
+      "concept": "a year in seconds, for the span fixture",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "= 31_536_000, a common (non-leap) year. Disagrees with db/when.py:521 (31_556_952) and with tests/test_the_timeline_draws_any_span.py:27 (31_557_600). A fixture-building constant, not an assertion.",
+      "fix": "`from db import when`; use `when.YEAR`."
+    },
+    {
+      "file": "tests/test_the_timeline_draws_any_span.py",
+      "line": 27,
+      "literal": "YEAR = 365.25 * 86_400",
+      "concept": "a year in seconds, for the span fixture",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "= 31_557_600, the Julian mean. db/when.py:521 says 31_556_952. tests/test_empty_time_does_not_get_the_pixels.py:43 says `YEAR = 365 * DAY` = 31_536_000. Three test-visible values for the same word, none imported from db.when. Not an oracle literal: this constant BUILDS the fixture spans at lines 28-36, it is not an expected answer.",
+      "fix": "`from db import when` and use `when.YEAR`. Same for the 86_400 -> when.DAY."
+    },
+    {
+      "file": "tests/test_the_timeline_draws_any_span.py",
+      "line": 31,
+      "literal": "5 * 30 * 86_400",
+      "concept": "five months in seconds",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "A month typed as 30 days. db/when.py:522 MONTH = YEAR/12 = 30.436875 days; sg_web/timeline_view.py:662 uses 30.44. Three values for 'month' inside the code that draws and tests one timeline.",
+      "fix": "`5 * when.MONTH`."
+    },
+    {
+      "file": "tests/test_the_timeline_in_a_browser.py",
+      "line": 22,
+      "literal": "DAY = 1_686_355_200",
+      "concept": "an epoch instant (2023-06-10), bound to the name DAY",
+      "klass": "inconsistent-duplicate",
+      "severity": "high",
+      "evidence": "The name DAY is bound to 86400.0 in tests/test_a_camera_day_is_a_story.py:33, tests/test_every_file_has_a_when.py:32, tests/test_the_timeline_is_a_surface.py:31, tests/test_time_is_a_corroboration_stack.py:32 and tests/test_empty_time_does_not_get_the_pixels.py:42. Here the same name is an absolute instant, used as one at line 55 (`start={DAY}&end={DAY + 86400}`) where 86400 is retyped beside it. The identical instant is named JUNE_10 at tests/test_a_shelf_says_when.py:22, tests/test_every_file_has_a_when.py:33 and tests/test_the_timeline_is_a_surface.py:32.",
+      "fix": "Rename to JUNE_10 to match the three modules that already spell it that way, and take DAY from db.when. Hoist JUNE_10 into tests/staging.py so the four spellings become one."
+    },
+    {
+      "file": "frontend/src/viewer.ts",
+      "line": 100,
+      "literal": "const MAX_SCALE = 40",
+      "concept": "the viewer's maximum zoom factor",
+      "klass": "inconsistent-duplicate",
+      "severity": "medium",
+      "evidence": "frontend/src/compare.ts:308 caps the compare tray's glass at 16 with a bare `Math.min(16, Math.max(1, scale))`. Two zoom surfaces over the same pictures, two ceilings, one named and one not, and nothing states why they differ. Arguable only in that the surfaces are distinct; the value is unexplained in both.",
+      "fix": "Export MAX_SCALE/MIN_SCALE from frontend/src/viewer.ts (or a shared frontend/src/zoom.ts) and have compare.ts import it. If the tray wants a tighter cap, name it TRAY_MAX_SCALE beside MAX_SCALE with the reason."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 32,
+      "literal": "TERMINAL = (\"done\", \"failed\", \"cancelled\")",
+      "concept": "the settled job states",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "The other half of the collision with sg_web/activity.py:39. The comment attached to it (db/inspecting.py:31, 'The payload keys a launcher writes, as the console labels them') describes a different object entirely -- the tell that this line was copied, not written.",
+      "fix": "Import from db/jobs.py (see the fix for sg_web/activity.py:39) and delete both the literal and the wrong comment."
+    },
+    {
+      "file": "db/jobs.py",
+      "line": 448,
+      "literal": "(\"done\", \"failed\", \"cancelled\")",
+      "concept": "the settled job states, inline in the terminal guard",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "This is the authority -- the function that refuses a non-terminal state -- and it holds the set as an anonymous inline tuple, 405 lines after JobState is declared at db/jobs.py:43. db/inspecting.py:32 and sg_web/activity.py:39 each keep their own named copy instead of importing this one.",
+      "fix": "Hoist to a module constant `TERMINAL` beside JobState at db/jobs.py:43 and reference it here and at db/jobs.py:619."
+    },
+    {
+      "file": "db/planning.py",
+      "line": 1146,
+      "literal": "frozenset({\"image\", \"animated_image\", \"video\", \"audio\", \"document\"})",
+      "concept": "the file-kind vocabulary",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "Fourth Python copy of the tuple at db/facets.py:29 / db/resultset.py:161 / db/vocabulary.py:67. Ungated: tests/test_the_query_vocabulary_is_one_module.py:436 holds only facets vs resultset.",
+      "fix": "`_MEDIA_KINDS = frozenset(facets.KINDS)`."
+    },
+    {
+      "file": "db/runner.py",
+      "line": 248,
+      "literal": "f.kind IN ('image', 'animated_image', 'video')",
+      "concept": "the kinds that have pixels, as a SQL IN list",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "Instances of the same hand-written list: db/runner.py:248, db/runner.py:260, db/runner.py:289, db/runner.py:349, db/runner.py:501, db/inspecting.py:74. db/inspecting.py:74 already binds it to a name (_PICTURE) and its own comment at db/inspecting.py:76-79 says counting it differently from what is queued \"would make the console say '0 missing' beside a sweep that is about to read the whole library\" -- exactly the drift six copies invite.",
+      "fix": "Export `_PICTURE` from db/inspecting.py as PICTURE_CLAUSE (or move it to db/vocabulary.py beside VISUAL) and concatenate it at all six sites."
+    },
+    {
+      "file": "db/vocabulary.py",
+      "line": 67,
+      "literal": "(\"image\", \"animated_image\", \"video\", \"audio\", \"document\")",
+      "concept": "the file-kind vocabulary",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "Third Python copy. db/facets.py:29 KINDS and db/resultset.py:161 KINDS are the same tuple; db/facets.py:26-28 states they are 'held against resultset.KINDS by a test, so the two cannot drift', and tests/test_the_query_vocabulary_is_one_module.py:436 asserts exactly that pair -- EVERY_KIND is outside that gate. Positive control: rg for 'EVERY_KIND' across tests/ and sglint/ returns nothing while the same sweep hits 'resultset.KINDS' at tests/test_the_query_vocabulary_is_one_module.py:436, so the absence of a gate is VALIDATED_EMPTY, not an unproven zero.",
+      "fix": "`EVERY_KIND = resultset.KINDS`, or extend tests/test_the_query_vocabulary_is_one_module.py:436 to assert vocabulary.EVERY_KIND == resultset.KINDS. One tuple, one home; db/facets.py already claims that role."
+    },
+    {
+      "file": "frontend/src/timeline.ts",
+      "line": 48,
+      "literal": "[\"done\", \"failed\", \"cancelled\"]",
+      "concept": "the settled job states, in TypeScript",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "`satisfies JobState[]` proves each member is a legal state; it does not prove the set is the terminal set. A sixth state added to db/jobs.py:43 and marked terminal at db/jobs.py:448 leaves this Set silently short, and the surface then shows a settled job as still running. Same set at db/inspecting.py:32, sg_web/activity.py:39, db/jobs.py:448, db/jobs.py:619, db/inspecting.py:243.",
+      "fix": "Emit the terminal subset through the generated contract from the db/jobs.py TERMINAL tuple, and import it here."
+    },
+    {
+      "file": "sg_web/activity.py",
+      "line": 39,
+      "literal": "TERMINAL = (\"done\", \"failed\", \"cancelled\")",
+      "concept": "the settled job states",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "Second declaration under the SAME name: db/inspecting.py:32 already declares it, and sg_web/activity.py:36 already imports from db. The set is written out again at db/jobs.py:448 (inline tuple in the terminal guard), db/jobs.py:619 (SQL), db/inspecting.py:243 (SQL), frontend/src/timeline.ts:48 (SETTLED), and five times as JavaScript inside Python strings at benchmarks/browser_report.py:348, 389, 412, 427 and 546. db/jobs.py:43 declares JobState as the Literal that owns the vocabulary; the terminal SUBSET is derived nowhere.",
+      "fix": "Declare `TERMINAL: tuple[JobState, ...]` once in db/jobs.py beside JobState, import it in db/inspecting.py and sg_web/activity.py, build both SQL fragments from it, and emit it to the client so frontend/src/timeline.ts:48 imports rather than retypes."
+    },
+    {
+      "file": "sg_web/media_view.py",
+      "line": 304,
+      "literal": "Literal[\"image\", \"animated_image\", \"video\", \"audio\", \"document\"]",
+      "concept": "the file-kind vocabulary, as a wire type",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "Fifth copy, and the one the generated client contract is built from -- it reappears at frontend/src/generated/api.d.ts:2651. A kind added to db/facets.py:29 and db/resultset.py:161 passes their shared test and never reaches the wire type.",
+      "fix": "Declare the Literal ONCE (db/resultset.py, beside KINDS) and derive the tuple from it: `KINDS = typing.get_args(MediaKind)` -- the pattern db/jobs.py:43 and db/ledger.py:55-56 already use for JobState/EventType."
+    },
+    {
+      "file": "vision/thumbs.py",
+      "line": 53,
+      "literal": "(\"image\", \"animated_image\", \"video\")",
+      "concept": "the kinds that have pixels",
+      "klass": "duplicated-vocabulary",
+      "severity": "high",
+      "evidence": "db/vocabulary.py:71 declares the identical tuple as VISUAL ('the kinds that have pixels'), and the same set is hand-written as SQL at db/inspecting.py:74, db/runner.py:248, db/runner.py:260, db/runner.py:289, db/runner.py:349 and db/runner.py:501. Seven statements of one set, two of them under different names. tests/test_a_thumbnail_is_a_static_asset.py:84 iterates thumbs.PICTURED only; nothing holds it against vocabulary.VISUAL.",
+      "fix": "One name. Put it in db/vocabulary.py (VISUAL), have vision/thumbs.py import it, and build the SQL fragment once -- `_PICTURE` at db/inspecting.py:74 already is that fragment; export it and have db/runner.py's five queries concatenate it."
+    },
+    {
+      "file": "db/collection_rules.py",
+      "line": 156,
+      "literal": "_UUID_HEX = re.compile(r\"[0-9a-fA-F]{32}\")",
+      "concept": "the entity-uuid spelling rule",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "db/resultset.py:1265 declares the same regex as `_HEX_UUID` -- same pattern, transposed name -- with a near-identical justification comment (db/collection_rules.py:152-155 vs db/resultset.py:1262-1264). Both comments say the lesson was 'paid for'; it was paid for twice and recorded twice.",
+      "fix": "One `UUID_HEX` in db/naming.py, imported by db/collection_rules.py and db/resultset.py. Delete both local copies and one of the two comments."
+    },
+    {
+      "file": "db/naming.py",
+      "line": 34,
+      "literal": "len(uuid_hex) == 32",
+      "concept": "the entity-uuid spelling rule, as a length test",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "Third statement of the same rule, and the weakest: it checks length only, where db/collection_rules.py:156 and db/resultset.py:1265 both use a hex FULLMATCH precisely because `bytes.fromhex` forgives whitespace (their comments at db/collection_rules.py:152-154 and db/resultset.py:1262-1264 say so). A 32-character string with an embedded space reaches `bytes.fromhex` here and raises rather than being refused as malformed.",
+      "fix": "Use the shared `UUID_HEX.fullmatch(uuid_hex)` proposed for db/collection_rules.py:156, in the module that should own it."
+    },
+    {
+      "file": "db/planning.py",
+      "line": 1134,
+      "literal": "{\"filename\": ..., \"folder\": ..., \"mtime\": ..., \"btime\": ..., \"embedded\": ..., \"capture\": ...}",
+      "concept": "the time-basis vocabulary, as a label map",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "_BASIS_WORDS keys are another spelling of db/context.py:58 TIME_BASES, again without 'first_seen'. story_renderers/claims.py:297 _BASIS_PHRASE has the same six keys. Neither is checked for coverage, so a basis added to db/context.py:58 falls through to `.get(basis, basis)` at story_renderers/claims.py:307 and the surface prints the raw token.",
+      "fix": "Keep the maps (per-basis prose belongs beside the renderer) but gate them: one test asserting the key set equals context.TIME_BASES minus the deliberately-omitted members, with the omission stated."
+    },
+    {
+      "file": "db/rendering.py",
+      "line": 348,
+      "literal": "_SHA = re.compile(r\"^[0-9a-f]{64}$\")",
+      "concept": "the content-hash spelling rule",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "db/planning.py:1458 declares the identical constant under the identical name. sg_web/app.py:1168 embeds a third `[0-9a-f]{64}` inside _ASSET_NAME. Three independent statements of what a sha256 spelling is.",
+      "fix": "One `SHA256_HEX` in db/naming.py (which already owns hex-identity handling at db/naming.py:34); import it in db/planning.py, db/rendering.py and sg_web/app.py."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 384,
+      "literal": "(\"January\", \"February\", ... \"December\")",
+      "concept": "the month-name table",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "story_renderers/formatting.py:18 declares the identical tuple, and story_renderers/formatting.py:1-2 opens with \"How a value is spelled for a human -- decided once, here, so five templates never each choose between 'July 18', '18 July' and '07/18'.\" This module is the second chooser that docstring says does not exist. Used at sg_web/timeline_view.py:692, 867 and 902.",
+      "fix": "Promote formatting._MONTHS to a public MONTHS, import it here, delete the copy -- so the claim in story_renderers/formatting.py's docstring becomes true."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 1061,
+      "literal": "{\"captured\": ..., \"generated\": ..., \"mixed\": ..., \"imported\": ...}",
+      "concept": "the origin vocabulary",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "db/context.py:57 declares ORIGINS = (\"captured\", \"generated\", \"mixed\", \"imported\"); db/facets.py:24 imports it and db/facets.py:104 binds it as the facet's choices. This dict retypes all four members, and db/pages.py:1184 hand-writes two of them again in SQL (`sum(mc.origin = 'captured') AS captured, sum(mc.origin = 'generated') AS generated`). A fifth origin added to db/context.py:57 is counted by neither.",
+      "fix": "Build the dict by comprehension over `context.ORIGINS`, and generate the db/pages.py:1184 sum() columns from the same tuple."
+    },
+    {
+      "file": "story_renderers/claims.py",
+      "line": 297,
+      "literal": "{\"filename\": ..., \"folder\": ..., \"mtime\": ..., \"btime\": ..., \"embedded\": ..., \"capture\": ...}",
+      "concept": "the time-basis vocabulary, as a phrase map",
+      "klass": "duplicated-vocabulary",
+      "severity": "medium",
+      "evidence": "Another copy of the db/context.py:58 key set, missing 'first_seen'. Duplicates db/planning.py:1134 key-for-key with different values.",
+      "fix": "Same gate as db/planning.py:1134: assert key coverage against context.TIME_BASES in tests/test_a_story_render_words_only_what_the_plan_claims.py."
+    },
+    {
+      "file": "db/evolution.py",
+      "line": 131,
+      "literal": "500",
+      "concept": "SQL bound-parameter batch size for an IN clause",
+      "klass": "repeated-literal",
+      "severity": "high",
+      "evidence": "Instances: db/evolution.py:131, db/prompts.py:190, db/prompts.py:371, db/retrieval.py:374, db/runner.py:929. Five modules, one concept, five literals -- and db/scan.py:860 uses 900 for the same thing. Each site retypes the value twice, once as the range() step and once as the slice bound. The upstream ceiling these are notionally protecting against is 32766 (../refs/sqlite/sqlite/src/sqliteLimit.h:189-191 at sqlite/sqlite@b09c88c14, the commit db/connect.py:174 cites), so none of the six is derived from it.",
+      "fix": "One `PARAM_BATCH` in db/connect.py derived from the driver's reported SQLITE_LIMIT_VARIABLE_NUMBER (upstream default ../refs/sqlite/sqlite/src/sqliteLimit.h:190) with a stated margin; all six sites read it."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 232,
+      "literal": "limit: int = 120",
+      "concept": "how many rows a list surface shows",
+      "klass": "repeated-literal",
+      "severity": "high",
+      "evidence": "The same unnamed default at db/pages.py:232 (folder_files), db/pages.py:916 (dupe_members), db/pages.py:934 (dupe_groups), db/pages.py:938 (dupe_copies) and db/pages.py:999 (album_files) -- five call sites in one module, no constant, no comment deriving 120. The module names every other bound it uses: SAMPLED_BINS_MOST at db/pages.py:1347, SAMPLES_PER_BIN at db/pages.py:1348, DISAGREEMENTS_SHOWN at db/pages.py:719.",
+      "fix": "`LIST_MOST = 120` at the top of db/pages.py with the sentence that justifies 120, and five `limit: int = LIST_MOST`."
+    },
+    {
+      "file": "tests/test_a_camera_day_is_a_story.py",
+      "line": 30,
+      "literal": "NOW = 1_700_000_000.0",
+      "concept": "the fixed test clock",
+      "klass": "repeated-literal",
+      "severity": "high",
+      "evidence": "The same literal is declared as NOW in 38 test modules: tests/test_a_busy_writer_is_not_a_crash.py:39, tests/test_a_camera_day_is_a_story.py:30, tests/test_a_caption_is_searchable.py:18, tests/test_a_database_survives_an_upgrade.py:24, tests/test_a_duplicate_is_reviewed_before_it_is_resolved.py:36, tests/test_a_file_identifier_fits_its_column.py:43, tests/test_a_fixed_reader_repairs_the_library.py:31, tests/test_a_generated_clip_carries_its_recipe.py:35, tests/test_a_job_can_be_a_step_of_something.py:34, tests/test_a_media_context_is_one_interpretation.py:30, tests/test_a_prompt_is_a_reusable_semantic_substrate.py:51, tests/test_a_root_can_be_forgotten.py:37, tests/test_a_search_is_a_set.py:35, tests/test_a_shelf_says_when.py:21, tests/test_a_story_plan_is_structure_from_frozen_evidence.py:53, tests/test_a_story_render_words_only_what_the_plan_claims.py:29, tests/test_a_table_column_orders_the_answer.py:36, tests/test_a_term_is_a_reading_not_an_identity.py:29, tests/test_a_thumbnail_is_a_static_asset.py:40, tests/test_a_verdict_outlives_what_it_judged.py:37, tests/test_an_answer_knows_when_it_is_stale.py:42, tests/test_an_artifact_is_a_resultset_facet.py:26, tests/test_an_evolution_is_a_view_of_a_plan.py:30, tests/test_camera_metadata_lands_in_the_schema.py:25, tests/test_events_are_grouping_hypotheses.py:28, tests/test_every_file_has_a_when.py:29, tests/test_saying_it_is_not_her_sticks.py:36, tests/test_scanning_a_real_directory.py:22, tests/test_something_runs_without_being_asked.py:28, tests/test_the_application_teaches_its_own_vocabulary.py:35, tests/test_the_operations_console_is_expert.py:27, tests/test_the_pages_are_answerable.py:29, tests/test_the_query_vocabulary_is_one_module.py:38, tests/test_the_resultset_is_authoritative.py:29, tests/test_the_schema_has_producers.py:24, tests/test_the_thumbs_add_up_to_something_honest.py:34, tests/test_the_timeline_is_a_surface.py:28, tests/test_time_is_a_corroboration_stack.py:29. Not an oracle literal: it is the fixture clock every one of these modules builds rows from. tests/conftest.py declares no shared constant (rg '^[A-Z_]+ = ' over tests/conftest.py returns only REPO at line 35; the same pattern over tests/ returns the declarations above -- VALIDATED_EMPTY, not an unproven zero).",
+      "fix": "`NOW = 1_700_000_000.0` once in tests/staging.py (which the timeline suites already import) or tests/conftest.py, imported by all 38."
+    },
+    {
+      "file": "benchmarks/browser_report.py",
+      "line": 225,
+      "literal": "timeout=120_000",
+      "concept": "the short browser wait budget, in milliseconds",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Instances: benchmarks/browser_report.py:225, benchmarks/browser_report.py:367, benchmarks/browser_report.py:414. A second unnamed budget, 600_000, appears at benchmarks/browser_report.py:350, benchmarks/browser_report.py:429 and benchmarks/browser_report.py:548. Six literals, two concepts, no names, and nothing says which class of wait gets which.",
+      "fix": "`RENDER_TIMEOUT_MS = 120_000` and `JOB_TIMEOUT_MS = 600_000` at the top of benchmarks/browser_report.py, each with the sentence that justifies it."
+    },
+    {
+      "file": "db/context.py",
+      "line": 169,
+      "literal": "hexdigest()[:16]",
+      "concept": "how many hex characters an identity hash is truncated to",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Instances: db/context.py:169, db/events.py:258, db/events.py:265, db/planning.py:1909, db/resultset.py:321, db/resultset.py:737, db/resultset.py:1019. Seven sites, one concept, no constant. Two more modules pick a DIFFERENT width for the same job -- db/ingest.py:386 and vision/semantic/qwen_vl.py:101 use [:12], vision/semantic/__init__.py:131 uses [:24] -- so 'the short identity hash' is 12, 16 or 24 characters depending on which file you open.",
+      "fix": "`SHORT_HASH_HEX = 16` in db/naming.py with the collision argument that justifies 16, and a `short_hash(text)` helper the nine sites call. If 12 and 24 are deliberate, name them too."
+    },
+    {
+      "file": "db/derived.py",
+      "line": 918,
+      "literal": "4096",
+      "concept": "rows per block when the silhouette matrix is walked",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Instances: db/derived.py:918 (range step), db/derived.py:919 (slice bound), db/derived.py:936 (range step), db/derived.py:937 (slice bound). The neighbouring memory bound IS named (SILHOUETTE_SAMPLE, used at db/derived.py:910-911); the block size that decides the same peak allocation is not, and it is typed four times so two loops must be edited in step. vision/faces.py:143 names the analogous constant `_SIM_CHUNK_SIZE = 256` with its reason attached.",
+      "fix": "`_BLOCK = 4096` beside SILHOUETTE_SAMPLE with the allocation argument, matching the comment style at vision/faces.py:143."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 342,
+      "literal": "limit: int = 500",
+      "concept": "a ledger page size",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Instances: db/inspecting.py:342 (events), db/inspecting.py:360 (events_before), db/ledger.py:142 (latest). Three functions over the same table with the same unnamed page size, while the same pair of modules already names the CEILING (db/ledger.py:59 PAGE_MOST = 2_000). The default is unnamed; the maximum is named.",
+      "fix": "`PAGE_DEFAULT = 500` in db/ledger.py beside PAGE_MOST; all three signatures read it."
+    },
+    {
+      "file": "db/when.py",
+      "line": 726,
+      "literal": "3600 / 86400",
+      "concept": "the thresholds of a duration-spelling ladder",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Five independent duration formatters exist, each with its own thresholds and units: db/when.py:726-730 (_hours), sg_web/console.py:28-33 (_seconds), sg_web/timeline_view.py:641-646 (_lasted), story_renderers/formatting.py:88-96 (duration), frontend/src/operations.ts:81-86 (seconds). frontend/src/operations.ts:83-85 is a line-for-line transcription of sg_web/console.py:29-33 in another language, with no gate holding them together. story_renderers/formatting.py:1-2 claims spelling is 'decided once, here'.",
+      "fix": "One ladder per audience, named: keep story_renderers/formatting.py `duration` as the human ladder and sg_web/console.py `_seconds` as the operator ladder, delete db/when.py `_hours` and sg_web/timeline_view.py `_lasted`, and emit the operator ladder's thresholds to the client instead of retyping them in frontend/src/operations.ts."
+    },
+    {
+      "file": "sg_web/media_view.py",
+      "line": 888,
+      "literal": "int(moment // 86400) * 86400",
+      "concept": "rounding an instant down to its day bin",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Same shape as the five hour-bin copies (see sg_web/media_view.py:905), with 86400 typed three times on one line. db/pages.py:1337 already holds the day width as int(when.DAY).",
+      "fix": "Same helper, parameterised by bin name: `window_for(\"day\", moment)`."
+    },
+    {
+      "file": "sg_web/media_view.py",
+      "line": 905,
+      "literal": "int(start // 3600) * 3600",
+      "concept": "rounding an instant down to its hour bin",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "The identical expression pair (`int(x // 3600) * 3600` and `... + 3600`) beside `{\"bin\": \"hour\", ...}` at sg_web/media_view.py:905, sg_web/person_view.py:99, sg_web/story_view.py:43, sg_web/story_view.py:44 and sg_web/timeline_view.py:112. Five hand-written copies of one function, with sg_web/media_view.py:888 a sixth in the day flavour. db/pages.py:1333-1340 BINS already holds the widths these round to.",
+      "fix": "One helper -- `hour_window(start, end)` in sg_web/timeline_view.py, reading its width from pages.BINS['hour'] -- called by the four other sites."
+    },
+    {
+      "file": "tests/test_a_camera_day_is_a_story.py",
+      "line": 31,
+      "literal": "HOUR = 3600.0",
+      "concept": "an hour in seconds, in a test fixture",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Declared identically at tests/test_a_camera_day_is_a_story.py:31, tests/test_a_media_context_is_one_interpretation.py:31, tests/test_a_prompt_is_a_reusable_semantic_substrate.py:52, tests/test_a_story_plan_is_structure_from_frozen_evidence.py:54, tests/test_a_story_render_words_only_what_the_plan_claims.py:30, tests/test_an_evolution_is_a_view_of_a_plan.py:31, tests/test_events_are_grouping_hypotheses.py:29, tests/test_every_file_has_a_when.py:30, tests/test_something_runs_without_being_asked.py:29, tests/test_the_timeline_is_a_surface.py:29, tests/test_time_is_a_corroboration_stack.py:30. Eleven copies of a constant db/when.py:517 already exports as HOUR. db/when.py:503-509's entire comment is about this failure mode.",
+      "fix": "`from db.when import HOUR, DAY` in each, or re-export them from tests/staging.py."
+    },
+    {
+      "file": "tests/test_a_camera_day_is_a_story.py",
+      "line": 33,
+      "literal": "DAY = 86400.0",
+      "concept": "a day in seconds, in a test fixture",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Declared at tests/test_a_camera_day_is_a_story.py:33, tests/test_every_file_has_a_when.py:32, tests/test_the_timeline_is_a_surface.py:31, tests/test_time_is_a_corroboration_stack.py:32 and (as 86_400.0) tests/test_empty_time_does_not_get_the_pixels.py:42 -- while tests/test_the_timeline_in_a_browser.py:22 binds the same name to an epoch. db/when.py:518 exports DAY.",
+      "fix": "`from db.when import DAY`."
+    },
+    {
+      "file": "tests/test_a_shelf_says_when.py",
+      "line": 22,
+      "literal": "JUNE_10 = 1_686_355_200.0",
+      "concept": "the fixture's anchor instant, 2023-06-10 00:00 UTC",
+      "klass": "repeated-literal",
+      "severity": "medium",
+      "evidence": "Declared with the identical comment at tests/test_a_shelf_says_when.py:22, tests/test_every_file_has_a_when.py:33 and tests/test_the_timeline_is_a_surface.py:32; typed bare at tests/test_a_picture_has_a_place.py:169, tests/test_the_timeline_window_in_a_browser.py:26 and tests/test_the_timeline_window_in_a_browser.py:66; and bound to the wrong name at tests/test_the_timeline_in_a_browser.py:22. Six modules, four spellings, one instant.",
+      "fix": "One JUNE_10 in tests/staging.py, imported everywhere; delete the three bare literals and rename the DAY binding."
+    },
+    {
+      "file": "sg_web/app.py",
+      "line": 1244,
+      "literal": "sha[:12]",
+      "concept": "how many hex characters of a content hash a message shows",
+      "klass": "repeated-literal",
+      "severity": "low",
+      "evidence": "Instances: sg_web/app.py:1244, sg_web/app.py:1250, sg_web/app.py:1262, db/runner.py:202. Four user-facing messages abbreviating a sha to the same width by hand. Low because the value is cosmetic; it is still four copies of one decision.",
+      "fix": "`short_sha(sha)` in db/naming.py, used by all four."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 168,
+      "literal": "now - 86_400",
+      "concept": "one day before now, for the settled-jobs count",
+      "klass": "should-be-derived",
+      "severity": "medium",
+      "evidence": "The 24 hours is also encoded in the result key on db/inspecting.py:166 (`settled_24h`), so the window is stated twice in two notations and neither derives from db/when.py:518 DAY.",
+      "fix": "`now - when.DAY`, and name the window (`SETTLED_WINDOW = when.DAY`) so the key and the arithmetic move together."
+    },
+    {
+      "file": "frontend/src/operations.ts",
+      "line": 262,
+      "literal": "limit: 2000",
+      "concept": "the ledger page the console asks for",
+      "klass": "should-be-derived",
+      "severity": "medium",
+      "evidence": "db/ledger.py:59 declares PAGE_MOST = 2_000 as the server's ceiling and clamps to it at db/ledger.py:137, db/ledger.py:145 and db/inspecting.py:342. The client asks for exactly the ceiling by retyping it, so lowering PAGE_MOST leaves the console silently truncating pages it believes are complete.",
+      "fix": "Expose PAGE_MOST through the generated contract and read it, or ask for a named client-side page size provably <= the server's."
+    },
+    {
+      "file": "frontend/src/timeline.ts",
+      "line": 110,
+      "literal": "const NARROWEST = 3600",
+      "concept": "the narrowest window the timeline opens on",
+      "klass": "should-be-derived",
+      "severity": "medium",
+      "evidence": "sg_web/timeline_view.py:221 declares `NARROWEST = 3_600` for the same surface and enforces it server-side at sg_web/timeline_view.py:983-984. The client retypes it and applies it at frontend/src/timeline.ts:393 and frontend/src/timeline.ts:548. Nothing holds the two together; a server that widens its floor gets client drags it will silently clamp.",
+      "fix": "Emit NARROWEST in the timeline view's payload (which already ships bin_seconds and the extent) and read it here."
+    },
+    {
+      "file": "frontend/src/timeline.ts",
+      "line": 111,
+      "literal": "const W = 1000",
+      "concept": "the SVG viewBox width the bars are drawn in",
+      "klass": "should-be-derived",
+      "severity": "medium",
+      "evidence": "sg_web/timeline_view.py:224 declares `_W = 1000` as \"The drawing's width in its own units (the SVG viewBox)\". frontend/src/timeline.ts:112-118's own comment says the client inverts the axis 'exactly as the server drew it' -- and then retypes the width the server drew it at. Every click, drag and pan maps through this number.",
+      "fix": "Ship the viewBox width in the payload, or read it off the rendered `<svg viewBox>`, and delete the constant."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 207,
+      "literal": "OPENING = 30 * 86_400",
+      "concept": "the first visit's window",
+      "klass": "should-be-derived",
+      "severity": "medium",
+      "evidence": "86_400 typed rather than when.DAY, in a module whose sibling db/pages.py:1333-1340 multiplies every bin width from db/when.py precisely so this cannot drift (db/pages.py:1328-1332 records why). The same raw 86_400 recurs at sg_web/timeline_view.py:209 (four times), 213-216, 402-404, 443, 446, 465-468, 644-646, 657, 860, 865 and 875.",
+      "fix": "`from db import when`; write `30 * when.DAY` and replace the other raw 86_400 / 3_600 in this module with when.DAY / when.HOUR or with pages.BINS entries."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 209,
+      "literal": "(\"1w\", 7 * 86_400), (\"1m\", 30 * 86_400), (\"3m\", 91 * 86_400), (\"1y\", 365 * 86_400)",
+      "concept": "the window presets",
+      "klass": "should-be-derived",
+      "severity": "medium",
+      "evidence": "'1m' is 30 days and '1y' is 365 days here, while db/pages.py:1335 makes a month int(when.MONTH) (30.44 d) and db/pages.py:1334 makes a year int(when.YEAR) (365.2425 d). The preset labelled '1y' therefore selects a window narrower than the year bin the same page draws.",
+      "fix": "`(\"1w\", 7 * when.DAY), (\"1m\", when.MONTH), (\"3m\", 3 * when.MONTH), (\"1y\", when.YEAR)`."
+    },
+    {
+      "file": "db/events.py",
+      "line": 213,
+      "literal": "self.settings[\"gap_minutes\"] * 60.0",
+      "concept": "minutes to seconds",
+      "klass": "should-be-derived",
+      "severity": "low",
+      "evidence": "The bare 60.0 conversion is typed three times -- db/events.py:213, db/events.py:229, db/events.py:248 -- in a package that exports db/when.py:516 MINUTE for exactly this. Low: the value cannot plausibly be wrong. It is still three untethered copies of a unit conversion in the module that decides session boundaries.",
+      "fix": "`* when.MINUTE`."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 1345,
+      "literal": "MONDAY = 345_600",
+      "concept": "the epoch offset of the first Monday",
+      "klass": "should-be-derived",
+      "severity": "low",
+      "evidence": "345_600 is 4 * 86400 -- the epoch fell on a Thursday -- but it is typed flat in the one module that otherwise derives every span from db/when.py (db/pages.py:1333-1340), and nothing on the line states the derivation. Arguable: the value is correct and stable. It is still the only untethered number in a table whose comment (db/pages.py:1328-1332) exists because untethered numbers disagreed.",
+      "fix": "`MONDAY = 4 * int(when.DAY)  # the epoch was a Thursday`."
+    },
+    {
+      "file": "sg_web/app.py",
+      "line": 1273,
+      "literal": "longest side 1440",
+      "concept": "the preview variant's edge, restated in a docstring",
+      "klass": "should-be-derived",
+      "severity": "low",
+      "evidence": "vision/thumbs.py:45 declares `EDGES = {\"thumb\": 512, \"preview\": 1440}` as the source. The numbers are restated in prose at sg_web/app.py:1267 (512), sg_web/app.py:1273 (1440) and db/oriented.py:123 ('at 1440 serves both the preview and the 512 thumb'). Low: prose cannot break a caller. It can and does go stale, and these are the surfaces a reader checks first.",
+      "fix": "Say 'longest side `thumbs.EDGES[\"preview\"]`', or drop the number and point at vision/thumbs.py:45."
+    },
+    {
+      "file": "tests/test_the_walk_crosses_every_kind.py",
+      "line": 69,
+      "literal": "UNPICTURED = {\"audio\", \"document\"}",
+      "concept": "the kinds with no pixels",
+      "klass": "should-be-derived",
+      "severity": "low",
+      "evidence": "The complement of vision/thumbs.py:53 PICTURED within db/facets.py:29 KINDS, typed out rather than computed. A sixth kind added to KINDS is in neither set, and the assertions at tests/test_the_walk_crosses_every_kind.py:196, 203, 219 and 265 quietly stop covering it. Not an oracle literal -- it is the set the test partitions by, not an expected answer.",
+      "fix": "`UNPICTURED = set(facets.KINDS) - set(thumbs.PICTURED)`."
+    },
+    {
+      "file": "db/capture.py",
+      "line": 446,
+      "literal": "n > 4096",
+      "concept": "the sanity cap on IFD entry count",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "A decision literal in a parser reading attacker-supplied bytes (`if n > 4096: return {}`), with no comment deriving it -- in a function whose docstring (db/capture.py:441-442) is otherwise explicit that structural problems are 'absence, not an error'. A TIFF IFD's entry count is a uint16, so the format's own ceiling is 65535; 4096 is a policy, and it is unstated.",
+      "fix": "`_MOST_IFD_ENTRIES = 4096` at module scope with the sentence that justifies refusing an IFD larger than that."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 1652,
+      "literal": "limit: int = 400",
+      "concept": "how many day rows the timeline asks for",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "A bare default on a public query function, with no comment deriving 400 and no constant. It collides numerically with db/resultset.py:164 MAX_PAGE_SIZE = 400 while denoting something else entirely, so a reader cannot tell whether the two are related. Its sibling db/pages.py:1658 uses 200 with the same silence.",
+      "fix": "Name it beside the other timeline bounds this module already names (db/pages.py:1347 SAMPLED_BINS_MOST, db/pages.py:1348 SAMPLES_PER_BIN): `TIMELINE_DAYS_MOST = 400`, with the sentence that justifies it."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 1658,
+      "literal": "limit: int = 200",
+      "concept": "how many session rows the timeline asks for",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "Bare default, no derivation. sg_web/timeline_view.py:203 names the same quantity on the view side -- `SESSIONS_MOST = 200` -- with a full paragraph of justification at sg_web/timeline_view.py:199-202. The number the comment explains is on the other side of the seam from the number that actually bounds the query.",
+      "fix": "`TIMELINE_EVENTS_MOST = 200` in db/pages.py, and have sg_web/timeline_view.py:203 read it instead of restating it."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 1753,
+      "literal": "limit: int = 5000",
+      "concept": "how many place names one read returns",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "A five-thousand-row bare default with no comment. The same literal appears for unrelated reasons at db/connect.py:176 (busy_timeout ms), db/migrate.py:298, db/resultset.py:1260 and db/sample.py:38 -- where it IS named (MOST) and justified at db/sample.py:36-37.",
+      "fix": "`PLACES_MOST = 5_000` with the argument for 5000, matching the style db/sample.py:36-38 already uses."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 400,
+      "literal": "(3_600, 300), (6 * 3_600, 1_800), (2 * 86_400, 3 * 3_600), (14 * 86_400, 86_400), (inf, 7 * 86_400)",
+      "concept": "the axis tick ladder",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "A five-row table of raw seconds spanning sg_web/timeline_view.py:400-404, with no comment on any row and no derivation from db/when.py or db/pages.py BINS -- in a module that names and justifies its other ladders (sg_web/timeline_view.py:211-212 for _ZOOM, sg_web/timeline_view.py:205-206 for OPENING).",
+      "fix": "Build the rows from when.HOUR / when.DAY (`(when.HOUR, 5 * when.MINUTE), (6 * when.HOUR, 30 * when.MINUTE), ...`) and add the one line saying what a tick step is for."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 443,
+      "literal": "183 * 86_400",
+      "concept": "the span above which the axis labels months instead of days",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "183 days is half a Julian year, but nothing says so, and the same `183 * 86_400` is the day-bin ceiling at sg_web/timeline_view.py:216 -- one number doing two jobs in one module, typed twice. Neither derives from db/when.py.",
+      "fix": "`HALF_YEAR = when.YEAR / 2` (or a named MONTH_LABELS_ABOVE), used at both sites."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 446,
+      "literal": "3 * 366 * 86_400",
+      "concept": "the span above which only years are labelled",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "366 is a leap year in days, hand-typed, in the module that already disagrees with db/when.py:521 at lines 217-218 and 663. The comment at sg_web/timeline_view.py:444-445 explains the LABEL policy and never the number. sg_web/timeline_view.py:875 uses `2 * 366 * 86_400` for a different threshold with the same untethered 366.",
+      "fix": "`3 * when.YEAR` and `2 * when.YEAR`; delete both 366s."
+    },
+    {
+      "file": "sg_web/timeline_view.py",
+      "line": 875,
+      "literal": "SHEETS_WIDEST = 2 * 366 * 86_400",
+      "concept": "the widest window that draws month sheets",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "Named, but built from an untethered 366-day year -- the same hand-typed leap year as sg_web/timeline_view.py:446 -- while db/pages.py:1334 derives the year bin from when.YEAR. The threshold that chooses the calendar body and the bins that fill it come from two different years.",
+      "fix": "`SHEETS_WIDEST = 2 * when.YEAR`."
+    },
+    {
+      "file": "sglint/repo_rules.py",
+      "line": 53,
+      "literal": "len(tracked) <= 100",
+      "concept": "the floor below which the git sweep declares itself blind",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "A decision literal in a linter rule (SG800) with no derivation, in a package whose policy module names every other threshold and justifies it -- sglint/policy.py:360 PAGE_QUERIES_MINIMUM = 12, sglint/policy.py:497 TEMPLATE_MINIMUM = 30, sglint/policy.py:498 SCRIPT_MINIMUM = 11, each with a comment above it. This rule's minimum is inline and silent.",
+      "fix": "Move it to sglint/policy.py as `TRACKED_MINIMUM: int = 100` with the same comment discipline as its neighbours."
+    },
+    {
+      "file": "sglint/repo_rules.py",
+      "line": 109,
+      "literal": "len(endings) <= 100 or sum(...) <= 50",
+      "concept": "the floor below which the line-ending parse declares itself broken",
+      "klass": "unexplained-literal",
+      "severity": "medium",
+      "evidence": "Two more unnamed thresholds in one condition, again raising SG800. Same divergence from sglint/policy.py:360/497/498, which name and justify every minimum they own.",
+      "fix": "`ENDINGS_MINIMUM: int = 100` and `LF_MINIMUM: int = 50` in sglint/policy.py, each with the sentence that fixes it."
+    },
+    {
+      "file": "db/capture.py",
+      "line": 624,
+      "literal": "limit: int = 4_000_000",
+      "concept": "how many leading bytes are searched for the Canon CNDA thumbnail",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "The docstring (db/capture.py:625-628) says the atom 'sits near the start of the file' and that 'the first `limit` bytes are searched' -- it explains the mechanism and never why four megabytes. Reading four MB per Canon MOV is a real cost decision left unstated.",
+      "fix": "`_CNDA_SEARCH_BYTES = 4_000_000` with the measurement or the spec fact that fixes it."
+    },
+    {
+      "file": "db/connect.py",
+      "line": 61,
+      "literal": "seconds: float = 5.0",
+      "concept": "how long the WAL conversion waits for the exclusive lock",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "The docstring (db/connect.py:62-68) explains at length WHY the wait exists and never why five seconds. The same duration appears in different units in the same module as `PRAGMA busy_timeout=5000` (db/connect.py:176), with no stated link.",
+      "fix": "`LOCK_WAIT_SECONDS = 5.0` and `PRAGMA busy_timeout={int(LOCK_WAIT_SECONDS * 1000)}`, so the two cannot drift apart."
+    },
+    {
+      "file": "db/derived.py",
+      "line": 1526,
+      "literal": "limit: int = 60",
+      "concept": "how many annotation search hits one read returns",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default on an FTS query, no comment. Same value as db/resultset.py:163 DEFAULT_PAGE_SIZE and db/pages.py:1809 with no stated relationship.",
+      "fix": "Read resultset.DEFAULT_PAGE_SIZE, or name it locally with the reason."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 236,
+      "literal": "recent: int = 30",
+      "concept": "how many settled jobs the matrix shows",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default; the sibling on the next function (db/inspecting.py:249, recent_events = 50) is another. Neither is named nor derived, and sg_web/activity.py:41 names a third quantity of the same shape (RECENT = 12) with a one-line justification -- so naming these is already the convention.",
+      "fix": "`MATRIX_RECENT = 30` and `JOB_RECENT_EVENTS = 50` at the top of db/inspecting.py beside TERMINAL."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 249,
+      "literal": "recent_events: int = 50",
+      "concept": "how many ledger events a job detail carries",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default, used as a slice bound at db/inspecting.py:338 (`history[-recent_events:]`). No derivation.",
+      "fix": "Name it (see db/inspecting.py:236)."
+    },
+    {
+      "file": "db/inspecting.py",
+      "line": 366,
+      "literal": "limit: int = 200",
+      "concept": "how many job items one page returns",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default; the clamp nine lines later (db/inspecting.py:375) uses a different unnamed literal (2_000, itself a copy of ledger.PAGE_MOST). A page default and a page ceiling, neither named.",
+      "fix": "`ITEMS_PAGE = 200` beside the ledger constants; clamp with ledger.PAGE_MOST."
+    },
+    {
+      "file": "db/jobs.py",
+      "line": 613,
+      "literal": "limit: int = 12",
+      "concept": "how many settled jobs the cold list carries",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default. sg_web/activity.py:41 declares `RECENT = 12` with the comment 'How many settled jobs the cold list carries beside the active ones' -- the justification for THIS number lives in another package, and the two are not linked.",
+      "fix": "Move RECENT into db/jobs.py beside the function it bounds and have sg_web/activity.py import it."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 739,
+      "literal": "limit: int = 20",
+      "concept": "how many faces a run comparison lists",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default, no comment -- twenty lines below db/pages.py:719, where the sibling bound DISAGREEMENTS_SHOWN = 50 is named and given a four-line justification (db/pages.py:713-718). Two bounds on the same comparison surface, one explained and one not.",
+      "fix": "`FACES_ACROSS_RUNS_SHOWN = 20` beside DISAGREEMENTS_SHOWN."
+    },
+    {
+      "file": "db/pages.py",
+      "line": 1809,
+      "literal": "limit: int = 60",
+      "concept": "how many stories the shelf lists",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default. 60 is also db/resultset.py:163 DEFAULT_PAGE_SIZE and db/derived.py:1526's annotation-search default -- three page sizes of 60, one named.",
+      "fix": "Read `resultset.DEFAULT_PAGE_SIZE` if it is the same decision; otherwise name `STORIES_MOST = 60` and say why it differs."
+    },
+    {
+      "file": "db/resultset.py",
+      "line": 1214,
+      "literal": "count: int = 15",
+      "concept": "how many neighbours a filmstrip shows",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare default on a public function, nine lines under `NEIGHBORHOOD_MOST = 51` (db/resultset.py:1205), which IS named. The ceiling is named, the default is not, and 15 vs 51 has no stated relationship.",
+      "fix": "`NEIGHBORHOOD_DEFAULT = 15` beside NEIGHBORHOOD_MOST, with the relationship stated."
+    },
+    {
+      "file": "frontend/src/operations.ts",
+      "line": 295,
+      "literal": "400",
+      "concept": "the debounce before the console re-renders, in milliseconds",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "A bare `}, 400);` with no name, while the same file names every other bound it owns (frontend/src/operations.ts:35, frontend/src/operations.ts:36) and frontend/src/reread.ts:20 names the same order of magnitude as POLL_MS = 400.",
+      "fix": "`const RENDER_DEBOUNCE_MS = 400;` at the top of the IIFE beside the other named constants."
+    },
+    {
+      "file": "frontend/src/timeline.ts",
+      "line": 304,
+      "literal": "2000",
+      "concept": "the reconnect delay after the job feed closes, in milliseconds",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "`feed.onclose = () => window.setTimeout(open, 2000);` -- a fixed reconnect backoff with no name and no comment, on the socket sg_web/app.py:1416-1425 closes with code 1011 expecting the client to come back. The server's side of that contract is documented at sg_web/app.py:1416-1421; the client's delay is not.",
+      "fix": "`const RECONNECT_MS = 2000;` with a line pointing at the sg_web/app.py:1416 close-code contract."
+    },
+    {
+      "file": "frontend/src/timeline.ts",
+      "line": 628,
+      "literal": "Math.min(400, cols * rows)",
+      "concept": "the cap on tiles requested for one bin",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "A bare cap inside a computation, no name and no comment. 400 is also db/resultset.py:164 MAX_PAGE_SIZE and db/pages.py:1652's day limit; a reader cannot tell whether this is the same bound reaching the client or a coincidence.",
+      "fix": "`const TILES_MOST = 400;` and a line saying whether it tracks the server's MAX_PAGE_SIZE."
+    },
+    {
+      "file": "frontend/src/timeline.ts",
+      "line": 816,
+      "literal": "{ least: 120, most: 520, fallback: 200, key: \"timeline.row\" }",
+      "concept": "the row-height bounds for the pictures strip",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Three unexplained pixel bounds in one object literal, only the storage key named. The comment above (frontend/src/timeline.ts:813-815) explains the INTERACTION and none of the numbers.",
+      "fix": "Keep the object but state in one line what fixes 120 and 520 (the thumbnail edge from vision/thumbs.py:45, or a measured layout bound)."
+    },
+    {
+      "file": "sglint/repo_rules.py",
+      "line": 37,
+      "literal": "timeout=900",
+      "concept": "how long a git subprocess may run",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Bare keyword on the process boundary every rule in the module goes through, with no comment. Fifteen minutes for `git ls-files` is a policy nobody stated.",
+      "fix": "`GIT_TIMEOUT_SECONDS = 900` in sglint/policy.py with the reason."
+    },
+    {
+      "file": "sglint/repo_rules.py",
+      "line": 130,
+      "literal": "done.stderr[:200]",
+      "concept": "how much of a failed checkout's stderr the finding carries",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "An unexplained slice bound in a diagnostic message. Truncating the only evidence a failure produces is a decision; 200 is not derived.",
+      "fix": "`_STDERR_SHOWN = 200` with the reason, or carry the whole stderr."
+    },
+    {
+      "file": "vision/faces.py",
+      "line": 225,
+      "literal": "min_det_score: float = 0.5",
+      "concept": "the detector-confidence floor",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Declared as a bare default twice -- vision/faces.py:225 (OpenCVFaceBackend) and vision/faces.py:412 (InsightFaceBackend). The docstrings explain what the knob MEANS (vision/faces.py:232-236, vision/faces.py:418-420) and, for min_face_px and detect_max_side, cite measurements; 0.5 itself is derived nowhere, and two backends carrying it independently means changing the operating point takes two edits. Arguable: two sites, not three.",
+      "fix": "`DEFAULT_MIN_DET_SCORE = 0.5` at module scope beside vision/faces.py:143's `_SIM_CHUNK_SIZE`, referenced by both constructors."
+    },
+    {
+      "file": "vision/faces.py",
+      "line": 226,
+      "literal": "min_face_px: int = 24",
+      "concept": "the noise-floor face size",
+      "klass": "unexplained-literal",
+      "severity": "low",
+      "evidence": "Same shape: bare default at vision/faces.py:226 and vision/faces.py:413. The reason is written out at vision/faces.py:234-236 but attached to only one of the two copies; vision/faces.py:419-420 restates it in different words.",
+      "fix": "`DEFAULT_MIN_FACE_PX = 24` at module scope with the single justification, referenced by both."
+    }
+  ]
+}

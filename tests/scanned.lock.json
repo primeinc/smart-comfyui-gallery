@@ -1,0 +1,117 @@
+{
+  "what": "Undated photographs in dated folders: the coarse rungs of db/when.py.",
+  "not_evidence_of": "anything about pixels; these are painted",
+  "files": [
+    {
+      "path": "scanned/1964/seaside with nan.jpg",
+      "folders": [
+        "1964"
+      ],
+      "expects": "year",
+      "bytes": 709,
+      "sha256": "24574d6f752cc92e6bad70b6c540aaef7c59008445516c63cfd734a182b346af",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at year precision"
+    },
+    {
+      "path": "scanned/1978/the old ford.jpg",
+      "folders": [
+        "1978"
+      ],
+      "expects": "year",
+      "bytes": 709,
+      "sha256": "9eab2880f603da9e8c45e908d887984bf188225de077a76fcea66676e859ac8b",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at year precision"
+    },
+    {
+      "path": "scanned/1998/scan0042.jpg",
+      "folders": [
+        "1998"
+      ],
+      "expects": "year",
+      "bytes": 708,
+      "sha256": "69d0c5afe5cf50314b07dcd544d26f955a7f458d8e2190eae98058fd0ba7a4ef",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at year precision"
+    },
+    {
+      "path": "scanned/2003-07/holiday 12.jpg",
+      "folders": [
+        "2003-07"
+      ],
+      "expects": "month",
+      "bytes": 707,
+      "sha256": "8dc7eab3685ebc5e7d3195db72062199fa977c8d5f73fbfb42854c96a9372788",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at month precision"
+    },
+    {
+      "path": "scanned/2011_03/kitchen before.jpg",
+      "folders": [
+        "2011_03"
+      ],
+      "expects": "month",
+      "bytes": 708,
+      "sha256": "099e9c2809a0341b21e7bf764aec99ccfbdb268e0c413880c458be751e83c9f6",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at month precision"
+    },
+    {
+      "path": "scanned/1970s/grandad in the garden.jpg",
+      "folders": [
+        "1970s"
+      ],
+      "expects": "decade",
+      "bytes": 708,
+      "sha256": "3b65772b6c57d2f55f5f2c4610db4980cc4263b66681dd0fdcc2cc1aa4b56ce4",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at decade precision"
+    },
+    {
+      "path": "scanned/1980's/school photo.jpg",
+      "folders": [
+        "1980's"
+      ],
+      "expects": "decade",
+      "bytes": 707,
+      "sha256": "ef199afeec836eaf80ee4c69c1b4a0e98c265226339a516303527d94f160fe34",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at decade precision"
+    },
+    {
+      "path": "scanned/2013/02/chain month.jpg",
+      "folders": [
+        "2013",
+        "02"
+      ],
+      "expects": "month",
+      "bytes": 708,
+      "sha256": "49455b8638d25eb4beacf5593c1a46b0b179575e3e8ca9158feaed7324c4ea1e",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at month precision"
+    },
+    {
+      "path": "scanned/2013/02/10/chain day.jpg",
+      "folders": [
+        "2013",
+        "02",
+        "10"
+      ],
+      "expects": "day",
+      "bytes": 708,
+      "sha256": "21f204a97523127342723978bfd22d293560fbe67b1c923d0699d2b1c2c70db6",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at day precision"
+    },
+    {
+      "path": "scanned/2016-08-21/dated folder.jpg",
+      "folders": [
+        "2016-08-21"
+      ],
+      "expects": "day",
+      "bytes": 708,
+      "sha256": "5101fca6498dff76341e220dc4c95cbe7f6d45f74fa7ad4faa7270b956c371ba",
+      "why": "no EXIF, no stamped name: the folder is the only claim, at day precision"
+    },
+    {
+      "path": "scanned/img2img over a photograph.png",
+      "folders": [],
+      "expects": "origin=mixed",
+      "bytes": 515,
+      "sha256": "7c23b75b0bde76e11604aba2122b3451679a6bb5964a2d9f842547c16a29bec5",
+      "why": "camera EXIF AND a generator recipe: the only shape the schema calls `mixed`"
+    }
+  ]
+}

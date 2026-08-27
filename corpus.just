@@ -118,6 +118,60 @@ gather DIR=default_root:
     cd "$(git rev-parse --show-toplevel)"
     SG_CORPUS="$1" {{ python }} -m tests.gathered
 
+# One file per registered generator. Six of the eight have no obtainable
+# real specimen -- 925 candidate images across four upstream mirrors carry
+# no generator metadata at all -- so these are written from this repo's own
+# writer ports and labelled written. See tests/dialects.py.
+[doc('Write one file per generator adapter into DIR')]
+[script]
+dialects DIR=default_root:
+    cd "$(git rev-parse --show-toplevel)"
+    SG_CORPUS="$1" {{ python }} -m tests.dialects
+
+# One file per container the app claims and no real source writes.
+[doc('Encode one file per otherwise-unreachable container into DIR')]
+[script]
+encoded DIR=default_root:
+    cd "$(git rev-parse --show-toplevel)"
+    SG_CORPUS="$1" {{ python }} -m tests.encoded
+
+# Photographs whose only date is the folder they sit in -- the coarse
+# rungs, which every camera-and-generator corpus misses entirely.
+[doc('Write folder-dated undated photographs into DIR')]
+[script]
+scanned DIR=default_root:
+    cd "$(git rev-parse --show-toplevel)"
+    SG_CORPUS="$1" {{ python }} -m tests.scanned
+
+# Real RAW, one per suffix, CC0, from the darktable/RawTherapee archive.
+[doc('Fetch one real RAW per uncovered suffix into DIR')]
+[script]
+rawsamples DIR=default_root:
+    cd "$(git rev-parse --show-toplevel)"
+    SG_CORPUS="$1" {{ python }} -m tests.rawsamples
+
+# What the application declares it supports, against what the corpus reads.
+# The frozen list the contract's coverage rule needs: a need may reach
+# SATISFIED or BLOCKED_EXTERNALLY, and never DEFERRED.
+[doc('Measure the corpus at DIR against every suffix and dialect the app claims')]
+[script]
+needs DIR=default_root:
+    cd "$(git rev-parse --show-toplevel)"
+    SG_CORPUS="$1" {{ python }} -m tests.needs
+
+# The measurement above REPORTS. This one FAILS.
+#
+# A number written into a lockfile can be satisfied by writing a bigger
+# number. `tests/test_the_corpus_spans_the_shape.py` re-measures and asserts
+# every declared value is reached by a real file or named in its `ALLOWED`
+# table with a reason -- and asserts the reverse too, so an excuse cannot
+# outlive the gap it was written for.
+[doc('Fail if the corpus does not span the shape the application declares')]
+[script]
+spans DIR=default_root:
+    cd "$(git rev-parse --show-toplevel)"
+    SG_CORPUS="$1" {{ python }} -m pytest tests/test_the_corpus_spans_the_shape.py -m slow
+
 # Every part, in order. What `docs/CORPUS_CONTRACT.md` calls the corpus.
 [doc('Assemble the whole corpus into DIR: fetched, commons, gathered, generated')]
 [script]
@@ -132,8 +186,18 @@ all SCALE='medium' DIR=default_root:
     SG_CORPUS="$dir" {{ python }} -m tests.commons
     echo "== local and reference media"
     SG_CORPUS="$dir" {{ python }} -m tests.gathered
+    echo "== one file per generator"
+    SG_CORPUS="$dir" {{ python }} -m tests.dialects
+    echo "== one real RAW per uncovered suffix"
+    SG_CORPUS="$dir" {{ python }} -m tests.rawsamples
+    echo "== one encode per otherwise-unreachable container"
+    SG_CORPUS="$dir" {{ python }} -m tests.encoded
+    echo "== folder-dated photographs, the coarse rungs"
+    SG_CORPUS="$dir" {{ python }} -m tests.scanned
     echo "== the generated time shape"
     {{ python }} -m tests.corpus "$dir/generated" --scale "$scale" --force
+    echo "== what it covers"
+    SG_CORPUS="$dir" {{ python }} -m tests.needs
 
 # The contract's runtime proof: the REAL corpus through the real
 # ingestion path, unmodified. Failures are findings about the

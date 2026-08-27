@@ -1232,10 +1232,18 @@ file is the one with a reader.
   `test/pdfs/`); round-trip write-preservation, which is where
   `db/authored.py` will actually break; fuzzing with the corpus as seed.
 
-- **`101 suffixes` is an overclaim no corpus fixes.** `KIND_BY_SUFFIX`
-  declares 101 and the corpus exercises a handful. Only editing the
-  claim fixes the claim: tier it into behaviourally-asserted,
-  smoke-only, and declared-unsupported.
+- **`101 suffixes` was an overclaim, and it is now measured.** The corpus
+  reads 97 of the 99 the application claims. Two of the original 101 were
+  deleted, not covered: `.cin` and `.ari` had no LibRaw decoder at all
+  (`docs/CORPUS_FINDINGS.md` APP-11), so the claim was the defect. The
+  remaining two, `.cap` and `.k25`, are real LibRaw formats with no sample
+  found in three archives; they stay UNSATISFIED and
+  `tests/test_the_corpus_spans_the_shape.py` fails on them by design.
+
+  The tiering this asked for turned out to be the wrong instrument. A tier
+  named "smoke-only" or "declared-unsupported" is a place to put a suffix
+  nobody got to, which is what the gate's deleted `ALLOWED` table already
+  was. A suffix is claimed and read, or it is not claimed.
 
 ## Three flakes in the suite: two closed, one unreproduced
 
