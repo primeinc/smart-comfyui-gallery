@@ -27,6 +27,7 @@ import dataclasses
 import json
 import logging
 import pathlib
+import sqlite3
 import time
 import typing
 from collections.abc import Callable
@@ -37,7 +38,7 @@ from litestar.exceptions import ClientException, HTTPException, NotFoundExceptio
 from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath, FromQuery, URLEncodedBody
 from litestar.response import Response, Template
-from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
+from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_503_SERVICE_UNAVAILABLE
 
 from db import (
     authored,
@@ -1760,6 +1761,28 @@ def refused(request: Request, exc: HTTPException) -> Template:
     )
 
 
+def busy(request: Request, exc: sqlite3.OperationalError) -> Template:
+    """A console click while another writer holds the lane is
+    backpressure, not a crash.
+
+    SQLite has ONE writer lane and a long write -- a scan committing a
+    new root -- holds it past busy_timeout. The worker already answers
+    this shape with "no turn this pass" (db/runner.py); a form deserves
+    the same honesty: a 503 saying try again, never a 500 traceback.
+    Recognised by result NAME (runner.BUSY), the way the worker does;
+    any other OperationalError is the internal error it is. Nothing
+    partial happened -- the statement that hit the lock rolled back
+    with its transaction."""
+    if getattr(exc, "sqlite_errorname", "") not in runner.BUSY:
+        return failed(request, exc)
+    return Template(
+        template_name="_operations_notice.html",
+        context={"error": "the library is busy writing; nothing was started -- try again in a moment", "notice": None},
+        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+        headers=VARIES,
+    )
+
+
 def failed(request: Request, exc: Exception) -> Template:
     """An unexpected error on an operations form: logged whole, shown as
     the 500 it is, never swallowed into a blank notice."""
@@ -1793,5 +1816,5 @@ router = Router(
         set_schedule,
         stop_collection,
     ],
-    exception_handlers={HTTPException: refused, Exception: failed},
+    exception_handlers={HTTPException: refused, sqlite3.OperationalError: busy, Exception: failed},
 )

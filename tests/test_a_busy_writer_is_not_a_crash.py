@@ -136,6 +136,28 @@ def test_it_says_so_at_info_rather_than_as_a_traceback(library, caplog):
     assert any("busy" in one.getMessage() for one in said), [o.getMessage() for o in said]
 
 
+def test_a_console_click_during_a_long_write_is_a_503_not_a_500(tmp_path):
+    """The HTTP half of this module's claim. The worker answers a held
+    lane with "no turn this pass"; a console form gets the same honesty
+    as a 503 with a retry message -- reported from a real run, where
+    POST /operations/jobs/events answered a 500 traceback instead."""
+    from litestar.testing import TestClient
+
+    from sg_web import home
+    from sg_web.app import build_app
+
+    burrow = tmp_path / "home"
+    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+        db_path = home.db_path(home.home(str(burrow)))
+        with _Holding(db_path):
+            answer = client.post("/operations/jobs/events")
+        assert answer.status_code == 503
+        assert "busy" in answer.text
+        assert "Traceback" not in answer.text
+        released = client.post("/operations/jobs/events")
+        assert released.status_code == 200, "the lane freed; the same click works"
+
+
 def test_a_free_database_still_claims_the_job(library):
     """The other half of the contract. A change that answered None
     whenever anything went wrong would pass every test above and stop
