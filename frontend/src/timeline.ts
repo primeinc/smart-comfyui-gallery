@@ -45,6 +45,11 @@ const INVALIDATES: ReadonlySet<string> = new Set([
   "story_plan",
 ] satisfies JobKind[]);
 
+// db/jobs.py TERMINAL, transcribed. `satisfies JobState[]` proves each
+// member is a legal state; it cannot prove the SET is the terminal set,
+// and the generated contract carries types, not values -- so this copy
+// is held by eye until a value channel exists. A sixth terminal state
+// lands in db/jobs.py first.
 const SETTLED: ReadonlySet<string> = new Set(["done", "failed", "cancelled"] satisfies JobState[]);
 
 /** The window on screen, and the library it sits in. */

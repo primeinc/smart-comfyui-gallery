@@ -87,6 +87,12 @@ SQL_STRUCTURE: dict[str, str] = {
     # db/jobs.py: the one module-literal column list the active and recent
     # reads share, so both rows carry the same shape
     "_LISTED": "identifier",
+    # db/jobs.py TERMINAL_SQL: the settled-state IN (...) list, built at
+    # import from the TERMINAL tuple beside JobState -- fixed words from
+    # a Literal, never anything a caller supplied. One spelling, so the
+    # statements cannot drift from the guard in `settle`.
+    "TERMINAL_SQL": "clause",
+    "jobs.TERMINAL_SQL": "clause",
     # db/resultset.py moment sort: the human timeline's one axis
     # (db/context.py HUMAN_MOMENT, a module literal) and the running
     # interpretation policy, an int constant from code, never request data

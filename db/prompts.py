@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import hashlib
 
-from . import prompt_sections
+from . import connect, prompt_sections
 
 ROLES = ("effective", "original", "negative", "original_negative", "unsampler")
 
@@ -187,8 +187,8 @@ def current_vectors(conn, sid: int, policy: str, hashes: list[str]) -> dict[str,
 
     held: dict[str, list[float]] = {}
     wanted = sorted(set(hashes))
-    for start in range(0, len(wanted), 500):
-        piece = wanted[start : start + 500]
+    for start in range(0, len(wanted), connect.PARAM_BATCH):
+        piece = wanted[start : start + connect.PARAM_BATCH]
         marks = ",".join("?" for _ in piece)
         for digest, blob in conn.execute(
             "SELECT e.source_text_hash, e.vector FROM derived_prompt_embedding e"
@@ -368,8 +368,8 @@ def _vectors(conn, wanted):
 
     held = {}
     batch = [int(v) for v in wanted]
-    for start in range(0, len(batch), 500):
-        piece = batch[start : start + 500]
+    for start in range(0, len(batch), connect.PARAM_BATCH):
+        piece = batch[start : start + connect.PARAM_BATCH]
         marks = ",".join("?" for _ in piece)
         for embedding_id, blob in conn.execute(
             f"SELECT id, vector FROM derived_prompt_embedding WHERE id IN ({marks})", piece

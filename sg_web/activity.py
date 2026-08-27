@@ -36,8 +36,6 @@ from jinja2 import pass_context
 from db import connect, jobs
 from sg_web import console
 
-TERMINAL = ("done", "failed", "cancelled")
-
 #: How many settled jobs the cold list carries beside the active ones.
 RECENT = 12
 
@@ -52,8 +50,8 @@ def _view(
         "state": state,
         "done": done,
         "total": total,
-        "cancelling": bool(cancel_requested) and state not in TERMINAL,
-        "settled": state in TERMINAL,
+        "cancelling": bool(cancel_requested) and state not in jobs.TERMINAL,
+        "settled": state in jobs.TERMINAL,
     }
 
 

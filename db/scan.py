@@ -857,8 +857,10 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     rewritten = {file_id for _, file_id in changed}
     untouched = [file_id for _, file_id in moves if file_id not in rewritten]
     if untouched:
-        for start in range(0, len(untouched), 900):
-            batch = untouched[start : start + 900]
+        from . import connect
+
+        for start in range(0, len(untouched), connect.PARAM_BATCH):
+            batch = untouched[start : start + connect.PARAM_BATCH]
             conn.execute(
                 f"UPDATE file SET last_seen_at = ? WHERE id IN ({','.join('?' * len(batch))})",
                 (now, *batch),

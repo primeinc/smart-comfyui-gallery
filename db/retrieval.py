@@ -369,10 +369,12 @@ def _vectors(conn, wanted):
     """Embedding blobs by their immutable embedding ids, in order."""
     import numpy as np
 
+    from . import connect
+
     held = {}
     batch = [int(v) for v in wanted]
-    for start in range(0, len(batch), 500):
-        piece = batch[start : start + 500]
+    for start in range(0, len(batch), connect.PARAM_BATCH):
+        piece = batch[start : start + connect.PARAM_BATCH]
         marks = ",".join("?" for _ in piece)
         for embedding_id, blob in conn.execute(
             f"SELECT id, vector FROM derived_embedding WHERE id IN ({marks})", piece

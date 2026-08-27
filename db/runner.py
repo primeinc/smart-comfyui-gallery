@@ -27,7 +27,7 @@ import traceback
 from collections.abc import Callable
 from concurrent import futures
 
-from . import jobs, ledger
+from . import connect, jobs, ledger
 
 _logger = logging.getLogger(__name__)
 
@@ -926,8 +926,8 @@ def _face_vectors(conn, wanted):
 
     held = {}
     batch = [int(v) for v in wanted]
-    for start in range(0, len(batch), 500):
-        piece = batch[start : start + 500]
+    for start in range(0, len(batch), connect.PARAM_BATCH):
+        piece = batch[start : start + connect.PARAM_BATCH]
         marks = ",".join("?" for _ in piece)
         for face_id, blob in conn.execute(
             f"SELECT id, embedding FROM derived_face_instance WHERE id IN ({marks})", piece

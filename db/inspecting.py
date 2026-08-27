@@ -28,9 +28,6 @@ import json
 
 from . import ingest, jobs, ledger, settings
 
-#: The payload keys a launcher writes, as the console labels them.
-TERMINAL = ("done", "failed", "cancelled")
-
 
 def _json(text):
     if text is None:
@@ -239,11 +236,9 @@ def matrix(conn, now: float, *, recent: int = 30) -> list[dict]:
     cursor = conn.execute(_MATRIX + " WHERE j.state IN ('queued','running') ORDER BY j.created_at")
     columns = [c[0] for c in cursor.description]
     rows = [dict(zip(columns, row, strict=True)) for row in cursor]
-    cursor = conn.execute(
-        _MATRIX + " WHERE j.state IN ('done','failed','cancelled') ORDER BY j.id DESC LIMIT ?", (recent,)
-    )
+    cursor = conn.execute(_MATRIX + f" WHERE j.state IN {jobs.TERMINAL_SQL} ORDER BY j.id DESC LIMIT ?", (recent,))
     rows += [dict(zip(columns, row, strict=True)) for row in cursor]
-    return [{**row, "derived": _lifecycle(row, now), "settled": row["state"] in TERMINAL} for row in rows]
+    return [{**row, "derived": _lifecycle(row, now), "settled": row["state"] in jobs.TERMINAL} for row in rows]
 
 
 def job_detail(conn, job_id: int, now: float, *, recent_events: int = 50) -> dict:
@@ -271,7 +266,7 @@ def job_detail(conn, job_id: int, now: float, *, recent_events: int = 50) -> dic
     told["succeeded_count"] = int(counts[2] or 0)
     told["item_count"] = int(counts[3] or 0)
     told["derived"] = _lifecycle(told, now)
-    told["settled"] = told["state"] in TERMINAL
+    told["settled"] = told["state"] in jobs.TERMINAL
 
     failures = conn.execute(
         "SELECT item_id, error FROM job_item WHERE job_id = ? AND state = 'failed' ORDER BY item_id LIMIT 200",
@@ -372,7 +367,7 @@ def items(conn, job_id: int, *, state: str | None = None, after: int = 0, limit:
     if row is None:
         raise LookupError(f"no job {job_id}")
     kind, payload = row[0], _json(row[1])
-    limit = max(1, min(int(limit), 2_000))
+    limit = max(1, min(int(limit), ledger.PAGE_MOST))
     if state is None:
         rows = conn.execute(
             "SELECT item_id, state, error FROM job_item WHERE job_id = ? AND item_id > ? ORDER BY item_id LIMIT ?",

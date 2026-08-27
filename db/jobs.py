@@ -41,6 +41,17 @@ from . import ledger
 #: a value outside either is already impossible in the database, and the
 #: browser gets the closed set as a union instead of `string`.
 JobState = typing.Literal["queued", "running", "done", "failed", "cancelled"]
+
+#: The settled subset of JobState -- what `settle` will accept and what
+#: nothing publishes after. Declared beside the vocabulary it subsets;
+#: five copies of this tuple existed (two of them each named TERMINAL)
+#: and a sixth state marked terminal here would have left every one of
+#: them silently short.
+TERMINAL: tuple[JobState, ...] = ("done", "failed", "cancelled")
+#: The same subset as a SQL `IN (...)` list, built from TERMINAL so a
+#: statement cannot drift from the guard. Interpolated, never bound:
+#: these are fixed words from a Literal, not input.
+TERMINAL_SQL = "(" + ", ".join(f"'{one}'" for one in TERMINAL) + ")"
 JobKind = typing.Literal[
     # the directory walk itself -- 'scan' is the metadata read that
     # follows it (db/runner.py _ingest_item), which is why the walk
@@ -445,7 +456,7 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
     because nothing will ever come back for the remainder.
     """
     _held(conn, job_id, fence)
-    if state not in ("done", "failed", "cancelled"):
+    if state not in TERMINAL:
         raise ValueError(f"{state!r} is not terminal")
     if state == "done":
         outstanding = conn.execute(
@@ -616,7 +627,7 @@ def recent(conn, limit: int = 12) -> list[dict]:
     does. Walks the primary key backwards and stops at `limit`: no sort
     of the table, however long the history grows."""
     cursor = conn.execute(
-        f"SELECT {_LISTED} FROM job WHERE state IN ('done','failed','cancelled') ORDER BY id DESC LIMIT ?",
+        f"SELECT {_LISTED} FROM job WHERE state IN {TERMINAL_SQL} ORDER BY id DESC LIMIT ?",
         (limit,),
     )
     columns = [c[0] for c in cursor.description]

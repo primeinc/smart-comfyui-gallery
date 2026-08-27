@@ -31,6 +31,24 @@ USER_VERSION = 44
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.
 CACHE_KIB = 65_536
+#: How many values one `... IN (?,?,...)` batch binds -- the ONE batching
+#: constant. Six call sites carried private copies (500 at five of them,
+#: 900 in db/scan.py), each typed twice as a range() step and a slice
+#: bound, and nothing said why the scan path could bind more than the
+#: rest. The ceiling is SQLITE_MAX_VARIABLE_NUMBER, a compile-time choice
+#: whose default is 32766 (sqlite/sqlite@b09c88c14 src/sqliteLimit.h:189-191)
+#: and not this application's to assume, so `_prepared` asks the linked
+#: library what it actually grants (Connection.getlimit, python/cpython
+#: Doc/library/sqlite3.rst:1201-1228, 3.11+) and refuses a build that
+#: grants less. Well under the ceiling on purpose: a batch is also a
+#: statement to parse and a parameter row to bind, and hundreds is where
+#: these sites were tuned.
+PARAM_BATCH = 900
+#: How long a connection waits out another process's lock, in seconds:
+#: the WAL conversion's own wait (`_ensure_wal`) and the busy_timeout
+#: every statement gets. One duration, two units, stated once so the two
+#: waits cannot drift apart.
+LOCK_WAIT_SECONDS = 5.0
 
 
 class WrongVersion(RuntimeError):
@@ -58,7 +76,7 @@ def _mode(conn: sqlite3.Connection) -> str:
     return (conn.execute("PRAGMA journal_mode").fetchone()[0] or "").lower()
 
 
-def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
+def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = LOCK_WAIT_SECONDS) -> None:
     """Put the file in WAL, tolerating everyone else doing the same.
 
     Converting takes an exclusive lock, and `busy_timeout` does not cover it,
@@ -173,7 +191,14 @@ def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_th
 def _prepared(conn: Connection, *, journal: bool) -> Connection:
     """Every per-connection setting, applied once, to every connection."""
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute(f"PRAGMA busy_timeout={int(LOCK_WAIT_SECONDS * 1000)}")
+    # The batching sites bind PARAM_BATCH values in one statement; the
+    # ceiling is compiled into the library, so ask it rather than assume.
+    granted = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    if granted < PARAM_BATCH:
+        raise RuntimeError(
+            f"this SQLite grants {granted} bound parameters per statement; batching assumes {PARAM_BATCH}"
+        )
     # Negative N means approximately abs(N*1024) BYTES rather than a page
     # count (sqlite/sqlite@b09c88c14 src/pcache.c:284-288), so this is 64 MiB.
     #
