@@ -1829,6 +1829,12 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     the app and stops it with the app; the `worker` setting row idles it
     live without a restart. `worker=False` is for embedding the routes
     over a database whose jobs something else is stepping.
+
+    Log redaction (sg_web/redaction.py) is NOT installed here, on
+    purpose: it is process-global, and a builder the test suite calls
+    hundreds of times must not change what an unrelated test's logger
+    says depending on execution order. The launcher installs it
+    (sg_web/__main__.py), which is every path a served run takes.
     """
     base = home.home(home_dir)
     where = home.db_path(base)

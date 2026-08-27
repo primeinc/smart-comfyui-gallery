@@ -214,6 +214,7 @@ def main() -> None:
 
     import uvicorn
 
+    from sg_web import redaction
     from sg_web.app import build_app
 
     parser = argparse.ArgumentParser(prog="sg_web", description="Serve the gallery.")
@@ -224,6 +225,11 @@ def main() -> None:
         "--public",
         action="store_true",
         help="bind every interface, so other machines on the network can reach it",
+    )
+    parser.add_argument(
+        "--log-user-paths",
+        action="store_true",
+        help="log real paths and media filenames (default: redacted, sg_web/redaction.py)",
     )
     asked = parser.parse_args()
     # `--host` and `--public` are two ways to say the same thing, so
@@ -259,6 +265,12 @@ def main() -> None:
         )
         for address in reachable():
             print(f"    http://{address}:{asked.port}", file=sys.stderr)
+    # Before the app is built, so a path in a boot-time log line (a
+    # migration's, a refused database's) is already covered. Process-
+    # global on purpose and only HERE: a served run is one process with
+    # one launcher, where the flag was or was not typed.
+    if not asked.log_user_paths:
+        redaction.install()
     uvicorn.run(build_app(asked.home), host=host, port=asked.port)
 
 
