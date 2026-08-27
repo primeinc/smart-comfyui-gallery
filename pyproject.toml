@@ -564,6 +564,33 @@ exclude = ["**/node_modules", "**/__pycache__", "**/.*", "vendor"]
 enableTypeIgnoreComments = false
 reportUnnecessaryCast = "error"
 
+# A warning is an error. `pytest.ini` has said so about runtime warnings
+# since it was written (`filterwarnings = error`); this says it about the
+# type checker, which had every unused-symbol rule off and so reported a
+# clean tree while the editor showed 189 findings nobody read.
+#
+# Measured before turning them on, over 245 files:
+#
+#   reportUnusedVariable    1    genuinely dead, deleted
+#   reportUnusedFunction   63    ALL false: 41 are migrate.py steps the
+#                                @step(n) decorator registers into STEPS,
+#                                the rest are pytest fixtures
+#   reportPrivateUsage    125    tests reaching past an underscore
+#
+# So the two with no false positives are errors, and the two that are all
+# false positives stay off with the reason written down rather than
+# rediscovered. `reportPrivateUsage` is a real design question -- 125
+# places where the private boundary is fiction -- and turning it on today
+# would be 125 edits to code that works, so it is a decision, not a gate.
+reportUnusedVariable = "error"
+reportUnusedExpression = "error"
+reportUnusedCoroutine = "error"
+reportUnusedExcept = "error"
+# Off, with evidence: the registry decorator and pytest's fixture
+# injection are both invisible to the checker.
+reportUnusedFunction = "none"
+reportPrivateUsage = "none"
+
 # The same tree, for ty. Python version and interpreter are inferred:
 # requires-python above, then the .venv in the project root
 # (ty configuration.md:347-365, 433-451).
