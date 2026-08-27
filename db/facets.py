@@ -20,8 +20,23 @@ from __future__ import annotations
 import dataclasses
 import re
 
-from . import context
+from . import context, when
 from .context import HUMAN_MOMENT, ORIGINS
+
+#: `CASE mc.time_precision WHEN ... END`, BUILT from `db/when.py SPAN`
+#: rather than restated. It was restated: a hand-written CASE listed five
+#: precisions and sent everything else to 2147483647, so the day a file
+#: could be dated to its month, every folder-dated scan compared as
+#: infinitely coarse and was `lte`-excluded from every bin link it
+#: belonged in. The vocabulary is `db/schema.sql`'s and the widths are
+#: `when.SPAN`'s; neither is this module's to copy.
+#:
+#: Interpolated, never bound: these are float literals derived from a
+#: frozen dict at import, not input, and a CASE cannot take parameters
+#: for its branches.
+_GRANULE_CASE = (
+    "CASE mc.time_precision" + "".join(f" WHEN '{name}' THEN {width!r}" for name, width in when.SPAN.items()) + " END"
+)
 
 #: The file kinds, stated here rather than imported from
 #: db/resultset.py, which imports this module. Held against
@@ -137,17 +152,15 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy} AND (mc.time_conflicts IS NOT NULL) {op} ?)",
     ),
     #: How fine a claim is, in seconds of granule: a day-precision claim
-    #: is 86400, a subsecond one 0. `lte:<bin width>` is exactly "fine
-    #: enough for this bin" (db/pages.py _FINE_ENOUGH), so a bar's link
-    #: opens the pictures the bar counted and no coarser claim that
-    #: happens to sit inside its window.
+    #: is 86400, a subsecond one a millisecond. `lte:<bin width>` is
+    #: exactly "fine enough for this bin" (db/pages.py _FINE_ENOUGH), so a
+    #: bar's link opens the pictures the bar counted and no coarser claim
+    #: that happens to sit inside its window.
     "context.granule": _Spec(
         "int",
         ("lte",),
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
-        " AND mc.policy_version = {policy} AND CASE mc.time_precision"
-        " WHEN 'subsecond' THEN 0 WHEN 'second' THEN 1 WHEN 'minute' THEN 60 WHEN 'hour' THEN 3600"
-        " WHEN 'day' THEN 86400 ELSE 2147483647 END {op} ?)",
+        " AND mc.policy_version = {policy} AND " + _GRANULE_CASE + " {op} ?)",
     ),
     #: Where it happened, by place entity id: the link a place name opens.
     "place.id": _Spec(

@@ -434,3 +434,26 @@ def test_the_kinds_the_two_modules_know_are_the_same_kinds(library):
     """`db/facets.py` states them rather than importing `resultset`,
     which imports it. Two statements of one fact, held together."""
     assert facets.KINDS == resultset.KINDS
+
+
+def test_the_planner_states_the_same_vocabularies_the_library_does(library):
+    """`db/planning.py` restates two vocabularies and nothing held them.
+
+    The planner imports no database module on purpose (its own docstring
+    at `prompt_sections_grammar`), so it states the time bases and the
+    media kinds itself. That is the same arrangement as `facets.KINDS`
+    above -- but where `facets.KINDS` has the test above holding it,
+    these two had nothing, and they drifted:
+
+    `_BASES` held six where `db/context.py TIME_BASES` held seven. The
+    seventh was `first_seen`, a rung no code could produce, and the
+    planner was the structure that was RIGHT. Nobody noticed, because
+    nothing compared them.
+
+    Stating a fact twice is allowed here. Stating it twice unheld is what
+    let a dead value sit in the schema for as long as it did.
+    """
+    from db import context, planning
+
+    assert frozenset(context.TIME_BASES) == planning._BASES
+    assert frozenset(facets.KINDS) == planning._MEDIA_KINDS

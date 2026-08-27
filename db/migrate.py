@@ -176,7 +176,12 @@ def rebuilt(
     conn.execute("PRAGMA legacy_alter_table=OFF")
     conn.execute(ddl)
     had = {row[1] for row in conn.execute(f"PRAGMA table_info({aside})")}
-    named = [row[1] for row in conn.execute(f"PRAGMA table_info({table})") if row[1] in had or row[1] in reading]
+    # `str(...)`, because a sqlite row is untyped and `PRAGMA table_info`'s
+    # second column is the column NAME. Without it `reading.get(one, one)`
+    # widens to `str | None` and `join` refuses the generator.
+    named: list[str] = [
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})") if row[1] in had or row[1] in reading
+    ]
     reads = ", ".join(reading.get(one, one) for one in named)
     only = f" WHERE {where}" if where else ""
     conn.execute(f"INSERT INTO {table}({', '.join(named)}) SELECT {reads} FROM {aside}{only}")
@@ -3452,3 +3457,353 @@ def _a_keyword_is_a_thing_a_person_can_write_down(conn: sqlite3.Connection) -> N
                 f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
                 " BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
             )
+
+
+@step(42)
+def _a_photograph_can_be_dated_to_its_decade(conn: sqlite3.Connection) -> None:
+    """v42 -> v43: `time_precision` gains `decade`, `year` and `month`.
+
+    A scanned photograph's only date is often the folder it sits in, and
+    that folder is frequently coarser than a day: `1998/`, `2003-07/`,
+    `1970s/`. `db/when.py folder_day` answered with a day or with nothing,
+    so every one of those was NO CLAIM and the file fell through to mtime
+    -- which dates a 1964 photograph by when somebody last copied it.
+
+    Measured on the sample corpus: six of the Commons photographs are from
+    1964, 1965, 1977, 1978, 1982 and 1989, and `_day_of` refused all six
+    besides, its year range having been a digital camera's lifetime
+    (`range(1990, 2101)`) in an application that holds photographs.
+
+    Nothing to backfill. Every existing row carries a precision this CHECK
+    still admits; the widening only lets `folder_when` record what it can
+    now read. Re-running the context job is what re-dates a library, and
+    that is a job somebody asks for, not a migration's business.
+    """
+    # schema.sql's block VERBATIM, whitespace included: the drift check
+    # compares sqlite_master text, so a reflowed statement is drift.
+    # BOTH tables. The vocabulary is stated twice in the DDL -- once where
+    # a claim is recorded and once where the conclusion is -- and widening
+    # only the second one made every context item die on `CHECK constraint
+    # failed: time_precision IN` while the table it was writing to would
+    # have accepted the row.
+    rebuilt(
+        conn,
+        "derived_media_occurrence",
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation','file')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN
+                     ('capture','embedded','filename','folder','mtime','btime')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
+    -- The SAME vocabulary as derived_media_context above, and it has to
+    -- be: an occurrence is where a claim is recorded and the context is
+    -- what is concluded from it, so a precision the context can hold and
+    -- the occurrence cannot is a claim with nowhere to be written. Exactly
+    -- that happened -- the coarse rungs were added to one CHECK and not
+    -- the other, and every context job item died on `CHECK constraint
+    -- failed: time_precision IN` while the context table would have taken
+    -- the row.
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('decade','year','month','day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID""",
+    )
+    rebuilt(
+        conn,
+        "derived_media_context",
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','filename','folder','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- A coarse claim is REFINED by every consistent signal the file
+    -- carries (the finish-implied second inside a claimed minute, the
+    -- write inside a claimed day) and the refinement is the moment
+    -- shown: a signal not exposed is wasted. Only an estimate that
+    -- contradicts its claim is held back, as a named conflict.
+    -- The coarse half is not decoration. A scanned photograph's only date
+    -- is often the folder it sits in -- `1998/`, `2003-07/`, `1970s/` --
+    -- and with nowhere to put that claim the file fell through to mtime,
+    -- which dates a 1964 photograph by when somebody last copied it. Six
+    -- of the corpus's Commons photographs are pre-1990.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('decade','year','month','day','hour','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT""",
+    )
+
+
+@step(43)
+def _a_vocabulary_states_only_what_it_can_write(conn: sqlite3.Connection) -> None:
+    """v43 -> v44: four values nothing could ever produce are removed.
+
+    `time_basis` drops `first_seen`, `location_basis` drops `sidecar` and
+    `inferred`, and both `time_precision` CHECKs drop `hour`.
+
+    None of the four had a writer. This is not a judgement about how
+    likely they were; it is what the code can construct:
+
+      first_seen  `judge_file`'s no-claim branch returns None when mtime
+                  and btime are both absent, so the one case the word
+                  named writes no row at all. `derived_media_occurrence
+                  .basis` never listed it and `db/planning.py _BASES`
+                  never held it -- the context CHECK and one Python tuple
+                  were the only places claiming the rung existed.
+      sidecar     sidecar ingest (db/ingest.py) carries generation
+      inferred    parameters, never a location, and nothing infers a
+                  location from content. `db/context.py` assigns
+                  `location_basis` in ONE expression: `authored` when a
+                  person has said where a picture happened, `gps` when
+                  the camera wrote a fix, otherwise NULL.
+      hour        every precision a Verdict is constructed with -- a
+                  stamped name gives day, second or subsecond; a folder
+                  gives day, month, year or decade; a generator date
+                  gives second, day or minute; the filesystem fallback
+                  gives subsecond. Nothing reads an hour without also
+                  reading its minutes. The hour is still a real unit in
+                  `when.SPAN` and a real timeline bin -- it was never a
+                  precision a FILE could claim.
+
+    A vocabulary naming unreachable values is worse than a short one: it
+    tells a reader that `WHERE location_basis = 'inferred'` could return
+    something, and it made the corpus gate report four gaps that no file
+    can close.
+
+    Counted before rebuilding rather than assumed. Nothing wrote these,
+    so the count should be zero -- but a rebuild that meets a row the new
+    CHECK rejects fails with SQLite's message and no row named, and
+    "should be zero" is exactly the assumption this refuses to make.
+    """
+    for table, column, values in (
+        ("derived_media_context", "time_basis", ("first_seen",)),
+        ("derived_media_context", "location_basis", ("sidecar", "inferred")),
+        ("derived_media_context", "time_precision", ("hour",)),
+        ("derived_media_occurrence", "time_precision", ("hour",)),
+    ):
+        marks = ",".join("?" * len(values))
+        held = conn.execute(f"SELECT count(*) FROM {table} WHERE {column} IN ({marks})", values).fetchone()[0]
+        if held:
+            raise RuntimeError(
+                f"{held} row(s) in {table} carry a {column} this step removes"
+                f" ({', '.join(values)}). Nothing in the application writes those, so they"
+                " came from somewhere this migration cannot speak for. Re-run the context"
+                " job to re-derive them, then upgrade."
+            )
+    # schema.sql's blocks VERBATIM -- the drift check compares sqlite_master
+    # text, so a reflowed statement is drift. BOTH tables again: the
+    # vocabulary is stated twice and v43 learned what editing only one does.
+    rebuilt(
+        conn,
+        "derived_media_occurrence",
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation','file')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN
+                     ('capture','embedded','filename','folder','mtime','btime')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
+    -- The SAME vocabulary as derived_media_context above, and it has to
+    -- be: an occurrence is where a claim is recorded and the context is
+    -- what is concluded from it, so a precision the context can hold and
+    -- the occurrence cannot is a claim with nowhere to be written. Exactly
+    -- that happened -- the coarse rungs were added to one CHECK and not
+    -- the other, and every context job item died on `CHECK constraint
+    -- failed: time_precision IN` while the context table would have taken
+    -- the row.
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('decade','year','month','day','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID""",
+    )
+    rebuilt(
+        conn,
+        "derived_media_context",
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
+    -- `first_seen` was declared here and nothing could ever write it:
+    -- `judge_file`'s no-claim branch returns None when mtime and btime
+    -- are both absent, so the one case it named produces no row at all,
+    -- and derived_media_occurrence.basis below never listed it.
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','filename','folder','btime','mtime')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- A coarse claim is REFINED by every consistent signal the file
+    -- carries (the finish-implied second inside a claimed minute, the
+    -- write inside a claimed day) and the refinement is the moment
+    -- shown: a signal not exposed is wasted. Only an estimate that
+    -- contradicts its claim is held back, as a named conflict.
+    -- The coarse half is not decoration. A scanned photograph's only date
+    -- is often the folder it sits in -- `1998/`, `2003-07/`, `1970s/` --
+    -- and with nowhere to put that claim the file fell through to mtime,
+    -- which dates a 1964 photograph by when somebody last copied it. Six
+    -- of the corpus's Commons photographs are pre-1990.
+    -- No `hour`. Every precision this column can hold is one `db/when.py`
+    -- constructs a Verdict with: a stamped name gives day, second or
+    -- subsecond, a folder gives day, month, year or decade, a generator
+    -- date gives second, day or minute, and the filesystem fallback gives
+    -- subsecond. Nothing reads an hour without also reading its minutes.
+    -- The hour remains a real unit in `when.SPAN` and a real timeline bin;
+    -- it was never a precision a file could claim.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('decade','year','month','day','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    -- Two, not four. `db/context.py` assigns `authored` when a person has
+    -- said where a picture happened and `gps` when the camera wrote a
+    -- fix; `sidecar` and `inferred` were vocabulary for readers that do
+    -- not exist -- sidecar ingest carries generation parameters and never
+    -- a location, and nothing infers one.
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT""",
+    )

@@ -33,7 +33,7 @@ table is never allowed, exemption or not.
 
 from __future__ import annotations
 
-from . import context, prompts
+from . import context, prompts, when
 from .context import HUMAN_MOMENT
 
 #: How many rows a grid asks for at once.
@@ -1319,13 +1319,25 @@ TIMELINE_SESSIONS = _TIMELINE_SESSIONS_HEAD + _TIMELINE_SESSIONS_MIDDLE + _TIMEL
 #: year), anchored like the week: density bars over decades, not
 #: calendar months -- the calendar's months are TIMELINE_MONTHS.
 BINS = {
-    "year": 31_557_600,
-    "month": 2_629_800,
-    "week": 604_800,
-    "day": 86_400,
-    "hour": 3_600,
-    "quarter": 900,
-    "minute": 60,
+    # A decade bin, because a library can now hold a claim that coarse: a
+    # scanned photograph in a `1970s/` folder is dated to its decade and
+    # nothing finer, and without a bin wide enough to hold it the file
+    # would be absent from every zoom rather than shown at the resolution
+    # it is actually known to.
+    #
+    # From `db/when.py`, not typed here. These were written out by hand and
+    # said a year was 31_557_600 while when.py said 31_556_952 -- the
+    # Julian mean against the Gregorian one, for the same word, and a
+    # claim's window and the bar drawn for it are the same span or the bar
+    # is drawn for a different question than the one that was asked.
+    "decade": int(when.DECADE),
+    "year": int(when.YEAR),
+    "month": int(when.MONTH),
+    "week": 7 * int(when.DAY),
+    "day": int(when.DAY),
+    "hour": int(when.HOUR),
+    "quarter": 15 * int(when.MINUTE),
+    "minute": int(when.MINUTE),
 }
 #: Where each bin's grid starts: Monday for the week, the epoch otherwise.
 MONDAY = 345_600
@@ -1337,9 +1349,16 @@ SAMPLES_PER_BIN = 3
 SAMPLES_PER_SESSION = 6
 #: Which precisions are fine enough for each bin: a claim enters a bin
 #: only when its own granule fits inside it.
+#:
+#: The coarse claims enter only the bins wide enough to hold them: a
+#: photograph known to `1998` belongs in a year bar and cannot honestly be
+#: placed in a week. Leaving them out of every list -- which is what this
+#: table said before the coarse precisions existed -- would have made a
+#: folder-dated scan invisible at every zoom instead.
 _FINE_ENOUGH = {
-    "year": ["day", "hour", "minute", "second", "subsecond"],
-    "month": ["day", "hour", "minute", "second", "subsecond"],
+    "decade": ["decade", "year", "month", "day", "hour", "minute", "second", "subsecond"],
+    "year": ["year", "month", "day", "hour", "minute", "second", "subsecond"],
+    "month": ["month", "day", "hour", "minute", "second", "subsecond"],
     "week": ["day", "hour", "minute", "second", "subsecond"],
     "day": ["day", "hour", "minute", "second", "subsecond"],
     "hour": ["hour", "minute", "second", "subsecond"],

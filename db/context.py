@@ -55,8 +55,21 @@ from __future__ import annotations
 import dataclasses
 
 ORIGINS = ("captured", "generated", "mixed", "imported")
-TIME_BASES = ("capture", "embedded", "filename", "folder", "btime", "mtime", "first_seen")
-LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
+
+#: What `db/when.py` can actually put in a Verdict, and nothing else. A
+#: seventh member, `first_seen`, was declared here for years and no code
+#: path could reach it: `judge_file`'s no-claim branch returns None when
+#: mtime and btime are both absent, so the one case the word named writes
+#: no row at all. `derived_media_occurrence.basis` never listed it and
+#: `db/planning.py _BASES` never held it -- this tuple was the only place
+#: in the application that claimed the rung existed.
+TIME_BASES = ("capture", "embedded", "filename", "folder", "btime", "mtime")
+
+#: Two, matching the two branches below (`_CONTEXT`'s location_basis is
+#: assigned in exactly one expression). `sidecar` and `inferred` were
+#: names for readers nobody wrote: sidecar ingest carries generation
+#: parameters and never a location, and nothing infers one from content.
+LOCATION_BASES = ("gps", "authored")
 
 #: WHICH MEANING of the ladder is current. Bump when the interpretation
 #: itself changes meaning -- v2 added the embedded generator-date rung,
@@ -64,10 +77,14 @@ LOCATION_BASES = ("gps", "sidecar", "inferred", "authored")
 #: per-claim occurrence rows, v5 the generation judge, v6 the capture
 #: judge and the act key, v7 the file's own claims as an occurrence,
 #: v8 the human timeline at the refined second when the estimate lands
-#: inside the claimed minute. Every reader binds THIS constant, never
-#: the version a database happens to remember: after an upgrade the old
-#: rows are honestly invisible until the context job re-interprets.
-POLICY_VERSION = 8
+#: inside the claimed minute, v9 the coarse folder rungs -- a folder
+#: naming a year, a month or a decade is now a CLAIM at that precision
+#: where it used to be no claim at all, so a scanned photograph in
+#: `1998/` is dated 1998 instead of falling through to mtime and being
+#: dated by when it was last copied. Every reader binds THIS constant,
+#: never the version a database happens to remember: after an upgrade the
+#: old rows are honestly invisible until the context job re-interprets.
+POLICY_VERSION = 9
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one
 #: was claimed, the knowable instant otherwise. The day facet and the
@@ -507,7 +524,17 @@ SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision, o.
 
 
 def _refined(local_at, precision, estimated_at) -> float | None:
-    span = {"day": 86400.0, "hour": 3600.0, "minute": 60.0}.get(precision)
+    from . import when
+
+    # `db/when.py SPAN`, not a copy of it. This was a fourth hand-written
+    # table of the same numbers and two of the four disagreed about how
+    # long a year is.
+    #
+    # Minus the precisions that cannot contain a finer reading: a claim
+    # already at the second has nothing to refine INTO it. The coarse end
+    # does -- a photograph claimed to 1998 by its folder is exactly the
+    # case a finer signal should refine.
+    span = when.SPAN.get(precision) if precision not in ("second", "subsecond") else None
     if span is None or local_at is None or estimated_at is None:
         return None
     return estimated_at if local_at <= estimated_at < local_at + span else None

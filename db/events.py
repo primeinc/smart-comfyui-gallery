@@ -51,7 +51,7 @@ import typing
 
 from vision.decode import RAW_SUFFIXES
 
-from . import context
+from . import context, when
 
 #: How coarse each precision is, in seconds. A member enters gap
 #: arithmetic at the finest CONSISTENT reading it has: its refined
@@ -59,7 +59,9 @@ from . import context
 #: claim -- and only when that granule fits inside the gap. A bare
 #: day-fine date with nothing to refine it cannot be minutes from
 #: anything; 'insufficient temporal precision' is then the answer.
-_GRANULE = {"day": 86_400.0, "hour": 3_600.0, "minute": 60.0, "second": 1.0, "subsecond": 0.001}
+#: `db/when.py SPAN`, not a copy: how wide a claim is does not get to be
+#: two different numbers depending on which module is asking.
+_GRANULE = when.SPAN
 
 
 def _moment(one: context.Occurrence) -> float | None:

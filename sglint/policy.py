@@ -162,8 +162,20 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/story_view.py": frozenset(
         {"connect", "derived", "evolution", "facets", "naming", "pages", "planning", "rendering", "settings", "stories"}
     ),
+    # `when` is VOCABULARY on the same terms as `facets` above: it holds
+    # how wide a claim at each precision is (`when.SPAN`) and how long a
+    # day, a month and a year are, and it touches no connection -- it
+    # imports dataclasses, datetime and re, and nothing else.
+    #
+    # Admitted because the alternative was worse. This adapter kept its
+    # own `_SPAN = {"day": .., "hour": .., "minute": ..}` and indexed it
+    # with a `time_precision` read out of the database, so the day a file
+    # could be dated to its month, `/timeline` answered 500 with
+    # `KeyError: 'month'`. A table keyed by a vocabulary another module
+    # owns has to BE that vocabulary; a second copy only fails on the one
+    # input the copy never heard of.
     "sg_web/timeline_view.py": frozenset(
-        {"connect", "context", "facets", "pages", "planning", "rendering", "resultset", "settings"}
+        {"connect", "context", "facets", "pages", "planning", "rendering", "resultset", "settings", "when"}
     ),
     # `jobs` is vocabulary here, not a query path: the console spells
     # the job kinds and states the table constrains, and touches no

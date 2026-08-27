@@ -35,12 +35,18 @@ import time
 
 import pytest
 
+from db import when
 from sg_web import projecting
 
 pytestmark = pytest.mark.slow
 
-DAY = 86_400.0
-YEAR = 365 * DAY
+#: `db/when.py`'s units, not a fourth spelling of them. This said
+#: `YEAR = 365 * DAY` -- the common year, 31_536_000 -- while the
+#: surface under test drew against 31_556_952 and
+#: `tests/test_the_timeline_draws_any_span.py` built its fixtures
+#: against 31_557_600.
+DAY = when.DAY
+YEAR = when.YEAR
 
 
 def test_a_window_with_no_gap_is_the_arithmetic_it_replaced():

@@ -19,20 +19,30 @@ import re
 import pytest
 from PIL import Image
 
-from db import connect, context, ingest
+from db import connect, context, ingest, when
 from tests.staging import staged
 from tests.test_the_timeline_is_a_surface import NOW, _drain
 
 PICTURES = 9
-YEAR = 365.25 * 86_400
+
+#: The fixture spans, in `db/when.py`'s units. These BUILD the libraries
+#: below; they are not expected answers, so taking them from the module
+#: under test is not circular -- it is the only way "5 years" here means
+#: the same five years the surface draws.
+#:
+#: It said `YEAR = 365.25 * 86_400`, the JULIAN year. `when.YEAR` is the
+#: Gregorian mean, 31_556_952. A third spelling lived in
+#: `tests/test_empty_time_does_not_get_the_pixels.py` as `365 * DAY`.
+#: Three values for one word across the tests of one surface, none of
+#: them the one the code uses.
 SPANS = {
-    "5 minutes": 5 * 60,
-    "5 days": 5 * 86_400,
-    "5 weeks": 5 * 7 * 86_400,
-    "5 months": 5 * 30 * 86_400,
-    "5 years": 5 * YEAR,
-    "55 years": 55 * YEAR,
-    "555 years": 555 * YEAR,
+    "5 minutes": 5 * when.MINUTE,
+    "5 days": 5 * when.DAY,
+    "5 weeks": 5 * 7 * when.DAY,
+    "5 months": 5 * when.MONTH,
+    "5 years": 5 * when.YEAR,
+    "55 years": 55 * when.YEAR,
+    "555 years": 555 * when.YEAR,
 }
 
 
@@ -157,9 +167,9 @@ def test_every_span_draws_its_opening_window_and_its_whole_extent(spanned):
         assert answer.status_code == 400 or sum(1 for b in answer.json()["bins"] if b["pictures"]) > 40, (
             f"{finer[-1]} would have done and {unit} was chosen"
         )
-    if span == 300:
+    if span == 5 * when.MINUTE:
         assert unit == "minute"
-    if span >= 555 * YEAR:
+    if span >= 555 * when.YEAR:
         assert unit == "year", "centuries scrub by year"
         assert len(segments) < 600
     page = client.get(

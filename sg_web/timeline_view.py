@@ -29,7 +29,7 @@ from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromQuery, QueryParameter
 from litestar.response import Redirect, Response, Template
 
-from db import connect, context, facets, pages, planning, rendering, resultset, settings
+from db import connect, context, facets, pages, planning, rendering, resultset, settings, when
 from sg_web import home, projecting
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES, wants_json
@@ -194,7 +194,13 @@ PLANNER_FOR = {
     "file_session": "file_history",
 }
 
-_SPAN = {"day": 86_400, "hour": 3_600, "minute": 60}
+#: How wide a claim at each precision is. `db/when.py SPAN`, NOT a copy of
+#: it. This was a hand-written table of three, and it was indexed by a
+#: precision read out of the database -- so the day a file could be dated
+#: to its month, `/timeline` answered 500 with `KeyError: 'month'` on any
+#: library holding a folder-dated scan. A lookup keyed by a vocabulary
+#: somebody else owns has to be that vocabulary.
+_SPAN = when.SPAN
 
 #: Sessions one answer lists -- a whole library's extent can touch
 #: thousands; the page lists the most recent this many, says how many
@@ -209,13 +215,17 @@ OPENING = 30 * 86_400
 PRESETS = (("1w", 7 * 86_400), ("1m", 30 * 86_400), ("3m", 91 * 86_400), ("1y", 365 * 86_400), ("all", None))
 #: The zoom follows the window's width: enough bars to see the shape,
 #: never more than the strip samples thumbnails for.
+#: `when.YEAR` is the Gregorian mean (365.2425 days). 31_557_600 -- the
+#: JULIAN year, 365.25 days -- was typed here twice, so the bars were
+#: drawn against one length of year and the zoom boundaries decided by
+#: another.
 _ZOOM = (
-    ("minute", 6 * 3_600),
-    ("quarter", 2 * 86_400),
-    ("hour", 14 * 86_400),
-    ("day", 183 * 86_400),
-    ("week", 12 * 31_557_600),
-    ("month", 120 * 31_557_600),
+    ("minute", 6 * when.HOUR),
+    ("quarter", 2 * when.DAY),
+    ("hour", 14 * when.DAY),
+    ("day", 183 * when.DAY),
+    ("week", 12 * when.YEAR),
+    ("month", 120 * when.YEAR),
 )
 #: The narrowest window the surface opens on.
 NARROWEST = 3_600
@@ -654,13 +664,16 @@ def _nothing_for(seconds: float) -> str:
     this exists for is twenty-two years, and "8203 days" is a number
     nobody converts.
     """
-    days = seconds / 86_400
+    days = seconds / when.DAY
+    # Lengths in days, from `db/when.py` -- 30.44 and 365.25 were typed
+    # here, and 365.25 is the Julian year, which is not the year the bars
+    # beside this text are drawn against.
     for most, per, unit in (
-        (2.0, 1 / 24, "hour"),
+        (2.0, when.HOUR / when.DAY, "hour"),
         (14.0, 1.0, "day"),
         (70.0, 7.0, "week"),
-        (365.0, 30.44, "month"),
-        (float("inf"), 365.25, "year"),
+        (365.0, when.MONTH / when.DAY, "month"),
+        (float("inf"), when.YEAR / when.DAY, "year"),
     ):
         if days < most:
             n = max(1, round(days / per))
@@ -1012,9 +1025,7 @@ def _surface(
     else:
         raise ClientException("the library spans more than the page can draw")
     every = len(bins) <= pages.SAMPLED_BINS_MOST
-    busiest = (
-        None if every else [at for at, pictures, *_ in sorted(bins, key=lambda b: -b[1])[: pages.SAMPLED_BINS_MOST]]
-    )
+    busiest = None if every else [at for at, *_ in sorted(bins, key=lambda b: -b[1])[: pages.SAMPLED_BINS_MOST]]
     samples = {} if lean else pages.timeline_samples(conn, bin_name, lo, hi, busiest, scope)
     rows = [] if lean else pages.timeline_sessions(conn, lo, hi, scope)
     # rows are oldest first (db/pages.py _TIMELINE_SESSIONS_TAIL); the tail is the latest

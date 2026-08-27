@@ -2013,8 +2013,12 @@ CREATE TABLE derived_media_context (
     -- never unexplained and a conflict is never silently resolved.
     -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
     -- claimed .6, contested .4), not a probability.
+    -- `first_seen` was declared here and nothing could ever write it:
+    -- `judge_file`'s no-claim branch returns None when mtime and btime
+    -- are both absent, so the one case it named produces no row at all,
+    -- and derived_media_occurrence.basis below never listed it.
     time_basis          TEXT CHECK (time_basis IN
-                          ('capture','embedded','filename','folder','btime','mtime','first_seen')),
+                          ('capture','embedded','filename','folder','btime','mtime')),
     time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
     time_supports       TEXT,
     time_conflicts      TEXT,
@@ -2026,13 +2030,30 @@ CREATE TABLE derived_media_context (
     -- write inside a claimed day) and the refinement is the moment
     -- shown: a signal not exposed is wasted. Only an estimate that
     -- contradicts its claim is held back, as a named conflict.
+    -- The coarse half is not decoration. A scanned photograph's only date
+    -- is often the folder it sits in -- `1998/`, `2003-07/`, `1970s/` --
+    -- and with nowhere to put that claim the file fell through to mtime,
+    -- which dates a 1964 photograph by when somebody last copied it. Six
+    -- of the corpus's Commons photographs are pre-1990.
+    -- No `hour`. Every precision this column can hold is one `db/when.py`
+    -- constructs a Verdict with: a stamped name gives day, second or
+    -- subsecond, a folder gives day, month, year or decade, a generator
+    -- date gives second, day or minute, and the filesystem fallback gives
+    -- subsecond. Nothing reads an hour without also reading its minutes.
+    -- The hour remains a real unit in `when.SPAN` and a real timeline bin;
+    -- it was never a precision a file could claim.
     time_precision      TEXT CHECK (time_precision IN
-                          ('day','hour','minute','second','subsecond')),
+                          ('decade','year','month','day','minute','second','subsecond')),
     gps_lat             REAL,
     gps_lon             REAL,
     place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    -- Two, not four. `db/context.py` assigns `authored` when a person has
+    -- said where a picture happened and `gps` when the camera wrote a
+    -- fix; `sidecar` and `inferred` were vocabulary for readers that do
+    -- not exist -- sidecar ingest carries generation parameters and never
+    -- a location, and nothing infers one.
     location_basis      TEXT CHECK (location_basis IN
-                          ('gps','sidecar','inferred','authored')),
+                          ('gps','authored')),
     location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
     -- WHICH MEANING produced this row: the interpretation ladder's own
     -- version, so a better ladder tomorrow visibly obsoletes today's
@@ -2095,8 +2116,16 @@ CREATE TABLE derived_media_occurrence (
     -- the millisecond and the camera's frame name, so renditions share it
     -- wherever they were copied; a grouper counts acts, not files
     act_key        TEXT,
+    -- The SAME vocabulary as derived_media_context above, and it has to
+    -- be: an occurrence is where a claim is recorded and the context is
+    -- what is concluded from it, so a precision the context can hold and
+    -- the occurrence cannot is a claim with nowhere to be written. Exactly
+    -- that happened -- the coarse rungs were added to one CHECK and not
+    -- the other, and every context job item died on `CHECK constraint
+    -- failed: time_precision IN` while the context table would have taken
+    -- the row.
     time_precision TEXT NOT NULL CHECK (time_precision IN
-                     ('day','hour','minute','second','subsecond')),
+                     ('decade','year','month','day','minute','second','subsecond')),
     policy_version INTEGER NOT NULL,
     PRIMARY KEY (file_id, kind),
     -- an occurrence with no time is not an occurrence
@@ -2481,7 +2510,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 42;
+PRAGMA user_version   = 44;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

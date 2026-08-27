@@ -93,6 +93,11 @@ def frozen_main(member: dict, role: str) -> str:
 
 
 #: Precisions fine enough that event order is evidence of sequence.
+#:
+#: `decade`, `year`, `month` and `day` are deliberately absent and stay
+#: absent: two photographs both claimed to 1998 say nothing about which
+#: came first, and a story that narrated them in file order would be
+#: inventing a sequence out of a folder name.
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
 
 
