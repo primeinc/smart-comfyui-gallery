@@ -302,9 +302,13 @@ def _bound(monkeypatch, argv: list[str]) -> dict:
     """Run the launcher far enough to see where it would bind."""
     held: dict = {}
 
-    def _remember(app, host, port):
+    def _remember(app, host, port, **kwargs):
         held["host"] = host
         held["port"] = port
+        # present and False on the default (redacted) path, absent on
+        # --log-user-paths: an access log's URLs spell what the library
+        # holds, so it rides the same flag (sg_web/__main__.py)
+        held["access_log"] = kwargs.get("access_log", "absent")
 
     monkeypatch.setattr(sys, "argv", ["sg_web", *argv])
     monkeypatch.setattr(launcher, "missing", lambda: None)
@@ -317,7 +321,13 @@ def _bound(monkeypatch, argv: list[str]) -> dict:
 
 
 def test_by_default_it_binds_this_machine_and_nothing_else(monkeypatch):
-    assert _bound(monkeypatch, [])["host"] == launcher.LOCAL
+    held = _bound(monkeypatch, [])
+    assert held["host"] == launcher.LOCAL
+    assert held["access_log"] is False, "by default the request log names nothing, because URLs do"
+
+
+def test_log_user_paths_restores_the_access_log(monkeypatch):
+    assert _bound(monkeypatch, ["--log-user-paths"])["access_log"] == "absent"
 
 
 def test_public_binds_every_interface(monkeypatch):
