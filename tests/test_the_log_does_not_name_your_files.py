@@ -41,9 +41,36 @@ def test_a_posix_path_and_a_bare_media_filename_are_redacted_too():
     assert said.endswith(") failed: truncated")
 
 
-def test_a_code_path_is_kept_because_a_traceback_needs_its_frames():
+def test_a_code_path_is_relativized_never_passed_through():
+    """A frame stays navigable and carries no username: a checkout
+    lives under a home directory, so "kept" must mean relativized."""
     ours = str(pathlib.Path(redaction.__file__))
-    assert redaction.said(f'  File "{ours}", line 1') == f'  File "{ours}", line 1'
+    said = redaction.said(f'  File "{ours}", line 1')
+    assert "Users" not in said
+    assert said == '  File "<app>\\sg_web\\redaction.py", line 1'
+
+    repo = str(pathlib.Path(redaction.__file__).resolve().parent.parent)
+    told = redaction.said(f"vendored GPU faiss loaded from {repo}\\vendor\\faiss-gpu-win64")
+    assert told == "vendored GPU faiss loaded from <app>\\vendor\\faiss-gpu-win64"
+
+
+def test_a_format_string_with_a_url_shape_survives_untouched():
+    """uvicorn's startup line is `%s://%s:%d` -- `s://` must not read as
+    the drive `s:`, or the mangled format string raises inside logging
+    and the last-resort handler prints raw frames past this module."""
+    banner = "Uvicorn running on %s://%s:%d (Press CTRL+C to quit)"
+    assert redaction.said(banner) == banner
+    was = logging.getLogRecordFactory()
+    try:
+        redaction.install()
+        spoke = logging.getLogger("tests.redaction.banner")
+        spoke.addHandler(logging.NullHandler())
+        record = spoke.makeRecord(
+            "tests.redaction.banner", logging.INFO, __file__, 1, banner, ("http", "127.0.0.1", 8799), None
+        )
+        assert record.getMessage() == "Uvicorn running on http://127.0.0.1:8799 (Press CTRL+C to quit)"
+    finally:
+        logging.setLogRecordFactory(was)
 
 
 def test_a_token_the_application_does_not_claim_is_not_a_filename():

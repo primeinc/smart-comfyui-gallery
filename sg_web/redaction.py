@@ -49,10 +49,27 @@ from db import naming, scan
 
 _REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: Prefixes whose paths are CODE, not somebody's library. Normcased once;
-#: the interpreter's prefixes cover a venv outside the tree.
+#: Prefixes whose paths are CODE, not somebody's library -- each with the
+#: label its remainder is spelled under. RELATIVIZED, never passed
+#: through: the first version kept them verbatim, and a checkout under
+#: `C:\Users\<name>\dev\...` then shipped the username on every kept
+#: frame and every "loaded from" line -- the exact leak this module
+#: exists to stop. Longest prefix first, because the venv lives inside
+#: the repo and must claim its own paths before the repo does.
 _OURS = tuple(
-    os.path.normcase(str(one)) for one in (_REPO, sys.prefix, sys.base_prefix, sys.exec_prefix, sys.executable)
+    sorted(
+        {
+            os.path.normcase(str(prefix)): label
+            for prefix, label in (
+                (sys.prefix, "<venv>"),
+                (sys.base_prefix, "<python>"),
+                (sys.exec_prefix, "<venv>"),
+                (pathlib.Path(sys.executable).parent, "<python>"),
+                (_REPO, "<app>"),
+            )
+        }.items(),
+        key=lambda held: -len(held[0]),
+    )
 )
 
 # Regex over log text is the narrow exception rule 18 leaves open: a log
@@ -65,7 +82,11 @@ _OURS = tuple(
 # separator. A POSIX path stops at whitespace: spaced POSIX paths in a
 # log line are not distinguishable from prose, and the filename rule
 # below still catches their last component.
-_WINDOWS_PATH = re.compile(r"(?<![\w])[A-Za-z]:[\\/][^:<>\"|?*\n]+")
+#: `(?![\\/])`: a drive spec is never `X://`, but a URL's `s://` is --
+#: uvicorn's own startup format string `%s://%s:%d` read as the drive
+#: `s:` until this, and a mangled format string raises inside logging,
+#: whose last-resort handler prints raw frames past this module.
+_WINDOWS_PATH = re.compile(r"(?<![\w])[A-Za-z]:[\\/](?![\\/])[^:<>\"|?*\n]*")
 _POSIX_PATH = re.compile(r"(?<![\w:])/(?:[^/\s]+/)+[^/\s:]+")
 #: A bare token that ends in a suffix the application claims. Two
 #: shapes: spaceless anywhere, and spaced only inside parentheses --
@@ -85,9 +106,14 @@ def _hidden(token: str) -> str:
 
 def _path(match: re.Match) -> str:
     token = match.group(0).rstrip(". ")
-    if os.path.normcase(token).startswith(_OURS):
-        return match.group(0)
-    return _hidden(token)
+    normed = os.path.normcase(token)
+    for prefix, label in _OURS:
+        if normed.startswith(prefix):
+            # normcase preserves length, so the slice is the original
+            # spelling's remainder -- a frame stays navigable while the
+            # prefix that names a person is gone.
+            return label + token[len(prefix) :] + match.group(0)[len(token) :]
+    return _hidden(token) + match.group(0)[len(token) :]
 
 
 def said(text: str) -> str:
@@ -106,8 +132,18 @@ def install() -> None:
 
     def make(*args, **kwargs):
         record = current(*args, **kwargs)
-        record.msg = said(record.getMessage())
-        record.args = ()
+        # Args are redacted IN PLACE, never flattened into the message:
+        # uvicorn's access formatter unpacks record.args as a five-tuple
+        # (uvicorn/logging.py AccessFormatter.formatMessage), and a first
+        # version that set `args = ()` made every access line raise
+        # inside logging -- whose last-resort handler prints raw frames
+        # to stderr, OUTSIDE this factory. Non-strings pass through so
+        # `%d` directives keep formatting.
+        record.msg = said(str(record.msg)) if record.msg else record.msg
+        if isinstance(record.args, dict):
+            record.args = {key: said(one) if isinstance(one, str) else one for key, one in record.args.items()}
+        elif record.args:
+            record.args = tuple(said(one) if isinstance(one, str) else one for one in record.args)
         if record.exc_info:
             record.exc_text = said("".join(traceback.format_exception(*record.exc_info)))
             record.exc_info = None
