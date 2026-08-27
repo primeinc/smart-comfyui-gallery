@@ -133,3 +133,11 @@ node_modules/
 !sg_web/static/build/
 !sg_web/static/build/*.js
 sg_web/static/build/*.map
+
+# The proof machinery's local state (justfile prove / prove-push): the
+# tree hash the last green full run proved, and pytest-testmon's
+# per-test coverage database. Both are facts about THIS machine's runs.
+.proven-tree
+.testmondata
+.testmondata-shm
+.testmondata-wal

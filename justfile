@@ -29,6 +29,43 @@ test: web::build
 test-slow: web::build
     {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile
 
+# The recorded full proof. Both gates and the whole suite, run when
+# waiting is cheap (backgroundable); on green, the COMMITTED tree's hash
+# lands in .proven-tree, so pushing an already-proven tree costs nothing
+# instead of re-deriving six minutes of certainty. A dirty working tree
+# still runs everything but records nothing -- the marker claims "this
+# committed tree passed", and a dirty run proved something else.
+[doc('Both gates + the whole suite; on green, record the proven tree in .proven-tree')]
+[script]
+prove: check-deep test-slow
+    cd "$(git rev-parse --show-toplevel)"
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "working tree dirty: everything ran green, but the proof is NOT recorded"
+        exit 0
+    fi
+    git rev-parse 'HEAD^{tree}' > .proven-tree
+    echo "proven: $(cat .proven-tree)"
+
+# What pre-push runs (lefthook.yml). An already-proven tree passes in
+# milliseconds; anything else runs the AFFECTED slice of the suite --
+# pytest-testmon selects by measured per-test file coverage
+# (.testmondata), and --testmon-forceselect keeps selection active
+# beside `-m slow`, which would otherwise disable it
+# (tarpas/pytest-testmon testmon/configure.py:65-76). A missing
+# .testmondata makes the first run a full one that seeds the database.
+# Selection is a slice, not the proof: this never writes .proven-tree;
+# `just prove` is the only writer.
+[doc('Pre-push gate: skip a proven tree, else run the affected slice of the suite')]
+[script]
+prove-push: web::build
+    cd "$(git rev-parse --show-toplevel)"
+    tree=$(git rev-parse 'HEAD^{tree}')
+    if [ -f .proven-tree ] && [ "$(cat .proven-tree)" = "$tree" ]; then
+        echo "tree already proven by 'just prove'; nothing to re-derive"
+        exit 0
+    fi
+    {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile --testmon --testmon-forceselect
+
 # Ruff over the Python, Biome over the browser source (biome.json: the
 # first-party JS and CSS, never the vendored htmx), and this repository's
 # own structural rules (sglint).

@@ -91,6 +91,12 @@ dev = [
     "playwright>=1.62.0",
     "pytest-xdist>=3.8.0",
     "pytest-playwright>=0.9.0",
+    # Affected-test selection for the pre-push gate (`just prove-push`):
+    # selects by measured per-test file coverage (.testmondata), with
+    # first-class xdist support (tarpas/pytest-testmon
+    # testmon/pytest_testmon.py TestmonXdistSync). The full suite still
+    # runs -- in `just prove`, where nobody is waiting on it.
+    "pytest-testmon>=2.1",
     # `just api schema` imports msgspec directly, to write the OpenAPI
     # document through litestar's own encoder exactly as its CLI does.
     # Litestar depends on it too, but a file that imports a package should
