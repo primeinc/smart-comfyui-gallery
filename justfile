@@ -37,14 +37,21 @@ test-slow: web::build
 # committed tree passed", and a dirty run proved something else.
 [doc('Both gates + the whole suite; on green, record the proven tree in .proven-tree')]
 [script]
-prove: check-deep test-slow
+prove:
     cd "$(git rev-parse --show-toplevel)"
-    if [ -n "$(git status --porcelain)" ]; then
-        echo "working tree dirty: everything ran green, but the proof is NOT recorded"
+    # The tree is read BEFORE the run and compared after: a commit
+    # landing mid-run must not be stamped with a proof that ran against
+    # its parent. Dependencies became inline calls for the same reason
+    # -- the capture has to happen first.
+    tree=$(git rev-parse 'HEAD^{tree}')
+    just check-deep
+    just test-slow
+    if [ -n "$(git status --porcelain)" ] || [ "$(git rev-parse 'HEAD^{tree}')" != "$tree" ]; then
+        echo "the tree moved while the proof ran: everything was green, but nothing is recorded"
         exit 0
     fi
-    git rev-parse 'HEAD^{tree}' > .proven-tree
-    echo "proven: $(cat .proven-tree)"
+    printf '%s\n' "$tree" > .proven-tree
+    echo "proven: $tree"
 
 # What pre-push runs (lefthook.yml). An already-proven tree passes in
 # milliseconds; anything else runs the AFFECTED slice of the suite --

@@ -129,6 +129,14 @@ def said(text: str) -> str:
     return _MEDIA_NAME.sub(lambda m: _hidden(m.group(0)), text)
 
 
+#: What install() put in place, held by IDENTITY: idempotence without
+#: decorating foreign callables (a function attribute satisfied neither
+#: type checker nor linter), and a test that restores the previous
+#: factory makes the next install wrap afresh instead of trusting a
+#: stale marker.
+_MINE: dict[str, object] = {"factory": None, "hook": None}
+
+
 def install() -> None:
     """Everything a served process emits, redacted. Idempotent.
 
@@ -141,16 +149,16 @@ def install() -> None:
     `logging.raiseExceptions = False` silences it (the record is lost;
     the leak is not)."""
     logging.raiseExceptions = False
-    if not getattr(sys.excepthook, "sg_redacts", False):
+    if sys.excepthook is not _MINE["hook"]:
 
         def crashed(kind, value, trace) -> None:
             sys.stderr.write(said("".join(traceback.format_exception(kind, value, trace))))
 
-        crashed.sg_redacts = True
+        _MINE["hook"] = crashed
         sys.excepthook = crashed
 
     current = logging.getLogRecordFactory()
-    if getattr(current, "sg_redacts", False):
+    if current is _MINE["factory"]:
         return
 
     def make(*args, **kwargs):
@@ -177,5 +185,5 @@ def install() -> None:
             record.exc_info = None
         return record
 
-    make.sg_redacts = True
+    _MINE["factory"] = make
     logging.setLogRecordFactory(make)
