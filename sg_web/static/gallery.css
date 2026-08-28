@@ -714,6 +714,10 @@ p {
   grid-template-rows: 1fr;
   grid-template-areas: "stage inspector";
   background: var(--ground);
+  /* What the filmstrip occupies: a thumbnail plus the track's padding
+     and the scrim above it. Named because the facts below have to clear
+     it, and two places guessing the same number is how they drift. */
+  --strip-h: calc(clamp(64px, 5.5vw, 110px) + 40px);
 }
 
 .viewer[data-inspector="open"] {
@@ -831,16 +835,6 @@ p {
   border-radius: 999px;
   padding: 3px var(--s2);
   gap: var(--s1);
-}
-/* Facts about the picture, then the window's own controls. They were one
-   undifferentiated run of fourteen: a favourite, five stars, a clear, an
-   album, a keyword field, a slideshow, lights out, information and
-   close, all the same size and weight in the same line. */
-.viewer-acts-split {
-  width: 1px;
-  align-self: stretch;
-  margin: 4px 2px;
-  background: color-mix(in srgb, var(--ink) 22%, transparent);
 }
 /* The picture's own name, first, in ink -- the date and the place are
    facts ABOUT it and stay quiet chips beside it. It truncates rather
@@ -1001,6 +995,13 @@ p {
    They recede the moment somebody is inspecting pixels rather than
    browsing -- at that point the neighbours are not what is being looked
    at. */
+/* Who is in the picture, and what a model said about it -- the two most
+   valuable things this application derives, and they were rendered in
+   near-black at the foot of the stage. When the stage was a grid row
+   that put them just above the filmstrip; once the stage became the
+   whole viewer they landed UNDERNEATH it, which is where I left them.
+   They clear the strip now, and the names are legible on glass like
+   every other chip in the chrome. */
 .viewer-facts {
   position: absolute;
   left: 0;
@@ -1013,6 +1014,33 @@ p {
   padding: 14px 18px;
   background: linear-gradient(to top, color-mix(in srgb, var(--ground) 85%, transparent), transparent);
   transition: opacity 220ms ease;
+}
+.viewer:has(.viewer-filmstrip) .viewer-facts {
+  bottom: var(--strip-h);
+  background: none;
+}
+.viewer-facts .chip {
+  background: color-mix(in srgb, var(--ground) 62%, transparent);
+  backdrop-filter: blur(10px);
+  border-color: color-mix(in srgb, var(--ink) 20%, transparent);
+  color: var(--ink);
+  text-decoration: none;
+}
+.viewer-facts .chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.viewer-caption {
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ground) 62%, transparent);
+  backdrop-filter: blur(10px);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  max-width: 60ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .viewer[data-absorbed="true"] .viewer-facts {
   opacity: 0;
@@ -5534,4 +5562,26 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 .operations-settings .operations-form > label > :is(input, select) {
   width: 100%;
   max-width: 34ch;
+}
+
+/* --- the picture's own band -----------------------------------------
+   At the foot of the file: these outrank `.authored` and every
+   `<scope> button:hover` written above, and placed higher they would win
+   on specificity while reading as a descending-specificity trap.
+
+   One glass strip holding what the picture IS and what has been said
+   about it. The authored controls came down from the window chrome,
+   where they had been sharing a row with lights-out and close. */
+.viewer-facts .authored {
+  padding: 3px var(--s3);
+  gap: var(--s3);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ground) 62%, transparent);
+  backdrop-filter: blur(10px);
+}
+.viewer-facts .authored button {
+  color: var(--ink-2);
+}
+.viewer-facts .authored button:hover {
+  color: var(--ink);
 }

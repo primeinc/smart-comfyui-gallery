@@ -42,10 +42,6 @@
       {% endif %}
     </div>
     <div class="viewer-acts">
-      {% include "_media_authored.html" %}
-      {# Facts about the PICTURE above; controls for the WINDOW below.
-         One run of fourteen said they were the same kind of thing. #}
-      <span class="viewer-acts-split" aria-hidden="true"></span>
       {# The walk on a timer. Only where there IS a walk: a slideshow
          over one picture is a button that does nothing.
 
@@ -142,7 +138,17 @@
 
     {% if not item.present %}<p class="viewer-warn">this file is not on disk right now</p>{% endif %}
 
+    {# What this picture IS, and what you have said about it.
+
+       Who is in it and what a model called it were already here. The
+       favourite, the rating, the albums and the keywords were up in the
+       window chrome, sharing a row with close and lights-out -- sixteen
+       controls doing four unrelated jobs: where am I, what is this, what
+       have I said, and how do I leave. They are the same kind of thing
+       as the names beside them and they belong with them; the bar above
+       is now only the last of those four. #}
     <div class="viewer-facts" data-viewer-facts>
+      {% include "_media_authored.html" %}
       {% if item.faces.people %}
       <span class="viewer-people" data-viewer-people>
         {% for who in item.faces.people %}<a class="chip" href="{{ who.href }}">{{ who.name or who.slug }}</a>{% endfor %}
