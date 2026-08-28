@@ -142,9 +142,37 @@ def active_jobs(context: Mapping[str, Any]) -> list[dict]:
     return rows(request.app.state.db_path)
 
 
+@pass_context
+def library_size(context: Mapping[str, Any]) -> int | None:
+    """The shell's `library_size()`: how many files this library holds.
+
+    The rail's foot used to be empty space under four links. Both of the
+    self-hosted libraries this application is a peer of put the state of
+    the collection there instead -- PhotoPrism its storage, immich its
+    BottomInfo -- because a frame that never says how much it is holding
+    makes a library of four files look like a library of four thousand.
+
+    ONE indexed count, deliberately: this runs on every page render, and
+    the coverage read that would say what is still UNDONE is six queries
+    and a models-directory walk. That belongs on a surface somebody
+    asked for, not under the navigation of every page.
+    """
+    request = context.get("request")
+    if request is None:
+        return None
+    from db import connect
+
+    conn = connect.connect(request.app.state.db_path, read_only=True)
+    try:
+        return int(conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0])
+    finally:
+        connect.close(conn)
+
+
 def register(engine) -> None:
-    """Install `activity_jobs` as a global on the Jinja environment the
+    """Install the shell's globals on the Jinja environment the
     application renders with. Called before any template loads: Jinja
     forbids changing environment globals afterwards (pallets/jinja@3.1.6
     docs/api.rst "The Global Namespace")."""
     engine.engine.globals["activity_jobs"] = active_jobs
+    engine.engine.globals["library_size"] = library_size

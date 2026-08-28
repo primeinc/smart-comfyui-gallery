@@ -35,6 +35,9 @@
       </select>
       <button type="submit">show</button>
     </form>
+    {# Row two: what came back, and what can be done with it. One row
+       rather than five loose controls in the header's flex soup. #}
+    <div class="ask-result">
     <button type="button" class="ask-filters" data-filters-open
             aria-expanded="false" aria-controls="filters"
             title="filter this question">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
@@ -78,6 +81,7 @@
             title="make this view an existing smart collection's new rule">replace a rule</button>
     {% if not q %}<a class="ask-save" data-timeline-link href="/timeline{% if qs %}?{{ qs }}{% endif %}"
             title="these pictures on the timeline">on the timeline</a>{% endif %}
+    </div>
   </header>
   {# "Sarah at the beach" is what somebody types, and it fails: the
      ranking is over image embeddings and the text encoder has never

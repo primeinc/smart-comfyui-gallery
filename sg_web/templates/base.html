@@ -40,30 +40,134 @@
   {% block scripts %}{% endblock %}
 </head>
 <body hx-ext="ws">
-  {# The shell: every product area reachable from every page. Operations
-     is the one link into the runtime; media browsing never mixes with it. #}
+  {# The shell.
+
+     Nine lowercase links in one flat row said every surface was a peer
+     of every other: that the gallery, the keyword index and the job
+     runner were the same kind of thing, and that nothing here was more
+     the point than anything else. They are not peers. The gallery IS
+     the library; people, places, albums, keywords and folders are ways
+     of cutting the same pictures; duplicates is a repair; operations is
+     the machine underneath, visited when something is wrong.
+
+     Three tiers and a footer, so the shape of the product is legible
+     before a single link is read. #}
+  {# Five line icons, inline. No icon font and no sprite fetch: five
+     paths weigh less than the request that would deliver them, and they
+     inherit currentColor so the active row's ink carries the glyph with
+     it. aria-hidden throughout -- every one of them sits beside its own
+     word, so announcing it would say the name twice. #}
+  {% macro icon(name) %}<svg class="i" viewBox="0 0 16 16" width="15" height="15" fill="none"
+    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    {%- if name == "grid" -%}
+      <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1"/>
+      <rect x="1.5" y="9" width="5.5" height="5.5" rx="1"/><rect x="9" y="9" width="5.5" height="5.5" rx="1"/>
+    {%- elif name == "clock" -%}
+      <circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/>
+    {%- elif name == "layers" -%}
+      <path d="M8 1.75 1.75 5 8 8.25 14.25 5 8 1.75Z"/><path d="M1.75 8.5 8 11.75 14.25 8.5"/>
+    {%- elif name == "wrench" -%}
+      <path d="M10.6 2.2a3.75 3.75 0 0 0-4.4 4.9L2 11.3l2.7 2.7 4.2-4.2a3.75 3.75 0 0 0 4.9-4.4l-2.1 2.1-1.9-.5-.5-1.9 2.1-2.1Z"/>
+    {%- elif name == "gauge" -%}
+      <path d="M2.2 12a6.5 6.5 0 1 1 11.6 0"/><path d="M8 12 10.75 7.5"/>
+    {%- endif -%}
+  </svg>{% endmacro %}
   {% set here = request.url.path if request is defined else "" %}
+  <a class="skip-link" href="#stage">skip to content</a>
   <nav class="shell" aria-label="primary">
     <a class="shell-brand" href="/g">SmartGallery</a>
-    <a href="/g"{% if here == "/g" or here.startswith("/i/") %} aria-current="page"{% endif %}>gallery</a>
-    <a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a>
-    <a href="/places"{% if here == "/places" %} aria-current="page"{% endif %}>places</a>
-    <a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a>
-    <a href="/keywords"{% if here == "/keywords" %} aria-current="page"{% endif %}>keywords</a>
-    <a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a>
-    <a href="/timeline"{% if here == "/timeline" %} aria-current="page"{% endif %}>timeline</a>
-    <a href="/dupes"{% if here == "/dupes" %} aria-current="page"{% endif %}>duplicates</a>
-    <a class="shell-operations" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>operations</a>
-    {# Hidden until frontend/src/install.ts has a stashed Chromium
-       prompt to spend; Safari and Firefox never reveal it. #}
-    <button type="button" class="shell-install" data-install hidden>install app</button>
-    <details class="activity" data-activity ws-connect="/ws/jobs?as=html">
-      {% with jobs = activity_jobs(), oob = false %}
-      {% set live = jobs | rejectattr("settled") | list %}
-      <summary>activity{% if live %} · {{ live | length }} running{% endif %}</summary>
-      {% include "_activity_list.html" %}
-      {% endwith %}
-    </details>
+
+    {# Four destinations, two of which disclose.
+
+       The first cut of this rail put all nine surfaces on screen under
+       three headings, which is nine links however they are labelled.
+       Every app in this category that has been through the argument
+       lands lower: Apple's Photos carries two top-level places (Library,
+       Collections), Google's three (Photos, Collections, Create), and
+       both immich and PhotoPrism nest the rest behind a parent that is
+       ITSELF a destination -- PhotoPrism's Search, Albums, Media,
+       Places, Library and Settings all open. Collections is their word,
+       not "find by"; a noun names a place, a verb phrase names a
+       control. And every one of them puts an icon on every row.
+
+       <details> is that disclosure, natively: no script, keyboard and
+       screen-reader behaviour for free, and the group holding the
+       current page is open on arrival. #}
+    {% set in_collections = here in ["/people", "/places", "/albums", "/keywords", "/folders"]
+       or here.startswith("/p/") or here.startswith("/t/") or here.startswith("/f/") %}
+
+    <ul class="shell-top">
+      <li>
+        <a href="/g"{% if here == "/g" or here.startswith("/i/") %} aria-current="page"{% endif %}>
+          {{ icon("grid") }}library
+        </a>
+      </li>
+      <li>
+        <a href="/timeline"{% if here == "/timeline" %} aria-current="page"{% endif %}>
+          {{ icon("clock") }}timeline
+        </a>
+      </li>
+
+      <li>
+        {# Open unless you have closed it. A destination reachable only
+           by first opening a disclosure is a destination behind a door,
+           and the five ways into this library are the navigation --
+           not an advanced menu. (The keyboard test found this: a click
+           on `keywords` timed out against a shut fold.) #}
+        <details class="shell-fold" open>
+          <summary>{{ icon("layers") }}collections</summary>
+          <ul>
+            <li><a href="/people"{% if here == "/people" or here.startswith("/p/") %} aria-current="page"{% endif %}>people</a></li>
+            <li><a href="/places"{% if here == "/places" %} aria-current="page"{% endif %}>places</a></li>
+            <li><a href="/albums"{% if here == "/albums" or here.startswith("/t/") %} aria-current="page"{% endif %}>albums</a></li>
+            <li><a href="/keywords"{% if here == "/keywords" %} aria-current="page"{% endif %}>keywords</a></li>
+            <li><a href="/folders"{% if here == "/folders" or here.startswith("/f/") %} aria-current="page"{% endif %}>folders</a></li>
+          </ul>
+        </details>
+      </li>
+
+      {# PhotoPrism's Errors / Review / Unsorted, in this library's terms:
+         the work that needs a person, reachable rather than assembled
+         into a dashboard somebody has to read. #}
+      <li>
+        <details class="shell-fold"{% if here == "/dupes" %} open{% endif %}>
+          <summary>{{ icon("wrench") }}review</summary>
+          <ul>
+            <li><a href="/dupes"{% if here == "/dupes" %} aria-current="page"{% endif %}>duplicates</a></li>
+            <li><a href="/people#unnamed">unnamed faces</a></li>
+            <li><a href="/operations#operations-ledger">failures</a></li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+
+    {# The machine, at the foot and marked as a different kind of place.
+       It carries its own state, because the reason to come down here is
+       almost always that something is running or something broke. #}
+    {% with jobs = activity_jobs(), oob = false %}
+    {% set live = jobs | rejectattr("settled") | list %}
+    <div class="shell-runtime">
+      <a class="shell-machine" href="/operations"{% if here.startswith("/operations") %} aria-current="page"{% endif %}>
+        {{ icon("gauge") }}operations
+        <span class="dot" data-worker="{{ "running" if live else "idle" }}" aria-hidden="true"></span>
+        <span class="shell-running">{% if live %}<span class="num">{{ live | length }}</span> running{% else %}idle{% endif %}</span>
+      </a>
+      {# The count belongs in the summary, not only beside the machine
+         link: the summary is what a person reads without opening
+         anything, and what tells them the library is not idle. #}
+      <details class="activity" data-activity ws-connect="/ws/jobs?as=html">
+        <summary>activity{% if live %} · {{ live | length }} running{% endif %}</summary>
+        {% include "_activity_list.html" %}
+      </details>
+      {# Hidden until frontend/src/install.ts has a stashed Chromium
+         prompt to spend; Safari and Firefox never reveal it. #}
+      <button type="button" class="btn-quiet shell-install" data-install hidden>install app</button>
+      {% set held = library_size() %}
+      {% if held is not none %}
+      <p class="shell-held"><span class="num">{{ "{:,}".format(held) }}</span> files</p>
+      {% endif %}
+    </div>
+    {% endwith %}
   </nav>
   {# The one place an answer to an htmx request lands when it is a
      notice rather than a swap: refusals, and operations' receipts. #}
@@ -75,6 +179,16 @@
     keep this gallery as an app: Share <span aria-hidden="true">→</span> Add to Home Screen
     <button type="button" class="link" data-dismiss>dismiss</button>
   </p>
+  {# The skip link's target, and NOTHING around the page.
+
+     This was a <div> wrapping {% block body %}, which broke every
+     overlay in the application: frontend/src/overlay.ts underlay()
+     freezes the page by setting `inert` on each of document.body's
+     DIRECT children except the overlay root, and a wrapper put the
+     overlay INSIDE one of them -- so the viewer marked itself inert and
+     its own picture never became visible. An empty anchor is a body
+     child that contains nothing, so there is nothing to freeze. #}
+  <span id="stage" tabindex="-1"></span>
   {% block body %}{% endblock %}
 </body>
 </html>

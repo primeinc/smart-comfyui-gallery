@@ -887,6 +887,12 @@ class ResultItem(Wire):
     #: RESOLVED ONCE, here, for the whole page -- which is the entire
     #: point (vision/thumbs.py `asset_url`).
     thumb: str | None
+    #: The picture's own proportion, for a grid that justifies rows
+    #: instead of cropping every file to a square. None for a kind with
+    #: no picture, and for a file nothing has read the dimensions of yet
+    #: -- the cell falls back to a square there rather than collapsing.
+    width: int | None = None
+    height: int | None = None
 
 
 def result_items(rows: list[dict]) -> list[ResultItem]:
@@ -902,6 +908,8 @@ def result_items(rows: list[dict]) -> list[ResultItem]:
             said=row["said"],
             ordinal=row["ordinal"],
             thumb=thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"]),
+            width=row.get("width"),
+            height=row.get("height"),
         )
         for row in rows
     ]

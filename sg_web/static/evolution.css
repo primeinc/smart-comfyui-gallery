@@ -1,75 +1,114 @@
+/* Evolution: how one picture became another, and what the machine
+   claims about the chain. Tokens are gallery.css's.
+
+   This file used to hold its own palette -- #fc6, #6cf, #c77, #888,
+   #222, #444, #666, #1a1a1a -- and its own meanings for them, so the
+   page rendered in colours no other page used and answered to nothing
+   when the theme moved. It also carried no focus state of any kind on
+   controls that are all keyboard-reachable.
+
+   The blue is gone rather than re-tokened. It was carrying "inferred"
+   and "paired" as if those were a second brand colour; they are not
+   claims the safelight makes, so they step DOWN into ink instead of
+   sideways into a new hue. Asserted is accent. Inferred is quiet. */
+
 .evolution {
-  padding-right: 16px;
+  padding-right: var(--s4);
 }
+
 .evolution-provenance {
-  color: var(--muted, #888);
-  font-size: 0.9rem;
-  margin: 0 0 10px;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+  margin: 0 0 var(--s3);
 }
 .evolution-provenance .degraded {
-  color: #c77;
+  color: var(--danger);
 }
+
 .evolution-tabs {
   display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: var(--s1);
+  margin-bottom: var(--s3);
 }
 .evolution-tabs button {
   background: transparent;
-  border: 1px solid var(--line, #444);
-  color: inherit;
-  padding: 4px 10px;
-  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-muted);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font: var(--w-label) var(--t-body) / 1.2 var(--face);
   cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.evolution-tabs button:hover {
+  color: var(--ink);
+  border-color: var(--ink-muted);
 }
 .evolution-tabs button.on {
-  background: var(--line, #444);
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent);
 }
+
 .evolution-main {
   min-height: 240px;
-  margin-bottom: 12px;
+  margin-bottom: var(--s3);
   overflow-x: auto;
 }
+
 .evolution-panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--s3);
 }
+
 .evolution-selected img {
   max-width: 100%;
   max-height: 50vh;
 }
+
 .evolution-selected pre,
 .evolution-inspector pre {
   white-space: pre-wrap;
-  font-size: 0.85rem;
+  font-family: var(--mono);
+  font-size: var(--t-small);
 }
+
+/* What the text gained and lost between two prompts. Tinted grounds
+   rather than coloured type: the words stay at full ink, because the
+   words are the thing being compared. */
 .evolution-diff ins {
-  background: rgba(80, 180, 80, 0.3);
+  background: color-mix(in srgb, var(--ok) 28%, transparent);
   text-decoration: none;
 }
 .evolution-diff del {
-  background: rgba(200, 80, 80, 0.3);
+  background: color-mix(in srgb, var(--danger) 28%, transparent);
 }
+
 .filmstrip {
   display: flex;
-  gap: 14px;
+  gap: var(--s3);
   align-items: flex-start;
 }
 .filmstrip .phase {
-  border: 1px solid var(--line, #444);
-  border-radius: 6px;
-  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--s2);
 }
 .filmstrip .phase h3 {
-  margin: 0 0 6px;
-  font-size: 0.85rem;
-  font-weight: normal;
-  color: var(--muted, #888);
+  margin: 0 0 var(--s2);
+  font-size: var(--t-micro);
+  font-weight: var(--w-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
 }
 .filmstrip .members {
   display: flex;
-  gap: 4px;
+  gap: var(--s1);
 }
 .filmstrip .member {
   width: 72px;
@@ -77,109 +116,138 @@
   object-fit: cover;
   cursor: pointer;
   border: 2px solid transparent;
-  border-radius: 3px;
-  background: #222;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
 }
+/* The frame you are on, and the frame it is being read against. One is
+   the claim, the other is the comparison -- accent, then ink. */
 .filmstrip .member.on {
-  border-color: #fc6;
+  border-color: var(--accent);
 }
 .filmstrip .member.pair {
-  border-color: #6cf;
+  border-color: var(--ink-2);
 }
+.filmstrip .member:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .tracks {
-  margin-top: 10px;
+  margin-top: var(--s3);
 }
 .tracks table {
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
 }
 .tracks td,
 .tracks th {
-  padding: 2px 6px;
+  padding: 2px var(--s2);
   text-align: center;
   white-space: nowrap;
 }
 .tracks th {
   text-align: left;
-  color: var(--muted, #888);
-  font-weight: normal;
+  color: var(--ink-muted);
+  font-weight: var(--w-label);
 }
 .tracks td.boundary {
-  border-left: 2px solid #fc6;
+  border-left: 2px solid var(--accent);
 }
 .tracks td.unavailable {
-  color: var(--muted, #888);
+  color: var(--ink-faint);
 }
+
 .drift svg {
-  background: #1a1a1a;
-  border-radius: 6px;
+  background: var(--sunken);
+  border-radius: var(--radius);
 }
 .drift circle {
   cursor: pointer;
 }
 .drift circle.on {
-  stroke: #fc6;
+  stroke: var(--accent);
   stroke-width: 3;
 }
+.drift circle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .families .family {
-  margin-bottom: 14px;
+  margin-bottom: var(--s3);
 }
 .families .family h3 {
-  margin: 0 0 4px;
-  font-size: 0.95rem;
+  margin: 0 0 var(--s1);
+  font-size: var(--t-body);
+  font-weight: var(--w-strong);
 }
 .families .claims {
-  color: var(--muted, #888);
-  font-size: 0.8rem;
-  margin: 0 0 6px;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+  margin: 0 0 var(--s2);
 }
 .families .members {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--s1);
 }
+/* The picture the family is named for. Settled, not selected. */
 .families .member.hero {
-  outline: 2px solid #6c6;
+  outline: 2px solid var(--ok);
 }
+
 .lineage ul {
   list-style: none;
-  padding-left: 14px;
+  padding-left: var(--s3);
 }
 .lineage .kind {
-  color: var(--muted, #888);
-  font-size: 0.8rem;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
 }
+
 .compare {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: var(--s3);
 }
 .compare img {
   max-width: 100%;
   max-height: 40vh;
 }
+
 .metrics dt {
-  color: var(--muted, #888);
-  font-size: 0.8rem;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .metrics dd {
-  margin: 0 0 6px;
+  margin: 0 0 var(--s2);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
+
 .links a {
-  margin-right: 10px;
+  margin-right: var(--s3);
 }
+
 .chip {
   display: inline-block;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  border: 1px solid #666;
+  padding: 0 var(--s2);
+  border-radius: 999px;
+  font-size: var(--t-micro);
+  font-weight: var(--w-label);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-2);
 }
+/* Nobody said this; it was worked out. It reads quieter than a claim
+   somebody actually made. */
 .chip-inferred {
-  border-color: #6cf;
-  color: #6cf;
+  border-color: var(--line-strong);
+  color: var(--ink-muted);
 }
 .chip-conflict {
-  border-color: #c77;
-  color: #c77;
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--danger);
 }

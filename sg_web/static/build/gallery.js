@@ -880,6 +880,7 @@
       },
       { passive: true }
     );
+    settle2("idle");
   }
 
   // src/keys.ts

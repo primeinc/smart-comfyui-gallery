@@ -33,16 +33,35 @@
        the group with one may be a stranger in the background of a
        photograph. Naming happens HERE, in place: twelve people should
        cost twelve names, not twelve page loads. #}
+    {# The list arrives biggest-first (db/pages.py PEOPLE_BY_MOST orders
+       by pictures DESC), and the size of a group is the whole reason to
+       spend a name on it. Drawn flat, four hundred groups all claimed
+       the same weight and the same rename form, so the forty-face group
+       and the one-face stranger cost the same to read and the page was
+       ten thousand pixels of identical cards.
+
+       Two densities now. The groups worth naming get the form. The tail
+       -- mostly ones and twos, a face caught in the background of a
+       photograph -- gets a face and a count, and its name is written on
+       its own page if it ever earns one. #}
     {% if unknown %}
+    {% set worth = unknown[:12] %}
+    {% set tail = unknown[12:] %}
+    {% set biggest = unknown[0].pictures or 1 %}
     <section class="unknown-faces" data-unknown-faces>
       <h2>who is this? <span class="analyze-of">{{ unknown | length }} unnamed</span></h2>
       <p class="analyze-note">a clustering run groups faces; it cannot know a name. Naming one writes it down against that group's pictures, and the name survives every future run.</p>
       <div class="person-grid">
-        {% for one in unknown %}
-        <div class="person-card person-unknown" data-unknown="{{ one.slug }}">
+        {% for one in worth %}
+        {# The hairline is the same one the gallery cell carries for
+           relevance: how much of the biggest group this one is. Always
+           drawn, never revealed on hover -- the shape down the column is
+           the thing worth seeing. #}
+        <div class="person-card person-unknown" data-unknown="{{ one.slug }}" style="--weight: {{ (one.pictures / biggest) | round(3) }}">
+          <span class="person-weight" aria-hidden="true"><i></i></span>
           <a href="/p/{{ one.slug }}" title="see all {{ one.pictures }}">
             {% if one.avatar %}<img class="person-face" src="{{ one.avatar }}" alt="" loading="lazy">{% else %}<span class="person-face person-face-none" aria-hidden="true">?</span>{% endif %}
-            <span class="person-count">{{ one.pictures }} pictures</span>
+            <span class="person-count"><span class="num">{{ one.pictures }}</span> pictures</span>
           </a>
           <form class="person-rename" data-rename="{{ one.slug }}" action="/p/{{ one.slug }}/name" method="post">
             <input name="name" placeholder="name them" aria-label="name for this group" required>
@@ -51,6 +70,20 @@
         </div>
         {% endfor %}
       </div>
+      {% if tail %}
+      <details class="unknown-tail" data-unknown-tail>
+        <summary>the long tail &mdash; <span class="num">{{ tail | length }}</span> smaller groups, {{ tail[0].pictures }} pictures or fewer</summary>
+        <p class="analyze-note">mostly faces caught in the background of a photograph. Open one to name it.</p>
+        <div class="tail-grid">
+          {% for one in tail %}
+          <a class="tail-face" href="/p/{{ one.slug }}" data-unknown="{{ one.slug }}" title="{{ one.pictures }} pictures">
+            {% if one.avatar %}<img src="{{ one.avatar }}" alt="" loading="lazy">{% else %}<span class="person-face-none" aria-hidden="true">?</span>{% endif %}
+            <span class="num">{{ one.pictures }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
     </section>
     {% endif %}
 

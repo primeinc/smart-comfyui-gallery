@@ -3308,6 +3308,8 @@ export interface components {
             said: string | null;
             ordinal: number;
             thumb: string | null;
+            width?: number | null;
+            height?: number | null;
         };
         /** RootForgotten */
         RootForgotten: {

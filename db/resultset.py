@@ -528,8 +528,13 @@ _PROJECTION_LOCK = threading.Lock()
 #: the hash back out of the database, and only then knows which file to
 #: send. Sixty cells were sixty of those. This is the same shape
 #: PhotoPrism and Immich settled on: resolve once, serve statically.
+#: width/height ride along because the grid is justified: rows of a
+#: fixed height whose cells are as wide as the PICTURE is, which needs
+#: the proportion before the image loads or every row reflows under the
+#: reader. Two integers already on the row -- the sort vocabulary above
+#: computes `pixels` from them -- so this costs nothing to carry.
 NAMED = (
-    "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256"
+    "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256, f.width, f.height"
     " FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
 )
 
@@ -1428,6 +1433,11 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, 
             # None until ingest has hashed it; a surface then falls back
             # to the slug route, which can still answer.
             "sha": row[5],
+            # The picture's own proportion, for the justified grid. None
+            # for a kind with no picture and for a file ingest has not
+            # measured yet; the cell draws a square rather than nothing.
+            "width": row[6],
+            "height": row[7],
             "said": None,
             # How far this file stood above the middle of what a
             # space said, 0..1 -- None when nothing was asked of any

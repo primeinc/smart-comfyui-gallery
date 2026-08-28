@@ -8,11 +8,31 @@
       <span class="crumbs-here">Operations</span>
       <span class="crumbs-where">the runtime: what the worker is doing, and why</span>
     </nav>
+    {# Three places, not one scroll.
+
+       This page held nine unrelated jobs in a single 3,700px column --
+       a health strip, a job matrix, a live ledger, media roots, the
+       sweeps, benchmark recordings, an export note, twelve settings, a
+       scheduler and the clustering runs -- because there was nowhere
+       else to put any of them. They are three different visits:
+       something is wrong (runtime), the library is behind (work), or a
+       setting needs changing, which happens twice a year (setup).
+
+       Anchors and :target, so the tabs are real links with real
+       addresses and no script decides what you can see. Everything
+       stays in the DOM: operations.js binds the health strip and the
+       matrix, and a panel that removed them would break the console on
+       the other two tabs. #}
+    <nav class="ops-tabs" aria-label="console sections">
+      <a href="#panel-run" data-ops-tab="run">running</a>
+      <a href="#panel-setup" data-ops-tab="setup">setup</a>
+    </nav>
   </header>
   {# data-last-event-id is the dividing line: the console reads ids at or
      below it over HTTP and asks the socket to resume above it. Nothing is
      serialized into this page for the browser to parse back out. #}
   <main class="stage operations" data-operations data-console data-last-event-id="{{ last_event_id }}" data-now="{{ now }}">
+    <div class="ops-panel" id="panel-run" data-panel="run">
     <section class="console-health" data-health aria-label="system health">
       <div class="health-cell" data-health-transport data-transport="cold">
         <span class="k">transport</span>
@@ -144,6 +164,9 @@
       </div>
     </section>
 
+    </div>
+
+    <div class="ops-panel" id="panel-setup" data-panel="setup">
     {# What this library has been told about its own models.
 
        Deliberately no headline verdict on any model. A verdict set is a
@@ -285,5 +308,6 @@
     <section class="operations-section" id="operations-clusterings" data-operations-clusterings>
       {% with notice = none %}{% include "_operations_clusterings.html" %}{% endwith %}
     </section>
+    </div>
   </main>
 {% endblock %}

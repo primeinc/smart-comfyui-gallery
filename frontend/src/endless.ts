@@ -313,4 +313,12 @@ export function mountEndless(root: HTMLElement): void {
     },
     { passive: true },
   );
+
+  // Mounted, and with nothing yet to do. `data-endless` was written only
+  // from inside `pump`, so it said "idle" exactly when the loader had
+  // already fetched something -- and a gallery whose end sits beyond the
+  // observer's reach never pumps, never speaks, and reads as a loader
+  // that failed to mount. Its own contract above is "it has finished
+  // deciding"; deciding there is nothing to fetch yet is a decision.
+  settle("idle");
 }

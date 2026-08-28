@@ -214,6 +214,61 @@ def _ingest_again(state: State, conn) -> list[int]:
     return _one(runner.submit_ingest(conn, time.time(), everything=True))
 
 
+#: What each setting is ABOUT, for the console alone. Twelve rows of
+#: `label input set` in registry order is twelve peers, and reading it
+#: means holding all twelve to find the two that belong together --
+#: caption_model and semantic_model name checkpoints, worker and
+#: faiss_gpu decide what runs, dupe_threshold and face_cluster_threshold
+#: are numbers that change what counts as the same thing.
+#:
+#: Deliberately NOT a field on db/settings.py REGISTRY: that tuple is
+#: read positionally by the worker and the validators, and where a row
+#: is drawn is not something the store should have an opinion about.
+SETTING_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "models",
+        "which checkpoints the jobs load, and from where",
+        ("models_dir", "caption_model", "semantic_model", "face_backend", "ort_providers"),
+    ),
+    (
+        "runtime",
+        "what runs, and on what",
+        ("worker", "faiss_gpu", "thumbnail_precache"),
+    ),
+    (
+        "thresholds",
+        "the numbers that decide what counts as the same thing",
+        ("dupe_threshold", "dupe_dhash_verify", "face_cluster_threshold"),
+    ),
+    (
+        "reading",
+        "how the viewer behaves under your hand",
+        ("viewer_wheel_modifier",),
+    ),
+)
+
+
+def _grouped_settings(rows: list[dict]) -> list[dict]:
+    """`settings.snapshot` rows, bucketed for the console.
+
+    A key this module has not been told about still gets drawn -- it
+    falls into a trailing "other" group rather than vanishing, so adding
+    a row to the registry can never silently remove it from the page.
+    """
+    by_key = {row["key"]: row for row in rows}
+    grouped: list[dict] = []
+    claimed: set[str] = set()
+    for name, hint, keys in SETTING_GROUPS:
+        present = [by_key[key] for key in keys if key in by_key]
+        claimed.update(key for key in keys if key in by_key)
+        if present:
+            grouped.append({"name": name, "hint": hint, "rows": present})
+    rest = [row for row in rows if row["key"] not in claimed]
+    if rest:
+        grouped.append({"name": "other", "hint": "not yet filed under a heading", "rows": rest})
+    return grouped
+
+
 AGAIN: dict[str, Launcher] = {
     "ingest": _ingest_again,
     "phash": _phash_again,
@@ -248,7 +303,7 @@ def _page_context(state: State) -> dict:
         runs = pages.standings(conn)
         return {
             "roots": _roots(conn),
-            "settings": settings.snapshot(conn),
+            "settings": _grouped_settings(settings.snapshot(conn)),
             "clusterings": runs,
             "primary": _primary(runs),
             "schedules": [one.model_dump(mode="json") for one in _schedules(conn)],
@@ -1456,7 +1511,7 @@ def change_setting(state: State, key: FromPath[str], data: URLEncodedBody[Settin
     return Template(
         media_type=MediaType.HTML,
         template_name="_operations_settings.html",
-        context={"settings": rows, "notice": f"{key} = {data.value}"},
+        context={"settings": _grouped_settings(rows), "notice": f"{key} = {data.value}"},
         headers=VARIES,
     )
 

@@ -26,7 +26,25 @@
   {% if items %}
   <div class="grid" data-cells>
     {% for item in items %}
-    <div class="cell-shell" data-selection-key="{{ item.uuid }}">
+    {# --ar is the picture's own proportion. The row is a fixed height and
+       each cell is as wide as its picture wants to be at that height, so
+       a panorama reads as a panorama and a portrait as a portrait --
+       instead of every file in the library being cropped to the same
+       square, which said they were all the same kind of thing. 1 when
+       nothing has read the dimensions yet: a square is the honest
+       fallback, not a collapsed cell. #}
+    {# `is defined` because this template is handed two shapes: the
+       ResultItem contract, and the ResultSet's raw rows. A file nothing
+       has measured yet, or a kind with no picture, is a square -- the
+       honest fallback, never a collapsed cell. #}
+    {% set w = item.width if item.width is defined else none %}
+    {% set h = item.height if item.height is defined else none %}
+    {# `style` BEFORE the selection key: tests/test_a_selection_is_one_
+       answer_anchored_write.py reads this shell with a regex that
+       expects data-selection-key to be the last attribute on the tag. #}
+    <div class="cell-shell"
+         style="--ar: {{ "%.4f"|format(w / h) if w and h else "1" }}"
+         data-selection-key="{{ item.uuid }}">
       {# A sibling of the link, never inside it: nested interactive
          controls are unusable to keyboards and screen readers. #}
       <input type="checkbox" class="cell-pick" data-pick aria-label="select {{ item.name }}">
