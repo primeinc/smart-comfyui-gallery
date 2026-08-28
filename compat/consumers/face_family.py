@@ -50,25 +50,19 @@ from compat.contracts.case import (
     Ablation,
     Artifact,
     Case,
-    Fixture,
     Float32Array,
     Measurement,
     RetainedState,
     Tier,
     UInt8Array,
 )
-from compat.corpus import index as corpus
+from compat.corpus.loaded import Shot, our_face, shots, vendor_face
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
 
 #: Where the packs live. Same root the application resolves through
 #: `vision/weights.py`, so the suite and the product read the same files.
 PACK_ROOT: Final[Path] = Path("C:/ComfyUI/output/.AImodels/insightface")
-
-#: Corpus photographs per consumer. Both capture paths for the first
-#: identities: an ID document and a selfie went through different optics, and
-#: a detector agreeing on one says nothing about the other.
-CORPUS_IMAGES: Final[int] = 4
 
 
 @dataclass(frozen=True)
@@ -249,6 +243,24 @@ def pad_bgr(image: npt.NDArray[np.uint8], scale: float) -> tuple[npt.NDArray[np.
     return np.asarray(out, dtype=np.uint8), (left, top)
 
 
+def detect_for(setup: VendorSetup, shot: Shot) -> Any:
+    """This vendor's detection on this photograph, computed once.
+
+    The memo key carries the pack, the allowed modules, the sweep and the
+    selection rule, because all four change the answer -- IPAdapter's
+    `face[0]` and InstantID's largest-by-area disagree the moment a
+    photograph has two people in it.
+    """
+    return vendor_face(
+        shot,
+        pack=setup.pack,
+        allowed_modules=setup.allowed_modules,
+        sizes=tuple(setup.sweep_sizes),
+        select=setup.select,
+        rebuild=lambda frame: vendor_detect(setup, frame),
+    )
+
+
 def vendor_detect(setup: VendorSetup, image: npt.NDArray[np.uint8]) -> Any:
     """Detect exactly the way this vendor detects, and select its face.
 
@@ -369,47 +381,6 @@ def render_kps(
     return np.asarray(fn(blank, np.asarray(kps)), dtype=np.uint8)
 
 
-@dataclass(frozen=True)
-class Shot:
-    """One corpus photograph, decoded once and reused across consumers."""
-
-    label: str
-    fixture: Fixture
-    frame: npt.NDArray[np.uint8]
-
-    @property
-    def frame_wh(self) -> tuple[int, int]:
-        height, width = self.frame.shape[:2]
-        return int(width), int(height)
-
-
-def shots(limit: int = CORPUS_IMAGES) -> list[Shot]:
-    if not corpus.KYC.is_dir():
-        return []
-    buckets: dict[tuple[str, str], list[corpus.Sample]] = {}
-    for one in corpus.scan_kyc():
-        buckets.setdefault((one.identity, one.role), []).append(one)
-    chosen = [min(buckets[key], key=lambda one: one.sha256) for key in sorted(buckets)][:limit]
-
-    out: list[Shot] = []
-    for one in chosen:
-        frame, sha = producer.decode(Path(one.path))
-        out.append(
-            Shot(
-                label=f"{one.identity}_{one.role}",
-                fixture=Fixture(
-                    name=f"corpus_{one.identity}_{one.role}",
-                    path=one.path,
-                    sha256=sha,
-                    kind="corpus_photograph",
-                    note=f"{corpus.LICENCE}, not vendored",
-                ),
-                frame=frame,
-            )
-        )
-    return out
-
-
 def _artifact(name: str, values: Float32Array | UInt8Array) -> Artifact:
     """One boundary artifact, at one of the two dtypes this suite compares.
 
@@ -479,6 +450,7 @@ class FaceFamilyRunner:
         self.setup = setup
         self.consumer_id = setup.consumer_id
         self._shots: dict[str, Shot] = {one.label: one for one in (found if found is not None else shots())}
+        self._baselines: dict[str, Artifact] = {}
 
     def cases(self) -> tuple[Case, ...]:
         out: list[Case] = []
@@ -542,11 +514,7 @@ class FaceFamilyRunner:
         detection, because that is what would actually be in the database.
         """
         kind, shot = self._parts(case)
-        ours = producer.analysis()
-        faces = ours.get(shot.frame)
-        if not faces:
-            raise ValueError(f"our own producer found no face in {shot.label}")
-        best = max(faces, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
+        best = our_face(shot)
         kps = np.asarray(best.kps, dtype=np.float32)
 
         if kind == "embedding":
@@ -571,11 +539,25 @@ class FaceFamilyRunner:
         )
 
     def baseline(self, case: Case) -> Artifact:
+        """The vendor's own path, memoised per case.
+
+        Invariant by definition -- it is what every ablation and every
+        measurement is compared against, so two calls returning different
+        artifacts would already be a defect. Memoising is therefore free
+        correctness-wise and not free otherwise: `draw_kps` allocates several
+        copies of a 4896x6528x3 canvas per call, and the measurement used to
+        trigger a second full render of it.
+        """
+        if case.name not in self._baselines:
+            self._baselines[case.name] = self._compute_baseline(case)
+        return self._baselines[case.name]
+
+    def _compute_baseline(self, case: Case) -> Artifact:
         """The vendor's own path, over the original photograph."""
         from insightface.utils import face_align
 
         kind, shot = self._parts(case)
-        face = vendor_detect(self.setup, shot.frame)
+        face = detect_for(self.setup, shot)
 
         if kind == "embedding":
             if self.setup.embedding_model == "facexlib_arcface":

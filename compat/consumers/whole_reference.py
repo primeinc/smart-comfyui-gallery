@@ -44,18 +44,14 @@ from compat.contracts.case import (
     Ablation,
     Artifact,
     Case,
-    Fixture,
     Measurement,
     RetainedState,
     Tier,
     UInt8Array,
 )
-from compat.corpus import index as corpus
+from compat.corpus.loaded import Shot, our_face, shots
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
-
-#: Corpus photographs per consumer, both capture paths.
-CORPUS_IMAGES: Final[int] = 4
 
 #: The face size used when substituting a patch for the whole picture. 336 is
 #: the largest crop any face-native consumer asks for, so the substitution is
@@ -153,45 +149,6 @@ def vendor_preprocess(setup: WholeSetup, bgr: UInt8Array) -> UInt8Array:
     return np.asarray(image, dtype=np.uint8)
 
 
-@dataclass(frozen=True)
-class Shot:
-    label: str
-    fixture: Fixture
-    frame: UInt8Array
-
-    @property
-    def frame_wh(self) -> tuple[int, int]:
-        height, width = self.frame.shape[:2]
-        return int(width), int(height)
-
-
-def shots(limit: int = CORPUS_IMAGES) -> list[Shot]:
-    if not corpus.KYC.is_dir():
-        return []
-    buckets: dict[tuple[str, str], list[corpus.Sample]] = {}
-    for one in corpus.scan_kyc():
-        buckets.setdefault((one.identity, one.role), []).append(one)
-    chosen = [min(buckets[key], key=lambda one: one.sha256) for key in sorted(buckets)][:limit]
-
-    out: list[Shot] = []
-    for one in chosen:
-        frame, sha = producer.decode(Path(one.path))
-        out.append(
-            Shot(
-                label=f"{one.identity}_{one.role}",
-                fixture=Fixture(
-                    name=f"corpus_{one.identity}_{one.role}",
-                    path=one.path,
-                    sha256=sha,
-                    kind="corpus_photograph",
-                    note=f"{corpus.LICENCE}, not vendored",
-                ),
-                frame=frame,
-            )
-        )
-    return out
-
-
 def _artifact(name: str, values: UInt8Array) -> Artifact:
     return Artifact(
         name=name,
@@ -239,12 +196,7 @@ class WholeReferenceRunner:
 
     def _face_patch(self, shot: Shot) -> UInt8Array:
         """The bounded region the face-native consumers are served from."""
-        app = producer.analysis()
-        faces = app.get(shot.frame)
-        if not faces:
-            raise ValueError(f"no face in {shot.label}")
-        best = max(faces, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
-        kps = np.asarray(best.kps, dtype=np.float32)
+        kps = np.asarray(our_face(shot).kps, dtype=np.float32)
         box = analytic_footprint(kps, SUBSTITUTE_CROP, shot.frame_wh)
         return shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy()
 

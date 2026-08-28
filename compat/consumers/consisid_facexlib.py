@@ -59,8 +59,6 @@ that, and the substitutions record what the alternatives actually cost.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Final
 
 import numpy as np
@@ -71,13 +69,12 @@ from compat.contracts.case import (
     Ablation,
     Artifact,
     Case,
-    Fixture,
     Measurement,
     RetainedState,
     Tier,
     UInt8Array,
 )
-from compat.corpus import index as corpus
+from compat.corpus.loaded import Shot, our_face, shots
 from compat.producers import insightface_pass as producer
 
 CONSUMER_ID: Final[str] = "consisid"
@@ -94,8 +91,6 @@ FACE_SIZE: Final[int] = 512
 #: arcface footprint. Not a claim that this is enough -- the measurement shows
 #: it is not, which is the whole point of offering the larger one.
 START_MARGIN: Final[float] = 2.0
-
-CORPUS_IMAGES: Final[int] = 4
 
 
 def resize_numpy_image_long(image: UInt8Array, long_edge: int = RESIZE_LONG_EDGE) -> UInt8Array:
@@ -168,45 +163,6 @@ def align_through_facexlib(image_bgr: UInt8Array) -> UInt8Array:
     return np.asarray(helper.cropped_faces[0], dtype=np.uint8)
 
 
-@dataclass(frozen=True)
-class Shot:
-    label: str
-    fixture: Fixture
-    frame: UInt8Array
-
-    @property
-    def frame_wh(self) -> tuple[int, int]:
-        height, width = self.frame.shape[:2]
-        return int(width), int(height)
-
-
-def shots(limit: int = CORPUS_IMAGES) -> list[Shot]:
-    if not corpus.KYC.is_dir():
-        return []
-    buckets: dict[tuple[str, str], list[corpus.Sample]] = {}
-    for one in corpus.scan_kyc():
-        buckets.setdefault((one.identity, one.role), []).append(one)
-    chosen = [min(buckets[key], key=lambda one: one.sha256) for key in sorted(buckets)][:limit]
-
-    out: list[Shot] = []
-    for one in chosen:
-        frame, sha = producer.decode(Path(one.path))
-        out.append(
-            Shot(
-                label=f"{one.identity}_{one.role}",
-                fixture=Fixture(
-                    name=f"corpus_{one.identity}_{one.role}",
-                    path=one.path,
-                    sha256=sha,
-                    kind="corpus_photograph",
-                    note=f"{corpus.LICENCE}, not vendored",
-                ),
-                frame=frame,
-            )
-        )
-    return out
-
-
 def _artifact(name: str, values: UInt8Array) -> Artifact:
     return Artifact(
         name=name,
@@ -239,6 +195,7 @@ class ConsisIDRunner:
 
     def __init__(self, found: list[Shot] | None = None) -> None:
         self._shots = {one.label: one for one in (found if found is not None else shots())}
+        self._baselines: dict[str, Artifact] = {}
 
     def cases(self) -> tuple[Case, ...]:
         return tuple(
@@ -277,12 +234,7 @@ class ConsisIDRunner:
         return RESIZE_LONG_EDGE / longest if longest > RESIZE_LONG_EDGE else 1.0
 
     def _footprint(self, shot: Shot, factor: float) -> Rect:
-        app = producer.analysis()
-        faces = app.get(shot.frame)
-        if not faces:
-            raise ValueError(f"our own producer found no face in {shot.label}")
-        best = max(faces, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
-        kps = np.asarray(best.kps, dtype=np.float32)
+        kps = np.asarray(our_face(shot).kps, dtype=np.float32)
         return grown(analytic_footprint(kps, 336, shot.frame_wh), factor, shot.frame_wh)
 
     def retained_for(self, case: Case) -> RetainedState:
@@ -296,6 +248,20 @@ class ConsisIDRunner:
         return RetainedState(whole_reference_image=self._shot(case).frame.copy())
 
     def baseline(self, case: Case) -> Artifact:
+        """The vendor's own path, memoised per case.
+
+        Invariant by definition -- it is what every ablation and every
+        measurement is compared against, so two calls returning different
+        artifacts would already be a defect. Memoising is therefore free
+        correctness-wise and not free otherwise: `draw_kps` allocates several
+        copies of a 4896x6528x3 canvas per call, and the measurement used to
+        trigger a second full render of it.
+        """
+        if case.name not in self._baselines:
+            self._baselines[case.name] = self._compute_baseline(case)
+        return self._baselines[case.name]
+
+    def _compute_baseline(self, case: Case) -> Artifact:
         """The vendor's own path over the whole photograph."""
         shot = self._shot(case)
         return _artifact(case.boundary, align_through_facexlib(resize_numpy_image_long(shot.frame)))

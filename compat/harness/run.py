@@ -67,12 +67,21 @@ def _values_of(artifact: Artifact) -> Any:
     return artifact.values
 
 
-def run_ablation(runner: Runner, case: Case, retained: RetainedState, declared: Ablation) -> Ablation:
-    """One primitive removed, and whether that actually broke anything."""
+def run_ablation(
+    runner: Runner, case: Case, retained: RetainedState, declared: Ablation, against: Artifact
+) -> Ablation:
+    """One primitive removed, and whether that actually broke anything.
+
+    `against` is passed in rather than recomputed. It was being rebuilt on
+    every ablation, which is wasteful -- a `kps_render` case ran full
+    detection on a 4896x6528 photograph five times -- and quietly wrong in
+    principle: an ablation compared against a freshly-derived baseline is not
+    compared against the one the case's own verdict used, and if a baseline
+    ever stopped being invariant nothing here would notice.
+    """
     try:
         degraded = runner.ablate(case, retained, declared.primitive)
         produced = runner.replay(case, degraded)
-        against = runner.baseline(case)
         result: Comparison = compare(
             _values_of(against),
             _values_of(produced),
@@ -141,7 +150,7 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
         atol=case.atol,
     )
 
-    ablations = tuple(run_ablation(runner, case, retained, one) for one in case.ablations)
+    ablations = tuple(run_ablation(runner, case, retained, one, baseline) for one in case.ablations)
     measurements = tuple(run_measurement(runner, case, retained, one) for one in case.measurements)
 
     # A case whose replay matches but whose necessity claim is contradicted is
