@@ -1,13 +1,10 @@
 {% extends "base.html" %}
+{% from "_bar.html" import index %}
 {% from "_shelf.html" import card %}
 {% block title %}{{ shelf.title }}{% endblock %}
 {% block body %}
-  <header class="bar">
-    <nav class="crumbs">
-      <span class="crumbs-here">{{ shelf.title }}</span>
-      <span class="crumbs-where">{{ "{:,}".format(artifacts | length) }} {{ shelf.noun if artifacts | length != 1 else shelf.one }} · {{ "{:,}".format(shelf.pictures) }} pictures</span>
-    </nav>
-  </header>
+  {{ index(shelf.title, artifacts | length, shelf.one, shelf.noun,
+           also="{:,} pictures".format(shelf.pictures)) }}
   <main class="stage">
     {% if artifacts %}
     {# A model, a LoRA or a workflow is known by what it MAKES, so the

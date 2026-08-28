@@ -1,15 +1,11 @@
 {% extends "base.html" %}
+{% from "_bar.html" import index %}
 {% block title %}People{% endblock %}
 {% block scripts %}
   <script src="/static/build/people.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
-  <header class="bar">
-    <nav class="crumbs">
-      <span class="crumbs-here">People</span>
-      <span class="crumbs-where">{{ people|length }} found</span>
-    </nav>
-  </header>
+  {{ index("People", people | length, "person", "people") }}
   <main class="stage">
     {# The people somebody has NAMED are who this page is for, and they
        come first. A clustering run mints one placeholder person per

@@ -1,16 +1,11 @@
 {% extends "base.html" %}
+{% from "_bar.html" import index %}
 {% from "_shelf.html" import card %}
 {% block title %}Albums{% endblock %}
 {% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
-  <header class="bar">
-    <nav class="crumbs">
-      <span class="crumbs-here">Albums{% if showing_archived %} &middot; archived{% endif %}</span>
-      {% if not showing_archived and albums %}
-      <span class="crumbs-where">{{ albums | length }} on the shelf</span>
-      {% endif %}
-    </nav>
-  </header>
+  {{ index("Albums" ~ (" · archived" if showing_archived else ""),
+           none if showing_archived else albums | length, "album", "albums") }}
   <main class="stage">
     {% if showing_archived %}
     <p class="pager"><a href="/albums">&larr; active collections</a></p>

@@ -1,15 +1,11 @@
 {% extends "base.html" %}
+{% from "_bar.html" import index %}
 {% block title %}Duplicates{% endblock %}
 {% block scripts %}
   <script src="/static/build/dupes.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
-  <header class="bar">
-    <nav class="crumbs">
-      <span class="crumbs-here">Duplicates</span>
-      <span class="crumbs-where">{{ groups|length }} {{ "group" if groups|length == 1 else "groups" }}</span>
-    </nav>
-  </header>
+  {{ index("Duplicates", groups | length, "group", "groups") }}
   <main class="stage">
     {% if groups %}
     {# Read-only, on purpose. The operation worth building is not "delete

@@ -1,15 +1,12 @@
 {% extends "base.html" %}
+{% from "_bar.html" import index %}
 {% from "_shelf.html" import card %}
 {% block title %}Folders{% endblock %}
 {% block scripts %}<script src="/static/build/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   {% set counted = shelves | map(attribute="folders") | map("length") | sum %}
-  <header class="bar">
-    <nav class="crumbs">
-      <span class="crumbs-here">Folders</span>
-      <span class="crumbs-where">{{ counted }} folder{{ "" if counted == 1 else "s" }} · {{ shelves|length }} librar{{ "y" if shelves|length == 1 else "ies" }}</span>
-    </nav>
-  </header>
+  {{ index("Folders", counted, "folder", "folders",
+           also="%s librar%s" % (shelves | length, "y" if shelves | length == 1 else "ies")) }}
   <main class="stage">
     {% if counted %}
     {# One shelf for every root.

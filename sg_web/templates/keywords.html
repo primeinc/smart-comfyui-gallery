@@ -1,13 +1,9 @@
 {% extends "base.html" %}
+{% from "_bar.html" import index %}
 {% block title %}Keywords{% endblock %}
 {% block scripts %}<script src="/static/build/keywords.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
-  <header class="bar">
-    <nav class="crumbs">
-      <span class="crumbs-here">Keywords</span>
-      <span class="crumbs-where">{{ keywords|length }} word{{ "" if keywords|length == 1 else "s" }}</span>
-    </nav>
-  </header>
+  {{ index("Keywords", keywords | length, "keyword", "keywords") }}
   <main class="stage">
     {% if keywords %}
     {# Commonest first, and that ordering is the point: the question this

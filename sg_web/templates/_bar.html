@@ -1,0 +1,20 @@
+{# The header on a shelf page: what you are looking at, and how much of it.
+
+   Seven pages wrote this out by hand and drifted apart — "2 on the
+   shelf", "3 named", "12 found", "6 folders · 6 libraries". One grammar
+   now: the count, then the noun it counts, then a second fact only when
+   there is one.
+
+   Pages with a trail of parent links, or a second row of controls, keep
+   their own header — this is only the shape they all shared. #}
+
+{% macro index(here, count, one, many, also=None) %}
+<header class="bar">
+  <nav class="crumbs">
+    <span class="crumbs-here">{{ here }}</span>
+    {%- if count is not none %}
+    <span class="crumbs-where">{{ "{:,}".format(count) }} {{ one if count == 1 else many }}{% if also %} &middot; {{ also }}{% endif %}</span>
+    {%- endif %}
+  </nav>
+</header>
+{% endmacro %}
