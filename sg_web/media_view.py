@@ -480,8 +480,11 @@ class Faces(Wire):
     looked: list[FaceScan]
 
 
-#: What a model can say about a picture. db/schema.sql:1468 constrains
-#: derived_annotation.kind to exactly this list.
+#: What a model can say about a picture. `derived_annotation.kind` carries
+#: a CHECK of exactly this list (db/schema.sql).
+#:
+#: Named by table rather than by line: this said :1468, which is inside
+#: `derived_face_instance` -- a different table about a different thing.
 SaidKind = Literal["caption", "description", "alt_text", "tag", "ocr", "title"]
 
 

@@ -226,12 +226,12 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
     page.route_web_socket("**/ws/jobs", route)
     # The page's own clock, so the reconnect is OBSERVED rather than
     # waited out. `feed.onclose` re-opens after RECONNECT_MS
-    # (frontend/src/timeline.ts:128, 2000) -- a real delay for a real
+    # (frontend/src/timeline.ts, 2000ms) -- a real delay for a real
     # browser, and two seconds of a test watching a timer it already
     # believes in. What is under test is that the second connection's
     # SNAPSHOT resynchronises the page, never how long the gap before it
     # is. The only other timer this page arms is `liveTimer`, which a
-    # drag drives (timeline.ts:293) and nothing here drags.
+    # drag drives and nothing here drags.
     page.clock.install()
     page.goto(f"/timeline?start={JUNE_10}&end={JUNE_10 + 86400}")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)

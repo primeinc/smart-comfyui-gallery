@@ -110,7 +110,7 @@ export function mountServiceWorker(): void {
   // Reload only when a NEW version took over, never when the first one
   // arrives. The same distinction the notice above draws, and for the
   // same reason: `sw.js` calls `clients.claim()` on activate
-  // (static/sw.js), so the very first visit fires `controllerchange`
+  // (sg_web/static/sw.js), so the very first visit fires `controllerchange`
   // with nothing to swap -- the page already holds exactly what the new
   // worker would serve. Reloading there is a whole second page load
   // handed to every first-time visitor.

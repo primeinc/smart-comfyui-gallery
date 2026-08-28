@@ -1578,8 +1578,12 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
 
 
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:
-#: `job.kind` is CHECK-constrained (db/schema.sql:493-495) so a typo is an
-#: IntegrityError at submit, never a job that queues and waits forever.
+#: `job.kind` carries a CHECK of exactly these words (db/schema.sql, the
+#: `job` table), so a typo is an IntegrityError at submit, never a job that
+#: queues and waits forever.
+#:
+#: The table, not a line number: this said :493-495, which is a recursive
+#: CTE over collection parents and has been for a while.
 def submit_context(conn, now: float, *, everything: bool = False) -> int | None:
     """Interpret every present file whose interpretation is missing --
     never made, staled by a source change (db/context.py stale), or made
