@@ -17980,6 +17980,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "copies": {
+                        "oneOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,

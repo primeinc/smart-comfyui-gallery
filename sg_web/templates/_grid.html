@@ -61,6 +61,15 @@
         <span class="cell-kind" data-cell-kind="{{ item.kind }}" aria-hidden="true">{{ "audio" if item.kind == "audio" else "doc" }}</span>
         {% endif %}
         <span class="cell-name">{{ item.name }}</span>
+        {# One of several near-identical copies. Said on the cell, not
+           collapsed out of the answer: the total, the ordinals and the
+           rail all count MEMBERS, and a grid showing fewer would make
+           every one of those a lie. The stack is the affordance; the
+           duplicates page is where the group is settled. #}
+        {% set copies = item.copies if item.copies is defined else none %}
+        {% if copies and copies > 1 %}
+        <span class="cell-copies" title="{{ copies }} near-identical copies of this picture">{{ copies }}</span>
+        {% endif %}
         {# How far this file stood above the middle of what a space said.
            A bar rather than a number: the useful reading is where in the
            answer relevance falls away, which is a shape, not a figure.

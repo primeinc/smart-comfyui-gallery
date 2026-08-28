@@ -458,6 +458,35 @@ p {
   opacity: 0.82;
 }
 
+/* One of several near-identical copies.
+   A stack, drawn on the cell's own corner: two hairlines stepping back
+   behind the picture, and the count. It is the cheapest true thing this
+   grid can say about a library of generation sweeps -- that these forty
+   cells are not forty pictures -- without collapsing an answer whose
+   total and ordinals are all statements about members. */
+.cell-copies {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 1;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ground) 78%, transparent);
+  box-shadow:
+    2px -2px 0 -1px color-mix(in srgb, var(--ground) 78%, transparent),
+    2px -2px 0 0 color-mix(in srgb, var(--ink) 30%, transparent),
+    4px -4px 0 -1px color-mix(in srgb, var(--ground) 78%, transparent),
+    4px -4px 0 0 color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
+  font-size: var(--t-micro);
+  font-weight: var(--w-strong);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* A member of the answer with no picture to take -- audio, a document.
    Fills the cell the way the picture would, so the grid keeps one
    rhythm and the file is plainly still a result. Used by the grid, the

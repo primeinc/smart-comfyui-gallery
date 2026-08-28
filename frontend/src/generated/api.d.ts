@@ -3312,6 +3312,7 @@ export interface components {
             thumb: string | null;
             width?: number | null;
             height?: number | null;
+            copies?: number | null;
         };
         /** RootForgotten */
         RootForgotten: {

@@ -893,6 +893,12 @@ class ResultItem(Wire):
     #: -- the cell falls back to a square there rather than collapsing.
     width: int | None = None
     height: int | None = None
+    #: How many files the dupe job put in this one's group, itself
+    #: included; None when no group holds it. A library of generation
+    #: sweeps draws the same picture forty times and the grid showed
+    #: forty peers. Marked, never collapsed -- the total, the ordinals
+    #: and the rail's map are all about MEMBERS.
+    copies: int | None = None
 
 
 def result_items(rows: list[dict]) -> list[ResultItem]:
@@ -910,6 +916,7 @@ def result_items(rows: list[dict]) -> list[ResultItem]:
             thumb=thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"]),
             width=row.get("width"),
             height=row.get("height"),
+            copies=row.get("copies"),
         )
         for row in rows
     ]

@@ -533,9 +533,19 @@ _PROJECTION_LOCK = threading.Lock()
 #: the proportion before the image loads or every row reflows under the
 #: reader. Two integers already on the row -- the sort vocabulary above
 #: computes `pixels` from them -- so this costs nothing to carry.
+#: `copies` is how many files the dupe job put in this one's group,
+#: itself included -- NULL for a file no group holds. A library of
+#: generation sweeps draws the same picture forty times, and a grid that
+#: shows forty peers is telling the reader they are forty pictures. It
+#: does not collapse them: the answer's total, its ordinals and the
+#: rail's map are all statements about MEMBERS, and a grid that quietly
+#: showed fewer would make every one of those a lie. It marks them.
 NAMED = (
-    "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256, f.width, f.height"
-    " FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+    "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256, f.width, f.height,"
+    " (SELECT count(*) FROM derived_dupe_group m WHERE m.group_id = dg.group_id) AS copies"
+    " FROM file f JOIN entity e ON e.id = f.id"
+    " LEFT JOIN derived_dupe_group dg ON dg.file_id = f.id"
+    " WHERE f.id IN ({marks})"
 )
 
 
@@ -1438,6 +1448,9 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, 
             # measured yet; the cell draws a square rather than nothing.
             "width": row[6],
             "height": row[7],
+            # How many files the dupe job put in this one's group, this
+            # one included. None when no group holds it.
+            "copies": row[8],
             "said": None,
             # How far this file stood above the middle of what a
             # space said, 0..1 -- None when nothing was asked of any
