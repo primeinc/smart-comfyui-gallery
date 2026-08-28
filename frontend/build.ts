@@ -16,25 +16,18 @@ import * as esbuild from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// One entry per <script> a template renders. Two surfaces that load different
-// sets get different entries even where they share most modules: the
-// duplication is a few kB, and code splitting is ESM-only with a known
-// import-ordering bug (esbuild.github.io/api/#splitting).
+// One entry, loaded by the shell, so every page runs the same file.
+//
+// It was twelve, one per script set a template rendered, and that is what
+// made a module claiming to be a singleton not one: each bundle carried its
+// own copy of it. Splitting is not the answer either -- it is ESM-only with
+// a known import-ordering bug (esbuild.github.io/api/#splitting) -- and the
+// twelve overlapped so heavily that the union is smaller than what a visit
+// used to fetch under three different names.
 const options = {
   absWorkingDir: here,
   entryPoints: {
-    dupes: "src/entries/dupes.ts",
-    gallery: "src/entries/gallery.ts",
-    keywords: "src/entries/keywords.ts",
-    people: "src/entries/people.ts",
-    person: "src/entries/person.ts",
-    shell: "src/entries/shell.ts",
-    media: "src/entries/media.ts",
-    collection: "src/entries/collection.ts",
-    timeline: "src/entries/timeline.ts",
-    evolution: "src/entries/evolution.ts",
-    operations: "src/entries/operations.ts",
-    story: "src/entries/story.ts",
+    app: "src/entries/app.ts",
   },
   outdir: resolve(here, "../sg_web/static/build"),
   bundle: true,

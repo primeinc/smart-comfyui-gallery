@@ -2,7 +2,6 @@
 {% block title %}{{ item.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/i/{{ item.slug }}">{% endblock %}
 {% block scripts %}
-  <script src="/static/build/media.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   {# The container adapter for a direct address: the viewer with nothing

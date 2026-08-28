@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% from "_shelf.html" import seen %}
 {% block title %}{{ folder.name }}{% endblock %}
-{% block scripts %}<script src="/static/build/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block head %}<link rel="canonical" href="/f/{{ folder.slug }}">{% endblock %}
 {% block body %}
   <header class="bar">

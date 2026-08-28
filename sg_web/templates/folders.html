@@ -2,7 +2,6 @@
 {% from "_bar.html" import index %}
 {% from "_shelf.html" import card %}
 {% block title %}Folders{% endblock %}
-{% block scripts %}<script src="/static/build/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   {% set counted = shelves | map(attribute="folders") | map("length") | sum %}
   {{ index("Folders", counted, "folder", "folders",

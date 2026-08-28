@@ -285,7 +285,7 @@ def test_the_page_draws_the_view_and_only_the_view(planned):
     page = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "text/html"})
     assert page.status_code == 200
     html = page.text
-    assert "/static/build/evolution.js" in html
+    assert "/static/build/app.js" in html
     assert 'data-tab="sequence"' in html
     assert 'data-tab="drift"' in html
     assert f'data-plan="{made.id}"' in html, "the shell names the plan; the explorer asks the route for the document"

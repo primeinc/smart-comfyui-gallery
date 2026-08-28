@@ -513,7 +513,7 @@ export function mountViewer(root: HTMLElement, walk: Walk): Viewer | null {
   // --- the keys -------------------------------------------------------------
   //
   // Registered rather than listened for, so a key this claims cannot also
-  // mean something to another module in the same bundle (frontend/src/keys.ts).
+  // mean something to another module (frontend/src/keys.ts).
   // The letters here are the ones LEFT: the authored strip had F, 1-5, 0 and
   // A long before this file existed, and a viewer that took F and 1 back was
   // rating photographs while somebody looked at them.

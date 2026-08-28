@@ -2,7 +2,6 @@
 {% from "_bar.html" import index %}
 {% block title %}People{% endblock %}
 {% block scripts %}
-  <script src="/static/build/people.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   {{ index("People", people | length, "person", "people") }}
@@ -59,7 +58,7 @@
             {% if one.avatar %}<img class="person-face" src="{{ one.avatar }}" alt="" loading="lazy">{% else %}<span class="person-face person-face-none" aria-hidden="true">?</span>{% endif %}
             <span class="person-count"><span class="num">{{ one.pictures }}</span> pictures</span>
           </a>
-          <form class="person-rename" data-rename="{{ one.slug }}" action="/p/{{ one.slug }}/name" method="post">
+          <form class="person-rename" data-person-rename="{{ one.slug }}" action="/p/{{ one.slug }}/name" method="post">
             <input name="name" placeholder="name them" aria-label="name for this group" required>
             <button type="submit">name</button>
           </form>

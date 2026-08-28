@@ -2,7 +2,6 @@
 {% from "_bar.html" import index %}
 {% from "_shelf.html" import card %}
 {% block title %}Places{% endblock %}
-{% block scripts %}<script src="/static/build/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   {{ index("Places", places | length, "place", "places") }}
   <main class="stage">

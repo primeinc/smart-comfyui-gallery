@@ -2,7 +2,6 @@
 {% from "_bar.html" import index %}
 {% block title %}Duplicates{% endblock %}
 {% block scripts %}
-  <script src="/static/build/dupes.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   {{ index("Duplicates", groups | length, "group", "groups") }}

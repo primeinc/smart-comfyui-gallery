@@ -1,17 +1,24 @@
 // One keystroke, one meaning, proven rather than agreed.
 //
-// The viewer and the authored strip are separate modules that ship in the
-// same bundle on the same surfaces, and each had grown its own
+// The viewer and the authored strip each ran their own
 // `document.addEventListener("keydown", ...)`. Nothing compared them, so
 // `F` was focus AND favorite, `1` was actual-pixels AND one star, `0` was
-// fit AND clear-rating. Every one of those fired both handlers: a person
-// looking closely at a photograph was silently rating it.
+// fit AND clear-rating. All of those fired both handlers: a person looking
+// closely at a photograph was silently rating it.
 //
-// Two listeners cannot agree about a key by being careful. So there is one
-// listener here, modules REGISTER what they answer to, and a second claim
-// on a live key throws where it was registered -- naming both claimants.
-// The failure is a page that does not load rather than a picture that
-// quietly gains a star, and the browser tests hit it on the first mount.
+// Two listeners cannot agree about a key by being careful. So the listener
+// at the bottom of this file is the only keydown listener in the
+// application, modules REGISTER what they answer to, and a second claim on
+// a live key throws where it was registered, naming both claimants. The
+// failure is a page that does not load rather than a picture that quietly
+// gains a star, and the browser tests hit it on the first mount.
+//
+// "The only one" is a fact about the build, not a promise: the browser
+// source is one bundle (frontend/build.ts), so there is one copy of the map
+// below. While it was twelve bundles this whole file was wishful -- /g
+// loaded two copies, so two registries each held one uncontested claim and
+// `c` and `?` fired twice. SG009 (sglint/rules.py) is what stops a second
+// listener being added anywhere else.
 //
 // Chords are not modelled on purpose. Every command here is a bare key,
 // because a modifier held over the viewer means something else entirely

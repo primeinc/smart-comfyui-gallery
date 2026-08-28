@@ -312,9 +312,9 @@ def _servers(request, tmp_path_factory):
     # and false per run: at -n 4 that is eight application subprocesses,
     # each importing forty-five modules, behind four chromiums.
     #
-    # `--dist loadscope` hands out whole modules, so the share is the
-    # count over the worker count -- rounded up, because the remainder
-    # lands on somebody.
+    # `--dist loadfile` (the justfile's test-slow) hands out whole files, so
+    # the share is the count over the worker count -- rounded up, because
+    # the remainder lands on somebody.
     wanted = getattr(request.config, "sg_browser_modules", 0)
     workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or 1)
     wanted = -(-wanted // workers)

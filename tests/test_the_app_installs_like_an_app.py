@@ -119,7 +119,7 @@ def test_the_service_worker_is_root_scoped_real_and_update_safe(served):
     assert re.search(r"addEventListener\(\"install\"", body)
     assert "caches.delete" in body, "stale cache versions must die at activate"
     page = served.get("/g", headers=AS_BROWSER).text
-    assert "/static/build/shell.js" in page, "nothing registers the worker without the shell bundle"
+    assert "/static/build/app.js" in page, "nothing registers the worker without the bundle"
 
 
 def test_offline_navigation_has_a_real_page_to_land_on(served):

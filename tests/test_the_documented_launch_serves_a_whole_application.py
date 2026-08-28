@@ -58,8 +58,7 @@ def test_the_launcher_names_every_bundle_the_templates_ask_for(tmp_path):
     templates = REPO / "sg_web" / "templates"
     absent = launcher.unbuilt(templates, tmp_path)
     assert absent, "a static directory with no build/ has every bundle missing"
-    assert "media" in absent, "media.html loads media.js"
-    assert "gallery" in absent, "gallery.html loads gallery.js"
+    assert "app" in absent, "base.html loads app.js, and every page renders the shell"
     # and it is the templates that decide, not a hand-kept list
     spelled = {
         found.group(1)
@@ -111,7 +110,7 @@ def test_the_documented_launcher_refuses_to_serve_without_its_bundles(tmp_path, 
     assert refused.value.code == 2
     said = capsys.readouterr().err
     assert "not built" in said
-    assert "media" in said, "the refusal names what is missing"
+    assert "app" in said, "the refusal names what is missing"
     assert launcher.BUILD_COMMAND in said, "and what to run about it"
 
 
@@ -281,14 +280,14 @@ def test_every_asset_a_page_asks_for_is_served(served):
 def test_the_media_page_loads_the_bundle_that_makes_it_a_viewer(served):
     """Named on purpose rather than left to the sweep above.
 
-    `media.js` is where mountViewer runs -- the wheel, the keys, the
+    `app.js` is where mountViewer runs -- the wheel, the keys, the
     inspector, the walk. When it 404s the page still renders a
     photograph, which is exactly why nobody noticed.
     """
     slug = served.get("/g/peek", params={"page": 1, "count": 1}).json()["items"][0]["slug"]
     page = served.get(f"/i/{slug}", headers={"accept": "text/html"})
-    assert "/static/build/media.js" in page.text
-    assert served.get("/static/build/media.js").status_code == 200
+    assert "/static/build/app.js" in page.text
+    assert served.get("/static/build/app.js").status_code == 200
 
 
 # --- where it binds ---------------------------------------------------------

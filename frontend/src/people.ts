@@ -74,13 +74,20 @@ const wayBack = (picture: string): HTMLElement => {
 
   // Renaming is the People page's primary action, on the drawer and the
   // full page alike: POST the name, then go live at the new address.
+  //
+  // The attribute says PERSON because this listens on `document`, which
+  // means every page. It was `[data-rename]`, and the keywords page has
+  // rename forms of its own -- so submitting one there reached this
+  // handler, which then demanded the `[name="name"]` input a keyword form
+  // does not have and threw. An attribute a document-wide listener matches
+  // on has to name the one thing it means.
   document.addEventListener("submit", async (event) => {
-    const form = closestFrom(event.target, "[data-rename]", HTMLFormElement);
+    const form = closestFrom(event.target, "[data-person-rename]", HTMLFormElement);
     if (!form) return;
     event.preventDefault();
     // The address the form posts to carries the person; the slug comes
     // from the markup rather than from parsing the action back apart.
-    const slug = requireData(form, "rename");
+    const slug = requireData(form, "personRename");
     const name = requireElement(form, '[name="name"]', HTMLInputElement).value;
     const { data, error } = await api.POST("/p/{slug}/name", { params: { path: { slug } }, body: { name } });
     if (!data) {

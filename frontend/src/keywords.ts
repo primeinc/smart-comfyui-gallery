@@ -38,10 +38,10 @@ const draw = (list: HTMLElement, keywords: KeywordListed[]) => {
 
       const form = document.createElement("form");
       form.className = "keyword-rename";
-      form.dataset.rename = "";
+      form.dataset.keywordRename = "";
       const box = document.createElement("input");
       box.type = "text";
-      box.dataset.renameInput = "";
+      box.dataset.keywordRenameInput = "";
       box.maxLength = 100;
       box.autocomplete = "off";
       box.value = one.label;
@@ -79,12 +79,12 @@ const applied = async (list: HTMLElement, told: Answered<KeywordListed[]>) => {
 
   // Delegated, because the list is replaced wholesale after every write.
   list.addEventListener("submit", async (event) => {
-    const form = closestFrom(event.target, "[data-rename]", HTMLElement);
+    const form = closestFrom(event.target, "[data-keyword-rename]", HTMLElement);
     if (!form) return;
     event.preventDefault();
     const row = closestFrom(form, "[data-keyword]", HTMLElement);
     if (!row) return;
-    const to = requireElement(form, "[data-rename-input]", HTMLInputElement).value.trim();
+    const to = requireElement(form, "[data-keyword-rename-input]", HTMLInputElement).value.trim();
     // Unchanged is not a write. Submitting the value already in the box
     // is what pressing Enter to dismiss a field does, and it should cost
     // nothing rather than round-trip a rename onto itself.

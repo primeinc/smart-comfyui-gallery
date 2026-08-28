@@ -2,7 +2,6 @@
 {% from "_bar.html" import index %}
 {% from "_shelf.html" import card %}
 {% block title %}Albums{% endblock %}
-{% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   {{ index("Albums" ~ (" · archived" if showing_archived else ""),
            none if showing_archived else albums | length, "album", "albums") }}

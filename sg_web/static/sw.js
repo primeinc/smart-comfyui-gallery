@@ -15,7 +15,7 @@
  * untouched.
  *
  * VERSION busts the precache; activation is gated on the page's
- * "reload for the new version" prompt (sg_web/static/build/shell.js)
+ * "reload for the new version" prompt (sg_web/static/build/app.js)
  * rather than an unconditional skipWaiting, so a mid-session update
  * cannot skew a page against its lazy chunks.
  */

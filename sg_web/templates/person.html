@@ -2,7 +2,6 @@
 {% block title %}{{ person.name or "(unnamed)" }}{% endblock %}
 {% block head %}<link rel="canonical" href="/p/{{ person.slug }}">{% endblock %}
 {% block scripts %}
-  <script src="/static/build/person.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   <header class="bar">
@@ -17,7 +16,7 @@
       {% if person.avatar %}<img class="person-face person-face-big" src="{{ person.avatar }}" alt="">{% else %}{# No clustered face to crop. The route answers 404 for that, correctly, and pointing at it anyway drew a broken image where a face goes. #}<span class="person-face person-face-big person-face-none" data-person-faceless aria-hidden="true">{{ (person.name or person.slug)[:1] | upper }}</span>{% endif %}
       <div>
         <h1>{{ person.name or "(unnamed)" }}</h1>
-        <form class="person-rename" data-rename="{{ person.slug }}" action="/p/{{ person.slug }}/name" method="post">
+        <form class="person-rename" data-person-rename="{{ person.slug }}" action="/p/{{ person.slug }}/name" method="post">
           <input name="name" placeholder="{{ 'rename' if person.name else 'give them a name' }}"
                  aria-label="name" required>
           <button type="submit">name</button>

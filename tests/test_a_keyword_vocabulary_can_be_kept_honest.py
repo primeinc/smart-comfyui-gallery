@@ -266,7 +266,7 @@ def test_renaming_redraws_the_list_from_the_answer(live: Live, page: Page):
     _wearing(live, "Cormorant", 1)
     _wearing(live, "Gannet", 2, 3)
     page.goto("/keywords")
-    box = page.locator('[data-keyword="cormorant"] [data-rename-input]')
+    box = page.locator('[data-keyword="cormorant"] [data-keyword-rename-input]')
     expect(box).to_be_visible()
     box.fill("Gannet")
     box.press("Enter")

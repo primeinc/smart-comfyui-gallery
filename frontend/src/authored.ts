@@ -292,11 +292,15 @@ const strip = (): HTMLElement | null =>
   findElement(document, "[data-lightbox] [data-authored]", HTMLElement) ??
   findElement(document, "[data-authored]", HTMLElement);
 
-// Registered, not listened for: these keys and the viewer's ship in the
-// same bundle on the same surfaces, and a second claim on one of them is
-// refused where it is made rather than firing twice (frontend/src/keys.ts).
-// 1-5 stay ratings because every photo tool spells them that way, so the
-// viewer's framing moved to Z rather than these moving anywhere.
+// Registered, not listened for: these keys and the viewer's are in the one
+// bundle, so a second claim on any of them is refused where it is made
+// rather than firing twice (frontend/src/keys.ts). 1-5 stay ratings because
+// every photo tool spells them that way, so the viewer's framing moved to Z
+// rather than these moving anywhere.
+//
+// Claimed on every page, because this runs at import and the strip it acts
+// on can arrive later -- the lightbox brings its own. `strip()` returning
+// null is what makes the key do nothing where there is nothing to rate.
 register([
   {
     key: "f",

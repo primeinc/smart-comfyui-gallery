@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% from "_bar.html" import index %}
 {% block title %}Keywords{% endblock %}
-{% block scripts %}<script src="/static/build/keywords.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   {{ index("Keywords", keywords | length, "keyword", "keywords") }}
   <main class="stage">
@@ -24,8 +23,8 @@
           {% for shot in one.covers %}<img src="{{ shot }}" alt="" loading="lazy" decoding="async">{% endfor %}
         </a>
         {% endif %}
-        <form class="keyword-rename" data-rename>
-          <input type="text" data-rename-input maxlength="100" autocomplete="off"
+        <form class="keyword-rename" data-keyword-rename>
+          <input type="text" data-keyword-rename-input maxlength="100" autocomplete="off"
                  value="{{ one.label }}" aria-label="rename {{ one.label }}">
           <button type="submit">rename</button>
         </form>

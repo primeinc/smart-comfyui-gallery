@@ -774,7 +774,7 @@ def test_the_people_page_puts_the_unnamed_first_and_names_them_in_place(tmp_path
         assert f'data-unknown="{unnamed[1]}"' in page, "the unnamed group is not in the queue"
         assert f'data-unknown="{named[1]}"' not in page, "somebody already named is in the queue"
         # and the queue offers the name box beside the face
-        assert f'data-rename="{unnamed[1]}"' in page
+        assert f'data-person-rename="{unnamed[1]}"' in page
 
 
 def test_a_person_with_no_clustered_face_is_not_pointed_at(tmp_path, served):

@@ -237,7 +237,7 @@ def test_the_page_is_the_surface_and_nothing_beside_it(surfaced):
     page = surfaced.get("/timeline", headers={"accept": "text/html"})
     assert page.status_code == 200
     assert "data-surface" in page.text
-    assert "/static/build/timeline.js" in page.text
+    assert "/static/build/app.js" in page.text
     assert "data-overview" in page.text
     assert "data-timeline-day" not in page.text
     assert "data-timeline-month" not in page.text

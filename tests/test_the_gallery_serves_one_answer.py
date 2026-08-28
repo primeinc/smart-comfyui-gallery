@@ -116,7 +116,7 @@ def test_a_malformed_question_is_refused_not_emptied(grid_client):
 
 
 def test_the_static_assets_serve(grid_client):
-    for asset in ("gallery.css", "build/gallery.js", "htmx-2.0.7.min.js"):
+    for asset in ("gallery.css", "build/app.js", "htmx-2.0.7.min.js"):
         answer = grid_client.get(f"/static/{asset}")
         assert answer.status_code == 200, asset
         assert len(answer.content) > 500, asset

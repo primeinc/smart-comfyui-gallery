@@ -2,7 +2,6 @@
 {% from "_shelf.html" import seen %}
 {% block title %}{{ album.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/t/{{ album.slug }}">{% endblock %}
-{% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">

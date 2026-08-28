@@ -894,5 +894,6 @@ type Scope = Required<
   });
 })();
 
-// The folder page loads this bundle; the button is its only tenant here.
+// Every page loads this module now, and the button only exists on the
+// folder pages -- so this finds nothing to wire anywhere else.
 mountReread(document);
