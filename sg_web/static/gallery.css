@@ -842,6 +842,18 @@ p {
   margin: 4px 2px;
   background: color-mix(in srgb, var(--ink) 22%, transparent);
 }
+/* The picture's own name, first, in ink -- the date and the place are
+   facts ABOUT it and stay quiet chips beside it. It truncates rather
+   than pushing the ordinal off the bar: a generated filename can be
+   ninety characters and none of them are worth the whole measure. */
+.viewer-name {
+  color: var(--ink);
+  font-weight: var(--w-label);
+  max-width: min(38ch, 30vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .viewer-ordinal {
   color: var(--ink-muted);
 }
@@ -1886,11 +1898,40 @@ p {
 .authored-fav[aria-pressed="true"] {
   color: var(--danger);
 }
+
+/* --- the rating: one control, not six -------------------------------
+   Five stars and a clear, each its own button at its own 4px padding,
+   read as six unrelated marks in a row of fourteen. A rating is ONE
+   value: the five sit together with no gap between them, so the group
+   is a single object the eye lands on, and hovering lights the run up
+   to the star under the pointer the way a rating always has. */
+.authored-stars {
+  display: inline-flex;
+  align-items: center;
+}
+.authored-stars [data-rate] {
+  padding: 2px 1px;
+}
 .authored-stars [data-rate][aria-pressed="true"] {
   color: var(--accent);
 }
+/* Up TO the pointer, not past it: `~` selects the stars that follow the
+   hovered one, which is the wrong end of the run. `:has(~ :hover)` picks
+   the ones before it, which is what a rating has always shown. */
+.authored-stars [data-rate]:hover,
+.authored-stars [data-rate]:has(~ [data-rate]:hover) {
+  color: var(--ink);
+}
+/* Nothing to clear until something is set. A permanent control for
+   undoing a thing that has not happened is a control that can only ever
+   be a no-op, and it sat in the same row at the same weight as the act
+   it undoes. */
 .authored-clear {
-  font-size: 0.9em;
+  display: none;
+  margin-left: var(--s1);
+}
+.authored-stars:not([data-rating="0"]) .authored-clear {
+  display: inline-flex;
 }
 .authored-albums {
   display: flex;
@@ -2031,6 +2072,43 @@ p {
   border-color: var(--accent);
   outline: none;
 }
+
+/* --- adding a keyword: on demand ------------------------------------
+   An always-open, always-empty text field, 110px of the chrome bar,
+   permanently offering an act nobody has asked to perform -- the same
+   thing the keyword shelf did with a rename box on every row. It
+   collapses to its `+` and opens on hover or focus; the field itself is
+   still a real input, so tab still reaches it and Enter still submits.
+
+   `width`, not `display`: a field that did not exist could not be
+   focused, and the transition would have nothing to animate from. */
+.authored-tagging input {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-color: transparent;
+  transition:
+    width var(--dur) var(--ease),
+    padding var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.authored:hover .authored-tagging input,
+.authored-tagging input:focus,
+.authored-tagging input:not(:placeholder-shown) {
+  width: 9em;
+  padding-left: var(--s2);
+  padding-right: var(--s2);
+  border-color: var(--line-strong);
+}
+@media (hover: none) {
+  .authored-tagging input {
+    width: 9em;
+    padding-left: var(--s2);
+    padding-right: var(--s2);
+    border-color: var(--line-strong);
+  }
+}
+
 .authored-picker {
   border: 1px solid var(--line);
   border-radius: var(--radius);

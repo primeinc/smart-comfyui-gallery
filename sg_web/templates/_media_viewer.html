@@ -24,6 +24,11 @@
     <a class="viewer-back" href="{{ item.context.return_url }}" data-return
        aria-label="back to results">{{ icon("back") }}</a>
     <div class="viewer-said">
+      {# What you are looking at. The viewer named the picture's WHEN and
+         its WHERE and never the picture: the filename was reachable only
+         by opening the inspector, on the one surface in the application
+         that shows exactly one file. #}
+      <span class="viewer-name" data-viewer-name title="{{ item.name }}">{{ item.name }}</span>
       {% if item.when %}
       <button type="button" class="chip" data-panel-open="about" data-viewer-when>
         <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>
