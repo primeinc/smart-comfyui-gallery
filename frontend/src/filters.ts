@@ -1,32 +1,26 @@
 /**
  * The filter surface: what am I asking for.
  *
- * The gallery header used to carry the whole vocabulary the browser knew
- * about -- kind, rating and favorite, as three `<select>` elements --
- * which is three questions out of a registry of thirty, with no room for
- * a fourth before the header is taller than the photographs. This is the
- * door those went behind, and the room the other twenty-seven came out
- * into.
- *
- * Three decisions worth knowing.
+ * The registry holds about thirty ways to narrow a question. Three of
+ * them fit in a header before it is taller than the photographs, so this
+ * is the door the rest went behind.
  *
  * THE URL IS THE QUESTION. Nothing here holds filter state. A change
- * assembles a candidate URL and goes there; the server canonicalizes it
- * and renders chips, counts and grid from its own spelling, so reload,
- * Back, a bookmark and a pasted link are the same code path as a click.
- * The alternative -- filters living in JavaScript and the URL catching up
- * -- is how a shared link stops being the thing that was shared.
+ * assembles a candidate URL and goes there; the server canonicalises it
+ * and renders the chips, the counts and the grid from its own spelling.
+ * So reload, Back, a bookmark and a pasted link are all the same code
+ * path as a click. Filters living in JavaScript with the URL catching up
+ * is how a shared link stops answering what was shared.
  *
- * WHAT IS REMEMBERED IS THE FURNITURE, NEVER THE QUESTION. Whether the
- * drawer is open and which sections are disclosed are how a person has
- * arranged their tools: workspace state, kept until they rearrange it.
- * The filters themselves never are. A filter that outlived its URL would
- * mean a bookmark that answers differently for two people.
+ * The FURNITURE is remembered, the question never is. Whether the drawer
+ * is open and which sections are disclosed are workspace state
+ * (workspace.ts). A filter that outlived its URL would mean one bookmark
+ * answering differently for two people.
  *
- * FILTERING IS ONE EDIT SESSION, NOT FOURTEEN. Clicking six values while
- * the drawer is open leaves ONE history entry, so Back means "the
- * question I had before I started filtering" rather than six presses of
- * undo-one-clause. The first change navigates; the rest replace.
+ * Filtering is one edit session. Clicking six values while the drawer is
+ * open leaves ONE history entry, so Back means "the question I had before
+ * I started" rather than six presses of undo-one-clause. The first change
+ * navigates; the rest replace.
  */
 
 import { everyElement, findElement } from "./dom";

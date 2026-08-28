@@ -1,34 +1,26 @@
 /**
  * Browsing: the next page arrives because you kept going.
  *
- * The gallery had exactly two ways forward -- `next` and `previous` --
- * which is a fine way to READ a result set and a poor way to browse one.
- * Looking for a picture you would recognise means going through a few
- * hundred, and clicking `next` every sixty is a decision you have to make
- * five times a minute about something you are not thinking about.
+ * This is not a second paging engine. The server's ResultSet decides
+ * membership, order and what page 7 holds; this asks for page 7 through
+ * the same `/g/grid` fragment the pager's own link uses, and appends the
+ * answer. No ordering here, and no arithmetic beyond "the one after the
+ * last one I have".
  *
- * What this is NOT: a second paging engine. The server's ResultSet still
- * decides membership, order and what page 7 contains; this asks for page
- * 7 through the same `/g/grid` fragment the pager's own link asks for,
- * and appends what comes back. There is no client-side ordering here and
- * no page arithmetic beyond "the one after the last one I have".
+ * The DOM stays bounded. Appending for ever is how a tab dies on a real
+ * library -- 80,000 cells is 80,000 image elements -- so past a window of
+ * pages the oldest are dropped and the space they held is kept as
+ * padding. The scroll position does not jump, and coming back up restores
+ * them.
  *
- * Three things it has to get right.
+ * The URL follows. `page` is REPLACED, never pushed, with whichever page
+ * fills the top of the viewport. Reload lands where you were reading, and
+ * Back still means the question before this one rather than one press per
+ * sixty pictures.
  *
- * THE DOM IS BOUNDED. Appending for ever is how a browser tab dies on a
- * real library: 80,000 cells is 80,000 image elements. Past a window of
- * pages the oldest are dropped and the space they took is held open as
- * padding, so the scroll position does not jump and coming back up
- * restores them.
- *
- * THE URL FOLLOWS. `page` is replaced -- never pushed -- with whichever
- * page fills the top of the viewport, so reload lands where you were
- * reading and Back still means the question before this one rather than
- * one press per sixty pictures.
- *
- * THE PAGER STAYS. It is the sentinel that triggers the next fetch, it
- * is the way to jump, and it is what a browser with no JavaScript uses.
- * Nothing here removes it.
+ * The pager stays. It is the sentinel that triggers the next fetch, the
+ * way to jump, and what a browser with no JavaScript uses. Nothing here
+ * removes it.
  */
 
 import { findElement, requireData } from "./dom";

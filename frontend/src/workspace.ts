@@ -1,31 +1,29 @@
 /**
  * What the person arranged, kept until they rearrange it.
  *
- * This application already has three kinds of state and was missing a
- * fourth, which is why every surface that wanted to remember something
- * had started inventing its own key in localStorage:
+ * Four kinds of state, and this module owns the fourth:
  *
- *   server state       rows; the truth about media
- *   URL state          the question being asked -- shareable, bookmarkable
- *   ephemeral state    hover, drag, what is under the pointer right now
- *   WORKSPACE state    how this person has arranged their tools
+ *   server      rows; the truth about media
+ *   URL         the question being asked -- shareable, bookmarkable
+ *   ephemeral   hover, drag, what is under the pointer right now
+ *   workspace   how this person has arranged their tools
  *
- * The distinction that matters is lifetime, and it is a judgement about
- * intent rather than about storage. Workspace state is a DELIBERATE
- * arrangement: which panel is open, which sections are disclosed, what is
- * in the comparison tray. It survives navigation and reload, and changes
+ * What separates workspace state is lifetime, and that is a judgement
+ * about intent rather than about where it is stored. A deliberate
+ * arrangement -- which panel is open, which sections are disclosed, what
+ * is in the compare tray -- survives navigation and reload, and changes
  * only when the person changes it.
  *
- * Zoom and pan are NOT workspace state. They are how somebody is looking
- * at one picture, they belong to that picture, and carrying them to the
- * next one would be restoring something nobody arranged. The viewer says
- * the same thing about its own transforms; this module exists so the two
- * lifetimes stop being confused for each other.
+ * Zoom and pan are not workspace state. They are how somebody is looking
+ * at ONE picture, they belong to that picture, and carrying them to the
+ * next would restore something nobody arranged.
  *
  * Nothing here is shared. It is this browser's arrangement, per origin,
- * never sent to the server -- another person opening the same library
- * gets their own, and no row anywhere records how somebody likes their
- * panels.
+ * never sent to the server: another person opening the same library gets
+ * their own, and no row records how anybody likes their panels.
+ *
+ * Every surface that wanted to remember something was inventing its own
+ * localStorage key. There is one key now.
  */
 
 /** Bumped when a stored shape stops being readable by this code. */

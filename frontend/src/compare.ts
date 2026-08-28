@@ -1,41 +1,28 @@
 /**
- * The compare tray: what I have kept, until I say otherwise.
+ * The compare tray: pictures kept aside, until emptied.
  *
- * Looking at two pictures side by side is the ordinary thing somebody
- * does with a library of near-identical generations, and the application
- * had no way to do it at all. Two tabs was the workaround.
+ * A strip along the bottom that collapses to a tab. It is not a page,
+ * because the point is to gather while still browsing -- one from the
+ * gallery, one from a person, one from an analysis -- and a surface you
+ * have to navigate to cannot be filled that way.
  *
- * The tray is deliberately NOT a page. It is a strip along the bottom
- * that collapses to a tab and comes back where it was, because the point
- * is to gather things while carrying on browsing -- a picture from the
- * gallery, another from a person's profile, a third from an analysis --
- * and a comparison surface you have to navigate TO cannot be filled that
- * way.
+ * What it keeps survives navigation and reload: the tray is workspace
+ * state (workspace.ts), and it empties only when somebody empties it.
  *
- * Three things this gets right that a naive version does not.
+ * It asks the server for nothing. A kept picture is a slug plus the name
+ * the adding surface already had on screen, and `/thumb/<slug>` is the
+ * picture. So any surface showing media can add to it without knowing
+ * the tray exists.
  *
- * IT KEEPS THEM UNTIL DISMISSED. Not until the next page, not until the
- * tab closes: the tray is workspace state, so it survives navigation and
- * reload and empties when somebody empties it. Anything less makes it
- * useless for the case it exists for, which is gathering across surfaces.
+ * The order IS the comparison: dragging a thumbnail moves it, and the
+ * comparison reads left to right in that order.
  *
- * IT NEEDS NO SERVER. A kept picture is a slug and the name the adding
- * surface already had on screen; `/thumb/<slug>` addresses the picture
- * directly. So the tray costs no round trip, works on every surface that
- * shows media without any of them knowing about it, and cannot get out
- * of step with an endpoint.
- *
- * IT IS ORDERED, AND THE ORDER IS THE COMPARISON. Dragging a thumbnail
- * moves it; the comparison shows them left to right in exactly that
- * order. "Swap these two" is a drag rather than a mode.
- *
- * And it shows them two ways, because they answer different questions.
- * SIDE BY SIDE answers "how do these differ", and you read it by moving
- * your eyes. FLIP answers "did this change", and you read it by NOT
- * moving them: the pictures occupy the same pixels, so a small
- * difference that side-by-side loses in the saccade is the only thing
- * on screen that moves. Two generations of one prompt at different
- * steps is the case the second exists for.
+ * Two ways to look, for two questions. SIDE BY SIDE for "how do these
+ * differ", read by moving your eyes across. FLIP for "did this change",
+ * read by not moving them at all: the pictures occupy the same pixels,
+ * so the only thing on screen that moves is the difference. Two
+ * generations of one prompt at different step counts is the case flip
+ * exists for.
  */
 
 import { closestFrom, everyElement, findElement } from "./dom";

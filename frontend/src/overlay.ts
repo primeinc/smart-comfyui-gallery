@@ -1,36 +1,35 @@
-// AddressableOverlay: the mechanics the media lightbox and the person
-// drawer BOTH proved before this file existed. An overlay is a way of
-// looking at an ADDRESS while the page underneath stays mounted: open
-// fetches the address's HX fragment and PUSHES the URL once; requested
-// re-opens REPLACE it; dismissal -- close button, Escape, a click on
-// the backdrop (never on content) -- IS history Back; popstate makes
-// the screen agree with whatever the URL now names; any non-OK answer
+// AddressableOverlay: looking at an ADDRESS while the page underneath
+// stays mounted.
+//
+// Opening fetches the address's HX fragment and pushes the URL once;
+// re-opening replaces it. Dismissal -- the close button, Escape, a click
+// on the backdrop but never on content -- IS history Back. popstate makes
+// the screen agree with whatever the URL now names. Any non-OK answer
 // falls back to full navigation, because the address always works as a
-// page.
+// page on its own.
 //
-// What makes it deep rather than moved code:
-//   sequencing  every open takes a ticket; a response that arrives
-//               after a newer open or a dismissal is DISCARDED, so a
-//               slow fragment can never overwrite a newer view or
-//               resurrect a closed one.
-//   real clicks a modified click (ctrl/cmd/shift/alt, middle button,
-//               target=_blank) is an ordinary link -- humans want tabs.
-//   focus       focus moves into the overlay, the underlay goes inert,
-//               and dismissal returns focus to the element that opened
-//               it. The overlay roots sit directly under <body> so
-//               "everything else" is exactly the underlay.
+// Four things it handles that a simpler version does not:
 //
-// The one hook is `generation`: an adapter walking an ordered ResultSet
-// supplies its view currency, sent out-of-band and compared against the
-// fragment's own generation -- a mismatch redraws whole rather than
-// mounting one generation over another. Everything an adapter does
-// beyond this (media's arrows, person's rename) is its own file's
-// business.
+//   sequencing   every open takes a ticket, and a response arriving after
+//                a newer open or a dismissal is discarded. A slow fragment
+//                cannot overwrite a newer view or reopen a closed one.
+//   real clicks  ctrl/cmd/shift/alt, middle button and target=_blank stay
+//                ordinary links, because people want tabs.
+//   focus        focus moves into the overlay, the underlay goes inert,
+//                and dismissal returns focus to whatever opened it. The
+//                overlay roots sit directly under <body>, so "everything
+//                else" is exactly the underlay.
+//   generation   an adapter walking an ordered ResultSet sends its view
+//                currency out of band; if it disagrees with the
+//                fragment's own, the view is redrawn whole rather than
+//                mounting one generation over another.
 //
-// Adapters import what they need. An overlay whose root is not on the
-// page returns null, so a surface that renders no drawer wires nothing
-// -- the absence is a fact about the DOM, not about which scripts a
-// template happened to list.
+// Anything past that -- the media arrows, the person rename -- belongs to
+// the adapter's own file.
+//
+// An overlay whose root is not on the page returns null, so a surface
+// that renders no drawer wires nothing. That is a fact about the DOM, not
+// about which scripts a template listed.
 import { closestFrom, findElement, isPlainClick } from "./dom";
 import { register } from "./keys";
 

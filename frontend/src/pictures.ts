@@ -1,39 +1,29 @@
 /**
  * A picture that will not load says what it is instead of breaking.
  *
- * The server already declines to point at a picture that cannot exist:
+ * The server already avoids pointing at a picture that cannot exist:
  * `thumbs.asset_url` answers None for a medium with no picture to take,
- * and every grid, strip and cell draws the kind instead. That is the
- * right answer and it is not enough, because it depends on the server
- * being right about the kind.
+ * and the cell draws the kind instead. That is right, and it depends on
+ * the row being right about the kind.
  *
- * It was wrong once, exactly the way this catches. An `.m4a` is
- * ISO-BMFF, mimesniff's MP4 walk calls it video/mp4, ingest let the
- * bytes overrule the suffix, and a folder of album tracks became
- * videos -- so the server minted thumbnail addresses in good faith and
- * every one of them failed to render. The row was wrong; the page had
- * no way to notice; the person got a wall of broken-image icons.
+ * A row can be wrong. An `.m4a` is ISO-BMFF, mimesniff calls it
+ * video/mp4, and a folder of album tracks was stored as video -- so the
+ * server minted thumbnail addresses in good faith and every one failed.
+ * This is the second line, and it is about the symptom rather than about
+ * m4a: any thumbnail that fails, for any reason the page cannot know,
+ * degrades to the same grey label the server would have drawn.
  *
- * So this is the second line, and it is deliberately about the SYMPTOM
- * rather than about m4a: any thumbnail that fails, for any reason a
- * page cannot know -- a row that lies about its kind, a derivative
- * deleted from the cache, a file gone offline mid-scroll -- degrades to
- * the same grey label the server would have drawn.
+ * ONE LISTENER, on the document, in the capture phase. `error` does not
+ * bubble, so a document listener sees it only on the way down -- which
+ * is also why one listener covers images that do not exist yet: an
+ * endless grid, a swapped fragment, a filmstrip remounted every step.
  *
- * One listener, on the document, in the CAPTURE phase. `error` does not
- * bubble, so a listener on the document only ever sees it going DOWN --
- * which is also what makes one listener enough for images that do not
- * exist yet: an endlessly-scrolling grid, a swapped timeline fragment,
- * a filmstrip remounted on every step.
- *
- * And one SWEEP, because a listener is only ever told about what has not
- * happened yet. An image that failed before this module ran had its
- * `error` dispatched to nobody, and no later event will mention it
- * again -- so it keeps the broken icon for the life of the page, which
- * is the whole thing this file exists to stop. That is not a corner: a
- * thumbnail answered from the browser's cache fails on the spot, while
- * the bundle that would catch it is still being fetched and parsed.
- * `complete && naturalWidth === 0` is how a finished failure reads.
+ * ONE SWEEP as well, because a listener hears only what has not happened
+ * yet. An image that failed before this module ran dispatched `error` to
+ * nobody and will not mention it again, so it would keep the broken icon
+ * for the life of the page. Not a corner case: a cached thumbnail fails
+ * immediately, while this bundle is still being fetched.
+ * `complete && naturalWidth === 0` is what a finished failure looks like.
  */
 
 /** What a cell says when there is no picture: the shape the server uses. */
