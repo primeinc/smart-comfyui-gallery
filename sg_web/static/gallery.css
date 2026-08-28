@@ -1554,6 +1554,12 @@ p {
   display: flex;
   gap: 14px;
   align-items: baseline;
+  /* The story render hangs a profile switcher off the end of this bar
+     (`.story-profiles`, margin-left: auto). Unwrapped, the two together
+     measured 545px inside a 360px window and took the page 201px
+     sideways -- with `compact` past the edge, which is one of the three
+     things the bar is for. */
+  flex-wrap: wrap;
 }
 .crumbs a {
   color: var(--accent);
@@ -1706,6 +1712,15 @@ p {
   display: flex;
   gap: 18px;
   align-items: center;
+  /* A face beside a column of controls. The column's floor is its rename
+     input plus its button plus "same as someone else", and none of them
+     shrink, so the hero measured 396px in a 360px window and every
+     section under it inherited the overflow -- the whole page went
+     sideways for one row. */
+  flex-wrap: wrap;
+}
+.person-hero > div {
+  min-width: 0;
 }
 .person-hero h1 {
   margin: 0 0 8px;
@@ -1714,6 +1729,13 @@ p {
 .person-rename {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+/* An <input> carries its own intrinsic width and will not go below it
+   unless told, which is what made the column above unable to shrink. */
+.person-rename input {
+  min-width: 0;
+  flex: 1 1 12ch;
 }
 .person-rename input {
   background: var(--ground);
