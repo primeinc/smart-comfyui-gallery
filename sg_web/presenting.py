@@ -27,10 +27,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from litestar import Request
+from litestar import MediaType, Request
 from litestar.response import Response, Template
 
 VARIES = {"vary": "Accept, HX-Request"}
+
+#: Every `Template` in this application states `media_type` rather than
+#: letting Litestar work it out.
+#:
+#: Told nothing, `Template.to_response` guesses from the template's own
+#: suffix -- `guess_type(f"name{suffix}")`, litestar@2.24.0
+#: response/template.py:135 -- and on Windows the first `guess_type` in a
+#: process calls `mimetypes.init()`, which reads the whole MIME map out
+#: of the registry. That is 55 ms of a 99 ms first render, measured with
+#: cProfile (`_winapi._mimetypes_read_windows_registry`), to be told that
+#: `.html` is `text/html`.
+#:
+#: Paid once per process, so ONE template left guessing would pay it for
+#: all of them -- which is why all twenty-two say it. First render 78.4
+#: ms -> 25.0 ms, `mimetypes.inited` stays False, and the response
+#: carries the same `text/html; charset=utf-8` either way. Every template
+#: this application has is `.html`; a template that is not must state its
+#: own type here.
 
 
 def wants_json(request: Request) -> bool:
@@ -40,14 +58,14 @@ def wants_json(request: Request) -> bool:
     return request.headers.get("hx-request") != "true" and "text/html" not in accept
 
 
-def presented(request: Request, told: dict, *, page: str, fragment: str, name: str) -> Template | Response:
+def presented(request: Request, told: Any, *, page: str, fragment: str, name: str) -> Template | Response:
     """The view, in whichever representation the request negotiated.
     `name` is the template context key the page and fragment share."""
     if wants_json(request):
         return Response(told, headers=VARIES)
     if request.headers.get("hx-request") == "true":
-        return Template(template_name=fragment, context={name: told}, headers=VARIES)
-    return Template(template_name=page, context={name: told}, headers=VARIES)
+        return Template(media_type=MediaType.HTML, template_name=fragment, context={name: told}, headers=VARIES)
+    return Template(media_type=MediaType.HTML, template_name=page, context={name: told}, headers=VARIES)
 
 
 def presented_page(request: Request, told: Any, *, page: str, context: dict | None = None) -> Template | Response:
@@ -56,4 +74,6 @@ def presented_page(request: Request, told: Any, *, page: str, context: dict | No
     (the same value under a name, or a shape assembled for the page)."""
     if wants_json(request):
         return Response(told, headers=VARIES)
-    return Template(template_name=page, context=context if context is not None else told, headers=VARIES)
+    return Template(
+        media_type=MediaType.HTML, template_name=page, context=context if context is not None else told, headers=VARIES
+    )

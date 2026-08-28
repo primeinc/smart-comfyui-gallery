@@ -1,0 +1,275 @@
+{# Everything one click away, in the order somebody looks for it.
+
+   A section exists when it has something to say. "Nobody looked for faces
+   in these bytes" is a diagnostic, not a fact about the photograph, so it
+   lives under TECHNICAL; an empty CREATION is not rendered at all, because
+   a photograph was taken rather than generated. The rule is: exceptions
+   become visible, normality disappears.
+
+   Docked beside the stage or slid up from under it is the stylesheet's
+   decision, made from the space there is. Nothing here knows which. #}
+{# `data-inspector-panel`, not `data-inspector`: the viewer root carries
+   data-inspector as its OPEN/CLOSED state, and one word meaning both the
+   state and the element it describes makes querySelector pick whichever
+   comes first in the document. #}
+<aside class="inspector" data-inspector-panel aria-label="information">
+  <header class="inspector-bar">
+    <h2>{{ item.name }}</h2>
+    <button type="button" class="viewer-act" data-inspector-toggle aria-label="close information">&times;</button>
+  </header>
+
+  {# No `open` here. Which sections start disclosed is a decision that
+   belongs to whoever is looking, kept across pictures and reloads; a
+   hard-coded `open` overrode that on every walk. #}
+  <details class="panel" data-panel="about">
+    <summary>about</summary>
+    <dl>
+      {% if item.when %}
+      <dt>when</dt>
+      <dd data-when data-domain="{{ item.when.domain }}">
+        <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>
+        <a href="/g?{{ item.when.day_qs }}" data-when-day>{{ item.when.local_day }}</a>
+        {% if item.when.conflicts %}
+        <button type="button" class="badge warn" data-panel-open="technical" data-when-conflicts>date disputed</button>
+        {% endif %}
+      </dd>
+      {% else %}
+      <dt>when</dt><dd class="muted" data-when-missing>not interpreted yet — <a href="/operations">run the context job</a></dd>
+      {% endif %}
+
+      {% if item.where %}
+      <dt>where</dt>
+      <dd data-where="{{ item.where.id }}">
+        <a href="/g?{{ item.where.qs }}" data-where-link>{{ item.where.name }}</a>{% if item.where.chain | length > 1 %}, {{ item.where.chain[1:] | join(", ") }}{% endif %}
+      </dd>
+      {% else %}
+      <dt>where</dt><dd class="muted" data-where-missing>nowhere said{% if item.when and item.when.origin == "captured" %} — the camera's coordinates alone name no place{% endif %}</dd>
+      {% endif %}
+
+      {% if item.faces.people %}
+      <dt>who</dt>
+      {#- The correction sits with the name. This is where somebody is
+          already looking at "Hannah" over a picture that is not Hannah,
+          and the whole value of a denial is that it is said once and
+          holds -- so it must not be a page you have to go and find.
+
+          A BUTTON beside the link, never inside it: the name goes to
+          the person, and the × is a different act. -#}
+      <dd data-people>{% for who in item.faces.people %}<span class="person-said" data-person-said="{{ who.slug }}"><a href="{{ who.href }}" data-person="{{ who.slug }}">{{ who.name or who.slug }}</a><button type="button" class="person-deny" data-person-deny="{{ who.slug }}" title="not {{ who.name or who.slug }} — and remember that" aria-label="say this is not {{ who.name or who.slug }}">&times;</button></span>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+      {% endif %}
+
+      {% if item.said %}
+      <dt>said</dt>
+      <dd data-said>
+        {% for a in item.said %}
+        {#- The thumb sits WHERE THE CLAIM IS SHOWN. A review queue is a
+            chore nobody does; this is where somebody is already reading
+            the sentence and already knows whether it is right. One
+            click, no dialog, and clicking the lit one takes it back. -#}
+        <p data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}
+           data-said-model="{{ a.model_id }}" data-said-version="{{ a.model_version }}"
+           {% if a.verdict %}data-said-verdict="{{ a.verdict }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }}<span class="said-verdict" data-said-judge>{% for one, mark, why in [("right", "&#128077;", "right"), ("wrong", "&#128078;", "wrong")] %}<button type="button" class="said-thumb" data-said-verdict-set="{{ one }}" aria-pressed="{{ "true" if a.verdict == one else "false" }}" title="this caption is {{ why }}" aria-label="this caption is {{ why }}">{{ mark|safe }}</button>{% endfor %}</span></p>
+        {% endfor %}
+      </dd>
+      {% endif %}
+    </dl>
+
+    <form class="ask where-form" data-place-form data-slug="{{ item.slug }}">
+      <input name="name" list="places-named" placeholder="where did this happen?" aria-label="place name" value="{{ item.where.name if item.where and item.where.basis == "authored" else "" }}">
+      <select name="kind" aria-label="kind of place">
+        {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if item.where and item.where.kind == k %} selected{% elif not item.where and k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+      </select>
+      <input name="within" list="places-named" placeholder="within (optional)" aria-label="within" value="{{ item.where.chain[1] if item.where and item.where.chain | length > 1 else "" }}">
+      <select name="within_kind" aria-label="kind of the place it is within">
+        {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if k == "country" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+      </select>
+      <button type="submit">say where</button>
+      {% if item.where and item.where.basis == "authored" %}<button type="button" data-place-clear>withdraw</button>{% endif %}
+      <datalist id="places-named">{% for p in item.place_choices.named %}<option value="{{ p.name }}">{{ p.kind }}</option>{% endfor %}</datalist>
+    </form>
+  </details>
+
+  {% if (item.when and item.when.sessions) or item.lineage.copies or item.lineage.parents or item.lineage.children %}
+  <details class="panel" data-panel="context">
+    <summary>context</summary>
+    {% if item.when and item.when.sessions %}
+    <ul data-when-sessions>
+      {% for s in item.when.sessions %}
+      <li><a href="/g?{{ s.qs }}" data-when-session="{{ s.id }}">{{ s.kind.replace("_", " ") }}</a> · {{ s.pictures }} pictures · {% if s.story %}<a href="{{ s.story }}" data-when-session-story>story</a>{% else %}<a href="{{ s.timeline }}" data-when-session-tell>tell its story on the timeline</a>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if item.lineage.copies %}
+    <h4>other bodies of this picture</h4>
+    <ul>{% for copy in item.lineage.copies %}<li><a href="/i/{{ copy.slug }}">{{ copy.name }}</a>{% if copy.is_best %} · best{% endif %}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if item.lineage.parents or item.lineage.children %}
+    <h4>lineage</h4>
+    <ul>
+      {% for parent in item.lineage.parents %}<li>from <a href="/i/{{ parent.slug }}">{{ parent.name }}</a> ({{ parent.kind }})</li>{% endfor %}
+      {% for child in item.lineage.children %}<li>made <a href="/i/{{ child.slug }}">{{ child.name }}</a> ({{ child.kind }})</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </details>
+  {% endif %}
+
+  {% if item.creation %}
+  {#
+    The recipe, in the order somebody making the picture again needs it:
+    the prompt first and allowed to breathe, then what to load, then the
+    numbers. The old section put a paragraph of prompt above four <dt>s
+    and no way to copy any of it.
+
+    Every text here is EDITABLE and none of it is saved. Select it, cut it
+    about, empty it entirely -- it is a scratch copy of what the file
+    says, for taking somewhere else, and walking to the next picture
+    brings the file's own text back. Nothing about the recorded
+    generation changes, because what a file says it is is not a
+    preference (frontend/src/workspace.ts draws that line).
+  #}
+  <details class="panel panel-recipe" data-panel="creation" data-recipe>
+    <summary>
+      creation
+      {% if item.creation.tool %}<span class="recipe-tool">{{ item.creation.tool }}</span>{% endif %}
+    </summary>
+
+    {% for field in [
+      ("prompt", "prompt", item.creation.prompt),
+      ("negative", "negative prompt", item.creation.negative),
+      ("original", "as typed", item.creation.original),
+      ("original_negative", "negative, as typed", item.creation.original_negative),
+    ] %}
+    {% if field[2] %}
+    <section class="recipe-text" data-recipe-field="{{ field[0] }}">
+      <header>
+        <span class="recipe-label">{{ field[1] }}</span>
+        <button type="button" class="recipe-copy" data-copy="{{ field[0] }}"
+                aria-label="copy {{ field[1] }}">copy</button>
+      </header>
+      {#
+        A textarea, because it must behave like one: caret, selection,
+        undo, Ctrl-A, the lot. It is styled to look like the text it
+        holds rather than like a form control -- `spellcheck=false`
+        because a prompt is not prose, and the original kept in a data
+        attribute so an edit can be taken back.
+      #}
+      <textarea class="recipe-scratch" data-scratch spellcheck="false" rows="1"
+                aria-label="{{ field[1] }}, editable copy">{{ field[2] }}</textarea>
+      <button type="button" class="recipe-revert" data-revert hidden>revert</button>
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {% if item.creation.checkpoint or item.creation.loras %}
+    <section class="recipe-models">
+      {% if item.creation.checkpoint %}
+      <div class="recipe-model"><span class="recipe-label">checkpoint</span>
+        <span data-recipe-checkpoint>{{ item.creation.checkpoint }}</span></div>
+      {% endif %}
+      {% for lora in item.creation.loras %}
+      <div class="recipe-model recipe-lora"><span class="recipe-label">lora</span>
+        <span>{{ lora.name }}</span>
+        {# the weight is why this is not a list of names: without it the
+           recipe does not reproduce #}
+        {% if lora.weight is not none %}<b class="recipe-weight">{{ "%.2f"|format(lora.weight) }}</b>{% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {#
+      `data-recipe-key` is the name the TOOLS read, carried beside the
+      lowercase one a person reads. "cfg" is what this panel says and
+      "CFG scale" is what a paste into A1111 has to say; deriving one
+      from the other by capitalising would produce "Cfg", which nothing
+      matches on. Where the shown text and the copyable text differ at
+      all -- a size shown with a real multiplication sign -- the copyable
+      one is spelled out in `data-recipe-value`.
+    #}
+    <dl class="recipe-numbers">
+      {% for label, key, value in [
+        ("seed", "Seed", item.creation.seed),
+        ("steps", "Steps", item.creation.steps),
+        ("cfg", "CFG scale", item.creation.cfg),
+        ("sampler", "Sampler", item.creation.sampler),
+        ("scheduler", "Schedule type", item.creation.scheduler),
+        ("denoise", "Denoising strength", item.creation.denoise),
+        ("clip skip", "Clip skip", item.creation.clip_skip),
+      ] %}
+      {% if value is not none %}<dt>{{ label }}</dt><dd data-recipe-key="{{ key }}">{{ value }}</dd>{% endif %}
+      {% endfor %}
+      {% if item.creation.asked_for_width %}
+      <dt>asked for</dt>
+      <dd data-recipe-key="Size"
+          data-recipe-value="{{ item.creation.asked_for_width }}{% if item.creation.asked_for_height %}x{{ item.creation.asked_for_height }}{% endif %}"
+      >{{ item.creation.asked_for_width }}{% if item.creation.asked_for_height %}&times;{{ item.creation.asked_for_height }}{% endif %}</dd>
+      {% endif %}
+    </dl>
+
+    <button type="button" class="recipe-all" data-copy-all>copy everything</button>
+  </details>
+  {% endif %}
+
+  <details class="panel" data-panel="file">
+    <summary>file</summary>
+    <dl>
+      <dt>name</dt><dd>{{ item.name }}</dd>
+      <dt>folder</dt><dd>{{ item.file.folder }}</dd>
+      <dt>kind</dt><dd>{{ item.stage.kind.replace("_", " ") }}</dd>
+      {% if item.stage.kind in ("image", "animated_image", "video") and item.stage.source %}
+      <dt>pixels</dt><dd>{{ item.stage.source.width }}&times;{{ item.stage.source.height }}</dd>
+      {% endif %}
+      {% if item.stage.kind in ("video", "audio") and item.stage.duration %}
+      <dt>length</dt><dd>{{ "%.1f"|format(item.stage.duration) }}s</dd>
+      {% endif %}
+      <dt>bytes</dt><dd><a href="{{ item.stage.original }}">the original</a></dd>
+    </dl>
+  </details>
+
+  <details class="panel" data-panel="technical">
+    <summary>technical</summary>
+    <dl>
+      <dt>metadata</dt>
+      <dd data-read="{{ item.file.read }}">
+        {% if item.file.read == "current" %}read from these bytes
+        {% elif item.file.read == "stale" %}<span class="warn">read from older bytes</span> — <a href="/operations">run the ingest job</a>
+        {% else %}not read yet — <a href="/operations">run the ingest job</a>{% endif %}
+      </dd>
+      {% if item.when %}
+      <dt>date</dt>
+      <dd>
+        {{ item.when.precision }} precision · {{ item.when.domain }} clock{% if item.when.tz_offset_min is not none %} · zone {{ item.when.tz_offset_min }} min{% endif %}<br>
+        {{ item.when.basis }} · certainty {{ item.when.certainty }}{% if item.when.supports %} · supported by {{ item.when.supports | join(", ") }}{% endif %}<br>
+        origin {{ item.when.origin }} · <a href="{{ item.when.timeline }}" data-when-timeline>on the timeline</a>
+        {% if item.when.conflicts %}<br><span class="warn">{{ item.when.conflicts | join("; ") }}</span>{% endif %}
+      </dd>
+      {% endif %}
+      {% if item.where %}
+      <dt>place</dt><dd>{{ item.where.kind }} · {{ "said by a person" if item.where.basis == "authored" else item.where.basis }} · <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></dd>
+      {% endif %}
+      <dt>faces</dt>
+      {% if item.faces.looked %}
+      <dd data-faces-looked>{% for pass in item.faces.looked %}{{ pass.model_id }} found {{ pass.faces }} face{{ "" if pass.faces == 1 else "s" }} <time data-epoch="{{ pass.at }}" data-domain="instant">{{ pass.at }}</time>{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+      {% else %}
+      <dd class="muted" data-faces-missing>nobody has looked for faces in these bytes — <a href="/operations">run the faces job</a></dd>
+      {% endif %}
+      {% if item.said %}
+      <dt>captions</dt>
+      <dd>{% for a in item.said %}<span class="when-evidence">{{ a.kind }} · {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} · confidence {{ a.confidence }}{% endif %}{% if a.stale %} · <span class="warn" data-said-stale>of older bytes</span>{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
+      {% else %}
+      <dt>captions</dt><dd class="muted" data-said-missing>no caption yet — <a href="/operations">run the annotate job</a></dd>
+      {% endif %}
+    </dl>
+  </details>
+
+  {% if item.params %}
+  <details class="panel" data-panel="raw">
+    <summary>raw metadata</summary>
+    <table class="detail-params"><tbody>
+      {% for row in item.params %}
+      <tr><td>{{ row.source }}</td><td>{{ row.key }}</td><td>{{ row.value }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </details>
+  {% endif %}
+</aside>

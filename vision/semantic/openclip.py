@@ -34,6 +34,19 @@ PROVIDER = "openclip"
 MODEL = "ViT-B-32"
 CHECKPOINT = "laion2b_s34b_b79k"
 
+#: Pictures per encoder pass. Throughput plateaus here: measured over 512
+#: generated PNGs, batch 64 through 256 sit within 5% of each other while
+#: peak VRAM climbs 775 -> 1246 MB, so past this the memory is spent for
+#: nothing (`just bench clip-batch`).
+BATCH = 64
+
+#: Threads for the CLIP transform inside one batch. It plateaus at 8 on a
+#: 16-core machine -- 8.13 ms per image serially, 1.83 at 8 workers, 1.80
+#: at 16 -- and the job already keeps about 7 cores busy on its own, so
+#: asking for all of them would be taking them from the decoders. Capped
+#: rather than scaled to the machine for that reason.
+BATCH_WORKERS = 8
+
 
 def parse(reference: str) -> tuple[str, str]:
     """One `semantic_model` reference in this provider's own grammar:
@@ -60,7 +73,7 @@ def space(model: str, checkpoint: str, dimensions: int):
     return SpaceSpec(
         key=f"semantic.openclip.{model}.{checkpoint}",
         representation="float32",
-        dimensions=int(dimensions),
+        dimensions=dimensions,
         metric="cosine",
         producer=f"open_clip:{model}",
         producer_version=checkpoint,
@@ -90,6 +103,124 @@ def immutable(checkpoint: str) -> bool:
     return bool(checkpoint)
 
 
+def _record_path(models_dir: str):
+    import pathlib
+
+    return pathlib.Path(models_dir) / "provisioned.json"
+
+
+def _read_record(models_dir: str) -> dict:
+    """The record, or an empty one. Anything unreadable, undecodable or
+    not an object reads as "nothing provisioned": the caller is the fast
+    offline REFUSAL, and a refusal is the right answer for a record it
+    cannot trust. Returning the parsed value unchecked handed
+    `provisioned()` a list or a None to call `.get` on, turning that
+    refusal into a 500."""
+    import json
+
+    try:
+        held = json.loads(_record_path(models_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return {}
+    return held if isinstance(held, dict) else {}
+
+
+def record_provision(models_dir: str, model: str, checkpoint: str, repo: str, names: tuple[str, ...]) -> None:
+    """The (repo, file) coordinates a checkpoint resolved to, written by
+    the code that just loaded it -- the one moment those coordinates
+    exist without asking open_clip, whose import is torch's. The record
+    is what lets the serving guard refuse an unprovisioned model in
+    milliseconds instead of paying nine seconds of ML import to say no."""
+    import contextlib
+    import json
+    import os
+    import tempfile
+
+    held = _read_record(models_dir)
+    held[f"{model}/{checkpoint}"] = {"repo": repo, "names": list(names)}
+    path = _record_path(models_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Through a temp file in the same directory. `_LOCK` orders writers
+    # inside ONE process, but a worker serving /search and a worker
+    # running /jobs/embed share a models_dir, and the read-modify-write
+    # above is where one of them loses the other's entry. `os.replace`
+    # also means no reader ever sees a half-written record.
+    fd, tmp = tempfile.mkstemp(prefix=".provisioned-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as out:
+            out.write(json.dumps(held, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def provisioned(models_dir: str, model: str, checkpoint: str) -> str | None:
+    """The recorded weight file, if this pair was ever provisioned here
+    and its bytes still sit in a cache -- answered from the record and
+    the hub cache alone, no ML import anywhere on the path."""
+    from vision.weights import hub_cached
+
+    held = _read_record(models_dir).get(f"{model}/{checkpoint}")
+    if held is None:
+        return None
+    for name in held["names"]:
+        found = hub_cached(held["repo"], name, models_dir)
+        if found is not None:
+            return found
+    return None
+
+
+def _unprovisioned(models_dir: str, model: str, checkpoint: str) -> LookupError:
+    return LookupError(
+        f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
+    )
+
+
+def _tag_text(tag: dict, key: str) -> str | None:
+    """One string-valued key of an open_clip pretrained-tag config.
+
+    The config is a heterogeneous dict -- `url`, `hf_hub`,
+    `interpolation` and `resize_mode` are strings while `mean` and `std`
+    are float triples, and `_pcfg` merges arbitrary `**kwargs` on top
+    (refs/mlfoundations/open_clip src/open_clip/pretrained.py:38-49). So
+    a value read out of it is that whole union until something says
+    which key it came from; this and `_tag_numbers` are that something,
+    and a key holding the wrong shape reads as absent rather than
+    travelling on into a factory argument.
+    """
+    value = tag.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _tag_numbers(tag: dict, key: str) -> tuple[float, ...] | None:
+    """One float-sequence key of an open_clip pretrained-tag config."""
+    value = tag.get(key)
+    if isinstance(value, (list, tuple)):
+        return tuple(float(one) for one in value)
+    return None
+
+
+def _hub_names(model: str, checkpoint: str) -> tuple[str, tuple[str, ...]] | None:
+    """The hub repo and candidate file names open_clip gives this tag,
+    or None for a tag that is not hub-hosted. Imports open_clip."""
+    import os
+
+    from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
+    from open_clip.pretrained import get_pretrained_cfg
+
+    hf_hub = _tag_text(get_pretrained_cfg(model, checkpoint) or {}, "hf_hub") or ""
+    if not hf_hub:
+        return None
+    repo, filename = os.path.split(hf_hub)
+    if not filename:
+        return repo, (HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME)
+    if filename.endswith((".bin", ".pth")):
+        return repo, (filename[:-4] + ".safetensors", filename)  # safetensors preferred, as upstream prefers it
+    return repo, (filename,)
+
+
 def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | None:
     """The exact weight file this checkpoint resolves to in the local
     cache, or None -- answered WITHOUT any network access.
@@ -108,23 +239,12 @@ def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | No
     which is how the first version of this guard downloaded 600MB
     while claiming it would not.
     """
-    import os
-
-    from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
-    from open_clip.pretrained import get_pretrained_cfg
-
     from vision.weights import hub_cached
 
-    hf_hub = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "")
-    if not hf_hub:
+    named = _hub_names(model, checkpoint)
+    if named is None:
         return None
-    repo, filename = os.path.split(hf_hub)
-    if not filename:
-        names = (HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME)
-    elif filename.endswith((".bin", ".pth")):
-        names = (filename[:-4] + ".safetensors", filename)  # safetensors preferred, as upstream prefers it
-    else:
-        names = (filename,)
+    repo, names = named
     for name in names:
         found = hub_cached(repo, name, models_dir)  # models_dir, then the machine's shared HF cache
         if found is not None:
@@ -151,9 +271,7 @@ class ClipBackend:
             # structurally incapable of it -- a local weight file is the
             # only thing it will hand to open_clip.
             if offline:
-                raise LookupError(
-                    f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
-                )
+                raise _unprovisioned(models_dir, model, checkpoint)
             loaded, _train_tf, preprocess = open_clip.create_model_and_transforms(
                 model, pretrained=checkpoint, cache_dir=models_dir
             )
@@ -171,10 +289,10 @@ class ClipBackend:
                 model,
                 pretrained=found,
                 cache_dir=models_dir,
-                image_mean=tag.get("mean"),
-                image_std=tag.get("std"),
-                image_interpolation=tag.get("interpolation"),
-                image_resize_mode=tag.get("resize_mode"),
+                image_mean=_tag_numbers(tag, "mean"),
+                image_std=_tag_numbers(tag, "std"),
+                image_interpolation=_tag_text(tag, "interpolation"),
+                image_resize_mode=_tag_text(tag, "resize_mode"),
             )
         # the factory returns nn.Module; the two encode_* links live on
         # the contrastive classes, and only those are a space here
@@ -189,6 +307,12 @@ class ClipBackend:
         loaded.eval()  # models construct in train mode; see module docstring
         self.model = loaded.to(self.device)
         self.dimensions = int(self.encode_query("probe").shape[0])
+        # This load proved the weights exist; write the coordinates down
+        # so the next unprovisioned refusal never has to import anything
+        # to know them (see `provisioned`).
+        named = _hub_names(model, checkpoint)
+        if named is not None:
+            record_provision(models_dir, model, checkpoint, named[0], named[1])
 
     @property
     def model_id(self) -> str:
@@ -200,13 +324,87 @@ class ClipBackend:
     def encode_media(self, media):
         """One MediaRef to one unit-length vector. CLIP consumes exactly
         one frame, so every kind of media enters through the reference's
-        canonical representative frame."""
+        canonical representative frame.
+
+        The three stages are named separately because they are three
+        different machines and they do not cost alike. Measured over a
+        real job, the whole of this was 52% of an item under one label,
+        which says nothing about whether the answer is a cheaper raster,
+        a bigger batch, or a faster copy. `media.phase` is the runner's
+        reporter when there is one and does nothing when there is not.
+        """
         import torch
 
-        tensor = self.preprocess(media.frame().convert("RGB")).unsqueeze(0).to(self.device)
+        media.phase("preprocess", model=self.model_name)
+        tensor = self.preprocess(media.frame().convert("RGB")).unsqueeze(0)
+        media.phase("to-device")
+        tensor = tensor.to(self.device)
+        media.phase("inference", batch=1)
         with torch.no_grad():
             features = self.model.encode_image(tensor, normalize=True)
+        # `from-device` is where this program actually waits for the GPU:
+        # `.cpu()` blocks until the result exists. The phase boundaries
+        # above are host time, which is what a phase boundary can honestly
+        # be without changing the program.
+        #
+        # An earlier version put `torch.cuda.synchronize()` at each
+        # boundary so every phase would read as its own GPU cost. It gave
+        # a tidier table and a slower encoder: synchronize waits for ALL
+        # kernels in ALL streams on the device, so it fences exactly the
+        # overlap that batching exists to create. Measuring by preventing
+        # the thing being measured. Per-kernel GPU time, if it is ever
+        # wanted, is torch.cuda.Event with enable_timing -- it timestamps
+        # on the stream and is resolved when something waits anyway.
+        media.phase("from-device")
         return features[0].cpu().float().numpy()
+
+    def encode_many(self, framers):
+        """Many pictures to many unit-length vectors, in one pass.
+
+        `framers` are zero-argument callables that each produce one PIL
+        frame -- not the frames themselves. Decoding is what makes a
+        batch expensive to hold: sixty-four 22-megapixel frames is four
+        gigabytes, while sixty-four preprocessed tensors is thirty-eight
+        megabytes. Each worker therefore decodes ITS picture and shrinks
+        it immediately, so what accumulates is the small thing and what
+        exists at once is one frame per thread.
+
+        Measured against calling encode_media in a loop, per image:
+
+            preprocess    8.13 ms  ->  1.83 ms   threads, bit-identical
+            inference     7.00 ms  ->  1.17 ms   batch 64
+            copy back     one per image -> one per batch
+
+        Threads help because PIL's resize and torch's normalise both drop
+        the GIL, and the tensors they produce are identical to the serial
+        ones -- checked, not assumed. Batch 64 is where throughput
+        plateaus on this hardware; 128 and 256 are within 5% and cost
+        VRAM (`just bench clip-batch`).
+
+        Nothing is pinned and no second stream is used. Both are needed
+        together to overlap a copy with a kernel, and there is nothing
+        here to overlap WITH: one batch goes over, one batch comes back.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        import torch
+
+        if not framers:
+            return []
+
+        def prepared(framer):
+            with framer() as frame:
+                return self.preprocess(frame.convert("RGB"))
+
+        if len(framers) == 1:
+            stacked = torch.stack([prepared(framers[0])])
+        else:
+            with ThreadPoolExecutor(min(BATCH_WORKERS, len(framers))) as pool:
+                stacked = torch.stack(list(pool.map(prepared, framers)))
+        with torch.no_grad():
+            features = self.model.encode_image(stacked.to(self.device), normalize=True)
+        # One copy back for the whole batch rather than one per picture.
+        return list(features.cpu().float().numpy())
 
     def encode_query(self, text: str):
         """One phrase to one unit-length vector, in the same space."""
@@ -225,8 +423,22 @@ _LOCK = threading.Lock()
 
 
 def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *, offline: bool = False) -> ClipBackend:
-    key = (str(models_dir), model, checkpoint)
+    key = (models_dir, model, checkpoint)
     with _LOCK:
         if key not in _LOADED:
-            _LOADED[key] = ClipBackend(str(models_dir), model, checkpoint, offline=offline)
+            # The offline refusal must not cost torch's import: without
+            # this record check the 400 for an unprovisioned model paid
+            # ~9s of open_clip+torch just to say no (measured in
+            # test_search_never_downloads_a_model). ClipBackend keeps its
+            # own guard for the path that really loads.
+            #
+            # So the RECORD is authoritative here, not the cache: weights
+            # another tool dropped into the shared HF cache, or weights
+            # whose record was wiped, refuse offline until /jobs/embed
+            # writes the record back. That is the trade -- reading the
+            # cache instead needs `_hub_names`, whose import is the nine
+            # seconds this check exists to avoid.
+            if offline and provisioned(models_dir, model, checkpoint) is None:
+                raise _unprovisioned(models_dir, model, checkpoint)
+            _LOADED[key] = ClipBackend(models_dir, model, checkpoint, offline=offline)
         return _LOADED[key]

@@ -63,6 +63,18 @@ class MediaRef:
     path: str
     kind: str  # 'image' | 'animated_image' | 'video'
     frame: Callable[[], Any]
+    #: Name the stretch of work about to happen, so the job's own ledger
+    #: can say where an item's time went. An adapter calls
+    #: `media.phase("preprocess")` and the runner turns that into a
+    #: `phase.finished` row carrying its duration.
+    #:
+    #: Passed IN rather than reached for, because the reporter lives in
+    #: db/runner.py and this package must not import db -- db/oriented.py
+    #: already imports vision/decode, and a link the other way would
+    #: close the loop. The default does nothing, so an adapter used
+    #: outside a job, or a test that builds a MediaRef by hand, needs no
+    #: reporter and no branch.
+    phase: Callable[..., None] = lambda name, **data: None
 
 
 #: provider name -> module path. A provider not in this table is a
@@ -116,6 +128,9 @@ def policy_hash(provider: str, model: str, checkpoint: str) -> str:
 
     policy = query_policy(provider, model, checkpoint)
     spelled = json.dumps(policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    # 24 on purpose, wider than db/naming.py's 16: this token is stored
+    # as provenance on every prompt vector and never re-derived, so it
+    # takes the extra width while it is cheap.
     return "q" + hashlib.sha256(spelled.encode("utf-8")).hexdigest()[:24]
 
 

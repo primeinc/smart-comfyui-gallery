@@ -1,0 +1,341 @@
+// The authored strip: favorite, rating and album membership for the
+// media item on screen -- the same markup in the full page and the
+// lightbox, because /i/{slug} has one state.
+//
+// Every write states the DESIRED FINAL FACT (favorite=true, rating=4,
+// member=false), so a retry is harmless, and the strip redraws from the
+// response's authoritative state, never from its own click.
+//
+// After a commit the library generation has moved (data_version bumps
+// on every commit) while the mounted answer usually has not. The
+// coherence check asks locate for the walked context's (currency,
+// answer) pair: same answer -> adopt the new currency in place, so the
+// next arrow does not 409 over an unchanged answer; different answer or
+// no longer in it -> the mounted walk is really stale, redraw whole.
+//
+// Every request here goes through the generated contract, so the three
+// desired-state routes are three named calls rather than one function
+// that concatenated a path fragment onto a slug and hoped.
+import { type Answered, answered, api } from "./api";
+import { say } from "./ask";
+import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
+import type { components, paths } from "./generated/api";
+import { register } from "./keys";
+
+type AuthoredState = components["schemas"]["AuthoredState"];
+type AuthoredAnswer = components["schemas"]["AuthoredAnswer"];
+type LocateQuery = NonNullable<paths["/g/locate/{slug}"]["get"]["parameters"]["query"]>;
+
+const draw = (root: HTMLElement, authored: AuthoredState) => {
+  requireElement(root, "[data-fav]", HTMLElement).setAttribute("aria-pressed", authored.favorite ? "true" : "false");
+  const stars = requireElement(root, "[data-stars]", HTMLElement);
+  stars.dataset.rating = String(authored.rating ?? 0);
+  for (const star of everyElement(stars, "[data-rate]", HTMLElement)) {
+    const n = Number(requireData(star, "rate"));
+    if (n > 0) {
+      star.setAttribute("aria-pressed", authored.rating !== null && authored.rating >= n ? "true" : "false");
+    }
+  }
+  const tags = requireElement(root, "[data-tags]", HTMLElement);
+  tags.replaceChildren(
+    ...authored.tags.map((held) => {
+      const chip = document.createElement("span");
+      chip.className = "authored-tag";
+      chip.dataset.tag = held.tag;
+      const link = document.createElement("a");
+      // The same spelling the filter drawer writes, so arriving from a
+      // picture and arriving from the drawer are ONE question.
+      link.href = `/g?f=${encodeURIComponent(`tag:eq:${held.tag}`)}`;
+      link.textContent = held.label;
+      const off = document.createElement("button");
+      off.type = "button";
+      off.className = "authored-untag";
+      off.dataset.untag = held.tag;
+      off.title = `remove ${held.label}`;
+      off.setAttribute("aria-label", `remove ${held.label}`);
+      off.textContent = "×";
+      chip.append(link, off);
+      return chip;
+    }),
+  );
+  const albums = requireElement(root, "[data-albums]", HTMLElement);
+  albums.replaceChildren(
+    ...authored.collections.map((held) => {
+      const link = document.createElement("a");
+      link.href = `/t/${held.slug}`;
+      link.textContent = held.name;
+      return link;
+    }),
+  );
+};
+
+// The mounted result-set surfaces this item is being walked over:
+// the lightbox fragment and/or the gallery grid behind it.
+const mounted = (): HTMLElement[] =>
+  [findElement(document, "[data-lightbox]", HTMLElement), findElement(document, "[data-grid]", HTMLElement)].filter(
+    (one): one is HTMLElement => one !== null,
+  );
+
+/**
+ * The mounted question, as locate's own declared parameters.
+ *
+ * The strip carries the walked question as a query string in `data-qs`.
+ * Spelling it out against the contract's parameter type is what makes the
+ * repeated `f` survive: an object built from the string wholesale would keep
+ * only the last facet, and a two-facet view would locate against a one-facet
+ * question.
+ */
+const asked = (qs: string | undefined): LocateQuery => {
+  const question = new URLSearchParams(qs ?? "");
+  // null, never undefined: the contract spells an absent parameter
+  // `str | None`, and under exactOptionalPropertyTypes a property that is
+  // present and undefined is not the same as one that is absent.
+  const one = (name: string) => question.get(name);
+  const counted = (name: string) => {
+    const held = question.get(name);
+    return held === null ? null : Number(held);
+  };
+  return {
+    folder: one("folder"),
+    album: one("album"),
+    person: one("person"),
+    artifact: one("artifact"),
+    kind: one("kind"),
+    favorite: one("favorite"),
+    rating_min: counted("rating_min"),
+    q: one("q"),
+    f: question.getAll("f"),
+    sort: one("sort"),
+    size: counted("size"),
+  };
+};
+
+const settle = async (root: HTMLElement) => {
+  const surfaces = mounted();
+  if (!surfaces.length) return;
+  const { data, error } = await api.GET("/g/locate/{slug}", {
+    params: { path: { slug: requireData(root, "slug") }, query: asked(root.dataset.qs) },
+  });
+  if (error || !data) {
+    window.location.reload();
+    return;
+  }
+  const held = surfaces[0]?.dataset.answer ?? "";
+  if (!data.in_answer || (held && data.answer !== held)) {
+    // The walked answer really changed -- the URL owns the state.
+    window.location.reload();
+    return;
+  }
+  for (const surface of surfaces) {
+    surface.dataset.currency = data.currency;
+    surface.dataset.answer = data.answer;
+  }
+};
+
+/**
+ * Redraw from the authoritative answer, then check the mounted walk.
+ *
+ * A refusal is said out loud. It used to return null and the strip simply
+ * did not change, which looks exactly like a click that missed.
+ */
+const applied = async (root: HTMLElement, told: Answered<AuthoredAnswer>) => {
+  if (!told.ok) {
+    await say(told.refusal);
+    return;
+  }
+  draw(root, told.data.authored);
+  await settle(root);
+};
+
+const setFavorite = async (root: HTMLElement, value: boolean) => {
+  const told = await api.POST("/i/{slug}/favorite", {
+    params: { path: { slug: requireData(root, "slug") } },
+    body: { value },
+  });
+  await applied(root, answered(told, "the favorite could not be recorded"));
+};
+
+const setRating = async (root: HTMLElement, value: number | null) => {
+  const told = await api.POST("/i/{slug}/rating", {
+    params: { path: { slug: requireData(root, "slug") } },
+    body: { value },
+  });
+  await applied(root, answered(told, "the rating could not be recorded"));
+};
+
+const setMembership = async (root: HTMLElement, collection: string, value: boolean) => {
+  const told = await api.POST("/i/{slug}/collections/{collection}", {
+    params: { path: { slug: requireData(root, "slug"), collection } },
+    body: { value },
+  });
+  await applied(root, answered(told, "the album membership could not be recorded"));
+};
+
+const setTag = async (root: HTMLElement, name: string, value: boolean) => {
+  const told = await api.POST("/i/{slug}/tags", {
+    params: { path: { slug: requireData(root, "slug") } },
+    body: { name, value },
+  });
+  await applied(root, answered(told, "the keyword could not be recorded"));
+};
+
+/**
+ * What this library already calls things, offered as the box is entered.
+ *
+ * Typos are the whole keyword problem: a vocabulary is only worth having
+ * if the same picture-idea gets the same word every time, and nobody
+ * remembers whether they wrote "seaside" or "sea side" last year. Filled
+ * ONCE per surface -- a list that refetched on every focus would be a
+ * request per keystroke of hesitation, for an answer that does not move.
+ */
+const suggest = async (root: HTMLElement) => {
+  const list = requireElement(root, "[data-keyword-list]", HTMLElement);
+  if (list.dataset.filled) return;
+  list.dataset.filled = "1";
+  const told = await api.GET("/g/options", { params: { query: { key: "tag" } } });
+  if (told.error || !told.data) return;
+  list.replaceChildren(
+    ...told.data.options.map((one) => {
+      const choice = document.createElement("option");
+      choice.value = one.label;
+      return choice;
+    }),
+  );
+};
+
+const choices = async (root: HTMLElement) => {
+  const box = requireElement(root, "[data-album-choices]", HTMLElement);
+  if (!box.hidden) {
+    box.hidden = true;
+    return;
+  }
+  const told = answered(
+    await api.GET("/i/{slug}/collection-choices", { params: { path: { slug: requireData(root, "slug") } } }),
+    "the albums could not be read",
+  );
+  if (!told.ok) {
+    await say(told.refusal);
+    return;
+  }
+  const data = told.data;
+  box.replaceChildren(
+    ...data.map((one) => {
+      const row = document.createElement("label");
+      const tick = document.createElement("input");
+      tick.type = "checkbox";
+      tick.checked = one.filed;
+      tick.addEventListener("change", () => {
+        void setMembership(root, one.slug, tick.checked);
+      });
+      row.append(tick, ` ${one.name}`);
+      return row;
+    }),
+  );
+  if (!data.length) box.textContent = "no albums yet — make one on /albums";
+  box.hidden = false;
+};
+
+const pressed = (root: HTMLElement) =>
+  requireElement(root, "[data-fav]", HTMLElement).getAttribute("aria-pressed") === "true";
+
+document.addEventListener("click", (event) => {
+  const root = closestFrom(event.target, "[data-authored]", HTMLElement);
+  if (!root) return;
+  if (closestFrom(event.target, "[data-fav]", HTMLElement)) {
+    void setFavorite(root, !pressed(root));
+    return;
+  }
+  const star = closestFrom(event.target, "[data-rate]", HTMLElement);
+  if (star) {
+    const n = Number(requireData(star, "rate"));
+    void setRating(root, n > 0 ? n : null);
+    return;
+  }
+  const off = closestFrom(event.target, "[data-untag]", HTMLElement);
+  if (off) {
+    void setTag(root, requireData(off, "untag"), false);
+    return;
+  }
+  if (closestFrom(event.target, "[data-album-picker]", HTMLElement)) void choices(root);
+});
+
+// A form, so Enter is the gesture and the browser owns it. The box is
+// cleared BEFORE the write lands: the next word is what somebody is
+// already typing, and a box that empties on the response drops keystrokes.
+document.addEventListener("submit", (event) => {
+  const form = closestFrom(event.target, "[data-tagging]", HTMLElement);
+  if (!form) return;
+  event.preventDefault();
+  const root = closestFrom(form, "[data-authored]", HTMLElement);
+  if (!root) return;
+  const box = requireElement(form, "[data-tag-input]", HTMLInputElement);
+  const name = box.value.trim();
+  if (!name) return;
+  box.value = "";
+  void setTag(root, name, true);
+});
+
+document.addEventListener("focusin", (event) => {
+  const box = closestFrom(event.target, "[data-tag-input]", HTMLInputElement);
+  if (!box) return;
+  const root = closestFrom(box, "[data-authored]", HTMLElement);
+  if (root) void suggest(root);
+});
+
+/**
+ * The strip on the surface being looked at.
+ *
+ * The lightbox's, when one is mounted: the grid behind it carries its own
+ * markup, and a key pressed over an open picture means that picture.
+ */
+const strip = (): HTMLElement | null =>
+  findElement(document, "[data-lightbox] [data-authored]", HTMLElement) ??
+  findElement(document, "[data-authored]", HTMLElement);
+
+// Registered, not listened for: these keys and the viewer's ship in the
+// same bundle on the same surfaces, and a second claim on one of them is
+// refused where it is made rather than firing twice (frontend/src/keys.ts).
+// 1-5 stay ratings because every photo tool spells them that way, so the
+// viewer's framing moved to Z rather than these moving anywhere.
+register([
+  {
+    key: "f",
+    by: "authored: favorite",
+    run: () => {
+      const root = strip();
+      if (root) void setFavorite(root, !pressed(root));
+    },
+  },
+  {
+    key: "a",
+    by: "authored: albums",
+    run: () => {
+      const root = strip();
+      if (root) void choices(root);
+    },
+  },
+  {
+    key: "t",
+    by: "authored: keyword",
+    run: () => {
+      const root = strip();
+      if (root) findElement(root, "[data-tag-input]", HTMLInputElement)?.focus();
+    },
+  },
+  ...[1, 2, 3, 4, 5].map((stars) => ({
+    key: String(stars),
+    by: `authored: ${stars} star${stars === 1 ? "" : "s"}`,
+    run: () => {
+      const root = strip();
+      if (root) void setRating(root, stars);
+    },
+  })),
+  {
+    key: "0",
+    by: "authored: clear rating",
+    run: () => {
+      const root = strip();
+      if (root) void setRating(root, null);
+    },
+  },
+]);

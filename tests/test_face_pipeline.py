@@ -9,30 +9,26 @@ formed clusters by writing the answer down and then checking the answer.
 from __future__ import annotations
 
 import io
-import pathlib
 from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from db import connect, derived, detect, grouping, oriented, scan, similarity
+from db import derived, detect, grouping, oriented, scan, similarity
+from tests.staging import fresh_schema
 from vision import decode
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-
-
-@pytest.fixture(scope="module")
-def ddl():
-    return SCHEMA.read_text(encoding="utf-8")
 
 
 @pytest.fixture
-def db(ddl):
-    conn = connect.memory()
-    conn.executescript(ddl)
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+def db():
+    """The schema, from the per-process master rather than the DDL.
+
+    `executescript` of the whole schema is ~11 ms and a backup from a
+    master built once is ~0.5 ms (tests/staging.py `fresh_schema`, whose
+    measurements these are). Every test here starts from exactly this.
+    """
+    return fresh_schema()
 
 
 def library(conn, files: int, root_path: str = "C:/lib") -> list[int]:

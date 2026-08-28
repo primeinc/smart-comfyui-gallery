@@ -9,17 +9,16 @@ nothing rather than a made-up date.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 
-from litestar.testing import TestClient
+import pytest
 from PIL import Image
 
 from db import collections, connect, naming, runner
-from sg_web.app import build_app
+from tests.staging import JUNE_10, NOW, hosting
 
-NOW = 1_700_000_000.0
-JUNE_10 = 1_686_355_200.0  # 2023-06-10 00:00 as a wall clock
 FIRST = JUNE_10 + 14 * 3600 + 23 * 60 + 1
 LAST = JUNE_10 + 2 * 86400 + 9 * 3600
 AS_MACHINE = {"accept": "application/json"}
@@ -29,6 +28,20 @@ def _plain(path: pathlib.Path, at: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (12, 12), (30, 60, 90)).save(path)
     os.utime(path, (at, at))
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "test_a_shelf_says_when") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application for both tests: each writes its own library and
+    registers it as root 1 over a restored empty home."""
+    _world.restore()
+    return _world.client
 
 
 def _drain(client) -> None:
@@ -41,7 +54,7 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
-def test_the_context_sweep_is_for_what_is_missing(tmp_path, monkeypatch):
+def test_the_context_sweep_is_for_what_is_missing(tmp_path, served, monkeypatch):
     """Interpreted files are not items again; a staled file is; a policy
     bump puts every file back; `everything` does too."""
     from db import context
@@ -49,7 +62,7 @@ def test_the_context_sweep_is_for_what_is_missing(tmp_path, monkeypatch):
     root = tmp_path / "lib"
     _plain(root / "a.png", NOW)
     _plain(root / "b.png", NOW)
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         client.post("/jobs/ingest")
@@ -78,12 +91,12 @@ def test_the_context_sweep_is_for_what_is_missing(tmp_path, monkeypatch):
         assert client.post("/jobs/context", params={"everything": "true"}).json()["total"] == 2
 
 
-def test_folders_and_albums_carry_the_span_of_their_pictures(tmp_path):
+def test_folders_and_albums_carry_the_span_of_their_pictures(tmp_path, served):
     root = tmp_path / "lib"
     _plain(root / "shots" / "Screenshot 2023-06-10 at 14.23.01.png", NOW)
     _plain(root / "shots" / "deeper" / "Screenshot 2023-06-12 at 09.00.00.png", NOW)
     _plain(root / "empty" / "nothing.txt".replace(".txt", ".png"), NOW)
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         before = client.get("/folders", headers=AS_MACHINE).json()
@@ -102,7 +115,7 @@ def test_folders_and_albums_carry_the_span_of_their_pictures(tmp_path):
         page = client.get("/folders", headers={"accept": "text/html"}).text
         assert f'data-epoch="{FIRST}"' in page
         assert "data-seen" in page
-        assert "/static/timeline.js" in page, "the page spells its epochs"
+        assert "/static/build/timeline.js" in page, "the page spells its epochs"
 
         made = client.post("/albums", json={"name": "Trip", "kind": "album"})
         assert made.status_code < 300, made.text

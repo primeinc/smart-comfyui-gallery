@@ -12,19 +12,22 @@ Nothing here samples, compacts or ages out. A 22,000-file sweep leaves
 44,000 rows; a reader pages them (`since`, `for_job`). Rendering may
 virtualize; storage may paginate; neither may drop an event.
 
-The vocabulary is closed in two places on purpose -- `TYPES` here and
-the CHECK on `job_event.type` in db/schema.sql -- and a contract test
-holds them equal, so an event nobody can render cannot be written and an
-event the schema allows cannot lack a renderer (sg_web/console.py).
+The vocabulary is spelled once, here, as a `Literal` beside the table
+that stores it: the wire restates it by importing it, never by copying
+it, and sglint SG709 holds it equal to the CHECK on `job_event.type` in
+db/schema.sql. So an event the schema refuses cannot be typed, and a
+test holds the other end -- an event the schema allows cannot lack a
+renderer (sg_web/console.py).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import typing
 
-#: Every event type the ledger accepts. Mirrored by the schema's CHECK.
-TYPES: tuple[str, ...] = (
+#: What a ledger event can be. Equal to the CHECK on job_event.type.
+EventType = typing.Literal[
     "job.submitted",
     "job.claimed",
     "job.reclaimed",
@@ -42,12 +45,21 @@ TYPES: tuple[str, ...] = (
     "phase.finished",
     "checkpoint.changed",
     "worker.turn_failed",
-)
+]
 
-SEVERITIES: tuple[str, ...] = ("info", "warning", "error")
+#: How loudly. Equal to the CHECK on job_event.severity.
+Severity = typing.Literal["info", "warning", "error"]
+
+#: The same two vocabularies as values, for the runtime refusals below.
+#: Derived, never restated: a member can only be added in one place.
+TYPES: tuple[EventType, ...] = typing.get_args(EventType)
+SEVERITIES: tuple[Severity, ...] = typing.get_args(Severity)
 
 #: Most rows one read returns. A caller wanting more pages.
 PAGE_MOST = 2_000
+#: The page a reader gets when it does not ask -- the ceiling is named
+#: above, and the default was unnamed at three signatures.
+PAGE_DEFAULT = 500
 
 _COLUMNS = "id, job_id, at, type, item_id, phase, severity, message, data"
 
@@ -125,15 +137,15 @@ def since(conn, after: int, *, limit: int = PAGE_MOST) -> list[dict]:
     backlog a reconnecting client asks for. One ordered index walk."""
     rows = conn.execute(
         "SELECT " + _COLUMNS + " FROM job_event WHERE id > ? ORDER BY id LIMIT ?",
-        (after, min(int(limit), PAGE_MOST)),
+        (after, min(limit, PAGE_MOST)),
     )
     return [_row(row) for row in rows]
 
 
-def latest(conn, *, limit: int = 500) -> list[dict]:
+def latest(conn, *, limit: int = PAGE_DEFAULT) -> list[dict]:
     """The newest `limit` events, ascending -- the cold tape."""
     rows = conn.execute(
-        "SELECT " + _COLUMNS + " FROM job_event ORDER BY id DESC LIMIT ?", (min(int(limit), PAGE_MOST),)
+        "SELECT " + _COLUMNS + " FROM job_event ORDER BY id DESC LIMIT ?", (min(limit, PAGE_MOST),)
     ).fetchall()
     return [_row(row) for row in reversed(rows)]
 
@@ -142,7 +154,7 @@ def for_job(conn, job_id: int, *, after: int = 0, limit: int = PAGE_MOST) -> lis
     """One job's events with id > `after`, ascending; rides job_event_job."""
     rows = conn.execute(
         "SELECT " + _COLUMNS + " FROM job_event WHERE job_id = ? AND id > ? ORDER BY id LIMIT ?",
-        (job_id, after, min(int(limit), PAGE_MOST)),
+        (job_id, after, min(limit, PAGE_MOST)),
     )
     return [_row(row) for row in rows]
 
@@ -150,7 +162,7 @@ def for_job(conn, job_id: int, *, after: int = 0, limit: int = PAGE_MOST) -> lis
 def before(conn, before_id: int, *, job_id: int | None = None, limit: int = PAGE_MOST) -> list[dict]:
     """The `limit` events with id < `before_id`, ascending -- the page
     above a held one, the whole ledger's or one job's."""
-    most = min(int(limit), PAGE_MOST)
+    most = min(limit, PAGE_MOST)
     if job_id is None:
         rows = conn.execute(
             "SELECT " + _COLUMNS + " FROM job_event WHERE id < ? ORDER BY id DESC LIMIT ?", (before_id, most)

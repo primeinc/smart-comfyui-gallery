@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
 import pathlib
 import sys
 import types
@@ -23,12 +24,10 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, evolution, ingest, planning, prompts, resultset, runner, settings, stories
-from tests.staging import Stage, staged
+from tests.staging import HOUR, NOW, Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 
 
@@ -232,7 +231,11 @@ def test_the_view_is_the_plans_structure_measured_without_writing_or_loading(pla
     # every member: frozen media identity, roles, facts, metrics in one space
     first = view["members"][0]
     assert first["media"]["name"] == "gen_0.png"
-    assert first["media"]["thumbnail"] == f"/thumb/{first['media']['slug']}"
+    # Content-addressed, because these files are hashed. The `/thumb/<slug>`
+    # route is the fallback for bytes ingest has not reached, and pointing
+    # at it for a hashed file costs a slug lookup per picture.
+    assert first["media"]["thumbnail"].startswith("/thumbs/"), first["media"]["thumbnail"]
+    assert first["media"]["thumbnail"].endswith(".webp")
     assert first["prompt"]["effective"]["main"] == PROMPTS[0]
     assert first["prompt"]["original"]["text"] == WRITTEN
     assert first["prompt"]["effective"]["prompt_id"] is not None
@@ -248,23 +251,26 @@ def test_the_view_is_the_plans_structure_measured_without_writing_or_loading(pla
     assert third["metrics"]["original_effective_cosine_unavailable"] == "no frozen original prompt"
     assert third["generation"]["loras"] == ["detail"]
     # transitions: O(n) consecutive pairs, boundary from the plan, exact deltas
-    assert [(t["from"], t["to"], t["phase_boundary"]) for t in view["transitions"]] == [
+    assert [(t["before"], t["after"], t["phase_boundary"]) for t in view["transitions"]] == [
         ("member-001", "member-002", False),
         ("member-002", "member-003", True),
     ]
     assert view["transitions"][0]["prompt_cosine"] == pytest.approx(
         float(_unit(PROMPTS[0]) @ _unit(PROMPTS[1])), abs=1e-3
     )
+    # a parameter is in `parameters` because it changed; an unchanged fact
+    # is absent from the list rather than present and null
     assert view["transitions"][0]["changes"] == {
-        "seed": {"from": 1, "to": 2},
+        "parameters": [{"name": "seed", "before": 1, "after": 2}],
         "loras_added": [],
         "loras_removed": [],
         "lora_uuids_added": [],
         "lora_uuids_removed": [],
     }
     assert view["transitions"][1]["changes"]["loras_added"] == ["detail"]
-    assert view["transitions"][1]["changes"]["seed"] == {"from": 2, "to": 3}
-    assert "model" not in view["transitions"][1]["changes"], "an unchanged fact is not a change"
+    changed = {one["name"]: one for one in view["transitions"][1]["changes"]["parameters"]}
+    assert changed["seed"] == {"name": "seed", "before": 2, "after": 3}
+    assert "model" not in changed, "an unchanged fact is not a change"
     # zero writes, zero model work
     assert after == before, "a GET wrote something"
     assert _ENCODERS[("toy", "v1")].calls == [], "a GET loaded or ran a model"
@@ -279,11 +285,11 @@ def test_the_page_draws_the_view_and_only_the_view(planned):
     page = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "text/html"})
     assert page.status_code == 200
     html = page.text
-    assert "data-evolution-view" in html
-    assert "/static/evolution.js" in html
+    assert "/static/build/evolution.js" in html
     assert 'data-tab="sequence"' in html
     assert 'data-tab="drift"' in html
-    assert "<script" in html
+    assert f'data-plan="{made.id}"' in html, "the shell names the plan; the explorer asks the route for the document"
+    assert "application/json" not in html, "the document is not serialized into the page to be parsed back out"
 
 
 def _synthetic(n: int, precision: str) -> tuple[dict, str]:
@@ -411,12 +417,174 @@ def test_unsequenced_plans_have_no_transitions_and_lead_with_families(planned):
     assert 'data-tab="families" class="on"' in html
 
 
-def test_the_view_is_immune_to_the_live_library_moving_on(planned):
+def test_no_space_yields_reasons_not_numbers(planned):
+    client, _root, _names, _snap, made = planned
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        settings.put(conn, "semantic_model", "fake:other/v9")
+        conn.commit()
+    finally:
+        connect.close(conn)
+    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
+    assert view["semantic"]["space_id"] is None
+    assert "no vectors recorded" in view["semantic"]["unavailable"]
+    assert all(m["metrics"]["text_image_cosine"] is None for m in view["members"])
+    assert all("no vectors recorded" in t["prompt_cosine_unavailable"] for t in view["transitions"])
+    assert view["transitions"][1]["changes"]["loras_added"] == ["detail"], "facts need no vectors"
+
+
+@pytest.mark.slow
+def test_a_thousand_members_are_o_n_work():
+    """No matrix: the transition count is n-1 and the module asks the
+    database a bounded number of statements however large the session.
+
+    Slow by construction and marked as such: a thousand synthetic members
+    are built, stored and read back. What it proves is a bound, so it is
+    worth a second in `just test-slow`; it is not worth a second on every
+    `just test`, and the marker's own definition is a call phase over one
+    second."""
+
+    from db import build
+
+    n = 1000
+    document, sha = _synthetic(n, "second")
+    conn = connect.memory()
+    try:
+        conn.executescript(build.schema_sql())
+        plan_id = _store(conn, document, sha)
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+        view = evolution.load(conn, plan_id, models_dir="unused")
+        conn.set_trace_callback(None)
+        assert len(view["members"]) == n
+        assert len(view["transitions"]) == n - 1
+        assert len(view["phases"]) == len(planning.load_plan(conn, plan_id)["phases"])
+        selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+        assert len(selects) < 40, f"{len(selects)} statements for {n} members: not bounded"
+    finally:
+        connect.close(conn)
+
+
+def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser(monkeypatch):
+    """An old plan under a newer prompt parser: the Explorer's prompt
+    inputs are the MAIN texts the snapshot froze, so the metrics do not
+    move when `prompt_sections.VERSION` does. The running parser is
+    never consulted for a member that carries a frozen main."""
+
+    from db import build, prompt_sections
+
+    document, sha = _synthetic(4, "second")
+    for member in document["members"]:
+        held = member["generation"]["prompts"][0]
+        held["main"] = f"frozen main {member['ordinal']}"
+        held["main_hash"] = prompts.text_hash(held["main"])
+        held["grammar"] = "swarm"
+        held["parser"] = prompt_sections.VERSION
+    sha = stories._identity(document)[1]
+    conn = connect.memory()
+    try:
+        conn.executescript(build.schema_sql())
+        plan_id = _store(conn, document, sha)
+        before = evolution.load(conn, plan_id, models_dir="unused")
+        assert [m["prompt"]["effective"]["main"] for m in before["members"]] == [f"frozen main {i}" for i in range(4)]
+
+        def never(*_a, **_k):
+            raise AssertionError("the running parser was consulted for a frozen main")
+
+        # `monkeypatch` rather than a try/finally: it restores on a
+        # failing assertion too, and rebinding a module's `def` and its
+        # VERSION literal is not an assignment a type checker will take.
+        monkeypatch.setattr(prompt_sections, "VERSION", prompt_sections.VERSION + 1)
+        monkeypatch.setattr(prompt_sections, "main", never)
+        after = evolution.load(conn, plan_id, models_dir="unused")
+        monkeypatch.undo()
+        assert [m["prompt"] for m in after["members"]] == [m["prompt"] for m in before["members"]]
+        assert [t["changes"] for t in after["transitions"]] == [t["changes"] for t in before["transitions"]]
+        assert [m["metrics"] for m in after["members"]] == [m["metrics"] for m in before["members"]]
+    finally:
+        connect.close(conn)
+
+
+def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
+    """Two different LoRA files that share a display name CHANGED; one
+    file renamed between members did NOT."""
+
+    from db import build
+
+    document, sha = _synthetic(3, "second")
+    loras = [
+        {"role": "lora", "uuid": "a" * 32, "name": "detail", "weight": 1.0},
+        {"role": "lora", "uuid": "b" * 32, "name": "detail", "weight": 1.0},
+        {"role": "lora", "uuid": "b" * 32, "name": "detail-renamed", "weight": 1.0},
+    ]
+    for member, lora in zip(document["members"], loras, strict=True):
+        member["generation"]["artifacts"] = [lora]
+    sha = stories._identity(document)[1]
+    conn = connect.memory()
+    try:
+        conn.executescript(build.schema_sql())
+        plan_id = _store(conn, document, sha)
+        view = evolution.load(conn, plan_id, models_dir="unused")
+        first, second = (t["changes"] for t in view["transitions"])
+        assert (first["lora_uuids_added"], first["lora_uuids_removed"]) == (["b" * 32], ["a" * 32])
+        assert (first["loras_added"], first["loras_removed"]) == (["detail"], ["detail"]), "same name, different file"
+        assert (second["lora_uuids_added"], second["lora_uuids_removed"], second["loras_added"]) == ([], [], []), (
+            "a rename is not a change"
+        )
+    finally:
+        connect.close(conn)
+
+
+def test_the_module_returns_identities_and_the_route_addresses_them(planned):
+    """`db/evolution.py` owns no URL: members carry slug and the session
+    its local day; the web Adapter turns those into thumbnail, page
+    and links."""
+    client, _root, _names, _snap, made = planned
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        raw = evolution.load(conn, made.id, models_dir="unused")
+    finally:
+        connect.close(conn)
+    assert "thumbnail" not in raw["members"][0]["media"]
+    assert "links" not in raw
+    assert raw["identities"]["local_day"] is not None
+    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
+    assert view["members"][0]["media"]["thumbnail"].startswith("/thumbs/")
+    assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
+    assert view["links"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
+    assert view["links"]["search"].startswith("/search")
+
+
+# The only test here that changes the library on disk -- it replaces one
+# file's bytes and deletes another -- and `Stage.restore` compares the
+# library's (size, mtime) listing before anything else, so a mismatch
+# sends the NEXT test down the rebuild path: a whole fresh application,
+# library, scan and plan, 0.41s against the 0.01s a restore costs.
+#
+# It used to answer that by being last in the file. That is not an
+# ordering anything guarantees: pytest-testmon selects by coverage and
+# runs what it selected in ITS order, which put this seventh of nine
+# under `just prove-push` and cost the module a rebuild `_rebuilt_none`
+# then reported against whichever test happened to end the run.
+#
+# So it puts the library back instead, which holds in every order. Both
+# mutations are recoverable: `_listing` keys on (size, mtime), the bytes
+# are known, and `os.utime` restores a stamp -- so the deleted file goes
+# back as the same file, not merely as one with the same name.
+def test_the_view_is_immune_to_the_live_library_moving_on(planned, request):
     """The relation changes, a file is replaced, a file is gone: the view
     over the frozen plan reads frozen hashes and frozen bytes only --
     the replacement's vector is never substituted, and what cannot be
     measured says why."""
     client, root, _names, _snap, made = planned
+    held = {at: ((root / at).read_bytes(), (root / at).stat()) for at in ("gen_1.png", "gen_2.png")}
+
+    def put_back() -> None:
+        for at, (was, stamped) in held.items():
+            (root / at).write_bytes(was)
+            os.utime(root / at, ns=(stamped.st_atime_ns, stamped.st_mtime_ns))
+
+    request.addfinalizer(put_back)
     before = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
     conn = connect.connect(client.app.state.db_path)
     try:
@@ -450,127 +618,3 @@ def test_the_view_is_immune_to_the_live_library_moving_on(planned):
     client.post("/roots/1/scan")
     view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
     assert view["members"][2]["media"]["name"] == "gen_2.png"
-
-
-def test_no_space_yields_reasons_not_numbers(planned):
-    client, _root, _names, _snap, made = planned
-    conn = connect.connect(client.app.state.db_path)
-    try:
-        settings.put(conn, "semantic_model", "fake:other/v9")
-        conn.commit()
-    finally:
-        connect.close(conn)
-    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
-    assert view["semantic"]["space_id"] is None
-    assert "no vectors recorded" in view["semantic"]["unavailable"]
-    assert all(m["metrics"]["text_image_cosine"] is None for m in view["members"])
-    assert all("no vectors recorded" in t["prompt_cosine_unavailable"] for t in view["transitions"])
-    assert view["transitions"][1]["changes"]["loras_added"] == ["detail"], "facts need no vectors"
-
-
-def test_a_thousand_members_are_o_n_work():
-    """No matrix: the transition count is n-1 and the module asks the
-    database a bounded number of statements however large the session."""
-
-    from db import build
-
-    n = 1000
-    document, sha = _synthetic(n, "second")
-    conn = connect.memory()
-    conn.executescript(build.schema_sql())
-    plan_id = _store(conn, document, sha)
-    statements: list[str] = []
-    conn.set_trace_callback(statements.append)
-    view = evolution.load(conn, plan_id, models_dir="unused")
-    conn.set_trace_callback(None)
-    assert len(view["members"]) == n
-    assert len(view["transitions"]) == n - 1
-    assert len(view["phases"]) == len(planning.load_plan(conn, plan_id)["phases"])
-    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
-    assert len(selects) < 40, f"{len(selects)} statements for {n} members: not bounded"
-
-
-def test_the_view_reads_the_mains_the_snapshot_froze_not_the_running_parser():
-    """An old plan under a newer prompt parser: the Explorer's prompt
-    inputs are the MAIN texts the snapshot froze, so the metrics do not
-    move when `prompt_sections.VERSION` does. The running parser is
-    never consulted for a member that carries a frozen main."""
-
-    from db import build, prompt_sections
-
-    document, sha = _synthetic(4, "second")
-    for member in document["members"]:
-        held = member["generation"]["prompts"][0]
-        held["main"] = f"frozen main {member['ordinal']}"
-        held["main_hash"] = prompts.text_hash(held["main"])
-        held["grammar"] = "swarm"
-        held["parser"] = prompt_sections.VERSION
-    sha = stories._identity(document)[1]
-    conn = connect.memory()
-    conn.executescript(build.schema_sql())
-    plan_id = _store(conn, document, sha)
-    before = evolution.load(conn, plan_id, models_dir="unused")
-    assert [m["prompt"]["effective"]["main"] for m in before["members"]] == [f"frozen main {i}" for i in range(4)]
-
-    def never(*_a, **_k):
-        raise AssertionError("the running parser was consulted for a frozen main")
-
-    original_version = prompt_sections.VERSION
-    original_main = prompt_sections.main
-    try:
-        prompt_sections.VERSION = original_version + 1
-        prompt_sections.main = never
-        after = evolution.load(conn, plan_id, models_dir="unused")
-    finally:
-        prompt_sections.VERSION = original_version
-        prompt_sections.main = original_main
-    assert [m["prompt"] for m in after["members"]] == [m["prompt"] for m in before["members"]]
-    assert [t["changes"] for t in after["transitions"]] == [t["changes"] for t in before["transitions"]]
-    assert [m["metrics"] for m in after["members"]] == [m["metrics"] for m in before["members"]]
-
-
-def test_artifact_deltas_are_by_frozen_identity_and_spelled_by_frozen_name():
-    """Two different LoRA files that share a display name CHANGED; one
-    file renamed between members did NOT."""
-
-    from db import build
-
-    document, sha = _synthetic(3, "second")
-    loras = [
-        {"role": "lora", "uuid": "a" * 32, "name": "detail", "weight": 1.0},
-        {"role": "lora", "uuid": "b" * 32, "name": "detail", "weight": 1.0},
-        {"role": "lora", "uuid": "b" * 32, "name": "detail-renamed", "weight": 1.0},
-    ]
-    for member, lora in zip(document["members"], loras, strict=True):
-        member["generation"]["artifacts"] = [lora]
-    sha = stories._identity(document)[1]
-    conn = connect.memory()
-    conn.executescript(build.schema_sql())
-    plan_id = _store(conn, document, sha)
-    view = evolution.load(conn, plan_id, models_dir="unused")
-    first, second = (t["changes"] for t in view["transitions"])
-    assert (first["lora_uuids_added"], first["lora_uuids_removed"]) == (["b" * 32], ["a" * 32])
-    assert (first["loras_added"], first["loras_removed"]) == (["detail"], ["detail"]), "same name, different file"
-    assert (second["lora_uuids_added"], second["lora_uuids_removed"], second["loras_added"]) == ([], [], []), (
-        "a rename is not a change"
-    )
-
-
-def test_the_module_returns_identities_and_the_route_addresses_them(planned):
-    """`db/evolution.py` owns no URL: members carry slug and the session
-    its local day; the web Adapter turns those into thumbnail, page
-    and links."""
-    client, _root, _names, _snap, made = planned
-    conn = connect.connect(client.app.state.db_path)
-    try:
-        raw = evolution.load(conn, made.id, models_dir="unused")
-    finally:
-        connect.close(conn)
-    assert "thumbnail" not in raw["members"][0]["media"]
-    assert "links" not in raw
-    assert raw["identities"]["local_day"] is not None
-    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
-    assert view["members"][0]["media"]["thumbnail"] == f"/thumb/{view['members'][0]['media']['slug']}"
-    assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
-    assert view["links"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
-    assert view["links"]["search"].startswith("/search")

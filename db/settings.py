@@ -13,6 +13,35 @@ setting that sits in the table and configures nothing.
 
 from __future__ import annotations
 
+import typing
+
+#: Whether a held Alt turns the viewer's wheel into a step through the
+#: walk rather than a zoom, and nothing else. "none" leaves the wheel to
+#: zoom alone.
+#:
+#: Two modifiers are deliberately NOT offered, because three booleans on a
+#: WheelEvent are not three interchangeable answers:
+#:
+#: `ctrl` is unsafe. A trackpad pinch reaches the page as a wheel event
+#: with `ctrlKey` set -- that is how browsers deliver pinch-to-zoom (MDN,
+#: Element: wheel event; MouseEvent.ctrlKey) -- so a ctrl walk would mean
+#: pinching a photograph skipped to the next one.
+#:
+#: `shift` is already spoken for: a browser reads shift+wheel as
+#: horizontal scroll, and taking it would swallow a gesture the person may
+#: have meant for the page.
+#:
+#: Alt is the one nothing else has claimed, which is the whole reason it
+#: is the default and now the only choice. The unchosen modifiers keep
+#: whatever the browser does with them -- the viewer calls preventDefault
+#: only for the gestures it actually acts on (frontend/src/viewer.ts).
+#:
+#: Spelled as a Literal so the browser is typed against the same closed
+#: set the registry validates writes with -- one vocabulary, two readers,
+#: the way db/ledger.py owns the event types.
+WheelModifier = typing.Literal["alt", "none"]
+WHEEL_MODIFIERS: tuple[WheelModifier, ...] = typing.get_args(WheelModifier)
+
 #: Every setting this application has, with its default and, where the
 #: value is an enumeration, the choices. A None choice set means free text.
 REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
@@ -74,6 +103,29 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # positive pHash proposes (144 of 183 at pHash radius 16).
     # Validated at submit, 0..63.
     "dupe_dhash_verify": ("8", None),
+    # The cosine similarity at which two faces are taken to be the same
+    # person. "auto" is the measured per-embedder operating point
+    # (db/derived.py SAME_PERSON) and is what this should stay unless
+    # somebody is deliberately experimenting: the spaces are not
+    # comparable and one number is wrong for all but one of them.
+    #
+    # Getting it wrong is not a small error. docs/FACE_CLUSTERING.md
+    # measures SFace's 0.363 applied to ArcFace at a top-cluster share
+    # of 0.963 -- essentially the whole library welded into one person.
+    #
+    # It is safe to try anyway, and that is why it is offered: the
+    # threshold is part of a run's identity
+    # (schema.sql derived_face_run_identity), so clustering at a new one
+    # writes a NEW run beside the old rather than over it. The previous
+    # grouping is still there and can be made primary again. Read at
+    # submit and pinned into the payload, so changing it mid-job cannot
+    # give two embedding spaces two different answers in one run.
+    "face_cluster_threshold": ("auto", None),
+    # Which held key makes the viewer's wheel walk to the next picture
+    # instead of zooming (WheelModifier above). Read when a media page or
+    # its overlay fragment is rendered, so a change applies to the next
+    # picture opened -- no restart, no reload of the one on screen.
+    "viewer_wheel_modifier": ("alt", WHEEL_MODIFIERS),
 }
 
 

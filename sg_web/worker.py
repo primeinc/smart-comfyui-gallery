@@ -28,10 +28,12 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import threading
 import time
 
 from db import connect, runner, settings
+from sg_web import home
 
 _logger = logging.getLogger(__name__)
 
@@ -39,6 +41,12 @@ _logger = logging.getLogger(__name__)
 #: submit. Bounds how stale the `worker` setting can be, not job latency:
 #: submits set the wake event and are picked up immediately.
 IDLE_WAIT = 1.0
+
+#: Seconds between two looks at the schedule table. Not the resolution of
+#: a schedule -- those are hours -- but the cost of asking: an idle
+#: worker wakes every second, and a query per second for a row that
+#: changes twice a year is a poll nobody is waiting for.
+SCHEDULE_EVERY = 60.0
 
 
 def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, publish_event=None) -> None:
@@ -59,8 +67,35 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
         except Exception:
             conn.rollback()
             _logger.exception("similarity warm failed; spaces will build on first use")
+        # The home is where the database sits: the worker is handed a
+        # path to the file rather than the burrow, and `models_dir`
+        # wants the burrow.
+        burrow = pathlib.Path(db_path).parent
+        looked = 0.0
         while not stop.is_set():
             turn = None
+            # What runs without being asked, started on the worker's own
+            # turn. Not a timer of its own: a second scheduler is a
+            # second thing that can be running while nobody thinks
+            # anything is, and the runner is already the only thing that
+            # runs jobs. A worker that is off starts nothing, which is
+            # what off should mean.
+            if settings.flag(conn, "worker") and time.time() - looked >= SCHEDULE_EVERY:
+                looked = time.time()
+                try:
+                    runner.run_schedules(
+                        conn,
+                        time.time(),
+                        models_dir=str(home.models_dir(burrow, settings.value(conn, "models_dir"))),
+                        thumbs_dir=str(home.thumbs_dir(burrow)) if settings.flag(conn, "thumbnail_precache") else None,
+                    )
+                    conn.commit()
+                except Exception:
+                    # A schedule that cannot start must not take the
+                    # worker down with it: the jobs somebody asked for by
+                    # hand are the ones that matter more.
+                    conn.rollback()
+                    _logger.exception("a schedule could not be started")
             # The flag read is economy -- skip the claim entirely while
             # off. The GUARANTEE is the gate inside the claim itself: a
             # flag read here goes stale in the gap before the claim, and
@@ -81,6 +116,14 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
                 except Exception:
                     # run_next already committed a `worker.turn_failed`
                     # row with the traceback before letting this propagate.
+                    #
+                    # A BUSY database does not arrive here: `run_next`
+                    # answers None when it cannot get the writer to claim,
+                    # because that is backpressure and not a defect. It
+                    # used to reach this line, and this line described it
+                    # as a turn that died and a lease to be reclaimed --
+                    # neither of which had happened, since the claim is
+                    # what failed.
                     conn.rollback()
                     from db import similarity
 

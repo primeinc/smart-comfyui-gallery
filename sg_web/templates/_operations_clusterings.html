@@ -6,11 +6,30 @@
   <li data-run="{{ run.id }}"{% if run.is_primary %} data-primary{% endif %}>
     <span>{{ run.model_id }} {{ run.model_version }} &middot; {{ run.method }} @ {{ run.threshold }}</span>
     {% if run.is_primary %}<span class="operations-primary">primary</span>{% endif %}
+    {# What the threshold above actually did. This sentence existed and
+       was rendered on ONE surface: the People page, in its empty state
+       -- so "it chained: one group holds 96% of every face" was
+       invisible in exactly the case where clustering produced people
+       and produced them wrongly. It belongs where somebody is about to
+       change the number that caused it. #}
+    <span class="operations-clustering-shape" data-run-shape="{{ run.clusters }}">{{ run.faces }} faces in {{ run.clusters }} groups{% if run.named %} &middot; {{ run.named }} named{% endif %}</span>
+    <span class="operations-clustering-standing" data-run-standing>{{ run.standing }}</span>
+    {# Against the primary, because that is the one the site is showing:
+       the question is always "is this better than what I have". Not
+       offered on the primary itself, which has nothing to be compared
+       against. #}
+    {% if not run.is_primary and primary %}
+    <button type="button" class="link" data-compare-run="{{ run.id }}"
+            hx-get="/operations/clusterings/{{ primary }}/against/{{ run.id }}"
+            hx-target="#operations-compare" hx-swap="innerHTML">what changed against the primary</button>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>
 {% else %}
 <p class="empty">no clustering run yet.</p>
 {% endif %}
+<p class="operations-hint">Clustering at a different <code>face_cluster_threshold</code> writes a NEW run beside these rather than over them, so trying one costs nothing you already have &mdash; the old grouping stays and can be made primary again. It is not live: the setting changes what the NEXT run computes.</p>
+<div id="operations-compare" data-operations-compare></div>
 <button type="button" data-choose-primary
         hx-post="/operations/clusterings/choose" hx-target="#operations-clusterings" hx-swap="innerHTML">re-rank and choose the primary run</button>

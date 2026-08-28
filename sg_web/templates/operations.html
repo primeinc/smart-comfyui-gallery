@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Operations{% endblock %}
 {% block styles %}<link rel="stylesheet" href="/static/operations.css?v={{ static_v }}">{% endblock %}
-{% block scripts %}<script src="/static/operations.js?v={{ static_v }}" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/build/operations.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
@@ -9,11 +9,10 @@
       <span class="crumbs-where">the runtime: what the worker is doing, and why</span>
     </nav>
   </header>
+  {# data-last-event-id is the dividing line: the console reads ids at or
+     below it over HTTP and asks the socket to resume above it. Nothing is
+     serialized into this page for the browser to parse back out. #}
   <main class="stage operations" data-operations data-console data-last-event-id="{{ last_event_id }}" data-now="{{ now }}">
-    {# The console reads these once, then the feed. Rows, never a replay. #}
-    <script type="application/json" data-console-state>{{ {"overview": overview, "matrix": matrix} | tojson }}</script>
-    <script type="application/json" data-console-tape>{{ tape | tojson }}</script>
-
     <section class="console-health" data-health aria-label="system health">
       <div class="health-cell" data-health-transport data-transport="cold">
         <span class="k">transport</span>
@@ -41,16 +40,42 @@
       <div class="console-matrix" data-matrix aria-label="jobs">
         <div class="console-head"><h2>jobs</h2><span class="console-hint">active first, then the settled tail</span></div>
         <ol class="matrix" data-matrix-rows>
-          {% for job in matrix %}
-          <li class="matrix-row" data-matrix-job="{{ job.id }}" data-state="{{ job.state }}"{% if job.derived.cancellation == "requested" %} data-cancelling{% endif %} tabindex="0" role="button">
-            <span class="matrix-id">#{{ job.id }}</span>
-            <span class="matrix-kind"><span class="v">{{ job.what }}</span><code class="raw">{{ job.kind }}</code></span>
-            <span class="matrix-state" data-state="{{ job.state }}">{{ "cancelling" if job.derived.cancellation == "requested" else job.state }}</span>
-            <progress class="matrix-progress"{% if job.total %} value="{{ job.done_count }}" max="{{ job.total }}"{% endif %}></progress>
-            <code class="matrix-count">{{ job.done_count }}{% if job.total is not none %}/{{ job.total }}{% endif %}{% if job.failed_count %} · {{ job.failed_count }} failed{% endif %}</code>
-            <code class="matrix-exec">a{{ job.attempt }} f{{ job.fence if job.fence is defined else "" }}{% if job.owner %} · {{ job.owner }}{% endif %}</code>
-            {% if job.live %}<span class="matrix-live" data-matrix-live>{{ job.live.phase or job.live.type }}{% if job.live.item_id is not none %} · item {{ job.live.item_id }}{% endif %}</span>{% endif %}
+          {# Every collection as ONE row, its steps nested under the
+             fold. The steps are still here: the step that FAILED is the
+             row somebody actually needs, and a console that swallowed it
+             would be quieter and less useful at once. Open while it is
+             running or has failed, which are the two states somebody is
+             looking at it for. #}
+          {% for group in collections %}
+          <li class="matrix-collection" data-matrix-collection="{{ group.name }}">
+            <details{% if group.state in ("running", "failed") %} open{% endif %}>
+              <summary class="matrix-row" data-collection-state="{{ group.state }}">
+                <span class="matrix-id">{{ group.steps|length }} steps</span>
+                <span class="matrix-kind"><span class="v">{{ group.name }}</span><code class="raw">{{ group.settled }}/{{ group.steps|length }} settled</code></span>
+                <span class="matrix-state" data-state="{{ group.state }}">{{ group.state }}</span>
+                <progress class="matrix-progress"{% if group.total %} value="{{ group.done }}" max="{{ group.total }}"{% endif %}></progress>
+                <code class="matrix-count">{{ group.done }}{% if group.total is not none %}/{{ group.total }}{% endif %}</code>
+                {# On the fold, because the collection is the unit
+                   somebody wants to stop -- and since a schedule can
+                   start one at 3am, the thing to stop may be something
+                   nobody started by hand. #}
+                {% if group.state in ("running", "queued") %}
+                <button type="button" class="matrix-stop" data-stop-collection="{{ group.name }}"
+                        hx-post="/operations/collections/{{ group.name }}/stop" hx-target="#shell-notice" hx-swap="innerHTML"
+                        title="stop this collection: queued steps end now, a running one stops at its next item">stop</button>
+                {% endif %}
+              </summary>
+              <ol class="matrix matrix-steps">
+                {% for job in matrix if job.id in group.steps %}
+                {% include "_matrix_row.html" %}
+                {% endfor %}
+              </ol>
+            </details>
           </li>
+          {% endfor %}
+          {% set grouped = collections | map(attribute="steps") | sum(start=[]) %}
+          {% for job in matrix if job.id not in grouped %}
+          {% include "_matrix_row.html" %}
           {% endfor %}
         </ol>
         {% if not matrix %}<p class="empty">no jobs yet. start a sweep below.</p>{% endif %}
@@ -81,7 +106,7 @@
         </select>
         <input type="number" min="1" placeholder="job #" data-tape-filter-job aria-label="job id">
         <button type="button" class="tape-btn" data-tape-earlier>earlier</button>
-        <span class="console-hint" data-tape-count>{{ tape | length }} shown</span>
+        <span class="console-hint" data-tape-count>reading the ledger…</span>
         <span class="console-hint" data-tape-held hidden></span>
       </div>
       <div class="tape-body">
@@ -105,7 +130,10 @@
       <p class="operations-hint">every sweep is a job row the worker drains; it appears in the matrix and on the ledger the moment it is queued. <span data-coverage-files>{{ overview.coverage.files }}</span> present files; a count beside a sweep is what it would still queue.</p>
       <div class="operations-launchers">
         {% for one in launchers %}
-        <span class="operations-launch">
+        {# The first is not one sweep among thirteen: it is the answer
+           to the question the other twelve force somebody to answer
+           themselves, which is which of these and in what order. #}
+        <span class="operations-launch"{% if loop.first %} data-launch-primary{% endif %}>
         <button type="button" data-launch="{{ one.kind }}"
                 hx-post="/operations/jobs/{{ one.kind }}" hx-target="#shell-notice" hx-swap="innerHTML">{{ one.label }}</button>
         {%- if one.again %}<button type="button" class="operations-again" data-launch-again="{{ one.kind }}" title="all of it again, not only what is missing"
@@ -116,8 +144,142 @@
       </div>
     </section>
 
+    {# What this library has been told about its own models.
+
+       Deliberately no headline verdict on any model. A verdict set is a
+       BIASED SAMPLE -- people judge what they happen to look at and
+       reach for "wrong" far sooner than for "right" -- so an error rate
+       beside a name would be a number used to make a decision it cannot
+       support. What is shown is the count, a rate only past the floor,
+       and the one comparison the bias survives: two producers over the
+       files BOTH were judged on. #}
+    {# Throughput you can look at instead of a recipe you have to run.
+       Three of the twenty-three files under benchmarks/results/ measure
+       a job's rate; the rest are calibration and evidence with no
+       shape in common, and four of them carry real filesystem paths.
+
+       Said as a RECORDING and dated, because these files carry no
+       timestamp of their own and the code moves: a rate on screen with
+       no date is a claim about whatever the tree looked like when
+       somebody last ran the recipe. #}
+    {% if measured %}
+    <section class="operations-section" data-operations-measured>
+      <h2>how fast it went, last time anybody measured</h2>
+      <p class="operations-hint">recorded by <code class="raw">just bench</code>, not observed now &mdash; the code has
+        moved since whichever of these is oldest, and nothing here re-runs on its own.</p>
+      <ul class="operations-measured">
+        {% for one in measured %}
+        <li data-measured="{{ one.kind }}">
+          <span class="k">{{ one.kind }}</span>
+          <span class="v" data-measured-rate="{{ "%.2f" | format(one.items_per_second) }}">
+            {{ "%.2f" | format(one.items_per_second) }} a second</span>
+          <code class="raw">{% if one.items %}{{ one.items }} items in {{ "%.1f" | format(one.wall_ms / 1000) }}s ·
+            {% endif %}{% if one.cores_busy is not none %}{{ "%.1f" | format(one.cores_busy) }} of
+            {{ one.cpu_count }} cores · {% endif %}recorded
+            <time data-measured-at="{{ one.recorded_at }}">{{ one.recorded_at | int }}</time></code>
+          {% if one.phases %}
+          <ul class="operations-measured-phases">
+            {% for phase in one.phases %}
+            <li data-measured-phase="{{ phase.phase }}">{{ phase.phase }}
+              <code class="raw">{{ "%.0f" | format(phase.ms) }} ms · {{ (phase.share * 100) | round | int }}%</code></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {# Two exports, opposite shapes, side by side -- which is how
+       somebody sees they are different things. One is for SHARING and
+       carries no name; the other is for CUSTODY and carries every one.
+       Outside the verdict panel because that panel only appears once
+       somebody has judged something, and what you SAID about your own
+       pictures is not conditional on that. #}
+    <section class="operations-section" data-operations-export>
+      <h2>take it with you</h2>
+      {# Verdicts are the cheapest valuable thing this library
+         accumulates and the easiest to share safely: an eval set of
+         "this model got these 41 wrong" can leave the machine with none
+         of the media leaving with it. A producer, a kind, a verdict, the
+         bytes and a time -- no paths, no names, no note, because a note
+         is free text somebody typed and can hold anything. #}
+      <p class="operations-hint">
+        <a href="/operations/export/verdicts.json" download data-export-verdicts>take these with you</a> &mdash;
+        a producer, what kind of claim, the verdict, the bytes it was about and when.
+        No pictures, no paths, no names, and not the notes: those are yours and go only if you
+        <a href="/operations/export/verdicts.json?include=note" download data-export-verdicts-note>ask for them by name</a>.
+      </p>
+      {# The other direction, and the opposite shape on purpose: the one
+         above is for SHARING and carries no name, this one is for
+         CUSTODY and carries every one. An application about keeping
+         your own data must not be the only place it can exist. #}
+      <p class="operations-hint">
+        And everything you told it about your own pictures &mdash;
+        <a href="/operations/export/authored.json" download data-export-authored>names, ratings, places, albums, who is in what</a>.
+        Keyed by the bytes rather than by a row number, so it reads back against the same photographs
+        wherever they end up.
+      </p>
+    </section>
+
+    {% if judged.producers or judged.corrected %}
+    <section class="operations-section" data-operations-judged>
+      <h2>what you have told it</h2>
+      {% if judged.producers %}
+      <p class="operations-hint">your own judgements on what the models said, over your own library — the only ground truth there is about them here. A rate needs {{ judged.floor }} verdicts before it is shown, because a sample this small is noise; and people judge what they look at, so these counts say as much about which pictures you opened as about any model.</p>
+      <ul class="operations-judged">
+        {% for one in judged.producers %}
+        <li data-judged="{{ one.model_id }}@{{ one.model_version }}">
+          <span class="v">{{ one.model_id }}</span>
+          <code class="raw">{{ one.kind }} · {{ one.model_version[:12] }}</code>
+          <span class="operations-judged-counts" data-judged-n="{{ one.judged }}">{{ one.judged }} judged · {{ one.wrong }} wrong · {{ one.right }} right{% if one.unsure %} · {{ one.unsure }} unsure{% endif %}</span>
+          {% if one.wrong_share is not none %}<b class="operations-judged-share" data-judged-share>{{ (one.wrong_share * 100) | round | int }}% wrong</b>{% else %}<span class="muted" data-judged-needs>{{ one.needs }} more before a rate means anything</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if judged.corrected %}
+      {# Counted, never rated. A correction is recorded only when
+         somebody says a person is NOT in a picture, so these are 100%
+         "wrong" by construction -- there is no denominator, and a
+         percentage here would be the most confidently wrong number on
+         the page. What the count IS good for is one producer beside
+         another over the same library. #}
+      <h3>faces you have put right</h3>
+      <p class="operations-hint">every time you said &ldquo;that is not them&rdquo; and a clustering run had said it was. No rate: you only ever tell it about the wrong ones, so there is nothing to divide by. Useful beside each other &mdash; a model you never have to correct, next to one you correct constantly, over the same pictures.</p>
+      <ul class="operations-judged" data-judged-corrected>
+        {% for one in judged.corrected %}
+        <li data-corrected="{{ one.model_id }}@{{ one.model_version }}">
+          <span class="v">{{ one.model_id }}</span>
+          <code class="raw">person &middot; {{ one.model_version[:12] }}</code>
+          <span class="operations-judged-counts" data-corrected-n="{{ one.corrections }}">{{ one.corrections }} put right{% if one.people %} &middot; {{ one.people }} {{ "person" if one.people == 1 else "people" }}{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if judged.contests %}
+      <h3>head to head</h3>
+      <p class="operations-hint">over the files you judged BOTH on — same pictures, same day, same you — which is the only comparison a sample like this supports.</p>
+      <ul class="operations-judged" data-judged-contests>
+        {% for held in judged.contests %}
+        <li data-judged-shared="{{ held.shared }}">
+          <span class="v">{% for who, n in held.wrong.items() %}{% if not loop.first %} vs {% endif %}{{ who.split("@")[0] }} <b>{{ n }}</b> wrong{% endfor %}</span>
+          <code class="raw">{{ held.kind }} · {{ held.shared }} shared</code>
+          {% if not held.enough %}<span class="muted">too few to lean on</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+    {% endif %}
+
     <section class="operations-section" id="operations-settings" data-operations-settings>
       {% with notice = none %}{% include "_operations_settings.html" %}{% endwith %}
+    </section>
+
+    <section class="operations-section" id="operations-schedules" data-operations-schedules-section>
+      {% with notice = none %}{% include "_operations_schedules.html" %}{% endwith %}
     </section>
 
     <section class="operations-section" id="operations-clusterings" data-operations-clusterings>

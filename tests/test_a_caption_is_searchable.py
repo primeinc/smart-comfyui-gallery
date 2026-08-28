@@ -6,17 +6,14 @@ participant; one that has, says so even when no caption matches.
 
 from __future__ import annotations
 
-import pathlib
-
 import numpy as np
 import pytest
 from PIL import Image
 
-from db import connect, derived, retrieval, scan, settings
+from db import derived, retrieval, scan, settings
+from tests.staging import NOW, fresh_schema
 from vision import semantic
 
-NOW = 1_700_000_000.0
-SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 CLIP = ("openclip", "ViT-B-32", "laion2b_s34b_b79k")
 
 
@@ -34,9 +31,7 @@ def _shelf(tmp_path, cosines: dict[str, float]):
     root.mkdir()
     for i, name in enumerate(cosines):
         Image.new("RGB", (8, 8), (20 * i, 40, 60)).save(root / f"{name}.png")
-    conn = connect.memory()
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = fresh_schema()
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
     scan.scan(conn, 1, root, NOW)
     ids = {name: file_id for file_id, name in conn.execute("SELECT id, replace(name, '.png', '') FROM file")}

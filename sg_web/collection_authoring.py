@@ -1,42 +1,39 @@
 """One write adapter for the collection lifecycle.
 
 Every route here parses an address and a body, hands the desired state
-to db/collections.py, commits exactly once, and answers with the
-authoritative CollectionView -- the browser never invents the resulting
-state, it renders what the server read back after the commit. Rules
-come from the same GalleryQuery-shaped inputs the gallery itself takes;
+to db/collections.py, commits exactly once, and answers where the facts
+landed: the slug and the definition's next revision. Rules come from the
+same GalleryQuery-shaped inputs the gallery itself takes;
 db/collection_rules.py owns every conversion and the browser never
 constructs rule JSON.
 
 Definition writes name the revision they edited: `expected_rev` in the
-body, always -- deliberately not If-Match, because the page's ETag
-could only honestly validate the whole representation (which changes
-with membership) while the thing being claimed is the definition
-revision, and a header token would also arrive unbound to the target
-in the URL. A stale revision is a 409 with zero mutation -- the editor
-re-reads and decides again. The PATCH body is read as a plain mapping
-on purpose:
-absent means unchanged and null means clear, a distinction a typed
-default would flatten (db/collections.py UNSET).
+body, always -- deliberately not If-Match, because the page's ETag could
+only honestly validate the whole representation (which changes with
+membership) while the thing being claimed is the definition revision,
+and a header token would also arrive unbound to the target in the URL.
+A stale revision is a 409 with zero mutation -- the editor re-reads and
+decides again.
 """
 
 from __future__ import annotations
 
-import dataclasses
-import pathlib
 import time
+from typing import Annotated, Literal
 
 from litestar import patch, post, put
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.params import FromPath
 from litestar.response import Response
+from pydantic import Field, RootModel
 
-from db import collection_rules, collections, connect, naming, settings
+from db import collection_rules, collections, connect, naming
 from db.resultset import canonical
-from sg_web import collection_view, home
+from sg_web import collection_view
 from sg_web.asking import gallery_query as _asked
 from sg_web.presenting import VARIES
+from sg_web.wire import Wire
 
 
 def _collection_at(conn, slug: str) -> int:
@@ -48,20 +45,15 @@ def _collection_at(conn, slug: str) -> int:
     return found[0]
 
 
-def _revision_named(data: dict):
-    """expected_rev from the body, and nowhere else. Absence is a
-    428-shaped refusal spelled as a 400: a definition write that names
-    no revision cannot be checked against anything, and a header token
-    would arrive unbound to the collection in the URL."""
-    if "expected_rev" in data:
-        return data["expected_rev"]
-    raise ClientException("a definition write names the revision it edited: expected_rev")
+def _written(state: State, work) -> Response[collection_view.CollectionWriteAnswer]:
+    """Refusal mapping, one commit, and the small answer a write owes.
 
-
-def _written(state: State, work) -> Response:
-    """Refusal mapping, one commit, and the authoritative after-state:
-    every lifecycle write answers with the same CollectionView a GET
-    serves, ETag included."""
+    Where to go and the definition's next concurrency token. It used to
+    answer with the whole management view -- the ResultSet page evaluated,
+    the spans, the places and every legal parent move -- which meant every
+    rename re-ran the collection's rule to build a body the browser reads
+    one field out of.
+    """
     conn = connect.connect(state.db_path)
     try:
         try:
@@ -73,30 +65,24 @@ def _written(state: State, work) -> Response:
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
-        live = naming.entity_slug(conn, collection_id)
-        told = collection_view.view(
-            conn, weights, collection_id, live[1] if live else "", time.time(), legacy=False, manage=True
-        )
-        return Response(told, headers=VARIES)
+        return Response(collection_view.write_answer(conn, collection_id), headers=VARIES)
     finally:
         connect.close(conn)
 
 
-@dataclasses.dataclass
-class NewCollection:
+class NewCollection(Wire):
     """The body of POST /albums: the listed kinds, born active at
     revision 1, optionally already placed and decorated."""
 
     name: str
-    kind: str = "album"
+    kind: collections.ListedKind = "album"
     parent: str | None = None
     color: str | None = None
     description: str | None = None
 
 
 @post("/albums", sync_to_thread=True)
-def make_album(state: State, data: NewCollection) -> Response:
+def make_album(state: State, data: NewCollection) -> Response[collection_view.CollectionWriteAnswer]:
     def work(conn):
         parent_id = _collection_at(conn, data.parent) if data.parent is not None else None
         return collections.create_listed(
@@ -113,8 +99,7 @@ def make_album(state: State, data: NewCollection) -> Response:
     return _written(state, work)
 
 
-@dataclasses.dataclass
-class NewSmart:
+class NewSmart(Wire):
     """The body of POST /albums/smart: a name, an optional cutoff, and
     the canonical spelling of the question being saved. The server
     reconstructs the typed rule through the same seams that own query
@@ -139,7 +124,7 @@ class NewSmart:
 
 
 @post("/albums/smart", sync_to_thread=True)
-def make_smart(state: State, data: NewSmart) -> Response:
+def make_smart(state: State, data: NewSmart) -> Response[collection_view.CollectionWriteAnswer]:
     """Save the current view as a smart collection: one entity, one
     typed rule, one commit -- when the rule refuses, no collection
     remains. The rule pins the creating actor for its authored facets
@@ -176,34 +161,46 @@ def make_smart(state: State, data: NewSmart) -> Response:
     return _written(state, work)
 
 
-#: What a definition patch may say. Anything else is refused by name --
-#: a misspelled field silently ignored would report success for an edit
-#: that never happened.
-_PATCHABLE = {"name", "color", "description", "parent", "archived", "expected_rev"}
+class EditCollection(Wire):
+    """A partial definition: only the facts the request names change.
+
+    Absent, explicitly null and given are three DIFFERENT instructions --
+    leave it, clear it, set it -- and pydantic keeps them apart without
+    help: `model_fields_set` is the set of fields the request actually
+    provided (pydantic docs/concepts/models.md:175). A default of None
+    means "not said" only because the name is missing from that set, never
+    because the value is None.
+
+    `name` and `archived` accept null on the wire and are refused below it:
+    a collection cannot be nameless, and a lifecycle is on or off. Refusing
+    them here would answer 400 without saying which fact was impossible.
+    """
+
+    expected_rev: int
+    name: str | None = None
+    color: str | None = None
+    description: str | None = None
+    parent: str | None = None
+    archived: bool | None = None
 
 
-def _edit_definition(state: State, expected_rev, slug: str, data: dict) -> Response:
+def _edit_definition(state: State, slug: str, data: EditCollection) -> Response[collection_view.CollectionWriteAnswer]:
     def work(conn):
-        strange = set(data) - _PATCHABLE
-        if strange:
-            raise ValueError(f"the patch names facts a definition does not have: {', '.join(sorted(strange))}")
         collection_id = _collection_at(conn, slug)
-        held: dict = {}
-        for field in ("name", "color", "description", "archived"):
-            if field in data:
-                held[field] = data[field]
-        if "parent" in data:
-            if data["parent"] is None:
+        said = data.model_fields_set
+        held: dict = {
+            field: getattr(data, field) for field in ("name", "color", "description", "archived") if field in said
+        }
+        if "parent" in said:
+            if data.parent is None:
                 held["parent_id"] = None
-            elif isinstance(data["parent"], str):
-                found = naming.resolve(conn, "collection", data["parent"])
-                if found is None:
-                    raise ValueError(f"no collection at /t/{data['parent']} to move under")
-                held["parent_id"] = found[0]
             else:
-                raise ValueError("parent names a collection by slug, or null for the top")
+                found = naming.resolve(conn, "collection", data.parent)
+                if found is None:
+                    raise ValueError(f"no collection at /t/{data.parent} to move under")
+                held["parent_id"] = found[0]
         collections.update_definition(
-            conn, collection_id, collections.CollectionPatch(**held), state.actor_id, expected_rev, time.time()
+            conn, collection_id, collections.CollectionPatch(**held), state.actor_id, data.expected_rev, time.time()
         )
         return collection_id
 
@@ -211,7 +208,9 @@ def _edit_definition(state: State, expected_rev, slug: str, data: dict) -> Respo
 
 
 @patch("/t/{slug:str}")
-async def edit_definition(state: State, slug: FromPath[str], data: dict) -> Response:
+async def edit_definition(
+    state: State, slug: FromPath[str], data: EditCollection
+) -> Response[collection_view.CollectionWriteAnswer]:
     """The whole definition edit as one desired-state patch under one
     revision claim. Kind is deliberately not patchable -- changing how
     membership is decided is a transition, not a field.
@@ -221,88 +220,158 @@ async def edit_definition(state: State, slug: FromPath[str], data: dict) -> Resp
     sqlite work crosses to a thread."""
     from anyio import to_thread
 
-    expected_rev = _revision_named(data)
-    return await to_thread.run_sync(_edit_definition, state, expected_rev, slug, data)
+    return await to_thread.run_sync(_edit_definition, state, slug, data)
+
+
+class _Question(Wire):
+    """The GalleryQuery-shaped inputs a rule is minted from.
+
+    The same spellings the save-view flow sends. The server reconstructs
+    the typed rule through the seams that own query semantics; a browser
+    never constructs rule JSON.
+    """
+
+    take: int | None = None
+    folder: str | None = None
+    person: str | None = None
+    artifact: str | None = None
+    q: str | None = None
+    sort: str | None = None
+    favorite: str | None = None
+    rating_min: int | None = None
+    #: the facets, one spelling or a list of them
+    f: str | list[str] | None = None
+
+
+class ReplaceRule(_Question):
+    """The body of PUT /t/{slug}/rule. `kind` here is the MEDIA kind, the
+    same one a gallery question carries -- a collection's own kind is not
+    patchable, it is a conversion."""
+
+    expected_rev: int
+    kind: str | None = None
 
 
 @put("/t/{slug:str}/rule", sync_to_thread=True)
-def replace_rule(state: State, slug: FromPath[str], data: dict) -> Response:
+def replace_rule(
+    state: State, slug: FromPath[str], data: ReplaceRule
+) -> Response[collection_view.CollectionWriteAnswer]:
     """This exact rule is now the collection's meaning: whole desired
     state, never predicate edits, under the same revision claim as any
-    definition write. The body carries the same GalleryQuery-shaped
-    inputs the save-view flow sends (`kind` here is the media kind)."""
+    definition write."""
 
     def work(conn):
-        expected_rev = _revision_named(data)
         collection_id = _collection_at(conn, slug)
         query = _asked(
-            data.get("folder"),
+            data.folder,
             None,
-            data.get("kind"),
-            data.get("q"),
-            data.get("sort"),
+            data.kind,
+            data.q,
+            data.sort,
             None,
-            person=data.get("person"),
-            artifact=data.get("artifact"),
-            favorite=data.get("favorite"),
-            rating_min=data.get("rating_min"),
-            facets=data.get("f"),
+            person=data.person,
+            artifact=data.artifact,
+            favorite=data.favorite,
+            rating_min=data.rating_min,
+            facets=data.f,
         )
-        rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.get("take"))
+        rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.take)
         spelled = canonical(query) or "the whole library"
-        collections.replace_rule(conn, collection_id, rule, spelled, state.actor_id, expected_rev, time.time())
+        collections.replace_rule(conn, collection_id, rule, spelled, state.actor_id, data.expected_rev, time.time())
         return collection_id
 
     return _written(state, work)
 
 
+class ConvertToListed(Wire):
+    """Become an album or a flag.
+
+    `discard_rule` is the rule's destruction said out loud, and it is only
+    meaningful leaving smart; album <-> flag ignores it because there is
+    no rule to lose.
+    """
+
+    kind: collections.ListedKind
+    expected_rev: int
+    discard_rule: bool = False
+
+
+class ConvertToSmart(_Question):
+    """Become smart, with the rule that makes it so in the same act.
+
+    `media_kind`, not `kind`, carries the rule's media kind, because
+    `kind` already names the collection kind being asked for.
+    """
+
+    kind: Literal["smart"]
+    expected_rev: int
+    media_kind: str | None = None
+
+
+class ConvertCollection(RootModel[Annotated[ConvertToListed | ConvertToSmart, Field(discriminator="kind")]]):
+    """The body of POST /t/{slug}/convert: which transition, and its terms.
+
+    A discriminated union rather than one model holding both sets of
+    fields, so a field the target kind cannot mean is refused by name
+    instead of accepted and ignored -- `{"kind": "album", "q": "cat"}`
+    answers 400 saying `album.q`, and a smart conversion carrying
+    `discard_rule` says `smart.discard_rule`.
+
+    A RootModel because litestar cannot take a bare union body: measured,
+    a handler annotated `data: A | B` answers 500 to every request,
+    including valid ones, since a body reaches pydantic only when the
+    annotation IS a BaseModel subclass
+    (litestar/plugins/pydantic/plugins/init.py is_pydantic_v2_model_class).
+    A RootModel is one, so the union travels inside a class.
+    """
+
+
 @post("/t/{slug:str}/convert", sync_to_thread=True)
-def convert_collection(state: State, slug: FromPath[str], data: dict) -> Response:
+def convert_collection(
+    state: State, slug: FromPath[str], data: ConvertCollection
+) -> Response[collection_view.CollectionWriteAnswer]:
     """An explicit definition-mode transition. album<->flag moves
     freely; becoming smart requires an empty membership and a valid rule
     in this same operation; leaving smart requires the rule's discard
     said out loud, because the rule is authored state."""
 
     def work(conn):
-        expected_rev = _revision_named(data)
         collection_id = _collection_at(conn, slug)
-        wanted = data.get("kind")
-        if wanted == "smart":
+        wanted = data.root
+        if isinstance(wanted, ConvertToSmart):
             query = _asked(
-                data.get("folder"),
+                wanted.folder,
                 None,
-                data.get("media_kind"),
-                data.get("q"),
-                data.get("sort"),
+                wanted.media_kind,
+                wanted.q,
+                wanted.sort,
                 None,
-                person=data.get("person"),
-                artifact=data.get("artifact"),
-                favorite=data.get("favorite"),
-                rating_min=data.get("rating_min"),
-                facets=data.get("f"),
+                person=wanted.person,
+                artifact=wanted.artifact,
+                favorite=wanted.favorite,
+                rating_min=wanted.rating_min,
+                facets=wanted.f,
             )
-            rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=data.get("take"))
+            rule = collection_rules.from_gallery_query(conn, query, actor_id=state.actor_id, take=wanted.take)
             collections.convert_to_smart(
                 conn,
                 collection_id,
                 rule,
                 canonical(query) or "the whole library",
                 state.actor_id,
-                expected_rev,
+                wanted.expected_rev,
                 time.time(),
             )
-        elif wanted in collections.LISTED:
+        else:
             collections.convert_to_listed(
                 conn,
                 collection_id,
-                wanted,
+                wanted.kind,
                 state.actor_id,
-                expected_rev,
+                wanted.expected_rev,
                 time.time(),
-                discard_rule=data.get("discard_rule", False),
+                discard_rule=wanted.discard_rule,
             )
-        else:
-            raise ValueError("convert names the target kind: album, flag or smart")
         return collection_id
 
     return _written(state, work)

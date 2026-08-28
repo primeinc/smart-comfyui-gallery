@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Keywords{% endblock %}
+{% block scripts %}<script src="/static/build/keywords.js?v={{ static_v }}" defer></script>{% endblock %}
+{% block body %}
+  <header class="bar">
+    <nav class="crumbs">
+      <span class="crumbs-here">Keywords</span>
+      <span class="crumbs-where">{{ keywords|length }} word{{ "" if keywords|length == 1 else "s" }}</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if keywords %}
+    {# Commonest first, and that ordering is the point: the question this
+       page answers is "what have I actually been calling things". A
+       three-picture typo sitting under a four-hundred-picture word is
+       the row somebody came here to fix. #}
+    <p class="operations-hint">Renaming a keyword onto one that already exists <em>merges</em> them &mdash; which is what you want when a year of typing produced <em>beach</em>, <em>Beaches</em> and <em>beech</em>. Forgetting one takes it off every picture and cannot be undone by anything but typing it again.</p>
+    <ul class="keyword-list" data-keywords>
+      {% for one in keywords %}
+      <li class="keyword-row" data-keyword="{{ one.tag }}" data-pictures="{{ one.pictures }}">
+        <a class="keyword-name" href="/g?{{ one.qs }}">{{ one.label }}</a>
+        <span class="keyword-count">{{ one.pictures }} picture{{ "" if one.pictures == 1 else "s" }}</span>
+        <form class="keyword-rename" data-rename>
+          <input type="text" data-rename-input maxlength="100" autocomplete="off"
+                 value="{{ one.label }}" aria-label="rename {{ one.label }}">
+          <button type="submit">rename</button>
+        </form>
+        {# The count rides the button, not just the row: it is what the
+           person is looking at, and the route refuses if it moved. #}
+        <button type="button" class="keyword-forget" data-forget="{{ one.tag }}"
+                data-forget-pictures="{{ one.pictures }}"
+                title="take {{ one.label }} off all {{ one.pictures }}">forget</button>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty" data-keywords-none>No keywords yet &mdash; open a picture and type a word on it. A keyword is the word you will go looking for, so the useful ones are the ones you would actually search.</p>
+    {% endif %}
+  </main>
+{% endblock %}

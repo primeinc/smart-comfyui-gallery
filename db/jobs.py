@@ -31,9 +31,65 @@ writes then fail rather than corrupting the job it no longer owns.
 from __future__ import annotations
 
 import json
+import typing
 from dataclasses import dataclass
 
 from . import ledger
+
+#: What a job is doing and how it is going, per db/schema.sql job.kind and
+#: job.state. Here rather than at a web seam because the table owns them:
+#: a value outside either is already impossible in the database, and the
+#: browser gets the closed set as a union instead of `string`.
+JobState = typing.Literal["queued", "running", "done", "failed", "cancelled"]
+
+#: The settled subset of JobState -- what `settle` will accept and what
+#: nothing publishes after. Declared beside the vocabulary it subsets;
+#: five copies of this tuple existed (two of them each named TERMINAL)
+#: and a sixth state marked terminal here would have left every one of
+#: them silently short.
+TERMINAL: tuple[JobState, ...] = ("done", "failed", "cancelled")
+#: The same subset as a SQL `IN (...)` list, built from TERMINAL so a
+#: statement cannot drift from the guard. Interpolated, never bound:
+#: these are fixed words from a Literal, not input.
+TERMINAL_SQL = "(" + ", ".join(f"'{one}'" for one in TERMINAL) + ")"
+JobKind = typing.Literal[
+    # the directory walk itself -- 'scan' is the metadata read that
+    # follows it (db/runner.py _ingest_item), which is why the walk
+    # needed a word of its own rather than borrowing that one
+    "walk",
+    "scan",
+    "hash",
+    "embed",
+    "detect_faces",
+    "cluster_faces",
+    "sample_frames",
+    "annotate",
+    "remix",
+    "zip",
+    "context",
+    "events",
+    "story_plan",
+    "embed_prompts",
+]
+
+#: The kinds whose `job_item.item_id` IS a file id.
+#:
+#: Beside `JobKind` because it is a fact ABOUT the vocabulary, and it
+#: was written down twice -- once in db/runner.py so the ledger could
+#: name an item, once in db/inspecting.py so the console could link one
+#: -- which is two places to forget when a kind is added.
+#:
+#: Guessing is unsafe rather than merely imprecise: `cluster_faces` and
+#: `events` number their items 0, 1, 2 as indices into a payload, so a
+#: lookup that assumed every item id were a file would put a real
+#: picture's name beside item 2 of a clustering run.
+#:
+#: `hash` is here with one exception its readers apply: `derive=groups`
+#: runs a single item that is not a file either.
+FILE_ITEMS = frozenset({"scan", "hash", "embed", "detect_faces", "context", "annotate"})
+
+#: Where one unit of a job stands, per db/schema.sql job_item.state.
+ItemState = typing.Literal["pending", "done", "failed"]
 
 #: A job whose lease has expired by this much is reclaimable. Generous: a
 #: worker paused by a slow disk must not lose its job to a false positive.
@@ -57,16 +113,28 @@ class Progress:
         return min(1.0, self.done / self.total)
 
 
-def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=None) -> int:
-    """Ask for work. Nothing runs until a worker claims it."""
+def submit(
+    conn, kind: str, now: float, *, target_id=None, payload=None, items=None, collection=None, after_id=None
+) -> int:
+    """Ask for work. Nothing runs until a worker claims it.
+
+    `after_id` gates it: `claim` will not take this job until that one has
+    settled `done`. `collection` is the name it shares with its siblings,
+    which is what the console groups on and what a schedule can point at.
+    Both default to None, which is a job that stands alone -- what every
+    job was before steps existed.
+    """
     cursor = conn.execute(
-        "INSERT INTO job(kind, target_id, state, payload, total, created_at) VALUES(?, ?, 'queued', ?, ?, ?)",
+        "INSERT INTO job(kind, target_id, state, payload, total, created_at, collection, after_id)"
+        " VALUES(?, ?, 'queued', ?, ?, ?, ?, ?)",
         (
             kind,
             target_id,
             json.dumps(payload) if payload is not None else None,
             len(items) if items is not None else None,
             now,
+            collection,
+            after_id,
         ),
     )
     job_id = int(cursor.lastrowid or 0)
@@ -86,6 +154,39 @@ def submit(conn, kind: str, now: float, *, target_id=None, payload=None, items=N
     return job_id
 
 
+def begin(conn, kind: str, owner: str, now: float, *, payload=None) -> tuple[int, int]:
+    """A job that is already running, owned by whoever asked for it.
+
+    For work a REQUEST does itself rather than handing to the worker --
+    the directory walk, which has to answer with its own counts. Submit
+    and then claim looks equivalent and is not: between the two the row
+    sits queued, the worker polls for any runnable kind, and it took the
+    walk, found no handler for it and failed it while the request that
+    created it was still reaching for it. Inserted running and owned,
+    the row is never claimable, because `claim` only takes queued ones.
+
+    Returns `(job_id, fence)` -- the same pair `claim` returns, so the
+    caller drives it with `checkpoint` and `settle` exactly as a worker
+    would, and the row obeys the same invariants either way.
+    """
+    lease = now + LEASE_SECONDS
+    cursor = conn.execute(
+        "INSERT INTO job(kind, state, payload, owner, fence, lease_until, heartbeat_at, attempt,"
+        " created_at, started_at) VALUES(?, 'running', ?, ?, 1, ?, ?, 1, ?, ?)",
+        (kind, json.dumps(payload) if payload is not None else None, owner, lease, now, now, now),
+    )
+    job_id = int(cursor.lastrowid or 0)
+    ledger.record(
+        conn,
+        job_id,
+        "job.submitted",
+        now,
+        message=f"{kind} started by {owner}",
+        data={"kind": kind, "owner": owner, "fence": 1},
+    )
+    return job_id, 1
+
+
 def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, int] | None:
     """Take the next runnable job, returning `(job_id, fence)`.
 
@@ -100,7 +201,20 @@ def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, 
     connection setup widened it -- and an off-switch committed before the
     claim must never lose to that gap.
     """
-    runnable = "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
+    # A step whose predecessor has not finished is not runnable, however
+    # queued it looks. `done` specifically, not merely settled: a step
+    # after a failed one must not run, which is what makes a failure stop
+    # its dependents and nothing else.
+    #
+    # Inside `runnable` rather than beside it, because the predicate is
+    # evaluated twice -- once to pick the row and once, under the write
+    # lock, to re-check it. A gate applied in only one of those places is
+    # a gate two workers can race through.
+    runnable = (
+        "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
+        " AND (after_id IS NULL OR EXISTS"
+        "      (SELECT 1 FROM job before WHERE before.id = job.after_id AND before.state = 'done'))"
+    )
     kind_filter = ""
     kind_args: list = []
     if kinds:
@@ -282,6 +396,52 @@ def cancel(conn, job_id: int, now: float | None = None) -> None:
         )
 
 
+def stop_collection(conn, collection: str, now: float) -> tuple[list[int], list[int]]:
+    """Stop a whole collection: `(asked, stopped)`.
+
+    Two things, because a collection's steps are in two states and only
+    one of them can stop itself.
+
+    A RUNNING step is asked, the way a single job is asked: it stops at
+    the next item boundary and settles itself, because something is
+    holding it and writing under it and a row marked terminal from
+    outside would be a lie for as long as that lasted.
+
+    A QUEUED step is settled here and now. Nothing holds it, nothing is
+    writing under it, and asking a row that no worker will ever claim
+    leaves a cancel nobody honours -- the console would show a
+    collection permanently one step short of finished with a stop
+    somebody already pressed.
+
+    One transaction, so it is atomic against a claim: SQLite has one
+    writer, and a worker taking the last queued step either commits
+    before this and finds itself asked, or after this and finds nothing
+    queued to take.
+
+    This exists because a schedule can start a collection nobody was
+    watching for. Stopping the eight rows by hand was already tedious
+    when a person had queued them; it is not an option at all for
+    something that began at 3am.
+    """
+    asked = []
+    for (job_id,) in conn.execute(
+        "SELECT id FROM job WHERE collection = ? AND state IN ('queued','running') ORDER BY id",
+        (collection,),
+    ).fetchall():
+        cancel(conn, job_id, now)
+        asked.append(int(job_id))
+    stopped = [
+        int(one)
+        for (one,) in conn.execute(
+            "UPDATE job SET state = 'cancelled', finished_at = ?,"
+            "               error = COALESCE(error, 'the collection was stopped')"
+            " WHERE collection = ? AND state = 'queued' RETURNING id",
+            (now, collection),
+        ).fetchall()
+    ]
+    return asked, stopped
+
+
 def cancelled(conn, job_id: int) -> bool:
     """What a runner checks between units."""
     row = conn.execute("SELECT cancel_requested FROM job WHERE id = ?", (job_id,)).fetchone()
@@ -296,7 +456,7 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
     because nothing will ever come back for the remainder.
     """
     _held(conn, job_id, fence)
-    if state not in ("done", "failed", "cancelled"):
+    if state not in TERMINAL:
         raise ValueError(f"{state!r} is not terminal")
     if state == "done":
         outstanding = conn.execute(
@@ -314,6 +474,100 @@ def settle(conn, job_id: int, fence: int, state: str, now: float, *, error=None)
         job_id,
         fence,
     )
+    if state != "done":
+        stop_dependents(conn, job_id, now)
+
+
+def not_yet_counted(conn, job_id: int) -> bool:
+    """Has this job's work still to be worked OUT?
+
+    `total IS NULL` is the marker, and it is the honest one: a job whose
+    items were fixed at submit has a total even when that total is zero,
+    so "nothing to do" and "not decided yet" are different rows rather
+    than the same empty list.
+    """
+    row = conn.execute("SELECT total FROM job WHERE id = ?", (job_id,)).fetchone()
+    return row is not None and row[0] is None
+
+
+def count_now(conn, job_id: int, fence: int, items: list[int]) -> int:
+    """Fix a lazy job's units, under the lease that claimed it.
+
+    A step in a chain cannot know its work at submit: the step before it
+    has not run, so the files it will read do not exist and the spaces it
+    will group are empty. Enumerating here -- once, by the worker that
+    holds the job -- is what makes an ordered chain actually ordered
+    rather than merely sequenced.
+
+    Fenced like every other write in this module: a worker whose lease
+    lapsed must not be able to fill in the items of a job somebody else
+    is now working.
+    """
+    _held(conn, job_id, fence)
+    _wrote(
+        conn.execute("UPDATE job SET total = ? WHERE id = ? AND fence = ?", (len(items), job_id, fence)),
+        job_id,
+        fence,
+    )
+    if items:
+        conn.executemany(
+            "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
+            [(job_id, item) for item in items],
+        )
+    # No ledger row of its own. `job_event.type` is a closed CHECK and a
+    # new member is a schema change; the fact this would announce -- the
+    # total is known now -- already reaches every subscriber in the
+    # progress delta the runner sends on the next observable change.
+    return len(items)
+
+
+def enlist(conn, job_id: int, collection: str, after_id: int | None) -> None:
+    """Make an already-submitted job a step of `collection`.
+
+    Every submitter in db/runner.py builds its own job -- with its own
+    payload, its own item list and its own reasons to queue nothing at
+    all -- and threading two more arguments through eleven of them would
+    put the recipe's concern inside each of them. This stamps the row
+    instead, in the same transaction, before anything can claim it.
+    """
+    conn.execute("UPDATE job SET collection = ?, after_id = ? WHERE id = ?", (collection, after_id, job_id))
+
+
+def stop_dependents(conn, job_id: int, now: float) -> list[int]:
+    """Cancel every step that was waiting on this one; returns which.
+
+    The product decision this feature turned on, and it is not the
+    obvious one. A partial catch-up is normal and useful -- one
+    unreadable file must not abandon the other four thousand -- so a
+    failed step does NOT fail its collection. It stops exactly the steps
+    that depended on it, transitively, and every unrelated step in the
+    same collection runs to completion.
+
+    Cancelled rather than left queued. A step whose predecessor failed
+    can never become claimable (`claim` gates on `done`), so leaving it
+    queued would be a row that waits for ever and reads as pending work
+    -- the console would show a collection permanently one step short of
+    finished, with nothing to explain why.
+
+    Only steps that have not STARTED. A dependent already running was
+    claimed before its predecessor settled, which the gate makes rare but
+    not impossible under an expired lease; killing work in flight is the
+    runner's business, not a bookkeeping cascade's.
+    """
+    stopped: list[int] = []
+    frontier = [job_id]
+    while frontier:
+        parent = frontier.pop()
+        rows = conn.execute(
+            "UPDATE job SET state = 'cancelled', finished_at = ?,"
+            "               error = COALESCE(error, 'the step before it did not finish')"
+            " WHERE after_id = ? AND state = 'queued' RETURNING id",
+            (now, parent),
+        ).fetchall()
+        for (one,) in rows:
+            stopped.append(int(one))
+            frontier.append(int(one))
+    return stopped
 
 
 def progress(conn, job_id: int) -> Progress:
@@ -351,7 +605,11 @@ def snapshot(conn, job_id: int) -> dict:
 #: `active` and `recent` rows are the same shape to a renderer.
 _LISTED = (
     "id, kind, state, cancel_requested, total, done_count, created_at, finished_at,"
-    " json_extract(payload, '$.derive') AS derive"
+    " json_extract(payload, '$.derive') AS derive,"
+    # A walk has no enumerable items -- finding them is the job -- so
+    # WHERE it is looking is the only specific thing it can say, and a
+    # console that cannot say it shows the same line for every root.
+    " json_extract(payload, '$.path') AS path"
 )
 
 
@@ -363,13 +621,19 @@ def active(conn) -> list[dict]:
     return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
-def recent(conn, limit: int = 12) -> list[dict]:
+#: How many settled jobs the cold list carries beside the active ones --
+#: beside the function it bounds; the justification lived in
+#: sg_web/activity.py while the default sat here unnamed.
+RECENT = 12
+
+
+def recent(conn, limit: int = RECENT) -> list[dict]:
     """The last `limit` settled jobs, newest first -- so a page opened
     after a sweep finished shows the same rows a page that watched it
     does. Walks the primary key backwards and stops at `limit`: no sort
     of the table, however long the history grows."""
     cursor = conn.execute(
-        f"SELECT {_LISTED} FROM job WHERE state IN ('done','failed','cancelled') ORDER BY id DESC LIMIT ?",
+        f"SELECT {_LISTED} FROM job WHERE state IN {TERMINAL_SQL} ORDER BY id DESC LIMIT ?",
         (limit,),
     )
     columns = [c[0] for c in cursor.description]

@@ -101,6 +101,23 @@ body {
   display: block;
 }
 
+/* A member of the answer with no picture to take -- audio, a document.
+   Fills the cell the way the picture would, so the grid keeps one
+   rhythm and the file is plainly still a result. Used by the grid, the
+   table and the rail preview, which is why it is not scoped to one. */
+.cell-kind {
+  align-items: center;
+  background: var(--panel);
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 12px;
+  height: 100%;
+  justify-content: center;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: 100%;
+}
+
 .cell-name {
   position: absolute;
   inset: auto 0 0 0;
@@ -120,6 +137,23 @@ body {
 }
 .cell:focus-visible {
   outline: 2px solid var(--accent);
+}
+
+/* How far this cell stood above the middle of what a space said. A hair
+   along the top edge, always visible rather than revealed on hover: the
+   thing worth seeing is where down the page relevance falls away, and a
+   shape you have to hover for is not a shape. */
+.cell-relevance {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--ground) 55%, transparent);
+  pointer-events: none;
+}
+.cell-relevance > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
 }
 
 .empty {
@@ -235,48 +269,673 @@ body {
   display: none;
 }
 
+/* The overlay's container adapter: the dialog fills the screen, because
+   the picture owns the viewport and the grid behind it is context, not a
+   frame to leave room for. */
 .lightbox {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- the viewer ------------------------------------------------------
+   One viewer, two containers, and NO mode. The axes below are independent
+   -- chrome, inspector, framing -- and the shapes a design
+   sketch calls "minimal", "sidebar", "focus" or "bottom sheet" are
+   combinations of them the viewer arrives at from what somebody is doing.
+   There is no .viewer-minimal to select. */
+
+.viewer-page {
+  position: fixed;
+  inset: 0;
+}
+
+.viewer {
+  position: absolute;
+  inset: 0;
   display: grid;
-  gap: 10px;
-  max-width: min(92vw, 1500px);
-  max-height: 94vh;
+  /* the inspector is a COLUMN that is zero wide until it is open: the
+     stage grows back into the space when it closes, with no reflow of
+     anything else. The filmstrip is a row under both, auto-height, so a
+     walk with no neighbours costs no space at all. */
+  grid-template-columns: 1fr 0;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "chrome chrome"
+    "stage inspector"
+    "filmstrip filmstrip";
+  background: var(--ground);
 }
 
-.lightbox-media img,
-.lightbox-media video {
-  max-width: 92vw;
-  max-height: 84vh;
-  object-fit: contain;
-  border-radius: var(--radius);
-  display: block;
+.viewer[data-inspector="open"] {
+  grid-template-columns: 1fr minmax(280px, 24vw);
 }
 
-.lightbox-bar {
+/* --- chrome: present, then out of the way ---------------------------- */
+
+.viewer-chrome {
+  grid-area: chrome;
   display: flex;
   gap: 14px;
   align-items: center;
-  justify-content: center;
+  padding: 10px 14px;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
-}
-.lightbox-bar a {
-  color: var(--accent);
-}
-.lightbox-end {
-  opacity: 0.3;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 92%, transparent), transparent);
+  transition: opacity 220ms ease;
 }
 
-.lightbox-close {
+.viewer[data-chrome="resting"] .viewer-chrome,
+.viewer[data-chrome="focus"] .viewer-chrome {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The way out of lights-out. `visibility`, not opacity alone: an invisible
+   button that is still in the tab order is a control nobody can see and
+   everybody can land on, so it leaves the page's order entirely until the
+   lights are actually off. Dim, because the picture is the point; full
+   strength under a pointer or a keyboard focus ring. */
+.viewer-lights-on {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  background: var(--panel);
+  top: 10px;
+  right: 14px;
+  z-index: 2;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  padding: 5px 10px;
+  cursor: pointer;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.viewer[data-chrome="focus"] .viewer-lights-on {
+  visibility: visible;
+  opacity: 0.4;
+}
+.viewer[data-chrome="focus"] .viewer-lights-on:hover,
+.viewer[data-chrome="focus"] .viewer-lights-on:focus-visible {
+  opacity: 1;
+  border-color: var(--line);
+}
+
+.viewer-said {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.viewer-acts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.viewer-back,
+.viewer-act {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.viewer-back:hover,
+.viewer-act:hover {
+  border-color: var(--line);
+}
+.viewer-act[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.viewer-ordinal {
+  color: var(--ink-muted);
+}
+
+.chip {
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 11px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+
+/* --- the stage ------------------------------------------------------- */
+
+.viewer-stage {
+  grid-area: stage;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  /* the wheel is the viewer's, not the page's */
+  touch-action: none;
+}
+
+/* Absolutely positioned with every inset zero and `margin: auto`, so the
+   picture is centred AND bounded by the stage in both directions.
+   `place-items: center` on a grid did neither reliably: the percentage
+   max-height had no definite height to resolve against, so a 1440x1080
+   preview stayed 1080 tall in a 656-tall stage, pinned to the top and
+   overflowing downward -- which also moved its centre away from the
+   stage's, and the wheel's anchor point with it.
+
+   `width`/`height` attributes stay on the element so the browser knows the
+   shape before the bytes arrive; auto here hands the used size back to the
+   max rules, which is the one thing the attributes must not decide. */
+.viewer-stage [data-stage-media] {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* The document stage hosts the browser's own PDF renderer: a frame
+   filling the stage, not a picture sized by its pixels -- `auto` on an
+   iframe is 300x150. */
+.viewer-stage iframe[data-stage-media] {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* A picture being examined belongs on top of the furniture around it:
+   zoomed, the stage is the thing being done and the filmstrip and the
+   inspector are in its way.
+
+   `overflow` and a layer only -- the stage's BOX does not move. The
+   fitted size is measured from that box and the scale `actual` promises
+   is computed from the fitted size, so a zoom that resized the thing it
+   is measured against would chase itself, and the ResizeObserver would
+   recompute the scale from a stage the zoom had just changed. The same
+   reason the filmstrip hides with `visibility` rather than `display`. */
+.viewer[data-magnified="true"] .viewer-stage {
+  overflow: visible;
+  z-index: 3;
+}
+
+/* Only a picture past fit can be dragged, and only then does it say so. */
+.viewer-stage[data-framing="fit"] [data-stage-media] {
+  cursor: default;
+}
+.viewer-stage:not([data-framing="fit"]) [data-stage-media] {
+  cursor: grab;
+}
+.viewer-stage[data-panning] [data-stage-media] {
+  cursor: grabbing;
+}
+
+.viewer-warn {
+  position: absolute;
+  bottom: 12px;
+  color: var(--danger);
+}
+
+.viewer-step {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: clamp(48px, 8vw, 110px);
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  color: var(--ink);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  z-index: 1;
+}
+/* An arrow at an END of the answer, pointing at the other end. It is in
+   the document whenever there is more than one member, and visible only
+   where this person turned wrapping on -- so the setting changes the
+   arrows on the picture already open, with no step and no reload.
+
+   `display: none` and not just transparent: this arrow is a link, and an
+   invisible one over a tenth of the stage would still take the click. */
+.viewer:not([data-wrap="on"]) .viewer-step[data-wraps] {
+  display: none;
+}
+.viewer-step-back {
+  left: 0;
+}
+.viewer-step-on {
+  right: 0;
+}
+.viewer[data-chrome="visible"] .viewer-step:hover,
+.viewer[data-chrome="visible"] .viewer-step:focus-visible {
+  opacity: 1;
+  background: linear-gradient(to right, color-mix(in srgb, var(--ground) 55%, transparent), transparent);
+}
+.viewer-step-on:hover {
+  background: linear-gradient(to left, color-mix(in srgb, var(--ground) 55%, transparent), transparent);
+}
+
+/* The facts that sit ON the picture: who is here, and what it was called.
+   They recede the moment somebody is inspecting pixels rather than
+   browsing -- at that point the neighbours are not what is being looked
+   at. */
+.viewer-facts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 18px;
+  background: linear-gradient(to top, color-mix(in srgb, var(--ground) 85%, transparent), transparent);
+  transition: opacity 220ms ease;
+}
+.viewer[data-absorbed="true"] .viewer-facts {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Focus is a decision, so it takes the surrounding walk with it; resting
+   is only the pointer being still, and the walk stays. Stated here, after
+   both are defined, so the cascade reads top to bottom. */
+.viewer[data-chrome="focus"] .viewer-facts,
+.viewer[data-chrome="focus"] .viewer-step {
+  opacity: 0;
+  pointer-events: none;
+}
+.viewer-caption {
+  color: var(--ink);
+}
+.viewer-people {
+  display: flex;
+  gap: 6px;
+}
+
+/* --- the filmstrip: the local neighbourhood of the walk -------------- */
+
+.viewer-filmstrip {
+  grid-area: filmstrip;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  /* A grid item's min-width is `auto`, so without this the strip grows to
+     its fifteen thumbnails and takes the whole viewer wider than the
+     window: the PAGE scrolls sideways instead of the strip, and the
+     current picture can never be centred because nothing overflows. */
+  min-width: 0;
+}
+
+/* Native horizontal scrolling, and `pan-x` so a finger dragged across the
+   strip is the browser's business -- it is outside the stage and must
+   never enter the picture's own pointer handling. */
+.viewer-filmstrip-track {
+  display: flex;
+  gap: 5px;
+  /* Centred, because a neighbourhood is fifteen pictures whatever the
+     window is: left-aligned on a wide screen that is a thousand pixels
+     of thumbnails and fifteen hundred of nothing, which reads as a strip
+     that failed to load rather than one that is simply short. Centring
+     only bites when the strip does NOT overflow -- once it does, the
+     scroll position is what centres the current picture, and this has no
+     effect on it. */
+  justify-content: center;
+  padding: 8px 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+.viewer-filmstrip-track::-webkit-scrollbar {
+  display: none;
+}
+
+.viewer-filmstrip-item {
+  flex: 0 0 auto;
+  /* Grows with the window and stops: 64px is the floor where a thumbnail
+     is still recognisable, and past ~110px fifteen of them are a second
+     gallery rather than a strip under the one picture being looked at. */
+  width: clamp(64px, 5.5vw, 110px);
+  aspect-ratio: 1;
+  border-radius: 3px;
+  overflow: hidden;
+  opacity: 0.7;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  transition: opacity 120ms ease;
+}
+.viewer-filmstrip-item img {
+  width: 100%;
+  height: 100%;
+  /* recognition at this size, not composition: a square crop reads faster
+     than fifteen different letterboxed shapes */
+  object-fit: cover;
+  display: block;
+  background: var(--panel);
+}
+/* A member of the walk with no picture to take. Same square as its
+   neighbours so the strip keeps one rhythm; it is a real member and
+   arrowing onto it is a real move. */
+.viewer-filmstrip-kind {
+  align-items: center;
+  background: var(--panel);
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 11px;
+  height: 100%;
+  justify-content: center;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: 100%;
+}
+.viewer-filmstrip-item:hover,
+.viewer-filmstrip-item:focus-visible {
+  opacity: 1;
+}
+/* the one strong treatment in the row */
+.viewer-filmstrip-item[aria-current="true"] {
+  opacity: 1;
+  outline-color: var(--accent);
+}
+
+/* The strip is context for BROWSING. Once somebody is inspecting pixels
+   it is not what they are looking at, and lights-out means the
+   photograph alone. `data-absorbed` is already the viewer's word for
+   "zoomed past browsing" (frontend/src/viewer.ts).
+
+   `visibility`, not `display`, and for the same reason the chrome bar
+   above fades rather than unmounting: a strip that took its height with
+   it would make the stage taller, which changes the fitted size, which
+   changes the scale `actual` and `fill` were computed from -- and the
+   ResizeObserver would recompute them from a stage the zoom itself had
+   just resized. Zoom must not be able to move the thing it is measured
+   against. */
+.viewer[data-absorbed="true"] .viewer-filmstrip,
+.viewer[data-chrome="focus"] .viewer-filmstrip {
+  visibility: hidden;
+}
+
+/* --- the inspector --------------------------------------------------- */
+
+.inspector {
+  grid-area: inspector;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0 16px 20px;
+}
+.viewer[data-inspector="closed"] .inspector {
+  display: none;
+}
+.inspector-bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  background: var(--panel);
+}
+.inspector-bar h2 {
+  font-size: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.panel {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+/* The sections are <details>, so the browser owns opening them: the
+   summary is focusable, operable by Enter and Space, announced as a
+   disclosure, and needs no script. It replaced an <h3> wearing
+   `cursor: pointer` with nothing listening -- a control that looked like
+   one and was not. */
+.panel > summary {
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  list-style: none;
+  padding: 4px 0;
+  text-transform: uppercase;
+}
+.panel > summary::-webkit-details-marker {
+  display: none;
+}
+.panel > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+.panel[open] > summary::before {
+  transform: rotate(90deg);
+}
+.panel > summary:hover,
+.panel > summary:focus-visible {
+  color: var(--ink);
+}
+.panel h4 {
+  color: var(--ink-muted);
+  font-size: 13px;
+  margin: 12px 0 4px;
+}
+.panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 0;
+}
+.panel dt {
+  color: var(--ink-muted);
+}
+.panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.panel a {
+  color: var(--accent);
+}
+.panel .muted {
+  color: var(--ink-muted);
+}
+.badge {
+  background: none;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 9px;
+}
+
+/* --- the generation recipe ------------------------------------------- */
+
+/* The prompt is the reason most people opened this panel, so it is the
+   one thing here allowed to be big. Everything else -- the models, the
+   numbers -- is set small and dense underneath it.
+
+   The scratch fields are textareas because they must BEHAVE like
+   textareas: caret, selection, undo, Ctrl-A, delete the lot. They must
+   not LOOK like form controls, because nothing here is a form and there
+   is nothing to submit. So the chrome comes off entirely and comes back
+   only on focus, where it says "you are typing in this one" rather than
+   "fill me in". */
+
+.panel-recipe .recipe-tool {
+  color: var(--ink-muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  margin-left: 8px;
+  text-transform: none;
+}
+.recipe-text {
+  margin: 10px 0 14px;
+}
+.recipe-text > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.recipe-label {
+  color: var(--ink-muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.recipe-scratch {
+  background: none;
+  border: none;
+  border-left: 2px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  display: block;
+  font: inherit;
+  line-height: 1.5;
+  margin: 4px 0 0;
+  /* the script sizes it to its content; a scrollbar inside a prompt is a
+     prompt somebody has to scroll to read */
+  overflow: hidden;
+  padding: 2px 0 2px 10px;
+  resize: none;
+  width: 100%;
+}
+.recipe-scratch:focus {
+  border-left-color: var(--accent);
+  outline: none;
+}
+.recipe-text[data-recipe-field="prompt"] .recipe-scratch {
+  font-size: 15px;
+}
+.recipe-copy,
+.recipe-revert {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 0;
+  text-transform: uppercase;
+}
+.recipe-copy:hover,
+.recipe-revert:hover,
+.recipe-copy:focus-visible,
+.recipe-revert:focus-visible {
+  color: var(--accent);
+}
+.recipe-copy[data-done] {
+  color: var(--accent);
+}
+.recipe-revert {
+  margin-top: 4px;
+}
+
+.recipe-models {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+}
+.recipe-model {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.recipe-model .recipe-label {
+  flex: none;
+  width: 72px;
+}
+/* The weight, not decoration: a LoRA without its number does not
+   reproduce the picture, so it is set where the eye lands. */
+.recipe-weight {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.recipe-numbers {
+  font-variant-numeric: tabular-nums;
+}
+
+.recipe-all {
+  background: none;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  font-size: 20px;
-  padding: 2px 12px;
+  color: var(--ink);
   cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  margin-top: 14px;
+  padding: 5px 12px;
+  width: 100%;
+}
+.recipe-all:hover,
+.recipe-all:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.recipe-all[data-done] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Narrow: the inspector is a sheet under the picture rather than a column
+   beside it. The same markup, the same state -- geometry decides, so
+   nothing in the browser has to. */
+@media (max-width: 760px) {
+  .viewer,
+  .viewer[data-inspector="open"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas:
+      "chrome"
+      "stage"
+      "filmstrip"
+      "inspector";
+  }
+  .inspector {
+    border-left: none;
+    border-top: 1px solid var(--line);
+    max-height: 45vh;
+  }
+  .viewer-filmstrip-item {
+    width: 52px;
+  }
+  /* a picture, a strip and a sheet stacked on a phone is three things
+     competing for one screen: the sheet is what was asked for, so the
+     strip stands down while it is open */
+  .viewer[data-inspector="open"] .viewer-filmstrip {
+    display: none;
+  }
+}
+
+/* Written at the same specificity as the state rules above, so the
+   cascade never descends. */
+@media (prefers-reduced-motion: reduce) {
+  .viewer[data-chrome] .viewer-chrome,
+  .viewer[data-chrome] .viewer-facts,
+  .viewer[data-chrome] .viewer-lights-on,
+  .viewer[data-chrome] .viewer-step {
+    transition: none;
+  }
 }
 
 /* --- the detail page ------------------------------------------------ */
@@ -713,6 +1372,88 @@ body {
   color: var(--accent);
   font-size: 0.9em;
 }
+.keyword-list {
+  display: grid;
+  gap: 2px;
+}
+.keyword-row {
+  display: grid;
+  grid-template-columns: minmax(6em, 16em) 8em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.keyword-name {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.keyword-count {
+  color: var(--ink-muted);
+  font-size: 0.9em;
+}
+.keyword-rename {
+  display: flex;
+  gap: 6px;
+}
+.keyword-rename input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 18em;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9em;
+  padding: 2px 6px;
+}
+.keyword-rename button,
+.keyword-forget {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.85em;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.keyword-forget:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.authored-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.authored-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 2px 0 6px;
+  font-size: 0.85em;
+}
+.authored-tag a {
+  color: var(--ink);
+}
+.authored-untag {
+  font-size: 0.9em;
+  line-height: 1;
+}
+.authored-tagging input {
+  width: 9em;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85em;
+  padding: 2px 6px;
+}
 .authored-picker {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -773,6 +1514,291 @@ body {
 .cell-pick:checked,
 .cell-pick:focus-visible {
   opacity: 1;
+}
+
+/* "not them", on the page where somebody is actually reviewing who a
+   person is. The media inspector has had this since the claim could be
+   made; the person's own page, which is where the wrong picture is
+   noticed, had no way to say it. */
+/* A collection, folded to one row. The steps live under it rather than
+   beside it: eight rows where somebody asked for one thing made the
+   question "is this going well" a sum they had to do while it moved. */
+.matrix-collection > details > summary {
+  cursor: pointer;
+}
+.matrix-steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  border-left: 2px solid var(--line);
+}
+/* The work a fresh clustering leaves behind: one card per group nobody
+   has named, biggest first, named in place. */
+.unknown-faces {
+  margin: 0 0 24px;
+}
+.person-unknown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.person-unknown .person-rename {
+  display: flex;
+  gap: 4px;
+}
+.person-unknown .person-rename input {
+  min-width: 0;
+  flex: 1;
+}
+/* Named, and still on screen: the card stays where it was so the eye
+   does not have to find its place again after every name. */
+[data-named] {
+  opacity: 0.55;
+}
+
+/* A name spotted in the phrase. Above the chips, because it is about
+   the question rather than part of it -- and quiet, because it is an
+   offer and not an answer. */
+.ask-split {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  font-size: 0.9rem;
+}
+
+/* Recurring terms: a cloud of ways to narrow, each carrying the count
+   of FILES that asked for it. Quieter than the prompt panel above,
+   because it is a reading of a convention rather than an identity. */
+.term-uses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.term-use > a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.term-use-count {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.analyze-note {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+/* Remembered questions: a strip of ways IN, above the chips that say
+   what the current one is. Quiet -- these are bookmarks, not the
+   answer -- and the forget button only appears on the one hovered. */
+.ask-remembered {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+}
+.ask-remembered-one {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.ask-forget {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.ask-remembered-one:hover .ask-forget,
+.ask-forget:focus-visible {
+  opacity: 1;
+}
+
+/* Stop, on the fold. Quiet until the row is hovered or focused: it is
+   the one control here that ends work, and a button that ends work
+   should not be the brightest thing in a list somebody is scanning. */
+.matrix-stop {
+  opacity: 0;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.matrix-collection > details > summary:hover .matrix-stop,
+.matrix-stop:focus-visible {
+  opacity: 1;
+}
+
+/* One failed step means the collection did not do what it was asked,
+   whatever the others managed -- so it is coloured on the fold, where
+   somebody scanning the list sees it without opening anything. */
+[data-collection-state="failed"] .matrix-state {
+  color: var(--danger);
+}
+
+/* The one sweep that is an answer rather than a choice. Everything
+   beside it needs somebody to already know which to press and when. */
+[data-launch-primary] > button:first-child {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Duplicate review. Read-only by design, so it is a reading surface:
+   the copies, and beside each one what it is FILED under, which is the
+   thing that would be lost if the wrong copy went. */
+.dupe-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.dupe-group h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+.dupe-count {
+  color: var(--ink-muted);
+  font-weight: normal;
+}
+.dupe-verdict {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+/* Not the same bytes is the case that must not be mistaken for the
+   safe one, so it is the one that is coloured. */
+[data-dupe-alike] b {
+  color: var(--danger);
+}
+.dupe-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cell-gap);
+}
+.dupe-member {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-width: 30rem;
+}
+.dupe-member[data-dupe-best] {
+  border-color: var(--accent);
+}
+.dupe-member .cell {
+  width: 96px;
+  flex: 0 0 96px;
+}
+.dupe-member-said {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.dupe-member-name {
+  word-break: break-word;
+}
+.dupe-member-filed {
+  color: var(--accent);
+}
+.dupe-best {
+  color: var(--accent);
+}
+
+/* "Take their face from this one", beside the denial and quiet like it:
+   both are corrections, and a correction should not be the loudest
+   thing on a page of somebody's photographs. */
+.cell-face {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ground);
+  opacity: 0;
+  cursor: pointer;
+}
+.cell-shell:hover .cell-face,
+.cell-face:focus-visible,
+.cell-face[data-chosen] {
+  opacity: 1;
+}
+
+/* Where a face goes for somebody nothing has clustered one for. Their
+   initial, in the same square: a person with no exemplar is a normal
+   state, not a failure to render. */
+.person-face-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  color: var(--ink-muted);
+  font-size: 1.6rem;
+  text-transform: uppercase;
+}
+
+.cell-deny {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  opacity: 0;
+  cursor: pointer;
+}
+.cell-shell:hover .cell-deny,
+.cell-deny:focus-visible {
+  opacity: 1;
+}
+/* What is left where the picture was. Not the picture greyed out: the
+   name really is off it now, and a cell that still showed the thumbnail
+   under this person would be contradicting what was just said. */
+.cell-denied {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border: 1px dashed var(--muted);
+  border-radius: 4px;
 }
 
 .curate {
@@ -1075,8 +2101,27 @@ body {
 .surface-zoom a {
   color: var(--ink-muted);
 }
+/* WHERE YOU ARE, not just another link. Colour alone could not carry
+   it: `--imprint` is already the link colour, the major tick, the `now`
+   marker and the bar's hover, so "current" read as "clickable". The box
+   is the signal; the colour is the confirmation. */
 .surface-zoom a[data-current] {
   color: var(--imprint);
+  border: 1px solid currentcolor;
+  border-radius: var(--radius);
+  padding: 0 6px;
+  margin: 0 -6px;
+}
+/* And when NO preset matches -- which is every first visit, because the
+   opening window is tightened to where the pictures are and is never
+   exactly a month -- the control says so rather than looking like
+   nothing is selected. */
+.surface-zoom [data-custom] {
+  color: var(--ink-muted);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 0 6px;
+  cursor: default;
 }
 /* the axis: furniture, density, sessions as frames, pictures at their moment */
 .axis {
@@ -1132,6 +2177,40 @@ body {
 }
 .axis[data-settling] .bar {
   transform: scaleY(0.92);
+}
+/* A run of time holding nothing, drawn as a band rather than paid for
+   in blank pixels. Hatched rather than filled: a solid block reads as
+   data, and this is the absence of data. */
+.axis-skipped rect {
+  /* Flat, not hatched: the stage is preserveAspectRatio="none", so a
+     pattern would be stretched by whatever the viewport is today. A
+     wash and a dashed edge survive any aspect. */
+  fill: color-mix(in srgb, var(--ink-muted) 7%, transparent);
+  stroke: var(--line);
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+.axis-skipped:hover rect {
+  stroke: var(--ink-muted);
+}
+.axis-skips {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 24px;
+  pointer-events: none;
+  font-family: var(--stamp);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+.axis-skips span {
+  position: absolute;
+  top: 6px;
+  display: block;
+  text-align: center;
+  overflow: visible;
+  white-space: nowrap;
+  transform: translateY(80px) rotate(-90deg);
 }
 .axis-labels {
   position: absolute;
@@ -1217,11 +2296,16 @@ body {
   bottom: 52px;
   height: 40px;
 }
+/* CENTRED on its bar, not hung off the bar's left edge. A 40px
+   thumbnail anchored at the left of a 2px bar sits entirely to one side
+   of the thing it belongs to, and a reader pairs it with whichever bar
+   it happens to overlap instead. */
 .axis-samples .surface-sample {
   position: absolute;
   top: 0;
   width: 40px;
   height: 40px;
+  transform: translateX(-50%);
 }
 .axis-samples .surface-sample[hidden] {
   display: none;
@@ -1888,6 +2972,16 @@ body {
   margin-left: auto;
 }
 
+.shell-install {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 10px;
+}
+
 .activity {
   position: relative;
 }
@@ -1924,7 +3018,7 @@ body {
 .job {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "kind state" "progress progress" "count cancel";
+  grid-template-areas: "kind state" "progress progress" "count cancel" "doing doing";
   gap: 2px 10px;
   padding: 6px 12px;
   border-top: 1px solid var(--line);
@@ -1958,6 +3052,14 @@ body {
   grid-area: count;
   font-size: 12px;
   color: var(--ink-muted);
+}
+.job-doing {
+  grid-area: doing;
+  font-size: 12px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .job-cancel {
   grid-area: cancel;
@@ -2079,4 +3181,1210 @@ body {
 .session-words:hover .session-title {
   text-decoration: underline;
   text-underline-offset: 4px;
+}
+
+/* --- the filter surface ---------------------------------------------- */
+
+/* Always visible, always says how many clauses are held. A filter
+   surface reachable only by knowing a keyboard shortcut is a filter
+   surface for whoever wrote it. */
+.ask-filters {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 6px 12px;
+}
+.ask-filters:hover,
+.ask-filters:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ask-filters[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ask-filters-count {
+  background: var(--accent);
+  border-radius: 999px;
+  color: var(--ground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-left: 6px;
+  padding: 0 7px;
+}
+/* It sits in a row of buttons, so it is dressed as one. An underlined
+   link among five bordered controls reads as a mistake. */
+a.ask-save {
+  text-decoration: none;
+}
+.ask-total {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+/* "of 3,627 ranked - show all". Beside the total because it qualifies
+   it: without this the cut is invisible and the answer reads as a
+   small library. It keeps its width -- a flex row will happily shrink a
+   span until the button beside it sits on top of the link. */
+.ask-cut {
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Dressed like the rest of the bar. Left alone it is default-blue
+   underlined browser text on a dark panel, which reads as a mistake
+   rather than a control. */
+.ask-cut a {
+  color: var(--ink-muted);
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
+}
+.ask-cut a:hover,
+.ask-cut a:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentcolor;
+}
+
+/* Docked beside the grid on a wide screen, a full-height sheet on a
+   narrow one. Same markup, same state: geometry decides. */
+.filters {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  grid-area: filters;
+  overflow-y: auto;
+  padding: 0 14px 24px;
+}
+/* The drawer is fixed to the left edge, so EVERYTHING beside it
+   moves over -- the header and the chips as much as the grid. Shifting
+   only the grid left the drawer sitting on top of the search bar and
+   the chips, where their controls were visible and unclickable. */
+/* EVERYTHING beside the drawer moves over, and "everything" includes
+   the application's own navigation. Shifting only the gallery's own
+   furniture left the drawer sitting on top of the brand and the shell
+   links -- visible, unclickable, and the first thing a screenshot
+   shows. */
+body[data-filters="open"] .shell,
+body[data-filters="open"] .shell-notice,
+body[data-filters="open"] .bar,
+body[data-filters="open"] .chips,
+body[data-filters="open"] .stage {
+  margin-left: var(--filters-width, 300px);
+}
+.filters:not([hidden]) {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--filters-width, 300px);
+  z-index: 3;
+}
+.filters-bar {
+  align-items: baseline;
+  background: var(--panel);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px 0 8px;
+  position: sticky;
+  top: 0;
+}
+.filters-bar h2 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.filters-clear {
+  color: var(--accent);
+  font-size: 12px;
+  margin-left: auto;
+}
+.filter-group {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+}
+.filter-group h3 {
+  color: var(--ink-muted);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  margin: 4px 0;
+  text-transform: uppercase;
+}
+.filter > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 5px 0;
+}
+.filter > summary::-webkit-details-marker {
+  display: none;
+}
+.filter > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+.filter[open] > summary::before {
+  transform: rotate(90deg);
+}
+.filter > summary:hover,
+.filter > summary:focus-visible {
+  color: var(--accent);
+}
+/* how many clauses THIS dimension holds, so a collapsed section still
+   says it is doing something */
+.filter-held {
+  background: var(--accent);
+  border-radius: 999px;
+  color: var(--ground);
+  font-size: 0.7rem;
+  padding: 0 6px;
+}
+.filter-note {
+  color: var(--ink-muted);
+  font-size: 12px;
+  margin: 2px 0 6px;
+}
+.filter-note.warn {
+  color: var(--danger);
+}
+.filter-find {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  width: 100%;
+}
+.filter-list {
+  list-style: none;
+  margin: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0;
+}
+.filter-option {
+  align-items: baseline;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 13px;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 3px 6px;
+  text-align: left;
+  width: 100%;
+}
+.filter-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.filter-option[data-chosen="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.filter-option[data-chosen="true"]::before {
+  content: "✓ ";
+}
+/* Shown and not offered: that a value exists and would give nothing is
+   a fact about the library, and hiding it makes the same library look
+   as though it never had one. */
+.filter-option:disabled {
+  color: var(--ink-muted);
+  cursor: default;
+  opacity: 0.55;
+}
+.filter-option-label {
+  overflow-wrap: anywhere;
+}
+.filter-option-count {
+  color: var(--ink-muted);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.filter-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.filter-range-field {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 4px;
+}
+.filter-range input {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 6px;
+  width: 7em;
+}
+.filter-range button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+}
+.filter-range button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* A chip is the filter that made it, so its body is a control that
+   opens that filter rather than a label that does nothing. */
+.chip-edit {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.chip-edit:hover,
+.chip-edit:focus-visible {
+  color: var(--accent);
+}
+.chip-clear {
+  align-self: center;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  /* A SHEET, not a drawer. At 340px of a 390px window the panel was
+     neither: it covered the surface it was filtering while leaving a
+     useless sliver of it visible down one side, so nothing was readable
+     and nothing was dismissible by looking at it. Full width, with the
+     close button that was always in its header. */
+  .filters:not([hidden]) {
+    width: 100%;
+  }
+  body[data-filters="open"] .shell,
+  body[data-filters="open"] .shell-notice,
+  body[data-filters="open"] .bar,
+  body[data-filters="open"] .chips,
+  body[data-filters="open"] .stage {
+    margin-left: 0;
+  }
+}
+
+/* --- analyze: what this answer is made of ----------------------------- */
+
+.ask-views {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: inline-flex;
+  overflow: hidden;
+}
+.ask-view {
+  color: var(--ink-muted);
+  font-size: 13px;
+  padding: 5px 12px;
+  text-decoration: none;
+}
+.ask-view:hover {
+  color: var(--ink);
+}
+.ask-view.is-here {
+  background: var(--accent);
+  color: var(--ground);
+}
+
+/* `auto-fill` with a CAP, not `auto-fit` with `1fr`.
+   Stretched to the full width, four panels of five rows each became
+   four very wide panels of five very short bars, with a bar's label at
+   one end of the screen and its count at the other. Capped, they pack
+   from the left at a readable width and the eye reads them as a set. */
+.analyze {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 440px));
+  justify-content: start;
+}
+.analyze-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+/* the prompt is what somebody came for, so it gets the room */
+.analyze-panel[data-analyze-prompts] {
+  grid-column: 1 / -1;
+}
+.analyze-panel h2 {
+  align-items: baseline;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  letter-spacing: 0.08em;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+.analyze-of {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.analyze-bars {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.analyze-bar a {
+  align-items: center;
+  border-radius: var(--radius);
+  color: var(--ink);
+  display: grid;
+  font-size: 13px;
+  gap: 10px;
+  grid-template-columns: minmax(80px, 1fr) 2fr auto auto;
+  padding: 3px 6px;
+  text-decoration: none;
+}
+.analyze-bar a:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.analyze-bar.is-held a {
+  color: var(--accent);
+  font-weight: 600;
+}
+/* `break-word`, not `anywhere`: a checkpoint called
+   `wan2_1_t2v.safetensors` was being split as `wan2_1_t2v.saf` /
+   `etensors` in the middle of a word that had somewhere sensible to
+   break. Long unbroken names still wrap rather than overflowing. */
+.analyze-bar-label {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.analyze-bar-track {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+.analyze-bar-fill {
+  background: var(--accent);
+  display: block;
+  height: 100%;
+}
+.analyze-bar-count,
+.analyze-bar-share {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.analyze-more,
+.analyze-empty {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.analyze-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+.analyze-table th {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.analyze-table td {
+  border-top: 1px solid var(--line);
+  padding: 4px 8px 4px 0;
+}
+.analyze-table a {
+  color: var(--accent);
+}
+.analyze-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.analyze-range {
+  color: var(--ink-muted);
+}
+
+.prompt-uses {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.prompt-use {
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+.prompt-use-bar {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+}
+.prompt-use-count {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.prompt-use-of {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.prompt-copy {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  margin-left: auto;
+  padding: 0;
+  text-transform: uppercase;
+}
+.prompt-copy:hover,
+.prompt-copy:focus-visible {
+  color: var(--accent);
+}
+.prompt-copy[data-done] {
+  color: var(--accent);
+}
+.prompt-use-text {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* --- the compare tray ------------------------------------------------- */
+
+/* A strip along the bottom, not a page: the point is to gather while
+   carrying on browsing, and a surface you have to navigate TO cannot be
+   filled that way. Collapsed it is still a tab, because a tray that
+   vanished would take the count with it. */
+.tray {
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  box-shadow: 0 -6px 18px rgb(0 0 0 / 35%);
+  left: 0;
+  position: fixed;
+  right: 0;
+  z-index: 5;
+}
+.tray-bar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.tray-tab {
+  background: none;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 2px 0;
+  text-transform: uppercase;
+}
+.tray-tab b {
+  background: var(--accent);
+  border-radius: 999px;
+  color: var(--ground);
+  margin-left: 6px;
+  padding: 0 7px;
+}
+.tray-act {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+}
+.tray-act:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tray-act:disabled {
+  color: var(--ink-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+.tray-act[data-compare-open] {
+  margin-left: auto;
+}
+.tray-items {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0 12px 10px;
+}
+.tray[data-tray="closed"] .tray-items {
+  display: none;
+}
+.tray-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  flex: none;
+  overflow: hidden;
+  position: relative;
+}
+.tray-item[data-dragging="true"] {
+  opacity: 0.4;
+}
+.tray-item img {
+  display: block;
+  height: 66px;
+  object-fit: cover;
+  width: 88px;
+}
+.tray-drop {
+  background: rgb(0 0 0 / 55%);
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 1px 5px;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+.tray-drop:hover {
+  color: var(--danger);
+}
+
+/* Above everything, because a comparison is the thing being done. */
+.compare-view {
+  background: rgb(0 0 0 / 97%);
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  position: fixed;
+  z-index: 10;
+}
+.compare-view-bar {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+.compare-view-close {
+  background: none;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0 6px;
+}
+/* Equal cells, media centred inside them.
+   Two wrong answers were tried first. STRETCHED columns with the media
+   as a flex child made every column the sheet's full height and
+   `object-fit: contain` letterboxed each picture into a band in the
+   middle -- correct geometry, hundreds of pixels of black, and a clip's
+   controls three hundred pixels below its own picture. CENTRED columns
+   sized to their own media fixed the controls and broke the
+   comparison: three aspect ratios meant three different heights and
+   nothing lined up.
+   The frame is the answer. It takes the column's share of the height so
+   every column is identical and the pictures line up; the media is
+   centred inside its own frame at its own shape, so the controls stay
+   on the thing they control. */
+.compare-view-strip {
+  align-items: stretch;
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  justify-content: center;
+  min-height: 0;
+  overflow-x: auto;
+  padding: 0 8px 14px;
+}
+.compare-column {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  margin: 0;
+  min-height: 0;
+  min-width: 0;
+}
+.compare-frame {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+  /* The glass magnifies inside the frame, so what leaves the frame is
+     gone rather than overlapping the column beside it. */
+  overflow: hidden;
+}
+/* Grab, only where there is something to move. At fit the picture fills
+   its frame and dragging it would do nothing, and a cursor that promises
+   otherwise is a control that lies. */
+[data-zoomed="true"] .compare-frame {
+  cursor: grab;
+}
+[data-zoomed="true"] .compare-frame:active {
+  cursor: grabbing;
+}
+.compare-zoom {
+  font-variant-numeric: tabular-nums;
+}
+.compare-column img,
+.compare-column video {
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  width: 100%;
+}
+.compare-column figcaption {
+  color: var(--ink-muted);
+  flex: none;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding-top: 6px;
+  text-align: center;
+}
+.compare-column figcaption a {
+  color: var(--accent);
+}
+
+/* The tray sits over the bottom of every surface, so give the page back
+   the room it takes rather than hiding the last row of a grid under it. */
+body:has(.tray:not([hidden])) .stage,
+body:has(.tray:not([hidden])) .detail,
+body:has(.tray:not([hidden])) .person-grid {
+  padding-bottom: 120px;
+}
+body:has(.tray[data-tray="closed"]:not([hidden])) .stage,
+body:has(.tray[data-tray="closed"]:not([hidden])) .detail,
+body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
+  padding-bottom: 48px;
+}
+
+/* --- the table: the same answer, as facts --------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+}
+.answer-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+.answer-table th {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  padding: 0 10px 6px 0;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  background: var(--ground);
+  z-index: 1;
+}
+.answer-table td {
+  border-top: 1px solid var(--line);
+  padding: 4px 10px 4px 0;
+  vertical-align: middle;
+}
+.answer-table tbody tr:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.answer-thumb {
+  padding-right: 10px;
+  width: 1%;
+}
+.answer-thumb img {
+  border-radius: 3px;
+  display: block;
+  height: 34px;
+  object-fit: cover;
+  width: 46px;
+}
+.answer-name {
+  overflow-wrap: anywhere;
+}
+.answer-name a {
+  color: var(--ink);
+}
+.answer-name a:hover {
+  color: var(--accent);
+}
+.answer-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+/* A seed is a long number nobody reads and everybody copies. */
+.answer-seed {
+  user-select: all;
+}
+
+/* Any / All: offered only where a file can carry several at once, so
+   the two readings are different questions rather than one of them
+   being an answer that is always empty. */
+.filter-choice {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: inline-flex;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.filter-choice-mode {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 2px 10px;
+}
+.filter-choice-mode:hover {
+  color: var(--ink);
+}
+.filter-choice-mode[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--ground);
+}
+
+/* --- asking a person something --------------------------------------
+   The native <dialog>, dressed. What is NOT here is the interesting
+   part: no z-index, no backdrop element, no focus trap, no Escape
+   handler, no scroll lock. A modal dialog is in the top layer, above
+   every stacking context on the page, and the browser owns the rest
+   (frontend/src/ask.ts). */
+.ask-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 0;
+  width: max-content;
+}
+.ask-box::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.ask-form {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 16px;
+}
+.ask-question {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+.ask-detail {
+  color: var(--ink-muted);
+  font-size: 13px;
+  margin: -8px 0 0;
+}
+.ask-body:empty {
+  display: none;
+}
+.ask-field {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 8px 10px;
+  width: 100%;
+}
+.ask-field:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+/* Every choice is its own submit button, so this is a list of them.
+   Bounded height because a library can hold a lot of collections and a
+   dialog taller than the window has no scrollbar of its own. */
+.ask-choices {
+  display: grid;
+  gap: 6px;
+  max-height: min(340px, 50vh);
+  overflow-y: auto;
+}
+.ask-choice {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+}
+.ask-choice:hover,
+.ask-choice:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.ask-choice-note {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.ask-feet {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+/* The affirmative is FIRST in the document, because implicit submission
+   -- Enter in the text field -- picks the first submit button in tree
+   order and a person typing a name means save. It belongs last on the
+   screen, so the dismissal is ordered before it here rather than the
+   markup being written the wrong way round. */
+.ask-drop {
+  order: -1;
+}
+.ask-take,
+.ask-drop {
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 14px;
+}
+.ask-take {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--ground);
+  font-weight: 600;
+}
+.ask-take.is-grave {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--ink);
+}
+.ask-drop {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+}
+.ask-drop:hover,
+.ask-drop:focus-visible {
+  color: var(--ink);
+  outline: none;
+}
+
+/* --- the slideshow ---------------------------------------------------
+   The walk on a timer, so its controls sit with the other viewer acts
+   rather than becoming a surface of their own. Two settings and not
+   one: WRAP is what the arrows do at either end, LOOP is what the
+   slideshow does when it reaches the end, and a person wants them
+   separately. */
+.viewer-show {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+.viewer-show-set {
+  align-items: center;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 10px;
+  padding: 4px 9px;
+}
+.viewer-show-set[hidden] {
+  display: none;
+}
+.viewer-show-set label {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+.viewer-show-set select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 1px 4px;
+}
+.viewer-show-every {
+  color: var(--ink-muted);
+}
+/* Running is a state worth seeing from across the room: the picture is
+   about to change on its own, and a control that looks the same either
+   way is how somebody ends up wondering why. */
+.viewer-show[data-playing="yes"] .viewer-act[data-show-play] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- add a filter by asking for it -----------------------------------
+   The list is the application saying what it knows. It sits under the
+   box rather than beside it, and over the sections rather than pushing
+   them down: a list that reflows the drawer moves the thing somebody
+   was reading while they type. */
+.filter-find {
+  padding: 8px 12px 10px;
+  position: relative;
+}
+.filter-find input[type="search"] {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 7px 10px;
+  width: 100%;
+}
+.filter-find input[type="search"]:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.filter-found {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  left: 12px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  padding: 4px;
+  position: absolute;
+  right: 12px;
+  top: calc(100% - 4px);
+  z-index: 3;
+}
+.filter-found[hidden] {
+  display: none;
+}
+.filter-found-row {
+  align-items: baseline;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+.filter-found-row:hover,
+.filter-found-row[aria-selected="true"] {
+  background: var(--ground);
+  border-color: var(--accent);
+}
+.filter-found-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Where it came from, and -- for a key nothing here named -- how much
+   of this answer it can speak about at all. Somebody choosing between
+   two unfamiliar fields is choosing on exactly that. */
+.filter-found-group {
+  color: var(--ink-muted);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A sortable heading. It is a link, so it says so on hover and focus;
+   the arrow is decorative -- `aria-sort` on the cell is what a screen
+   reader reads, which is the same fact said in the right place. */
+.answer-sort {
+  color: inherit;
+  display: inline-flex;
+  gap: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.answer-sort:hover,
+.answer-sort:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+.answer-sort[data-sorted] {
+  color: var(--accent);
+}
+
+/* --- comparing one at a time -----------------------------------------
+   The flip. Its whole value is that the pictures occupy the SAME pixels
+   -- a difference side-by-side loses in the saccade is then the only
+   thing on screen that moves -- so the shown column takes the full
+   width and nothing shifts as it changes.
+
+   `[hidden]` does the hiding, which means the other columns stay built
+   and decoded: a flip that fetched would be a delay your eye reports as
+   if it were a fact about the picture. */
+.compare-view[data-mode="flip"] .compare-view-strip {
+  overflow-x: hidden;
+}
+.compare-view[data-mode="flip"] .compare-column {
+  flex: 1 1 100%;
+}
+.compare-modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.compare-mode {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+}
+.compare-mode:hover {
+  color: var(--ink);
+}
+.compare-mode[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--ground);
+}
+/* Which one this is, so "B is sharper" is a sentence somebody can say.
+   The same letter in both modes: switching must not renumber what
+   somebody was just talking about. */
+.compare-letter {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+.compare-view-said {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A thumb on what a model said. It sits with the sentence, small and
+   quiet: the gesture must cost nothing to ignore, or it becomes another
+   thing on the page asking to be dealt with. */
+.said-verdict {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.said-thumb {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  filter: grayscale(1);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.45;
+  padding: 2px 4px;
+}
+.said-thumb:hover,
+.said-thumb:focus-visible {
+  filter: none;
+  opacity: 1;
+  outline: none;
+}
+.said-thumb[aria-pressed="true"] {
+  border-color: var(--line);
+  filter: none;
+  opacity: 1;
+}
+
+/* Saying a name is wrong, beside the name. Quiet until wanted: it is a
+   correction offered, not a question being asked of every picture. */
+.person-said {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 2px;
+}
+.person-deny {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  opacity: 0;
+  padding: 0 2px;
+}
+.person-said:hover .person-deny,
+.person-deny:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+.person-deny:hover {
+  color: var(--danger);
+}
+
+/* "Read these again". A repair, offered where the problem is visible --
+   dressed as a link in a line of links rather than as a call to action,
+   because most visits to a folder are not repairs. */
+.folder-reread {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.folder-reread:hover:not(:disabled),
+.folder-reread:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.folder-reread:disabled {
+  cursor: default;
+  opacity: 0.7;
 }

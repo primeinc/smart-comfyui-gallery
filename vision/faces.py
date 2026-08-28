@@ -31,6 +31,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import override
 
 import cv2
 import numpy as np
@@ -135,7 +136,16 @@ class FaceDetection:
         if self.embedding is not None:
             arr = np.asarray(self.embedding, dtype=np.float32).reshape(-1)
             self.embedding = arr
-            self.dim = int(arr.shape[0])
+            self.dim = arr.shape[0]
+
+
+#: The shared operating point both backends construct with -- one edit
+#: moves it. `DEFAULT_MIN_DET_SCORE` is the detector-confidence floor;
+#: `DEFAULT_MIN_FACE_PX` is the noise-floor face size: YuNet detects
+#: down to ~10px, and boxes near that floor are featureless, embed into
+#: one generic region, and chain unrelated clusters together.
+DEFAULT_MIN_DET_SCORE = 0.5
+DEFAULT_MIN_FACE_PX = 24
 
 
 class FaceBackend(ABC):
@@ -170,12 +180,17 @@ class StubFaceBackend(FaceBackend):
     def __init__(self, source: Callable[[Image.Image], list] | Mapping):
         self._source = source
 
+    @override
     def detect(self, img: Image.Image) -> list:
         """Replay the pre-programmed detections for `img`; unknown images
         detect as no faces."""
-        if callable(self._source):
-            return list(self._source(img))
-        return list(self._source.get(image_key(img), []))
+        # Narrowed on Mapping rather than on `callable`: asking whether
+        # something is callable narrows to "some callable" and loses the
+        # signature, so the call below could not be checked at all. A
+        # Mapping is the half with a runtime-checkable ABC.
+        if isinstance(self._source, Mapping):
+            return list(self._source.get(image_key(img), []))
+        return list(self._source(img))
 
 
 def image_key(img: Image.Image) -> str:
@@ -218,8 +233,8 @@ class OpenCVFaceBackend(FaceBackend):
     def __init__(
         self,
         models_dir: str,
-        min_det_score: float = 0.5,
-        min_face_px: int = 24,
+        min_det_score: float = DEFAULT_MIN_DET_SCORE,
+        min_face_px: int = DEFAULT_MIN_FACE_PX,
         detect_max_side: int = 1600,
         embedder: str = "auto",
         *,
@@ -275,7 +290,7 @@ class OpenCVFaceBackend(FaceBackend):
         # dimension does not change. The same benchmark that justifies the
         # 1600 cap measured a 2x recall difference between those regimes.
         base = "yunet-2023mar+arcface-glintr100" if embedder == "arcface" else "yunet-2023mar+sface-2021dec-v2"
-        self.model_version = f"{base}-ms{int(detect_max_side)}"
+        self.model_version = f"{base}-ms{detect_max_side}"
         # Operating points from the labeled three-way A/B sweep
         # (benchmarks/face_embedder_ab.py, 175 faces / 31 identities):
         # glintr100 pairwise-F1 is flat 0.926-0.933 across 0.30-0.50; 0.48
@@ -311,6 +326,7 @@ class OpenCVFaceBackend(FaceBackend):
         self._min_face_px = min_face_px
         self._detect_max_side = detect_max_side
 
+    @override
     def detect(self, img: Image.Image) -> list:
         """Detect faces, embed each via SFace on the aligned crop, and return
         `FaceDetection`s with coordinates normalized to [0, 1]. Detection and
@@ -405,8 +421,8 @@ class InsightFaceBackend(FaceBackend):
     def __init__(
         self,
         models_dir: str,
-        min_det_score: float = 0.5,
-        min_face_px: int = 24,
+        min_det_score: float = DEFAULT_MIN_DET_SCORE,
+        min_face_px: int = DEFAULT_MIN_FACE_PX,
         providers: str = "auto",
         *,
         provision: bool = False,
@@ -422,6 +438,7 @@ class InsightFaceBackend(FaceBackend):
         self._min_det_score = min_det_score
         self._min_face_px = min_face_px
 
+    @override
     def detect(self, img: Image.Image) -> list:
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]
@@ -429,6 +446,12 @@ class InsightFaceBackend(FaceBackend):
             return []
         detections = []
         for face in self._app.get(bgr):
+            # insightface leaves both optional on its Face record. A
+            # detection without a box or a confidence is not a detection
+            # this pipeline can place or rank, so it is dropped here
+            # rather than raising four frames later.
+            if face.det_score is None or face.bbox is None:
+                continue
             score = float(face.det_score)
             if score < self._min_det_score:
                 continue

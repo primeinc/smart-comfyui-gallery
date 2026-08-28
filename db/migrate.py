@@ -38,10 +38,11 @@ would commit the half-finished migration and take atomicity with it.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import shutil
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from .connect import APPLICATION_ID, USER_VERSION, connect
 
@@ -75,6 +76,140 @@ def step(from_version: int):
         return fn
 
     return register
+
+
+#: How to UN-do a step, by the version the step produces.
+#:
+#: Alembic calls this `downgrade` and puts it in the same file as the
+#: upgrade, which is the part worth copying: an inverse that lives
+#: somewhere else is an inverse nobody remembers to write. Ours lived in
+#: the test suite in FOUR copies, and three migrations in a row shipped
+#: with those fixtures broken -- the suite caught each one, which is the
+#: only reason it was not worse.
+#:
+#: The consumer today is the suite. Every migration test here builds
+#: today's schema and steps it BACKWARDS to the version it wants to
+#: migrate from -- which is the right shape, because a fixture written by
+#: hand drifts from schema.sql the moment either changes and `drift`
+#: would never see it. Rolling back a real upgrade is `restore` from the
+#: snapshot `migrate` takes, not this.
+#:
+def rebuilt(
+    conn: sqlite3.Connection,
+    table: str,
+    ddl: str,
+    *,
+    reading: dict[str, str] | None = None,
+    where: str = "",
+    indexes: Sequence[str] = (),
+) -> None:
+    """SQLite's move-and-copy dance, named once.
+
+    ALTER TABLE cannot widen a CHECK, drop a constraint, or change a
+    type, so the only way to change one is to build the new table beside
+    the old, copy the rows across, and drop the old -- the sequence the
+    SQLite docs number in twelve steps. It is written out sixteen times
+    above this line, once per step that needed it, and every one of those
+    is a chance to forget a piece.
+
+    `legacy_alter_table=ON` around the rename is the piece worth stating,
+    and so is its limit. Without it SQLite helpfully rewrites every
+    reference to the old name -- views, triggers, foreign keys -- to
+    follow the rename, which is precisely wrong when the name is about to
+    be handed back to a table those references were already right about.
+    With it, views and triggers are left alone; FOREIGN KEYS ARE NOT,
+    unless `foreign_keys` is also off. Measured on 3.47.1 and pinned by
+    SQLite's own alterlegacy.test 8.2, which asserts the child's DDL
+    reads `REFERENCES "ppp"` after the rename with both pragmas set.
+
+    So this refuses to run with keys on rather than leaving a `job_event`
+    that references `job_rebuilding` -- a table that no longer exists,
+    found by `PRAGMA foreign_key_check` two steps later and attributed to
+    the wrong migration. `migrate` turns them off before BEGIN for the
+    same reason; a fixture calling an inverse has to as well.
+
+    Columns are copied by what the old table ACTUALLY has intersected
+    with what the new one wants, never by a list written at the call
+    site: a hand-written list is how a rebuild invents a `job` table with
+    no `heartbeat_at`. `reading` supplies an expression for a column that
+    is not a straight carry-over (`{"fs_id": "CAST(inode AS TEXT)"}`);
+    anything it names is copied whether or not the old table has it.
+
+    INDEXES AND TRIGGERS ARE PUT BACK, read off `sqlite_master` before
+    the rename. Dropping the old table takes everything attached to it,
+    and the ones that hurt are the ones nobody was thinking about: this
+    was written narrowing a CHECK on `root`, and it silently took the
+    three `answer_moved_root_*` triggers with it -- so every cached
+    answer would have stopped noticing that a root changed. SQLite's own
+    twelve steps say to recreate them (lang_altertable.html, step 7) and
+    a helper that names the dance has to do the whole dance.
+
+    `indexes` is for objects the rebuild ADDS. Anything the table
+    already had comes back on its own.
+
+    The shipped steps above are deliberately NOT rewritten to call this.
+    They ran against real libraries and their being correct is a fact
+    about what happened, not about how they read. New work -- the
+    inverses below, and step 36 whenever it arrives -- uses this.
+    """
+    if conn.execute("PRAGMA foreign_keys").fetchone()[0]:
+        raise sqlite3.IntegrityError(
+            f"rebuilding {table} with foreign_keys ON would rewrite every child's "
+            f"REFERENCES to point at {table}_rebuilding. Turn them off first -- "
+            "outside a transaction, where the pragma is not silently ignored."
+        )
+    aside = f"{table}_rebuilding"
+    reading = reading or {}
+    # Read BEFORE the rename: after it, these rows name `aside`, and
+    # after the drop they are gone. `sql IS NOT NULL` skips the indexes
+    # SQLite made itself for UNIQUE and PRIMARY KEY -- those come back
+    # with the new DDL, and replaying a NULL would be a crash.
+    attached = [
+        row[0]
+        for row in conn.execute(
+            "SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index','trigger') AND sql IS NOT NULL",
+            (table,),
+        )
+    ]
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute(f"ALTER TABLE {table} RENAME TO {aside}")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(ddl)
+    had = {row[1] for row in conn.execute(f"PRAGMA table_info({aside})")}
+    # `str(...)`, because a sqlite row is untyped and `PRAGMA table_info`'s
+    # second column is the column NAME. Without it `reading.get(one, one)`
+    # widens to `str | None` and `join` refuses the generator.
+    named: list[str] = [
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})") if row[1] in had or row[1] in reading
+    ]
+    reads = ", ".join(reading.get(one, one) for one in named)
+    only = f" WHERE {where}" if where else ""
+    conn.execute(f"INSERT INTO {table}({', '.join(named)}) SELECT {reads} FROM {aside}{only}")
+    conn.execute(f"DROP TABLE {aside}")
+    for one in attached:
+        # A rebuild that recreates an object the new DDL already made is
+        # a step that fails on its second object rather than its first,
+        # so the ones already there are skipped by name rather than by
+        # swallowing the error.
+        if not _already(conn, one):
+            conn.execute(one)
+    for one in indexes:
+        conn.execute(one)
+
+
+def _already(conn: sqlite3.Connection, ddl: str) -> bool:
+    """Does the object this statement creates exist already?
+
+    By NAME, read out of the statement: `CREATE UNIQUE INDEX x ON ...`,
+    `CREATE TRIGGER y AFTER ...`. A rebuild whose new DDL re-declares an
+    index the old table also had would otherwise fail on the replay.
+    """
+    words = ddl.split()
+    for at, word in enumerate(words):
+        if word.upper() in ("INDEX", "TRIGGER") and at + 1 < len(words):
+            name = words[at + 1].strip('"[]`')
+            return conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", (name,)).fetchone() is not None
+    return False
 
 
 def version_of(conn: sqlite3.Connection) -> int:
@@ -2491,7 +2626,7 @@ def _portrait_raw_thumbnails_turned_once(conn: sqlite3.Connection) -> None:
 
     from vision import decode, thumbs
 
-    from . import capture, derived, runner
+    from . import capture, derived
 
     suffixes = tuple(decode.RAW_SUFFIXES)
     turned = tuple(sorted(capture.TRANSPOSED))
@@ -2534,7 +2669,49 @@ def _portrait_raw_thumbnails_turned_once(conn: sqlite3.Connection) -> None:
                 target.unlink()
                 removed += 1
     if removed:
-        runner.submit_thumbs(conn, time.time(), thumbs_dir=str(cache))
+        _queue_thumbs_of_that_day(conn, str(cache), time.time())
+
+
+def _queue_thumbs_of_that_day(conn: sqlite3.Connection, cache: str, now: float) -> None:
+    """Queue the render, writing the `job` table AS IT WAS AT v30.
+
+    This called `runner.submit_thumbs`, and a migration step calling
+    application code is a step that changes after it has shipped. It
+    broke the moment `jobs.submit` learned to write `job.collection` --
+    a column v30 does not have, added six versions later -- and the
+    failure was `table job has no column named collection` in the middle
+    of somebody's upgrade.
+
+    A step is a historical record. The DDL it writes against is the DDL
+    of its own version, so it spells the insert itself and cannot be
+    moved by anything downstream.
+    """
+    from vision import thumbs as thumbs_module
+
+    held = pathlib.Path(cache)
+
+    def wanted(sha) -> bool:
+        return sha is None or any(not thumbs_module.path_for(held, sha, kind).exists() for kind in thumbs_module.EDGES)
+
+    items = [
+        file_id
+        for file_id, sha in conn.execute(
+            "SELECT id, content_sha256 FROM file WHERE missing_since IS NULL"
+            " AND kind IN ('image', 'animated_image', 'video') ORDER BY id DESC"
+        )
+        if wanted(sha)
+    ]
+    if not items:
+        return
+    cursor = conn.execute(
+        "INSERT INTO job(kind, state, payload, total, created_at) VALUES('hash', 'queued', ?, ?, ?)",
+        (json.dumps({"derive": "thumbs", "thumbs_dir": cache}), len(items), now),
+    )
+    job_id = cursor.lastrowid or 0
+    conn.executemany(
+        "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
+        [(job_id, one) for one in items],
+    )
 
 
 def optimize(conn: sqlite3.Connection) -> None:
@@ -2576,3 +2753,1057 @@ def analyze(conn: sqlite3.Connection) -> None:
     benchmark that leaves the cache at its default is measuring the default.
     """
     conn.execute("PRAGMA optimize=0x10012")
+
+
+@step(30)
+def _a_filesystem_identifier_is_opaque_text(conn: sqlite3.Connection) -> None:
+    """v30 -> v31: `folder.inode` and `file.inode` become `fs_id TEXT`.
+
+    The column was an INTEGER holding an identifier nothing does
+    arithmetic on. Since Python 3.12 Windows reports `st_ino` "up to 128
+    bits, depending on the file system" (cpython Doc/library/os.rst) and
+    SQLite's INTEGER is signed 64-bit (sqlite/sqlite src/sqliteInt.h:1031
+    LARGEST_INT64), so on ReFS, a Dev Drive or some network shares the
+    first directory the walk reached ended the entire scan:
+
+        OverflowError: Python int too large to convert to SQLite INTEGER
+          db/scan.py ensure_folder
+          SELECT id, parent_id, name FROM folder WHERE root_id = ? AND inode = ?
+
+    TEXT and not an INTEGER column holding a string, because affinity is
+    a conversion rule rather than a constraint: an INTEGER-affinity
+    column silently stores '340282366920938463463374607431768211455' as
+    the REAL 3.402823669209385e+38 -- the wrong identity, arrived at
+    without an error, in the code whose one job is to avoid exactly that.
+    Renamed because on the stated platform it was never an inode; the
+    schema comment always described an opaque filesystem-native hint.
+
+    `CAST(inode AS TEXT)` is lossless for every value that fit: SQLite
+    renders an INTEGER as its decimal spelling, which is what `str()`
+    produces on the way in, so a library scanned before this keeps the
+    identifiers it recorded and no folder looks new on the next pass.
+    Rows are rebuilt rather than altered because ALTER TABLE cannot
+    change a column's type, and rebuilt under the FINAL name directly so
+    sqlite_master holds unquoted DDL the drift check recognises.
+    """
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE folder RENAME TO folder_v30")
+    conn.execute("ALTER TABLE file RENAME TO file_v30")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+
+    conn.execute(
+        """CREATE TABLE folder (
+    id        INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    root_id   INTEGER NOT NULL    REFERENCES root(id)   ON DELETE CASCADE,
+    parent_id INTEGER             REFERENCES folder(id) ON DELETE CASCADE,
+    name      TEXT    NOT NULL,
+    -- Distance from the root, which is itself 0. Maintained by trigger, so
+    -- no caller computes it and no two callers can disagree about the base.
+    depth     INTEGER NOT NULL,
+    -- The filesystem's own id for the directory (NTFS FileID via st_ino),
+    -- which survives a rename and a move within the volume while a copy gets
+    -- a fresh one. A file proves continuity by its bytes; a directory has no
+    -- bytes, so without this a folder rename mints a new folder, the old
+    -- entity is orphaned and its URL rots.
+    --
+    -- A HINT, never identity: it is volume-scoped, lost on copy or restore,
+    -- and absent on filesystems that do not report one. Matched only when
+    -- present and unique, and name matching still has to work on its own.
+    --
+    -- TEXT, and the decimal spelling of the identifier, because the value is
+    -- OPAQUE: nothing does arithmetic on it, only equality. Since Python 3.12
+    -- Windows reports `st_ino` "up to 128 bits, depending on the file system"
+    -- (cpython Doc/library/os.rst), SQLite's INTEGER is signed 64-bit
+    -- (sqlite/sqlite src/sqliteInt.h:1031 LARGEST_INT64), and binding a
+    -- larger one raised `OverflowError: Python int too large to convert to
+    -- SQLite INTEGER` -- killing the scan on the first ReFS directory. TEXT
+    -- rather than an INTEGER column holding a string: affinity is not a
+    -- constraint, and an INTEGER-affinity column silently converts
+    -- '340282366920938463463374607431768211455' to the REAL
+    -- 3.402823669209385e+38, which is the wrong identity rather than a
+    -- refusal. Named `fs_id` and not `inode` because on the stated platform
+    -- it is not one.
+    fs_id     TEXT,
+    -- Set when the directory was not found where it was last seen. Presence
+    -- is a state here for the same reason it is one on `file`: without it,
+    -- "gone" and "the drive is unplugged" are the same row, and the only way
+    -- to make room for a new directory taking an old one's name is to delete
+    -- the old one and everything hanging off it.
+    missing_since REAL
+) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO folder(id, root_id, parent_id, name, depth, fs_id, missing_since)"
+        " SELECT id, root_id, parent_id, name, depth,"
+        "        CASE WHEN inode IS NULL THEN NULL ELSE CAST(inode AS TEXT) END,"
+        "        missing_since FROM folder_v30"
+    )
+    conn.execute("DROP TABLE folder_v30")
+    conn.execute(
+        """CREATE UNIQUE INDEX folder_root_unique  ON folder(root_id, name COLLATE NOCASE)
+    WHERE parent_id IS NULL AND missing_since IS NULL"""
+    )
+    conn.execute(
+        """CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name COLLATE NOCASE)
+    WHERE parent_id IS NOT NULL AND missing_since IS NULL"""
+    )
+    conn.execute("""CREATE UNIQUE INDEX folder_fs_id ON folder(root_id, fs_id) WHERE fs_id IS NOT NULL""")
+
+    conn.execute(
+        """CREATE TABLE file (
+    id             INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
+    folder_id      INTEGER NOT NULL REFERENCES folder(id) ON DELETE CASCADE,
+    name           TEXT    NOT NULL,
+    kind           TEXT    NOT NULL CHECK (kind IN
+                     ('image','animated_image','video','audio','document')),
+    size           INTEGER NOT NULL,
+    mtime          REAL    NOT NULL,
+    -- filesystem birth time where the platform reports it. Distinct from mtime,
+    -- which a copy or a sync client rewrites, and from capture.captured_at,
+    -- which is when the shutter actually opened.
+    btime          REAL,
+    -- The filesystem's own id for the file, kept only so a scan can tell
+    -- "this path still holds the same file" from "this path now holds a
+    -- different one". Size and mtime alone cannot: renaming two same-sized
+    -- files onto each other's names changes neither, and the scan then
+    -- skipped hashing and left every rating on the path instead of on the
+    -- bytes -- the defect this schema exists to remove.
+    --
+    -- A HINT for change detection, never identity and never a matcher:
+    -- content is what proves continuity. Absent where the filesystem
+    -- reports none, and different after a copy or a restore.
+    --
+    -- TEXT for the reason `folder.fs_id` is: the value is opaque, only ever
+    -- compared for equality, and on Windows can exceed what an INTEGER holds.
+    fs_id          TEXT,
+    content_sha256 TEXT,
+    -- The pixels actually on disk, not what any recipe asked for; see
+    -- `generation.width`, which is the request and may differ. Written by
+    -- ingest from the container it already opens to read the metadata, so
+    -- they cost nothing extra -- and NULL on a video, whose dimensions need
+    -- the same probe `duration` is waiting on.
+    --
+    -- Both were NULL for everything until the sweep that was supposed to
+    -- catch that stopped being a word search: `width` and `height` appear all
+    -- over db/ingest.py as attributes of the parsed recipe, so the column
+    -- read as produced while the disagreement this schema exists to expose
+    -- was unobservable in one direction.
+    width          INTEGER,
+    height         INTEGER,
+    -- Seconds, from the container. NULL on a still picture, which has no
+    -- length, and on a video whose container does not state one.
+    duration       REAL,
+    first_seen_at  REAL    NOT NULL,
+    last_seen_at   REAL    NOT NULL,
+    -- NULL while the bytes are present. Set when a scan cannot find them, or
+    -- when a content match was ambiguous. Deletion is then a deliberate act
+    -- rather than a scan side effect: unreachable is not the same as deleted.
+    missing_since  REAL
+, ingested_sha256 TEXT) STRICT"""
+    )
+    conn.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, btime, fs_id, content_sha256,"
+        " width, height, duration, first_seen_at, last_seen_at, missing_since, ingested_sha256)"
+        " SELECT id, folder_id, name, kind, size, mtime, btime,"
+        "        CASE WHEN inode IS NULL THEN NULL ELSE CAST(inode AS TEXT) END,"
+        "        content_sha256, width, height, duration, first_seen_at, last_seen_at,"
+        "        missing_since, ingested_sha256 FROM file_v30"
+    )
+    conn.execute("DROP TABLE file_v30")
+    conn.execute(
+        """CREATE UNIQUE INDEX file_in_folder ON file(folder_id, name COLLATE NOCASE)
+    WHERE missing_since IS NULL"""
+    )
+    conn.execute("""CREATE INDEX file_recent ON file(mtime DESC, id DESC) WHERE missing_since IS NULL""")
+    conn.execute(
+        """CREATE INDEX file_in_folder_by_time ON file(folder_id, mtime, id)
+    WHERE missing_since IS NULL"""
+    )
+    conn.execute("""CREATE INDEX file_added  ON file(first_seen_at DESC) WHERE missing_since IS NULL""")
+    conn.execute("""CREATE INDEX file_sha  ON file(content_sha256)""")
+    conn.execute("""CREATE INDEX file_kind ON file(kind)""")
+
+    # The triggers go with the dropped tables, so both sets are recreated
+    # from schema.sql's text -- AFTER the copy, deliberately: the name_fts
+    # insert triggers would otherwise fire per copied row and index every
+    # name twice, and DROP TABLE fires no delete trigger, so the FTS rows
+    # for these files were never removed in the first place.
+    conn.execute(
+        """CREATE TRIGGER folder_depth_ins AFTER INSERT ON folder BEGIN
+  UPDATE folder
+     SET depth = COALESCE((SELECT depth + 1 FROM folder WHERE id = NEW.parent_id), 0)
+   WHERE id = NEW.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_depth_upd AFTER UPDATE OF parent_id ON folder BEGIN
+  UPDATE folder
+     SET depth = COALESCE((SELECT p.depth + 1 FROM folder p WHERE p.id = NEW.parent_id), 0)
+               + (WITH RECURSIVE below(id, distance) AS (
+                    SELECT NEW.id, 0
+                    UNION ALL
+                    SELECT f.id, below.distance + 1
+                      FROM folder f JOIN below ON f.parent_id = below.id)
+                  SELECT distance FROM below WHERE below.id = folder.id)
+   WHERE id IN (WITH RECURSIVE below(id) AS (
+                  SELECT NEW.id
+                  UNION ALL
+                  SELECT f.id FROM folder f JOIN below ON f.parent_id = below.id)
+                SELECT id FROM below);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_kind_agrees BEFORE INSERT ON folder BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match folder')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'folder';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_kind_keeps_agreeing BEFORE UPDATE OF id ON folder BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match folder')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'folder';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_no_cycle BEFORE UPDATE OF parent_id ON folder
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'folder parent cycle') WHERE NEW.id IN (
+    WITH RECURSIVE up(id) AS (
+      SELECT NEW.parent_id
+      UNION SELECT f.parent_id FROM folder f JOIN up ON f.id = up.id
+        WHERE f.parent_id IS NOT NULL)
+    SELECT id FROM up);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_no_self_parent BEFORE INSERT ON folder
+WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id = NEW.id BEGIN
+  SELECT RAISE(ABORT,'folder parent cycle');
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_root_consistent_ins BEFORE INSERT ON folder
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'folder root mismatch')
+  WHERE (SELECT root_id FROM folder WHERE id = NEW.parent_id) <> NEW.root_id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_root_consistent_upd BEFORE UPDATE OF root_id, parent_id ON folder
+WHEN NEW.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT,'folder root mismatch')
+  WHERE (SELECT root_id FROM folder WHERE id = NEW.parent_id) <> NEW.root_id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER folder_takes_its_entity AFTER DELETE ON folder BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_folder_del AFTER DELETE ON folder BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_folder_ins AFTER INSERT ON folder
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_folder_upd AFTER UPDATE OF name ON folder BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER file_kind_agrees BEFORE INSERT ON file BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match file')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'file';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER file_kind_keeps_agreeing BEFORE UPDATE OF id ON file BEGIN
+  SELECT RAISE(ABORT,'entity kind does not match file')
+  WHERE (SELECT kind FROM entity WHERE id = NEW.id) <> 'file';
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER file_takes_its_entity AFTER DELETE ON file BEGIN
+  DELETE FROM entity WHERE id = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_file_del AFTER DELETE ON file BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_file_ins AFTER INSERT ON file
+WHEN NEW.name IS NOT NULL BEGIN
+  INSERT INTO name_fts(rowid, name) VALUES (NEW.id, NEW.name);
+END"""
+    )
+    conn.execute(
+        """CREATE TRIGGER name_fts_file_upd AFTER UPDATE OF name ON file BEGIN
+  DELETE FROM name_fts WHERE rowid = OLD.id;
+  INSERT INTO name_fts(rowid, name)
+    SELECT NEW.id, NEW.name WHERE NEW.name IS NOT NULL;
+END"""
+    )
+
+
+@step(31)
+def _an_answer_is_stale_only_when_an_answer_could_have_changed(conn: sqlite3.Connection) -> None:
+    """v31 -> v32: `answer_generation`, moved by every table an answer
+    can be computed from.
+
+    db/resultset.py caches the whole ordered answer, valid for one
+    (question, library state) pair, and library state was `PRAGMA
+    data_version` -- "somebody committed something". Jobs commit per
+    item, so at 80,000 files a page cost 0.18 ms at rest and 38.26 ms
+    while a job ran, a factor of 214, and the job that runs for hours
+    writes nothing but the ledger.
+
+    The counter is built here the same way schema.sql builds it, from
+    the tables this database actually has: everything except `job`,
+    `job_item` and `job_event`, minus the FTS virtual tables (a virtual
+    table cannot carry a trigger, and its rows only change when `file`
+    or `folder` do). Read from sqlite_master rather than listed, so a
+    database migrating from any version gets triggers for exactly its
+    own tables and the drift check has something to agree with.
+    """
+    ledger = {"job", "job_item", "job_event"}
+    virtual = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL%'")
+    }
+    shadow = tuple(f"{one}_" for one in virtual)
+    conn.execute(
+        """CREATE TABLE answer_generation (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL
+) STRICT"""
+    )
+    conn.execute("INSERT INTO answer_generation(id, value) VALUES(1, 0)")
+    named = [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+    ]
+    for name in named:
+        if name in ledger or name in virtual or name.startswith(shadow) or name == "answer_generation":
+            continue
+        for verb, short in (("INSERT", "ins"), ("UPDATE", "upd"), ("DELETE", "del")):
+            conn.execute(
+                f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
+                f" BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
+            )
+
+
+@step(32)
+def _the_walk_becomes_a_job(conn: sqlite3.Connection) -> None:
+    """v32 -> v33: `job.kind` admits 'walk'.
+
+    The directory walk was the one expensive thing in this application
+    that was not a job. Every cheaper sweep after it -- hashing,
+    thumbnails, embeddings -- reported progress into the operations
+    console, while the walk itself, which reads every byte of every
+    changed file, showed nothing: `POST /roots/{id}/scan` did it inline
+    and the request simply hung.
+
+    'scan' could not be reused; it is the metadata read (db/runner.py
+    _ingest_item). A CHECK is the only thing in the way and ALTER TABLE
+    cannot widen one, so the table is rebuilt -- copied by the columns
+    it actually has rather than a list written here, which is how the
+    first draft of this step invented a `job` table missing
+    `heartbeat_at`.
+    """
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE job RENAME TO job_v32")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute(
+        """CREATE TABLE job (
+    id               INTEGER PRIMARY KEY,
+    -- Constrained like every other `kind` here. A typo is otherwise a job
+    -- that queues successfully and no worker ever claims, because claim()
+    -- filters on the kinds it knows -- so it waits forever and looks fine.
+    -- 'walk' is the directory walk itself, which for a long time was the
+    -- one expensive thing in this application that was NOT a job: the
+    -- scan route did it inline, so a person who asked to scan 80,000
+    -- files watched a request hang for a minute with nothing to look at,
+    -- while every cheaper sweep after it reported progress. 'scan' was
+    -- already taken -- it is the metadata read (db/runner.py _ingest_item)
+    -- -- so the walk gets its own word rather than borrowing one.
+    kind             TEXT NOT NULL CHECK (kind IN
+                       ('walk','scan','hash','embed','detect_faces','cluster_faces',
+                        'sample_frames','annotate','remix','zip','context','events',
+                        'story_plan','embed_prompts')),
+    target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
+    state            TEXT NOT NULL CHECK (state IN
+                       ('queued','running','done','failed','cancelled')),
+    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+    payload          TEXT,
+    total            INTEGER,
+    done_count       INTEGER NOT NULL DEFAULT 0,
+    checkpoint       TEXT,
+    attempt          INTEGER NOT NULL DEFAULT 0,
+    -- a lease nobody owns cannot fence anyone: the reclaiming worker must be
+    -- able to prove it holds the job, and the evicted one must be rejected.
+    owner            TEXT,
+    fence            INTEGER NOT NULL DEFAULT 0,
+    lease_until      REAL,
+    heartbeat_at     REAL,
+    error            TEXT,
+    -- No external_ref here. `derivation_intent` already carries the
+    -- generator's own id, UNIQUE, and having it on both meant two rows could
+    -- claim the same external job and disagree about which one owned it.
+    created_at       REAL NOT NULL,
+    started_at       REAL,
+    finished_at      REAL
+) STRICT"""
+    )
+    named = ", ".join(row[1] for row in conn.execute("PRAGMA table_info(job_v32)"))
+    conn.execute(f"INSERT INTO job({named}) SELECT {named} FROM job_v32")
+    conn.execute("DROP TABLE job_v32")
+    conn.execute("""CREATE INDEX job_state ON job(state)""")
+    conn.execute("""CREATE INDEX job_target ON job(target_id)""")
+
+
+@step(33)
+def _a_verdict_names_what_it_judged(conn: sqlite3.Connection) -> None:
+    """v33 -> v34: `feedback` carries the producer it judged.
+
+    The table records `annotation_kind` rather than the annotation's row
+    on purpose -- the derived layer is disposable and the judgement has
+    to outlive being rebuilt. But that left it unable to say WHICH model
+    produced the thing judged, so after the next rebuild no verdict
+    could be attributed to the producer it was about, and "this caption
+    model gets 12% of my library wrong" was unanswerable from a table
+    built to answer it.
+
+    Copied at judgement time, nullable, and never a foreign key: the row
+    it names will be deleted by a rebuild, which is the whole point.
+    Null for the verdicts that are not about a model at all -- a person
+    judgement names a person.
+    """
+    conn.execute("ALTER TABLE feedback ADD COLUMN model_id TEXT")
+    conn.execute("ALTER TABLE feedback ADD COLUMN model_version TEXT")
+    conn.execute("""CREATE INDEX feedback_producer ON feedback(model_id, model_version, annotation_kind)""")
+
+
+@step(34)
+def _a_person_can_be_denied(conn: sqlite3.Connection) -> None:
+    """v34 -> v35: `person_assertion` can say a person is NOT in a file.
+
+    The positive claim was durable and re-applied after every rebuild;
+    the negative one could not be spelled at all. `retract_person`
+    DELETES, which means "I take that back" -- and the next clustering
+    run is then free to decide the same thing again, because nothing
+    recorded that it was wrong. A false merge stayed a chore somebody
+    repeated after every re-run.
+
+    Defaulted to 'is', so every claim already recorded keeps meaning
+    exactly what it meant.
+    """
+    conn.execute(
+        "ALTER TABLE person_assertion ADD COLUMN stance TEXT NOT NULL DEFAULT 'is' CHECK (stance IN ('is','is_not'))"
+    )
+
+
+@step(35)
+def _the_reader_signs_its_work(conn: sqlite3.Connection) -> None:
+    """v35 -> v36: `file.ingested_by`, so improving a reader re-reads.
+
+    `ingested_sha256` says which BYTES were read, so a file goes stale
+    when its bytes change and never when the READER changes. That is
+    half a freshness rule, and the missing half turned a defect into a
+    chore: the sniffer called every .m4a a video, ingest wrote the wrong
+    `kind`, and fixing the sniffer could not fix the rows -- nothing
+    recorded that they were read by the version that was wrong.
+
+    Left NULL for every existing row ON PURPOSE. They were read by a
+    reader that did not sign its work, so they are exactly the
+    population that may carry what an old one decided, and the freshness
+    rule treats NULL as stale. The first ordinary sweep after this
+    upgrade re-reads the library once, and never again for this reason.
+    """
+    conn.execute("ALTER TABLE file ADD COLUMN ingested_by TEXT")
+
+
+@step(36)
+def _a_job_can_be_a_step_of_something(conn: sqlite3.Connection) -> None:
+    """v36 -> v37: `job.collection` and `job.after_id`.
+
+    Adding a root meant pressing eight buttons in an order only the
+    application knew: scan, ingest, context, events, embed, detect_faces,
+    cluster_faces, annotate. The order is real -- `cluster_faces` over an
+    unembedded library is a job that honestly settles `done` having
+    clustered nothing -- and the application knew it and made a person
+    re-derive it every time.
+
+    `after_id` is that order, written where the claim can read it.
+    `collection` is the name the steps share, which is what the console
+    groups on and what a schedule can point at: "every night, catch up"
+    names a collection, and naming individual kinds would mean
+    re-deriving the order at 3am.
+
+    Both nullable, so every job already in the table stays exactly what
+    it was: ungated, and a member of nothing.
+    """
+    conn.execute("ALTER TABLE job ADD COLUMN collection TEXT")
+    # A REFERENCES clause on an added column is allowed only with a NULL
+    # default, which is what this wants anyway (sqlite ALTER TABLE:
+    # "if foreign key constraints are enabled and a column with a
+    # REFERENCES clause is added, the column must have a default of NULL").
+    conn.execute("ALTER TABLE job ADD COLUMN after_id INTEGER REFERENCES job(id) ON DELETE SET NULL")
+    conn.execute("CREATE INDEX job_after ON job(after_id)")
+    conn.execute("CREATE INDEX job_collection ON job(collection) WHERE collection IS NOT NULL")
+
+
+@step(37)
+def _something_can_run_without_being_asked(conn: sqlite3.Connection) -> None:
+    """v37 -> v38: `schedule`, one row per collection.
+
+    The DDL is schema.sql's block VERBATIM, comments included:
+    sqlite_master stores the literal statement text and `build.drift`
+    compares it, so a migrated database must be indistinguishable from a
+    fresh build down to the words a reader of `.schema` sees.
+
+    Empty. A schedule is something somebody asks for, and a library that
+    upgrades should not start doing work overnight because it upgraded.
+    """
+    conn.execute(
+        """CREATE TABLE schedule (
+    id              INTEGER PRIMARY KEY,
+    collection      TEXT NOT NULL UNIQUE,
+    every_hours     REAL NOT NULL CHECK (every_hours > 0),
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    -- When this schedule last STARTED the collection, not when that
+    -- collection finished. The next run is measured from the start, so a
+    -- catch-up that takes three hours on a nightly schedule still runs
+    -- once a night rather than drifting later every day.
+    --
+    -- NULL means it has never run, which is due now: a schedule somebody
+    -- just turned on should not wait a full interval to prove it works.
+    last_started_at REAL,
+    created_at      REAL NOT NULL
+) STRICT;"""
+    )
+
+
+@step(38)
+def _a_root_is_a_library_or_the_trash(conn: sqlite3.Connection) -> None:
+    """v38 -> v39: `root.kind` drops 'mount'.
+
+    Nothing anywhere branched on the difference. Every read that cared
+    spelled `kind IN ('library','mount')`, and the distinction 'mount'
+    reached for -- "this one is not always attached" -- is `root.online`:
+    per-root, set by probing, and what the whole deletion doctrine rests
+    on. It was a choice on the add-a-folder form that changed nothing,
+    offered to somebody with no way to know that.
+
+    Existing mounts become libraries, which is what they already were
+    everywhere it mattered. A CHECK cannot be narrowed by ALTER, so the
+    table is rebuilt -- `rebuilt` names that dance once.
+    """
+    conn.execute("UPDATE root SET kind = 'library' WHERE kind = 'mount'")
+    rebuilt(
+        conn,
+        "root",
+        """CREATE TABLE root (
+    id            INTEGER PRIMARY KEY,
+    -- What the root IS, as against where it currently sits. Written into a
+    -- marker file inside the directory, so a library that moved is recognised
+    -- as the same library rather than registered a second time.
+    --
+    -- Without it `path` was a root's only identity: re-registering a moved
+    -- library minted a second root while every folder and file stayed under
+    -- the first, which `check_roots` then marked offline -- the whole library
+    -- stranded behind a root nobody could reach, and no operation anywhere
+    -- that could move it back. The one place in this schema where a path was
+    -- still identity.
+    -- Defaulted by the database, so a root registered by any route has an
+    -- identity whether or not the caller thought to mint one.
+    uuid          BLOB    NOT NULL UNIQUE DEFAULT (randomblob(16))
+                          CHECK (length(uuid) = 16),
+    -- Where it is now. Still UNIQUE -- two roots cannot occupy one directory
+    -- -- but no longer what the root is.
+    path          TEXT    NOT NULL UNIQUE,
+    -- 'trash' is a real location, not a state: a deleted file's bytes are
+    -- still somewhere, restore is a move, and views exclude the subtree by
+    -- ancestry rather than by matching paths against a configured string.
+    --
+    -- There was a 'mount' beside 'library' and nothing anywhere branched
+    -- on the difference -- every read that cared spelled
+    -- `kind IN ('library','mount')`. The distinction it reached for,
+    -- "this one is not always attached", is `online` below: per-root,
+    -- set by probing, and what the whole deletion doctrine rests on. So
+    -- it was a choice offered on the add-a-folder form that changed
+    -- nothing, made by somebody who had no way to know that.
+    kind          TEXT    NOT NULL CHECK (kind IN ('library','trash')),
+    -- `online` is the flag the whole deletion doctrine rests on: an unplugged
+    -- drive and an emptied folder look identical from a directory listing, so
+    -- an unreadable root is marked offline and its files are left alone.
+    online        INTEGER NOT NULL DEFAULT 1 CHECK (online IN (0,1)),
+    created_at    REAL    NOT NULL
+) STRICT""",
+        indexes=(),
+    )
+
+
+@step(39)
+def _a_question_can_be_remembered(conn: sqlite3.Connection) -> None:
+    """v39 -> v40: `saved_view`.
+
+    The third thing people mean by "save this". An album is what
+    somebody put together, a smart collection is a dynamic grouping that
+    behaves like one, and a saved view is "that was a useful question,
+    remember it" -- which had nowhere to go, so it became a collection
+    and put things that are not albums into somebody's album list.
+
+    Empty, and additive: a new table cannot disagree with anything.
+    """
+    conn.execute(
+        """CREATE TABLE saved_view (
+    id           INTEGER PRIMARY KEY,
+    -- NOCASE, like every other name a person types here: "Portraits"
+    -- and "portraits" are the same question asked twice, and the second
+    -- should replace the first rather than sit beside it.
+    name         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- The canonical query string, without a page: a remembered question
+    -- opens at its beginning, never at page 7 of an answer that has
+    -- since changed length.
+    qs           TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    -- So the list can put what somebody actually uses at the top. NULL
+    -- until it is opened once.
+    last_used_at REAL
+) STRICT"""
+    )
+
+
+@step(40)
+def _a_person_can_choose_their_own_face(conn: sqlite3.Connection) -> None:
+    """v40 -> v41: `person.exemplar_file_id`.
+
+    The avatar is the highest-confidence detection in the primary run,
+    which is usually right and sometimes a blurred profile in a crowd,
+    and there was no way to say otherwise.
+
+    A FILE and not a face. A face is a derived row -- `drop_all` deletes
+    every `derived_face_instance` and a rebuild mints new ones -- so a
+    remembered face id would point at something the next re-detect
+    destroys. Naming the picture survives every rebuild, which is the
+    same reason `person_assertion` names a file and a region rather than
+    a cluster.
+
+    NULL for everybody, which is the automatic choice they already had.
+    """
+    conn.execute("ALTER TABLE person ADD COLUMN exemplar_file_id INTEGER REFERENCES file(id) ON DELETE SET NULL")
+    # For the reason `job_target` is indexed: SQLite checks every child
+    # table when a parent row goes, and an unindexed FK makes that a full
+    # scan of `person` per deleted file.
+    conn.execute("CREATE INDEX person_exemplar ON person(exemplar_file_id)")
+
+
+@step(41)
+def _a_keyword_is_a_thing_a_person_can_write_down(conn: sqlite3.Connection) -> None:
+    """v41 -> v42: `tag` and `file_tag`.
+
+    Forty-one dimensions to slice a library by and not one of them was
+    the oldest idea in the field: a word you type on a picture.
+
+    Authored, so it sits beside `rating` and `file_place` rather than in
+    `derived_annotation` with kind='tag' -- which is where a keyword
+    nearly went, and where `drop_all` would have deleted it at the next
+    re-annotate.
+
+    Nothing to backfill. A library that has never been tagged has no
+    tags, which is the state these tables already describe.
+    """
+    # schema.sql's blocks VERBATIM, whitespace included: the drift check
+    # compares sqlite_master text, so a reflowed statement is drift.
+    conn.execute(
+        """CREATE TABLE tag (
+    id         INTEGER PRIMARY KEY,
+    tag        TEXT NOT NULL UNIQUE,
+    label      TEXT NOT NULL,
+    created_at REAL NOT NULL
+) STRICT"""
+    )
+    conn.execute(
+        """CREATE TABLE file_tag (
+    file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tag(id)  ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (file_id, tag_id)
+) STRICT, WITHOUT ROWID"""
+    )
+    conn.execute("CREATE INDEX file_tag_tag  ON file_tag(tag_id)")
+    conn.execute("CREATE INDEX file_tag_user ON file_tag(user_id)")
+    # A keyword changes which files an answer holds, so both tables owe
+    # the staleness counter their three triggers -- the exact omission
+    # test_every_table_that_can_change_an_answer_moves_the_counter exists
+    # to catch, and did. Without them a person filters by the word they
+    # just typed and a mounted answer serves the library from before it.
+    for name in ("tag", "file_tag"):
+        for short, verb in (("ins", "INSERT"), ("upd", "UPDATE"), ("del", "DELETE")):
+            conn.execute(
+                f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
+                " BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
+            )
+
+
+@step(42)
+def _a_photograph_can_be_dated_to_its_decade(conn: sqlite3.Connection) -> None:
+    """v42 -> v43: `time_precision` gains `decade`, `year` and `month`.
+
+    A scanned photograph's only date is often the folder it sits in, and
+    that folder is frequently coarser than a day: `1998/`, `2003-07/`,
+    `1970s/`. `db/when.py folder_day` answered with a day or with nothing,
+    so every one of those was NO CLAIM and the file fell through to mtime
+    -- which dates a 1964 photograph by when somebody last copied it.
+
+    Measured on the sample corpus: six of the Commons photographs are from
+    1964, 1965, 1977, 1978, 1982 and 1989, and `_day_of` refused all six
+    besides, its year range having been a digital camera's lifetime
+    (`range(1990, 2101)`) in an application that holds photographs.
+
+    Nothing to backfill. Every existing row carries a precision this CHECK
+    still admits; the widening only lets `folder_when` record what it can
+    now read. Re-running the context job is what re-dates a library, and
+    that is a job somebody asks for, not a migration's business.
+    """
+    # schema.sql's block VERBATIM, whitespace included: the drift check
+    # compares sqlite_master text, so a reflowed statement is drift.
+    # BOTH tables. The vocabulary is stated twice in the DDL -- once where
+    # a claim is recorded and once where the conclusion is -- and widening
+    # only the second one made every context item die on `CHECK constraint
+    # failed: time_precision IN` while the table it was writing to would
+    # have accepted the row.
+    rebuilt(
+        conn,
+        "derived_media_occurrence",
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation','file')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN
+                     ('capture','embedded','filename','folder','mtime','btime')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
+    -- The SAME vocabulary as derived_media_context above, and it has to
+    -- be: an occurrence is where a claim is recorded and the context is
+    -- what is concluded from it, so a precision the context can hold and
+    -- the occurrence cannot is a claim with nowhere to be written. Exactly
+    -- that happened -- the coarse rungs were added to one CHECK and not
+    -- the other, and every context job item died on `CHECK constraint
+    -- failed: time_precision IN` while the context table would have taken
+    -- the row.
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('decade','year','month','day','hour','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID""",
+    )
+    rebuilt(
+        conn,
+        "derived_media_context",
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','filename','folder','btime','mtime','first_seen')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- A coarse claim is REFINED by every consistent signal the file
+    -- carries (the finish-implied second inside a claimed minute, the
+    -- write inside a claimed day) and the refinement is the moment
+    -- shown: a signal not exposed is wasted. Only an estimate that
+    -- contradicts its claim is held back, as a named conflict.
+    -- The coarse half is not decoration. A scanned photograph's only date
+    -- is often the folder it sits in -- `1998/`, `2003-07/`, `1970s/` --
+    -- and with nowhere to put that claim the file fell through to mtime,
+    -- which dates a 1964 photograph by when somebody last copied it. Six
+    -- of the corpus's Commons photographs are pre-1990.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('decade','year','month','day','hour','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','sidecar','inferred','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT""",
+    )
+
+
+@step(43)
+def _a_vocabulary_states_only_what_it_can_write(conn: sqlite3.Connection) -> None:
+    """v43 -> v44: four values nothing could ever produce are removed.
+
+    `time_basis` drops `first_seen`, `location_basis` drops `sidecar` and
+    `inferred`, and both `time_precision` CHECKs drop `hour`.
+
+    None of the four had a writer. This is not a judgement about how
+    likely they were; it is what the code can construct:
+
+      first_seen  `judge_file`'s no-claim branch returns None when mtime
+                  and btime are both absent, so the one case the word
+                  named writes no row at all. `derived_media_occurrence
+                  .basis` never listed it and `db/planning.py _BASES`
+                  never held it -- the context CHECK and one Python tuple
+                  were the only places claiming the rung existed.
+      sidecar     sidecar ingest (db/ingest.py) carries generation
+      inferred    parameters, never a location, and nothing infers a
+                  location from content. `db/context.py` assigns
+                  `location_basis` in ONE expression: `authored` when a
+                  person has said where a picture happened, `gps` when
+                  the camera wrote a fix, otherwise NULL.
+      hour        every precision a Verdict is constructed with -- a
+                  stamped name gives day, second or subsecond; a folder
+                  gives day, month, year or decade; a generator date
+                  gives second, day or minute; the filesystem fallback
+                  gives subsecond. Nothing reads an hour without also
+                  reading its minutes. The hour is still a real unit in
+                  `when.SPAN` and a real timeline bin -- it was never a
+                  precision a FILE could claim.
+
+    A vocabulary naming unreachable values is worse than a short one: it
+    tells a reader that `WHERE location_basis = 'inferred'` could return
+    something, and it made the corpus gate report four gaps that no file
+    can close.
+
+    Counted before rebuilding rather than assumed. Nothing wrote these,
+    so the count should be zero -- but a rebuild that meets a row the new
+    CHECK rejects fails with SQLite's message and no row named, and
+    "should be zero" is exactly the assumption this refuses to make.
+    """
+    for table, column, values in (
+        ("derived_media_context", "time_basis", ("first_seen",)),
+        ("derived_media_context", "location_basis", ("sidecar", "inferred")),
+        ("derived_media_context", "time_precision", ("hour",)),
+        ("derived_media_occurrence", "time_precision", ("hour",)),
+    ):
+        marks = ",".join("?" * len(values))
+        held = conn.execute(f"SELECT count(*) FROM {table} WHERE {column} IN ({marks})", values).fetchone()[0]
+        if held:
+            raise RuntimeError(
+                f"{held} row(s) in {table} carry a {column} this step removes"
+                f" ({', '.join(values)}). Nothing in the application writes those, so they"
+                " came from somewhere this migration cannot speak for. Re-run the context"
+                " job to re-derive them, then upgrade."
+            )
+    # schema.sql's blocks VERBATIM -- the drift check compares sqlite_master
+    # text, so a reflowed statement is drift. BOTH tables again: the
+    # vocabulary is stated twice and v43 learned what editing only one does.
+    rebuilt(
+        conn,
+        "derived_media_occurrence",
+        """CREATE TABLE derived_media_occurrence (
+    file_id        INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    kind           TEXT NOT NULL CHECK (kind IN ('capture','generation','file')),
+    -- the same two-domain doctrine as the context: a wall clock when
+    -- claimed, an instant only when knowable, never fused
+    local_at       REAL,
+    instant_at     REAL,
+    tz_offset_min  INTEGER,
+    -- the CLAIM's source, the sources that supported it and the ones
+    -- that conflicted, named (db/when.py). `certainty` is an ordinal's
+    -- fixed spelling (corroborated .9, claimed .6, contested .4).
+    basis          TEXT NOT NULL CHECK (basis IN
+                     ('capture','embedded','filename','folder','mtime','btime')),
+    certainty      REAL NOT NULL CHECK (certainty BETWEEN 0 AND 1),
+    supports       TEXT,
+    conflicts      TEXT,
+    -- the filesystem's FINISH instant and the request ESTIMATED from it
+    -- (finish minus generation time, a wall-clock reading) -- beside the
+    -- claim, never in its place: a grouper sequences by the claim, a
+    -- page may show the estimate as inferred
+    finished_at    REAL,
+    estimated_at   REAL,
+    -- the generator's own order inside the claimed bucket (SwarmUI's
+    -- per-minute request counter): ordering evidence, never seconds
+    source_order   INTEGER,
+    -- ONE ACT, several files: a RAW and its JPEG are two renditions of one
+    -- shutter press. The key is derived from the body, the capture clock to
+    -- the millisecond and the camera's frame name, so renditions share it
+    -- wherever they were copied; a grouper counts acts, not files
+    act_key        TEXT,
+    -- The SAME vocabulary as derived_media_context above, and it has to
+    -- be: an occurrence is where a claim is recorded and the context is
+    -- what is concluded from it, so a precision the context can hold and
+    -- the occurrence cannot is a claim with nowhere to be written. Exactly
+    -- that happened -- the coarse rungs were added to one CHECK and not
+    -- the other, and every context job item died on `CHECK constraint
+    -- failed: time_precision IN` while the context table would have taken
+    -- the row.
+    time_precision TEXT NOT NULL CHECK (time_precision IN
+                     ('decade','year','month','day','minute','second','subsecond')),
+    policy_version INTEGER NOT NULL,
+    PRIMARY KEY (file_id, kind),
+    -- an occurrence with no time is not an occurrence
+    CHECK (local_at IS NOT NULL OR instant_at IS NOT NULL),
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL)
+) STRICT, WITHOUT ROWID""",
+    )
+    rebuilt(
+        conn,
+        "derived_media_context",
+        """CREATE TABLE derived_media_context (
+    file_id             INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,
+    -- Coexistence is FACT, never precedence: a photograph that was also
+    -- run through a generator has both claims, and `origin` is fully
+    -- determined from them by CHECK -- a classification that could
+    -- silently erase one fact is the lie this shape forbids.
+    has_capture         INTEGER NOT NULL CHECK (has_capture IN (0, 1)),
+    has_generation      INTEGER NOT NULL CHECK (has_generation IN (0, 1)),
+    origin              TEXT NOT NULL CHECK (origin IN
+                          ('captured','generated','mixed','imported')),
+    -- TWO time concepts, never one column doing both jobs: `local_at`
+    -- is what the human clock said (the wall time a camera or a
+    -- generator claimed); `instant_at` is the actual UTC instant,
+    -- present ONLY when knowable. An unzoned claim keeps its wall time
+    -- and has no instant -- a known human clock is never replaced by a
+    -- filesystem time to make a column easier to sort.
+    local_at            REAL,
+    instant_at          REAL,
+    tz_offset_min       INTEGER,
+    -- the source that supplied the value; the sources that supported
+    -- it and the ones that conflicted, named (db/when.py): a date is
+    -- never unexplained and a conflict is never silently resolved.
+    -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
+    -- claimed .6, contested .4), not a probability.
+    -- `first_seen` was declared here and nothing could ever write it:
+    -- `judge_file`'s no-claim branch returns None when mtime and btime
+    -- are both absent, so the one case it named produces no row at all,
+    -- and derived_media_occurrence.basis below never listed it.
+    time_basis          TEXT CHECK (time_basis IN
+                          ('capture','embedded','filename','folder','btime','mtime')),
+    time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
+    time_supports       TEXT,
+    time_conflicts      TEXT,
+    -- How FINE the claim is -- orthogonal to certainty: a day-resolution
+    -- generator date can be almost certainly the right DAY while saying
+    -- nothing about minutes, and a distrusted btime is subsecond-fine.
+    -- A coarse claim is REFINED by every consistent signal the file
+    -- carries (the finish-implied second inside a claimed minute, the
+    -- write inside a claimed day) and the refinement is the moment
+    -- shown: a signal not exposed is wasted. Only an estimate that
+    -- contradicts its claim is held back, as a named conflict.
+    -- The coarse half is not decoration. A scanned photograph's only date
+    -- is often the folder it sits in -- `1998/`, `2003-07/`, `1970s/` --
+    -- and with nowhere to put that claim the file fell through to mtime,
+    -- which dates a 1964 photograph by when somebody last copied it. Six
+    -- of the corpus's Commons photographs are pre-1990.
+    -- No `hour`. Every precision this column can hold is one `db/when.py`
+    -- constructs a Verdict with: a stamped name gives day, second or
+    -- subsecond, a folder gives day, month, year or decade, a generator
+    -- date gives second, day or minute, and the filesystem fallback gives
+    -- subsecond. Nothing reads an hour without also reading its minutes.
+    -- The hour remains a real unit in `when.SPAN` and a real timeline bin;
+    -- it was never a precision a file could claim.
+    time_precision      TEXT CHECK (time_precision IN
+                          ('decade','year','month','day','minute','second','subsecond')),
+    gps_lat             REAL,
+    gps_lon             REAL,
+    place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    -- Two, not four. `db/context.py` assigns `authored` when a person has
+    -- said where a picture happened and `gps` when the camera wrote a
+    -- fix; `sidecar` and `inferred` were vocabulary for readers that do
+    -- not exist -- sidecar ingest carries generation parameters and never
+    -- a location, and nothing infers one.
+    location_basis      TEXT CHECK (location_basis IN
+                          ('gps','authored')),
+    location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
+    -- WHICH MEANING produced this row: the interpretation ladder's own
+    -- version, so a better ladder tomorrow visibly obsoletes today's
+    -- rows instead of impersonating them.
+    policy_version      INTEGER NOT NULL,
+    rebuilt_at          REAL NOT NULL,
+    -- a time without a recorded basis is an unexplained date
+    CHECK ((time_basis IS NULL) = (local_at IS NULL AND instant_at IS NULL)),
+    -- and one without a precision is an unexplained kind of date
+    CHECK ((time_basis IS NULL) = (time_precision IS NULL)),
+    -- an offset explains a wall clock; without one it explains nothing
+    CHECK (tz_offset_min IS NULL OR local_at IS NOT NULL),
+    -- origin is DETERMINED, never asserted
+    CHECK (origin = CASE
+             WHEN has_generation = 1 AND has_capture = 1 THEN 'mixed'
+             WHEN has_generation = 1 THEN 'generated'
+             WHEN has_capture = 1 THEN 'captured'
+             ELSE 'imported' END)
+) STRICT""",
+    )

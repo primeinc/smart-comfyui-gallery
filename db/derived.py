@@ -19,6 +19,8 @@ targeted re-run rather than a full rebuild.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
+from typing import SupportsFloat
 
 
 def plain(value):
@@ -96,14 +98,30 @@ def drop_all(conn) -> list[str]:
 # --- where in the picture --------------------------------------------------
 
 
-def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None = None) -> int:
+def region(
+    conn,
+    x: SupportsFloat,
+    y: SupportsFloat,
+    w: SupportsFloat,
+    h: SupportsFloat,
+    *,
+    mask: bytes | None = None,
+) -> int:
     """A rectangle, in fractions of the frame.
 
     Normalized because a box in pixels is a box against one particular
     rendering: the same coordinates on a thumbnail or a re-encoded proxy
     point somewhere else. A mask goes to the blob store rather than to a
     path, so moving a cache directory cannot void it.
+
+    `SupportsFloat`, not `float`, because that is what the callers hand
+    over: `region_from_pixels` divides a detector's box by a frame size,
+    and a detector reports numpy. `np.float64` subclasses Python's float
+    and `np.float32` does not -- the same asymmetry `plain` above was
+    written for -- so a `float` here would be a claim the caller cannot
+    keep. The conversion below is the one place it is made.
     """
+    x, y, w, h = float(x), float(y), float(w), float(h)
     # A detector's box can run off the edge: a face at the side of the frame
     # is reported with the whole head's extent, and part of that is not in
     # the picture. Measured on 423 real YuNet detections, one overhung, by
@@ -120,12 +138,12 @@ def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None =
     # unconditionally put floating-point error into ones that were already
     # inside -- 0.6 + 0.3 - 0.6 is 0.29999999999999993 -- so a coordinate
     # made a round trip it never asked for and came back different.
-    if float(x) < 0 or float(y) < 0 or float(x) + float(w) > 1 or float(y) + float(h) > 1:
-        left, top = min(max(float(x), 0.0), 1.0), min(max(float(y), 0.0), 1.0)
-        right = min(max(float(x) + float(w), 0.0), 1.0)
-        bottom = min(max(float(y) + float(h), 0.0), 1.0)
+    if x < 0 or y < 0 or x + w > 1 or y + h > 1:
+        left, top = min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)
+        right = min(max(x + w, 0.0), 1.0)
+        bottom = min(max(y + h, 0.0), 1.0)
         kept = (right - left) * (bottom - top)
-        asked = float(w) * float(h)
+        asked = w * h
         if asked > 0 and kept < asked / 2:
             raise ValueError(
                 f"the box ({x}, {y}, {w}, {h}) is mostly outside the frame. "
@@ -148,20 +166,30 @@ def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None =
     return int(cursor.lastrowid or 0)
 
 
-def region_from_pixels(conn, box, width: int, height: int, **kwargs) -> int:
+def region_from_pixels(
+    conn, box: Iterable[SupportsFloat], width: SupportsFloat, height: SupportsFloat, **kwargs
+) -> int:
     """The same, given pixels and the size they were measured against.
 
     Offered so a caller with pixel coordinates converts once, here, rather
     than each detector inventing its own convention.
 
+    This IS the foreign boundary: a detector hands over a numpy box and a
+    numpy frame size, which is what
+    `test_a_detectors_own_numbers_can_be_stored` passes. The parameters
+    say so -- `SupportsFloat` is the `__float__` protocol, which numpy
+    and torch scalars answer and `float` does not describe -- and the
+    division below is on real floats.
+
     A zero dimension is what a truncated decode reports, and dividing by it
     raised ZeroDivisionError out of whatever job was running. It is refused
     by name instead: there is no rectangle inside a frame with no area.
     """
-    if width <= 0 or height <= 0:
+    across, down = float(width), float(height)
+    if across <= 0 or down <= 0:
         raise ValueError(f"a {width}x{height} frame has nowhere to put a box")
-    x, y, w, h = box
-    return region(conn, x / width, y / height, w / width, h / height, **kwargs)
+    x, y, w, h = (float(one) for one in box)
+    return region(conn, x / across, y / down, w / across, h / down, **kwargs)
 
 
 # --- content hashes --------------------------------------------------------
@@ -445,7 +473,7 @@ def record_face_scan(conn, file_id: int, model_id: str, model_version: str, sha:
         " VALUES(?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(file_id, model_id, model_version) DO UPDATE SET source_sha256 = excluded.source_sha256,"
         " faces = excluded.faces, computed_at = excluded.computed_at",
-        tuple(plain(v) for v in (file_id, model_id, model_version, sha, int(faces), now)),
+        tuple(plain(v) for v in (file_id, model_id, model_version, sha, faces, now)),
     )
 
 
@@ -760,6 +788,15 @@ ALL_ALONE = 0.95
 #: against every grouped face, which is what the definition requires. This
 #: caps the cost of judging a run regardless of library size.
 SILHOUETTE_SAMPLE = 20_000
+#: Rows per block when the silhouette matrices are walked: the peak
+#: allocation is block x faces, and 4096 keeps it in tens of megabytes
+#: at library scale. It was typed four times across the two loops,
+#: which had to be edited in step.
+_BLOCK = 4096
+#: One page of annotation search hits -- the same size as a grid page
+#: (db/resultset.py DEFAULT_PAGE_SIZE), stated here because this module
+#: keeps its imports lazy and a default argument cannot.
+_ANNOTATIONS_PAGE = 60
 
 #: Below this, the groups are not meaningfully apart -- a face sits about as
 #: close to somebody else's centre as to its own -- and a run that scores it
@@ -915,8 +952,8 @@ def health(conn, run_id: int) -> dict:
     own = np.einsum("ij,ij->i", sample, centres[sample_index])
     if len(ids) > 1:
         nearest = np.empty(len(sample), dtype=np.float32)
-        for start in range(0, len(sample), 4096):
-            block = slice(start, start + 4096)
+        for start in range(0, len(sample), _BLOCK):
+            block = slice(start, start + _BLOCK)
             against = sample[block] @ centres.T
             against[np.arange(against.shape[0]), sample_index[block]] = -1.0
             nearest[block] = against.max(axis=1)
@@ -933,8 +970,8 @@ def health(conn, run_id: int) -> dict:
         by_cluster = np.argsort(index, kind="stable")
         sorted_unit, sorted_index = unit[by_cluster], index[by_cluster]
         sums = np.zeros((len(sample), len(ids)), dtype=np.float64)
-        for start in range(0, grouped, 4096):
-            block = slice(start, start + 4096)
+        for start in range(0, grouped, _BLOCK):
+            block = slice(start, start + _BLOCK)
             dist = 1.0 - sample @ sorted_unit[block].T
             here = sorted_index[block]
             bounds = np.flatnonzero(np.diff(here, prepend=here[0] - 1))
@@ -968,7 +1005,7 @@ def health(conn, run_id: int) -> dict:
             "silhouette": silhouette,
             # Groups far larger than the middle of the distribution -- the shape
             # chaining makes, and invisible to a mean.
-            "outliers": int(sum(1 for n in sizes if median and n > 4 * median)),
+            "outliers": sum(1 for n in sizes if median and n > 4 * median),
         }
     )
     if math.isnan(reading["silhouette"]):
@@ -993,7 +1030,12 @@ def agreement(conn, run_id: int) -> dict:
         "SELECT pa.person_id, m.cluster_id FROM person_assertion pa"
         "  JOIN derived_face_instance fi ON fi.file_id = pa.file_id"
         "  JOIN derived_face_membership m ON m.face_id = fi.id"
-        "  JOIN derived_face_cluster c ON c.id = m.cluster_id AND c.run_id = ?",
+        "  JOIN derived_face_cluster c ON c.id = m.cluster_id AND c.run_id = ?"
+        # Positive claims only. A denial says two faces are NOT the same
+        # person, so counting it here would read as evidence that they
+        # are -- the measure would improve every time somebody corrected
+        # the thing it measures.
+        " WHERE pa.stance = 'is'",
         (run_id,),
     ).fetchall()
     together = apart = mixed = 0
@@ -1062,7 +1104,7 @@ def choose_primary(conn) -> int | None:
     if not sound:
         return None
 
-    asserted = conn.execute("SELECT count(*) FROM person_assertion").fetchone()[0]
+    asserted = conn.execute("SELECT count(*) FROM person_assertion WHERE stance = 'is'").fetchone()[0]
     if asserted:
 
         def by_agreement(run):
@@ -1174,13 +1216,23 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         row[0]: (row[1], row[2], row[3], row[4])
         for row in conn.execute("SELECT id, file_id, kind, offset_ms, page_index FROM derived_media_sample")
     }
+    # Positive claims VOTE; negative ones VETO. Read apart, because they
+    # are different acts: "she is in this" proposes a name for a cluster,
+    # and "that is not her" refuses one -- and a denial that merely
+    # failed to vote would be indistinguishable from never having been
+    # said, which is what deleting the claim already meant.
     assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
-    for person_id, file_id, sample_id, region_id in conn.execute(
-        "SELECT person_id, file_id, sample_id, region_id FROM person_assertion"
+    denied: dict[int, list[tuple[int, int | None]]] = {}
+    for person_id, file_id, sample_id, region_id, stance in conn.execute(
+        "SELECT person_id, file_id, sample_id, region_id, stance FROM person_assertion"
     ):
-        assertions.setdefault(file_id, []).append((person_id, sample_id, region_id))
+        if stance == "is_not":
+            denied.setdefault(file_id, []).append((person_id, region_id))
+        else:
+            assertions.setdefault(file_id, []).append((person_id, sample_id, region_id))
 
     votes: dict[int, set[int]] = {}
+    vetoes: dict[int, set[int]] = {}
     for cluster_id, file_id, sample_id, region_id in conn.execute(
         "SELECT m.cluster_id, fi.file_id, fi.sample_id, fi.region_id"
         "  FROM derived_face_membership m"
@@ -1189,6 +1241,22 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         " WHERE c.person_id IS NULL AND c.run_id = ?",
         (run_id,),
     ):
+        # A denial naming a REGION refuses that person for the cluster
+        # holding the face it overlaps: "not her, THAT one" is a claim
+        # about a FACE, and the cluster is what collects faces.
+        #
+        # A denial naming no region is not. "She is not in this picture"
+        # is about the FILE, and vetoing the cluster for it would punish
+        # every OTHER picture in the same cluster -- deny one photograph
+        # and a correctly-named person loses their name everywhere. The
+        # attribution filter is what a file-level denial acts through,
+        # and it acts on exactly the file it was about. Learned by
+        # writing the veto the broad way first and watching one denial
+        # unname the picture it was not about.
+        for person, box in denied.get(file_id, ()):
+            if box is not None and _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:
+                vetoes.setdefault(cluster_id, set()).add(person)
+
         claims = assertions.get(file_id, ())
         for person, on_sample, box in claims:
             # A claim about one frame says nothing about another. Two frames
@@ -1217,11 +1285,17 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
     named = 0
     for cluster_id, people in votes.items():
-        if len(people) != 1:
+        # A vetoed name is not a name. Applied AFTER the vote rather than
+        # by filtering the claims, so a cluster whose only proposal was
+        # refused ends up UNNAMED rather than named by whatever came
+        # second -- an unnamed cluster is a question the People page can
+        # put to somebody, and a wrong name is not.
+        allowed = people - vetoes.get(cluster_id, set())
+        if len(allowed) != 1:
             continue
         conn.execute(
             "UPDATE derived_face_cluster SET person_id = ? WHERE id = ?",
-            (people.pop(), cluster_id),
+            (allowed.pop(), cluster_id),
         )
         named += 1
     conn.execute(
@@ -1231,10 +1305,57 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         "   FROM derived_face_membership m"
         "   JOIN derived_face_instance fi ON fi.id = m.face_id"
         "   JOIN derived_face_cluster c ON c.id = m.cluster_id"
-        "  WHERE c.person_id IS NOT NULL AND c.run_id = ?",
+        "  WHERE c.person_id IS NOT NULL AND c.run_id = ?"
+        # A denial stops the ATTRIBUTION too, not only the naming. A
+        # cluster can be correctly named and still hold one face from a
+        # picture that person is not in -- which is exactly the case
+        # somebody is correcting -- and without this the name comes back
+        # on that picture through the file attribution even though the
+        # cluster was refused it.
+        "    AND NOT EXISTS (SELECT 1 FROM person_assertion pa"
+        "                     WHERE pa.person_id = c.person_id AND pa.file_id = fi.file_id"
+        "                       AND pa.stance = 'is_not')",
         (run_id,),
     )
     return named
+
+
+def attributing_producers(conn, person_id: int, file_id: int) -> list[tuple[str, str]]:
+    """Which producers put this person on this file, most recent run first.
+
+    Read BEFORE withdrawing, because withdrawing is what makes the
+    answer interesting: a correction judges the model whose output was
+    corrected, and after the delete there is nothing left saying which
+    one that was.
+
+    Usually one. More than one means several runs agreed, and each of
+    them was told the same thing by the same correction.
+    """
+    return [
+        (str(model_id), str(model_version))
+        for model_id, model_version in conn.execute(
+            "SELECT DISTINCT model_id, model_version FROM derived_file_person"
+            " WHERE person_id = ? AND file_id = ? ORDER BY run_id DESC",
+            (person_id, file_id),
+        )
+    ]
+
+
+def withdraw_attribution(conn, person_id: int, file_id: int) -> int:
+    """Take a person off a file in the INFERRED layer; returns rows gone.
+
+    The consequence of a denial, and it has to be immediate. The claim
+    constrains the next clustering run (`seed_clusters_from_assertions`),
+    but `derived_file_person` is what the page reads, so leaving it
+    standing would show the picture contradicting the thing somebody
+    just said until the next re-run -- which may be never.
+    """
+    return int(
+        conn.execute(
+            "DELETE FROM derived_file_person WHERE file_id = ? AND person_id = ?", (file_id, person_id)
+        ).rowcount
+        or 0
+    )
 
 
 # --- embeddings ------------------------------------------------------------
@@ -1439,7 +1560,7 @@ def said_first(conn, file_ids, *, prefer: str | None = None) -> dict[int, str]:
     return told
 
 
-def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
+def search_annotations(conn, text: str, limit: int = _ANNOTATIONS_PAGE) -> list[dict]:
     """Find a picture by what a model said about it."""
     quoted = '"' + text.replace('"', '""') + '"'
     cursor = conn.execute(
@@ -1450,3 +1571,117 @@ def search_annotations(conn, text: str, limit: int = 60) -> list[dict]:
     )
     columns = [c[0] for c in cursor.description]
     return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+# --- taking the expensive thing with you -------------------------------------
+
+#: A person's faces in the PRIMARY run, each with the provenance that
+#: makes the numbers mean something.
+#:
+#: A naked 512-float vector recreates exactly the opaque dependency an
+#: export is supposed to escape: without the producer, the preprocessing
+#: and the dimensions it cannot be compared with anything, reproduced,
+#: or checked. `similarity_space` is that identity and it is immutable
+#: by trigger, so what comes back describes itself.
+#:
+#: `content_sha256` is the join back to a photograph. No path -- the
+#: bytes are what identify a picture in any library that holds it, and a
+#: path is a fact about this machine.
+FACES_OF = (
+    "SELECT s.key AS space, s.representation, s.dimensions, s.metric,"
+    "       s.producer, s.producer_version, s.preprocess, s.preprocess_version,"
+    "       s.spec_hash, c.centroid, c.dim AS centroid_dim,"
+    "       f.content_sha256 AS sha256, fi.det_score, fi.dim, fi.embedding,"
+    "       r.x, r.y, r.w, r.h, cap.captured_at"
+    "  FROM derived_face_cluster c"
+    "  JOIN derived_face_membership m ON m.cluster_id = c.id"
+    "  JOIN derived_face_instance fi ON fi.id = m.face_id"
+    "  JOIN derived_face_run run ON run.id = c.run_id AND run.is_primary = 1"
+    "  JOIN file f ON f.id = fi.file_id AND f.content_sha256 IS NOT NULL"
+    "  JOIN region r ON r.id = fi.region_id"
+    "  JOIN similarity_space s ON s.id = fi.space_id"
+    "  LEFT JOIN capture cap ON cap.file_id = f.id"
+    " WHERE c.person_id = ? AND fi.embedding IS NOT NULL"
+    "   AND (? IS NULL OR cap.captured_at >= ?)"
+    "   AND (? IS NULL OR cap.captured_at <= ?)"
+    # Dated first, in time order, and the undated after them: SQLite
+    # sorts NULL FIRST, which would have led the file with the pictures
+    # whose camera never said when -- the least locatable ones.
+    " ORDER BY cap.captured_at IS NULL, cap.captured_at, f.content_sha256"
+)
+
+
+def _floats(raw) -> list[float]:
+    import numpy as np
+
+    return [] if raw is None else [float(x) for x in np.frombuffer(raw, dtype=np.float32)]
+
+
+def person_faces(conn, slug: str, *, since: float | None = None, until: float | None = None) -> dict | None:
+    """`{person, name, spaces}` for an address, or None for no such
+    person.
+
+    The slug is resolved HERE, through `naming`, so a retired address
+    still answers -- somebody exporting from a bookmark should not be
+    told the person does not exist because they were renamed.
+    """
+    from . import naming
+
+    found = naming.resolve(conn, "person", slug)
+    if found is None:
+        return None
+    person_id, _live = found
+    row = conn.execute("SELECT name FROM person WHERE id = ?", (person_id,)).fetchone()
+    if row is None:
+        return None
+    return {
+        "person": slug,
+        "name": row[0],
+        "spaces": faces_exported(conn, person_id, since=since, until=until),
+    }
+
+
+def faces_exported(conn, person_id: int, *, since: float | None = None, until: float | None = None) -> list[dict]:
+    """A person's face vectors, grouped by the space that gives them
+    meaning, each group with its centroid.
+
+    Grouped rather than flat because a vector is only comparable to
+    another from the SAME space: a library that has re-detected under a
+    new model holds two representations of one person, and flattening
+    them into one list would invite a comparison that means nothing.
+
+    A date range is over CAPTURE time, so a picture whose camera never
+    said when excludes itself the moment a range is given. That is the
+    honest reading of "faces from 2019" and the surface says it.
+    """
+    cursor = conn.execute(FACES_OF, (person_id, since, since, until, until))
+    columns = [c[0] for c in cursor.description]
+    spaces: dict[str, dict] = {}
+    for row in (dict(zip(columns, one, strict=True)) for one in cursor):
+        held = spaces.setdefault(
+            row["space"],
+            {
+                "space": row["space"],
+                "representation": row["representation"],
+                "dimensions": row["dimensions"],
+                "metric": row["metric"],
+                "producer": row["producer"],
+                "producer_version": row["producer_version"],
+                "preprocess": row["preprocess"],
+                "preprocess_version": row["preprocess_version"],
+                "spec_hash": row["spec_hash"],
+                "centroid": _floats(row["centroid"]),
+                "faces": [],
+            },
+        )
+        held["faces"].append(
+            {
+                "sha256": row["sha256"],
+                "captured_at": row["captured_at"],
+                "det_score": row["det_score"],
+                "dim": row["dim"],
+                "region": {"x": row["x"], "y": row["y"], "w": row["w"], "h": row["h"]},
+                "embedding": _floats(row["embedding"]),
+            }
+        )
+    return list(spaces.values())

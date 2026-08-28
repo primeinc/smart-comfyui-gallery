@@ -56,7 +56,7 @@ import math
 import re
 import typing
 
-from . import prompt_sections
+from . import naming, prompt_sections
 from .stories import canonical, digest
 
 FORMAT_VERSION = 7
@@ -93,6 +93,11 @@ def frozen_main(member: dict, role: str) -> str:
 
 
 #: Precisions fine enough that event order is evidence of sequence.
+#:
+#: `decade`, `year`, `month` and `day` are deliberately absent and stay
+#: absent: two photographs both claimed to 1998 say nothing about which
+#: came first, and a story that narrated them in file order would be
+#: inventing a sequence out of a folder name.
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
 
 
@@ -378,7 +383,14 @@ class GenerationHistoryPlanner:
     version = 10
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
-    def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
+    def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
+        # One constructor shape for every planner, because the caller
+        # picks the class at runtime and constructs it the same way
+        # (`plan_request` below). `uses_similarity = True` is what tells
+        # that caller to bring an engine; this is what happens when it
+        # does not, instead of an AttributeError several phases later.
+        if similarity is None:
+            raise ValueError("GenerationHistoryPlanner compares prompts and needs a similarity engine")
         self.similarity = similarity
         self.settings = validated_settings(settings, self.defaults)
 
@@ -689,7 +701,7 @@ class CaptureHistoryPlanner:
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 10, "burst_seconds": 2.0}
 
-    def __init__(self, similarity=None, settings: dict | None = None):
+    def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
         self.similarity = _NoSimilarity()
         self.settings = validated_settings(settings, self.defaults)
 
@@ -930,7 +942,7 @@ class FileHistoryPlanner:
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 30, "burst_seconds": 5.0}
 
-    def __init__(self, similarity=None, settings: dict | None = None):
+    def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
         self.similarity = _NoSimilarity()
         self.settings = validated_settings(settings, self.defaults)
 
@@ -1316,12 +1328,53 @@ def unresolved(plan: dict, snapshot: dict) -> list[str]:
     return bad
 
 
+class StoryPlanFlat(typing.TypedDict):
+    """A StoryPlan vocabulary through v3, whose `settings` is one flat
+    set of keys.
+
+    Spelled out because a bare dict holding an int beside five
+    frozensets infers every value as their union, so
+    `STORY_PLAN_V3["claims"] | frozenset(...)` -- the way each version
+    is built from the one before -- reads as `|` between
+    `int | frozenset` and a frozenset, and nothing downstream can be
+    checked.
+    """
+
+    version: int
+    planners: frozenset[str]
+    claims: frozenset[str]
+    unsupported: frozenset[str]
+    settings: frozenset[str]
+    subjects: frozenset[str]
+
+
+class StoryPlan(typing.TypedDict):
+    """A StoryPlan vocabulary from v4 on: `settings` is PER PLANNER.
+
+    Two shapes rather than one with a union, because the union is a
+    lie in both directions -- it says v3 might carry a dict and v5
+    might carry a set, and then every construction below has to be
+    read as if it could. The shape changed exactly once, at v4, which
+    the comment there states; two names say that and one does not.
+
+    A frozen version stays frozen: a v1 row written today still parses
+    as v1, so both shapes are live for ever.
+    """
+
+    version: int
+    planners: frozenset[str]
+    claims: frozenset[str]
+    unsupported: frozenset[str]
+    settings: dict[str, frozenset[str]]
+    subjects: frozenset[str]
+
+
 #: The durable vocabulary of a StoryPlan v1 -- FROZEN. These constants
 #: describe what a v1 document may contain and never track the running
 #: code: a v1 row written today must still parse as v1 after a v2 exists,
 #: or the "immutable historical artifact" is a row that rots. Adding a
 #: claim kind, a planner, or a key is a v2.
-STORY_PLAN_V1 = {
+STORY_PLAN_V1: StoryPlanFlat = {
     "version": 1,
     "planners": frozenset({"generation_history"}),
     "claims": frozenset(
@@ -1343,7 +1396,7 @@ STORY_PLAN_V1 = {
 #: StoryPlan v2 -- FROZEN. v1 plus the symmetric difference claims an
 #: UNSEQUENCED plan states between families (v1 had only the directed
 #: change claims, which assert a before and an after).
-STORY_PLAN_V2 = {
+STORY_PLAN_V2: StoryPlanFlat = {
     **STORY_PLAN_V1,
     "version": 2,
     "claims": STORY_PLAN_V1["claims"] | frozenset({"artifact_difference", "parameter_difference"}),
@@ -1351,7 +1404,7 @@ STORY_PLAN_V2 = {
 
 #: StoryPlan v3 -- FROZEN. v2 plus `prompt_rewrite`: the prompt the
 #: generator ran differs substantially from the prompt as written.
-STORY_PLAN_V3 = {
+STORY_PLAN_V3: StoryPlanFlat = {
     **STORY_PLAN_V2,
     "version": 3,
     "claims": STORY_PLAN_V2["claims"] | frozenset({"prompt_rewrite"}),
@@ -1361,9 +1414,14 @@ STORY_PLAN_V3 = {
 #: `capture_history` planner over a `capture_session`, whose claims are
 #: the camera's clock and optics -- a pause, a lens change, a burst, the
 #: exposure range, the equipment in hand, renditions of one act, clips.
-STORY_PLAN_V4 = {
-    **STORY_PLAN_V3,
+STORY_PLAN_V4: StoryPlan = {
+    # Spelled out, not spread: v4 is the version where `settings` stops
+    # being one flat frozenset and becomes a set per planner, so V3 is a
+    # StoryPlanFlat and this is a StoryPlan, and `**STORY_PLAN_V3` would
+    # be carrying the old shape in. Every other key is overridden below;
+    # `unsupported` is the one that rides across unchanged.
     "version": 4,
+    "unsupported": STORY_PLAN_V3["unsupported"],
     "planners": STORY_PLAN_V3["planners"] | frozenset({"capture_history"}),
     "claims": STORY_PLAN_V3["claims"]
     | frozenset({"pause", "lens_change", "burst", "exposure_range", "equipment", "renditions", "video_clip"}),
@@ -1379,7 +1437,7 @@ STORY_PLAN_V4 = {
 #: the files said about themselves -- the basis their dates rest on, a
 #: filesystem that disputes a name, a mix of media kinds -- beside the
 #: shared pause, burst and clip claims.
-STORY_PLAN_V5 = {
+STORY_PLAN_V5: StoryPlan = {
     **STORY_PLAN_V4,
     "version": 5,
     "planners": STORY_PLAN_V4["planners"] | frozenset({"file_history"}),
@@ -1394,7 +1452,7 @@ STORY_PLAN_V5 = {
 #: about a phase's members, frozen in the snapshot's annotations. Every
 #: planner may emit it; the facts are how many members carry a caption
 #: and which models spoke.
-STORY_PLAN_V6 = {
+STORY_PLAN_V6: StoryPlan = {
     **STORY_PLAN_V5,
     "version": 6,
     "claims": STORY_PLAN_V5["claims"] | frozenset({"seen"}),
@@ -1403,13 +1461,14 @@ STORY_PLAN_V6 = {
 #: happened, from the place each member froze (a person's word; GPS
 #: alone names no place). Facts are how many members carry a place and
 #: the leaf names they carry.
-STORY_PLAN_V7 = {
+STORY_PLAN_V7: StoryPlan = {
     **STORY_PLAN_V6,
     "version": 7,
     "claims": STORY_PLAN_V6["claims"] | frozenset({"located"}),
 }
 _ID = re.compile(r"^(phase|claim)-[0-9]{3,}$")
-_SHA = re.compile(r"^[0-9a-f]{64}$")
+#: The one sha256 spelling rule (db/naming.py); three modules stated it.
+_SHA = naming.SHA256_HEX
 
 
 def _number(value) -> bool:
@@ -1650,7 +1709,7 @@ def validate_story_plan_v3(plan) -> list[str]:
     return _validate_story_plan(plan, STORY_PLAN_V3, _facts_valid_v3)
 
 
-def _validate_story_plan(plan, vocabulary: dict, facts_valid) -> list[str]:
+def _validate_story_plan(plan, vocabulary: StoryPlanFlat | StoryPlan, facts_valid) -> list[str]:
     bad: list[str] = []
     top = {"v", "snapshot_sha256", "planner", "subject", "phases", "claims", "unsupported"}
     if not _keys(plan, top, {"planned_at"}, "plan", bad):
@@ -1860,7 +1919,7 @@ def request_identity(
 
 
 def settings_hash(settings: dict) -> str:
-    return hashlib.sha256(canonical(dict(sorted(settings.items()))).encode("utf-8")).hexdigest()[:16]
+    return naming.short_hash(canonical(dict(sorted(settings.items()))))
 
 
 PLANNERS = {
@@ -1868,6 +1927,11 @@ PLANNERS = {
     CaptureHistoryPlanner.kind: CaptureHistoryPlanner,
     FileHistoryPlanner.kind: FileHistoryPlanner,
 }
+
+#: What `plan_snapshot` is handed. Beside the registry deliberately: the
+#: two lists are the same list, and one drifting from the other is how a
+#: signature comes to name one planner while three reach it.
+Planner = GenerationHistoryPlanner | CaptureHistoryPlanner | FileHistoryPlanner
 
 
 # --- persistence and orchestration -------------------------------------------
@@ -1892,7 +1956,7 @@ def _verified_snapshot(conn, snapshot_id: int) -> tuple[dict, str]:
     return document, row[1]
 
 
-def plan_snapshot(conn, snapshot_id: int, planner: GenerationHistoryPlanner, now: float) -> PlanRef:
+def plan_snapshot(conn, snapshot_id: int, planner: Planner, now: float) -> PlanRef:
     """Plan one verified snapshot under one policy and persist the
     result -- or return the existing row when the request (or the
     canonical plan) already exists. The planner never sees the

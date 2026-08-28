@@ -86,7 +86,8 @@
       {% if job.attempts %}
       <ol class="attempts">
         {% for a in job.attempts %}
-        <li data-attempt-type="{{ a.type }}"><code class="raw">{{ a.type }}</code> {{ when(a.at) }}{% if a.owner is defined %} · {{ a.owner }} · attempt {{ a.attempt }} · fence {{ a.fence }}{% endif %}{% if a.did is defined %} · after {{ a.did }} items{% endif %}</li>
+        {% set ad = a.data or {} %}
+        <li data-attempt-type="{{ a.type }}"><code class="raw">{{ a.type }}</code> {{ when(a.at) }}{% if ad.owner is defined %} · {{ ad.owner }} · attempt {{ ad.attempt }} · fence {{ ad.fence }}{% endif %}{% if ad.did is defined %} · after {{ ad.did }} items{% endif %}</li>
         {% endfor %}
       </ol>
       {% endif %}
@@ -98,9 +99,10 @@
       <p class="cond cond-job-failure" data-condition="job-failure"><b>✕ job failed</b> <code class="raw">{{ job.error }}</code></p>
       {% endif %}
       {% for defect in job.defects %}
+      {% set dd = defect.data or {} %}
       <details class="cond cond-worker-defect" data-condition="worker-defect" data-event="{{ defect.id }}">
-        <summary><b>✕ worker turn crashed</b> on {% if defect.item and defect.item.name %}{{ defect.item.name }}{% else %}item {{ defect.item.id if defect.item else "?" }}{% endif %} · <code class="raw">{{ defect.exception }}: {{ defect.error }}</code> · attempt {{ defect.attempt }} lost · fence {{ defect.fence }} · {{ when(defect.at) }} · the job stays running until the lease lapses and is then reclaimable</summary>
-        <pre class="traceback">{{ defect.traceback }}</pre>
+        <summary><b>✕ worker turn crashed</b> on {% if defect.item and defect.item.name %}{{ defect.item.name }}{% else %}item {{ defect.item.id if defect.item else "?" }}{% endif %} · <code class="raw">{{ dd.exception }}: {{ dd.error }}</code> · attempt {{ dd.attempt }} lost · fence {{ dd.fence }} · {{ when(defect.at) }} · the job stays running until the lease lapses and is then reclaimable</summary>
+        <pre class="traceback">{{ dd.traceback }}</pre>
       </details>
       {% endfor %}
       {% if job.failures %}

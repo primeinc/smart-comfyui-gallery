@@ -37,7 +37,11 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 #: The gap is wide enough that timing noise cannot reach it.
 TOLERANCE = 2.0
 
-SMALL, LARGE = 2_000, 8_000
+#: The two sizes the ratio is taken across. What discriminates is the
+#: FOURFOLD step, not the absolute size: a quadratic path grows ~3.5x
+#: across it and a linear one 1.0-1.1x, whether the step is 1k->4k or
+#: 2k->8k. The smaller pair says the same thing for half the rows.
+SMALL, LARGE = 1_000, 4_000
 
 
 @pytest.fixture(scope="module")
@@ -188,7 +192,7 @@ def _rescan_unchanged(conn, n, sample):
     from db import scan
 
     observed = {
-        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image")
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, fs_id=None, kind="image")
         for i in range(2, n + 2)
     }
     scan.apply_scan(conn, observed, 1.0, roots={1})
@@ -201,11 +205,11 @@ def _rescan_with_one_new_file(conn, n, sample):
     from db import scan
 
     observed = {
-        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, inode=None, kind="image")
+        (1, f"IMG_{i:06d}.jpg"): scan.Found(sha=f"sha-{i}", size=1, mtime=0, btime=None, fs_id=None, kind="image")
         for i in range(2, n + 2)
     }
     scan.apply_scan(conn, observed, 1.0, roots={1})
-    observed[(1, "BRAND_NEW.jpg")] = scan.Found(sha="sha-new", size=1, mtime=0, btime=None, inode=None, kind="image")
+    observed[(1, "BRAND_NEW.jpg")] = scan.Found(sha="sha-new", size=1, mtime=0, btime=None, fs_id=None, kind="image")
     result = scan.apply_scan(conn, observed, 2.0, roots={1})
     assert result.added == 1, result
     return n

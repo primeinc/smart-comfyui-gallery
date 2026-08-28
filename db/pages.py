@@ -33,11 +33,16 @@ table is never allowed, exemption or not.
 
 from __future__ import annotations
 
-from . import context
+from . import context, prompts, when
 from .context import HUMAN_MOMENT
 
 #: How many rows a grid asks for at once.
 PAGE = 60
+#: How many rows a list surface shows before it says "and N more" --
+#: two grid pages: enough to answer "what is in here", small enough
+#: that a folder of thousands never becomes one answer. Five functions
+#: carried the bare number.
+LIST_MOST = 120
 
 
 # --- the grid --------------------------------------------------------------
@@ -81,8 +86,11 @@ ONE_PICTURE = """
       (SELECT g.seed FROM generation g WHERE g.file_id = f.id) AS seed,
       (SELECT count(*) FROM file_param WHERE file_id = f.id) AS fields,
       f.kind,
+      -- `current` means read for THESE bytes by THIS reader. A file read
+      -- by an older one is stale, because the answer it holds may not be
+      -- the answer that reader would give now (db/ingest.py READER).
       CASE WHEN f.ingested_sha256 IS NULL THEN 'never'
-           WHEN f.ingested_sha256 = f.content_sha256 THEN 'current'
+           WHEN f.ingested_sha256 = f.content_sha256 AND f.ingested_by IS ? THEN 'current'
            ELSE 'stale' END AS read_state
     FROM file f JOIN folder fo ON fo.id = f.folder_id
    WHERE f.id = ?
@@ -96,7 +104,7 @@ PARSED_FIELDS = "SELECT source, key, value_text FROM file_param WHERE file_id = 
 #: primary key's own tail, so the order is index-served -- and unique, so
 #: a name tiebreak was unreachable anyway and only bought a sort.
 FILE_LORAS = (
-    "SELECT a.name FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
+    "SELECT a.name, fa.model_weight FROM file_artifact fa JOIN artifact a ON a.id = fa.artifact_id"
     " WHERE fa.file_id = ? AND fa.role = 'lora' ORDER BY fa.ordinal"
 )
 
@@ -117,7 +125,9 @@ FILE_BYTES = "SELECT kind, content_sha256 FROM file WHERE id = ?"
 
 
 def picture(conn, file_id: int):
-    return conn.execute(ONE_PICTURE, (file_id,)).fetchone()
+    from .ingest import READER
+
+    return conn.execute(ONE_PICTURE, (READER, file_id)).fetchone()
 
 
 def file_present(conn, file_id: int) -> bool | None:
@@ -151,8 +161,42 @@ def fields_of(conn, file_id: int):
     return conn.execute(PARSED_FIELDS, (file_id,)).fetchall()
 
 
-def file_loras(conn, file_id: int) -> list[str]:
-    return [row[0] for row in conn.execute(FILE_LORAS, (file_id,))]
+def file_loras(conn, file_id: int) -> list[tuple[str, float | None]]:
+    """Each LoRA with the strength it was applied at.
+
+    The weight is not decoration: a LoRA named without it does not
+    reproduce the picture, and "copy all" that omits it is the complaint
+    people have about every other gallery's copy button.
+    """
+    return [(row[0], row[1]) for row in conn.execute(FILE_LORAS, (file_id,))]
+
+
+#: The whole recipe row. Every one of these has been stored since
+#: `generation` was written and none of them reached the viewer.
+GENERATION = (
+    "SELECT tool, seed, steps, cfg, denoise, clip_skip, sampler, scheduler, width, height"
+    " FROM generation WHERE file_id = ?"
+)
+
+
+def prompt_texts(conn, file_id: int) -> dict[str, str]:
+    """Role -> text for one generation's prompts.
+
+    The roles relation is db/prompts.py's; what a PAGE wants of it is the
+    text of each role and nothing else -- no ids, no hashes, no uuids.
+    Delegated rather than restated: a second copy of that join here would
+    be free to drift from the one every other consumer reads.
+    """
+    return {role: held["text"] for role, held in prompts.roles(conn, file_id).items()}
+
+
+def generation_of(conn, file_id: int) -> dict:
+    """How this picture was made, as far as the recipe was recorded."""
+    row = conn.execute(GENERATION, (file_id,)).fetchone()
+    if row is None:
+        return {}
+    named = ("tool", "seed", "steps", "cfg", "denoise", "clip_skip", "sampler", "scheduler", "width", "height")
+    return dict(zip(named, row, strict=True))
 
 
 def neighbour(conn, file_id: int, *, previous: bool = True):
@@ -190,7 +234,7 @@ BREADCRUMB = """
 """
 
 
-def folder_files(conn, folder_id: int, limit: int = 120):
+def folder_files(conn, folder_id: int, limit: int = LIST_MOST):
     """COLLATE NOCASE to match `file_in_folder`, which is what makes this an
     ordered walk rather than a sort -- and the order a person expects, since
     the platform's own filesystem is case-insensitive."""
@@ -239,7 +283,7 @@ def folder_children(conn, folder_id: int):
 #: subtree views exclude, never a shelf to browse. Reachability comes
 #: from db/library.py probe_roots, which verifies the marker rather
 #: than trusting that A directory exists at the recorded path.
-ROOT_SHELF = "SELECT id, kind FROM root WHERE kind IN ('library', 'mount') ORDER BY id"
+ROOT_SHELF = "SELECT id, kind FROM root WHERE kind = 'library' ORDER BY id"
 
 FOLDER_TOPS = (
     "SELECT e.slug, f.name,"
@@ -389,40 +433,60 @@ def artifacts_by_use(conn, kind: str):
     return conn.execute(ARTIFACTS_BY_USE, (kind,)).fetchall()
 
 
-#: A few pictures per artifact for its shelf card, newest first: the
-#: artifact's slug and the picture's, for every artifact of one kind.
+#: A few pictures per artifact for its shelf card, newest first.
+#:
+#: The picture's SHA and KIND come back with its slug, because that is
+#: what a content-addressed thumbnail is made of -- `/thumb/<slug>` is a
+#: route with a lookup behind it, so a shelf of forty cards at four
+#: samples each was a hundred and sixty connections nothing could cache.
+#: The kind is not optional: `asset_url` answers None for a medium with
+#: no picture to take, and without it a shelf over a mixed library draws
+#: broken images where the grid already knows not to.
 SHELF_SAMPLES_PER = 4
 ARTIFACT_SHELF_SAMPLES = (
-    "SELECT ae.slug, fe.slug FROM ("
+    "SELECT ae.slug, fe.slug, f.content_sha256, f.kind FROM ("
     "  SELECT fa.artifact_id, fa.file_id,"
     "         row_number() OVER (PARTITION BY fa.artifact_id ORDER BY f.mtime DESC, f.id DESC) AS n"
     "    FROM file_artifact fa JOIN file f ON f.id = fa.file_id AND f.missing_since IS NULL"
     "    JOIN artifact a ON a.id = fa.artifact_id WHERE a.kind = ?"
     ") ranked JOIN entity ae ON ae.id = ranked.artifact_id JOIN entity fe ON fe.id = ranked.file_id"
+    "  JOIN file f ON f.id = ranked.file_id"
     " WHERE ranked.n <= ? ORDER BY ranked.artifact_id, ranked.n"
 )
 WORKFLOW_SHELF_SAMPLES = (
-    "SELECT ae.slug, fe.slug FROM ("
+    "SELECT ae.slug, fe.slug, f2.content_sha256, f2.kind FROM ("
     "  SELECT g.workflow_id AS artifact_id, g.file_id,"
     "         row_number() OVER (PARTITION BY g.workflow_id ORDER BY f.mtime DESC, f.id DESC) AS n"
     "    FROM generation g JOIN file f ON f.id = g.file_id AND f.missing_since IS NULL"
     "   WHERE g.workflow_id IS NOT NULL"
     ") ranked JOIN entity ae ON ae.id = ranked.artifact_id JOIN entity fe ON fe.id = ranked.file_id"
+    "  JOIN file f2 ON f2.id = ranked.file_id"
     " WHERE ranked.n <= ? ORDER BY ranked.artifact_id, ranked.n"
 )
 
 
 def artifact_shelf_samples(conn, kind: str, per: int = SHELF_SAMPLES_PER) -> dict[str, list[str]]:
-    """`{artifact slug: [picture slug, ...]}` -- the newest few pictures
-    of every artifact of one kind, for the shelf's cards."""
+    """`{artifact slug: [thumbnail address, ...]}` -- the newest few
+    pictures of every artifact of one kind, for the shelf's cards.
+
+    Addresses, not slugs. A card's samples are pictures OF something in
+    the library, so they are content-addressed like every other grid on
+    the site: no lookup, no connection, cacheable for a year. A member
+    with no picture to take -- a sound, a document -- is left out rather
+    than pointed at, which is what `asset_url` answering None means.
+    """
+    from vision import thumbs
+
     rows = (
         conn.execute(WORKFLOW_SHELF_SAMPLES, (per,))
         if kind == "workflow"
         else conn.execute(ARTIFACT_SHELF_SAMPLES, (kind, per))
     )
     held: dict[str, list[str]] = {}
-    for artifact_slug, file_slug in rows:
-        held.setdefault(artifact_slug, []).append(file_slug)
+    for artifact_slug, file_slug, sha, medium in rows:
+        address = thumbs.asset_url(sha, file_slug, medium=medium)
+        if address is not None:
+            held.setdefault(artifact_slug, []).append(address)
     return held
 
 
@@ -447,8 +511,12 @@ def lora_synergy(conn, lora_id: int):
 
 #: Counted per (file, person), so two faces of one person in one photograph
 #: are one picture. The old schema counted detections and needed a warning.
+#: The name as it IS, null and all. Coalescing to "(unnamed)" here made
+#: a placeholder indistinguishable from somebody a person had actually
+#: named "(unnamed)", and left the page unable to tell which of its
+#: cards are the work still to do.
 PEOPLE_BY_MOST = (
-    "SELECT COALESCE(p.name, '(unnamed)') AS name, e.slug,"
+    "SELECT p.name AS name, e.slug,"
     " count(DISTINCT fp.file_id) AS pictures"
     "  FROM person p JOIN entity e ON e.id = p.id"
     "  JOIN derived_file_person fp ON fp.person_id = p.id AND fp.run_id = ?"
@@ -557,10 +625,23 @@ RUNS = (
 #: The disagreement is the point -- one threshold welds strangers together and
 #: another splits one person in four, and the only way to see which is
 #: happening is to put the two answers side by side on the same photograph.
+#: ORDER BY inside each group_concat spells both columns the same way,
+#: which matters because a person reads them side by side.
+#:
+#: Not a correctness fix, and it is worth saying which it is not: the
+#: comparison is sound without it. `derived_file_person` is WITHOUT
+#: ROWID keyed (file_id, person_id, run_id), so both runs are visited in
+#: the same person_id order and the two strings are always spelled
+#: consistently with each other. Measured on 3.47.1: unordered, both
+#: sides read "Ivan,Hannah"; ordered, both read "Hannah,Ivan".
+#:
+#: What it fixes is that person_id order is the order people were
+#: CREATED in, which is meaningless to the reader and differs from the
+#: order they would look for a name in.
 RUNS_DISAGREE = """
-    SELECT f.name,
-           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS left_says,
-           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END) AS right_says
+    SELECT f.id, f.name,
+           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS left_says,
+           group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS right_says
       FROM derived_file_person fp
       JOIN person p ON p.id = fp.person_id
       JOIN file f ON f.id = fp.file_id
@@ -568,6 +649,24 @@ RUNS_DISAGREE = """
      GROUP BY f.id
     HAVING IFNULL(left_says, '') <> IFNULL(right_says, '')
      ORDER BY f.name
+     LIMIT ?
+"""
+
+#: How many pictures the two describe differently, whether or not they
+#: all fit on a page. A count of what was truncated is the difference
+#: between "they agree about everything else" and "we stopped looking".
+RUNS_DISAGREE_TOTAL = """
+    SELECT count(*) FROM (
+      SELECT f.id,
+             group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS left_says,
+             group_concat(DISTINCT CASE WHEN fp.run_id = ? THEN p.name END ORDER BY p.name) AS right_says
+        FROM derived_file_person fp
+        JOIN person p ON p.id = fp.person_id
+        JOIN file f ON f.id = fp.file_id
+       WHERE fp.run_id IN (?, ?)
+       GROUP BY f.id
+      HAVING IFNULL(left_says, '') <> IFNULL(right_says, '')
+    )
 """
 
 #: How the same face was grouped by each run. A face one run puts with
@@ -602,27 +701,53 @@ def clusterings(conn):
 
 def standings(conn) -> list[dict]:
     """Every run with where it stands against the People page -- the
-    default, or the sentence saying why not (db/derived.py standing)."""
+    default, or the sentence saying why not (db/derived.py standing).
+
+    The whole run row, not a chosen few fields. It began as the four the
+    People page's empty state used, which meant the ONE place that says
+    "it chained: one group holds 96% of every face" could not also say
+    which threshold produced it -- and the threshold is the thing anyone
+    reading that sentence is about to change.
+    """
     from . import derived
 
     return [
-        {
-            "id": run["id"],
-            "model_id": run["model_id"],
-            "faces": run["faces"],
-            "clusters": run["clusters"],
-            "standing": derived.standing(conn, run["id"], run["model_id"], run["threshold"]),
-        }
+        run | {"standing": derived.standing(conn, run["id"], run["model_id"], run["threshold"])}
         for run in clusterings(conn)
     ]
 
 
-def disagreements(conn, left: int, right: int):
-    """The pictures two runs describe differently."""
-    return conn.execute(RUNS_DISAGREE, (left, right, left, right)).fetchall()
+#: How many disagreements a comparison shows before it says how many
+#: more there are. A run that chained disagrees with a sane one about
+#: most of the library, and rendering eighty thousand rows to say so
+#: helps nobody.
+DISAGREEMENTS_SHOWN = 50
 
 
-def face_across_runs(conn, left: int, right: int, limit: int = 20):
+def disagreements(conn, left: int, right: int, limit: int = DISAGREEMENTS_SHOWN) -> dict:
+    """The pictures two runs describe differently, bounded, with the total.
+
+    Both numbers, always. The bounded list alone cannot tell "these are
+    the only twelve" from "here are the first fifty of nine thousand",
+    and those are opposite answers to the question somebody is asking
+    when they compare two thresholds.
+    """
+    rows = conn.execute(RUNS_DISAGREE, (left, right, left, right, limit)).fetchall()
+    total = conn.execute(RUNS_DISAGREE_TOTAL, (left, right, left, right)).fetchone()[0]
+    return {
+        "pictures": [{"id": one[0], "name": one[1], "left_says": one[2], "right_says": one[3]} for one in rows],
+        "shown": len(rows),
+        "total": int(total),
+    }
+
+
+#: How many of the disagreeing faces the comparison lists in person --
+#: a row of crops is scanned, not read, so it stays shorter than the
+#: disagreement list above it.
+FACES_ACROSS_RUNS_SHOWN = 20
+
+
+def face_across_runs(conn, left: int, right: int, limit: int = FACES_ACROSS_RUNS_SHOWN):
     """Per face, how big a group each run put it in. The faces where those
     two numbers differ most are where the two clusterings actually differ."""
     return conn.execute(FACE_ACROSS_RUNS, (left, left, right, right, limit)).fetchall()
@@ -646,6 +771,26 @@ def event_domain(conn, event_id: int):
 
 
 PEOPLE_IDS = "SELECT p.id, e.slug FROM person p JOIN entity e ON e.id = p.id"
+
+
+#: Who has a face to crop, for the whole index in one read.
+#:
+#: `/avatar/<slug>` answers 404 for a person no clustering run found a
+#: face for, which is a normal state -- so a page that points at one
+#: unconditionally draws a broken image where a face goes. Asked per
+#: person this would be one query per card; asked once it is a set.
+_PEOPLE_WITH_A_FACE = (
+    "SELECT DISTINCT c.person_id FROM derived_face_cluster c"
+    " JOIN derived_face_membership m ON m.cluster_id = c.id"
+    " JOIN derived_face_instance fi ON fi.id = m.face_id"
+    " JOIN derived_face_run run ON run.id = c.run_id AND run.is_primary = 1"
+    " WHERE c.person_id IS NOT NULL"
+)
+
+
+def people_with_a_face(conn) -> set[int]:
+    """Every person the primary run can show a face for."""
+    return {int(one) for (one,) in conn.execute(_PEOPLE_WITH_A_FACE)}
 
 
 def people_ids(conn):
@@ -718,11 +863,90 @@ DUPE_COPIES = (
 )
 
 
-def dupe_groups(conn, limit: int = 120):
+#: Every present member of one group, with where it LIVES.
+#:
+#: The placements are the whole point of showing a group at all. Three
+#: copies of one photograph filed under `Iowa 2019`, `Family` and
+#: `Old Backup` are one content and three placements, and a review that
+#: shows only "3 copies" invites somebody to delete two of them and
+#: silently turn two complete collections into incomplete ones.
+#:
+#: `content_sha256` rides along because it decides whether the word
+#: "copy" is even honest. These groups are PERCEPTUAL: a re-encode, a
+#: resize and a different crop can all land in one. Identical bytes can
+#: be consolidated to one stored payload without losing anything; merely
+#: similar pictures cannot, and telling the two apart is the difference
+#: between a safe operation and a destructive one.
+DUPE_MEMBERS = (
+    "SELECT e.slug, f.name, f.content_sha256, f.size, fo.name AS folder,"
+    "       twin.distance, twin.is_best, twin.verified, f.kind,"
+    "       (SELECT group_concat(c.name, ' / ') FROM collection_file cf"
+    "          JOIN collection c ON c.id = cf.collection_id"
+    "         WHERE cf.file_id = f.id ORDER BY c.name) AS collections"
+    "  FROM derived_dupe_group twin"
+    "  JOIN file f ON f.id = twin.file_id AND f.missing_since IS NULL"
+    "  JOIN entity e ON e.id = twin.file_id"
+    "  JOIN folder fo ON fo.id = f.folder_id"
+    " WHERE twin.group_id = ? ORDER BY twin.is_best DESC, f.name LIMIT ?"
+)
+
+#: Every collection a member of this group is filed under, and how whole
+#: each of those collections is.
+#:
+#: The other half of the preview. "3 placements, 1 payload" says what
+#: the GROUP becomes; this says what the collections AROUND it are, so
+#: the sentence somebody is being asked to trust -- consolidating
+#: redundant storage leaves every logical placement where it was -- is
+#: shown against the albums it would be true of rather than asserted.
+#:
+#: Two scalar subqueries and not a join to the collection's other
+#: members: a join multiplies the group's members by the collection's,
+#: so two copies filed in a 428-picture album count 856.
+#:
+#: `present` is the count that is not simply the row count, because a
+#: file whose bytes are gone keeps its placement (`missing_since`, never
+#: a delete). An album already short of its own members says so here,
+#: which is a fact about the library and not about consolidating.
+DUPE_PLACEMENTS = (
+    "SELECT c.name,"
+    "       (SELECT count(*) FROM collection_file cf WHERE cf.collection_id = c.id) AS members,"
+    "       (SELECT count(*) FROM collection_file cf JOIN file mf ON mf.id = cf.file_id"
+    "         WHERE cf.collection_id = c.id AND mf.missing_since IS NULL) AS present"
+    "  FROM collection c"
+    " WHERE c.id IN (SELECT cf.collection_id FROM collection_file cf"
+    "                  JOIN derived_dupe_group twin ON twin.file_id = cf.file_id"
+    "                 WHERE twin.group_id = ?)"
+    " ORDER BY c.name COLLATE NOCASE"
+)
+
+#: The group a file belongs to. `dupe_groups` hands back the best's slug
+#: and nothing else, and the members above are keyed on the group.
+DUPE_GROUP_OF = "SELECT group_id FROM derived_dupe_group WHERE file_id = ?"
+
+
+def dupe_members(conn, group_id: int, limit: int = LIST_MOST) -> list[dict]:
+    cursor = conn.execute(DUPE_MEMBERS, (group_id, limit))
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+def dupe_placements(conn, group_id: int) -> list[dict]:
+    """`[{name, members, present}]` for every collection this group touches."""
+    cursor = conn.execute(DUPE_PLACEMENTS, (group_id,))
+    columns = [c[0] for c in cursor.description]
+    return [dict(zip(columns, row, strict=True)) for row in cursor]
+
+
+def dupe_group_of(conn, file_id: int) -> int | None:
+    row = conn.execute(DUPE_GROUP_OF, (file_id,)).fetchone()
+    return None if row is None else int(row[0])
+
+
+def dupe_groups(conn, limit: int = LIST_MOST):
     return conn.execute(DUPE_GROUPS, (limit,)).fetchall()
 
 
-def dupe_copies(conn, file_id: int, limit: int = 120):
+def dupe_copies(conn, file_id: int, limit: int = LIST_MOST):
     return conn.execute(DUPE_COPIES, (file_id, limit)).fetchall()
 
 
@@ -783,7 +1007,7 @@ ALBUM_PRESENT = (
 )
 
 
-def album_files(conn, collection_id: int, limit: int = 120):
+def album_files(conn, collection_id: int, limit: int = LIST_MOST):
     return conn.execute(ALBUM_FILES, (collection_id, limit)).fetchall()
 
 
@@ -968,9 +1192,11 @@ _SESSION_MEMBER_IN_SCOPE = (
 _TIMELINE_DENSITY_HEAD = (
     "SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, count(*) AS pictures,"
     " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant,"
-    " sum(mc.origin = 'captured') AS captured, sum(mc.origin = 'generated') AS generated,"
-    " sum(mc.origin = 'mixed') AS mixed, sum(mc.origin = 'imported') AS imported"
-    "  FROM derived_media_context mc"
+    # one counting column per origin, in ORIGINS order -- the reader
+    # zips the tail of each row against the same tuple, so a fifth
+    # origin is counted and carried without either side being edited
+    + "".join(f" sum(mc.origin = '{one}') AS {one}," for one in context.ORIGINS).rstrip(",")
+    + "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     " WHERE mc.policy_version = ?"
     "   AND " + HUMAN_MOMENT + " >= ? AND " + HUMAN_MOMENT + " < ?"
@@ -984,8 +1210,14 @@ TIMELINE_DENSITY = _TIMELINE_DENSITY_HEAD + _TIMELINE_DENSITY_TAIL
 #: every bin; asked only when the page draws few enough bins to show
 #: them (db/pages.py timeline_samples).
 _TIMELINE_BIN_SAMPLES_HEAD = (
-    "SELECT bin, slug FROM ("
+    # `content_sha256` and `kind` ride along because the surface draws
+    # these: a thumbnail's address is content-addressed, and the kind is
+    # what says whether there is a picture to take at all. Both are
+    # columns of the `file` this already joins, so carrying them costs
+    # nothing and saves the caller a second read of the same rows.
+    "SELECT bin, slug, sha, kind FROM ("
     "  SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, e.slug,"
+    "   f.content_sha256 AS sha, f.kind AS kind,"
     "   row_number() OVER (PARTITION BY CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER)"
     "     ORDER BY " + HUMAN_MOMENT + ", mc.file_id) AS rn"
     "    FROM derived_media_context mc"
@@ -1000,7 +1232,10 @@ TIMELINE_BIN_SAMPLES = _TIMELINE_BIN_SAMPLES_HEAD + _TIMELINE_BIN_SAMPLES_TAIL
 
 #: A session's first members, by the grouper's own ordinal.
 SESSION_SAMPLES = (
-    "SELECT ef.event_id, e.slug FROM derived_event_file ef JOIN entity e ON e.id = ef.file_id"
+    "SELECT ef.event_id, e.slug, f.content_sha256, f.kind"
+    "  FROM derived_event_file ef"
+    "  JOIN entity e ON e.id = ef.file_id"
+    "  JOIN file f ON f.id = ef.file_id"
     " WHERE ef.event_id = ? AND ef.ordinal < ? ORDER BY ef.ordinal"
 )
 
@@ -1097,17 +1332,50 @@ TIMELINE_SESSIONS = _TIMELINE_SESSIONS_HEAD + _TIMELINE_SESSIONS_MIDDLE + _TIMEL
 #: year), anchored like the week: density bars over decades, not
 #: calendar months -- the calendar's months are TIMELINE_MONTHS.
 BINS = {
-    "year": 31_557_600,
-    "month": 2_629_800,
-    "week": 604_800,
-    "day": 86_400,
-    "hour": 3_600,
-    "quarter": 900,
-    "minute": 60,
+    # A decade bin, because a library can now hold a claim that coarse: a
+    # scanned photograph in a `1970s/` folder is dated to its decade and
+    # nothing finer, and without a bin wide enough to hold it the file
+    # would be absent from every zoom rather than shown at the resolution
+    # it is actually known to.
+    #
+    # From `db/when.py`, not typed here. These were written out by hand and
+    # said a year was 31_557_600 while when.py said 31_556_952 -- the
+    # Julian mean against the Gregorian one, for the same word, and a
+    # claim's window and the bar drawn for it are the same span or the bar
+    # is drawn for a different question than the one that was asked.
+    "decade": int(when.DECADE),
+    "year": int(when.YEAR),
+    "month": int(when.MONTH),
+    "week": 7 * int(when.DAY),
+    "day": int(when.DAY),
+    "hour": int(when.HOUR),
+    "quarter": 15 * int(when.MINUTE),
+    "minute": int(when.MINUTE),
 }
 #: Where each bin's grid starts: Monday for the week, the epoch otherwise.
-MONDAY = 345_600
+#: The epoch was a Thursday, so the first Monday is four days in.
+MONDAY = 4 * int(when.DAY)
 _ANCHOR = {"week": MONDAY}
+
+
+def binned(name: str, lo: float, hi: float) -> tuple[int, int]:
+    """The half-open window of whole `name` bins covering [lo, hi]: lo
+    floored to its bin, hi's bin kept whole. The rounding was written
+    out at five call sites -- `int(x // 3600) * 3600` with the width
+    typed twice in each -- where a width can only be BINS' own."""
+    width = BINS[name]
+    return int(lo // width) * width, int(hi // width) * width + width
+
+
+def hour_window_qs(start: float, end: float) -> dict:
+    """A session's timeline-link query: the hour window of [start, end],
+    `bin` first -- the parameter ORDER is part of the link's spelling
+    (tests assert `/timeline?bin=hour&start=`), so the dict is built
+    here once rather than at each surface."""
+    lo, hi = binned("hour", start, end)
+    return {"bin": "hour", "start": lo, "end": hi}
+
+
 #: Bins sampled for the thumbnail strip: every bin up to this many; past
 #: it, the busiest this many -- a strip always, never an apology.
 SAMPLED_BINS_MOST = 120
@@ -1115,9 +1383,16 @@ SAMPLES_PER_BIN = 3
 SAMPLES_PER_SESSION = 6
 #: Which precisions are fine enough for each bin: a claim enters a bin
 #: only when its own granule fits inside it.
+#:
+#: The coarse claims enter only the bins wide enough to hold them: a
+#: photograph known to `1998` belongs in a year bar and cannot honestly be
+#: placed in a week. Leaving them out of every list -- which is what this
+#: table said before the coarse precisions existed -- would have made a
+#: folder-dated scan invisible at every zoom instead.
 _FINE_ENOUGH = {
-    "year": ["day", "hour", "minute", "second", "subsecond"],
-    "month": ["day", "hour", "minute", "second", "subsecond"],
+    "decade": ["decade", "year", "month", "day", "hour", "minute", "second", "subsecond"],
+    "year": ["year", "month", "day", "hour", "minute", "second", "subsecond"],
+    "month": ["month", "day", "hour", "minute", "second", "subsecond"],
     "week": ["day", "hour", "minute", "second", "subsecond"],
     "day": ["day", "hour", "minute", "second", "subsecond"],
     "hour": ["hour", "minute", "second", "subsecond"],
@@ -1190,23 +1465,31 @@ def timeline_density(conn, bin_name: str, lo: float, hi: float, scope: tuple[str
 
 def timeline_samples(
     conn, bin_name: str, lo: float, hi: float, only=None, scope: tuple[str, list] = ("", [])
-) -> dict[int, list[str]]:
-    """`{bin: [slug, ...]}` -- the first SAMPLES_PER_BIN pictures of each
-    bin in [lo, hi); of the bins in `only` when the caller bounded the
-    strip (the busiest SAMPLED_BINS_MOST, sg_web/timeline_view.py)."""
+) -> dict[int, list[tuple[str, str | None, str]]]:
+    """`{bin: [(slug, sha, kind), ...]}` -- the first SAMPLES_PER_BIN
+    pictures of each bin in [lo, hi); of the bins in `only` when the
+    caller bounded the strip (the busiest SAMPLED_BINS_MOST,
+    sg_web/timeline_view.py).
+
+    A picture and not a slug, because the surface DRAWS these: the hash
+    is what makes a thumbnail's address content-addressed, and the kind
+    is what says whether there is a picture to take. Handing back a bare
+    slug is what left the timeline pointing at `/thumb/<slug>` -- a
+    route with a lookup behind it, once per picture, on the densest page
+    in the application."""
     import json as _json
 
     wanted = None if only is None else {int(at) for at in only}
     width = BINS[bin_name]
     anchor = _ANCHOR.get(bin_name, 0)
     fine = _json.dumps(_FINE_ENOUGH[bin_name])
-    held: dict[int, list[str]] = {}
-    for at, slug in conn.execute(
+    held: dict[int, list[tuple[str, str | None, str]]] = {}
+    for at, slug, sha, kind in conn.execute(
         _TIMELINE_BIN_SAMPLES_HEAD + scope[0] + _TIMELINE_BIN_SAMPLES_TAIL,
         (anchor, width, width, anchor, anchor, width, context.POLICY_VERSION, lo, hi, fine, *scope[1], SAMPLES_PER_BIN),
     ):
         if wanted is None or int(at) in wanted:
-            held.setdefault(int(at), []).append(slug)
+            held.setdefault(int(at), []).append((str(slug), sha, str(kind)))
     return held
 
 
@@ -1215,8 +1498,9 @@ def timeline_samples(
 #: pictures is shown by pictures from its whole length, as many as the
 #: asker can show, never a fixed few from its first minute.
 _TIMELINE_SPREAD_HEAD = (
-    "SELECT slug, moment FROM ("
+    "SELECT slug, moment, sha, kind FROM ("
     "  SELECT e.slug, " + HUMAN_MOMENT + " AS moment,"
+    "   f.content_sha256 AS sha, f.kind AS kind,"
     "   row_number() OVER (ORDER BY " + HUMAN_MOMENT + ", mc.file_id) AS rn,"
     "   count(*) OVER () AS cnt"
     "    FROM derived_media_context mc"
@@ -1228,8 +1512,10 @@ _TIMELINE_SPREAD_HEAD = (
 _TIMELINE_SPREAD_TAIL = ") WHERE (rn - 1) % max(1, (cnt + ? - 1) / ?) = 0 ORDER BY rn LIMIT ?"
 
 
-def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] = ("", [])) -> list[tuple[str, float]]:
-    """Up to `n` (slug, moment) of [lo, hi), spread evenly through it."""
+def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] = ("", [])) -> list[tuple]:
+    """Up to `n` (slug, moment, sha, kind) of [lo, hi), spread evenly
+    through it. The hash and kind because the caller DRAWS these -- see
+    `timeline_samples`."""
     return conn.execute(
         _TIMELINE_SPREAD_HEAD + scope[0] + _TIMELINE_SPREAD_TAIL,
         (context.POLICY_VERSION, lo, hi, *scope[1], n, n, n),
@@ -1241,7 +1527,7 @@ def timeline_spread(conn, lo: float, hi: float, n: int, scope: tuple[str, list] 
 #: never by time: three thousand pictures in one minute of a week-long
 #: segment would map every position to the burst's first or last.
 _TIMELINE_NTH_HEAD = (
-    "SELECT e.slug, " + HUMAN_MOMENT + " AS moment"
+    "SELECT e.slug, " + HUMAN_MOMENT + " AS moment, f.content_sha256, f.kind"
     "  FROM derived_media_context mc"
     "  JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
     "  JOIN entity e ON e.id = mc.file_id"
@@ -1258,19 +1544,20 @@ _TIMELINE_RANGE_COUNT_HEAD = (
 
 
 def timeline_nth(conn, lo: float, hi: float, k: int, scope: tuple[str, list] = ("", [])):
-    """((slug, moment), n): the k-th of the n pictures in [lo, hi) in
-    moment order, k clamped into range; (None, 0) when it holds none."""
+    """((slug, moment, sha, kind), n): the k-th of the n pictures in
+    [lo, hi) in moment order, k clamped into range; (None, 0) when it
+    holds none."""
     n = int(
         conn.execute(_TIMELINE_RANGE_COUNT_HEAD + scope[0], (context.POLICY_VERSION, lo, hi, *scope[1])).fetchone()[0]
         or 0
     )
     if not n:
         return None, 0
-    k = min(max(0, int(k)), n - 1)
+    k = min(max(0, k), n - 1)
     row = conn.execute(
         _TIMELINE_NTH_HEAD + scope[0] + _TIMELINE_NTH_TAIL, (context.POLICY_VERSION, lo, hi, *scope[1], k)
     ).fetchone()
-    return (None, n) if row is None else ((str(row[0]), float(row[1])), n)
+    return (None, n) if row is None else ((str(row[0]), float(row[1]), row[2], str(row[3])), n)
 
 
 #: The picture at a moment: the NEAREST in time, either side -- what a
@@ -1301,8 +1588,12 @@ def timeline_at(conn, t: float, scope: tuple[str, list] = ("", [])) -> tuple[str
     return (str(row[0]), float(row[1]))
 
 
-def session_samples(conn, event_id: int) -> list[str]:
-    return [row[1] for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))]
+def session_samples(conn, event_id: int) -> list[tuple[str, str | None, str]]:
+    """`[(slug, sha, kind), ...]` -- see `timeline_samples` for why a
+    picture rather than a slug."""
+    return [
+        (str(row[1]), row[2], str(row[3])) for row in conn.execute(SESSION_SAMPLES, (event_id, SAMPLES_PER_SESSION))
+    ]
 
 
 def timeline_coverage(conn, scope: tuple[str, list] = ("", [])) -> tuple[int, int, int]:
@@ -1351,7 +1642,7 @@ def timeline_sessions(conn, lo: float, hi: float, scope: tuple[str, list] = ("",
 #: by LIMIT, the caller says how many more there were.
 _TIMELINE_PICTURES_HEAD = (
     "SELECT e.slug, f.name, f.kind, f.width, f.height, " + HUMAN_MOMENT + " AS moment,"
-    " mc.time_precision, mc.origin, mc.local_at IS NOT NULL AS wall,"
+    " mc.time_precision, mc.origin, mc.local_at IS NOT NULL AS wall, f.content_sha256 AS sha,"
     " (SELECT count(*) FROM derived_face_instance fi WHERE fi.file_id = mc.file_id) AS faces,"
     " (SELECT group_concat(ef.event_id) FROM derived_event_file ef"
     "   JOIN derived_event ev ON ev.id = ef.event_id JOIN derived_event_run r ON r.id = ev.run_id"
@@ -1392,13 +1683,24 @@ def timeline_months(conn, scope: tuple[str, list] = ("", [])):
     ).fetchall()
 
 
-def timeline_days(conn, limit: int = 400, scope: tuple[str, list] = ("", [])):
+#: How many day rows the timeline reads at once -- over a year of
+#: distinct days, which the river view then groups. NOT
+#: db/resultset.py MAX_PAGE_SIZE, whose 400 is a page of files; the
+#: collision is numeric coincidence, said here so nobody has to guess.
+TIMELINE_DAYS_MOST = 400
+#: How many session rows one timeline answer carries. The view's
+#: SESSIONS_MOST (sg_web/timeline_view.py) reads THIS, so the number
+#: beside the justification is the number that bounds the query.
+TIMELINE_EVENTS_MOST = 200
+
+
+def timeline_days(conn, limit: int = TIMELINE_DAYS_MOST, scope: tuple[str, list] = ("", [])):
     return conn.execute(
         _TIMELINE_DAYS_HEAD + scope[0] + _TIMELINE_DAYS_TAIL, (context.POLICY_VERSION, *scope[1], limit)
     ).fetchall()
 
 
-def timeline_events(conn, limit: int = 200, scope: tuple[str, list] = ("", [])):
+def timeline_events(conn, limit: int = TIMELINE_EVENTS_MOST, scope: tuple[str, list] = ("", [])):
     return conn.execute(
         _TIMELINE_EVENTS_HEAD + _members_in(scope) + _TIMELINE_EVENTS_TAIL,
         (context.POLICY_VERSION, *scope[1], limit),
@@ -1487,13 +1789,18 @@ def places_shelf(conn):
 
 #: Every place anyone has named, for the picker. Bounded.
 PLACES_NAMED = "SELECT p.name, p.kind FROM place p ORDER BY p.name COLLATE NOCASE LIMIT ?"
+#: The picker's bound: places are typed by a person one at a time, so
+#: thousands is already a library nobody hand-entered -- the limit
+#: exists to keep an absurd table from becoming one answer, not to
+#: page an expected one.
+PLACES_MOST = 5_000
 
 
 def media_place(conn, file_id: int):
     return conn.execute(MEDIA_PLACE, (file_id, context.POLICY_VERSION)).fetchone()
 
 
-def places_named(conn, limit: int = 5000):
+def places_named(conn, limit: int = PLACES_MOST):
     return conn.execute(PLACES_NAMED, (limit,)).fetchall()
 
 
@@ -1549,7 +1856,7 @@ STORY_KINDS = (
 )
 
 
-def stories(conn, limit: int = 60, kind: str | None = None):
+def stories(conn, limit: int = PAGE, kind: str | None = None):
     if kind is None:
         return conn.execute(STORIES + _STORIES_NEWEST, (limit,)).fetchall()
     return conn.execute(STORIES + _STORIES_OF_KIND + _STORIES_NEWEST, (kind, limit)).fetchall()
@@ -1580,3 +1887,100 @@ def parents(conn, file_id: int):
 
 def children(conn, file_id: int):
     return conn.execute(CHILDREN, (file_id,)).fetchall()
+
+
+#: Everything a TABLE row says about one file, in one read.
+#:
+#: A table is the presentation for looking at facts rather than at
+#: pictures, so it carries what a grid cell deliberately does not: the
+#: pixels on disk, the length, the recipe's numbers, the camera's. All of
+#: it LEFT JOINed, because the table is cross-media by construction -- a
+#: sound has no width, a photograph has no sampler, and a row that
+#: dropped out for lacking one would make the table lie about what the
+#: answer holds.
+TABLE_ROWS = (
+    "SELECT f.id, e.slug, f.name, f.kind, f.size, f.mtime, f.width, f.height, f.duration,"
+    " f.content_sha256,"
+    " g.tool, g.seed, g.steps, g.cfg, g.sampler,"
+    " ck.name, cam.name,"
+    " cap.iso, cap.f_number, cap.focal_length,"
+    " r.rating, fav.file_id IS NOT NULL"
+    " FROM file f"
+    " JOIN entity e ON e.id = f.id"
+    " LEFT JOIN generation g ON g.file_id = f.id"
+    " LEFT JOIN file_artifact fck ON fck.file_id = f.id AND fck.role = 'checkpoint' AND fck.ordinal = 0"
+    " LEFT JOIN artifact ck ON ck.id = fck.artifact_id"
+    " LEFT JOIN file_artifact fcam ON fcam.file_id = f.id AND fcam.role = 'captured_with' AND fcam.ordinal = 0"
+    " LEFT JOIN artifact cam ON cam.id = fcam.artifact_id"
+    " LEFT JOIN capture cap ON cap.file_id = f.id"
+    " LEFT JOIN rating r ON r.file_id = f.id AND r.user_id = ?"
+    " LEFT JOIN favorite fav ON fav.file_id = f.id AND fav.user_id = ?"
+    " WHERE f.id IN (SELECT value FROM json_each(?))"
+)
+
+#: The column names TABLE_ROWS returns, in order.
+TABLE_COLUMNS = (
+    "id",
+    "slug",
+    "name",
+    "kind",
+    "size",
+    "mtime",
+    "width",
+    "height",
+    "duration",
+    "sha",
+    "tool",
+    "seed",
+    "steps",
+    "cfg",
+    "sampler",
+    "checkpoint",
+    "camera",
+    "iso",
+    "f_number",
+    "focal_length",
+    "rating",
+    "favorite",
+)
+
+
+def table_of(conn, file_ids, actor_id: int | None = None) -> list[dict]:
+    """One row per file, in the ORDER GIVEN.
+
+    SQLite returns a set; the answer is a sequence, and the sequence is
+    the whole point of a ResultSet. So the rows are put back into the
+    caller's order here rather than sorted by anything of this query's
+    own -- a table that quietly reordered the answer would be a second
+    opinion about it.
+    """
+    import json
+
+    held = list(file_ids)
+    if not held:
+        return []
+    rows = conn.execute(TABLE_ROWS, (actor_id, actor_id, json.dumps(held)))
+    made = {row[0]: dict(zip(TABLE_COLUMNS, row, strict=True)) for row in rows}
+    return [made[one] for one in held if one in made]
+
+
+#: One present file with these exact bytes.
+#:
+#: The derivative cache is keyed on content, so a cache MISS knows the
+#: hash and needs a file -- any file -- carrying it, to render from. Any
+#: will do: they are the same bytes by definition, which is the whole
+#: reason the cache is content-addressed. `missing_since IS NULL` because
+#: a file that is offline cannot be rendered from, and another copy of
+#: the same content may still be here.
+FILE_OF_CONTENT = (
+    "SELECT f.id, f.kind FROM file f WHERE f.content_sha256 = ? AND f.missing_since IS NULL ORDER BY f.id LIMIT 1"
+)
+
+
+def file_of_content(conn, sha: str):
+    """`(file_id, kind)` for one present file with these bytes, or None.
+
+    Where the bytes ARE is db/detect.py `path_of`, which composes the
+    path from the folder tree; there is no stored path text to select.
+    """
+    return conn.execute(FILE_OF_CONTENT, (sha,)).fetchone()

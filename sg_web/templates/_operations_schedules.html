@@ -1,0 +1,32 @@
+<h2>on its own</h2>
+{% if notice %}<p id="shell-notice" class="shell-notice" data-shell-notice hx-swap-oob="true"><span data-notice>{{ notice }}</span></p>{% endif %}
+{# A schedule names a COLLECTION, never a kind. Naming kinds would mean
+   re-deriving the order at 3am -- which of scan, ingest, embed,
+   detect_faces, cluster_faces, and in which sequence -- and that order
+   is what a collection exists so nobody has to carry. #}
+<p class="operations-hint">Runs without being asked, on the worker's own turn. Nothing starts while the worker is off, and a collection already going is never started a second time &mdash; a nightly catch-up over a library that takes thirty hours runs continuously rather than stacking up.</p>
+<ul class="operations-schedules" data-operations-schedules>
+  {% for one in runnable %}
+  {# `| first` raises on an empty sequence rather than answering none,
+     and an unscheduled collection is the ordinary case here. #}
+  {% set found = schedules | selectattr("collection", "equalto", one) | list %}
+  {% set held = found[0] if found else none %}
+  <li data-schedule="{{ one }}"{% if held and held.enabled %} data-schedule-on{% endif %}>
+    <form class="operations-form" hx-post="/operations/schedules/{{ one }}" hx-target="#operations-schedules" hx-swap="innerHTML">
+      <label>{{ one }}
+        <input name="every_hours" type="number" min="0.25" step="0.25" value="{{ held.every_hours if held else 24 }}" aria-label="every how many hours">
+      </label>
+      <label class="operations-schedule-on"><input type="checkbox" name="enabled" value="true"{% if held and held.enabled %} checked{% endif %}> on</label>
+      <button type="submit">set</button>
+    </form>
+    {% if held %}
+    <span class="operations-schedule-said" data-schedule-said>
+      {% if held.running %}running now{% elif held.next_due is none %}off{% elif held.next_due == 0 %}due &mdash; it has not run yet{% else %}next <time data-epoch="{{ held.next_due | int }}">{{ held.next_due | int }}</time>{% endif %}
+      {%- if held.last_started_at %} &middot; last started <time data-epoch="{{ held.last_started_at | int }}">{{ held.last_started_at | int }}</time>{% endif %}
+    </span>
+    {% else %}
+    <span class="operations-schedule-said muted" data-schedule-said>never set</span>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>

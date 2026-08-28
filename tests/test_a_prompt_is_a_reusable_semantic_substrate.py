@@ -23,6 +23,7 @@ import pathlib
 import sqlite3
 import sys
 import types
+import typing
 
 import numpy as np
 import pytest
@@ -34,6 +35,7 @@ from db import (
     context,
     derived,
     ingest,
+    migrate,
     planning,
     prompt_sections,
     prompts,
@@ -42,12 +44,26 @@ from db import (
     similarity,
     stories,
 )
-from tests.staging import Stage, staged
+from tests import schemas
+from tests.staging import HOUR, NOW, Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
+
+@pytest.fixture
+def pinned_identity(monkeypatch):
+    """Deterministic entity uuids while a test stages its fixture, so
+    the staged database's logical content -- and `migrated`'s cache key
+    -- is the same every run."""
+    import itertools
+    import uuid
+
+    from db import scan
+
+    counter = itertools.count(1)
+    monkeypatch.setattr(scan.uuid, "uuid4", lambda: uuid.UUID(int=next(counter)))
+
+
 MIN = 60.0
 
 
@@ -545,6 +561,7 @@ def test_the_cache_adapter_is_exact_and_computes_each_text_once():
     seen: list[list[str]] = []
 
     class Counting(planning.LexicalPromptSimilarity):
+        @typing.override
         def embed(self, texts):
             seen.append(list(texts))
             return super().embed(texts)
@@ -669,7 +686,17 @@ def test_written_versus_run_is_a_claim_about_a_member_never_a_boundary():
     assert claims["prompt_rewrite"]["facts"]["members"] == 1
     assert claims["prompt_rewrite"]["facts"]["min_cosine"] < 0.5
     assert "member-004" not in json.dumps(claims["prompt_rewrite"]), "wildcard-level drift is not a rewrite"
-    bare = planner.plan(*_snapshot([_member(i, m["generation"]["prompt"]) for i, m in enumerate(members)]))
+    # Narrowed on the way out: a member is a JSON record, so `generation`
+    # and the prompt inside it are only a mapping and a string once
+    # something says so.
+    originals = []
+    for i, m in enumerate(members):
+        generation = m["generation"]
+        assert isinstance(generation, dict)
+        ran = generation["prompt"]
+        assert isinstance(ran, str)
+        originals.append(_member(i, ran))
+    bare = planner.plan(*_snapshot(originals))
     assert [p["member_refs"] for p in plan["phases"]] == [p["member_refs"] for p in bare["phases"]], (
         "originals never move a boundary"
     )
@@ -691,7 +718,11 @@ def test_written_versus_run_is_a_claim_about_a_member_never_a_boundary():
             " Minimum similarity between written and run prompt is 0%."
         )
     ]
-    daily = [dict(m, occurrence={**m["occurrence"], "precision": "day"}) for m in members]
+    daily = []
+    for m in members:
+        occurrence = m["occurrence"]
+        assert isinstance(occurrence, dict)
+        daily.append(dict(m, occurrence={**occurrence, "precision": "day"}))
     document, sha = _snapshot(daily)
     plan = planner.plan(document, sha)
     assert "prompt_rewrite" in {c["kind"] for c in plan["claims"]}
@@ -741,48 +772,34 @@ def test_neighbours_answer_inside_one_space_and_policy_with_role_before_rank(lib
     assert client.get("/prompts/424242/neighbours", params={"space": "fake"}).status_code == 404
 
 
-def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
+def _a_v17_database(path) -> None:
+    """A v17 database: the schema that shipped as v17, executed.
+
+    This was a hand-maintained UNDO list -- today's build with each
+    later step's addition dropped by name -- and it broke on three
+    migrations in a row, each time with an error about a column a step
+    had renamed. Its replacement adds nothing when a step lands, because
+    it does not describe today's schema at all.
+    """
+    schemas.seed(path, 17)
+
+
+def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path, pinned_identity):
     """A v17 database with prompts on `generation` and the generator's
     `original_*` parameters comes across with every prompt id intact,
     the roles filled, the originals interned, the FTS index whole, and
     the job vocabulary widened."""
-    from db import build, migrate, scan
+    from db import scan
 
     path = tmp_path / "old.db"
-    build.build(path)
-    conn = connect.connect(path)
-    conn.execute("PRAGMA foreign_keys=OFF")
-    conn.execute("DROP TABLE derived_prompt_embedding")
-    conn.execute("DROP TABLE derived_prompt_section")
-    conn.execute("DROP TABLE generation_prompt")
-    conn.execute("DROP TABLE generation")
-    conn.execute("DROP TABLE job_event")  # v24's addition
-    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
-    conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
-    conn.execute("DROP TABLE file_place")  # v28's addition
-    conn.execute(
-        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
-        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
-        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
-        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
-        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
-    )
-    for index in (
-        "generation_workflow ON generation(workflow_id)",
-        "generation_prompt ON generation(prompt_id)",
-        "generation_negative ON generation(negative_id)",
-        "generation_seed ON generation(seed)",
-    ):
-        conn.execute(f"CREATE INDEX {index}")
-    conn.execute("PRAGMA user_version = 17")
-    conn.commit()
-    conn.close()
+    _a_v17_database(path)
     conn = connect.connect(str(path))
     try:
-        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
+        # The uuid stated, not the schema's randomblob(16): the staged
+        # fixture is `migrated`'s cache key, which a random blob drifts.
+        root_id = conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('C:/x', 'library', 0, ?)", (b"\x04" * 16,)
+        ).lastrowid
         folder = scan.mint(conn, "folder", "x")
         conn.execute(
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (folder, root_id)
@@ -807,7 +824,17 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    # A SUPERSET, not the exact list. What these tests are about is that
+    # the prompt steps ran over a database that came the long way; the
+    # exact tail is "how many steps exist above 17", a number every
+    # future migration changes and which broke this assertion the first
+    # time one did.
+    # Live, not `migrated`: this staged v17 content drifts across runs
+    # by something uuid-pinning and stated root uuids do not cover, so
+    # the cache never hit and its keying was pure overhead. The drift's
+    # source is unidentified; a dump diff of two runs would name it.
+    stepped = migrate.migrate(path)
+    assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
     try:
         held = dict(
@@ -1030,42 +1057,18 @@ def test_a_space_selector_is_exact_and_ambiguity_is_refused(library):
         connect.close(conn)
 
 
-def test_the_migration_carries_the_unsampler_prompt(tmp_path):
-    from db import build, migrate, scan
+def test_the_migration_carries_the_unsampler_prompt(tmp_path, pinned_identity):
+    from db import scan
 
     path = tmp_path / "old.db"
-    build.build(path)
-    conn = connect.connect(path)
-    conn.execute("PRAGMA foreign_keys=OFF")
-    for table in ("derived_prompt_embedding", "derived_prompt_section", "generation_prompt", "generation"):
-        conn.execute(f"DROP TABLE {table}")
-    conn.execute("DROP TABLE job_event")  # v24's addition
-    conn.execute("DROP TABLE derived_face_scan")  # v26's addition
-    conn.execute("ALTER TABLE file DROP COLUMN ingested_sha256")  # v27's addition
-    conn.execute("DROP INDEX IF EXISTS place_identity")  # v29's addition
-    conn.execute("DROP TABLE file_place")  # v28's addition
-    conn.execute(
-        "CREATE TABLE generation (file_id INTEGER PRIMARY KEY REFERENCES file(id) ON DELETE CASCADE,"
-        " tool TEXT NOT NULL, detection TEXT NOT NULL CHECK (detection IN ('graph','marker','heuristic','stealth')),"
-        " workflow_id INTEGER REFERENCES artifact(id) ON DELETE SET NULL,"
-        " prompt_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " negative_id INTEGER REFERENCES prompt(id) ON DELETE SET NULL,"
-        " seed INTEGER, steps INTEGER, cfg REAL, denoise REAL, clip_skip INTEGER, sampler TEXT, scheduler TEXT,"
-        " width INTEGER, height INTEGER, parser TEXT NOT NULL, parsed_at REAL NOT NULL) STRICT"
-    )
-    for index in (
-        "generation_workflow ON generation(workflow_id)",
-        "generation_prompt ON generation(prompt_id)",
-        "generation_negative ON generation(negative_id)",
-        "generation_seed ON generation(seed)",
-    ):
-        conn.execute(f"CREATE INDEX {index}")
-    conn.execute("PRAGMA user_version = 17")
-    conn.commit()
-    conn.close()
+    _a_v17_database(path)
     conn = connect.connect(str(path))
     try:
-        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
+        # The uuid stated, not the schema's randomblob(16): the staged
+        # fixture is `migrated`'s cache key, which a random blob drifts.
+        root_id = conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('C:/x', 'library', 0, ?)", (b"\x04" * 16,)
+        ).lastrowid
         folder = scan.mint(conn, "folder", "x")
         conn.execute(
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (folder, root_id)
@@ -1089,7 +1092,14 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrate.migrate(path) == [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    # A SUPERSET, not the exact list. What these tests are about is that
+    # the prompt steps ran over a database that came the long way; the
+    # exact tail is "how many steps exist above 17", a number every
+    # future migration changes and which broke this assertion the first
+    # time one did.
+    # Live for the same reason as the sibling above.
+    stepped = migrate.migrate(path)
+    assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
     try:
         held = dict(

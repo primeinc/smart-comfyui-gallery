@@ -49,22 +49,128 @@ when its effect on page boundaries is defined, not before.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import dataclasses
-import hashlib
 import json
-import re
 import sqlite3
 import threading
+import typing
+
+from . import naming
 
 #: The orders a query may ask for. "similarity" requires a phrase; the
 #: time sorts follow the file table's own indexes; the moment sorts
 #: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
 #: timeline link opened -- with uninterpreted files last, never dropped.
-SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity")
+#: The COLUMN a table heading orders by, and the expression it orders
+#: on. One row per column rather than one branch per column: a sort is a
+#: closed vocabulary with one implementation each, and ten branches in
+#: `_timed_ids` is how two of them come to disagree about their
+#: tiebreak.
+#:
+#: Every expression may be NULL, and that is the point. A sound has no
+#: pixels and a photograph has no length; those files sort LAST and say
+#: so by position, exactly as the moment sorts already do for a file
+#: nothing has interpreted. Dropping them would misreport what the
+#: answer holds, and calling them zero would invent a fact.
+#: A sort NEVER narrows the answer. Every join below is a LEFT join, so
+#: asking for "by sampler" over a library of photographs orders them and
+#: keeps them: a photograph has no sampler and sorts last, saying so by
+#: position.
+#:
+#: Narrowing would have been the other defensible answer and it is the
+#: wrong one here, because this application says what a question is with
+#: visible chips. A sort that also dropped rows would change what the
+#: answer HOLDS with nothing on screen admitting it -- the count would
+#: move, and the only explanation would be a heading somebody clicked.
+COLUMN_ORDERS: dict[str, str] = {
+    "name": "f.name COLLATE NOCASE",
+    "kind": "f.kind",
+    "size": "f.size",
+    #: The pixels ON DISK, so a file missing either dimension has no
+    #: area rather than an area of nothing.
+    "pixels": "f.width * f.height",
+    "length": "f.duration",
+    # The recipe's numbers.
+    "seed": "g.seed",
+    "steps": "g.steps",
+    "cfg": "g.cfg",
+    "sampler": "g.sampler",
+    "checkpoint": "ck.name COLLATE NOCASE",
+    # The camera's.
+    "camera": "cam.name COLLATE NOCASE",
+    "iso": "cap.iso",
+    "f_number": "cap.f_number",
+    "focal_length": "cap.focal_length",
+    # And what a person said. Bound to the ACTOR, which is why this one
+    # takes an argument in the ORDER BY as well as the WHERE: a rating
+    # is somebody's, and "sort by rating" means sort by MINE.
+    "rating": "r.rating",
+}
 
-#: The file kinds a query may filter to -- the vocabulary of file.kind.
-KINDS = ("image", "animated_image", "video", "audio", "document")
+#: What each sortable column needs joined to be reachable, keyed by the
+#: alias the expression above uses. Written once and shared, because two
+#: columns off one table must not join it twice.
+#:
+#: `?` is the actor, and the only one here: a sort by somebody else's
+#: rating is not a thing this offers.
+COLUMN_JOINS: dict[str, str] = {
+    "g": " LEFT JOIN generation g ON g.file_id = f.id",
+    "ck": (
+        " LEFT JOIN file_artifact fck ON fck.file_id = f.id AND fck.role = 'checkpoint' AND fck.ordinal = 0"
+        " LEFT JOIN artifact ck ON ck.id = fck.artifact_id"
+    ),
+    "cam": (
+        " LEFT JOIN file_artifact fcam ON fcam.file_id = f.id AND fcam.role = 'captured_with' AND fcam.ordinal = 0"
+        " LEFT JOIN artifact cam ON cam.id = fcam.artifact_id"
+    ),
+    "cap": " LEFT JOIN capture cap ON cap.file_id = f.id",
+    "r": " LEFT JOIN rating r ON r.file_id = f.id AND r.user_id = ?",
+}
+
+#: Which alias each column's expression reaches through, and how many
+#: arguments that join binds. Derived from the expression rather than
+#: restated, so a column cannot name a join it does not use.
+COLUMN_JOIN_OF: dict[str, str] = {
+    name: expression.split(".", 1)[0].split()[-1]
+    for name, expression in COLUMN_ORDERS.items()
+    if expression.split(".", 1)[0].split()[-1] in ("g", "ck", "cam", "cap", "r")
+}
+
+#: Each column, ascending and descending. A person who clicks a heading
+#: twice means "the other way round", so both directions are real sorts
+#: with their own spelling -- a URL that could only say "by size" would
+#: make the second click unspellable, and the question lives in the URL.
+COLUMN_SORTS = tuple(one for name in COLUMN_ORDERS for one in (name, f"{name}-desc"))
+
+#: The orders a query may ask for. "similarity" requires a phrase; the
+#: time sorts follow the file table's own indexes; the moment sorts
+#: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
+#: timeline link opened -- with uninterpreted files last, never dropped;
+#: the column sorts are what a table heading asks for.
+SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity", *COLUMN_SORTS)
+
+#: How much of a ranking is the ANSWER. `head` keeps the files that
+#: stand above their space's own middle (db/retrieval.py `head`); `all`
+#: keeps the whole ranked library, which is what a phrase used to
+#: return and is still the honest thing to offer whoever wants it.
+#: Only a phrase ranks anything, so only a phrase carries a depth.
+DEPTHS = ("head", "all")
+
+#: What a file can be, as the ONE Literal. db/schema.sql constrains
+#: `file.kind` to exactly this list and sglint SG709 holds this
+#: declaration against that CHECK (sglint/policy.py WIRE_VOCABULARIES);
+#: the wire type in sg_web/media_view.py imports it rather than
+#: restating it -- five Python copies of the tuple existed, one of them
+#: the one the browser contract is generated from, and only two were
+#: held together by anything.
+MediaKind = typing.Literal["image", "animated_image", "video", "audio", "document"]
+
+#: The file kinds a query may filter to -- DERIVED: a bare Literal's
+#: arguments come back in declared order (python/cpython
+#: Doc/library/typing.rst:3595-3613 get_args).
+KINDS = typing.get_args(MediaKind)
 
 DEFAULT_PAGE_SIZE = 60
 MAX_PAGE_SIZE = 400
@@ -127,6 +233,11 @@ class GalleryQuery:
     #: conjunction are one question.
     facets: tuple = ()
     sort: str = "newest"
+    #: Semantic only: `head` (the default) answers with the files that
+    #: stand above the middle of what each space said, `all` with the
+    #: whole ranked library. Two depths are two questions, never two
+    #: views of one -- the fingerprint carries it.
+    depth: str = "head"
     size: int = DEFAULT_PAGE_SIZE
 
 
@@ -142,6 +253,7 @@ def parse(
     text: str | None = None,
     facets=None,
     sort: str | None = None,
+    depth: str | None = None,
     size: int | None = None,
 ) -> GalleryQuery:
     """A validated GalleryQuery from request-shaped inputs.
@@ -167,6 +279,14 @@ def parse(
         # with its own membership rule; until that rule exists, refusing
         # beats silently ignoring the phrase.
         raise ValueError("a phrase orders by similarity; other sorts do not consume it")
+    chosen_depth = (depth or "").strip() or None
+    if chosen_depth is not None and chosen_depth not in DEPTHS:
+        raise ValueError(f"depth must be one of {', '.join(DEPTHS)}, not {chosen_depth!r}")
+    if chosen_depth is not None and text is None:
+        # Nothing was ranked, so there is no head to keep and no whole
+        # ranking to ask back for. Silently ignoring it would let a
+        # bookmarked `depth=all` mean nothing on half the surfaces.
+        raise ValueError("depth describes how much of a RANKING answers; only a phrase ranks anything")
     if folder is not None and album is not None:
         raise ValueError("choose a folder or an album, not both")
     # `person` deliberately COMPOSES with either -- and with kind and a
@@ -179,9 +299,9 @@ def parse(
         # Tri-state, two spellings: 1 favorited, 0 not favorited, and
         # dropping the parameter stops constraining. Nothing else.
         raise ValueError(f"favorite is 1 (favorited) or 0 (not favorited), not favorite={liked!r}")
-    if rating_min is not None and not 1 <= int(rating_min) <= 5:
+    if rating_min is not None and not 1 <= rating_min <= 5:
         raise ValueError(f"rating_min names the minimum stars, 1..5, not {rating_min!r}")
-    chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
+    chosen = DEFAULT_PAGE_SIZE if size is None else size
     if not 1 <= chosen <= MAX_PAGE_SIZE:
         raise ValueError(f"page size must be 1..{MAX_PAGE_SIZE}, not {chosen}")
     from . import facets as facets_module
@@ -194,12 +314,47 @@ def parse(
         artifact=artifact,
         kind=kind,
         favorite=None if liked is None else liked == "1",
-        rating_min=None if rating_min is None else int(rating_min),
+        rating_min=None if rating_min is None else rating_min,
         text=text,
         facets=held,
         sort=sort,
+        depth=chosen_depth or "head",
         size=chosen,
     )
+
+
+def with_scope(query: GalleryQuery, key: str, value: str | None) -> GalleryQuery:
+    """`query` with one scope dimension set from its URL spelling, or
+    cleared when `value` is None.
+
+    Scope dimensions are the ones a GalleryQuery carries as a field of
+    its own rather than as a facet (db/vocabulary.py, `carried ==
+    "scope"`), and they are NOT all strings: `favorite` holds
+    `bool | None` and `rating_min` holds `int | None`. So the obvious
+    `dataclasses.replace(query, **{key: value})` writes a URL string into
+    two fields that do not hold one -- `favorite="1"` instead of
+    `favorite=True` -- and nothing catches it, because a `**` spread of
+    `dict[str, str]` says nothing about which field it lands in. Written
+    out, every branch is checked against the field it assigns, and the
+    two conversions are the ones `parse` already makes for the same
+    spellings.
+    """
+    match key:
+        case "folder":
+            return dataclasses.replace(query, folder=value)
+        case "album":
+            return dataclasses.replace(query, album=value)
+        case "person":
+            return dataclasses.replace(query, person=value)
+        case "artifact":
+            return dataclasses.replace(query, artifact=value)
+        case "kind":
+            return dataclasses.replace(query, kind=value)
+        case "favorite":
+            return dataclasses.replace(query, favorite=None if value is None else value == "1")
+        case "rating_min":
+            return dataclasses.replace(query, rating_min=None if value is None else int(value))
+    raise ValueError(f"{key!r} is not a scope dimension of a gallery query")
 
 
 def fingerprint(query: GalleryQuery) -> str:
@@ -209,7 +364,7 @@ def fingerprint(query: GalleryQuery) -> str:
     on `_bound_fingerprint`, over stable entity ids, so a renamed
     person's two spellings stay one cached question."""
     told = json.dumps(dataclasses.asdict(query), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(told.encode()).hexdigest()[:16]
+    return naming.short_hash(told)
 
 
 # --- data currency ----------------------------------------------------------
@@ -220,6 +375,65 @@ def fingerprint(query: GalleryQuery) -> str:
 #: per-request one.
 _MONITORS: dict[str, sqlite3.Connection] = {}
 _MONITOR_LOCK = threading.Lock()
+
+#: Per database file, the highest generation this process has seen, and
+#: how many times that number has gone BACKWARDS.
+#:
+#: `answer_generation` lives in the file, so restoring a snapshot over a
+#: running process rewinds it -- `sqlite3.Connection.backup` into the
+#: live database, a migration rolling back to its own snapshot, a test
+#: harness putting a template back. `PRAGMA data_version` could not do
+#: this: it counts a connection's OWN observations, so other-connection
+#: writes only ever push it up, and replacing the file pushes it up too.
+#:
+#: A rewound counter is worse than a stale one. The projection cache is
+#: process-lifetime and keyed on this string, so after a rewind an old
+#: key matches again and an answer computed from data that no longer
+#: exists is served as current -- silently, and with no read of the
+#: database that could notice.
+#:
+#: So the epoch goes in the key. Counting rewinds is enough: it never
+#: goes backwards itself, so every key minted after a restore is new,
+#: and nothing has to walk the cache and decide what to discard.
+_SEEN: dict[str, tuple[int, int]] = {}
+
+
+def close_monitors() -> int:
+    """Close every monitor and forget it; returns how many there were.
+
+    The other half of a process-lifetime cache. Nothing may close a
+    monitor per request -- `data_version` is comparable only across reads
+    on the SAME connection, so a replaced monitor silently restarts the
+    numbering the projection cache is keyed on -- but a handle held for
+    the life of the process still has to be given up when the process
+    ends. Left to the interpreter, the dict's globals are torn down and
+    every monitor is deleted without close(), which is a
+    `ResourceWarning: unclosed database` per open database file
+    (python/cpython Doc/library/sqlite3.rst: Connection warns if close()
+    was not called before it is deleted).
+
+    A caller that reads `currency` again after this simply gets a fresh
+    monitor: the cache is a cache.
+    """
+    with _MONITOR_LOCK:
+        held = list(_MONITORS.values())
+        _MONITORS.clear()
+    for monitor in held:
+        monitor.close()
+    return len(held)
+
+
+# `_SEEN` is deliberately NOT cleared above. It is the rewind epoch, and
+# the projection cache it protects outlives any monitor: forgetting the
+# highest generation seen would reset the epoch, and every key minted
+# before a restore would start matching again.
+
+
+# The PROCESS owns these, not an application instance: `_MONITORS` is
+# module state, so two Litestar apps in one process share it and a
+# shutdown hook on either would close the other's monitors. atexit is the
+# lifetime that actually matches.
+atexit.register(close_monitors)
 
 
 def _database_file(conn) -> str:
@@ -237,17 +451,39 @@ def currency(conn) -> str:
     that holds it, so its own `total_changes` (monotonic per DML row,
     python/cpython Doc/library/sqlite3.rst Connection.total_changes)
     carries the same meaning.
+
+    `answer_generation`, not `PRAGMA data_version`. The pragma is the
+    obvious answer and is what FTS5 uses for its own structure cache
+    (sqlite/sqlite ext/fts5/fts5_index.c fts5IndexDataVersion), but it
+    means "somebody committed something", and what is cached here is the
+    WHOLE ORDERED ANSWER. Jobs commit per item, so at 80,000 files a
+    page cost 0.18 ms at rest and 38.26 ms while a job ran -- 214x --
+    and the job that runs for hours writes nothing but the ledger.
+
+    The counter moves for every table except `job`, `job_item` and
+    `job_event` (db/schema.sql), so a ledger commit no longer discards
+    an answer and every other commit still does.
     """
     from . import connect
 
     where = _database_file(conn)
     if not where:
+        # One connection, so its own row counter is the whole story --
+        # and it counts LEDGER rows too, which the file path now
+        # ignores. Harmless: an in-memory database is a test or a probe,
+        # never a run somebody is browsing while a job writes.
         return f"mem{id(conn)}.{conn.total_changes}"
     with _MONITOR_LOCK:
         monitor = _MONITORS.get(where)
         if monitor is None:
             monitor = _MONITORS[where] = connect.connect(where, read_only=True, cross_thread=True)
-        return f"v{monitor.execute('PRAGMA data_version').fetchone()[0]}"
+        held = int(monitor.execute("SELECT value FROM answer_generation").fetchone()[0])
+        highest, epoch = _SEEN.get(where, (held, 0))
+        if held < highest:
+            epoch += 1
+            highest = held
+        _SEEN[where] = (max(highest, held), epoch)
+        return f"g{epoch}.{held}"
 
 
 # --- the projection ---------------------------------------------------------
@@ -269,6 +505,11 @@ class Projection:
     ids: tuple[int, ...]  # file ids, answer order
     ordinal: dict[int, int]  # file id -> 0-based position
     provenance: dict | None  # similarity only: participants/contributors/missing
+    #: similarity only: file id -> how far it stands from the middle of
+    #: what a space said toward that space's best, 0..1. Empty for a
+    #: timed answer, where no space was asked anything and there is no
+    #: such quantity to report.
+    relevance: dict[int, float] = dataclasses.field(default_factory=dict)
 
 
 #: (database, fingerprint, currency) -> Projection, oldest evicted first.
@@ -277,7 +518,20 @@ _PROJECTION_LOCK = threading.Lock()
 
 #: The names one page of cells needs, id-keyed; order is restored from
 #: the projection slice, so this query carries none.
-NAMED = "SELECT f.id, e.slug, f.name, f.kind, e.uuid FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+#: One row per member, and it carries `content_sha256` because THE
+#: THUMBNAIL'S IDENTITY IS RESOLVED HERE, ONCE, for the whole page.
+#:
+#: The derivative cache is content-addressed (vision/thumbs.py
+#: `path_for`), so the hash IS the asset's address. Carrying it means a
+#: cell's `src` can point straight at an immutable file instead of at a
+#: route that opens a connection, resolves the slug, reads the kind and
+#: the hash back out of the database, and only then knows which file to
+#: send. Sixty cells were sixty of those. This is the same shape
+#: PhotoPrism and Immich settled on: resolve once, serve statically.
+NAMED = (
+    "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256"
+    " FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})"
+)
 
 
 def canonical(query: GalleryQuery, page: int | None = None) -> str:
@@ -313,6 +567,8 @@ def canonical(query: GalleryQuery, page: int | None = None) -> str:
         pairs.extend(("f", facets_module.spell(held)) for held in query.facets)
     if query.sort != ("similarity" if query.text else "newest"):
         pairs.append(("sort", query.sort))
+    if query.text and query.depth != "head":
+        pairs.append(("depth", query.depth))
     if query.size != DEFAULT_PAGE_SIZE:
         pairs.append(("size", str(query.size)))
     if page is not None and page > 1:
@@ -433,8 +689,13 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     asks_authored = query.favorite is not None or query.rating_min is not None
     if asks_authored and actor_id is None:
         raise ValueError("an authored facet (favorite, rating) is one actor's judgement; no actor was bound")
+    # Retired slugs answered with their current spelling, one field at a
+    # time: `live` only ever carries the four slug fields resolved above.
+    spelled_now = query
+    for field, slug in live.items():
+        spelled_now = with_scope(spelled_now, field, slug)
     return _Bound(
-        query=dataclasses.replace(query, **live) if live else query,
+        query=spelled_now,
         folder_id=held["folder"],
         collection_id=held["album"],
         person_id=held["person"],
@@ -510,6 +771,10 @@ def _bound_fingerprint(bound: _Bound) -> str:
             "facets": [dataclasses.astuple(held) for held in query.facets],
             "text": query.text,
             "sort": query.sort,
+            # Two depths are two ORDERED ANSWERS over one library
+            # generation; sharing a projection key would serve whichever
+            # was computed first under the other's address.
+            "depth": query.depth,
             "size": query.size,
             # A smart scope's identity is its BOUND rule (recursively
             # fingerprinted -- ids, pinned actor, run) plus its take: two
@@ -520,7 +785,7 @@ def _bound_fingerprint(bound: _Bound) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-    return hashlib.sha256(told.encode()).hexdigest()[:16]
+    return naming.short_hash(told)
 
 
 def scope_of(
@@ -606,10 +871,13 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
     if query.facets:
         from . import facets as facets_module
 
-        for held in query.facets:
-            sql, value = facets_module.predicate(held)
+        # Through `clauses`, never `predicate` in a loop: repeating a key
+        # with `any` means OR and has to arrive here as ONE clause. A
+        # loop that appended each predicate separately would AND them,
+        # and "image or video" would silently answer nothing.
+        for sql, values in facets_module.clauses(query.facets):
             where.append(sql)
-            args.append(value)
+            args.extend(values)
     return where, args, len(where) > 1
 
 
@@ -637,6 +905,31 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
             f" ON mc.file_id = f.id AND mc.policy_version = {int(POLICY_VERSION)}"
             f" WHERE {' AND '.join(where)}"
             f" ORDER BY {HUMAN_MOMENT} IS NULL, {HUMAN_MOMENT} {order}, f.id {order}"
+        )
+        return [row[0] for row in conn.execute(sql, args)]
+    if bound.query.sort in COLUMN_SORTS:
+        # A table heading. The ORDERING CONTRACT is the same one the time
+        # sorts keep: the column, then `f.id` IN THE SAME DIRECTION, so
+        # the order is TOTAL. Two files of equal size must not swap
+        # between two reads of one answer -- an ordinal that moves is a
+        # filmstrip that walks somewhere else and a page that shows a
+        # picture twice.
+        name, _, backwards = bound.query.sort.partition("-")
+        order = "DESC" if backwards else "ASC"
+        column = COLUMN_ORDERS[name]
+        # A LEFT join, so ordering by a column most files do not have
+        # keeps them: a photograph has no sampler, sorts last, and says
+        # so by position. Narrowing here would change what the answer
+        # HOLDS with no chip on screen admitting it.
+        alias = COLUMN_JOIN_OF.get(name)
+        joined = COLUMN_JOINS[alias] if alias else ""
+        # The actor binds in the JOIN, which comes before the WHERE, so
+        # its argument goes first. Bound after, every other placeholder
+        # in the statement would be reading one position along.
+        args = ([bound.actor_id] if alias == "r" else []) + list(args)
+        sql = (
+            f"SELECT f.id FROM file f{joined} WHERE {' AND '.join(where)}"
+            f" ORDER BY ({column}) IS NULL, {column} {order}, f.id {order}"
         )
         return [row[0] for row in conn.execute(sql, args)]
     order = "ASC" if bound.query.sort == "oldest" else "DESC"
@@ -669,7 +962,7 @@ def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset
             )
     if inner.query.text:
         try:
-            ids, _ = _fused_ids(conn, models_dir, inner, now)
+            ids, _, _ = _fused_ids(conn, models_dir, inner, now)
         except (ValueError, LookupError) as silent:
             raise UnavailableCollectionRule(
                 f"the collection's semantic rule cannot be answered right now: {silent}"
@@ -683,7 +976,7 @@ def _rule_members(conn, models_dir: str, bound: _Bound, now: float) -> frozenset
 
 def _fused_ids(
     conn, models_dir: str, bound: _Bound, now: float, members: frozenset[int] | None = None
-) -> tuple[list[int], dict | None]:
+) -> tuple[list[int], dict | None, dict[int, float]]:
     """The whole fused ordering, once.
 
     A scope or filter is handed to retrieval as the ALLOWED set, never
@@ -711,10 +1004,10 @@ def _fused_ids(
     if allowed is not None and not allowed:
         # An empty scope needs no encoder and has no honest
         # provenance -- nothing was asked of any space.
-        return [], None
+        return [], None, {}
     if query.text is None:
         # no phrase, no semantic ordering: nothing was asked of any space
-        return [], None
+        return [], None, {}
     depth = len(allowed) if allowed is not None else _present(conn)
     found = retrieval.query(
         conn,
@@ -725,10 +1018,23 @@ def _fused_ids(
         offline=True,
         allowed=None if allowed is None else set(allowed),
     )
-    fused = [row["file_id"] for row in found["results"]]
+    ranked = found["results"]
+    # `head` keeps what stands above the middle of what each space
+    # said; `all` keeps the ranking whole. Retrieval decided WHICH
+    # files answer -- it holds the per-space distributions this cannot
+    # see -- and this module decides whether the question wanted only
+    # those. A ranking is not an answer until something ends it.
+    kept = ranked if query.depth == "all" else [row for row in ranked if row["answers"]]
+    fused = [row["file_id"] for row in kept]
     provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
     provenance["unmatched"] = found.get("unmatched") or {}
-    return fused, provenance
+    #: What the cut cost, so a page can say it rather than looking like
+    #: a small library.
+    provenance["ranked"] = len(ranked)
+    provenance["answering"] = found["answering"]
+    provenance["depth"] = query.depth
+    relevance = {row["file_id"]: row["relevance"] for row in kept}
+    return fused, provenance, relevance
 
 
 def _present(conn) -> int:
@@ -752,19 +1058,20 @@ def _current(conn, models_dir: str, query: GalleryQuery, now: float, actor_id: i
         return bound, held
     members = _rule_members(conn, models_dir, bound, now) if bound.rule is not None else None
     if query.sort == "similarity":
-        ids, provenance = _fused_ids(conn, models_dir, bound, now, members=members)
+        ids, provenance, relevance = _fused_ids(conn, models_dir, bound, now, members=members)
     else:
-        ids, provenance = _timed_ids(conn, bound), None
+        ids, provenance, relevance = _timed_ids(conn, bound), None, {}
         if members is not None:
             # The rule owns membership; the OUTER walk keeps its order.
             ids = [file_id for file_id in ids if file_id in members]
     made = Projection(
         fingerprint=key[1],
         currency=key[2],
-        answer=hashlib.sha256(",".join(str(file_id) for file_id in ids).encode()).hexdigest()[:16],
+        answer=naming.short_hash(",".join(str(file_id) for file_id in ids)),
         ids=tuple(ids),
         ordinal={file_id: position for position, file_id in enumerate(ids)},
         provenance=provenance,
+        relevance=relevance,
     )
     with _PROJECTION_LOCK:
         _PROJECTIONS[key] = made
@@ -851,10 +1158,10 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float, *,
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
-        number = min(max(1, int(number)), shape["pages"])
+        number = min(max(1, number), shape["pages"])
         start = (number - 1) * bound.query.size
         shape["page"] = number
-        shape["items"] = _named(conn, held.ids[start : start + bound.query.size], start)
+        shape["items"] = _named(conn, held.ids[start : start + bound.query.size], start, held.relevance)
         return shape
 
 
@@ -874,9 +1181,9 @@ def peek(
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
-        number = min(max(1, int(number)), shape["pages"])
+        number = min(max(1, number), shape["pages"])
         start = (number - 1) * bound.query.size
-        take = min(max(1, int(count)), PEEK_MOST, bound.query.size)
+        take = min(max(1, count), PEEK_MOST, bound.query.size)
         return {
             "page": number,
             "pages": shape["pages"],
@@ -886,8 +1193,43 @@ def peek(
             "currency": held.currency,
             "answer": held.answer,
             "qs": shape["qs"],
-            "items": _named(conn, held.ids[start : start + take], start),
+            "items": _named(conn, held.ids[start : start + take], start, held.relevance),
         }
+
+
+def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
+    """Where a position sits in an answer, from one projection.
+
+    Shared rather than repeated: `locate` and `neighborhood` answer the
+    same question about the same walk, and two spellings of "previous"
+    are two chances for the arrows and the strip beneath them to
+    disagree about what comes next.
+    """
+    neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
+    # The two ENDS come along, because a walk that wraps needs an address
+    # for them and this is the only read that holds the whole ordered
+    # answer. Free: `held.ids` is already in hand, and the four ids go
+    # through the one `_named` the neighbours were already paying for.
+    #
+    # Whether wrapping happens is not decided here. It is how a person
+    # arranged their viewer (frontend/src/workspace.ts), it changes no
+    # membership and belongs in no fingerprint; the server's part is
+    # spelling where the ends ARE.
+    ends = [held.ids[0], held.ids[-1]] if held.ids else []
+    wanted = [one for one in [*neighbours, *ends] if one is not None]
+    named = {row["id"]: row["slug"] for row in _named(conn, wanted, 0)}
+    return {
+        "ordinal": position + 1,
+        "page": position // bound.query.size + 1,
+        "total": len(held.ids),
+        "currency": held.currency,
+        "answer": held.answer,
+        "qs": canonical(bound.query),
+        "previous": named.get(neighbours[0]),
+        "next": named.get(neighbours[1]),
+        "first": named.get(ends[0]) if ends else None,
+        "last": named.get(ends[1]) if ends else None,
+    }
 
 
 def locate(
@@ -899,20 +1241,72 @@ def locate(
     the membership at all."""
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
-        position = held.ordinal.get(int(file_id))
+        position = held.ordinal.get(file_id)
+        return None if position is None else _located(conn, bound, held, position)
+
+
+#: The widest neighborhood a caller may ask for. CLAMPED, not refused --
+#: the comment here used to say the opposite of what the code does, and
+#: the code is right: a strip is a convenience, an absurd `count` still
+#: has an obvious best answer, and refusing it would turn a cosmetic
+#: mistake into a 400 where a person expected pictures. Same reasoning
+#: as a collection's `take` (db/collection_rules.py): do not refuse a
+#: number that costs nothing to honour. Zero and negatives clamp UP to
+#: one, because a window of nothing is not a window.
+NEIGHBORHOOD_MOST = 51
+#: The filmstrip a viewer opens with when it does not ask: seven each
+#: side of the member fills the strip on ordinary windows without
+#: paying for the ceiling above.
+NEIGHBORHOOD_DEFAULT = 15
+
+
+def neighborhood(
+    conn,
+    models_dir: str,
+    query: GalleryQuery,
+    file_id: int,
+    now: float,
+    count: int = NEIGHBORHOOD_DEFAULT,
+    *,
+    actor_id: int | None = None,
+) -> dict | None:
+    """What SURROUNDS one member of this answer, in answer order.
+
+    A different question from `peek`, which answers "the first few
+    members of page N" for the rail's long-distance jumps. This one
+    knows nothing about pages: it is a window around a POSITION, so a
+    window that happens to straddle a page boundary is not a special
+    case and is not stitched from two reads. `page` in the result is
+    only the located file's own, carried for the return-to-results URL.
+
+    The window slides at the edges rather than being padded: an item
+    near the start of the answer sits near the left of a FULL window,
+    not centred with blanks beside it. Everything comes from the one
+    `_current` inside one snapshot, so the ordinal, the arrows and the
+    window are the same answer at the same generation -- three reads
+    would be three chances to describe two.
+
+    None when the file is not in this answer at all. The query defines
+    the walk; there is no fallback neighborhood to invent.
+    """
+    with snapshot(conn):
+        bound, held = _current(conn, models_dir, query, now, actor_id)
+        position = held.ordinal.get(file_id)
         if position is None:
             return None
-        neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
-        named = {row["id"]: row["slug"] for row in _named(conn, [n for n in neighbours if n is not None], 0)}
+        told = _located(conn, bound, held, position)
+        take = min(max(1, count), NEIGHBORHOOD_MOST)
+        start = max(0, min(position - take // 2, max(0, len(held.ids) - take)))
+        # No caption: `FilmstripItem` renders a 64-pixel square and says
+        # in its own docstring that it carries neither a uuid nor a
+        # model caption. Hydrating one to throw it away is a join per
+        # walk step.
+        items = _named(conn, held.ids[start : start + take], start, held.relevance, said=False)
         return {
-            "ordinal": position + 1,
-            "page": position // bound.query.size + 1,
-            "total": len(held.ids),
-            "currency": held.currency,
-            "answer": held.answer,
-            "qs": canonical(bound.query),
-            "previous": named.get(neighbours[0]),
-            "next": named.get(neighbours[1]),
+            **told,
+            "first_ordinal": start + 1 if items else 0,
+            "last_ordinal": start + len(items),
+            "items": items,
         }
 
 
@@ -920,10 +1314,9 @@ def locate(
 #: absurd payload is refused instead of exercised.
 SUBSET_MOST = 5_000
 
-#: Exactly 32 hex characters -- a fullmatch, because bytes.fromhex
-#: skips whitespace and a raw-length check alone lets two spaces hide
-#: INSIDE a 32-character spelling and decode to 15 bytes.
-_HEX_UUID = re.compile(r"[0-9a-fA-F]{32}")
+#: The one uuid spelling rule (db/naming.py, where the fullmatch lesson
+#: is recorded once instead of twice).
+_HEX_UUID = naming.UUID_HEX
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1005,18 +1398,47 @@ def prove_subset(
         return SelectionProof(currency=held.currency, answer=held.answer, ids=tuple(ids))
 
 
-def _named(conn, ids, start: int) -> list[dict]:
+def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, said: bool = True) -> list[dict]:
+    """One page of members, named.
+
+    `said` off skips the caption read for callers that do not render
+    one. The filmstrip is fifteen 64-pixel squares and `FilmstripItem`
+    carries neither a uuid nor a caption by design; running
+    `derived.said_first` for it is a join over the annotation tables
+    whose entire result is discarded. The uuid comes from the same row
+    as the slug and costs nothing extra, so only the caption is
+    optional.
+    """
     if not ids:
         return []
     marks = ",".join("?" for _ in ids)
     from . import derived, settings
 
-    held = {
-        row[0]: {"id": row[0], "slug": row[1], "name": row[2], "kind": row[3], "uuid": row[4].hex(), "said": None}
+    # `dict[str, object]`, stated: a member row is a heterogeneous record
+    # -- ids, names, a hex uuid, a caption filled in below, a float
+    # relevance -- and inferring the value type from the literal gives
+    # `said` the type `None`, which the caption pass then cannot write to.
+    held: dict[int, dict[str, object]] = {
+        row[0]: {
+            "id": row[0],
+            "slug": row[1],
+            "name": row[2],
+            "kind": row[3],
+            "uuid": row[4].hex(),
+            # None until ingest has hashed it; a surface then falls back
+            # to the slug route, which can still answer.
+            "sha": row[5],
+            "said": None,
+            # How far this file stood above the middle of what a
+            # space said, 0..1 -- None when nothing was asked of any
+            # space, which is not the same claim as "nothing matched".
+            "relevance": None if relevance is None else relevance.get(row[0]),
+        }
         for row in conn.execute(NAMED.format(marks=marks), list(ids))
     }
-    for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():
-        held[file_id]["said"] = text
+    if said:
+        for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():
+            held[file_id]["said"] = text
     told = []
     for offset, file_id in enumerate(ids):
         row = held.get(file_id)

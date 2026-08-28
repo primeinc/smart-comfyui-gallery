@@ -92,6 +92,12 @@ benchmarks/results/*
 !benchmarks/results/browser/
 benchmarks/results/browser/*
 !benchmarks/results/browser/manifest.json
+# Same rule for the workspace captures: the manifest says what was
+# photographed and at which widths, the images are reproduced by
+# `just bench workspace` rather than carried in the repository.
+!benchmarks/results/workspace/
+benchmarks/results/workspace/*
+!benchmarks/results/workspace/manifest.json
 
 # Personal launch scripts. The README has every user make these by copying
 # the sample_run_* files and filling in their own paths, passwords and
@@ -108,5 +114,34 @@ db/*.db-wal
 db/*.db-shm
 db/*.backup
 
-# npm: biome lives in node_modules; package-lock.json is committed
+# npm: biome lives in node_modules; package-lock.json is committed. The
+# contract generator has its own tree (frontend/codegen) because it needs a
+# TypeScript the application does not; `node_modules/` matches at any depth.
 node_modules/
+# esbuild's output is COMMITTED, deliberately, and this is the one place
+# generated code is. Running this application is `uv sync` and one command;
+# it is not a Node project and nobody should need npm to look at their own
+# photographs. The bundles exist because a browser cannot resolve a bare
+# specifier like "openapi-fetch" -- that is the toolchain's problem, not the
+# person's, so the toolchain's answer ships with the repository.
+#
+# `just web build` rewrites them; the gate rebuilds and fails on a diff, so a
+# committed bundle can never drift from the source it was made from.
+#
+# The sourcemaps are NOT committed: they are three quarters of the weight and
+# only a developer with the source open wants them, who can rebuild.
+!sg_web/static/build/
+!sg_web/static/build/*.js
+sg_web/static/build/*.map
+
+# Jinja's compiled templates (sg_web/app.py _bytecode_dir): a cache of
+# this machine's Python and the templates beside it, rebuilt on demand.
+sg_web/.template-cache/
+
+# The proof machinery's local state (justfile prove / prove-push): the
+# tree hash the last green full run proved, and pytest-testmon's
+# per-test coverage database. Both are facts about THIS machine's runs.
+.proven-tree
+.testmondata
+.testmondata-shm
+.testmondata-wal

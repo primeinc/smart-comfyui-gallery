@@ -22,9 +22,7 @@ Format references (cloned under ../refs):
 import json
 import logging
 import re
-from typing import ClassVar
-
-from defusedxml import minidom
+from typing import ClassVar, NotRequired, TypedDict
 
 from .containers import RawMetadata, load_raw
 from .model import ParsedMetadata, set_param, size_string
@@ -192,7 +190,7 @@ class SwarmUIAdapter:
             if index < len(weights):
                 by_lora[str(name).strip()] = weights[index]
 
-        found = []
+        found: list[_Model] = []
         for entry in obj.get("sui_models") or []:
             if not isinstance(entry, dict):
                 continue
@@ -200,7 +198,7 @@ class SwarmUIAdapter:
             if not name:
                 continue
             role = cls._ROLES.get(str(entry.get("param", "")).strip())
-            record = {"name": name, "role": role, "hash": entry.get("hash")}
+            record: _Model = {"name": name, "role": role, "hash": entry.get("hash")}
             # The manifest names the file with its extension; `loras` names it
             # without. Matched on the stem so a weight is not lost to
             # ".safetensors".
@@ -216,15 +214,28 @@ class SwarmUIAdapter:
             text = str(name).strip()
             if not text or text in named:
                 continue
-            found.append(
-                {
-                    "name": text,
-                    "role": "lora",
-                    "hash": None,
-                    "weight": weights[index] if index < len(weights) else None,
-                }
-            )
+            unlisted: _Model = {
+                "name": text,
+                "role": "lora",
+                "hash": None,
+                "weight": weights[index] if index < len(weights) else None,
+            }
+            found.append(unlisted)
         return found
+
+
+class _Model(TypedDict):
+    """One weight file a render used, as this adapter reports it.
+
+    Spelled out because a bare literal holding a str, a `str | None` and
+    a hash infers every key as the union of those -- and the set
+    comprehension below then calls `.rsplit` on `str | None`.
+    """
+
+    name: str
+    role: str | None
+    hash: NotRequired[object]
+    weight: NotRequired[object]
 
 
 class FooocusAdapter:
@@ -412,7 +423,7 @@ class NovelAIAdapter:
             detection="marker",
             raw=raw.text.get("Comment") or raw.text.get("Description", ""),
         )
-        result.positive = str(raw.text.get("Description", "") or "").strip()
+        result.positive = (raw.text.get("Description", "") or "").strip()
         cls._apply_comment(result, comment)
         if not result.params.get("size"):
             set_param(result, "size", size_string(raw.width, raw.height))
@@ -534,6 +545,11 @@ class DrawThingsAdapter:
     def parse(cls, raw: RawMetadata) -> ParsedMetadata | None:
         if not raw.xmp:
             return None
+        # defusedxml is imported where an XMP packet exists to parse: 17ms
+        # of import (-X importtime) every app boot was paying for the one
+        # dialect that writes XMP.
+        from defusedxml import minidom
+
         try:
             dom = minidom.parseString(raw.xmp)
             nodes = dom.getElementsByTagName("exif:UserComment")

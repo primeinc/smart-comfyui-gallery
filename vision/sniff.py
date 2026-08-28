@@ -34,6 +34,23 @@ HEAD = 512
 #: AVIF live inside ISO-BMFF exactly as MP4 does; Canon's CR3 too.
 _STILL_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heif", b"mif1", b"msf1", b"avif", b"avis", b"crx "}
 
+#: ftyp brands that are SOUND in a movie's container.
+#:
+#: mimesniff does not make this distinction -- its MP4 walk returns
+#: "video/mp4" for every ISO-BMFF file it recognises (mimesniff.bs:1146)
+#: -- and for a browser choosing a decoder that is fine, because an
+#: <audio> and a <video> element take the same container. It is not fine
+#: here: `kind` decides whether a file HAS A PICTURE, and calling an
+#: album track a video minted it a thumbnail address, sent the renderer
+#: looking for a frame that does not exist, and answered a grid of
+#: 500s. This is the same extension `_STILL_BRANDS` already makes to the
+#: same walk, for the same reason and one family over.
+#:
+#: Apple's audio brands only. `mp42` and `isom` are deliberately absent:
+#: they are used by both, so the brand does not say, and the container
+#: reader is what settles it.
+_SOUND_BRANDS = {b"M4A ", b"M4B ", b"M4P ", b"F4A ", b"F4B "}
+
 
 def _mp4_family(head: bytes) -> tuple[str, str] | None:
     """The ISO-BMFF split: mimesniff's MP4 signature walk
@@ -43,6 +60,8 @@ def _mp4_family(head: bytes) -> tuple[str, str] | None:
     brand = head[8:12]
     if brand in _STILL_BRANDS:
         return ("image", "avif" if brand in (b"avif", b"avis") else "heif")
+    if brand in _SOUND_BRANDS:
+        return ("audio", "m4a")
     if brand == b"crx ":
         return ("image", "cr3")
     if brand[:2] == b"qt":

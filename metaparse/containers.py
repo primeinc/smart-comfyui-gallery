@@ -4,6 +4,7 @@ One Image.open per file; every adapter then works off the same RawMetadata
 snapshot, so detection never re-reads the file.
 """
 
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -72,6 +73,15 @@ class RawMetadata:
     maker_note: str | None = None
     xmp: str | None = None
     gif_comment: str | None = None
+    #: What happened when EXIF was looked for: "present", "absent", or
+    #: "failed". Three states and not a bool, because only ONE of them
+    #: lets a caller skip re-opening the file, and a bool would have to
+    #: fold "there is none" together with "the read threw" -- which reads
+    #: a damaged file as a clean one carrying nothing.
+    #:
+    #: "failed" is the default so a RawMetadata built anywhere else never
+    #: licenses a skip it has not earned.
+    exif_state: str = "failed"
     _stealth_text: str | None = None
     _stealth_checked: bool = False
     _img: object = None  # open PIL image, only while inside load_raw()
@@ -109,14 +119,22 @@ def _as_text(value) -> str | None:
     return None
 
 
-def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
+def load_raw(filepath: str, want_stealth: bool = False, image=None) -> RawMetadata | None:
     """Open an image and snapshot every metadata container we know about.
 
     When want_stealth is False the pixel data is never touched, so this stays
     cheap enough for bulk indexing.
+
+    `image` is an already-open header, for a caller that needs to read the
+    same file twice. This module's whole premise is one `Image.open` per
+    file, and the cost is not theoretical: a generated PNG carries its
+    workflow graph in its text chunks and Pillow parses them during
+    `open`, so each one costs about 23 ms. A caller holding the image
+    passes it rather than paying that again. The handle stays the
+    caller's -- it is not closed here.
     """
     try:
-        with decode.open_header(filepath) as img:
+        with contextlib.nullcontext(image) if image is not None else decode.open_header(filepath) as img:
             raw = RawMetadata(
                 path=filepath,
                 format=img.format or "",
@@ -140,6 +158,9 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
             except Exception:
                 _logger.debug("handled a failure in load_raw", exc_info=True)
                 exif = None
+                raw.exif_state = "failed"
+            else:
+                raw.exif_state = "present" if exif else "absent"
             if exif:
                 raw.exif_make = _as_text(exif.get(_TAG_MAKE))
                 raw.exif_model = _as_text(exif.get(_TAG_MODEL))
@@ -168,4 +189,80 @@ def load_raw(filepath: str, want_stealth: bool = False) -> RawMetadata | None:
             return raw
     except Exception:
         _logger.debug("handled a failure in load_raw", exc_info=True)
+        return None
+
+
+#: Container-metadata keys that carry a generator's own payload.
+#:
+#: ComfyUI writes `workflow`, `prompt` and `extra_pnginfo` as container
+#: metadata tags, JSON-encoded, and asks ffmpeg for
+#: `movflags=use_metadata_tags` so an mp4 keeps custom tags at all
+#: (refs/Comfy-Org/ComfyUI/comfy_api/latest/_input_impl/video_types.py:41-44,
+#: :93-100). They are the SAME payloads it writes into a PNG's tEXt
+#: chunks, which is why they land in `RawMetadata.text` here: every
+#: adapter that already reads a generated picture then reads a generated
+#: clip without knowing a container changed.
+#:
+#: `comment` and `description` are the general-purpose fields other
+#: tools reach for -- A1111-style infotext arrives there -- and the
+#: adapters already know how to sniff a payload's shape.
+VIDEO_METADATA_KEYS = ("workflow", "prompt", "extra_pnginfo", "parameters", "comment", "description", "Comment")
+
+
+def load_raw_video(filepath: str) -> RawMetadata | None:
+    """Snapshot a video container's metadata, in the image shape.
+
+    The whole of metaparse was Pillow-only, so a generated CLIP carried
+    its recipe and nothing in this application could see it: "AI
+    generated video" was answerable and always empty, not because the
+    filter was wrong but because no row was ever written. AI video
+    generators write the same graphs the image ones do, one container
+    along.
+
+    Only the header is read -- `av.open` parses the container's tags
+    without decoding a frame -- so this costs about what opening a PNG
+    costs and is safe in bulk indexing.
+    """
+    try:
+        import av
+    except ImportError:
+        # No PyAV: a clip is a file with no readable recipe, which is
+        # what it was before this existed. Not an error.
+        _logger.debug("handled a failure in load_raw_video: no av", exc_info=True)
+        return None
+    try:
+        with av.open(filepath) as container:
+            raw = RawMetadata(path=filepath, format=(container.format.name if container.format else "").upper())
+
+            # Container tags first, then each stream's: a muxer may hang
+            # the payload off the video stream rather than the container,
+            # and the container's own answer wins where both spell one key.
+            def strings(tags) -> dict[str, str]:
+                return {k: v for k, v in (tags or {}).items() if isinstance(k, str) and isinstance(v, str)}
+
+            found: dict[str, str] = {}
+            for stream in container.streams:
+                found.update(strings(stream.metadata))
+            found.update(strings(container.metadata))
+
+            for key, value in found.items():
+                # Case-folded lookup, because a container normalises tag
+                # names on its own terms: mp4 hands back `Comment` where
+                # the writer wrote `comment`, and an adapter looking for
+                # the lower-case one would find nothing in a file that
+                # plainly has it.
+                if key in VIDEO_METADATA_KEYS or key.lower() in VIDEO_METADATA_KEYS:
+                    raw.text[key.lower() if key.lower() in VIDEO_METADATA_KEYS else key] = value
+
+            stream = next((one for one in container.streams if one.type == "video"), None)
+            if stream is not None:
+                raw.width = int(getattr(stream, "width", 0) or 0)
+                raw.height = int(getattr(stream, "height", 0) or 0)
+            # A container carries no EXIF at all; that is a fact about the
+            # format, not a read that failed, and the distinction is what
+            # lets ingest skip re-opening the file (db/ingest.py).
+            raw.exif_state = "absent"
+            return raw
+    except Exception:
+        _logger.debug("handled a failure in load_raw_video", exc_info=True)
         return None

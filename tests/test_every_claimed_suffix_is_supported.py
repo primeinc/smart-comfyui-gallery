@@ -22,14 +22,19 @@ itself is LibRaw's, whose camera coverage is its own tested claim
 
 from __future__ import annotations
 
+import contextlib
+import functools
+import hashlib
+import os
 import pathlib
+import shutil
 
 import pytest
 from PIL import Image
 
 from db import ingest, library, oriented, scan
 from db import sample as sample_module
-from tests.staging import fresh_schema
+from tests.staging import corpus_measurement, fresh_schema
 from vision import decode
 
 SIZE = (64, 48)
@@ -103,6 +108,11 @@ def _video(fmt, codec, *, size=SIZE, rate=10, frames=8, pix="yuv420p"):
         width, height = size
         with av.open(str(path), "w", format=fmt) as container:
             stream = container.add_stream(codec, rate=rate)
+            # `add_stream` answers VideoStream | AudioStream |
+            # SubtitleStream -- the codec name decides which, and only the
+            # first has a frame size. Asserted rather than assumed, so a
+            # codec typo fails here instead of on the attribute.
+            assert isinstance(stream, av.VideoStream)
             stream.width, stream.height = width, height
             stream.pix_fmt = pix
             for n in range(frames):
@@ -124,6 +134,7 @@ def _audio(fmt, codec, *, rate=44100, bit_rate=None, options=None):
 
         with av.open(str(path), "w", format=fmt) as container:
             stream = container.add_stream(codec, rate=rate, options=options or {})
+            assert isinstance(stream, av.AudioStream)
             if bit_rate:
                 stream.codec_context.bit_rate = bit_rate
             samples = (np.sin(np.arange(rate) * 0.05) * 20000).astype(np.int16).reshape(1, -1)
@@ -229,6 +240,75 @@ WRITERS = {
     ".aif": _audio("aiff", "pcm_s16be"),
     ".pdf": _pdf,
 }
+
+
+@functools.cache
+def _fixture_key() -> str:
+    """What a cached sample is allowed to survive.
+
+    This file's own bytes, because the writers are here and a changed
+    writer must write again; and the versions of the five libraries that
+    produce the bytes, because an upgraded encoder is a different file.
+    Nothing else: a sample is test INPUT, and the claim under test is
+    that `scan`, `ingest` and `decode` answer for it.
+    """
+    import importlib.metadata
+
+    stamp = hashlib.sha256(pathlib.Path(__file__).read_bytes())
+    for name in ("av", "pillow", "psd-tools", "tifffile", "pypdf"):
+        try:
+            version = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:  # not installed is a state too
+            version = "-"
+        stamp.update(f"{name}={version}\n".encode())
+    return stamp.hexdigest()[:16]
+
+
+def _cached(suffix: str, write):
+    """`write`, but encoding the bytes at most once per machine.
+
+    Writing the 74 samples costs 1.478s measured -- 47% of a 3.17s
+    module -- and every byte of it is deterministic: 0.218s each for
+    .heifs and .heics, 0.138s for the h263 .3gp, 0.122s for the PSD.
+    Copying them back is a millisecond apiece.
+
+    Under `.pytest_cache`, so `--cache-clear` reaches it, and named by
+    `_fixture_key` so an edited writer or an upgraded encoder writes a
+    new file rather than reusing a stale one.
+
+    Built in a scratch directory under its FINAL name, never under a
+    `.building` one: `_still(None)` lets Pillow choose the writer from
+    the suffix, which is how .jp2 and .j2k are told apart at save time.
+    Moved onto the cached name after it is closed, so a run that dies
+    mid-encode leaves nothing for the next one to copy as a sample.
+    """
+
+    def cached(path):
+        # On first use, not at import: creating it at module scope makes
+        # COLLECTION fail on a read-only checkout, where the failure has
+        # no test to name it.
+        _SAMPLES.mkdir(parents=True, exist_ok=True)
+        where = _SAMPLES / f"{_fixture_key()}{suffix}"
+        if not where.exists():
+            scratch = _SAMPLES / f"building-{os.getpid()}"
+            scratch.mkdir(parents=True, exist_ok=True)
+            building = scratch / where.name
+            try:
+                write(building)
+                os.replace(building, where)
+            finally:
+                # A run that dies mid-encode leaves the partial behind,
+                # and a partial keeps the scratch dir alive for ever.
+                building.unlink(missing_ok=True)
+                with contextlib.suppress(OSError):  # another sample may still be building in it
+                    scratch.rmdir()
+        shutil.copy(where, path)
+
+    return cached
+
+
+_SAMPLES = pathlib.Path(__file__).resolve().parent.parent / ".pytest_cache" / "suffix-samples"
+WRITERS = {suffix: _cached(suffix, write) for suffix, write in WRITERS.items()}
 
 #: One suffix per writer configuration -- the decoder families. These run
 #: in the fast lane; the aliases that share a writer (.jpeg/.jpe/.jfif
@@ -360,29 +440,113 @@ def test_a_dng_develops_through_the_libraw_link(tmp_path):
 PORTRAIT_CR2 = pathlib.Path("C:/ComfyUI/output/sample-datasets/RAW/2013-02-10/666A0273.CR2")
 
 
+@pytest.fixture(scope="module")
+def portrait():
+    """What developing this sensor SAYS, measured once and cached.
+
+    LibRaw takes ~1.4 s over this frame and the claims below are about
+    numbers that development yields -- the sizes each way round, and how
+    well the embedded preview correlates with it. Those are a constant of
+    (these bytes, this decoder), so they are cached on exactly that: any
+    change under db/, metaparse/ or vision/ re-measures them, which is
+    every module either claim runs through.
+    """
+    import json
+
+    if not PORTRAIT_CR2.exists():
+        pytest.skip("the 5D Mark III sample set is not on this machine")
+    return json.loads(corpus_measurement(PORTRAIT_CR2, "portrait-raw-turned", _measure_portrait))
+
+
+def _measure_portrait() -> str:
+    import json
+
+    import numpy as np
+    import rawpy
+
+    from vision import thumbs
+
+    with decode.open_header(PORTRAIT_CR2) as header:
+        tag = header.getexif().get(274)
+    with rawpy.imread(str(PORTRAIT_CR2)) as raw:
+        stored = [raw.sizes.width, raw.sizes.height]
+        flip = raw.sizes.flip
+    measured = decode.dimensions(PORTRAIT_CR2, "image")
+    assert measured is not None, "the portrait RAW has dimensions, or nothing below means anything"
+    with decode.open_still(PORTRAIT_CR2) as developed:
+        wide = list(developed.size)
+        upright = oriented.upright(developed.copy(), 8)
+        bounded = decode.open_bounded(PORTRAIT_CR2, 1440)
+        bounded.load()
+        shortcut = oriented.upright(bounded, 8)
+        long_way = np.asarray(thumbs.fit(upright, 256).convert("RGB"), dtype=np.float64)
+        short_way = np.asarray(thumbs.fit(shortcut, 256).convert("RGB"), dtype=np.float64)
+        shapes_agree = long_way.shape == short_way.shape
+        return json.dumps(
+            {
+                "tag": tag,
+                "flip": flip,
+                "stored": stored,
+                "developed": wide,
+                "shown": list(oriented.open_upright(PORTRAIT_CR2, tag).size),
+                "dimensions": list(measured),
+                "bounded": list(bounded.size),
+                "upright_is_tall": shortcut.height > shortcut.width,
+                "shapes_agree": shapes_agree,
+                "upright_match": float(np.corrcoef(long_way.ravel(), short_way.ravel())[0, 1]),
+                "mirrored_match": float(np.corrcoef(long_way.ravel(), short_way[:, ::-1, :].ravel())[0, 1]),
+            }
+        )
+
+
 @pytest.mark.skipif(not PORTRAIT_CR2.exists(), reason="the 5D Mark III sample set is not on this machine")
-def test_a_portrait_raw_is_turned_once():
+def test_a_portrait_raw_is_turned_once(portrait):
     """666A0273.CR2 was shot on its side: the camera wrote orientation 8
     and LibRaw reads the same as flip 5. The RAW decoder hands the frame
     back AS STORED (wide), and db/oriented.py turns it once by the tag
     (tall) -- the way every JPEG is handled. LibRaw's default flip plus
     the tag turned every portrait RAW twice."""
-    import rawpy
-
-    with decode.open_header(PORTRAIT_CR2) as header:
-        tag = header.getexif().get(274)
-    with rawpy.imread(str(PORTRAIT_CR2)) as raw:
-        stored = (raw.sizes.width, raw.sizes.height)
-        flip = raw.sizes.flip
-    assert tag == 8
-    assert flip == 5
+    stored, wide = portrait["stored"], portrait["developed"]
+    assert portrait["tag"] == 8
+    assert portrait["flip"] == 5
     assert stored[0] > stored[1], "the sensor frame is wide"
-    with decode.open_still(PORTRAIT_CR2) as developed:
-        assert (developed.width > developed.height) == (stored[0] > stored[1]), "as stored, not flipped by LibRaw"
-        wide = developed.size
-    shown = oriented.open_upright(PORTRAIT_CR2, tag)
-    assert shown.size == (wide[1], wide[0]), "turned once: tall"
-    assert decode.dimensions(PORTRAIT_CR2, "image") == stored, "dimensions speak of the stored frame"
+    assert (wide[0] > wide[1]) == (stored[0] > stored[1]), "as stored, not flipped by LibRaw"
+    assert portrait["shown"] == [wide[1], wide[0]], "turned once: tall"
+    assert portrait["dimensions"] == stored, "dimensions speak of the stored frame"
+
+
+@pytest.mark.skipif(not PORTRAIT_CR2.exists(), reason="the 5D Mark III sample set is not on this machine")
+def test_a_raws_embedded_preview_is_the_same_picture_as_its_development(portrait):
+    """The shortcut `open_bounded` takes for RAW, checked against the long
+    way round, on the file most likely to expose it.
+
+    Developing this sensor costs 1398 ms; decoding the JPEG the camera
+    embedded costs 47 -- but only if the preview is the same picture. The
+    danger is orientation: `open_still` passes `user_flip=0` so the frame
+    arrives as stored and db/oriented turns it exactly once, and a preview
+    written already-rotated would be turned a second time. It is not --
+    the preview is stored the same way round as the sensor frame, so the
+    identical tag applies to both.
+
+    Checked on pixels, not dimensions: a mirrored preview would have
+    matching dimensions and be the wrong picture. Correlation against the
+    development is 0.94; against a horizontally flipped copy of itself,
+    0.40. That gap is what tells the two cases apart.
+
+    They are not identical, and are not asserted to be. The camera's
+    rendering is not LibRaw's neutral one -- around 35/255 mean absolute
+    difference in tone and white balance -- so a raw thumbnail now looks
+    like the camera's JPEG. For a cache of what a picture looks like that
+    is the better answer.
+    """
+    upright_match, mirrored_match = portrait["upright_match"], portrait["mirrored_match"]
+    assert portrait["bounded"] != [portrait["developed"][1], portrait["developed"][0]], (
+        "the shortcut developed the sensor after all"
+    )
+    assert portrait["upright_is_tall"], "turned once, like the development"
+    assert portrait["shapes_agree"]
+    assert upright_match > 0.9, f"the embedded preview is not this picture ({upright_match:.2f})"
+    assert upright_match > mirrored_match + 0.3, "a mirrored preview would pass a dimensions-only check"
 
 
 def _library_of(root):

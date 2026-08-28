@@ -2,8 +2,7 @@
 {% block title %}{{ person.name or "(unnamed)" }}{% endblock %}
 {% block head %}<link rel="canonical" href="/p/{{ person.slug }}">{% endblock %}
 {% block scripts %}
-  <script src="/static/media.js?v={{ static_v }}" defer></script>
-  <script src="/static/people.js?v={{ static_v }}" defer></script>
+  <script src="/static/build/person.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
   <header class="bar">
@@ -15,17 +14,37 @@
   </header>
   <main class="detail">
     <section class="person-hero">
-      <img class="person-face person-face-big" src="/avatar/{{ person.slug }}" alt="">
+      {% if person.avatar %}<img class="person-face person-face-big" src="{{ person.avatar }}" alt="">{% else %}{# No clustered face to crop. The route answers 404 for that, correctly, and pointing at it anyway drew a broken image where a face goes. #}<span class="person-face person-face-big person-face-none" data-person-faceless aria-hidden="true">{{ (person.name or person.slug)[:1] | upper }}</span>{% endif %}
       <div>
         <h1>{{ person.name or "(unnamed)" }}</h1>
-        <form class="person-rename" data-rename action="/p/{{ person.slug }}/name" method="post">
+        <form class="person-rename" data-rename="{{ person.slug }}" action="/p/{{ person.slug }}/name" method="post">
           <input name="name" placeholder="{{ 'rename' if person.name else 'give them a name' }}"
                  aria-label="name" required>
           <button type="submit">name</button>
         </form>
+        {# The other correction. Denying says "not them, here"; this says
+           "these two were always one person" -- the ordinary failure of
+           face clustering, which a threshold cannot fix without trading
+           away somebody else's correct grouping. #}
+        <button type="button" class="person-same" data-same-as="{{ person.slug }}"
+                title="fold another person into this one: their pictures, their names and their corrections come here">
+          same as someone else
+        </button>
       </div>
     </section>
     <p class="places-line"><a href="{{ person.timeline }}" data-person-timeline>their timeline</a></p>
+    {# The most expensive thing this application learns about a library
+       and the least portable. Offered with what it IS said plainly:
+       these are biometric templates, and a person about to put them in
+       a file should know that from the link rather than from a
+       docstring. It carries the producer, the preprocessing and the
+       metric beside the numbers, because a naked vector recreates
+       exactly the dependency an export is meant to escape. #}
+    <p class="places-line person-vectors">
+      <a href="/operations/export/faces/{{ person.slug }}.json" download data-export-faces>take their face vectors</a>
+      <span class="muted">&mdash; biometric templates, with the model and preprocessing that made them, so they
+      mean something somewhere else. Your library, your machine, your file.</span>
+    </p>
     {% if person.places %}
     <section class="detail-facts" data-person-places>
       <h2>where they were seen</h2>
@@ -62,12 +81,27 @@
     </section>
     {% endif %}
     {% if person.gallery["items"] %}
-    <div class="grid">
+    <div class="grid" data-person-pictures="{{ person.slug }}">
       {% for pic in person.gallery["items"] %}
-      <a class="cell" href="/i/{{ pic.slug }}?{{ person.gallery.qs }}">
-        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
-        <span class="cell-name">{{ pic.name }}</span>
-      </a>
+      <div class="cell-shell" data-person-picture="{{ pic.slug }}">
+        {# A sibling of the link, never inside it: nested interactive
+           controls are unusable to keyboards and screen readers. Same
+           reason the gallery's select box is a sibling (_grid.html). #}
+        <button type="button" class="cell-deny" data-person-not-here="{{ pic.slug }}"
+                title="not {{ person.name or person.slug }} &mdash; and remember that"
+                aria-label="say this is not {{ person.name or person.slug }}">&times;</button>
+        {# The other thing worth saying while looking at somebody's
+           pictures. The avatar is the most confident detection, which is
+           usually right and sometimes a blurred profile in a crowd. #}
+        <button type="button" class="cell-face" data-person-face="{{ pic.slug }}"
+                title="take {{ person.name or person.slug }}'s face from this picture"
+                aria-label="use this picture for their face">&starf;</button>
+        <a class="cell" href="/i/{{ pic.slug }}?{{ person.gallery.qs }}"
+           data-slug="{{ pic.slug }}" data-kind="{{ pic.kind }}">
+          {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ pic.kind }}" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
+          <span class="cell-name">{{ pic.name }}</span>
+        </a>
+      </div>
       {% endfor %}
     </div>
     {% if person.gallery.total %}

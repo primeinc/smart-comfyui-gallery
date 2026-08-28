@@ -50,7 +50,7 @@ def test_the_three_faces_come_from_one_view_and_declare_vary(address):
         assert answer.headers["vary"] == "Accept, HX-Request"
     body = told.json()
     assert body["name"] == "m_3.png"
-    assert body["kind"] == "image"
+    assert body["stage"]["kind"] == "image"
     assert '<link rel="canonical" href="/i/m-3">' in page.text, "the canonical address is the BARE entity URL"
     assert "<html" in page.text
     assert "<html" not in part.text, "a fragment mounts into a page, never a page into a page"
@@ -72,13 +72,13 @@ def test_a_machine_with_no_browser_accept_still_gets_json(address):
 def test_previous_and_next_walk_the_resultset_the_url_names(address):
     # Default context: whole library, newest first -- m_5 leads.
     bare = address.get("/i/m-3").json()
-    assert (bare["previous"], bare["next"]) == ("m-4", "m-2")
+    assert (bare["context"]["previous"], bare["context"]["next"]) == ("m-4", "m-2")
     assert bare["context"]["in_answer"] is True
     assert bare["context"]["qs"] == ""
     assert bare["context"]["return_url"] == "/g"
     # The SAME address under the reversed walk swaps the arrows.
     oldest = address.get("/i/m-3", params={"sort": "oldest"}).json()
-    assert (oldest["previous"], oldest["next"]) == ("m-2", "m-4")
+    assert (oldest["context"]["previous"], oldest["context"]["next"]) == ("m-2", "m-4")
     assert oldest["context"]["qs"] == "sort=oldest"
     # A paging context computes the return page.
     paged = address.get("/i/m-0", params={"sort": "oldest", "size": 2}).json()
@@ -100,8 +100,62 @@ def test_a_scope_the_item_is_outside_says_so_instead_of_inventing_arrows(address
     conn.close()
     outside = address.get("/i/m-5", params={"album": "two"}).json()
     assert outside["context"]["in_answer"] is False
-    assert outside["previous"] is None
-    assert outside["next"] is None
+    assert outside["context"]["previous"] is None
+    assert outside["context"]["next"] is None
+
+
+def test_the_filmstrip_is_the_walk_the_context_describes(address):
+    """The strip and the arrows are one read of one answer.
+
+    Its addresses carry the walked question whole, because a browser
+    handed slugs would be rebuilding browsing state from parts -- which
+    is how a second, disagreeing ordering gets born under the first.
+    """
+    told = address.get("/i/m-3", params={"sort": "oldest"}).json()
+    strip = told["context"]["filmstrip"]
+    assert strip is not None
+    assert strip["total"] == told["context"]["total"] == 6
+    assert [one["ordinal"] for one in strip["items"]] == [1, 2, 3, 4, 5, 6]
+    assert (strip["first_ordinal"], strip["last_ordinal"]) == (1, 6)
+
+    here = [one for one in strip["items"] if one["slug"] == "m-3"]
+    assert len(here) == 1
+    assert here[0]["ordinal"] == told["context"]["ordinal"]
+
+    for one in strip["items"]:
+        assert one["href"] == f"/i/{one['slug']}?sort=oldest", "the walked question rides every address"
+        # A thumbnail is a CONTENT address now (vision/thumbs.py
+        # asset_url), not a slug the application has to look up: the
+        # strip's thumbnails cost no database connection and cache
+        # forever. This asserted `/thumb/<slug>` long after that landed.
+        assert one["thumb"] is not None, "a picture in the strip has no thumbnail"
+        assert one["thumb"].startswith("/thumbs/"), one["thumb"]
+        assert one["thumb"].endswith(".webp")
+
+    # and the neighbours either side ARE previous and next
+    at = [one["slug"] for one in strip["items"]].index("m-3")
+    assert strip["items"][at - 1]["slug"] == told["context"]["previous"]
+    assert strip["items"][at + 1]["slug"] == told["context"]["next"]
+
+
+def test_a_picture_outside_the_answer_gets_no_filmstrip(address):
+    """The query defines the walk, so there is no neighbourhood to
+    invent for a picture the question does not contain."""
+    from db import collections, connect
+
+    conn = connect.connect(address.app.state.db_path)
+    album = collections.collection(conn, "Only", 1_700_300_000.0)
+    (first,) = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id LIMIT 1")]
+    collections.set_membership(conn, album, first, True, 1_700_300_000.0)
+    conn.commit()
+    conn.close()
+
+    outside = address.get("/i/m-5", params={"album": "only"}).json()
+    assert outside["context"]["in_answer"] is False
+    assert outside["context"]["filmstrip"] is None
+
+    part = address.get("/i/m-5", params={"album": "only"}, headers=AS_OVERLAY).text
+    assert "data-filmstrip" not in part, "no strip rather than an empty one"
 
 
 def test_a_retired_slug_301s_with_its_context_intact(address):

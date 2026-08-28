@@ -56,9 +56,12 @@ import hashlib
 import math
 import struct
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from PIL import ExifTags, Image
+from PIL import ExifTags
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 from metaparse.containers import decode_user_comment
 from vision import decode
@@ -66,7 +69,12 @@ from vision import decode
 from .exif_labels import label_for
 
 #: Tags that become columns on `capture`, so they are not also long tail.
-_CLAIMED = {
+#:
+#: INT rather than the enum it is spelled with. These are tested against
+#: the raw integer keys of an EXIF dict, and the set really does hold
+#: Base, GPS and IFD members together -- inferred as `set[Base]` it was
+#: a claim the very next statement broke.
+_CLAIMED: set[int] = {
     ExifTags.Base.DateTimeOriginal,
     ExifTags.Base.OffsetTimeOriginal,
     ExifTags.Base.SubsecTimeOriginal,
@@ -84,7 +92,7 @@ _CLAIMED = {
     ExifTags.Base.LensModel,
 }
 
-_GPS_CLAIMED = {
+_GPS_CLAIMED: set[int] = {
     ExifTags.GPS.GPSLatitude,
     ExifTags.GPS.GPSLatitudeRef,
     ExifTags.GPS.GPSLongitude,
@@ -119,6 +127,19 @@ _NOT_A_FINDING = frozenset({"params", "binaries", "unrecorded", "homeless", "unr
 #: (exiftool/exiftool@2200871 lib/Image/ExifTool/Exif.pm:291-300); 2 and 4 mirror
 #: without turning, and 3 is a half turn.
 TRANSPOSED = frozenset({5, 6, 7, 8})
+
+#: The most entries one IFD is read with. The format's own ceiling is
+#: 65535 (the count is a uint16); this is a policy about attacker-
+#: supplied bytes -- a real camera or editor writes dozens of entries,
+#: and a count in the thousands is a corrupt or hostile structure worth
+#: refusing before the 12-bytes-per-entry walk, not a picture.
+_MOST_IFD_ENTRIES = 4096
+
+#: How many leading bytes are searched for the Canon CNDA thumbnail.
+#: The atom sits inside `CNTH` under `moov/udta`, which Canon writes at
+#: the head of the file; four megabytes covers every observed layout
+#: while keeping the read bounded on files where the atom is absent.
+_CNDA_SEARCH_BYTES = 4_000_000
 
 
 @dataclass
@@ -312,9 +333,12 @@ def _scalar(value):
     if text is not None:
         return text, None
     if isinstance(value, (tuple, list)):
-        scalars = [_scalar(part) for part in value]
-        if scalars and all(part is not None for part in scalars):
-            return ", ".join(part[0] for part in scalars), None
+        # Kept only where every part has a scalar form -- a partial list
+        # would read as a complete one. Collected narrowed rather than
+        # tested with `all(...)`, which leaves the Nones in the list.
+        scalars = [made for part in value if (made := _scalar(part)) is not None]
+        if scalars and len(scalars) == len(value):
+            return ", ".join(text for text, _ in scalars), None
     return None
 
 
@@ -380,8 +404,14 @@ def _tag_value(tag, value) -> Held | None:
     return None
 
 
-def read(path) -> Capture:
+def read(path, image: Image.Image | None = None) -> Capture:
     """Every camera tag in one file, as columns plus a long tail.
+
+    `image` is an already-open header a caller happens to be holding. It
+    is not a micro-optimisation: opening a generated PNG costs about 23
+    ms, because Pillow parses its text chunks -- a whole workflow graph --
+    during `open`, and ingest was paying that twice on a file that turns
+    out to have no EXIF at all. The pixels are never touched either way.
 
     A file that cannot be opened is reported, not raised. One truncated JPEG
     in a library used to end the whole ingest pass: `Image.open` raises
@@ -390,8 +420,14 @@ def read(path) -> Capture:
     bare Exception (Image.py:79) and so escapes an `except OSError`. Nothing
     between here and the caller caught any of them.
     """
+    # PIL.Image is imported where a picture is read, the way `av` is in
+    # read_video: 23ms of import (-X importtime) every app boot was paying.
+    from PIL import Image
+
     out = Capture()
     try:
+        if image is not None:
+            return _read_image(image, path, out)
         return _read(path, out)
     except (OSError, ValueError, Image.DecompressionBombError) as problem:
         out.unreadable = f"{type(problem).__name__}: {problem}"
@@ -430,7 +466,7 @@ def _ifd(tiff: bytes, offset: int, endian: str) -> dict[int, tuple[int, int, int
     entries: dict[int, tuple[int, int, int]] = {}
     try:
         n = struct.unpack_from(endian + "H", tiff, offset)[0]
-        if n > 4096:
+        if n > _MOST_IFD_ENTRIES:
             return {}
         for i in range(n):
             tag, typ, count, word = struct.unpack_from(endian + "HHII", tiff, offset + 2 + i * 12)
@@ -517,7 +553,7 @@ def _read_image(image: Image.Image, path, out: Capture) -> Capture:
         out.focal_length = _number(merged.get(ExifTags.Base.FocalLength))
         out.focal_35mm = _number(merged.get(ExifTags.Base.FocalLengthIn35mmFilm))
         orientation = merged.get(ExifTags.Base.Orientation)
-        out.orientation = int(orientation) if isinstance(orientation, int) else None
+        out.orientation = orientation if isinstance(orientation, int) else None
 
         out.camera = _camera_name(merged.get(ExifTags.Base.Make), merged.get(ExifTags.Base.Model))
         out.lens = _camera_name(merged.get(ExifTags.Base.LensMake), merged.get(ExifTags.Base.LensModel))
@@ -574,6 +610,8 @@ def read_video(path) -> Capture:
     out = Capture()
     atom = _canon_thumbnail(path)
     if atom is not None:
+        from PIL import Image
+
         try:
             with decode.open_bytes(atom) as image:
                 _read_image(image, path, out)
@@ -608,7 +646,7 @@ def _quicktime_clock(text) -> float | None:
         return None
 
 
-def _canon_thumbnail(path, limit: int = 4_000_000) -> bytes | None:
+def _canon_thumbnail(path, limit: int = _CNDA_SEARCH_BYTES) -> bytes | None:
     """The JPEG inside the CNDA atom of a Canon MOV, or None. The atom
     sits near the start of the file (inside `CNTH` under `moov/udta`);
     the first `limit` bytes are searched and the JPEG runs from its SOI

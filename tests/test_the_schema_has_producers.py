@@ -17,11 +17,10 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import authored, collections, connect, derived, ingest, jobs, library, lineage, naming, probe, sample, scan
 from db import similarity as similarity_module
-from tests.staging import fresh_schema
+from tests.staging import NOW, fresh_schema
 from vision import decode
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 @pytest.fixture
@@ -1172,8 +1171,14 @@ def test_two_files_naming_one_model_share_its_row(db, a_library, a_generated_fil
 
 def test_an_unreachable_root_is_marked_offline_not_emptied(db, a_library, tmp_path):
     """Unplugged and emptied look identical from a listing, and only one of
-    them is recoverable."""
-    missing = library.add_root(db, tmp_path / "not-here", "mount", NOW)
+    them is recoverable.
+
+    A plain library, because this IS the case `root.kind = 'mount'` was
+    reaching for and never carried: "not always attached" is `online`,
+    per-root and set by probing, and it works the same for a folder that
+    has never been anywhere near a removable drive.
+    """
+    missing = library.add_root(db, tmp_path / "not-here", "library", NOW)
     checked = {row[0]: row[2] for row in library.check_roots(db)}
     assert checked[a_library["root"]] is True
     assert checked[missing] is False
@@ -1527,6 +1532,105 @@ def test_a_prompt_routed_through_another_node_is_still_found(db, a_library, tmp_
         ).fetchone()[0]
         == "a castle assembled from wildcards"
     )
+
+
+def test_a_prompt_behind_a_controlnet_is_still_found():
+    """A conditioning PASS-THROUGH is not the end of the walk.
+
+    ControlNetApply has no `text` input, so reading only the text-named
+    inputs stopped there and reported no positive prompt. Measured over
+    comfyanonymous/ComfyUI_examples@f9431bb000ce: 22 of 92 prompt-bearing
+    workflows returned a negative and no positive, which no real workflow
+    does.
+    """
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 1, "steps": 10, "positive": ["10", 0], "negative": ["7", 0]},
+            },
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "a fennec in a field"}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "hands, text, error"}},
+            "10": {"class_type": "ControlNetApply", "inputs": {"strength": 1.0, "conditioning": ["6", 0]}},
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "a fennec in a field"
+    assert recipe.negative == "hands, text, error"
+
+
+def test_a_node_conditioning_both_prompts_keeps_them_apart():
+    """ControlNetApplyAdvanced takes both prompts and returns the positive on
+    slot 0 and the negative on slot 1. Following its first conditioning input
+    instead of the slot reports the negative prompt as the positive one."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 1, "positive": ["10", 0], "negative": ["10", 1]},
+            },
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "a castle at dawn"}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, watermark"}},
+            "10": {
+                "class_type": "ControlNetApplyAdvanced",
+                "inputs": {"positive": ["6", 0], "negative": ["7", 0], "strength": 1.0},
+            },
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "a castle at dawn"
+    assert recipe.negative == "blurry, watermark"
+
+
+def test_a_zeroed_conditioning_reports_no_words():
+    """`ConditioningZeroOut` is how a workflow says it has no negative prompt:
+    it takes the POSITIVE conditioning and erases it. The link is real and the
+    text behind it is real, so walking through it puts the positive prompt in
+    the negative field -- which three ComfyUI_examples workflows did."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 1, "positive": ["6", 0], "negative": ["16", 0]},
+            },
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "happy cute anime fox girl"}},
+            "16": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}},
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "happy cute anime fox girl"
+    assert recipe.negative == ""
+
+
+def test_a_custom_sampler_takes_its_prompt_from_the_guider():
+    """SamplerCustomAdvanced has no `positive` input at all -- the conditioning
+    hangs off a guider. Every flux workflow is shaped this way, and reading
+    only `positive` reported no prompt for 11 of ComfyUI_examples' 92.
+
+    A BasicGuider holds ONE chain and it is the positive one, so the negative
+    stays empty rather than inheriting it."""
+    from db import graph as graph_module
+
+    recipe = graph_module.read(
+        {
+            "13": {
+                "class_type": "SamplerCustomAdvanced",
+                "inputs": {"noise": ["25", 0], "guider": ["22", 0], "sampler": ["16", 0]},
+            },
+            "22": {"class_type": "BasicGuider", "inputs": {"model": ["30", 0], "conditioning": ["26", 0]}},
+            "26": {"class_type": "FluxGuidance", "inputs": {"guidance": 3.5, "conditioning": ["6", 0]}},
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "cute anime girl with fennec ears"}},
+        }
+    )
+    assert recipe is not None
+    assert recipe.positive == "cute anime girl with fennec ears"
+    assert recipe.negative == ""
 
 
 def test_a_graph_that_refers_to_itself_ends_the_walk(db):
@@ -1960,3 +2064,36 @@ def test_an_embedding_that_does_not_fit_its_space_is_refused(db, a_library):
     spec = similarity_module.semantic_space("clip", "v1", 8)
     with pytest.raises(sqlite3.IntegrityError, match="dimensions"):
         derived.record_embedding(db, a_library["file"], spec, np.zeros(4, dtype=np.float32), "aa", NOW)
+
+
+def test_a_root_is_a_library_or_the_trash_and_nothing_else(db, tmp_path):
+    """One media kind, and `trash`.
+
+    There was a `mount` beside `library` and nothing anywhere branched on
+    the difference: every read that cared spelled
+    `kind IN ('library','mount')`. It reached the person as a dropdown on
+    the add-a-folder form -- a choice that changed nothing, offered to
+    somebody with no way to know that, at the moment they were trying to
+    add their photographs.
+
+    What it was reaching for is the test above this one: `online`, which
+    is per-root, set by probing, and what the whole deletion doctrine
+    rests on.
+    """
+    import sqlite3
+
+    with pytest.raises(sqlite3.IntegrityError, match="kind"):
+        library.add_root(db, tmp_path / "elsewhere", "mount", NOW)
+
+
+def test_the_form_does_not_ask_which_kind(tmp_path):
+    """And the choice is gone from where it was asked."""
+    from litestar.testing import TestClient
+
+    from sg_web.app import build_app
+
+    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+        page = client.get("/operations", headers={"accept": "text/html"}).text
+        assert "data-add-root" in page, "the control: the form is on the page"
+        assert '<option value="mount">' not in page
+        assert '<select name="kind"' not in page, "it still asks a question with one answer"

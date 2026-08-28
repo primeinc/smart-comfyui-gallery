@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import hashlib
 
-from . import prompt_sections
+from . import connect, prompt_sections
 
 ROLES = ("effective", "original", "negative", "original_negative", "unsampler")
 
@@ -187,8 +187,8 @@ def current_vectors(conn, sid: int, policy: str, hashes: list[str]) -> dict[str,
 
     held: dict[str, list[float]] = {}
     wanted = sorted(set(hashes))
-    for start in range(0, len(wanted), 500):
-        piece = wanted[start : start + 500]
+    for start in range(0, len(wanted), connect.PARAM_BATCH):
+        piece = wanted[start : start + connect.PARAM_BATCH]
         marks = ",".join("?" for _ in piece)
         for digest, blob in conn.execute(
             "SELECT e.source_text_hash, e.vector FROM derived_prompt_embedding e"
@@ -368,8 +368,8 @@ def _vectors(conn, wanted):
 
     held = {}
     batch = [int(v) for v in wanted]
-    for start in range(0, len(batch), 500):
-        piece = batch[start : start + 500]
+    for start in range(0, len(batch), connect.PARAM_BATCH):
+        piece = batch[start : start + connect.PARAM_BATCH]
         marks = ",".join("?" for _ in piece)
         for embedding_id, blob in conn.execute(
             f"SELECT id, vector FROM derived_prompt_embedding WHERE id IN ({marks})", piece
@@ -425,7 +425,7 @@ def neighbours(
     manager = similarity.manager_for(conn)
     key = similarity.align(conn, manager, spec, ids, lambda wanted: _vectors(conn, wanted), now, lane=lane(policy))
     query = np.frombuffer(own[2], dtype=np.float32)
-    depth = len(ids) if allowed is not None else min(max(int(k), 1) + 1, len(ids))
+    depth = len(ids) if allowed is not None else min(max(k, 1) + 1, len(ids))
     labels, scores = manager.search(key, [query], depth)
     ranked = [
         (to_prompt[int(label)], float(score))
@@ -435,7 +435,7 @@ def neighbours(
     if allowed is not None:
         ranked = [(other, score) for other, score in ranked if other in allowed]
     results = []
-    for other, score in ranked[: max(int(k), 1)]:
+    for other, score in ranked[: max(k, 1)]:
         row = conn.execute(
             "SELECT e.uuid, e.slug, p.text FROM prompt p JOIN entity e ON e.id = p.id WHERE p.id = ?", (other,)
         ).fetchone()

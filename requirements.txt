@@ -5,11 +5,12 @@
 # pip users: torch and torchvision must come from the SAME index or imports
 # fail with "operator torchvision::nms does not exist"; for CUDA builds:
 #   pip install --index-url https://download.pytorch.org/whl/cu132 torch torchvision
-litestar
+litestar[pydantic]  # the HTTP seam's contracts are pydantic models; the plugin self-registers
 jinja2  # the gallery templates; litestar's Jinja engine needs it installed
 uvicorn  # the server behind `python -m sg_web`
 websockets  # uvicorn's WebSocket protocol implementation for /ws/jobs
 Pillow
+pyvips[binary]>=3.1.1  # libvips: the thumbnail decoder, 1.6x Pillow on PNG for the same bytes
 opencv-python<5  # 5.x ORT engine needs dynamic-dims ONNX; deployed YuNet is static-shape
 numpy # needed for opencv-python
 defusedxml  # XMP is parsed out of files the gallery did not write

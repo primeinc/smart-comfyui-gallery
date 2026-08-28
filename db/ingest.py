@@ -29,14 +29,18 @@ import os
 from dataclasses import dataclass, field
 
 import metaparse
-from metaparse.containers import load_raw
+from metaparse.containers import load_raw, load_raw_video
 from metaparse.typed import GenerationParams
 
 from . import capture as capture_module
 from . import graph as graph_module
+from . import naming
 from . import probe as probe_module
 from . import prompts as prompts_module
 from .scan import mint
+
+#: Kinds whose metadata lives in a media container, not an image header.
+_MOVING = ("video",)
 
 _logger = logging.getLogger(__name__)
 
@@ -138,7 +142,7 @@ def _name_key(text: str) -> str:
     Ingest and the search box have to agree on this or the library grows a
     row per spelling of the same model.
     """
-    return "".join(character for character in str(text).lower() if character.isalnum())
+    return "".join(character for character in text.lower() if character.isalnum())
 
 
 def artifact(conn, kind: str, name: str, now: float, *, quoted=None, sha=None) -> int:
@@ -158,7 +162,7 @@ def artifact(conn, kind: str, name: str, now: float, *, quoted=None, sha=None) -
     conn.execute(
         "INSERT INTO artifact(id, kind, name, name_key, content_sha256, quoted_hash,"
         " first_seen_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-        (artifact_id, kind, str(name), _name_key(name), sha, quoted, now),
+        (artifact_id, kind, name, _name_key(name), sha, quoted, now),
     )
     return artifact_id
 
@@ -295,11 +299,26 @@ def _fill_from_graph(typed, recipe) -> None:
         ]
 
 
-def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
-    """The recipe: tool, prompt, weights, sampler settings, and the long tail."""
+def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -> None:
+    """The recipe: tool, prompt, weights, sampler settings, and the long tail.
+
+    `held` is a RawMetadata a caller has already loaded. Loading it costs
+    about 23 ms on a generated PNG -- Pillow parses the workflow graph out
+    of the text chunks during `open` -- so a caller that needs it twice
+    should load it once.
+    """
     retract(conn, file_id, "generation")
-    parsed = metaparse.parse_file(path)
-    raw = load_raw(path)
+    # Loaded ONCE. `parse_file` is `load_raw` followed by `parse_raw`
+    # (metaparse/adapters.py:730-743), so calling it and then loading the
+    # same file again read every text chunk twice -- and on a generated
+    # PNG those chunks are the whole workflow, which is why each read
+    # cost 23 ms and this step was 61% of ingest.
+    #
+    # `allow_stealth` is not passed, exactly as `parse_file(path)` did not
+    # pass it: the LSB pixel scan is for detail views, never bulk
+    # indexing, and skipping it is what keeps this off the pixels.
+    raw = load_raw(path) if held is None else held
+    parsed = metaparse.parse_raw(raw) if raw is not None else None
 
     reader = f"metaparse/{parsed.tool}" if parsed is not None else None
     # The text the adapter actually read, so the claim is about this carrier
@@ -362,13 +381,8 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     workflow_id = None
     if raw is not None and raw.text.get("workflow"):
         graph = raw.text["workflow"]
-        workflow_id = artifact(
-            conn,
-            "workflow",
-            f"graph-{hashlib.sha256(graph.encode()).hexdigest()[:12]}",
-            now,
-            sha=hashlib.sha256(graph.encode()).hexdigest(),
-        )
+        graph_sha = hashlib.sha256(graph.encode()).hexdigest()
+        workflow_id = artifact(conn, "workflow", f"graph-{naming.short_sha(graph_sha)}", now, sha=graph_sha)
         out.artifacts.append(("workflow", "graph"))
 
     # What the tool said it loaded, with the role it loaded it into and the
@@ -459,8 +473,8 @@ def generation(conn, file_id: int, path, now: float, out: Ingested) -> None:
     # The sections, read with this tool's grammar (pure, microseconds):
     # every main-section text is a prompt row from the moment the file
     # is read, so a planner or a search finds a vector to hang on it.
-    for held in prompts_module.roles(conn, file_id).values():
-        prompts_module.sections(conn, held["id"], prompts_module.grammar_for(typed.tool), now)
+    for role in prompts_module.roles(conn, file_id).values():
+        prompts_module.sections(conn, role["id"], prompts_module.grammar_for(typed.tool), now)
 
     tail = dict(typed.extra)
     if typed.version:
@@ -520,6 +534,29 @@ def _really_animated(path) -> bool | None:
         return None
 
 
+#: WHO read a file, recorded on every file this module reads.
+#:
+#: BUMP THIS whenever a change here or in what this module calls would
+#: write something DIFFERENT for the same bytes -- a sniffer that
+#: classifies a container it used to miss, a parser that learns a new
+#: generator, a probe that starts recording a field. Not for a
+#: refactor, a comment, or a speed-up: the version means "the answer
+#: may differ", and bumping it for a change that cannot alter an answer
+#: re-reads every file in the library for nothing.
+#:
+#: This is the half of freshness `ingested_sha256` cannot express. That
+#: column says which BYTES were read, so a file is stale when its bytes
+#: change and never when the reader improves -- and the day the sniffer
+#: started calling album tracks videos, fixing the sniffer could not fix
+#: the rows, because nothing recorded that they had been read by the
+#: version that was wrong. The only repair was re-reading the whole
+#: library by hand.
+#:
+#: Dated rather than numbered, so two branches that both bump it do not
+#: silently agree on "4" and leave one of their libraries unrepaired.
+READER = "ingest/2026-08-24"
+
+
 def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ingested:
     """Read one file completely: what made it, and how it was taken.
 
@@ -533,6 +570,14 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # any decode call would otherwise be unreadable to it.
     from vision import decode as _decode
     from vision import sniff as sniff_module
+
+    from .runner import report
+
+    # Imported here rather than at module scope: the runner imports this
+    # module inside its handler, and a link back at import time would
+    # close the loop. Outside a job `report()` is the silent one, so this
+    # costs nothing and needs no branch.
+    told = report()
 
     _decode.ensure_decoders()
 
@@ -548,6 +593,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # 512-byte read (vision/sniff.py, patterns from whatwg/mimesniff@39aa535);
     # the reader that follows is the proof.
     suffix_claimed = None
+    told.phase("sniffing")
     sniffed = sniff_module.sniff_path(path)
     if sniffed is not None:
         family, token = sniffed
@@ -560,7 +606,25 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             kind = "image" if family == "image" else family
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
 
-    generation(conn, file_id, path, now, out)
+    # Named on its own because it is the step that reads what MADE the
+    # picture -- a generator's whole workflow, embedded in the file's own
+    # text chunks -- and that is a parse whose cost tracks the size of the
+    # recipe rather than the size of the image. Without the name it was
+    # billed to `sniffing`, which is a 512-byte read and could not
+    # honestly have cost 48 ms.
+    told.phase("reading-generation", kind=kind)
+    # A CLIP carries its recipe too, one container along.
+    #
+    # metaparse was Pillow-only, so every generated video in every library
+    # had its workflow sitting in the file and no row anywhere: "AI
+    # generated video" was answerable and always empty -- not because the
+    # filter was wrong, but because nothing had ever written the
+    # generation row. ComfyUI writes `workflow` and `prompt` as container
+    # metadata tags, JSON-encoded, exactly as it writes them into a PNG's
+    # text chunks, so `load_raw_video` hands them back in the same shape
+    # and every adapter reads a clip without knowing anything changed.
+    held = load_raw_video(path) if kind in _MOVING else load_raw(path)
+    generation(conn, file_id, path, now, out, held=held)
 
     # Written AFTER generation(), which retracts the whole 'container'
     # source before re-parsing -- facts written before it were deleted by it.
@@ -569,7 +633,14 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     if suffix_claimed is not None:
         _param(conn, file_id, "container", "SuffixClaimed", suffix_claimed)
 
+    # Inside the branch, not before it. Opened before, this phase stayed
+    # open through everything that follows for a still -- which never
+    # probes -- and reported 24 ms of "probing" for files that do not
+    # reach a container reader at all. The same mistake `sniffing` made
+    # one step earlier and `encoding` made in the embed job: a phase
+    # opened outside the work it names bills whatever comes next.
     if kind in _PROBED:
+        told.phase("probing", kind=kind)
         container = probe_module.read(path)
         probe_module.store(conn, file_id, container, now)
         out.params += len(container.params)
@@ -597,6 +668,7 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     # of them -- true, uninteresting, and it buried the message from the
     # reader that could.
     if kind in ("image", "animated_image"):
+        told.phase("checking-animation")
         # The suffix guessed; the decoded file answers. An animated WebP,
         # AVIF or PNG wears a still suffix, and a single-frame GIF wears an
         # animated one -- n_frames is the fact, so the row records it.
@@ -605,7 +677,26 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             kind = "animated_image" if moving else "image"
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
     if kind in ("image", "animated_image", "video"):
-        found = capture_module.read(path) if kind != "video" else capture_module.read_video(path)
+        told.phase("reading-camera", kind=kind)
+        # The header this file already opened, when there is one. Opening
+        # a generated PNG again to look for EXIF it does not have was 41%
+        # of ingest on this library.
+        # Skipped outright when the load above LOOKED AND FOUND NONE.
+        # Only that state earns it: a read that threw is not a file
+        # without camera tags, and treating the two alike would report a
+        # damaged photograph as a clean one carrying nothing. `capture.read` opens the file a second time and then
+        # returns an empty Capture the moment `getexif()` is falsey
+        # (db/capture.py _read_image), and opening a generated PNG costs
+        # about 23 ms because Pillow parses its workflow graph out of the
+        # text chunks during `open`. That second open was 41% of ingest on
+        # this library, spent looking for camera tags in files a camera
+        # never touched.
+        if kind != "video" and held is not None and held.exif_state == "absent":
+            found = capture_module.Capture()
+        elif kind != "video":
+            found = capture_module.read(path)
+        else:
+            found = capture_module.read_video(path)
         # First complaint stands: an animated image was already probed
         # above, and the capture read's silence must not erase why the
         # container reader could not read it -- duration would stay NULL
@@ -642,7 +733,10 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
         if sha is None:
             sha = scan_module.sha256_of(path)
             conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
-        conn.execute("UPDATE file SET ingested_sha256 = ? WHERE id = ?", (sha, file_id))
+        # The bytes AND the reader, together and in one write: a row
+        # claiming to be current for bytes it was not read for, or for a
+        # reader that did not read it, is the freshness rule lying.
+        conn.execute("UPDATE file SET ingested_sha256 = ?, ingested_by = ? WHERE id = ?", (sha, READER, file_id))
     return out
 
 

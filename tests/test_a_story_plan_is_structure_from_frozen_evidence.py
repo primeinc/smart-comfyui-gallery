@@ -48,10 +48,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, events, ingest, planning, rendering, runner, scan, stories
-from tests.staging import Stage, staged
+from tests.staging import HOUR, NOW, Stage, staged
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 
 
@@ -73,7 +71,12 @@ HELMET = [
 ]
 
 
-def _member(ordinal, prompt, *, seed=100, precision="second", artifacts=(), sampler="Euler a", steps=20):
+def _member(
+    ordinal, prompt, *, seed=100, precision="second", artifacts=(), sampler="Euler a", steps=20
+) -> dict[str, object]:
+    # Stated, because tests below replace `annotations` and `place` on the
+    # result: inferred from this literal alone their type is `None`, and a
+    # snapshot member is a heterogeneous record either way.
     return {
         "ordinal": ordinal,
         "file_uuid": f"{ordinal:032x}",
@@ -593,6 +596,7 @@ def test_a_blank_prompt_is_never_embedded():
     class Spy(planning.LexicalPromptSimilarity):
         seen: typing.ClassVar[list] = []
 
+        @typing.override
         def embed(self, texts):
             self.seen.append(list(texts))
             return super().embed(texts)
@@ -656,24 +660,6 @@ def test_the_threshold_is_pinned_against_the_engine():
     assert cosine[0][1] == pytest.approx(11 / 12, abs=1e-3)
     assert cosine[0][2] < 0.5 < cosine[0][1]
     assert planning.GenerationHistoryPlanner.defaults["phase_threshold"] == 0.5
-
-
-def test_the_planner_owns_no_connection_no_sql_and_no_model():
-    import inspect
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "planning.py").read_text(encoding="utf-8")
-    head = source.split("# --- persistence and orchestration", 1)[0]
-    # engine_for resolves CONFIGURATION (which provider is set up) and is
-    # the one pre-persistence function allowed a connection; the planner
-    # body, the engines and the validators may not see one.
-    before, after = head.split("def engine_for(conn", 1)
-    body = before + after.split("\n\n\ndef pairwise_cosine", 1)[1]
-    for banned in ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"):
-        assert banned not in body, f"the planner reached for the database: {banned!r}"
-    for banned in ("import openai", "anthropic", "import requests", "import httpx", "torch"):
-        assert banned not in source
-    assert "conn" not in inspect.signature(planning.GenerationHistoryPlanner.plan).parameters
 
 
 # --- persistence, the service and the job, against a real frozen snapshot ----
@@ -1015,7 +1001,10 @@ def test_concurrent_identical_requests_create_one_job(frozen):
 
         waiter = threading.Thread(target=race)
         waiter.start()
-        waiter.join(timeout=0.5)
+        # Margin, not meaning: a second that got past the lane would have
+        # finished in microseconds, and one that is blocked stays blocked
+        # for the whole `busy_timeout`.
+        waiter.join(timeout=0.1)
         assert waiter.is_alive(), f"the second request must wait on the lane, not race past it: {outcome}"
         first.commit()
         waiter.join(timeout=10)
@@ -1048,7 +1037,9 @@ def test_the_v1_grammar_is_frozen_and_exception_proof(monkeypatch):
     never an exception."""
     members = [_member(i, text) for i, text in enumerate(LIGHTHOUSE[:2] + HELMET[:1])]
     document, sha = _snapshot(members)
-    plan = {**_planner().plan(document, sha), "v": 1}
+    # annotated because the dict holds an int beside lists and dicts,
+    # so `plan["claims"]` infers as their union and cannot be starred
+    plan: dict[str, typing.Any] = {**_planner().plan(document, sha), "v": 1}
     assert planning.validate_story_plan_v1(plan) == []
     monkeypatch.setattr(planning, "FORMAT_VERSION", 4)
     monkeypatch.setattr(planning, "PLANNERS", {})
@@ -1348,14 +1339,18 @@ def test_the_page_lays_out_the_verified_render_and_escapes_evidence(planned):
     assert "gen_0 & 'friends'.png" not in html, "frozen evidence is text, never markup"
     assert "gen_0 &amp; &#39;friends&#39;.png" in html
     assert html.count('href="/i/') >= len(story["sections"]), "a hero links to its picture through address resolution"
-    assert html.count('src="/thumb/') >= len(story["support"]["member_refs"]), "every member is shown, not only named"
+    # `/thumb` prefixes both addresses a member can have: the
+    # content-addressed `/thumbs/<shard>/<sha>.webp` once its bytes are
+    # hashed, and the `/thumb/<slug>` route while they are not. What this
+    # asserts is that every member is SHOWN, which is true of either.
+    assert html.count('src="/thumb') >= len(story["support"]["member_refs"]), "every member is shown, not only named"
     assert "data-story-evolution" in html
     assert "/evolution" in html
     assert "data-story-profile-here" in html, "the page names the profile it was told under"
     for other in rendering.PROFILES:
         if other != story["renderer"]["profile"]:
             assert f'data-story-profile-ask="{other}"' in html, "and offers the others"
-    assert re.search(r'src="/static/story\.js\?v=\d+"', html), "the script carries the static version stamp"
+    assert re.search(r'src="/static/build/story\.js\?v=\d+"', html), "the script carries the static version stamp"
     assert client.get("/stories/renders/424242").status_code == 404
     conn = connect.connect(client.app.state.db_path)
     try:
@@ -1482,7 +1477,16 @@ def test_identical_evidence_is_one_snapshot(storied):
         connect.close(conn)
 
 
-def test_the_snapshot_outlives_everything_it_was_made_from(storied, monkeypatch):
+def _put_the_library_back(root, replaced, was: bytes, stamped) -> None:
+    """The library exactly as the module's world snapshotted it -- name,
+    bytes, and stamp -- so the next test's restore is a database backup
+    and not a rebuild of the whole world."""
+    os.replace(root / "renamed_a.png", root / "gen_0.png")
+    replaced.write_bytes(was)
+    os.utime(replaced, ns=(stamped.st_atime_ns, stamped.st_mtime_ns))
+
+
+def test_the_snapshot_outlives_everything_it_was_made_from(storied, monkeypatch, request):
     """The hostile acceptance test, modelled on every mistake already
     paid for. After the snapshot: a member is renamed, a member's bytes
     are replaced in place under the same address, a member's prompt and
@@ -1505,10 +1509,14 @@ def test_the_snapshot_outlives_everything_it_was_made_from(storied, monkeypatch)
         connect.close(conn)
 
     # rename A on disk; replace B's bytes in place; change C's prompt and seed
+    replaced = root / "gen_1.png"
+    was = replaced.read_bytes()
+    stamped = replaced.stat()
+    request.addfinalizer(lambda: _put_the_library_back(root, replaced, was, stamped))
     os.rename(root / "gen_0.png", root / "renamed_a.png")
     info = PngInfo()
     info.add_text("parameters", "something else entirely\nSteps: 5, Seed: 7")
-    Image.new("RGB", (12, 12), (250, 250, 250)).save(root / "gen_1.png", pnginfo=info)
+    Image.new("RGB", (12, 12), (250, 250, 250)).save(replaced, pnginfo=info)
     client.post("/roots/1/scan")
     conn = connect.connect(client.app.state.db_path)
     try:

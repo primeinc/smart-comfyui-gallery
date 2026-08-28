@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import typing
 
 from . import collection_rules
 from .naming import rename
@@ -59,6 +60,7 @@ class CollectionChanged(Exception):
 
 
 class _Unset:
+    @typing.override
     def __repr__(self) -> str:  # in refusal messages
         return "UNSET"
 
@@ -84,7 +86,16 @@ class CollectionPatch:
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 
 #: The kinds whose membership is filed rows.
-LISTED = ("album", "flag")
+#: Every kind of collection, per db/schema.sql collection.kind.
+CollectionKind = typing.Literal["album", "flag", "smart"]
+
+#: The kinds a person fills by listing files. A `smart` collection is
+#: born from a rule instead, through its own seam. The runtime tuple is
+#: the type's own members, so the check and the type cannot drift; that
+#: a listed kind is a collection kind is proved where create_listed
+#: hands one to collection().
+ListedKind = typing.Literal["album", "flag"]
+LISTED: tuple[ListedKind, ...] = typing.get_args(ListedKind)
 
 
 def _cleaned_name(value) -> str:
@@ -183,7 +194,7 @@ def collection(
     name: str,
     now: float,
     *,
-    kind: str = "album",
+    kind: CollectionKind = "album",
     parent_id=None,
     color=None,
     description=None,
@@ -209,7 +220,7 @@ def create_listed(
     name: str,
     now: float,
     *,
-    kind: str = "album",
+    kind: ListedKind = "album",
     parent_id=None,
     color=None,
     description=None,
@@ -357,7 +368,7 @@ def convert_to_smart(conn, collection_id: int, rule, source_text, actor_id, expe
 
 
 def convert_to_listed(
-    conn, collection_id: int, kind: str, actor_id, expected_rev, now: float, *, discard_rule=False
+    conn, collection_id: int, kind: ListedKind, actor_id, expected_rev, now: float, *, discard_rule=False
 ) -> None:
     """smart -> album/flag only with the rule's discard said out loud --
     the rule is authored state -- and album <-> flag freely: both listed

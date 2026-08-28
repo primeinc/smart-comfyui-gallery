@@ -655,3 +655,27 @@
   align-self: center;
   margin-left: 6px;
 }
+
+/* What the thumbs add up to. Quiet by design: these are counts a person
+   consults, not an alert -- and a verdict set is a biased sample, so
+   nothing here is styled to look like a measurement. */
+.operations-judged {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.operations-judged li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.operations-judged-counts {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.operations-judged-share {
+  font-variant-numeric: tabular-nums;
+}

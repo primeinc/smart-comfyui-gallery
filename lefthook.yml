@@ -1,0 +1,47 @@
+# Git hooks, so the gates run without anybody remembering to run them --
+# and so no gate re-derives a proof that already exists.
+#
+# Three tiers, the shape every large CI converges on (Google TAP, Meta's
+# predictive selection, Microsoft's THEO): verification scope follows
+# change scope, and the FULL proof runs exactly once, asynchronously,
+# never inside anybody's write path.
+#
+#   per commit   `just check`       6.0s measured: lint, format, types over
+#                                   BOTH languages, web unit
+#   per push     `just prove-push`  an already-proven tree passes in
+#                                   milliseconds; else the AFFECTED slice
+#                                   of the suite (pytest-testmon, selected
+#                                   by measured coverage)
+#   the proof    `just prove`       check-deep + the whole suite, run when
+#                                   waiting is cheap; on green it records
+#                                   the tree hash in .proven-tree, which
+#                                   is what lets a push skip
+#
+# The first shape of this file ran check-deep + the whole suite on every
+# push: ~6.5 measured minutes on a developer machine per push, re-bought
+# even when nothing changed since the last green run.
+#
+# `LEFTHOOK=0 git commit` skips, deliberately and visibly.
+
+min_version: 1.10.0
+
+# A missing binary must FAIL, not silently pass. Without this the hook is a
+# file that exits 0 when lefthook is not installed, which is the same shape
+# as a test lane that collects nothing and exits clean.
+assert_lefthook_installed: true
+
+pre-commit:
+  # Sequential: `just check` already runs its own lanes in parallel and
+  # rebuilds sg_web/static/build first, and two of those at once would walk
+  # the same directory.
+  piped: true
+  jobs:
+    - name: gate
+      run: just check
+      fail_text: "`just check` failed. Fix it or LEFTHOOK=0 to commit anyway."
+
+pre-push:
+  jobs:
+    - name: prove or skip
+      run: just prove-push
+      fail_text: "the affected slice failed. `just prove` runs and records the whole picture."

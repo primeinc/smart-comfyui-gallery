@@ -1,0 +1,180 @@
+{# The viewer: the photograph, the few facts that change what it means, and
+   everything else one click away.
+
+   ONE partial, two containers. The page mounts it under a <main>, the
+   gallery mounts it inside the overlay's dialog, and neither adds or
+   removes a capability -- what differs is what surrounds it.
+
+   The stage carries its own contract as JSON so the browser reads typed
+   facts (source pixels, what the preview delivers, whether the original
+   has more to give) instead of measuring the DOM and guessing. Single
+   quotes because Jinja's tojson escapes < > & ' for exactly this. #}
+{# `data-made` says what this picture IS, so the inspector can lead with
+   how a generated image was made and with where a photograph was taken --
+   until somebody decides otherwise, after which their arrangement wins on
+   every kind. The template states the fact; the choice is the browser's
+   (frontend/src/workspace.ts). #}
+<div class="viewer" data-viewer data-chrome="visible" data-inspector="closed"
+     data-made="{{ 'generated' if item.creation and item.creation.prompt else 'captured' }}"
+     data-slug="{{ item.slug }}" data-name="{{ item.name }}" data-kind="{{ item.stage.kind }}"
+     data-wheel-modifier="{{ item.viewing.wheel_modifier }}">
+
+  <header class="viewer-chrome" data-chrome-bar>
+    <a class="viewer-back" href="{{ item.context.return_url }}" data-return
+       aria-label="back to results">&larr;</a>
+    <div class="viewer-said">
+      {% if item.when %}
+      <button type="button" class="chip" data-panel-open="about" data-viewer-when>
+        <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>
+      </button>
+      {% endif %}
+      {% if item.where %}
+      <button type="button" class="chip" data-panel-open="about" data-viewer-where>{{ item.where.name }}</button>
+      {% endif %}
+      {% if item.context.in_answer %}
+      <span class="viewer-ordinal">{{ item.context.ordinal }} / {{ item.context.total }}</span>
+      {% endif %}
+    </div>
+    <div class="viewer-acts">
+      {% include "_media_authored.html" %}
+      {# The walk on a timer. Only where there IS a walk: a slideshow
+         over one picture is a button that does nothing.
+
+         Two settings, not one, because they answer different questions
+         and a person wants them apart -- WRAP is what the arrows do at
+         either end, LOOP is what the slideshow does when it reaches the
+         end. Both are how somebody arranged their viewer, so both live
+         in this browser (frontend/src/workspace.ts) and neither touches
+         the question in the URL. #}
+      {% if item.context.total and item.context.total > 1 %}
+      <div class="viewer-show" data-slideshow data-playing="no">
+        <div class="viewer-show-set" data-show-settings hidden>
+          <label class="viewer-show-every">
+            every
+            <select data-show-every aria-label="seconds each picture is shown">
+              {% for seconds in [2, 3, 5, 8, 15] %}
+              <option value="{{ seconds }}">{{ seconds }}s</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label title="what the ARROWS do at either end of the answer">
+            <input type="checkbox" data-show-wrap> wrap
+          </label>
+          <label title="what the SLIDESHOW does when it reaches the end">
+            <input type="checkbox" data-show-loop> loop
+          </label>
+        </div>
+        <button type="button" class="viewer-act" data-show-settings-toggle aria-expanded="false"
+                title="slideshow settings" aria-label="slideshow settings">&#9662;</button>
+        <button type="button" class="viewer-act" data-show-play aria-pressed="false"
+                title="slideshow (S)" aria-label="start the slideshow">&#9654;</button>
+      </div>
+      {% endif %}
+      <button type="button" class="viewer-act" data-focus title="lights out (L)" aria-label="lights out">&#9633;</button>
+      <button type="button" class="viewer-act" data-inspector-toggle aria-expanded="false"
+              title="information (I)" aria-label="information">&#9432;</button>
+      {# "close" is one word; what it DOES is the container's business --
+         the overlay goes Back, the page returns to its results. #}
+      <button type="button" class="viewer-act" data-close aria-label="close">&times;</button>
+    </div>
+  </header>
+
+  {# Lights out takes the chrome with it, INCLUDING the control that turned
+     them off, so the only ways back were a key nothing on screen mentions.
+     This is the one thing that survives. It exists only while the lights
+     are off, which is what keeps a corner × from reading as "close": in
+     the state where it can be seen, close is not on offer. #}
+  <button type="button" class="viewer-lights-on" data-focus
+          title="lights on (L)" aria-label="lights on">&times;</button>
+
+  <div class="viewer-stage" data-quality="preview"
+       data-stage='{{ item.stage.model_dump(mode="json") | tojson }}'>
+    {# Both arrows are rendered whenever there is more than one member.
+       The one at an END points at the OTHER end and is spelled
+       `data-nav-wrap`, NOT `data-nav`: `data-nav` means "a step you can
+       take right now", and every reader in the tree and the suite takes
+       it that way. The viewer promotes it to `data-nav` for a person who
+       turned wrapping on (frontend/src/viewer.ts), and the stylesheet
+       hides it for everyone else -- so the address is the server's to
+       spell and the arrangement stays the browser's to keep. #}
+    {% if item.context.previous %}
+    <a class="viewer-step viewer-step-back" data-nav="previous" rel="prev" aria-label="previous"
+       href="/i/{{ item.context.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&lsaquo;</a>
+    {% elif item.context.last and item.context.total and item.context.total > 1 %}
+    <a class="viewer-step viewer-step-back" data-nav-wrap="previous" data-wraps aria-label="previous, from the end"
+       href="/i/{{ item.context.last }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&lsaquo;</a>
+    {% endif %}
+
+    {% if item.stage.kind == "video" %}
+    <video data-stage-media src="{{ item.stage.src }}" poster="{{ item.stage.poster }}" controls playsinline></video>
+    {% elif item.stage.kind == "animated_image" %}
+    <img data-stage-media src="{{ item.stage.src }}" alt="{{ item.name }}">
+    {% elif item.stage.kind == "image" %}
+    <img data-stage-media src="{{ item.stage.src }}" alt="{{ item.name }}"
+         {% if item.stage.shown %}width="{{ item.stage.shown.width }}" height="{{ item.stage.shown.height }}"{% endif %}>
+    {% elif item.stage.kind == "audio" %}
+    <audio data-stage-media src="{{ item.stage.src }}" controls></audio>
+    {% elif item.stage.kind == "document" %}
+    {# The browser ships a PDF renderer and /media types the bytes by
+       their sniff, so the stage hosts that renderer. The link inside is
+       the whole stage only where frames cannot render. #}
+    <iframe class="viewer-document" data-stage-media src="{{ item.stage.src }}" title="{{ item.name }}"></iframe>
+    {% else %}
+    <a class="viewer-download" data-stage-media href="{{ item.stage.original }}">download {{ item.name }}</a>
+    {% endif %}
+
+    {% if item.context.next %}
+    <a class="viewer-step viewer-step-on" data-nav="next" rel="next" aria-label="next"
+       href="/i/{{ item.context.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rsaquo;</a>
+    {% elif item.context.first and item.context.total and item.context.total > 1 %}
+    <a class="viewer-step viewer-step-on" data-nav-wrap="next" data-wraps aria-label="next, back to the start"
+       href="/i/{{ item.context.first }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rsaquo;</a>
+    {% endif %}
+
+    {% if not item.present %}<p class="viewer-warn">this file is not on disk right now</p>{% endif %}
+
+    <div class="viewer-facts" data-viewer-facts>
+      {% if item.faces.people %}
+      <span class="viewer-people" data-viewer-people>
+        {% for who in item.faces.people %}<a class="chip" href="{{ who.href }}">{{ who.name or who.slug }}</a>{% endfor %}
+      </span>
+      {% endif %}
+      {% if item.said_first %}
+      <span class="viewer-caption" data-viewer-said>&ldquo;{{ item.said_first }}&rdquo;</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# The local neighbourhood of the walk: real addresses, in the server's
+     answer order, with the walked question already on them. The results
+     page's rail owns long-distance travel through the same answer; this
+     owns the few pictures either side of this one. There is no strip
+     when the item is not in the answer -- the query defines the walk. #}
+  {% if item.context.filmstrip %}
+  <nav class="viewer-filmstrip" data-filmstrip aria-label="nearby">
+    <div class="viewer-filmstrip-track" data-filmstrip-track>
+      {% for near in item.context.filmstrip.items %}
+      <a class="viewer-filmstrip-item" data-filmstrip-item data-ordinal="{{ near.ordinal }}"
+         href="{{ near.href }}"
+         {% if near.slug == item.slug %}aria-current="true" data-current{% endif %}
+         aria-label="{{ near.ordinal }} of {{ item.context.total }}: {{ near.name }}">
+        {# alt is empty on purpose: the link already carries the name, and
+           a second copy would be read out twice #}
+        {% if near.thumb %}
+        <img src="{{ near.thumb }}" alt="" loading="lazy" decoding="async">
+        {% else %}
+        {# Audio and documents have no picture to take, and the raster
+           routes refuse them. The cell says the kind rather than
+           requesting a 404 and drawing a broken image. #}
+        <span class="viewer-filmstrip-kind" data-filmstrip-kind="{{ near.kind }}" aria-hidden="true">
+          {{ "audio" if near.kind == "audio" else "doc" }}
+        </span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </nav>
+  {% endif %}
+
+  {% include "_media_inspector.html" %}
+</div>

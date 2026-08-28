@@ -25,12 +25,9 @@ from PIL import Image
 
 from db import connect, context, ingest, runner, stories, when
 from sg_web.app import build_app
+from tests.staging import DAY, HOUR, JUNE_10, NOW, corpus_measurement
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
-DAY = 86400.0
-JUNE_10 = 1_686_355_200.0  # 2023-06-10 00:00 as a wall clock
 SWARM_MIXED = pathlib.Path("C:/ComfyUI/output/sample-datasets/swarm-mixed")
 
 
@@ -263,18 +260,29 @@ def test_claimless_files_get_a_file_occurrence_and_form_file_sessions(tmp_path):
 def test_the_swarm_sidecar_family_gets_its_when_from_the_name(tmp_path):
     """The mp4, the swarmpreview.jpg/webp beside each Swarm clip carry
     no metadata of their own; their names carry the clip's stamp to the
-    millisecond, so they are second-fine file occurrences, not silent."""
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, SWARM_MIXED)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            held = conn.execute(
-                "SELECT f.name, o.basis, o.time_precision, o.local_at FROM derived_media_occurrence o"
-                " JOIN file f ON f.id = o.file_id WHERE o.kind = 'file' ORDER BY f.name"
-            ).fetchall()
-            assert len(held) == 15, [h[0] for h in held]
-            assert all(basis == "filename" and precision == "subsecond" for _, basis, precision, _ in held)
-            clip = next(h for h in held if h[0].endswith(".mp4"))
-            assert datetime.datetime.fromtimestamp(clip[3], datetime.UTC).strftime("%H:%M:%S") == "17:30:02"
-        finally:
-            connect.close(conn)
+    millisecond, so they are second-fine file occurrences, not silent.
+
+    Scanning and ingesting the real library costs ~3.4 s and answers the
+    same constant every time, so the answer is cached on the corpus and
+    the readers' code -- either moving re-measures it."""
+    import json
+
+    def measure() -> str:
+        with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+            _library(client, SWARM_MIXED)
+            conn = connect.connect(client.app.state.db_path)
+            try:
+                return json.dumps(
+                    conn.execute(
+                        "SELECT f.name, o.basis, o.time_precision, o.local_at FROM derived_media_occurrence o"
+                        " JOIN file f ON f.id = o.file_id WHERE o.kind = 'file' ORDER BY f.name"
+                    ).fetchall()
+                )
+            finally:
+                connect.close(conn)
+
+    held = json.loads(corpus_measurement(SWARM_MIXED, "swarm-sidecar-whens", measure))
+    assert len(held) == 15, [h[0] for h in held]
+    assert all(basis == "filename" and precision == "subsecond" for _, basis, precision, _ in held)
+    clip = next(h for h in held if h[0].endswith(".mp4"))
+    assert datetime.datetime.fromtimestamp(clip[3], datetime.UTC).strftime("%H:%M:%S") == "17:30:02"

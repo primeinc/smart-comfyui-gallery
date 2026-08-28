@@ -42,6 +42,27 @@ EVIDENCE = REPO / "benchmarks" / "results" / "browser"
 DATASETS = "C:/ComfyUI/output/sample-datasets"
 MODELS = "C:/ComfyUI/output/.AImodels"
 
+
+def _settled_js() -> str:
+    """ "This job settled", as the browser evaluates it -- BUILT from the
+    application's own terminal set. The state list was retyped inside
+    five of these JS strings, which is five places a sixth terminal
+    state never reaches."""
+    from db import jobs
+
+    return f"(id) => window.__got.some(m => m.job === id && {json.dumps(list(jobs.TERMINAL))}.includes(m.state))"
+
+
+_SETTLED_JS = _settled_js()
+
+#: How long a page render (images loading, a mid-drain condition) may
+#: take before the run is called broken, and how long a whole job may.
+RENDER_TIMEOUT_MS = 120_000
+JOB_TIMEOUT_MS = 600_000
+#: Face detection over the sample sets is the one job that legitimately
+#: outlasts JOB_TIMEOUT_MS: real model inference over every picture.
+FACES_TIMEOUT_MS = 1_800_000
+
 #: Which claim each capture presents, in the order the page tells it.
 SECTIONS = (
     (
@@ -222,7 +243,7 @@ def _all_loaded(page, scope: str) -> list[str]:
         "(scope) => { const all = document.querySelectorAll(scope + ' img');"
         " return all.length > 0 && [...all].every(i => i.complete); }",
         arg=scope,
-        timeout=120_000,
+        timeout=RENDER_TIMEOUT_MS,
     )
     broken = page.evaluate(
         "(scope) => [...document.querySelectorAll(scope + ' img')].filter(i => i.naturalWidth === 0).map(i => i.src)",
@@ -344,11 +365,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # metadata into entities, watched on the same feed.
                 reading = web.post("/jobs/ingest").json()
                 print(f"ingest job {reading['id']}: {reading['total']} files")
-                page.wait_for_function(
-                    "(id) => window.__got.some(m => m.job === id && ['done','failed','cancelled'].includes(m.state))",
-                    arg=reading["id"],
-                    timeout=600_000,
-                )
+                page.wait_for_function(_SETTLED_JS, arg=reading["id"], timeout=JOB_TIMEOUT_MS)
                 digested = web.get(f"/jobs/{reading['id']}").json()
                 if digested["state"] != "done":
                     raise RuntimeError(f"the ingest job settled {digested['state']}: {digested['error']}")
@@ -364,7 +381,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 page.wait_for_function(
                     "(id) => window.__got.filter(m => m.job === id && m.state === 'running' && m.done > 4).length > 0",
                     arg=job["id"],
-                    timeout=120_000,
+                    timeout=RENDER_TIMEOUT_MS,
                 )
                 page.evaluate(
                     "() => { const list = document.createElement('pre');"
@@ -385,11 +402,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     done_at_capture=mid.get("done"),
                 )
 
-                page.wait_for_function(
-                    "(id) => window.__got.some(m => m.job === id && ['done','failed','cancelled'].includes(m.state))",
-                    arg=job["id"],
-                    timeout=1_800_000,
-                )
+                page.wait_for_function(_SETTLED_JS, arg=job["id"], timeout=FACES_TIMEOUT_MS)
                 got = page.evaluate("() => window.__got")
                 page.evaluate(
                     "() => { const tail = window.__got.slice(-6);"
@@ -408,11 +421,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # a job the app offers, watched on the same feed, and the
                 # nicknames go on over the naming route.
                 grouping = web.post("/jobs/cluster").json()
-                page.wait_for_function(
-                    "(id) => window.__got.some(m => m.job === id && ['done','failed','cancelled'].includes(m.state))",
-                    arg=grouping["id"],
-                    timeout=120_000,
-                )
+                page.wait_for_function(_SETTLED_JS, arg=grouping["id"], timeout=RENDER_TIMEOUT_MS)
                 settled = web.get(f"/jobs/{grouping['id']}").json()
                 if settled["state"] != "done":
                     raise RuntimeError(f"the cluster job settled {settled['state']}: {settled['error']}")
@@ -422,12 +431,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # byproduct; the phash job backfills the rest.
                 for asked in ("/jobs/phash", "/jobs/dupes"):
                     ran = web.post(asked).json()
-                    page.wait_for_function(
-                        "(id) => window.__got.some(m => m.job === id"
-                        " && ['done','failed','cancelled'].includes(m.state))",
-                        arg=ran["id"],
-                        timeout=600_000,
-                    )
+                    page.wait_for_function(_SETTLED_JS, arg=ran["id"], timeout=JOB_TIMEOUT_MS)
                     outcome = web.get(f"/jobs/{ran['id']}").json()
                     if outcome["state"] != "done":
                         raise RuntimeError(f"{asked} settled {outcome['state']}: {outcome['error']}")
@@ -541,12 +545,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     if told.status_code >= 300:
                         raise RuntimeError(f"dupe_threshold={radius} answered {told.status_code}: {told.text}")
                     ran = web.post("/jobs/dupes").json()
-                    page.wait_for_function(
-                        "(id) => window.__got.some(m => m.job === id"
-                        " && ['done','failed','cancelled'].includes(m.state))",
-                        arg=ran["id"],
-                        timeout=600_000,
-                    )
+                    page.wait_for_function(_SETTLED_JS, arg=ran["id"], timeout=JOB_TIMEOUT_MS)
                     outcome = web.get(f"/jobs/{ran['id']}").json()
                     if outcome["state"] != "done":
                         raise RuntimeError(f"dupes at radius {radius} settled {outcome['state']}: {outcome['error']}")
@@ -594,7 +593,7 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # few bits out is a copy the default radius missed (the crops
                 # land here); a radius where formerly-distinct groups fuse is
                 # the dial turned too far -- both read straight off the shelf.
-                ladder = []
+                ladder: list[dict] = []
                 for radius in (8, 12, 16, 24):
                     regrouped = regroup(radius)
                     wider = members_of(regrouped)

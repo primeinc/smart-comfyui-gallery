@@ -1,0 +1,221 @@
+{
+  "what": "Real media referenced by the corpus. NOT vendored -- ExifTool is GPL-3 and these images carry real GPS. The bytes stay in the pinned mirror.",
+  "source": {
+    "repo": "exiftool/exiftool",
+    "path": "t/images",
+    "tag": "13.59",
+    "url": "https://codeload.github.com/exiftool/exiftool/tar.gz/refs/tags/13.59"
+  },
+  "files": [
+    {
+      "name": "Google.jpg",
+      "sha256": "156a7510315a4fb27c97d12a6dedb4e791eaf26e4810458e86b629f862e34651",
+      "renders": true,
+      "why": "OffsetTimeOriginal (+02:00) and 3-digit SubSecTimeOriginal"
+    },
+    {
+      "name": "Apple.jpg",
+      "sha256": "113a01f606e2508bda673503e1d62ea94e7fada9f92872880d69bc91f3d45ec8",
+      "renders": true,
+      "why": "an iPhone with GPS and no zone -- the NULL-offset arm of judge_capture"
+    },
+    {
+      "name": "Pentax.jpg",
+      "sha256": "554756d3cbbebad49d8ab67ecb8add51740a022015f97d6bd97acce87551a3c6",
+      "renders": true,
+      "why": "Orientation=8: a sideways photograph, which nothing synthetic writes"
+    },
+    {
+      "name": "MWG.jpg",
+      "sha256": "762b840c07bf353e2cd15084ff7dcb92b0130c06b450a72ed31afc3b5f38b4e9",
+      "renders": true,
+      "why": "Orientation=6, plus MWG-scheme metadata"
+    },
+    {
+      "name": "GoPro.jpg",
+      "sha256": "d4f9d433ae69deffd764e23b709174d3d3304f1a767f6f20d1b868b4219180c4",
+      "renders": true,
+      "why": "a real BodySerialNumber, and an action camera's tag set"
+    },
+    {
+      "name": "Canon.jpg",
+      "sha256": "98c290283dbff10950bd0eac63bf95804fd09661de727df4f2946d203ca9e7a2",
+      "renders": true,
+      "why": "a MakerNote with offset-relative internal pointers"
+    },
+    {
+      "name": "Nikon.jpg",
+      "sha256": "26e9f26631281d399002b28ac2bb468cbb8cb12ffc7a309631bbfb18fed410be",
+      "renders": true,
+      "why": "a 2001 body: no subsecond, no zone, no serial -- the absent-field arms"
+    },
+    {
+      "name": "Sony.jpg",
+      "sha256": "7376ad79cad2ac750e765ad253df2f3ae297c2089a562d00d88e9338ea8980b7",
+      "renders": true,
+      "why": "another maker's MakerNote dialect"
+    },
+    {
+      "name": "IPTC.jpg",
+      "sha256": "2fc7ca78b0abbb694c2483fee8e4b7d137ff085220004d53c5dd86f8c1cca04b",
+      "renders": true,
+      "why": "APP13 Photoshop IRB / IPTC, a carrier metaparse must skip cleanly"
+    },
+    {
+      "name": "XMP.jpg",
+      "sha256": "8b39cd1636913ef5027dd6816b006a3942e6df5377aa2ebfcf082916e9859b39",
+      "renders": true,
+      "why": "XMP in APP1, the other metadata carrier on a JPEG"
+    },
+    {
+      "name": "ExtendedXMP.jpg",
+      "sha256": "43c971e0db60917a69be759be57ad33bca23028ec6456621a55cd22eb673a0f6",
+      "renders": true,
+      "why": "XMP split across several APP1 segments"
+    },
+    {
+      "name": "CanonRaw.cr2",
+      "sha256": "b5d3d26f3c85bcb35a52515eac060e2e362161893504013589ffd9ad2e9b004b",
+      "renders": false,
+      "why": "RAW that is TIFF-structured"
+    },
+    {
+      "name": "CanonRaw.cr3",
+      "sha256": "dc02aa55e277935b690879584e97c2d013f54d854afaec6f9d3274c99a918fd6",
+      "renders": false,
+      "why": "RAW that is ISOBMFF, not TIFF at all -- a different reader path"
+    },
+    {
+      "name": "Nikon.nef",
+      "sha256": "6fae30a2809b52ece100316f33a3fade4b65cf5690af2d62bb00f44ae052bdd6",
+      "renders": false,
+      "why": "another RAW container"
+    },
+    {
+      "name": "FujiFilm.raf",
+      "sha256": "e12e30bd0cf5f160b82b93f043696c04d1d5f4628f1fdd19abdab9f8328d8bf0",
+      "renders": false,
+      "why": "a proprietary header wrapping an embedded JPEG"
+    },
+    {
+      "name": "Panasonic.rw2",
+      "sha256": "431a1239713ce1bca8f0b422b9a094372246669432060e2a0a21d1fd2f761678",
+      "renders": true,
+      "why": "RAW with nonstandard tags"
+    },
+    {
+      "name": "Sigma.x3f",
+      "sha256": "09b19f5cf6f01618871074697bb39af1542911a14a865bad53279b13bb91c7df",
+      "renders": false,
+      "why": "a fully proprietary RAW container"
+    },
+    {
+      "name": "QuickTime.heic",
+      "sha256": "4e1785e9924600d0274176f52609a2d514481877103b91c714bd2088ea803ae7",
+      "renders": true,
+      "why": "ftyp brand \"mif1\", not \"heic\" -- the brand people hardcode"
+    },
+    {
+      "name": "QuickTime.mov",
+      "sha256": "eea529609b6026e0cd7b3d9188b997889f905cd89a93421ad7a9063c670449ec",
+      "renders": false,
+      "why": "a real QuickTime atom tree"
+    },
+    {
+      "name": "Matroska.mkv",
+      "sha256": "9781505f6fd4262f045e0e4ec28e9ce93b9a1d5fa27a05e76f3fe7e26e0f0710",
+      "renders": false,
+      "why": "a Matroska container"
+    },
+    {
+      "name": "M2TS.mts",
+      "sha256": "798f804f42d1a7ae2587556e4036e7e1d27c99f0296e7b6201f288b7746ebcf5",
+      "renders": false,
+      "why": "an AVCHD transport stream, which no library writes by accident"
+    },
+    {
+      "name": "RIFF.avi",
+      "sha256": "7c03b77d115118e3293833e6c1b5d5795c998051d145674368e0b97f02719d4b",
+      "renders": false,
+      "why": "a RIFF video container"
+    },
+    {
+      "name": "MP3.mp3",
+      "sha256": "9140f4708d4fa744651125486d287c2f2a7daab2caf83bfec9b17159486a746e",
+      "renders": false,
+      "why": "ID3 tags on audio -- a kind the synthetic corpus never wrote at all"
+    },
+    {
+      "name": "FLAC.flac",
+      "sha256": "9cf5089a7ef8c6d06fd34eb193c8dc1bfb446c4ea00c797f6611819d1687d49a",
+      "renders": false,
+      "why": "Vorbis comments"
+    },
+    {
+      "name": "RIFF.wav",
+      "sha256": "9cb1dcc30bd66f13642d39bea9b29d2c763480b1600bcc3a5b6c73cb3de61b8c",
+      "renders": false,
+      "why": "a RIFF audio container"
+    },
+    {
+      "name": "QuickTime.m4a",
+      "sha256": "3861cf38151d9d831697c74fc75be585a06eef524ed49476d794d92a7f9512ae",
+      "renders": false,
+      "why": "iTunes-style atoms on audio"
+    },
+    {
+      "name": "JXL.jxl",
+      "sha256": "703e7e03afe9744f31186d2f3373ff866d444ebccbe973518ecdbbaeb814d95b",
+      "renders": false,
+      "why": "a naked JXL codestream -- and it CRASHES capture.read (RuntimeError)"
+    },
+    {
+      "name": "JXL2.jxl",
+      "sha256": "4bc68f38fa4c08441e77b3f0185737b8f08834274b59cfe6d3230f54edc4a5fb",
+      "renders": false,
+      "why": "ISOBMFF-boxed JXL: the same format, a different container"
+    },
+    {
+      "name": "Jpeg2000.jp2",
+      "sha256": "9896185cf4e8678034ae61656f8c7907ee22bfa738caa218e5f3b3078cad4488",
+      "renders": true,
+      "why": "JP2 boxed"
+    },
+    {
+      "name": "Jpeg2000.j2c",
+      "sha256": "90b81a98e1b33468b5886cf265999c3ca6a1344418329724a737f11be641b35e",
+      "renders": true,
+      "why": "the same codec as a raw codestream"
+    },
+    {
+      "name": "RIFF.webp",
+      "sha256": "054fb882674304992a0af031a77df061c3f802c30891dbb8bc2d16e41213767d",
+      "renders": true,
+      "why": "VP8X extended WebP rather than plain VP8"
+    },
+    {
+      "name": "Photoshop.psd",
+      "sha256": "45fa913bc5ab0e2bcce5dd725a10b513f5be164ea5a441ace1ef460ae3fb3e44",
+      "renders": true,
+      "why": "a PSD, which db/scan.py claims and nothing exercised"
+    },
+    {
+      "name": "BigTIFF.btf",
+      "sha256": "a2cb61c4a5a80371aa07f317fc0159dc5d1ff07959f1cbcc69391304a4a7fc48",
+      "renders": true,
+      "why": "BigTIFF: 64-bit offsets, a different TIFF entirely"
+    },
+    {
+      "name": "GeoTiff.tif",
+      "sha256": "21a96e69afa8d01c6b79fa34a9c4697540854b0bed20efdf5b207b2a6bf4e1e3",
+      "renders": true,
+      "why": "TIFF carrying GeoTIFF tags"
+    },
+    {
+      "name": "PDF.pdf",
+      "sha256": "57fdd1c12e56f98035795bb09deff06c54b5510d34b49d269002cf400a06bc43",
+      "renders": false,
+      "why": "a real PDF, versus the one Pillow writes"
+    }
+  ]
+}

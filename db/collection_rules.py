@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 
 from . import facets as facets_module
+from . import naming
 
 #: What this build AUTHORS. Reading is wider: `_KNOWN_VERSIONS` -- a
 #: stored v1 rule keeps meaning exactly what it meant, and "versioned"
@@ -119,8 +119,16 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
         raise refuse(f"favorite is true, false or absent, not {rule.favorite!r}")
     if rule.rating_min is not None and (type(rule.rating_min) is not int or not 1 <= rule.rating_min <= 5):
         raise refuse(f"rating_min names the minimum stars, 1..5, not {rule.rating_min!r}")
-    if rule.take is not None and (type(rule.take) is not int or not 1 <= rule.take <= 10_000):
-        raise refuse(f"take must be 1..10000, not {rule.take!r}")
+    if rule.take is not None and (type(rule.take) is not int or rule.take < 1):
+        raise refuse(f"take is a rank to stop at, at least 1, not {rule.take!r}")
+    # No ceiling. `take` names the LAST RANK that belongs, and the rule
+    # is applied by slicing an ordered list (db/resultset.py
+    # `_rule_members`), so a number larger than the library costs
+    # nothing and means the only thing it can mean: all of them. The
+    # old 1..10000 bound refused questions it could have answered --
+    # against a 3,748-file library every number above 2,995 named the
+    # same set -- and it announced itself only by rejecting whatever a
+    # person had already typed.
     if rule.text is not None:
         if not isinstance(rule.text, str) or not rule.text.strip():
             raise refuse("a semantic rule's phrase must be a non-empty string")
@@ -141,11 +149,9 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
     return rule
 
 
-#: Exactly 32 hex characters by FULLMATCH -- bytes.fromhex skips ASCII
-#: whitespace, so a length check after decoding lets spaces hide inside
-#: a stored reference. The same lesson the selection-key parser already
-#: paid for; a durable format does not get to relearn it.
-_UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
+#: The one uuid spelling rule (db/naming.py, where the fullmatch lesson
+#: is recorded once instead of twice).
+_UUID_HEX = naming.UUID_HEX
 
 #: The durable vocabulary, EXACT per version: a stored rule carrying a
 #: key this build does not understand means something this build cannot

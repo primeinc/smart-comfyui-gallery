@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    "module": "preserve",
+    "moduleDetection": "force",
+    // The browser's types are the `lib` above and nothing else. Left unset,
+    // tsc includes every @types/* package in node_modules -- @types/node is
+    // installed for build.ts, and it silently redefined setTimeout to return
+    // NodeJS.Timeout in code that runs in a browser.
+    "types": [],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "noEmit": true,
+
+    "allowJs": false
+  },
+
+  // A *.test.ts is run by node, not bundled for a browser, so it is the
+  // node project's (tsconfig.node.json) -- same split, same reason.
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

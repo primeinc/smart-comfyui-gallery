@@ -24,10 +24,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import collection_rules, connect, context, facets, ingest, naming, resultset
-from tests.staging import Stage, staged
-
-NOW = 1_700_000_000.0
-HOUR = 3600.0
+from tests import retrieving
+from tests.staging import HOUR, NOW, Stage, staged
 
 
 def _library(root: pathlib.Path) -> None:
@@ -295,16 +293,29 @@ def test_a_changed_source_claim_deletes_the_interpretation(interpreted):
 
     # The FILESYSTEM seam: the file's times change on disk; the rescan
     # that records the new claim deletes the old interpretation.
-    os.utime(root / "gen_1.png", (NOW + 60 * HOUR, NOW + 60 * HOUR))
+    moved = root / "gen_1.png"
+    was = moved.stat()
+    os.utime(moved, (NOW + 60 * HOUR, NOW + 60 * HOUR))
     client.post("/roots/1/scan")
-    conn = _raw(client)
     try:
-        gone = conn.execute(
-            "SELECT count(*) FROM derived_media_context mc JOIN file f ON f.id = mc.file_id WHERE f.name = 'gen_1.png'"
-        ).fetchone()[0]
-        assert gone == 0, "a moved clock left its old interpretation standing"
+        conn = _raw(client)
+        try:
+            gone = conn.execute(
+                "SELECT count(*) FROM derived_media_context mc JOIN file f ON f.id = mc.file_id"
+                " WHERE f.name = 'gen_1.png'"
+            ).fetchone()[0]
+            assert gone == 0, "a moved clock left its old interpretation standing"
+        finally:
+            connect.close(conn)
     finally:
-        connect.close(conn)
+        # The clock goes back, because `Stage.restore` compares the
+        # library by (size, mtime) and rebuilds the whole world -- a
+        # fresh application, library, scan and interpretation -- when it
+        # differs. Left moved, this one line cost the NEXT test 0.28s
+        # against the 0.01s a restore costs. `utime` rewrites no bytes,
+        # so the file keeps its identity and the restored snapshot still
+        # describes it.
+        os.utime(moved, ns=(was.st_atime_ns, was.st_mtime_ns))
 
 
 # --- the typed facet registry -----------------------------------------------
@@ -371,12 +382,7 @@ def test_a_facet_rides_the_spelling_the_identity_and_the_semantic_gate(interpret
 
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             witnessed["allowed"] = None if allowed is None else set(allowed)
-            return {
-                "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in sorted(allowed or ())],
-                "participants": ["fake"],
-                "contributors": ["fake"],
-                "missing": {},
-            }
+            return retrieving.answered(sorted(allowed or ()))
 
         monkeypatch.setattr(retrieval, "query", fused)
         resultset.page(conn, "", resultset.parse(facets=["capture.iso:gte:800"], text="beach"), 1, NOW)

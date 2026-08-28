@@ -1,0 +1,37 @@
+{# What actually moved between two clusterings.
+
+   The counts on the panel above cannot answer this. "More groups" is
+   both what a threshold that split one person into four does and what a
+   threshold that stopped welding strangers together does, and they are
+   opposite outcomes. The only way to tell is the same photograph with
+   both answers on it. #}
+<h3>what changed</h3>
+<p class="operations-hint" data-compare="{{ left.id }}-{{ right.id }}">
+  run #{{ left.id }} @ {{ left.threshold }} <span class="muted">({{ left.clusters }} groups)</span>
+  &nbsp;against&nbsp;
+  run #{{ right.id }} @ {{ right.threshold }} <span class="muted">({{ right.clusters }} groups)</span>
+</p>
+{% if held.total %}
+<p class="operations-hint" data-compare-total="{{ held.total }}">
+  {{ held.total }} {{ "picture" if held.total == 1 else "pictures" }} described differently{% if held.shown < held.total %} &mdash; showing the first {{ held.shown }}{% endif %}.
+  Neither column is the truth: they are two answers, and the one you keep is whichever is right about your own pictures.
+</p>
+<table class="operations-compare">
+  <thead>
+    <tr><th>picture</th><th>run #{{ left.id }} says</th><th>run #{{ right.id }} says</th></tr>
+  </thead>
+  <tbody>
+    {% for one in held.pictures %}
+    <tr data-compare-picture="{{ one.id }}">
+      <td>{{ one.name }}</td>
+      {# An empty column is "this run names nobody here", which is a real
+         answer and a common one -- not a missing value. #}
+      <td>{% if one.left_says %}{{ one.left_says }}{% else %}<span class="muted">nobody</span>{% endif %}</td>
+      <td>{% if one.right_says %}{{ one.right_says }}{% else %}<span class="muted">nobody</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty" data-compare-total="0">these two name the same people in every picture &mdash; the thresholds differ and the answer does not.</p>
+{% endif %}

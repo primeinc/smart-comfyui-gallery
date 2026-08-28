@@ -10,10 +10,14 @@ Signatures:
     stealth_rgbinfo  rgb,   plain utf-8      stealth_rgbcomp  rgb,   gzip
 """
 
+from __future__ import annotations
+
 import gzip
 import logging
+import typing
 
-import numpy as np
+if typing.TYPE_CHECKING:
+    import numpy as np
 
 _logger = logging.getLogger(__name__)
 
@@ -24,6 +28,8 @@ _MAX_PAYLOAD_BITS = 64 * 1024 * 1024 * 8  # sanity cap: 64 MB
 
 
 def _bits_to_text(bits: np.ndarray, compressed: bool):
+    import numpy as np
+
     data = np.packbits(bits).tobytes()
     try:
         if compressed:
@@ -35,6 +41,8 @@ def _bits_to_text(bits: np.ndarray, compressed: bool):
 
 
 def _decode_channel(bits: np.ndarray, signatures: dict):
+    import numpy as np
+
     if bits.size < _SIG_LEN_BITS + 32:
         return None
     sig = np.packbits(bits[:_SIG_LEN_BITS]).tobytes().decode("utf-8", errors="ignore")
@@ -55,6 +63,11 @@ def read_stealth_metadata(img):
     """
     if img.mode not in ("RGBA", "RGB"):
         return None
+    # numpy is imported here, the way `av` is in db/probe.py: 78ms of
+    # import (-X importtime) that only a stealth-candidate image ever
+    # needs, and every app boot was paying it.
+    import numpy as np
+
     arr = np.asarray(img, dtype=np.uint8)
     if arr.ndim != 3:
         return None

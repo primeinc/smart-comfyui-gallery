@@ -12,9 +12,45 @@ taken that name.
 
 from __future__ import annotations
 
+import hashlib
 import math
+import re
 
 from .scan import mint, slugify
+
+#: Exactly 32 hex characters by FULLMATCH -- bytes.fromhex skips ASCII
+#: whitespace, so a length check after decoding lets spaces hide inside
+#: a 32-character spelling and decode to 15 bytes. The lesson was paid
+#: for and recorded twice (db/collection_rules.py, db/resultset.py)
+#: before the two copies became this one.
+UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
+
+#: A sha256's spelling. The bare pattern exists beside the compiled rule
+#: because sg_web/app.py embeds it inside a larger asset-name grammar;
+#: three modules stated the spelling independently.
+SHA256_HEX_PATTERN = "[0-9a-f]{64}"
+SHA256_HEX = re.compile(f"^{SHA256_HEX_PATTERN}$")
+
+#: How many hex characters a short identity hash keeps: 64 bits, wide
+#: enough that a library-sized set of identities has no collision worth
+#: naming. Seven modules cut the digest by hand; two other widths exist
+#: on purpose and are named at their sites (vision/semantic, db/ingest).
+SHORT_HASH_HEX = 16
+
+#: How many characters of a content hash a MESSAGE shows -- enough to
+#: find the file, short enough to read. Four surfaces cut this by hand.
+SHOWN_SHA_HEX = 12
+
+
+def short_hash(text: str) -> str:
+    """The short stable identity of a text: sha256 over its utf-8 bytes,
+    cut to SHORT_HASH_HEX characters."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:SHORT_HASH_HEX]
+
+
+def short_sha(sha: str) -> str:
+    """A content hash as a message shows it."""
+    return sha[:SHOWN_SHA_HEX]
 
 
 class SlugTaken(Exception):
@@ -30,10 +66,7 @@ def by_uuid(conn, uuid_hex: str) -> tuple[str, str] | None:
     """The CURRENT address of a portable identity: (kind, slug), or None
     when nothing holds that uuid any more. Address resolution only -- a
     frozen record keeps its own facts and asks here for a link."""
-    try:
-        raw = bytes.fromhex(uuid_hex) if len(uuid_hex) == 32 else None
-    except ValueError:
-        raw = None
+    raw = bytes.fromhex(uuid_hex) if UUID_HEX.fullmatch(uuid_hex) else None
     if raw is None:
         return None
     row = conn.execute("SELECT kind, slug FROM entity WHERE uuid = ?", (raw,)).fetchone()

@@ -1,0 +1,97 @@
+{
+  "what": "One file per generator adapter, written from the repository's writer ports.",
+  "why": "Six of eight dialects have no obtainable real specimen; see the module docstring.",
+  "not_evidence_of": "how a real installation of these tools writes today",
+  "files": [
+    {
+      "path": "dialects/a1111.png",
+      "writer": "a1111",
+      "sha256": "4d73e5945a63a3128eddf44c3970837955d850277b4edd9a377485fe9b2592da",
+      "bytes": 439,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/comfy.png",
+      "writer": "comfyui",
+      "sha256": "dce707be55292047a97a6d7eb0227818d3fe1f1197d45ab4bf768599da8fc094",
+      "bytes": 287,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": "comfyui/ -- comfyanonymous/ComfyUI_examples@f9431bb000ce"
+    },
+    {
+      "path": "dialects/drawthings.png",
+      "writer": "drawthings",
+      "sha256": "5a7e1ba7095ba247ce4b460acd2a46517ee9e0b9bdebaff2adeb8f33d2462b76",
+      "bytes": 627,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/easy.png",
+      "writer": "easydiffusion",
+      "sha256": "1eee37e50e39fda5a3302181b3ef984f69a60289b9e8cff5aab1b3fb03d85ad6",
+      "bytes": 376,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/fooocus.png",
+      "writer": "fooocus",
+      "sha256": "15fc426829019f0755ee6b1f9d55355fb464e03c5cfbf6576fd6241eab9da84a",
+      "bytes": 386,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/invoke.png",
+      "writer": "invokeai",
+      "sha256": "87db582b4da261f4d605b2bcac719575577e14abde147a7e1ec755018cdc90cd",
+      "bytes": 382,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/novel.png",
+      "writer": "novelai",
+      "sha256": "58a3e8f58ce9b121cf5b1d591b3701594ea430f59d0afa1f47cd0e767512e0a1",
+      "bytes": 242,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/stealth.png",
+      "writer": "stealth",
+      "sha256": "9749c6d2d1ceed6cf8fbabb123488a7a1371132b77307aa9bb4ec40a9f5c6e77",
+      "bytes": 954,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": ""
+    },
+    {
+      "path": "dialects/swarm.png",
+      "writer": "swarmui",
+      "sha256": "d8b616cffbdd65eb55df39be3ebac0eeebc564d01dd0ee557b5a5b3143729a48",
+      "bytes": 535,
+      "kind": "generated",
+      "origin": "written from tests/test_metadata_lands_in_the_schema.py WRITERS",
+      "derived_from": "the repository's port of that writer's own format",
+      "real_file_also_covers": "swarm/, swarm-i2i/ -- this machine's SwarmUI output"
+    }
+  ]
+}

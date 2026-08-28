@@ -23,13 +23,9 @@ import pytest
 from PIL import Image
 
 from db import connect, context, ingest, pages, runner, stories
-from tests.staging import Stage, staged
+from tests.staging import DAY, HOUR, JUNE_10, NOW, Stage, staged
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
-DAY = 86400.0
-JUNE_10 = 1_686_355_200.0  # 2023-06-10 00:00 as a wall clock
 
 
 def _instant(wall: float) -> float:
@@ -241,7 +237,7 @@ def test_the_page_is_the_surface_and_nothing_beside_it(surfaced):
     page = surfaced.get("/timeline", headers={"accept": "text/html"})
     assert page.status_code == 200
     assert "data-surface" in page.text
-    assert "/static/timeline.js" in page.text
+    assert "/static/build/timeline.js" in page.text
     assert "data-overview" in page.text
     assert "data-timeline-day" not in page.text
     assert "data-timeline-month" not in page.text
@@ -359,7 +355,11 @@ def test_the_page_the_fragment_and_the_machine_answer_are_one_surface(surfaced):
     import html
 
     for bar in told["bins"]:
-        assert f'data-bin-at="{bar["at"]}"' in fragment
+        # the attribute is spelled the way the window its own link opens is
+        # spelled -- whole seconds; the contract carries the moment as a
+        # number, and the two must not disagree about the same bar
+        assert f'data-bin-at="{int(bar["at"])}"' in fragment
+        assert f"start={int(bar['at'])}" in bar["href"] or "context.moment" in bar["href"]
         assert html.escape(bar["href"], quote=False) in fragment
     assert "too many" not in page
     # a window the URL names is the window the page shows, at the zoom its width earns

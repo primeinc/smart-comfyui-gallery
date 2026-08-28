@@ -1,39 +1,12 @@
+{# The container adapter for the mounted gallery: the SAME viewer over a
+   grid that stays where it was. What differs from the page is the dialog
+   around it and the concurrency evidence the overlay shell compares
+   (data-currency / data-answer, frontend/src/overlay.ts) -- never what the
+   viewer can do. #}
 <div class="lightbox" data-lightbox data-slug="{{ item.slug }}"
      data-currency="{{ item.context.currency or '' }}"
      data-answer="{{ item.context.answer or '' }}"
      data-return="{{ item.context.return_url }}"
      role="dialog" aria-label="{{ item.name }}">
-  <button class="lightbox-close" data-close aria-label="close">&times;</button>
-  <figure class="lightbox-media">
-    {% if item.kind == "video" %}
-    <video src="/media/{{ item.slug }}" controls autoplay playsinline></video>
-    {% elif item.kind == "animated_image" %}
-    <img src="/media/{{ item.slug }}" alt="{{ item.name }}">
-    {% elif item.kind == "image" %}
-    <img src="/preview/{{ item.slug }}" alt="{{ item.name }}">
-    {% elif item.kind == "audio" %}
-    <audio src="/media/{{ item.slug }}" controls autoplay></audio>
-    {% else %}
-    <a href="/media/{{ item.slug }}">download {{ item.name }}</a>
-    {% endif %}
-  </figure>
-  <div class="lightbox-bar">
-    {% if item.previous %}
-    <a data-nav="previous" rel="prev"
-       href="/i/{{ item.previous }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&larr;</a>
-    {% else %}<span class="lightbox-end">&larr;</span>{% endif %}
-    <span class="lightbox-label">
-      {{ item.name }}{% if item.context.in_answer %} &middot; {{ item.context.ordinal }} of {{ item.context.total }}{% endif %}
-      &middot; <a data-full href="/i/{{ item.slug }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">open page</a>
-      {% if item.when %}&middot; <a data-lightbox-day href="/g?{{ item.when.day_qs }}" title="every picture from this day, in time order">{{ item.when.local_day }}</a>{% endif %}
-      {% if item.where %}&middot; <a class="lightbox-where" data-lightbox-where href="/g?{{ item.where.qs }}" title="everything {{ 'in' if item.where.kind != 'poi' else 'at' }} {{ item.where.name }}">in {{ item.where.name }}</a>{% endif %}
-      {% if item.faces.people %}&middot; <span class="lightbox-people" data-lightbox-people>with {% for who in item.faces.people %}<a href="{{ who.href }}">{{ who.name or who.slug }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
-      {% if item.said_first %}&middot; <span class="lightbox-said" data-lightbox-said>&ldquo;{{ item.said_first }}&rdquo;</span>{% endif %}
-    </span>
-    {% if item.next %}
-    <a data-nav="next" rel="next"
-       href="/i/{{ item.next }}{% if item.context.qs %}?{{ item.context.qs }}{% endif %}">&rarr;</a>
-    {% else %}<span class="lightbox-end">&rarr;</span>{% endif %}
-  </div>
-  {% include "_media_authored.html" %}
+  {% include "_media_viewer.html" %}
 </div>

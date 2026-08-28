@@ -1,0 +1,33 @@
+{
+  "id": "/g",
+  "name": "SmartGallery",
+  "short_name": "SmartGallery",
+  "description": "Your ComfyUI output library: browse, search, and curate every generated picture, with the workflow that made each one.",
+  "start_url": "/g",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "theme_color": "#14151a",
+  "background_color": "#14151a",
+  "icons": [
+    { "src": "/static/pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/pwa/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/pwa/screenshot-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "The gallery grid on a phone"
+    },
+    {
+      "src": "/static/pwa/screenshot-wide.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "The gallery grid on a desktop"
+    }
+  ]
+}

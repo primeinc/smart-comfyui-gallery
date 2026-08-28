@@ -36,22 +36,35 @@ from jinja2 import pass_context
 from db import connect, jobs
 from sg_web import console
 
-TERMINAL = ("done", "failed", "cancelled")
+#: How many settled jobs the cold list carries -- db/jobs.py RECENT,
+#: which sits beside the read it bounds.
+RECENT = jobs.RECENT
 
-#: How many settled jobs the cold list carries beside the active ones.
-RECENT = 12
 
-
-def _view(id_: int, kind: str, state: str, done: int, total: int | None, cancel_requested: int, derive=None) -> dict:
+def _view(
+    id_: int,
+    kind: str,
+    state: str,
+    done: int,
+    total: int | None,
+    cancel_requested: int,
+    derive=None,
+    where=None,
+    doing: str | None = None,
+) -> dict:
     return {
         "id": id_,
         "kind": kind,
-        "what": console.describe_kind(kind, derive),
+        "what": console.describe_kind(kind, derive, total, where),
         "state": state,
         "done": done,
         "total": total,
-        "cancelling": bool(cancel_requested) and state not in TERMINAL,
-        "settled": state in TERMINAL,
+        #: the phase the running item is inside (db/runner.py `sounded`)
+        #: -- live deltas only; a cold row cannot know it, because pending
+        #: reports reach the ledger at the item boundary, not before
+        "doing": doing,
+        "cancelling": bool(cancel_requested) and state not in jobs.TERMINAL,
+        "settled": state in jobs.TERMINAL,
     }
 
 
@@ -65,6 +78,7 @@ def row_view(row: Mapping[str, Any]) -> dict:
         row["total"],
         row["cancel_requested"],
         row.get("derive"),
+        row.get("path"),
     )
 
 
@@ -80,6 +94,8 @@ def delta_view(delta: Mapping[str, Any]) -> dict:
         delta["total"],
         delta.get("cancel_requested", 0),
         delta.get("derive"),
+        delta.get("path"),
+        delta.get("doing"),
     )
 
 

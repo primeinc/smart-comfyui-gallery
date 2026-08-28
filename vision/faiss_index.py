@@ -284,12 +284,12 @@ class IndexManager:
                 "snapshot %s refused: %s holds a %s, not an id-mapped index", spec.key, index_path, type(index).__name__
             )
             return False
-        if int(index.ntotal) != sidecar.get("vectors"):
+        if index.ntotal != sidecar.get("vectors"):
             _logger.warning(
                 "snapshot %s refused: %s holds %d vectors, sidecar counts %r",
                 spec.key,
                 index_path,
-                int(index.ntotal),
+                index.ntotal,
                 sidecar.get("vectors"),
             )
             return False
@@ -449,20 +449,20 @@ class IndexManager:
             if space.spec.representation == "binary":
                 packed = _signed_to_packed(queries, space.spec.dimensions)
                 self._served[key] = "faiss-cpu"
-                distances, labels = space.index.search(packed, int(k))
+                distances, labels = space.index.search(packed, k)
                 return labels, distances
             unit = _unit(queries)
-            device = self._device_for(space) if int(k) <= GPU_MAX_K else None
+            device = self._device_for(space) if k <= GPU_MAX_K else None
             if device is not None:
                 with self._gpu_lock:
-                    scores, positions = device.search(unit, int(k))
+                    scores, positions = device.search(unit, k)
                 held = self.ids(key)
                 labels = held[positions.clip(min=0)]
                 labels[positions < 0] = -1
                 self._served[key] = "faiss-gpu"
                 return labels, scores
             self._served[key] = "faiss-cpu"
-            scores, labels = space.index.search(unit, int(k))
+            scores, labels = space.index.search(unit, k)
             return labels, scores
 
     def range(self, key: str, radius, queries=None):

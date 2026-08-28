@@ -1,0 +1,392 @@
+{
+  "what": "One file per container the application claims and no real source in this corpus writes.",
+  "written_by": "Pillow and FFmpeg, through PyAV",
+  "not_evidence_of": "how a camera or a phone writes this container",
+  "files": [
+    {
+      "path": "encoded/encoded.tiff",
+      "suffix": ".tiff",
+      "kind": "image",
+      "bytes": 18572,
+      "sha256": "7fc8d78a34c7869be0884edd664993991fdeac7c2551882fad7c50ea08377bf0",
+      "written_by": "Pillow TIFF"
+    },
+    {
+      "path": "encoded/encoded.dib",
+      "suffix": ".dib",
+      "kind": "image",
+      "bytes": 18486,
+      "sha256": "b7b4fa976d2fd948ed158efe2e9c69d26f966950f52467d06f9b66d8fa63696e",
+      "written_by": "Pillow BMP"
+    },
+    {
+      "path": "encoded/encoded.jfif",
+      "suffix": ".jfif",
+      "kind": "image",
+      "bytes": 1094,
+      "sha256": "88e3d62c25dc41b2146894d93b9811d9026a53e889991e201e89f5d098338f06",
+      "written_by": "Pillow JPEG"
+    },
+    {
+      "path": "encoded/encoded.jif",
+      "suffix": ".jif",
+      "kind": "image",
+      "bytes": 1094,
+      "sha256": "88e3d62c25dc41b2146894d93b9811d9026a53e889991e201e89f5d098338f06",
+      "written_by": "Pillow JPEG"
+    },
+    {
+      "path": "encoded/encoded.jpe",
+      "suffix": ".jpe",
+      "kind": "image",
+      "bytes": 1094,
+      "sha256": "88e3d62c25dc41b2146894d93b9811d9026a53e889991e201e89f5d098338f06",
+      "written_by": "Pillow JPEG"
+    },
+    {
+      "path": "encoded/encoded.j2k",
+      "suffix": ".j2k",
+      "kind": "image",
+      "bytes": 336,
+      "sha256": "fda0c663548059e58e86551624919491324a0244b4126e4fd25f1b97bd94f803",
+      "written_by": "Pillow JPEG2000"
+    },
+    {
+      "path": "encoded/encoded.jpf",
+      "suffix": ".jpf",
+      "kind": "image",
+      "bytes": 421,
+      "sha256": "bbaf439f3a62a9e5f5cb960e657da95ebf07ee83025c357e269c64c739bcbdca",
+      "written_by": "Pillow JPEG2000"
+    },
+    {
+      "path": "encoded/encoded.jpx",
+      "suffix": ".jpx",
+      "kind": "image",
+      "bytes": 421,
+      "sha256": "bbaf439f3a62a9e5f5cb960e657da95ebf07ee83025c357e269c64c739bcbdca",
+      "written_by": "Pillow JPEG2000"
+    },
+    {
+      "path": "encoded/encoded.avif",
+      "suffix": ".avif",
+      "kind": "image",
+      "bytes": 456,
+      "sha256": "0d887af2908944a7cdfba6ca0f3a0315230d3747ca3eccdc7e5a0d77c0074975",
+      "written_by": "Pillow AVIF"
+    },
+    {
+      "path": "encoded/encoded.heif",
+      "suffix": ".heif",
+      "kind": "image",
+      "bytes": 510,
+      "sha256": "8d240a47d5d198dd5d7d5f38decf9e3900a80797f560beff38b8312e5774d0bc",
+      "written_by": "Pillow HEIF"
+    },
+    {
+      "path": "encoded/encoded.heics",
+      "suffix": ".heics",
+      "kind": "image",
+      "bytes": 510,
+      "sha256": "8d240a47d5d198dd5d7d5f38decf9e3900a80797f560beff38b8312e5774d0bc",
+      "written_by": "Pillow HEIF"
+    },
+    {
+      "path": "encoded/encoded.heifs",
+      "suffix": ".heifs",
+      "kind": "image",
+      "bytes": 510,
+      "sha256": "8d240a47d5d198dd5d7d5f38decf9e3900a80797f560beff38b8312e5774d0bc",
+      "written_by": "Pillow HEIF"
+    },
+    {
+      "path": "encoded/encoded.hif",
+      "suffix": ".hif",
+      "kind": "image",
+      "bytes": 510,
+      "sha256": "8d240a47d5d198dd5d7d5f38decf9e3900a80797f560beff38b8312e5774d0bc",
+      "written_by": "Pillow HEIF"
+    },
+    {
+      "path": "encoded/encoded.jxl",
+      "suffix": ".jxl",
+      "kind": "image",
+      "bytes": 360,
+      "sha256": "fbef393329ae57315592d42b3bd38c9a45b44d8e182045e7930ae6b26fe1068d",
+      "written_by": "Pillow JXL"
+    },
+    {
+      "path": "encoded/encoded.apng",
+      "suffix": ".apng",
+      "kind": "animated_image",
+      "bytes": 684,
+      "sha256": "57f026f80af1c5232b821b58546bd179004ac1f59b950507ea562e824d3578b4",
+      "written_by": "Pillow PNG, 3 frames"
+    },
+    {
+      "path": "encoded/encoded.mpo",
+      "suffix": ".mpo",
+      "kind": "image",
+      "bytes": 1556,
+      "sha256": "678b2e3c26e4c09d47f541d391639c76b31506798ad9d9f23cdbbfff42e7ab6d",
+      "written_by": "Pillow MPO, 2 images"
+    },
+    {
+      "path": "encoded/encoded.webm",
+      "suffix": ".webm",
+      "kind": "video",
+      "bytes": 634,
+      "sha256": "4da8a2bf61b7b616faad9237de25ea4f5301c13d147d6088a77bf2da37406bda",
+      "written_by": "FFmpeg webm/libvpx-vp9"
+    },
+    {
+      "path": "encoded/encoded.mpeg",
+      "suffix": ".mpeg",
+      "kind": "video",
+      "bytes": 2048,
+      "sha256": "523d935b6e44be2aaf95fadeb7cd6afc3a5842dffd9357b86dcaa715be229100",
+      "written_by": "FFmpeg mpeg/mpeg1video"
+    },
+    {
+      "path": "encoded/encoded.mpg",
+      "suffix": ".mpg",
+      "kind": "video",
+      "bytes": 2048,
+      "sha256": "523d935b6e44be2aaf95fadeb7cd6afc3a5842dffd9357b86dcaa715be229100",
+      "written_by": "FFmpeg mpeg/mpeg1video"
+    },
+    {
+      "path": "encoded/encoded.mpe",
+      "suffix": ".mpe",
+      "kind": "video",
+      "bytes": 2048,
+      "sha256": "523d935b6e44be2aaf95fadeb7cd6afc3a5842dffd9357b86dcaa715be229100",
+      "written_by": "FFmpeg mpeg/mpeg1video"
+    },
+    {
+      "path": "encoded/encoded.m2v",
+      "suffix": ".m2v",
+      "kind": "video",
+      "bytes": 970,
+      "sha256": "4f6658e44d88aa319abe5f03e05b4fdf99cbabc0cb8414ddb48b7b81ef6006b8",
+      "written_by": "FFmpeg mpeg2video/mpeg2video"
+    },
+    {
+      "path": "encoded/encoded.ts",
+      "suffix": ".ts",
+      "kind": "video",
+      "bytes": 3196,
+      "sha256": "8097c7667061ed0fe7c7c526eb98152f4fa15ce5538b1d96d77460b2e8a26a73",
+      "written_by": "FFmpeg mpegts/mpeg2video"
+    },
+    {
+      "path": "encoded/encoded.m2t",
+      "suffix": ".m2t",
+      "kind": "video",
+      "bytes": 3196,
+      "sha256": "8097c7667061ed0fe7c7c526eb98152f4fa15ce5538b1d96d77460b2e8a26a73",
+      "written_by": "FFmpeg mpegts/mpeg2video"
+    },
+    {
+      "path": "encoded/encoded.m2ts",
+      "suffix": ".m2ts",
+      "kind": "video",
+      "bytes": 6144,
+      "sha256": "4523150299c2103dae79e8fea26941f162643085778ebe82670ccd05e240900f",
+      "written_by": "FFmpeg mpegts/mpeg2video"
+    },
+    {
+      "path": "encoded/encoded.vob",
+      "suffix": ".vob",
+      "kind": "video",
+      "bytes": 2048,
+      "sha256": "bcde1c2cc263e3f7afc8298464be6c26cd8efc06225dd40d1c300b04caf347a4",
+      "written_by": "FFmpeg mpeg/mpeg2video"
+    },
+    {
+      "path": "encoded/encoded.3gp",
+      "suffix": ".3gp",
+      "kind": "video",
+      "bytes": 1339,
+      "sha256": "aace7d59c8fd9229454097098a7611e5dee75d5c98c1ec16ffbc885612de8714",
+      "written_by": "FFmpeg 3gp/mpeg4"
+    },
+    {
+      "path": "encoded/encoded.3gpp",
+      "suffix": ".3gpp",
+      "kind": "video",
+      "bytes": 1339,
+      "sha256": "aace7d59c8fd9229454097098a7611e5dee75d5c98c1ec16ffbc885612de8714",
+      "written_by": "FFmpeg 3gp/mpeg4"
+    },
+    {
+      "path": "encoded/encoded.m4v",
+      "suffix": ".m4v",
+      "kind": "video",
+      "bytes": 1457,
+      "sha256": "51f8bfb2af75f8c436fa1b8f8d2e0a0338d577935f6cb6de18f739912f206cb8",
+      "written_by": "FFmpeg mp4/mpeg4"
+    },
+    {
+      "path": "encoded/encoded.asf",
+      "suffix": ".asf",
+      "kind": "video",
+      "bytes": 3821,
+      "sha256": "9af5beea2cb784b2ffce4c0d6334a29b8380c37049ad024096ccdb48b9a15eed",
+      "written_by": "FFmpeg asf/msmpeg4v3"
+    },
+    {
+      "path": "encoded/encoded.f4v",
+      "suffix": ".f4v",
+      "kind": "video",
+      "bytes": 1310,
+      "sha256": "0c59bbd5fca13a806f051ae6cc84a1e04f4734c85974f3ff2c432b2de35222ab",
+      "written_by": "FFmpeg flv/flv"
+    },
+    {
+      "path": "encoded/encoded.mjpeg",
+      "suffix": ".mjpeg",
+      "kind": "video",
+      "bytes": 3956,
+      "sha256": "b9ee2d9fa5c9a0f5296e7392cd7092638678d19a0e1aee2d0ed84dcdabbea81d",
+      "written_by": "FFmpeg mjpeg/mjpeg"
+    },
+    {
+      "path": "encoded/encoded.mjpg",
+      "suffix": ".mjpg",
+      "kind": "video",
+      "bytes": 3956,
+      "sha256": "b9ee2d9fa5c9a0f5296e7392cd7092638678d19a0e1aee2d0ed84dcdabbea81d",
+      "written_by": "FFmpeg mjpeg/mjpeg"
+    },
+    {
+      "path": "encoded/encoded.ogv",
+      "suffix": ".ogv",
+      "kind": "video",
+      "bytes": 441,
+      "sha256": "4137762e14b08d5d15bf3c02fd6788fc0cfb9fd876d89f9beb559bcdb05113a9",
+      "written_by": "FFmpeg ogv/libvpx"
+    },
+    {
+      "path": "encoded/encoded.ogm",
+      "suffix": ".ogm",
+      "kind": "video",
+      "bytes": 441,
+      "sha256": "2d9dd33acc5de6170c419bb052c1c838016fdd11d6692a2a06d5e927107115be",
+      "written_by": "FFmpeg ogg/libvpx"
+    },
+    {
+      "path": "encoded/encoded.qt",
+      "suffix": ".qt",
+      "kind": "video",
+      "bytes": 1408,
+      "sha256": "c8f64d2b0630680ba5439fed548ae4b743505c23de681190031bd2e1c1c4e5f1",
+      "written_by": "FFmpeg mov/mpeg4"
+    },
+    {
+      "path": "encoded/encoded.divx",
+      "suffix": ".divx",
+      "kind": "video",
+      "bytes": 6690,
+      "sha256": "3d58e53cbe39e054329d57d5b85724eb8960cf43dd439a27a9fdca2bc28d740a",
+      "written_by": "FFmpeg avi/mpeg4"
+    },
+    {
+      "path": "encoded/encoded.rmvb",
+      "suffix": ".rmvb",
+      "kind": "video",
+      "bytes": 1326,
+      "sha256": "283857f23521195405b32f9d8d08ade604227e506f66e76eb9945cead5a602dc",
+      "written_by": "FFmpeg rm/rv10"
+    },
+    {
+      "path": "encoded/encoded.mkv",
+      "suffix": ".mkv",
+      "kind": "video",
+      "bytes": 1284,
+      "sha256": "8a077726d9358f7a56151fb75014a6b3da6d241cde512b5c6fcbde7bc14abfeb",
+      "written_by": "FFmpeg matroska/mpeg4"
+    },
+    {
+      "path": "encoded/encoded.rm",
+      "suffix": ".rm",
+      "kind": "video",
+      "bytes": 1326,
+      "sha256": "283857f23521195405b32f9d8d08ade604227e506f66e76eb9945cead5a602dc",
+      "written_by": "FFmpeg rm/rv10"
+    },
+    {
+      "path": "encoded/encoded.wmv",
+      "suffix": ".wmv",
+      "kind": "video",
+      "bytes": 3821,
+      "sha256": "9af5beea2cb784b2ffce4c0d6334a29b8380c37049ad024096ccdb48b9a15eed",
+      "written_by": "FFmpeg asf/msmpeg4v3"
+    },
+    {
+      "path": "encoded/encoded.aiff",
+      "suffix": ".aiff",
+      "kind": "audio",
+      "bytes": 176454,
+      "sha256": "e30143d257b08206bdeb6c2d53166114d8c0d02dedab7d8c6b58bf7a8eb47cfe",
+      "written_by": "FFmpeg aiff/pcm_s16be"
+    },
+    {
+      "path": "encoded/encoded.au",
+      "suffix": ".au",
+      "kind": "audio",
+      "bytes": 176432,
+      "sha256": "f430d073ce6a46fdaabaa5eadb39738fd088b13c6bd29ccf7075630112c39a63",
+      "written_by": "FFmpeg au/pcm_s16be"
+    },
+    {
+      "path": "encoded/encoded.caf",
+      "suffix": ".caf",
+      "kind": "audio",
+      "bytes": 176530,
+      "sha256": "0d066a96f824d43552b0286b5d8a26e18b1ce79f8b36635a2186c25eb09666a4",
+      "written_by": "FFmpeg caf/pcm_s16le"
+    },
+    {
+      "path": "encoded/encoded.mka",
+      "suffix": ".mka",
+      "kind": "audio",
+      "bytes": 17546,
+      "sha256": "66e5642380854cf5647ef2f14c2538ff3de72426ab2988e9180727c86e18acd3",
+      "written_by": "FFmpeg matroska/libmp3lame"
+    },
+    {
+      "path": "encoded/encoded.mp2",
+      "suffix": ".mp2",
+      "kind": "audio",
+      "bytes": 48901,
+      "sha256": "c079f68f4c80b38223a3fd2db1f9f1a35fdecb551677ccf858e5856f23ab9277",
+      "written_by": "FFmpeg mp2/mp2"
+    },
+    {
+      "path": "encoded/encoded.oga",
+      "suffix": ".oga",
+      "kind": "audio",
+      "bytes": 15374,
+      "sha256": "4ab9904a448ec712b1e9c8c1d899ea37460c896999677825c0abf5cfea5300f7",
+      "written_by": "FFmpeg ogg/libopus"
+    },
+    {
+      "path": "encoded/encoded.weba",
+      "suffix": ".weba",
+      "kind": "audio",
+      "bytes": 15953,
+      "sha256": "133ac5a534d5cd7a2403bf7f01dd2b7d47d51023ca2fd867a2fa1d1511ec52bb",
+      "written_by": "FFmpeg webm/libopus"
+    },
+    {
+      "path": "encoded/encoded.wma",
+      "suffix": ".wma",
+      "kind": "audio",
+      "bytes": 19744,
+      "sha256": "9ec4d9a0c71be1554ddb708a8a33d5138a55ed9f4e4cfcd78b0256b267540f03",
+      "written_by": "FFmpeg asf/wmav2"
+    }
+  ],
+  "trouble": []
+}

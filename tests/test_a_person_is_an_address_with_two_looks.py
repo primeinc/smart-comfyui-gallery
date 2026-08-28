@@ -17,6 +17,7 @@ import pytest
 from PIL import Image
 
 from db import authored, collections, connect, derived, naming
+from tests import retrieving
 from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -188,7 +189,9 @@ def test_the_wildcard_machine_caller_keeps_its_json(faces):
     assert told.json() == faces.get("/p/ana", headers=AS_MACHINE).json()
     index = faces.get("/people")
     assert index.headers["content-type"].startswith("application/json")
-    assert index.json() == [{"name": "Ana", "slug": "ana", "pictures": 2, "first_seen": None, "last_seen": None}]
+    assert index.json() == [
+        {"name": "Ana", "slug": "ana", "pictures": 2, "avatar": "/avatar/ana", "first_seen": None, "last_seen": None}
+    ]
 
 
 def test_the_people_index_renders_for_a_browser(faces):
@@ -197,6 +200,24 @@ def test_the_people_index_renders_for_a_browser(faces):
     assert 'data-person="ana"' in page.text
     assert "/avatar/ana" in page.text
     assert "2 pictures" in page.text
+
+
+def test_named_people_stand_before_the_naming_queue(faces):
+    """A run mints one placeholder per group nobody has named -- often
+    dozens -- and a queue of strangers must not bury the people somebody
+    HAS named: the named grid renders first, who-is-this after."""
+    conn = connect.connect(faces.app.state.db_path)
+    run_id = conn.execute("SELECT id FROM derived_face_run WHERE is_primary = 1").fetchone()[0]
+    files = {name: fid for fid, name in conn.execute("SELECT id, name FROM file")}
+    minted = naming.claim(conn, "person", "")
+    conn.execute("INSERT INTO person(id, name, created_at) VALUES(?, NULL, 0)", (minted,))
+    derived.attribute(conn, files["ben_1.png"], minted, run_id, "test/embedder", "1")
+    conn.commit()
+    connect.close(conn)
+    page = faces.get("/people", headers=AS_BROWSER).text
+    assert "data-people" in page
+    assert "data-unknown-faces" in page
+    assert page.index("data-people") < page.index("data-unknown-faces")
 
 
 def test_naming_still_mints_the_new_address(faces):
@@ -330,8 +351,8 @@ def test_an_item_under_the_person_context_walks_the_person(faces):
     walked = faces.get(f"/i/{first}", params={"person": "ana"}).json()
 
     assert walked["context"]["total"] == 2
-    assert walked["next"] == second
-    assert walked["previous"] is None
+    assert walked["context"]["next"] == second
+    assert walked["context"]["previous"] is None
     assert walked["context"]["return_url"] == "/g?person=ana"
 
 
@@ -356,7 +377,7 @@ def test_a_person_phrase_constrains_each_space_before_fusion(faces, monkeypatch)
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         seen.update({"allowed": allowed, "k": k})
-        return {"results": [], "participants": [], "contributors": [], "missing": {}}
+        return retrieving.answered([], participants=[], contributors=[])
 
     monkeypatch.setattr(retrieval, "query", fused)
     try:
@@ -514,7 +535,11 @@ def test_the_cluster_job_mints_a_person_for_an_unnamed_group(faces):
     people = client.get("/people").json()
     assert len(people) == 1, "one group of two faces; the singleton stays a face"
     minted = people[0]
-    assert minted["name"] == "(unnamed)"
+    # NULL, not the string "(unnamed)". The index used to coalesce, which
+    # made a placeholder indistinguishable from somebody actually named
+    # that -- and left the page unable to tell which of its cards are the
+    # work still to do.
+    assert minted["name"] is None
     assert minted["slug"].startswith("person-"), "an unnamed person is still addressable"
     assert minted["pictures"] == 2
 
@@ -564,7 +589,17 @@ def test_a_human_name_survives_the_apps_own_recluster(named_placeholder, faces):
 
     people = faces.get("/people").json()
     assert people == [
-        {"name": "Ana Torres", "slug": "ana-torres", "pictures": 2, "first_seen": None, "last_seen": None}
+        {
+            "name": "Ana Torres",
+            "slug": "ana-torres",
+            "pictures": 2,
+            # Where their face is, or null: the route 404s for a person
+            # nothing has clustered one for, so the page asks before it
+            # points rather than drawing a broken image.
+            "avatar": "/avatar/ana-torres",
+            "first_seen": None,
+            "last_seen": None,
+        }
     ], f"the application's own re-cluster lost the name the application accepted: {people}"
     assert len(faces.get("/p/ana-torres").json()["pictures"]) == 2
 
@@ -574,7 +609,14 @@ def test_a_human_name_survives_the_apps_own_recluster(named_placeholder, faces):
 
 def test_the_cluster_job_runs_every_embedding_space(faces):
     """The job mints addressable people for EVERY space's run, though
-    only one run is primary."""
+    only one run is primary.
+
+    ONE item, both spaces. They used to be one item each, enumerated at
+    submit -- which is right for a job somebody presses on its own and
+    wrong for a step in a chain: queued behind face detection, the
+    spaces do not exist yet, so it queued zero items and settled `done`
+    having clustered nothing. The spaces are found when the item runs.
+    """
     _second_space(faces, ("ana_1.png", "ana_2.png"), seed=9, box=0.6)
 
     with faces.websocket_connect("/ws/jobs") as feed:
@@ -584,7 +626,7 @@ def test_the_cluster_job_runs_every_embedding_space(faces):
         while state not in ("done", "failed", "cancelled"):
             state = feed.receive_json(timeout=10)["state"]
 
-    assert job["total"] == 2, "two embedding spaces, two items"
+    assert job["total"] == 1, "the spaces are found when the item runs, so there is one item"
     assert state == "done"
     conn = connect.connect(faces.app.state.db_path)
     try:
@@ -1059,7 +1101,7 @@ def test_the_gallery_chips_the_person_scope_too(faces):
     assert 'data-chip="kind=image"' in page
     import re
 
-    removes = dict(re.findall(r'data-chip="([^"]+)">[^<]*<a href="([^"]+)"', page))
+    removes = dict(re.findall(r'data-chip="([^"]+)"[\s\S]*?<a href="([^"]+)"[^>]*data-chip-remove', page))
     assert removes["person=ana"] == "/g?kind=image"
     assert removes["kind=image"] == "/g?person=ana"
 

@@ -32,6 +32,7 @@ import pytest
 from PIL import Image
 
 from db import authored, collection_rules, collections, connect, naming, resultset
+from tests import retrieving
 from tests.staging import Stage, staged
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
@@ -72,15 +73,42 @@ def _view(client, slug: str) -> dict:
     return told.json()
 
 
+def _picker(page: str) -> str:
+    """The parent `<select>` out of a rendered collection page.
+
+    The moves the database would allow are a page fact and no machine is
+    offered them, so the page is what the offer is read from.
+    """
+    held = page[page.index('<select name="parent">') :]
+    return held[: held.index("</select>")]
+
+
 def _raw(client) -> sqlite3.Connection:
     return connect.connect(client.app.state.db_path)
 
 
 def _made(client, path: str, **body) -> dict:
-    """A collection created as Arrange: the write must succeed."""
+    """A collection created as Arrange: the write must succeed.
+
+    A write answers with the address and the definition's next revision,
+    and the document is read back from that address. Asserting on what a
+    write ECHOED never proved it was stored; asserting on what the address
+    serves afterwards does.
+    """
     told = client.post(path, json=body)
     assert told.status_code == 201, told.text
-    return told.json()
+    answer = told.json()
+    assert set(answer) == {"slug", "definition_rev"}, answer
+    return _view(client, answer["slug"])
+
+
+def _wrote(client, method: str, path: str, **body) -> dict:
+    """A lifecycle write, then the collection it left behind."""
+    told = getattr(client, method)(path, json=body)
+    assert told.status_code < 300, told.text
+    answer = told.json()
+    assert set(answer) == {"slug", "definition_rev"}, answer
+    return _view(client, answer["slug"])
 
 
 def _slugs(client, **params) -> list[str]:
@@ -181,7 +209,8 @@ def test_creation_answers_the_authoritative_view_with_authored_fields_normalized
     )
 
     assert made.status_code == 201
-    body = made.json()
+    assert made.json()["slug"] == "portfolio", "the name is normalized before it becomes an address"
+    body = _view(curated, "portfolio")
     assert (body["name"], body["kind"], body["slug"]) == ("Portfolio", "flag", "portfolio")
     assert body["color"] == "#7c3aed", "one stored spelling, lowercased"
     assert body["description"] == "keepers", "whitespace is not authored state"
@@ -191,10 +220,9 @@ def test_creation_answers_the_authoritative_view_with_authored_fields_normalized
 def test_a_collection_can_be_created_with_a_parent(curated):
     _made(curated, "/albums", name="Portfolio")
 
-    child = curated.post("/albums", json={"name": "Homepage", "parent": "portfolio"})
+    child = _made(curated, "/albums", name="Homepage", parent="portfolio")
 
-    assert child.status_code == 201
-    assert child.json()["parent"] == "portfolio"
+    assert child["parent"] == "portfolio"
 
 
 def test_creation_refuses_a_blank_name(curated):
@@ -225,10 +253,8 @@ def test_a_refused_smart_collection_leaves_no_entity_behind(curated):
 
 
 def test_rename_is_one_operation_with_a_permanent_forwarding_address(curated, keepers):
-    told = curated.patch(f"/t/{keepers}", json={"name": "Best Keepers", "expected_rev": 1})
+    body = _wrote(curated, "patch", f"/t/{keepers}", name="Best Keepers", expected_rev=1)
 
-    assert told.status_code == 200, told.text
-    body = told.json()
     assert (body["slug"], body["name"], body["definition_rev"]) == ("best-keepers", "Best Keepers", 2)
     moved = curated.get("/t/keepers", follow_redirects=False)
     assert (moved.status_code, moved.headers["location"]) == (301, "/t/best-keepers")
@@ -236,21 +262,19 @@ def test_rename_is_one_operation_with_a_permanent_forwarding_address(curated, ke
 
 
 def test_description_and_color_are_desired_facts(curated, keepers):
-    told = curated.patch(f"/t/{keepers}", json={"description": "blue hour", "color": "#123ABC", "expected_rev": 1})
+    body = _wrote(curated, "patch", f"/t/{keepers}", description="blue hour", color="#123ABC", expected_rev=1)
 
-    assert told.status_code == 200, told.text
-    body = told.json()
     assert (body["description"], body["color"], body["definition_rev"]) == ("blue hour", "#123abc", 2)
 
 
 def test_a_patch_leaves_the_facts_it_did_not_name_unchanged(curated, moody):
-    told = curated.patch(f"/t/{moody}", json={"name": "Moodier", "expected_rev": 2}).json()
+    told = _wrote(curated, "patch", f"/t/{moody}", name="Moodier", expected_rev=2)
 
     assert (told["description"], told["color"]) == ("blue hour", "#123abc")
 
 
 def test_null_clears_a_fact(curated, moody):
-    told = curated.patch(f"/t/{moody}", json={"description": None, "color": None, "expected_rev": 2}).json()
+    told = _wrote(curated, "patch", f"/t/{moody}", description=None, color=None, expected_rev=2)
 
     assert (told["description"], told["color"], told["definition_rev"]) == (None, None, 3)
 
@@ -279,10 +303,7 @@ def test_reparenting_sets_the_parent(curated):
     for name in ("Trips", "Florida"):
         _made(curated, "/albums", name=name)
 
-    told = curated.patch("/t/florida", json={"parent": "trips", "expected_rev": 1})
-
-    assert told.status_code == 200, told.text
-    assert told.json()["parent"] == "trips"
+    assert _wrote(curated, "patch", "/t/florida", parent="trips", expected_rev=1)["parent"] == "trips"
 
 
 def test_a_collection_cannot_be_its_own_parent(curated, hierarchy):
@@ -303,9 +324,7 @@ def test_an_unknown_parent_is_refused(curated, hierarchy):
 
 
 def test_a_null_parent_is_the_top_of_the_hierarchy(curated, hierarchy):
-    told = curated.patch("/t/michigan", json={"parent": None, "expected_rev": 2}).json()
-
-    assert told["parent"] is None
+    assert _wrote(curated, "patch", "/t/michigan", parent=None, expected_rev=2)["parent"] is None
 
 
 def test_the_database_trigger_is_the_backstop_against_a_cycle(curated, hierarchy):
@@ -322,13 +341,21 @@ def test_the_database_trigger_is_the_backstop_against_a_cycle(curated, hierarchy
 
 
 def test_the_parents_offer_excludes_self_and_descendants(curated, hierarchy):
+    """The parent picker is a page fact, so the page is what says it.
+
+    The moves the database would allow are read for the browser and for
+    nobody else -- no machine is offered them -- so this asserts on the
+    rendered `<select name="parent">` rather than on a JSON key that only
+    ever existed because a write answered with the management view.
+    """
     for name in ("Elsewhere", "Retired"):
         _made(curated, "/albums", name=name)
     curated.patch("/t/retired", json={"archived": True, "expected_rev": 1})
 
-    told = curated.patch("/t/trips", json={"description": "x", "expected_rev": 1}).json()
+    page = curated.get("/t/trips", headers=AS_BROWSER)
+    assert page.status_code == 200, page.text
+    offered = set(re.findall(r'<option value="([^"]+)"', _picker(page.text)))
 
-    offered = {row["slug"] for row in told["parents"]}
     assert "elsewhere" in offered
     assert offered & {"trips", "florida", "michigan"} == set(), "self and subtree are never offered"
     assert "retired" not in offered, "an archived collection is not an offered organizer"
@@ -416,17 +443,15 @@ def test_membership_never_creates_a_definition_conflict(curated, keepers):
     saved = curated.patch(f"/t/{keepers}", json={"description": "still valid", "expected_rev": read_rev})
 
     assert saved.status_code == 200, "membership manufactured a false definition conflict"
-    assert saved.json()["count"] == 3
+    assert _view(curated, keepers)["count"] == 3
 
 
 # --- the rule and the kind transitions -------------------------------------
 
 
 def test_rule_replacement_is_whole_desired_state(curated, starred):
-    told = curated.put(f"/t/{starred}/rule", json={"favorite": "1", "expected_rev": 1})
+    body = _wrote(curated, "put", f"/t/{starred}/rule", favorite="1", expected_rev=1)
 
-    assert told.status_code == 200, told.text
-    body = told.json()
     assert body["definition_rev"] == 2, "a new meaning is a new definition revision"
     assert [row["slug"] for row in body["gallery"]["items"]] == ["pic-2", "pic-1"], "the WHOLE rule was replaced"
 
@@ -446,10 +471,8 @@ def test_album_and_flag_exchange_freely_with_members_kept(curated, keepers):
     for slug in ("pic-0", "pic-5"):
         curated.post(f"/t/{keepers}/add", json={"file": slug})
 
-    told = curated.post(f"/t/{keepers}/convert", json={"kind": "flag", "expected_rev": 1})
+    body = _wrote(curated, "post", f"/t/{keepers}/convert", kind="flag", expected_rev=1)
 
-    assert told.status_code == 201, told.text
-    body = told.json()
     assert (body["kind"], body["count"], body["definition_rev"]) == ("flag", 2, 2)
     assert {row["slug"] for row in body["gallery"]["items"]} == {"pic-0", "pic-5"}
 
@@ -472,10 +495,8 @@ def test_a_rule_that_refuses_converts_nothing(curated, keepers):
 
 
 def test_becoming_smart_takes_the_rule_in_the_same_act(curated, keepers):
-    told = curated.post(f"/t/{keepers}/convert", json={"kind": "smart", "rating_min": 4, "expected_rev": 1})
+    body = _wrote(curated, "post", f"/t/{keepers}/convert", kind="smart", rating_min=4, expected_rev=1)
 
-    assert told.status_code == 201, told.text
-    body = told.json()
     assert (body["kind"], body["state"], body["definition_rev"]) == ("smart", "evaluated", 2)
     assert [row["slug"] for row in body["gallery"]["items"]] == ["pic-3", "pic-1"]
 
@@ -488,11 +509,30 @@ def test_leaving_smart_without_saying_discard_is_refused(curated, starred):
     assert _view(curated, starred)["kind"] == "smart"
 
 
-def test_leaving_smart_with_discard_drops_the_rule(curated, starred):
-    told = curated.post(f"/t/{starred}/convert", json={"kind": "album", "discard_rule": True, "expected_rev": 1})
+def test_a_conversion_refuses_fields_its_target_kind_cannot_mean(curated, keepers, starred):
+    """The body is a union discriminated on `kind`, so a field belonging to
+    the other transition is refused by name rather than accepted and
+    ignored -- which is what one model holding both sets of fields did.
 
-    assert told.status_code == 201, told.text
-    assert (told.json()["kind"], told.json()["definition_rev"], told.json()["count"]) == ("album", 2, 0)
+    Runtime, because it is the framework routing a body to the right arm of
+    a discriminated union; no linter or type checker sees a request.
+    """
+    rule_shaped = curated.post(f"/t/{keepers}/convert", json={"kind": "album", "expected_rev": 1, "q": "cat"})
+    assert rule_shaped.status_code == 400, rule_shaped.text
+    assert "q" in rule_shaped.text, "the refusal names the field that does not belong"
+
+    discarding = curated.post(f"/t/{starred}/convert", json={"kind": "smart", "expected_rev": 1, "discard_rule": True})
+    assert discarding.status_code == 400, discarding.text
+    assert "discard_rule" in discarding.text, "becoming smart has no rule to discard"
+
+    assert _view(curated, keepers)["kind"] == "album", "neither refusal converted anything"
+    assert _view(curated, starred)["kind"] == "smart"
+
+
+def test_leaving_smart_with_discard_drops_the_rule(curated, starred):
+    told = _wrote(curated, "post", f"/t/{starred}/convert", kind="album", discard_rule=True, expected_rev=1)
+
+    assert (told["kind"], told["definition_rev"], told["count"]) == ("album", 2, 0)
     conn = _raw(curated)
     try:
         assert conn.execute("SELECT count(*) FROM collection_rule").fetchone()[0] == 0, "the rule was discarded"
@@ -514,11 +554,9 @@ def test_a_collection_that_left_smart_takes_filings_again(curated, starred):
 
 
 def test_archiving_keeps_identity_members_children_and_address(curated, old_project):
-    told = curated.patch(f"/t/{old_project}", json={"archived": True, "expected_rev": 1})
+    body = _wrote(curated, "patch", f"/t/{old_project}", archived=True, expected_rev=1)
 
-    assert told.status_code == 200, told.text
-    assert (told.json()["archived"], told.json()["definition_rev"]) == (True, 2)
-    body = _view(curated, old_project)
+    assert (body["archived"], body["definition_rev"]) == (True, 2)
     assert (body["archived"], body["count"]) == (True, 2)
     assert [child["slug"] for child in body["collections"]] == ["still-going"]
 
@@ -533,6 +571,28 @@ def test_an_archived_collection_is_off_the_shelf_and_out_of_the_picker(curated, 
     assert f'data-album="{archived_project}"' not in page
     assert archived_project not in choices
     assert [row["slug"] for row in retired] == [archived_project]
+
+
+def test_both_album_lists_carry_the_same_keys(curated, archived_project):
+    """`/albums` and its archived shelf are one representation.
+
+    The two lists are built from different statements and the archived one
+    computes no spans, so it would be easy for them to answer with different
+    key sets and for nobody to notice. They do not: a shelf row carries
+    first_seen and last_seen as null, because the contract says a listed
+    collection has them, not because that list happened to look them up.
+    """
+    active = curated.get("/albums", headers=AS_MACHINE).json()
+    retired = curated.get("/albums", params={"state": "archived"}, headers=AS_MACHINE).json()
+    assert active, "the active list needs a row for this to prove anything"
+    assert retired, "and so does the archived shelf"
+
+    assert all(row["first_seen"] is None and row["last_seen"] is None for row in retired), (
+        "the archived shelf computes no spans, and says so with null rather than by omitting the keys"
+    )
+    assert all(isinstance(row["first_seen"], float) for row in active if row["pictures"]), (
+        "the active list does compute them"
+    )
 
 
 def test_an_active_child_surfaces_instead_of_vanishing_with_its_organizer(curated, archived_project):
@@ -562,24 +622,24 @@ def test_archiving_what_is_archived_keeps_the_original_fact(curated, archived_pr
 
 
 def test_restoring_returns_the_same_entity_and_address(curated, archived_project):
-    restored = curated.patch(f"/t/{archived_project}", json={"archived": False, "expected_rev": 2})
+    restored = _wrote(curated, "patch", f"/t/{archived_project}", archived=False, expected_rev=2)
 
-    assert restored.status_code == 200, restored.text
-    assert (restored.json()["archived"], restored.json()["slug"]) == (False, archived_project)
+    assert (restored["archived"], restored["slug"]) == (False, archived_project)
     assert archived_project in {row["slug"] for row in curated.get("/albums", headers=AS_MACHINE).json()}
-    assert _view(curated, archived_project)["count"] == 2
+    assert restored["count"] == 2
 
 
 def test_an_archived_parent_survives_an_unrelated_edit(curated, archived_parent_with_child):
     """The select-fallback trap, closed at the seam: the offer can spell
     the state that already holds, so editing a child beneath an archived
     parent never silently reparents it."""
-    told = curated.patch("/t/still-going", json={"description": "still going", "expected_rev": 1}).json()
+    told = _wrote(curated, "patch", "/t/still-going", description="still going", expected_rev=1)
 
     assert told["parent"] == "old-project", "an unrelated edit must not move the child"
-    offered = {row["slug"]: row["archived"] for row in told["parents"]}
-    assert offered.get("old-project") is True, "the archived CURRENT parent is offered, marked"
-    assert "retired-too" not in offered, "other archived collections are not destinations"
+    picker = _picker(curated.get("/t/still-going", headers=AS_BROWSER).text)
+    assert 'value="old-project"' in picker, "the archived CURRENT parent is still offered"
+    assert "(archived, current)" in picker, "and it says what it is"
+    assert 'value="retired-too"' not in picker, "other archived collections are not destinations"
 
 
 def test_saying_the_current_archived_parent_out_loud_is_legal(curated, archived_parent_with_child):
@@ -739,17 +799,26 @@ def test_an_invalid_rule_at_conversion_leaves_the_listed_definition_whole(curate
 # --- one implementation, pinned --------------------------------------------
 
 
-def test_the_view_is_authoritative_after_every_write(curated, keepers):
-    """The write's answer and a fresh GET agree on every definition
-    fact -- the browser renders what the server read back, never what
-    it hoped its click did."""
+def test_a_write_sends_the_browser_to_where_the_facts_landed(curated, keepers):
+    """A write answers an address and a revision, and the facts are AT
+    that address -- the browser renders what the server read back, never
+    what it hoped its click did.
+
+    The write used to echo every definition fact, and this test compared
+    the echo with a fresh GET. There is no echo now, so the thing worth
+    proving is the handover: the slug it names resolves, at the revision
+    it names, carrying what was asked for.
+    """
     written = curated.patch(
         f"/t/{keepers}", json={"name": "Kept", "color": "#001122", "description": "d", "expected_rev": 1}
-    ).json()
+    )
+    assert written.status_code == 200, written.text
+    answer = written.json()
 
-    read = _view(curated, "kept")
-    for fact in ("slug", "name", "kind", "color", "description", "parent", "archived", "definition_rev"):
-        assert written[fact] == read[fact], f"the write invented its own {fact}"
+    assert answer["slug"] == "kept", "a rename moves the address, and the write says where to"
+    read = _view(curated, answer["slug"])
+    assert read["definition_rev"] == answer["definition_rev"], "the revision it hands back is the one stored"
+    assert (read["name"], read["color"], read["description"]) == ("Kept", "#001122", "d")
 
 
 # --- a smart collection is a saved question --------------------------------
@@ -854,12 +923,9 @@ def ranked_retrieval(curated, monkeypatch):
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         held = [i for i in ranked if allowed is None or i in allowed]
-        return {
-            "results": [{"file_id": i, "score": 1.0, "sources": {}} for i in held],
-            "participants": ["fake"],
-            "contributors": ["fake"],
-            "missing": {},
-        }
+        # every file answers, so the rule's `take` is the only thing
+        # cutting -- which is what these tests are about
+        return retrieving.answered(held)
 
     monkeypatch.setattr(retrieval, "query", fused)
 
@@ -1099,3 +1165,97 @@ def test_deleting_the_rule_first_is_the_deliberate_transition(curated):
         assert conn.execute("SELECT kind FROM collection WHERE id = ?", (committed,)).fetchone()[0] == "album"
     finally:
         connect.close(conn)
+
+
+# The key sets that used to live here are gone. They pinned the shape of a
+# conditional dict while it was being replaced; the shape is now
+# sg_web/collection_view.py's CollectionDocument, which OpenAPI renders as
+# a five-arm oneOf and openapi-typescript turns into the browser's union.
+# Restating those keys in Python would be a fourth copy of one contract,
+# and the first one to go stale.
+#
+# What is left below is what no model can state: which state a rule ends up
+# in when the world changes underneath it.
+
+
+def test_a_write_answers_where_to_go_and_nothing_else(curated):
+    """A write owes the address and the definition's next revision.
+
+    It used to answer with the whole management view -- the ResultSet page
+    evaluated, the spans, the places and every legal parent move -- which
+    made every rename re-run the collection's rule to build a body the
+    browser reads one field out of. That was also a THIRD representation,
+    differing from `GET /t/{slug}` by two keys nobody had written down.
+    """
+    made = curated.post("/albums", json={"name": "Fresh"})
+    assert made.status_code == 201, made.text
+    answer = made.json()
+
+    assert set(answer) == {"slug", "definition_rev"}
+    assert answer["definition_rev"] == 1, "a new collection is at its first revision"
+    assert "files" in _view(curated, answer["slug"]), "the document is what carries the collection"
+
+
+def test_a_rule_that_ran_is_evaluated(curated):
+    """A typed rule the ResultSet could answer counted its members."""
+    told = _view(curated, _made(curated, "/albums/smart", name="Everything")["slug"])
+
+    assert told["state"] == "evaluated"
+    assert isinstance(told["count"], int), "an evaluated rule counted its members"
+    assert told["gallery"]["items"], "and there is an answer to show"
+
+
+def test_preserved_prose_is_unevaluated(curated):
+    """Prose kept from the old world was never a typed rule, so nothing
+    ran and the collection says so rather than showing an empty grid."""
+    conn = _raw(curated)
+    prose = collections.collection(conn, "Prose", 1.0, kind="smart")
+    collection_rules.keep_prose(conn, prose, sql="SELECT 1", now=1.0)
+    conn.commit()
+    connect.close(conn)
+
+    told = _view(curated, "prose")
+
+    assert told["state"] == "unevaluated"
+    assert told["count"] is None, "no answer, so no number -- said out loud, not omitted"
+    assert told["rule"] == {"sql": "SELECT 1", "nl": None}, "the preserved prose is shown, never run"
+
+
+def test_a_rule_naming_a_deleted_entity_is_broken(curated):
+    """The entity a rule points at goes away underneath it."""
+    slug = _made(curated, "/albums/smart", name="Gone", folder="lib")["slug"]
+    conn = _raw(curated)
+    found = naming.resolve(conn, "folder", "lib")
+    assert found is not None
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("DELETE FROM file WHERE folder_id = ?", (found[0],))
+    conn.execute("DELETE FROM folder WHERE id = ?", (found[0],))
+    conn.commit()
+    connect.close(conn)
+
+    told = _view(curated, slug)
+
+    assert told["state"] == "broken"
+    assert told["count"] is None
+    assert told["reason"], "a broken rule explains itself in words, never an empty string"
+    assert told["rule"], "the rule that broke is still shown"
+
+
+def test_a_rule_nothing_can_answer_is_unavailable(curated, ranked_retrieval, monkeypatch):
+    """The retrieval backend a semantic rule needs refuses right now."""
+    from db import retrieval
+
+    slug = _made(curated, "/albums/smart", name="Sunsets", q="sunset", take=2)["slug"]
+
+    def refuses(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        raise LookupError("no space can answer")
+
+    monkeypatch.setattr(retrieval, "query", refuses)
+    # move the currency past the cached answer, so the rule is asked again
+    assert curated.post("/i/pic-0/favorite", json={"value": True}).status_code == 201
+
+    told = _view(curated, slug)
+
+    assert told["state"] == "unavailable"
+    assert told["count"] is None
+    assert told["reason"], "an unanswerable rule says why, never an empty string"

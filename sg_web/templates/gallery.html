@@ -1,12 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Gallery{% endblock %}
 {% block scripts %}
-  <script src="/static/overlay.js?v={{ static_v }}" defer></script>
-  <script src="/static/gallery.js?v={{ static_v }}" defer></script>
-  <script src="/static/authored.js?v={{ static_v }}" defer></script>
-  <script src="/static/selection.js?v={{ static_v }}" defer></script>
+  <script src="/static/build/gallery.js?v={{ static_v }}" defer></script>
 {% endblock %}
 {% block body %}
+  {# The header is a SEARCH BAR and one door, not a control panel.
+
+     It used to carry the whole filter vocabulary the browser knew
+     about -- kind, rating and favorite as three <select> elements --
+     which is four questions out of a vocabulary of thirty, and no room
+     to add a fifth without the header growing taller than the
+     photographs. Those three now live in the drawer with the rest of
+     their kind, as hidden inputs here so a search does not drop the
+     question a person already asked.
+
+     `filters` is always visible and always says how many clauses are
+     held. A filter surface reachable only by knowing a keyboard
+     shortcut is a filter surface for whoever wrote it. #}
   <header class="bar">
     <form class="ask" method="get" action="/g" data-ask>
       <input type="search" name="q" value="{{ q }}" placeholder="search by what it looks like, or a word a caption says" aria-label="search">
@@ -14,24 +24,10 @@
       {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
       {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
       {% if artifact %}<input type="hidden" name="artifact" value="{{ artifact }}">{% endif %}
+      {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+      {% if favorite %}<input type="hidden" name="favorite" value="{{ favorite }}">{% endif %}
+      {% if rating_min %}<input type="hidden" name="rating_min" value="{{ rating_min }}">{% endif %}
       {% for one in facets %}<input type="hidden" name="f" value="{{ one }}">{% endfor %}
-      <select name="kind" aria-label="kind">
-        <option value="">any kind</option>
-        {% for one in kinds %}
-        <option value="{{ one }}"{% if one == kind %} selected{% endif %}>{{ one.replace("_", " ") }}</option>
-        {% endfor %}
-      </select>
-      <select name="rating_min" aria-label="minimum rating">
-        <option value="">any rating</option>
-        {% for n in range(1, 6) %}
-        <option value="{{ n }}"{% if n == rating_min %} selected{% endif %}>&starf;{{ n }}+</option>
-        {% endfor %}
-      </select>
-      <select name="favorite" aria-label="favorites">
-        <option value="">any</option>
-        <option value="1"{% if favorite == "1" %} selected{% endif %}>&hearts; only</option>
-        <option value="0"{% if favorite == "0" %} selected{% endif %}>not favorited</option>
-      </select>
       <select name="sort" aria-label="sort" data-sort>
         {% for one in sorts %}
         <option value="{{ one }}"{% if one == sort %} selected{% endif %}>{{ one }}</option>
@@ -39,23 +35,161 @@
       </select>
       <button type="submit">show</button>
     </form>
+    <button type="button" class="ask-filters" data-filters-open
+            aria-expanded="false" aria-controls="filters"
+            title="filter this question">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
+    <span class="ask-total" data-total-count>{{ "{:,}".format(total) }} result{{ "" if total == 1 else "s" }}</span>
+    {# A phrase ranks every file a space holds, so the answer is a CUT of
+       that ranking, not the ranking. Saying where it was made is the
+       difference between "these answered" and a library that looks
+       small; and the way back is a link, because whoever wants the
+       whole ranked walk should not have to know a URL. #}
+    {% if ranked and depth == "head" and ranked > total %}
+    <span class="ask-cut" data-cut data-ranked="{{ ranked }}">
+      of {{ "{:,}".format(ranked) }} ranked &middot;
+      <a href="/g?{{ whole_qs }}{% if view != "gallery" %}&view={{ view }}{% endif %}"
+         data-show-all title="every file the spaces ranked, best first">show all</a>
+    </span>
+    {% elif ranked and depth == "all" %}
+    <span class="ask-cut" data-cut data-depth="all">
+      the whole ranking &middot;
+      <a href="/g?{{ head_qs }}{% if view != "gallery" %}&view={{ view }}{% endif %}"
+         data-show-head title="only what stands above the middle">just the answer</a>
+    </span>
+    {% endif %}
+    {# One answer, two presentations. `view` is not part of the question:
+       switching leaves membership and total exactly where they were,
+       which is the whole contract between them. #}
+    <span class="ask-views" role="group" aria-label="how to show this answer">
+      {% for one in views %}
+      <a class="ask-view{% if one == view %} is-here{% endif %}"
+         href="/g?{% if qs %}{{ qs }}{% endif %}{% if one != "gallery" %}{% if qs %}&{% endif %}view={{ one }}{% endif %}"
+         data-view="{{ one }}"{% if one == view %} aria-current="page"{% endif %}>{{ one }}</a>
+      {% endfor %}
+    </span>
+    {# Three things, said as three things. "save view" made a smart
+       COLLECTION, so remembering five good questions put five things
+       that are not albums into somebody's album list. #}
+    <button type="button" class="ask-save" data-remember-view
+            title="remember this question, without making a collection of it">remember</button>
     <button type="button" class="ask-save" data-save-smart
-            title="save this view as a smart collection">save view</button>
+            title="save this view as a smart collection: it gets members, an address and a place on the shelf">make a smart collection</button>
     <button type="button" class="ask-save" data-replace-smart
             title="make this view an existing smart collection's new rule">replace a rule</button>
     {% if not q %}<a class="ask-save" data-timeline-link href="/timeline{% if qs %}?{{ qs }}{% endif %}"
             title="these pictures on the timeline">on the timeline</a>{% endif %}
   </header>
+  {# "Sarah at the beach" is what somebody types, and it fails: the
+     ranking is over image embeddings and the text encoder has never
+     heard of Sarah. No caption fixes that. What does is the question
+     splitting into a person -- a filter the vocabulary already has --
+     plus the phrase that is left.
+
+     OFFERED, never applied. Rewriting a typed question silently is how
+     somebody stops trusting the box, and this application says what a
+     question is with chips somebody can see. #}
+  {% if splitting %}
+  <p class="ask-split" data-split-person="{{ splitting.slug }}">
+    <b>{{ splitting.name }}</b> is somebody in this library.
+    <a href="{{ splitting.qs }}" data-split-apply>
+      {% if splitting.rest %}search their pictures for &ldquo;{{ splitting.rest }}&rdquo;{% else %}see their pictures{% endif %}
+    </a>
+    <span class="muted">&mdash; a name is not something the text search can rank on</span>
+  </p>
+  {% endif %}
+
+  {# The questions somebody asked to be reminded of, most recently used
+     first. Here rather than on the album shelf, because that is the
+     whole distinction: this is a bookmark on a question, not a
+     container with things in it. #}
+  {% if remembered %}
+  <nav class="ask-remembered" data-remembered aria-label="remembered questions">
+    {% for one in remembered %}
+    <span class="ask-remembered-one" data-remembered-view="{{ one.id }}">
+      <a href="/g?{{ one.qs }}" data-remembered-open="{{ one.id }}">{{ one.name }}</a>
+      <button type="button" class="ask-forget" data-forget-view="{{ one.id }}"
+              title="stop remembering {{ one.name }}" aria-label="forget {{ one.name }}">&times;</button>
+    </span>
+    {% endfor %}
+  </nav>
+  {% endif %}
+  {# Chips are the question, visible, and each one removes only itself.
+     Clicking the body of a chip opens the drawer AT that filter, so the
+     relationship between the two is something a person can see rather
+     than something they have to be told. #}
   {% if chips %}
   <div class="chips" data-chips>
     {% for chip in chips %}
-    <span class="chip" data-chip="{{ chip.spelled }}">{{ chip.label }} <a href="/g{% if chip.remove_qs %}?{{ chip.remove_qs }}{% endif %}" aria-label="remove {{ chip.label }}" data-chip-remove>&times;</a></span>
+    <span class="chip" data-chip="{{ chip.spelled }}">
+      <button type="button" class="chip-edit" data-chip-edit="{{ chip.key }}"
+              title="edit this filter">{{ chip.label }}</button>
+      <a href="/g{% if chip.remove_qs %}?{{ chip.remove_qs }}{% endif %}"
+         aria-label="remove {{ chip.label }}" data-chip-remove>&times;</a>
+    </span>
     {% endfor %}
+    <a class="chip-clear" href="/g" data-chips-clear>clear all</a>
   </div>
   {% endif %}
+  {# The filter surface. Sections and their dimensions are drawn from
+     db/vocabulary.py -- the same registry that names a chip and the
+     same one the ResultSet's predicates are registered beside -- so a
+     dimension added there appears here without a template edit.
+
+     The VALUES are not here. Counting thirty dimensions to draw a
+     drawer nobody has opened is thirty queries for nothing; each asks
+     /g/options for its own the first time it is disclosed. #}
+  {# `data-filters-panel`, not `data-filters`: the body carries
+     data-filters as its OPEN/CLOSED state, and one word meaning both
+     the state and the element it describes makes querySelector pick
+     whichever comes first in the document -- which is the body. The
+     inspector carries the same scar (_media_inspector.html). #}
+  <aside class="filters" id="filters" data-filters-panel hidden aria-label="filters">
+    <header class="filters-bar">
+      <h2>filters</h2>
+      <a class="filters-clear" href="/g" data-filters-clear>clear all</a>
+      <button type="button" class="viewer-act" data-filters-close aria-label="close filters">&times;</button>
+    </header>
+    {# The door out of "you must already know the spelling".
+
+       Every fact below is in a named section somebody has to find, and
+       the long tail is behind an advanced heading whose control used to
+       be a text box with a `key=value` placeholder. This searches BOTH
+       -- the curated vocabulary and every metadata key any tool wrote --
+       and the list it draws is the application saying what it knows
+       rather than waiting to be told. db/catalog.py ranks it. #}
+    <div class="filter-find" data-filter-find>
+      <input type="search" data-filter-find-input autocomplete="off"
+             placeholder="add filter&hellip;" aria-label="search every field this answer has"
+             role="combobox" aria-expanded="false" aria-controls="filter-found">
+      <div class="filter-found" id="filter-found" data-filter-found role="listbox"
+           aria-label="matching fields" hidden></div>
+    </div>
+    {% for group in filter_groups %}
+    <section class="filter-group" data-filter-group="{{ group.name }}">
+      <h3>{{ group.label }}</h3>
+      {% for one in group.dimensions %}
+      <details class="filter" data-filter="{{ one.key }}"
+               data-value-kind="{{ one.value_kind }}"
+               data-carried="{{ one.carried }}"
+               data-ops="{{ one.ops | join(',') }}"
+               data-listable="{{ 1 if one.discover else 0 }}">
+        <summary>{{ one.label }}{% if filter_counts.get(one.key) %} <b class="filter-held">{{ filter_counts[one.key] }}</b>{% endif %}</summary>
+        {% if one.note %}<p class="filter-note">{{ one.note }}</p>{% endif %}
+        <div class="filter-body" data-filter-body></div>
+      </details>
+      {% endfor %}
+    </section>
+    {% endfor %}
+  </aside>
   <main class="stage">
     <div id="gallery-swap">
+      {% if view == "analyze" %}
+      {% include "_analyze.html" %}
+      {% elif view == "table" %}
+      {% include "_table.html" %}
+      {% else %}
       {% include "_grid.html" %}
+      {% endif %}
     </div>
     <div class="rail" data-rail aria-label="result set rail">
       <div class="rail-track"></div>

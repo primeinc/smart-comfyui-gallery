@@ -14,9 +14,14 @@ ITEM_FAILURES); the console must not fold them back together.
 
 from __future__ import annotations
 
+import pathlib
 from collections.abc import Callable, Mapping
+from typing import Literal
+
+from litestar import get
 
 from db import ledger
+from sg_web.wire import Wire
 
 
 def _seconds(value) -> str:
@@ -31,7 +36,26 @@ def _seconds(value) -> str:
 
 
 def _item(event: Mapping) -> str:
-    return f"item {event['item_id']}" if event.get("item_id") is not None else "item"
+    """Which item, said the way a person can act on.
+
+    The name when the runner knew one (db/runner.py `FILE_ITEMS`), the
+    number otherwise. "item 41 started" is a hundred thousand lines
+    naming an integer nobody can resolve; the file's name was one
+    indexed lookup away and the ledger simply did not carry it.
+
+    The number stays beside it. It is what `/jobs/{id}` and the
+    `job_item` rows are keyed on, so dropping it would make the console
+    unusable for the person debugging one.
+    """
+    at = event.get("item_id")
+    if at is None:
+        return "item"
+    # `item_name`, never `name`: `item.observed` has always used `name`
+    # for what the HANDLER noticed, and reading one key for two facts
+    # rendered "item 41 · captioned · captioned" the moment both were
+    # present. Two facts, two keys.
+    named = (event.get("data") or {}).get("item_name")
+    return f"item {at} · {named}" if named else f"item {at}"
 
 
 def _submitted(e: Mapping) -> str:
@@ -95,6 +119,7 @@ def _item_failed(e: Mapping) -> str:
 
 def _item_observed(e: Mapping) -> str:
     d = dict(e.get("data") or {})
+    # The OBSERVATION's name, which is not the file's -- see `_item`.
     name = d.pop("name", e.get("message") or "observation")
     facts = ", ".join(f"{k} {v}" for k, v in d.items())
     return f"{_item(e)} · {name}" + (f": {facts}" if facts else "")
@@ -114,7 +139,9 @@ def _phase_progress(e: Mapping) -> str:
 
 
 def _phase_finished(e: Mapping) -> str:
-    return f"{_item(e)} · phase {e.get('phase')} finished"
+    took = (e.get("data") or {}).get("elapsed_ms")
+    said = f"{_item(e)} · phase {e.get('phase')} finished"
+    return said if took is None else f"{said} · {took:g} ms"
 
 
 def _checkpoint(e: Mapping) -> str:
@@ -172,6 +199,45 @@ CONDITIONS: dict[str, str] = {
 INSIDE_ITEM = frozenset({"phase.started", "phase.progress", "phase.finished", "item.observed"})
 
 
+class Reported(Wire):
+    """What a handler said, whether or not it became a row.
+
+    The event's own columns plus what this module adds: `text` is the
+    event said in words, and `condition` is the handful the console must
+    keep apart -- an expected per-item failure reads differently from a
+    defect in the worker. Both are derived here, so neither is a column.
+
+    Everything except the id, because a report from inside an item has
+    none until the item settles.
+    """
+
+    job_id: int
+    at: float
+    #: the schema's vocabulary, imported rather than restated
+    type: ledger.EventType
+    item_id: int | None
+    phase: str | None
+    severity: ledger.Severity
+    message: str | None
+    #: whatever the event carried, with every secret-named key replaced
+    #: (db/ledger.py redacted)
+    data: dict[str, object] | None
+    text: str
+    #: None for the events that announce nothing the console reacts to
+    condition: str | None
+
+
+class Event(Reported):
+    """A committed ledger row.
+
+    The same shape crosses the HTTP pages and the /ws/events feed, because
+    it is the same event; a second spelling for the socket would be the
+    same contract written twice.
+    """
+
+    id: int
+
+
 def inside_item(type_: str) -> bool:
     return type_ in INSIDE_ITEM
 
@@ -179,6 +245,7 @@ def inside_item(type_: str) -> bool:
 #: What each schema job kind does, in words, shown beside the raw kind
 #: (db/schema.sql job.kind CHECK; the contract test holds the two equal).
 KINDS: dict[str, str] = {
+    "walk": "look for files on disk",
     "scan": "read every file's metadata",
     "hash": "verify every file's bytes",
     "embed": "embed every picture for search",
@@ -203,9 +270,74 @@ HASH_MODES: dict[str | None, str] = {
     "groups": "group perceptual copies",
 }
 
+#: The same sentences with THIS job's numbers in them: a template and
+#: the unit its count is in.
+#:
+#: The sentences above are constants per kind, so "read every file's
+#: metadata" is the same line whether the job is over four files or
+#: eighty thousand, and a console full of them says nothing about what
+#: is actually happening. The count is `job.total` -- it has been on the
+#: row the whole time and nothing read it.
+#:
+#: `every` is left in the uncounted forms deliberately: a job whose
+#: items were never enumerable really is over whatever is there, and
+#: inventing a number for it would be worse than the constant.
+COUNTED: dict[str, tuple[str, str]] = {
+    "scan": ("read metadata for {n}", "file"),
+    "embed": ("embed {n} for search", "picture"),
+    "detect_faces": ("detect faces in {n}", "file"),
+    "cluster_faces": ("cluster {n} into people", "face space"),
+    "sample_frames": ("sample frames from {n}", "video"),
+    "annotate": ("caption {n}", "picture"),
+    "remix": ("remix {n}", "picture"),
+    "zip": ("pack {n} for download", "file"),
+    "context": ("interpret time and place for {n}", "file"),
+    "events": ("propose events across {n}", "group"),
+    "story_plan": ("plan {n}", "story"),
+    "embed_prompts": ("embed {n}", "prompt"),
+}
 
-def describe_kind(kind: str, derive: str | None = None) -> str:
-    """The human line for a job: its kind's words, or its hash mode's."""
+#: The counted form of each hash mode. Four different acts behind one
+#: kind, and "render 1,204 missing thumbnails" is not "verify 1,204
+#: files' bytes" -- one of them is the one somebody would cancel.
+COUNTED_HASH: dict[str | None, tuple[str, str]] = {
+    None: ("verify the bytes of {n}", "file"),
+    "perceptual": ("fingerprint {n}", "picture"),
+    "thumbs": ("render {n}", "missing thumbnail"),
+    "groups": ("group perceptual copies across {n}", "picture"),
+}
+
+
+def _many(n: int, unit: str) -> str:
+    """`1 file`, `412 files`. Grouped, because a person reading 80000
+    counts the digits."""
+    return f"{n:,} {unit}" if n == 1 else f"{n:,} {unit}s"
+
+
+def describe_kind(kind: str, derive: str | None = None, total: int | None = None, where: str | None = None) -> str:
+    """What THIS job is doing, in a person's words.
+
+    Everything here was already on the row and none of it was read: the
+    count of items, the hash mode, and a walk's own root path. The line
+    was a constant per kind, so a console showed the same sentence for
+    every job of a kind it ever ran.
+    """
+    if kind == "walk" and where:
+        # A walk has no enumerable items -- finding them is the job --
+        # so what it can say is WHERE it is looking, which is the fact
+        # somebody watching a scan actually wants.
+        #
+        # By the root's LEAF, never its path. `root.path` is where a
+        # library currently sits and explicitly not what it is (see
+        # schema.sql `root.uuid`), and this line put an absolute
+        # filesystem path onto every page carrying the activity strip --
+        # including /folders, whose whole rule is that a place is entered
+        # by entity and never by path.
+        return f"look for files under {pathlib.PurePath(where).name or where}"
+    counted = COUNTED_HASH.get(derive) if kind == "hash" else COUNTED.get(kind)
+    if counted is not None and total:
+        template, unit = counted
+        return template.format(n=_many(total, unit))
     if kind == "hash":
         return HASH_MODES.get(derive, f"hash, mode {derive}")
     return KINDS.get(kind, kind.replace("_", " "))
@@ -221,10 +353,115 @@ def describe(event: Mapping) -> str:
     return render(event)
 
 
-def envelope(event: Mapping) -> dict:
-    """The event as the feed and the pages carry it: the row, its words,
-    its condition. `pending` survives when the runner marked it so."""
-    told = {**event, "text": describe(event), "condition": CONDITIONS.get(event["type"])}
-    if event.get("data") is not None:
-        told["data"] = ledger.redacted(event["data"])
-    return told
+class EventFrame(Event):
+    """A committed ledger row, live."""
+
+    frame: Literal["event"]
+
+
+class PendingFrame(Reported):
+    """A report from INSIDE the item a handler is on.
+
+    Reported, not Event, and that is the whole point of the split: there
+    is no id, because it is not a row yet and may never be one --
+    db/runner.py Report lands at the item boundary. A browser narrowed to
+    this arm cannot reach for an id that was never sent. The console holds
+    the newest per job and drops it when any other kind of event settles
+    the item.
+    """
+
+    frame: Literal["pending"]
+
+
+class BacklogFrame(Wire):
+    """Everything the client missed, read from the rows on connect.
+
+    Sent before the live subscription is drained, so a row committed
+    during the read is queued behind it rather than lost, and a row that
+    lands in both arrives as the same id twice -- the client keeps one.
+    """
+
+    frame: Literal["backlog"]
+    events: list[Event]
+    after: int
+    last_id: int
+
+
+#: What arrives on /ws/events. Discriminated on `frame`, so a browser
+#: narrows to the arm it is handling and cannot read `events` off a
+#: single event or an id off a pending report.
+#:
+#: Not an OpenAPI path -- a socket has none -- so this is carried into the
+#: contract by socket_frames() below, which puts the union in the
+#: document's components. The browser's type is generated from that, never
+#: written twice.
+Frame = EventFrame | PendingFrame | BacklogFrame
+
+
+@get("/ws/events/frames", sync_to_thread=False)
+def socket_frames() -> Frame:
+    """Every frame /ws/events sends, carried into the document.
+
+    A socket has no path OpenAPI can describe, so its frames would never
+    reach the generated types and the browser would go back to
+    hand-written interfaces beside `JSON.parse` -- the exact duplication
+    this contract exists to remove. Declaring the union as one route's
+    answer puts all three arms in components, and openapi-typescript
+    generates the browser's union from them.
+
+    A route, and not `OpenAPIConfig(components=...)`, because that field
+    cannot carry a schema: the document is assembled with
+    `openapi.components.schemas = context.schema_registry
+    .generate_components_schemas()`
+    (litestar-org/litestar@v2.24.0 litestar/_openapi/plugin.py:90) -- an
+    assignment, so whatever the config supplied is replaced by exactly
+    what the routes generated. Measured: a Components(schemas={...})
+    passed to the config leaves an empty `components.schemas` in the
+    served document. A route is therefore the only seam that reaches the
+    generator without restating the three models by hand.
+
+    It answers the empty backlog rather than raising: a route that exists
+    only to be read by a generator is still a route somebody can request,
+    and one that 500s when they do is a trap. Nothing needs to call it --
+    the frames arrive on the socket.
+    """
+    return BacklogFrame(frame="backlog", events=[], after=0, last_id=0)
+
+
+def _said(event: Mapping) -> dict:
+    """Everything a row and a report share, said in words."""
+    held = event.get("data")
+    scrubbed = None if held is None else ledger.redacted(held)
+    # The column is any valid JSON, so a rebuild rather than a cast: an
+    # event whose data is a list or a scalar carries no named facts, and
+    # saying so is more honest than asserting it is an object.
+    data: dict[str, object] | None = None
+    if isinstance(scrubbed, dict):
+        data = {str(k): v for k, v in scrubbed.items()}
+    return {
+        "job_id": event["job_id"],
+        "at": event["at"],
+        "type": event["type"],
+        "item_id": event.get("item_id"),
+        "phase": event.get("phase"),
+        "severity": event.get("severity", "info"),
+        "message": event.get("message"),
+        "data": data,
+        "text": describe(event),
+        "condition": CONDITIONS.get(event["type"]),
+    }
+
+
+def envelope(event: Mapping) -> Event:
+    """A committed row as the feed and the pages carry it."""
+    return Event(id=event["id"], **_said(event))
+
+
+def event_frame(event: Mapping) -> EventFrame:
+    """A committed row, on its way to the socket."""
+    return EventFrame(frame="event", id=event["id"], **_said(event))
+
+
+def pending_frame(event: Mapping) -> PendingFrame:
+    """A report from inside an item, on its way to the socket."""
+    return PendingFrame(frame="pending", **_said(event))

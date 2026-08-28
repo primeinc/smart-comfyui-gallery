@@ -76,22 +76,43 @@ def chunks(path: str, first: int, length: int):
             yield piece
 
 
+_EXEMPLAR = (
+    "SELECT fi.id, fi.file_id, fi.sample_id, r.x, r.y, r.w, r.h"
+    " FROM derived_face_cluster c"
+    " JOIN derived_face_membership m ON m.cluster_id = c.id"
+    " JOIN derived_face_instance fi ON fi.id = m.face_id"
+    " JOIN region r ON r.id = fi.region_id"
+    " JOIN derived_face_run run ON run.id = c.run_id AND run.is_primary = 1"
+    " WHERE c.person_id = ?{chosen}"
+    " ORDER BY fi.det_score DESC, fi.id LIMIT 1"
+)
+
+
 def exemplar_face(conn, person_id: int):
-    """The face that stands for a person: their highest-confidence
-    detection in the primary clustering run.
+    """The face that stands for a person.
+
+    The picture they CHOSE if they chose one, and otherwise their
+    highest-confidence detection in the primary clustering run -- which
+    is usually right and sometimes a blurred profile in a crowd.
+
+    The choice is a FILE (`person.exemplar_file_id`), so this asks for
+    the best face OF THEIRS IN THAT PICTURE rather than remembering a
+    face: a face is a derived row, and the next re-detect mints new ones.
+
+    Falls back rather than failing. A chosen picture that no longer holds
+    a face of theirs -- re-detected, cropped, replaced -- gives the
+    confident one back instead of nothing, because a person with no
+    avatar because of a preference is worse off than one who never
+    expressed it.
 
     `(face_id, file_id, sample_id, x, y, w, h)` or None when no primary
     run holds a cluster attributed to them -- an unclustered person has no
     face to show, and that is an answer, not an error.
     """
-    return conn.execute(
-        "SELECT fi.id, fi.file_id, fi.sample_id, r.x, r.y, r.w, r.h"
-        " FROM derived_face_cluster c"
-        " JOIN derived_face_membership m ON m.cluster_id = c.id"
-        " JOIN derived_face_instance fi ON fi.id = m.face_id"
-        " JOIN region r ON r.id = fi.region_id"
-        " JOIN derived_face_run run ON run.id = c.run_id AND run.is_primary = 1"
-        " WHERE c.person_id = ?"
-        " ORDER BY fi.det_score DESC, fi.id LIMIT 1",
-        (person_id,),
-    ).fetchone()
+    row = conn.execute("SELECT exemplar_file_id FROM person WHERE id = ?", (person_id,)).fetchone()
+    chosen = None if row is None else row[0]
+    if chosen is not None:
+        held = conn.execute(_EXEMPLAR.replace("{chosen}", " AND fi.file_id = ?"), (person_id, chosen)).fetchone()
+        if held is not None:
+            return held
+    return conn.execute(_EXEMPLAR.replace("{chosen}", ""), (person_id,)).fetchone()

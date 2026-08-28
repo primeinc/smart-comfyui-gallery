@@ -5,7 +5,7 @@
    month sheets at the week zoom, the river of days otherwise. Every
    picture sits where it happened. -#}
 {%- macro rows(pictures) -%}
-<div class="rows">{% for p in pictures %}<a class="surface-sample" href="{{ p.href }}" title="{{ p.name }} · {{ p.clock }}" style="--r:{{ p.ratio }}"><img src="/thumb/{{ p.slug }}" alt="" loading="lazy"></a>{% endfor %}</div>
+<div class="rows">{% for p in pictures %}<a class="surface-sample" href="{{ p.href }}" title="{{ p.name }} · {{ p.clock }}" style="--r:{{ p.ratio }}">{% if p.thumb %}<img src="{{ p.thumb }}" alt="" loading="lazy">{% else %}<span class="cell-kind" aria-hidden="true">{{ "audio" if p.kind == "audio" else "doc" }}</span>{% endif %}</a>{% endfor %}</div>
 {%- endmacro -%}
 {%- macro session_card(s, pictures, lead_of, leads_of) -%}
 {#- A session reads as a story whether one was told or not: the lead
@@ -18,51 +18,71 @@
   {% set story_link = s.story.href if s.story else ("/stories/sessions/" ~ s.id if s.tellable else "/g?" ~ s.qs) %}
   <div class="session-lead">
     {%- set hero = s.story.heroes[0].thumbnail if s.story and s.story.heroes and s.story.heroes[0].thumbnail else none -%}
-    {%- set lead_slug = lead.slug if lead else (s.samples[0] if s.samples else none) -%}
-    {% if hero or lead_slug %}<img class="session-backdrop" src="{{ hero if hero else '/thumb/' ~ lead_slug }}" alt="" loading="lazy" aria-hidden="true">{% endif %}
-    {% if hero %}<div class="session-lead-row"><a class="session-lead-picture" href="{{ story_link }}"><img src="{{ hero }}" alt="" loading="lazy"></a></div>{% elif leads_of %}<div class="session-lead-row">{% for p in leads_of %}<a class="surface-sample session-lead-picture" href="{{ p.href }}" title="{{ p.name }} · {{ p.clock }}" style="--r:{{ p.ratio }}"><img src="/preview/{{ p.slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% elif lead_slug %}<div class="session-lead-row"><a class="session-lead-picture" href="/g?{{ s.qs }}"><img src="/preview/{{ lead_slug }}" alt="" loading="lazy"></a></div>{% endif %}
+    {#- Two different things, kept apart on purpose. `lead_slug` is a
+        SLUG and only ever comes from a member the window holds, because
+        `/preview/` is a slug route; `lead_thumb` is a content-addressed
+        THUMBNAIL and comes from the session's samples. They shared one
+        variable until the samples became addresses, at which point the
+        fallback quietly asked for `/preview/<a url>`. -#}
+    {%- set lead_slug = lead.slug if lead else none -%}
+    {%- set lead_thumb = s.samples[0] if s.samples else none -%}
+    {% if hero or lead_thumb %}<img class="session-backdrop" src="{{ hero if hero else lead_thumb }}" alt="" loading="lazy" aria-hidden="true">{% endif %}
+    {% if hero %}<div class="session-lead-row"><a class="session-lead-picture" href="{{ story_link }}"><img src="{{ hero }}" alt="" loading="lazy"></a></div>{% elif leads_of %}<div class="session-lead-row">{% for p in leads_of %}<a class="surface-sample session-lead-picture" href="{{ p.href }}" title="{{ p.name }} · {{ p.clock }}" style="--r:{{ p.ratio }}"><img src="/preview/{{ p.slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% elif lead_slug %}<div class="session-lead-row"><a class="session-lead-picture" href="/g?{{ s.qs }}"><img src="/preview/{{ lead_slug }}" alt="" loading="lazy"></a></div>{% elif lead_thumb %}<div class="session-lead-row"><a class="session-lead-picture" href="/g?{{ s.qs }}"><img src="{{ lead_thumb }}" alt="" loading="lazy"></a></div>{% endif %}
     <a class="session-words" href="{{ story_link }}" data-session-open="{{ s.id }}" data-session-pictures="/g?{{ s.qs }}">
       <span class="session-title"{% if s.story %} data-session-story-title{% endif %}>{{ s.title }}</span>
       {% if s.story and s.story.dek %}<span class="session-dek">{{ s.story.dek }}</span>{% endif %}
       <span class="session-line">{{ s.when }} · {{ s.lasted }}{% if s.story or s.in_scope != s.pictures %} · {% if s.in_scope != s.pictures %}{{ s.in_scope }} of {% endif %}{{ "{:,}".format(s.pictures) }} {{ s.happened }}{% endif %}</span>
     </a>
   </div>
-  {% if s.place or s.people_total %}<p class="session-with">{% if s.place %}<a href="/g?{{ s.place.qs }}" data-session-place="{{ s.place.id }}">{{ s.place.name }}</a>{% endif %}{% if s.place and s.people_total %} · {% endif %}{% if s.people_total %}<span data-session-people="{{ s.people | length }}">{% for p in s.with.named %}{% if not loop.first %}, {% endif %}<a href="{{ p.href }}" title="in {{ p.pictures }} of these">{{ p.name }}</a>{% endfor %}{% if s.with.others %}{% if s.with.named %} and {% endif %}{{ s.with.others }} {% if s.with.named %}others{% else %}people{% endif %}{% endif %}</span>{% endif %}</p>{% endif %}
+  {% if s.place or s.people_total %}<p class="session-with">{% if s.place %}<a href="/g?{{ s.place.qs }}" data-session-place="{{ s.place.id }}">{{ s.place.name }}</a>{% endif %}{% if s.place and s.people_total %} · {% endif %}{% if s.people_total %}<span data-session-people="{{ s.people | length }}">{% for p in s.company.named %}{% if not loop.first %}, {% endif %}<a href="{{ p.href }}" title="in {{ p.pictures }} of these">{{ p.name }}</a>{% endfor %}{% if s.company.others %}{% if s.company.named %} and {% endif %}{{ s.company.others }} {% if s.company.named %}others{% else %}people{% endif %}{% endif %}</span>{% endif %}</p>{% endif %}
   {%- set shown = leads_of | map(attribute="slug") | list -%}
-  <div class="session-strip">{% if pictures | length > shown | length %}{{ rows(pictures | rejectattr("slug", "in", shown) | list) }}{% elif not pictures and s.samples | length > 1 %}<div class="rows">{% for slug in s.samples[1:] %}<a class="surface-sample" href="/g?{{ s.qs }}" style="--r:1"><img src="/thumb/{{ slug }}" alt="" loading="lazy"></a>{% endfor %}</div>{% endif %}</div>
+  <div class="session-strip">{% if pictures | length > shown | length %}{{ rows(pictures | rejectattr("slug", "in", shown) | list) }}{% elif not pictures and s.samples | length > 1 %}<div class="rows">{% for src in s.samples[1:] %}<a class="surface-sample" href="/g?{{ s.qs }}" style="--r:1"><img src="{{ src }}" alt="" loading="lazy"></a>{% endfor %}</div>{% endif %}</div>
 </article>
 {%- endmacro -%}
 <section class="surface" data-surface data-composition="{{ surface.composition }}"
          data-window-start="{{ surface.start }}" data-window-end="{{ surface.end }}"
          {% if surface.extent %}data-extent-start="{{ surface.overview.start }}" data-extent-end="{{ surface.overview.end }}"{% endif %}
-         data-scope-qs="{{ surface.scope.qs if surface.scope else '' }}">
+         data-scope-qs="{{ surface.scope.qs if surface.scope else '' }}"
+         {# The axis, piecewise. The browser turns a click, a drag and a
+            pan back into a moment; without these it would invert through
+            a LINEAR axis the bars were not drawn on, and every gesture
+            would land in the wrong place the moment a run collapsed. #}
+         data-axis="{{ surface.segments | tojson | forceescape }}">
   {% if surface.extent %}
   <header class="surface-head">
     <h1 class="stamp" data-window>{{ surface.window_spelled }}</h1>
     <p class="eyebrow surface-note" data-note>{{ surface.note }}</p>
     <nav class="surface-zoom" data-zoom aria-label="how much time to show">
+{% if not surface.presets | selectattr("current") | list %}<span data-custom title="the window you are on matches none of these">{{ surface.window_spelled }}</span>{% endif %}
       {% for held in surface.presets %}<a href="{{ held.href }}" data-preset="{{ held.name }}"{% if held.current %} data-current{% endif %} title="the last {{ held.name }}">{{ held.name }}</a>{% endfor %}
     </nav>
   </header>
 
   <div class="axis" data-strip data-unit="{{ surface.unit }}" aria-label="pictures per {{ surface.unit }}; drag to pan, ctrl+wheel to zoom">
     <svg class="axis-stage" viewBox="0 0 1000 200" preserveAspectRatio="none" role="list">
+      {# The runs that hold nothing, drawn as a marked band instead of
+         as the blank they would otherwise be paid in pixels for. Blank
+         is ambiguous between "no pictures", "nothing dated this" and
+         "the render broke"; a hatched band with a duration is not.
+         Drawn FIRST so bars and ticks sit over it. #}
+      {% for gap in surface.skipped %}<a class="axis-skipped" data-axis-skipped href="{{ gap.href }}" data-lasted="{{ gap.lasted }}"><rect x="{{ gap.x }}" y="0" width="{{ gap.w }}" height="200"/><title>{{ gap.lasted }} with no pictures &mdash; open it anyway</title></a>{% endfor %}
       {% for tk in surface.ticks %}<g class="tick{% if tk.major %} major{% endif %}"><line x1="{{ tk.x }}" x2="{{ tk.x }}" y1="0" y2="200"/></g>{% endfor %}
       {% for held in surface.spans %}<rect class="band" x="{{ held.x }}" y="194" width="{{ held.w }}" height="6"><title>{{ held.pictures }} pictures dated only to {{ held.spelled }}</title></rect>{% endfor %}
       {% for b in surface.bins %}
-      <a class="bin" data-bin-at="{{ b.at }}" href="{{ b.href }}" role="listitem"{% if b.finest %} data-bin-gallery{% else %} data-bin-window{% endif %}>
+      <a class="bin" data-bin-at="{{ b.at | int }}" href="{{ b.href }}" role="listitem"{% if b.finest %} data-bin-gallery{% else %} data-bin-window{% endif %}>
         <rect class="bar" x="{{ b.x }}" y="{{ 200 - b.h * 0.34 }}" width="{{ b.w }}" height="{{ b.h * 0.34 }}"></rect>
         <title>{{ b.spelled }} · {{ "{:,}".format(b.pictures) }} pictures · {% if b.finest %}see them{% else %}open this {{ surface.unit }}{% endif %}</title>
       </a>
       {% endfor %}
       {% if surface.now_x is not none %}<g class="now"><line x1="{{ surface.now_x }}" x2="{{ surface.now_x }}" y1="0" y2="200"/></g>{% endif %}
     </svg>
+    <div class="axis-skips" aria-hidden="true">{% for gap in surface.skipped %}<span style="left:{{ gap.x / 10 }}%;width:{{ gap.w / 10 }}%">{{ gap.lasted }}</span>{% endfor %}</div>
     <div class="axis-labels" aria-hidden="true">{% for tk in surface.ticks %}<span class="{% if tk.major %}major{% endif %}" style="left:{{ tk.x / 10 }}%">{{ tk.label }}</span>{% endfor %}{% if surface.now_x is not none %}<span class="now" style="left:{{ surface.now_x / 10 }}%">now</span>{% endif %}</div>
     <div class="axis-frames">
-      {% for s in surface.sessions %}<a class="frame" data-frame="{{ s.id }}" href="#session-{{ s.id }}" style="left:{{ s.x / 10 }}%;width:{{ s.w / 10 }}%" title="{{ s.title }} · {{ s.when }}"><span class="frame-strip">{% for slug in s.samples[:4] %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}</span><span class="frame-label">{{ s.title }}</span></a>{% endfor %}
+      {% for s in surface.sessions %}<a class="frame" data-frame="{{ s.id }}" href="#session-{{ s.id }}" style="left:{{ s.x / 10 }}%;width:{{ s.w / 10 }}%" title="{{ s.title }} · {{ s.when }}"><span class="frame-strip">{% for src in s.samples[:4] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</span><span class="frame-label">{{ s.title }}</span></a>{% endfor %}
     </div>
     <div class="axis-samples" data-samples data-state="shown">
-      {% for b in surface.bins if b.samples %}<a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · see all {{ "{:,}".format(b.pictures) }}" data-bin-at="{{ b.at }}" style="left:{{ b.x / 10 }}%">{% for slug in b.samples[:1] %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}</a>{% endfor %}
+      {% for b in surface.bins if b.samples %}<a class="surface-sample" href="/g?{{ b.qs }}" title="{{ b.spelled }} · see all {{ "{:,}".format(b.pictures) }}" data-bin-at="{{ b.at | int }}" style="left:{{ (b.x + b.w / 2) / 10 }}%">{% for src in b.samples[:1] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</a>{% endfor %}
     </div>
   </div>
 
@@ -84,7 +104,7 @@
       <div class="sheet-days">
         {% for wd in ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN") %}<span class="sheet-wd">{{ wd }}</span>{% endfor %}
         {% for _ in range(m.lead) %}<span class="cell void"></span>{% endfor %}
-        {% for d in m.days %}{% if d.pictures %}<a class="cell has{% if d.today %} today{% endif %}" href="/g?{{ d.qs }}" title="{{ d.spelled }} · {{ d.pictures }} pictures">{% if d.hero %}<img src="/thumb/{{ d.hero }}" alt="" loading="lazy">{% endif %}<span class="n">{{ d.n }}</span><span class="c">{{ d.pictures }}</span></a>{% else %}<span class="cell{% if d.today %} today{% endif %}"><span class="n">{{ d.n }}</span></span>{% endif %}{% endfor %}
+        {% for d in m.days %}{% if d.pictures %}<a class="cell has{% if d.today %} today{% endif %}" href="/g?{{ d.qs }}" title="{{ d.spelled }} · {{ d.pictures }} pictures">{% if d.hero %}<img src="{{ d.hero }}" alt="" loading="lazy">{% endif %}<span class="n">{{ d.n }}</span><span class="c">{{ d.pictures }}</span></a>{% else %}<span class="cell{% if d.today %} today{% endif %}"><span class="n">{{ d.n }}</span></span>{% endif %}{% endfor %}
       </div>
     </section>
     {% endfor %}
@@ -97,7 +117,7 @@
     <section class="year" data-year="{{ y.year }}">
       <header class="sheet-head"><span class="stamp">{{ y.year }}</span><span class="sheet-count">{% if y.pictures %}{{ "{:,}".format(y.pictures) }} pictures{% else %}nothing{% endif %}</span></header>
       {% if y.pictures %}<div class="year-months">
-        {% for m in y.months %}<a class="cell month{% if m.pictures %} has{% endif %}{% if m.outside %} outside{% endif %}" href="{{ m.href }}" data-month-window title="{{ m.month }} {{ y.year }}{% if m.pictures %} · {{ "{:,}".format(m.pictures) }} pictures{% endif %}">{% if m.hero %}<img src="/thumb/{{ m.hero }}" alt="" loading="lazy">{% endif %}<span class="n">{{ m.month }}</span>{% if m.pictures %}<span class="c">{{ "{:,}".format(m.pictures) }}</span>{% endif %}</a>{% endfor %}
+        {% for m in y.months %}<a class="cell month{% if m.pictures %} has{% endif %}{% if m.outside %} outside{% endif %}" href="{{ m.href }}" data-month-window title="{{ m.month }} {{ y.year }}{% if m.pictures %} · {{ "{:,}".format(m.pictures) }} pictures{% endif %}">{% if m.hero %}<img src="{{ m.hero }}" alt="" loading="lazy">{% endif %}<span class="n">{{ m.month }}</span>{% if m.pictures %}<span class="c">{{ "{:,}".format(m.pictures) }}</span>{% endif %}</a>{% endfor %}
       </div>{% endif %}
     </section>
     {% endfor %}
@@ -133,7 +153,7 @@
        aria-valuemin="{{ surface.overview.start }}" aria-valuemax="{{ surface.overview.end }}" aria-valuenow="{{ surface.start }}"
        aria-label="the whole library, newest at the top: drag to move the window, click a month to open it">
     <div class="scrubber-track">
-      {% for seg in surface.scrubber.segments %}<a class="segment{% if seg.pictures %} held{% else %} gap{% endif %}" draggable="false" data-segment-at="{{ seg.window_start }}" data-bin-window data-at="{{ seg.at }}" data-end="{{ seg.end }}" data-label="{{ seg.label }}" data-pictures="{{ seg.pictures }}"{% if seg.face %} data-face="/thumb/{{ seg.face }}"{% endif %} href="{{ seg.href }}" style="top:{{ seg.y / 10 }}%;height:{{ seg.h / 10 }}%" title="{% if seg.pictures %}{{ seg.label }} · {{ "{:,}".format(seg.pictures) }} pictures{% else %}{{ seg.label }}{% endif %}">{% if seg.pictures %}<span class="segment-strip" data-segment-strip>{% for slug in seg.strip %}<img src="/thumb/{{ slug }}" alt="" loading="lazy" draggable="false">{% endfor %}</span><span class="segment-count">{{ "{:,}".format(seg.pictures) }}</span>{% endif %}</a>{% endfor %}
+      {% for seg in surface.scrubber.segments %}<a class="segment{% if seg.pictures %} held{% else %} gap{% endif %}" draggable="false" data-segment-at="{{ seg.window_start }}" data-bin-window data-at="{{ seg.at }}" data-end="{{ seg.end }}" data-label="{{ seg.label }}" data-pictures="{{ seg.pictures }}"{% if seg.face %} data-face="{{ seg.face }}"{% endif %} href="{{ seg.href }}" style="top:{{ seg.y / 10 }}%;height:{{ seg.h / 10 }}%" title="{% if seg.pictures %}{{ seg.label }} · {{ "{:,}".format(seg.pictures) }} pictures{% else %}{{ seg.label }}{% endif %}">{% if seg.pictures %}<span class="segment-strip" data-segment-strip>{% for src in seg.strip %}<img src="{{ src }}" alt="" loading="lazy" draggable="false">{% endfor %}</span><span class="segment-count">{{ "{:,}".format(seg.pictures) }}</span>{% endif %}</a>{% endfor %}
       {% for seg in surface.scrubber.segments if seg.year_label %}<span class="segment-year" style="top:{{ seg.y / 10 }}%">{{ seg.year }}</span>{% endfor %}
       <div class="scrubber-window" data-scrubber-window style="top:{{ surface.scrubber.brush.y / 10 }}%;height:{{ surface.scrubber.brush.h / 10 }}%"></div>
     </div>

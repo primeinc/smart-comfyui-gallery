@@ -15,7 +15,18 @@ surface is a server-rendered shell over them. Expect change.
 uv sync
 uv run python -m sg_web            # http://127.0.0.1:8777
 uv run python -m sg_web --home D:/runs/two --port 8000
+uv run python -m sg_web --public   # other machines on the network too
 ```
+
+`--public` binds every interface and prints the addresses to type on a
+phone. There is no sign-in on any of it, so anyone who can reach the
+machine can browse and change the library; the default binds this
+machine alone, deliberately, so a library never arrives on a network
+because somebody forgot a flag.
+
+No Node, no npm. The browser bundles are committed, because running this
+should not require a second toolchain to look at your own photographs.
+Only changing `frontend/src` needs one: `npm ci && just web build`.
 
 A run lives wholly in its home directory (`~/.smartgallery` by default):
 the database, model weights, the thumbnail cache. Delete the directory,
@@ -100,9 +111,11 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 ## Develop
 
 ```
-just check          ruff, sglint, format, pyright, repo hygiene, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
-just test           the fast tests, one module per worker (~20s)
-just test-slow      the tests marked slow (real libraries, real browsers), four at a time (~30s)
+just check          ruff, sglint, format, ty and pyrefly over the Python, tsc over the browser source, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
+just test           collects nothing: conftest marks the whole suite slow, so this
+                    lane is empty by construction and exits clean. `just test-slow`
+                    is the suite.
+just test-slow      every test (real libraries, real browsers), four at a time
 just check-all      the gate, both test lanes, and the real run walked
 just smoke          every surface and real pictures over ~/.smartgallery (`--home` for another run)
 just audit          sglint code rules, `--repo` hygiene, the linter self-tests -- seconds

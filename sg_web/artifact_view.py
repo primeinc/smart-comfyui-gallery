@@ -29,6 +29,7 @@ from litestar.response import Redirect, Response, Template
 from db import connect, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page
+from vision import thumbs
 
 #: Which shelf each addressable artifact kind lives on. Kinds outside
 #: this map have rows and identity but no page yet.
@@ -53,7 +54,9 @@ def view(conn, models_dir: str, artifact_id: int, slug: str, now: float) -> dict
             "first_seen_at": first_seen,
             "count": grid["total"],
             "gallery": {
-                "items": grid["items"],
+                # Content-addressed, so the page's pictures cost no
+                # connection at all (vision/thumbs.py `address`).
+                "items": thumbs.address(grid["items"]),
                 "total": grid["total"],
                 "pages": grid["pages"],
                 "qs": grid["qs"],

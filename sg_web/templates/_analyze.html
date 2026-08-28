@@ -1,0 +1,124 @@
+{# What this answer is MADE OF.
+
+   The same members the grid would show, described rather than displayed.
+   The gallery could produce a result set and then offered exactly one
+   thing to do with it -- look at thumbnails -- and "which prompts and
+   which LoRAs made these" had nowhere to be asked.
+
+   Every number here is a link. A count that cannot be clicked back into
+   the query is a dashboard, and a dashboard is where data goes to be
+   looked at instead of used. The share and the bar come from one field
+   so they cannot disagree, and the denominator is the ResultSet's own
+   total, never a count this page took for itself. #}
+<section class="analyze" data-analyze>
+
+  {% if analysis.prompts %}
+  {# The prompt first, because it is what somebody came for. EXACT
+     prompts: `prompt.text_hash` is a real identity and two files
+     carrying one prompt share one row, so these are counts and not
+     estimates. Grouping by MEANING is a different feature with a
+     different error mode and does not get to borrow this one's
+     certainty. #}
+  <section class="analyze-panel" data-analyze-prompts>
+    <h2>prompts <span class="analyze-of">{{ analysis.prompts | length }} distinct{% if analysis.more_prompts %}, {{ analysis.more_prompts }} more{% endif %}</span></h2>
+    <ul class="prompt-uses">
+      {% for one in analysis.prompts %}
+      <li class="prompt-use" data-prompt="{{ one.id }}">
+        <div class="prompt-use-bar">
+          <b class="prompt-use-count">{{ one.uses }}</b>
+          <span class="prompt-use-of">{{ "use" if one.uses == 1 else "uses" }}</span>
+          <button type="button" class="prompt-copy" data-copy-prompt="{{ one.id }}">copy</button>
+        </div>
+        <p class="prompt-use-text" data-prompt-text>{{ one.text }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if analysis.terms %}
+  {# A different claim from the panel above, and next to it on purpose
+     so the difference is visible rather than explained.
+
+     Those are COUNTS: a prompt's text hash is a real identity, so
+     "twelve files used this prompt" is a fact. These are a READING --
+     that commas separate terms, which every prompt box's convention
+     follows and no grammar enforces. A prompt written as a sentence
+     splits into clauses here and is counted as terms nobody asked for,
+     so the panel says what it assumes rather than presenting the
+     numbers as if they were the same kind of thing.
+
+     FILES, never uses: a term written three times in one prompt is one
+     file that wanted it, and counting the repeats would make a habit of
+     typing look like a habit of generating. #}
+  <section class="analyze-panel" data-analyze-terms>
+    <h2>terms <span class="analyze-of">{{ analysis.terms | length }}{% if analysis.more_terms %}, {{ analysis.more_terms }} more{% endif %}</span></h2>
+    <p class="analyze-note">split on commas, weights ignored &mdash; a reading of how prompts are written, not an identity like the prompts above</p>
+    <ul class="term-uses" data-terms>
+      {% for one in analysis.terms %}
+      <li class="term-use" data-term="{{ one.term }}">
+        <a href="{{ one.qs }}" data-term-search="{{ one.term }}">
+          <span class="term-use-text">{{ one.term }}</span>
+          <b class="term-use-count">{{ one.files }}</b>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if analysis.loras %}
+  {# The weight is why this is not a list of names: a LoRA without its
+     number does not reproduce the picture, and it is the field people
+     report missing from every other gallery. Median, so one picture at
+     1.5 does not move what "usually" means. #}
+  <section class="analyze-panel" data-analyze-loras>
+    <h2>LoRAs <span class="analyze-of">{{ analysis.loras | length }}</span></h2>
+    <table class="analyze-table">
+      <thead><tr><th>lora</th><th>files</th><th>usually</th><th>range</th></tr></thead>
+      <tbody>
+        {% for one in analysis.loras %}
+        <tr data-lora="{{ one.name }}">
+          <td><a href="/g?{{ one.qs }}" data-refine>{{ one.name }}</a></td>
+          <td class="analyze-num">{{ one.uses }}</td>
+          <td class="analyze-num">{% if one.typical is not none %}{{ "%.2f"|format(one.typical) }}{% else %}&mdash;{% endif %}</td>
+          <td class="analyze-num analyze-range">
+            {% if one.lowest is not none and one.highest is not none and one.lowest != one.highest %}
+            {{ "%.2f"|format(one.lowest) }}&ndash;{{ "%.2f"|format(one.highest) }}
+            {% else %}&mdash;{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% for one in analysis.breakdowns %}
+  <section class="analyze-panel" data-breakdown="{{ one.key }}">
+    <h2>{{ one.label }}
+      {# "18 of 684 have a camera" and "18 of 18 cameras are a Canon" are
+         different sentences; a share drawn against the wrong one is a bar
+         that lies quietly. #}
+      <span class="analyze-of">{{ one.covered }} of {{ total }}</span>
+    </h2>
+    <ul class="analyze-bars">
+      {% for row in one.rows %}
+      <li class="analyze-bar{% if row.chosen %} is-held{% endif %}">
+        <a href="/g?{{ row.qs }}" data-refine title="narrow to these {{ row.count }}">
+          <span class="analyze-bar-label">{{ row.label }}</span>
+          <span class="analyze-bar-track"><span class="analyze-bar-fill" style="width: {{ row.share }}%"></span></span>
+          <span class="analyze-bar-count">{{ row.count }}</span>
+          <span class="analyze-bar-share">{{ row.share }}%</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if one.more %}<p class="analyze-more">{{ one.more }} more not shown</p>{% endif %}
+  </section>
+  {% endfor %}
+
+  {% if not analysis.breakdowns and not analysis.prompts and not analysis.terms %}
+  <p class="analyze-empty">nothing in this answer carries anything to describe yet.</p>
+  {% endif %}
+</section>

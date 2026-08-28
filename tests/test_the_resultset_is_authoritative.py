@@ -23,9 +23,10 @@ import pytest
 from PIL import Image
 
 from db import collections, connect, library, resultset, scan
+from tests import retrieving
+from tests.staging import NOW
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
 
 
 def _paint(root: pathlib.Path, folder: str, name: str, tint: int) -> None:
@@ -103,6 +104,218 @@ def test_page_peek_and_locate_agree(shelves):
     assert found["next"] == third["items"][3]["slug"]
 
 
+def test_a_neighborhood_is_a_window_on_the_answer_not_on_a_page(shelves):
+    """The filmstrip's question, and the one thing it must never know.
+
+    `peek` answers "the first few members of page N" for the rail's
+    long-distance jumps. This answers "what surrounds THIS member", and
+    a window that straddles a page boundary is not a special case -- it
+    is the same slice of the same ordered answer. If the result can be
+    explained by a page, the abstraction has leaked.
+    """
+    conn = shelves["conn"]
+    q = _q(size=5)  # 23 items, so pages break at 5, 10, 15, 20
+
+    whole = resultset.page(conn, "", q, 1, NOW)["items"] + resultset.page(conn, "", q, 2, NOW)["items"]
+    whole += resultset.page(conn, "", q, 3, NOW)["items"] + resultset.page(conn, "", q, 4, NOW)["items"]
+    whole += resultset.page(conn, "", q, 5, NOW)["items"]
+    assert [row["ordinal"] for row in whole] == list(range(1, 24))
+
+    # ordinal 11 is the FIRST item of page 3; a strip that thought in
+    # pages would start there or stitch two of them
+    on_a_boundary = whole[10]
+    told = resultset.neighborhood(conn, "", q, on_a_boundary["id"], NOW, count=7)
+    assert told is not None
+    assert [row["ordinal"] for row in told["items"]] == [8, 9, 10, 11, 12, 13, 14]
+    assert told["ordinal"] == 11
+    assert (told["first_ordinal"], told["last_ordinal"]) == (8, 14)
+    assert [row["slug"] for row in told["items"]] == [row["slug"] for row in whole[7:14]]
+
+
+def test_a_neighborhood_slides_at_the_edges_rather_than_padding(shelves):
+    """Near an end the window stays FULL and moves, so fifteen cells are
+    fifteen pictures rather than seven blanks and eight photographs."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    whole = [row for number in range(1, 6) for row in resultset.page(conn, "", q, number, NOW)["items"]]
+
+    first = resultset.neighborhood(conn, "", q, whole[0]["id"], NOW, count=7)
+    assert first is not None
+    assert [row["ordinal"] for row in first["items"]] == [1, 2, 3, 4, 5, 6, 7]
+    assert first["ordinal"] == 1, "the current item sits at the left, not in a padded middle"
+
+    last = resultset.neighborhood(conn, "", q, whole[-1]["id"], NOW, count=7)
+    assert last is not None
+    assert [row["ordinal"] for row in last["items"]] == [17, 18, 19, 20, 21, 22, 23]
+    assert last["ordinal"] == 23
+
+
+def test_a_neighborhood_agrees_with_locate_about_the_walk(shelves):
+    """One projection, one answer. The arrows under the picture and the
+    strip beneath them are the same read, so they cannot disagree about
+    what comes next."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    middle = resultset.page(conn, "", q, 3, NOW)["items"][2]
+
+    found = resultset.locate(conn, "", q, middle["id"], NOW)
+    told = resultset.neighborhood(conn, "", q, middle["id"], NOW, count=9)
+    assert found is not None
+    assert told is not None
+    for fact in ("ordinal", "page", "total", "currency", "answer", "qs", "previous", "next"):
+        assert told[fact] == found[fact], fact
+
+    # and the window's own order IS the walk: the item before the current
+    # one is `previous`, the one after is `next`
+    slugs = [row["slug"] for row in told["items"]]
+    here = slugs.index(middle["slug"])
+    assert slugs[here - 1] == found["previous"]
+    assert slugs[here + 1] == found["next"]
+
+
+def test_a_neighborhood_walks_a_FILTERED_answer_and_not_the_library(shelves):
+    """The filmstrip under a narrowed question.
+
+    The window and the arrows are the same read as the grid, so a
+    question that excludes pictures must exclude them here too. The
+    failure this guards is the tempting one: walking the LIBRARY around
+    the current picture and calling it the neighbourhood, which puts a
+    photograph in the strip that the answer the person is looking at
+    does not contain -- and makes `next` step out of their own search.
+
+    The filter is EVERY OTHER picture on purpose. A folder would have
+    done for coverage and would have proved nothing here: this fixture
+    stamps one folder entirely after the other, so a folder's pictures
+    are one contiguous run of the timed order and a strip that walked
+    the whole library around one of them would return exactly the same
+    seven. Checked, before this was written that way. Interleaving is
+    what gives the assertion something to catch.
+    """
+    conn = shelves["conn"]
+    whole = _q(size=5)
+
+    def walked(q, actor):
+        pages = resultset.describe(conn, "", q, NOW, actor_id=actor)["pages"]
+        return [
+            row["id"]
+            for n in range(1, pages + 1)
+            for row in resultset.page(conn, "", q, n, NOW, actor_id=actor)["items"]
+        ]
+
+    everything = walked(whole, None)
+    actor = int(
+        conn.execute(
+            "INSERT INTO user(username, password_hash, role, created_at) VALUES('ana', 'x', 'USER', 0) RETURNING id"
+        ).fetchone()[0]
+    )
+    for one in everything[::2]:
+        conn.execute("INSERT INTO favorite(file_id, user_id, created_at) VALUES(?, ?, 0)", (one, actor))
+    conn.commit()
+
+    narrowed = _q(favorite="1", size=5)  # request-shaped: 1 favorited, 0 not
+    only = walked(narrowed, actor)
+    assert only == everything[::2], "the filter is meant to take every other picture"
+    assert 0 < len(only) < len(everything)
+
+    middle = only[len(only) // 2]
+    told = resultset.neighborhood(conn, "", narrowed, middle, NOW, count=7, actor_id=actor)
+    assert told is not None
+    held = [row["id"] for row in told["items"]]
+    assert set(held) <= set(only), "the strip showed a picture the narrowed answer does not contain"
+    assert told["total"] == len(only), "the strip counted the library rather than the answer"
+
+    # and it is the narrowed answer's OWN slice, contiguous in ITS order
+    where = only.index(middle)
+    low = max(0, min(where - 3, len(only) - 7))
+    assert held == only[low : low + 7]
+
+    # the arrows agree with the strip, which is the whole point of one read
+    found = resultset.locate(conn, "", narrowed, middle, NOW, actor_id=actor)
+    assert found is not None
+    assert told["previous"] == found["previous"]
+    assert told["next"] == found["next"]
+
+
+def test_a_neighborhood_walks_a_SEMANTIC_answer_in_the_fused_order(shelves, monkeypatch):
+    """The filmstrip under a ranked question.
+
+    A semantic answer's order is materialized from the fused retrieval
+    and belongs to no SQL sort. The window has to be a slice of THAT,
+    and taking it must not re-run retrieval -- the strip reads the
+    materialized ordering the grid read, or the two disagree about what
+    comes next.
+    """
+    from db import retrieval
+
+    conn = shelves["conn"]
+    ranked = [row[0] for row in conn.execute("SELECT id FROM file ORDER BY id")]
+    ranked = ranked[7:] + ranked[:7]  # an order no SQL sort produces
+    asked = []
+
+    def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
+        asked.append(phrase)
+        return retrieving.answered(ranked)
+
+    monkeypatch.setattr(retrieval, "query", fused)
+    q = _q(text="a banana", size=4)
+
+    resultset.describe(conn, "", q, NOW)
+    told = resultset.neighborhood(conn, "", q, ranked[9], NOW, count=7)
+    assert told is not None
+    assert [row["id"] for row in told["items"]] == ranked[6:13], "the strip is not the fused order"
+    assert told["ordinal"] == 10
+    assert len(asked) == 1, "the strip re-ran retrieval instead of reading the materialized ordering"
+
+    found = resultset.locate(conn, "", q, ranked[9], NOW)
+    assert found is not None
+    assert told["previous"] == found["previous"]
+    assert told["next"] == found["next"]
+    assert len(asked) == 1
+
+
+def test_a_file_outside_the_answer_has_no_neighborhood(shelves):
+    """The query defines the walk. There is no other neighborhood to
+    invent for an item the question does not contain."""
+    conn = shelves["conn"]
+    only = resultset.page(conn, "", _q(size=5), 1, NOW)["items"][0]
+    assert only["kind"] == "image"
+    # a question this picture is not an answer to
+    elsewhere = _q(kind="video")
+    assert resultset.describe(conn, "", elsewhere, NOW)["total"] == 0
+    assert resultset.neighborhood(conn, "", elsewhere, only["id"], NOW) is None
+
+
+def test_a_neighborhood_is_bounded(shelves):
+    """An absurd `count` is refused rather than answered."""
+    conn = shelves["conn"]
+    q = _q(size=5)
+    only = resultset.page(conn, "", q, 1, NOW)["items"][0]
+    told = resultset.neighborhood(conn, "", q, only["id"], NOW, count=10_000)
+    assert told is not None
+    assert len(told["items"]) == 23, "an answer of 23 cannot yield more than 23"
+    assert resultset.NEIGHBORHOOD_MOST < 10_000
+
+
+@pytest.mark.parametrize(
+    ("asked", "want"),
+    [(0, 1), (-3, 1), (1, 1), (7, 7), (resultset.NEIGHBORHOOD_MOST, 23), (resultset.NEIGHBORHOOD_MOST + 1, 23)],
+)
+def test_a_window_width_is_clamped_at_both_ends(shelves, asked, want):
+    """Every boundary, because the constant's comment used to claim a
+    refusal while the code clamped, and neither had been proved at 0, at
+    a negative, at 1, at the maximum or past it.
+
+    23 is the whole answer, so anything at or above it yields 23: an
+    answer cannot lend more members than it has.
+    """
+    conn = shelves["conn"]
+    q = _q(size=5)
+    only = resultset.page(conn, "", q, 1, NOW)["items"][0]
+    told = resultset.neighborhood(conn, "", q, only["id"], NOW, count=asked)
+    assert told is not None, "a clamped width still answers"
+    assert len(told["items"]) == want, f"count={asked} gave {len(told['items'])} members"
+
+
 def test_the_last_page_is_short_and_a_number_past_the_end_answers_it(shelves):
     conn = shelves["conn"]
     q = _q(size=5)
@@ -149,8 +362,11 @@ def test_an_album_is_a_scope(shelves):
 
 
 def test_malformed_questions_are_refused():
-    refused: dict[str, Any]
-    for refused, why in (
+    # The TABLE is annotated, not the loop variable: a declaration on the
+    # target does not reach a for-target, whose type comes from the
+    # iterable's elements. These really are request-shaped values of
+    # mixed type -- that is what `parse` takes and what it refuses.
+    cases: tuple[tuple[dict[str, Any], str], ...] = (
         ({"sort": "best"}, "sort must be"),
         ({"sort": "similarity"}, "needs a phrase"),
         ({"text": "a banana", "sort": "newest"}, "orders by similarity"),
@@ -158,7 +374,8 @@ def test_malformed_questions_are_refused():
         ({"size": 0}, "page size"),
         ({"size": resultset.MAX_PAGE_SIZE + 1}, "page size"),
         ({"kind": "picture"}, "kind must be"),
-    ):
+    )
+    for refused, why in cases:
         with pytest.raises(ValueError, match=why):
             resultset.parse(**refused)
 
@@ -215,12 +432,12 @@ def test_semantic_order_is_materialized_once_and_reused(shelves, monkeypatch):
 
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         asked.append((phrase, k, offline))
-        return {
-            "results": [{"file_id": file_id, "score": 1.0, "sources": {}} for file_id in ranked],
-            "participants": ["space.a", "space.b"],
-            "contributors": ["space.a"],
-            "missing": {"space.b": "not provisioned"},
-        }
+        return retrieving.answered(
+            ranked,
+            participants=["space.a", "space.b"],
+            contributors=["space.a"],
+            missing={"space.b": "not provisioned"},
+        )
 
     from db import retrieval
 
@@ -271,12 +488,7 @@ def test_the_scope_reaches_retrieval_as_the_allowed_set(shelves, monkeypatch):
     def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
         seen.update({"allowed": allowed, "k": k})
         members = sorted(allowed or (), reverse=True)
-        return {
-            "results": [{"file_id": f, "score": 1.0, "sources": {}} for f in members],
-            "participants": ["s"],
-            "contributors": ["s"],
-            "missing": {},
-        }
+        return retrieving.answered(members, participants=["s"], contributors=["s"])
 
     from db import retrieval
 

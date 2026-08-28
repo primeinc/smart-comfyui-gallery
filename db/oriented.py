@@ -31,19 +31,42 @@ The mapping is upstream's, not invented here
 
 from __future__ import annotations
 
-from PIL import Image, ImageOps
+import functools
+from typing import TYPE_CHECKING
 
-#: EXIF orientation -> what to do about it. Straight from Pillow's own
-#: `exif_transpose`; 1 is absent because 1 means "already upright".
-TURNS = {
-    2: Image.Transpose.FLIP_LEFT_RIGHT,
-    3: Image.Transpose.ROTATE_180,
-    4: Image.Transpose.FLIP_TOP_BOTTOM,
-    5: Image.Transpose.TRANSPOSE,
-    6: Image.Transpose.ROTATE_270,
-    7: Image.Transpose.TRANSVERSE,
-    8: Image.Transpose.ROTATE_90,
-}
+if TYPE_CHECKING:
+    from PIL import Image
+
+
+@functools.cache
+def _turns() -> dict:
+    """EXIF orientation -> what to do about it. Straight from Pillow's own
+    `exif_transpose`; 1 is absent because 1 means "already upright".
+
+    A cached function so PIL.Image is imported when a picture needs
+    turning, not at boot: 23ms of import (-X importtime) every app start
+    was paying for a seven-entry table.
+    """
+    from PIL import Image
+
+    return {
+        2: Image.Transpose.FLIP_LEFT_RIGHT,
+        3: Image.Transpose.ROTATE_180,
+        4: Image.Transpose.FLIP_TOP_BOTTOM,
+        5: Image.Transpose.TRANSPOSE,
+        6: Image.Transpose.ROTATE_270,
+        7: Image.Transpose.TRANSVERSE,
+        8: Image.Transpose.ROTATE_90,
+    }
+
+
+def __getattr__(name: str):
+    """PEP 562: `oriented.TURNS` stays a public name for its readers
+    (tests compare it against vision/derive.TURNS) without forcing the
+    PIL import on everyone who imports this module."""
+    if name == "TURNS":
+        return _turns()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def upright(image: Image.Image, orientation: int | None = None) -> Image.Image:
@@ -55,7 +78,7 @@ def upright(image: Image.Image, orientation: int | None = None) -> Image.Image:
     """
     if orientation is None:
         orientation = image.getexif().get(274, 1)
-    turn = TURNS.get(int(orientation or 1))
+    turn = _turns().get(int(orientation or 1))
     return image if turn is None else image.transpose(turn)
 
 
@@ -107,12 +130,44 @@ def for_model(conn, file_id: int, path) -> Image.Image:
     return open_upright(path, orientation_of(conn, file_id))
 
 
+def for_derivatives(path, want: int, orientation: int | None) -> Image.Image:
+    """Upright, using the tag it is given, and never larger than `want`.
+
+    What a thumbnailer should call. `for_model` is the other contract and
+    stays the other contract: a detector or an embedder is owed the real
+    pixels, because changing what a model sees changes what it records,
+    and a vector taken from a cheaper decode is not the same measurement
+    as the ones already in the store. A derivative has no such duty -- it
+    is a cache of something regenerable, and the only question is the
+    cheapest correct route to a picture of that size.
+
+    `want` is the LARGEST derivative being rendered, not the smallest:
+    every smaller one comes off it (vision/thumbs.put_all), so one decode
+    at the preview edge serves every variant (vision/thumbs.py EDGES).
+
+    The tag is a parameter rather than a lookup because the caller who
+    knows the path already read it once (`orientation_of`), and libvips
+    needs the same number for the same file (vision/derive.py). Passing it
+    keeps one answer where two queries would be two chances to disagree.
+
+    The handle goes with the `with`, exactly as `open_upright` does it,
+    and for the same reason: `load()` closes it only for formats whose
+    plugin allows, so what comes back is always memory.
+    """
+    from vision import decode
+
+    with decode.open_bounded(path, want) as opened:
+        opened.load()
+        turned = upright(opened, orientation)
+        return turned if turned is not opened else opened.copy()
+
+
 def is_turned(orientation: int | None) -> bool:
     """Whether this orientation changes which way up the picture is."""
-    return int(orientation or 1) in TURNS
+    return (orientation or 1) in _turns()
 
 
-__all__ = ["TURNS", "for_model", "is_turned", "open_upright", "orientation_of", "upright"]
-# ImageOps is imported for the reference in the module docstring's comparison
-# and to keep the dependency explicit for anyone reaching for it instead.
-_ = ImageOps
+# TURNS is still public -- module __getattr__ above serves it (PEP 562) so
+# PIL stays out of the boot -- but a name with no static binding cannot be
+# listed here, and star-import is not how anything reads this module.
+__all__ = ["for_derivatives", "for_model", "is_turned", "open_upright", "orientation_of", "upright"]

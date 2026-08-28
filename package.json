@@ -1,13 +1,32 @@
 {
   "private": true,
+  "type": "module",
+  "//": "24.12 is where node's type stripping is stable rather than merely on by default (node doc/api/typescript.md), which is what running build.ts depends on. The floor and @types/node are one decision: checking the build script against a newer runtime surface than the oldest runtime we claim to support would let it use APIs that runtime does not have.",
+  "engines": {
+    "node": ">=24.12"
+  },
   "scripts": {
-    "lint": "biome lint . --error-on-warnings",
-    "format-check": "biome format .",
-    "format": "biome format . --write",
-    "check": "biome ci . --error-on-warnings",
-    "fix": "biome check . --write"
+    "lint": "biome lint frontend/src sg_web/static --error-on-warnings",
+    "format-check": "biome format frontend/src sg_web/static",
+    "format": "biome format frontend/src sg_web/static --write",
+    "check": "biome ci frontend/src sg_web/static --error-on-warnings",
+    "fix": "biome check frontend/src sg_web/static --write",
+    "types-source": "tsc -p frontend",
+    "types-build": "tsc -p frontend/tsconfig.node.json",
+    "build-web": "node frontend/build.ts",
+    "watch-web": "node frontend/build.ts --watch",
+    "api-types": "npm --silent --prefix frontend/codegen run generate",
+    "api-types-check": "npm --silent --prefix frontend/codegen run check",
+    "test-web": "node --test frontend/src/*.test.ts",
+    "types-test": "tsc -p frontend/tsconfig.test.json"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.9"
+    "@biomejs/biome": "2.5.9",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
   }
 }

@@ -14,22 +14,24 @@ renderer words exactly those claims. The real RAW library proves it on
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import os
 import pathlib
+import shutil
 import struct
+from typing import Any
 
 import pytest
 from litestar.testing import TestClient
 from PIL import ExifTags, Image
 
 from db import capture, connect, ingest, planning, rendering, runner, stories, when
+from sg_web import home as sg_home
 from sg_web.app import build_app
+from tests.staging import DAY, HOUR, NOW, cached_capture, corpus_snapshot
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
-DAY = 86400.0
 FEB_10 = 1_360_454_400.0  # 2013-02-10 00:00 as a wall clock
 RAW = pathlib.Path("C:/ComfyUI/output/sample-datasets/RAW")
 
@@ -103,17 +105,17 @@ def test_a_real_canon_body_is_read_whole():
     """5D Mark III files: the CR2 through Pillow's TIFF path, the JPEG,
     and the MOV through its CNDA thumbnail -- subsecond, serial, and the
     maker note's zone on every one of them."""
-    cr2 = capture.read(RAW / "2013-02-11/666A1072.CR2")
+    cr2 = cached_capture(RAW / "2013-02-11/666A1072.CR2")
     assert (cr2.subsec_ms, cr2.body_serial, cr2.maker_tz_offset_min) == (170, "182029002226", -300)
     assert cr2.camera == "Canon EOS 5D Mark III"
     assert cr2.lens == "EF24-105mm f/4L IS USM"
-    jpg = capture.read(RAW / "2013-02-10/666A0200.JPG")
+    jpg = cached_capture(RAW / "2013-02-10/666A0200.JPG")
     assert (jpg.body_serial, jpg.maker_tz_offset_min, jpg.captured_at) == (
         "182029002226",
         -300,
         FEB_10 + 8 * HOUR + 29 * MIN + 58,
     )
-    mov = capture.read_video(RAW / "2013-02-10/666A0209.MOV")
+    mov = cached_capture(RAW / "2013-02-10/666A0209.MOV", video=True)
     assert mov.captured_at == FEB_10 + 8 * HOUR + 30 * MIN + 50
     assert mov.iso is None, "the clip's thumbnail says ISO 0: not recorded"
     assert (mov.body_serial, mov.maker_tz_offset_min, mov.camera) == ("182029002226", -300, "Canon EOS 5D Mark III")
@@ -124,7 +126,7 @@ def test_a_real_canon_body_is_read_whole():
 
 
 def _judge(**over) -> when.Verdict:
-    base = {
+    base: dict[str, Any] = {
         "captured_at": FEB_10 + 8 * HOUR + 29 * MIN + 58,
         "subsec_ms": 170,
         "tz_offset_min": None,
@@ -225,6 +227,30 @@ def _library(client, root) -> None:
     _drain(client)
 
 
+def _snapshot(root):
+    """The derived database for this tree, cached across runs: scan +
+    ingest + jobs run once per (tree, code) through `corpus_snapshot`."""
+
+    def built(run):
+        with TestClient(app=build_app(str(run), worker=False)) as inner:
+            _library(inner, root)
+            return pathlib.Path(inner.app.state.db_path)
+
+    return corpus_snapshot(root, built)
+
+
+@contextlib.contextmanager
+def _derived(tmp_path, root):
+    """A client over the derived library: every run seeds a fresh home
+    with the snapshot before boot -- the app migrates and serves an
+    existing gallery.db as its ordinary first act."""
+    run = tmp_path / "run"
+    where = sg_home.db_path(sg_home.home(str(run)))
+    shutil.copyfile(_snapshot(root), where)
+    with TestClient(app=build_app(str(run), worker=False)) as client:
+        yield client
+
+
 def _pair(root, stem: str, wall: float, *, subsec="00", lens="EF24-105mm", iso=400):
     """One shutter press kept twice: a RAW-standing PNG and its JPEG,
     the same EXIF in both, mtime the camera's own write."""
@@ -239,7 +265,7 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
     pairs share an act key; the session has eight members but four
     acts, members ordered act by act; the lone pair is one act and no
     session."""
-    root = tmp_path / "lib"
+    root = tmp_path / "acts"
     root.mkdir()
     start = FEB_10 + 8 * HOUR
     _pair(root, "IMG_0001", start, subsec="00")
@@ -247,118 +273,119 @@ def test_a_raw_and_its_jpeg_are_one_act_and_a_session_counts_acts(tmp_path):
     _pair(root, "IMG_0003", start + 2, subsec="10")
     _pair(root, "IMG_0004", start + 15 * MIN, subsec="00", lens="EF70-200mm", iso=1600)
     _pair(root, "IMG_0009", start + 9 * HOUR, subsec="00")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, root)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            keys = conn.execute(
-                "SELECT f.name, o.act_key, o.time_precision, o.supports FROM derived_media_occurrence o"
-                " JOIN file f ON f.id = o.file_id WHERE o.kind = 'capture' ORDER BY f.name"
-            ).fetchall()
-            by_stem: dict[str, set] = {}
-            for name, key, precision, supports in keys:
-                by_stem.setdefault(name.rsplit(".", 1)[0], set()).add(key)
-                assert precision == "subsecond"
-                assert '"exif_subsecond"' in supports
-                assert '"mtime_write_consistent"' in supports
-            assert all(len(held) == 1 for held in by_stem.values()), "both renditions of one press share the key"
-            assert len({next(iter(v)) for v in by_stem.values()}) == 5, "five presses, five keys"
-            sessions = conn.execute(
-                "SELECT e.id, (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id)"
-                " FROM derived_event e WHERE e.kind = 'capture_session'"
-            ).fetchall()
-            assert [s[1] for s in sessions] == [8], "one session of eight files; the lone pair is one act, not two"
-            order = conn.execute(
-                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
-                " WHERE ef.event_id = ? ORDER BY ef.ordinal",
-                (sessions[0][0],),
-            ).fetchall()
-            assert [o[0] for o in order] == [
-                "IMG_0001.jpg",
-                "IMG_0001.png",
-                "IMG_0002.jpg",
-                "IMG_0002.png",
-                "IMG_0003.jpg",
-                "IMG_0003.png",
-                "IMG_0004.jpg",
-                "IMG_0004.png",
-            ], "act by act; neither is RAW, so by name inside each (RAW-first is proven on the real CR2s)"
-            snap = stories.snapshot_event(conn, sessions[0][0], NOW + 30 * HOUR)
-            conn.commit()
-            document = stories.load_snapshot(conn, snap.id)
-            first = document["members"][0]
-            assert first["occurrence"]["act_key"] == document["members"][1]["occurrence"]["act_key"]
-            assert first["capture"]["subsec_ms"] == 0
-            assert first["capture"]["body_serial"] == "182029002226"
-            assert first["capture"]["maker_tz_offset_min"] is None
-            assert document["members"][2]["capture"]["subsec_ms"] == 500
+    # No client: everything this test asserts is a read of the derived
+    # database, so the snapshot copy is opened directly and the ~170ms
+    # app boot stays with the tests that serve.
+    working = tmp_path / "acts.db"
+    shutil.copyfile(_snapshot(root), working)
+    conn = connect.connect(working)
+    try:
+        keys = conn.execute(
+            "SELECT f.name, o.act_key, o.time_precision, o.supports FROM derived_media_occurrence o"
+            " JOIN file f ON f.id = o.file_id WHERE o.kind = 'capture' ORDER BY f.name"
+        ).fetchall()
+        by_stem: dict[str, set] = {}
+        for name, key, precision, supports in keys:
+            by_stem.setdefault(name.rsplit(".", 1)[0], set()).add(key)
+            assert precision == "subsecond"
+            assert '"exif_subsecond"' in supports
+            assert '"mtime_write_consistent"' in supports
+        assert all(len(held) == 1 for held in by_stem.values()), "both renditions of one press share the key"
+        assert len({next(iter(v)) for v in by_stem.values()}) == 5, "five presses, five keys"
+        sessions = conn.execute(
+            "SELECT e.id, (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id)"
+            " FROM derived_event e WHERE e.kind = 'capture_session'"
+        ).fetchall()
+        assert [s[1] for s in sessions] == [8], "one session of eight files; the lone pair is one act, not two"
+        order = conn.execute(
+            "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+            " WHERE ef.event_id = ? ORDER BY ef.ordinal",
+            (sessions[0][0],),
+        ).fetchall()
+        assert [o[0] for o in order] == [
+            "IMG_0001.jpg",
+            "IMG_0001.png",
+            "IMG_0002.jpg",
+            "IMG_0002.png",
+            "IMG_0003.jpg",
+            "IMG_0003.png",
+            "IMG_0004.jpg",
+            "IMG_0004.png",
+        ], "act by act; neither is RAW, so by name inside each (RAW-first is proven on the real CR2s)"
+        snap = stories.snapshot_event(conn, sessions[0][0], NOW + 30 * HOUR)
+        conn.commit()
+        document = stories.load_snapshot(conn, snap.id)
+        first = document["members"][0]
+        assert first["occurrence"]["act_key"] == document["members"][1]["occurrence"]["act_key"]
+        assert first["capture"]["subsec_ms"] == 0
+        assert first["capture"]["body_serial"] == "182029002226"
+        assert first["capture"]["maker_tz_offset_min"] is None
+        assert document["members"][2]["capture"]["subsec_ms"] == 500
 
-            planner = planning.CaptureHistoryPlanner(None, {"pause_minutes": 10, "burst_seconds": 2.0})
-            plan = planner.plan(document, snap.sha256)
-            assert planning.validate_current_plan(plan, document, snap.sha256) == []
-            assert plan["v"] == 7
-            assert plan["subject"]["sequenced"] is True
-            assert plan["subject"]["label_hint"] == "Canon EOS 5D Mark III session · 4 frames · 2 phases"
-            assert [p["member_refs"] for p in plan["phases"]] == [
-                ["member-001", "member-002", "member-003", "member-004", "member-005", "member-006"],
-                ["member-007", "member-008"],
-            ]
-            kinds = {claim["id"]: claim for claim in plan["claims"]}
-            first_phase = [kinds[c]["kind"] for c in plan["phases"][0]["claim_refs"]]
-            second_phase = [kinds[c]["kind"] for c in plan["phases"][1]["claim_refs"]]
-            assert first_phase == ["burst", "exposure_range", "equipment", "renditions"]
-            assert second_phase == ["pause", "lens_change", "exposure_range", "equipment", "renditions"]
-            burst = next(c for c in plan["claims"] if c["kind"] == "burst")
-            assert burst["facts"] == {"frames": 3, "span_seconds": 2.1, "frames_per_second": 0.95}
-            assert burst["evidence_refs"] == ["member-001:occurrence", "member-003:occurrence", "member-005:occurrence"]
-            pause = next(c for c in plan["claims"] if c["kind"] == "pause")
-            assert pause["facts"]["gap_seconds"] == pytest.approx(15 * MIN - 2.1)
-            lens = next(c for c in plan["claims"] if c["kind"] == "lens_change")
-            assert (len(lens["facts"]["added"]), len(lens["facts"]["removed"])) == (1, 1)
-            renditions = [c["facts"] for c in plan["claims"] if c["kind"] == "renditions"]
-            assert renditions == [{"acts": 3, "files": 6}, {"acts": 1, "files": 2}]
-            exposure = [c["facts"] for c in plan["claims"] if c["kind"] == "exposure_range"]
-            assert [e["iso"] for e in exposure] == [[400, 400], [1600, 1600]]
-            assert plan["phases"][1]["label_hint"] == "Phase 2 · after a pause · new lens"
+        planner = planning.CaptureHistoryPlanner(None, {"pause_minutes": 10, "burst_seconds": 2.0})
+        plan = planner.plan(document, snap.sha256)
+        assert planning.validate_current_plan(plan, document, snap.sha256) == []
+        assert plan["v"] == 7
+        assert plan["subject"]["sequenced"] is True
+        assert plan["subject"]["label_hint"] == "Canon EOS 5D Mark III session · 4 frames · 2 phases"
+        assert [p["member_refs"] for p in plan["phases"]] == [
+            ["member-001", "member-002", "member-003", "member-004", "member-005", "member-006"],
+            ["member-007", "member-008"],
+        ]
+        kinds = {claim["id"]: claim for claim in plan["claims"]}
+        first_phase = [kinds[c]["kind"] for c in plan["phases"][0]["claim_refs"]]
+        second_phase = [kinds[c]["kind"] for c in plan["phases"][1]["claim_refs"]]
+        assert first_phase == ["burst", "exposure_range", "equipment", "renditions"]
+        assert second_phase == ["pause", "lens_change", "exposure_range", "equipment", "renditions"]
+        burst = next(c for c in plan["claims"] if c["kind"] == "burst")
+        assert burst["facts"] == {"frames": 3, "span_seconds": 2.1, "frames_per_second": 0.95}
+        assert burst["evidence_refs"] == ["member-001:occurrence", "member-003:occurrence", "member-005:occurrence"]
+        pause = next(c for c in plan["claims"] if c["kind"] == "pause")
+        assert pause["facts"]["gap_seconds"] == pytest.approx(15 * MIN - 2.1)
+        lens = next(c for c in plan["claims"] if c["kind"] == "lens_change")
+        assert (len(lens["facts"]["added"]), len(lens["facts"]["removed"])) == (1, 1)
+        renditions = [c["facts"] for c in plan["claims"] if c["kind"] == "renditions"]
+        assert renditions == [{"acts": 3, "files": 6}, {"acts": 1, "files": 2}]
+        exposure = [c["facts"] for c in plan["claims"] if c["kind"] == "exposure_range"]
+        assert [e["iso"] for e in exposure] == [[400, 400], [1600, 1600]]
+        assert plan["phases"][1]["label_hint"] == "Phase 2 · after a pause · new lens"
 
-            render = rendering.TemplateStoryRenderer("memory").render(
-                document, plan, snap.sha256, planning.identity(plan)[1]
+        told = planning.identity(plan)[1]
+        render = rendering.TemplateStoryRenderer("memory").render(document, plan, snap.sha256, told)
+        assert rendering.violations(render, plan, document, snap.sha256, told) == []
+        assert render["title"] == "4 photographs with the Canon EOS 5D Mark III from February 10, 2013"
+        assert render["summary"] == "These 4 photographs were taken on February 10, 2013 and fall into 2 phases."
+        texts = [b["text"] for s in render["sections"] for b in s["blocks"]]
+        assert texts[0] == "3 photographs (6 files)."
+        assert "A burst of 3 frames in 2.1 s." in texts
+        assert "Shot with Canon EOS 5D Mark III through EF24-105mm." in texts
+        assert "3 photographs here are kept as 6 files." in texts
+        assert "The camera was down for 14 min 58 s before this phase." in texts
+        assert "The lens changes here to EF70-200mm, from EF24-105mm." in texts
+        assert not any("Exposure spans" in t for t in texts), "the memory profile does not surface exposure"
+        technical = rendering.TemplateStoryRenderer("technical").render(
+            document, plan, snap.sha256, planning.identity(plan)[1]
+        )
+        assert "Exposure spans ISO 400; f/4; 1/60 s; 50 mm." in [
+            b["text"] for s in technical["sections"] for b in s["blocks"]
+        ]
+        # the generation planner refuses this subject; the capture planner refuses that one
+        with pytest.raises(ValueError, match="capture sessions only"):
+            planning.CaptureHistoryPlanner().plan(
+                {**document, "subject": {**document["subject"], "event_kind": "generation_session"}}, snap.sha256
             )
-            assert rendering.violations(render, plan, document, snap.sha256, planning.identity(plan)[1]) == []
-            assert render["title"] == "4 photographs with the Canon EOS 5D Mark III from February 10, 2013"
-            assert render["summary"] == "These 4 photographs were taken on February 10, 2013 and fall into 2 phases."
-            texts = [b["text"] for s in render["sections"] for b in s["blocks"]]
-            assert texts[0] == "3 photographs (6 files)."
-            assert "A burst of 3 frames in 2.1 s." in texts
-            assert "Shot with Canon EOS 5D Mark III through EF24-105mm." in texts
-            assert "3 photographs here are kept as 6 files." in texts
-            assert "The camera was down for 14 min 58 s before this phase." in texts
-            assert "The lens changes here to EF70-200mm, from EF24-105mm." in texts
-            assert not any("Exposure spans" in t for t in texts), "the memory profile does not surface exposure"
-            technical = rendering.TemplateStoryRenderer("technical").render(
-                document, plan, snap.sha256, planning.identity(plan)[1]
-            )
-            assert "Exposure spans ISO 400; f/4; 1/60 s; 50 mm." in [
-                b["text"] for s in technical["sections"] for b in s["blocks"]
-            ]
-            # the generation planner refuses this subject; the capture planner refuses that one
-            with pytest.raises(ValueError, match="capture sessions only"):
-                planning.CaptureHistoryPlanner().plan(
-                    {**document, "subject": {**document["subject"], "event_kind": "generation_session"}}, snap.sha256
-                )
-        finally:
-            connect.close(conn)
+    finally:
+        connect.close(conn)
 
 
 @pytest.mark.slow
 def test_a_capture_plan_is_durable_work_without_loading_any_weights(tmp_path):
-    root = tmp_path / "lib"
+    root = tmp_path / "planned"
     root.mkdir()
     start = FEB_10 + 8 * HOUR
     _pair(root, "IMG_0001", start)
     _pair(root, "IMG_0002", start + 30)
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, root)
+    with _derived(tmp_path, root) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'capture_session'").fetchone()[0]
@@ -451,59 +478,71 @@ def test_the_v3_grammar_stays_frozen_and_v4_rejects_bent_capture_facts():
 @pytest.mark.skipif(not RAW.exists(), reason="the RAW sample library is not on this machine")
 @pytest.mark.slow
 def test_a_real_canon_day_becomes_acts_sessions_and_a_story(tmp_path):
-    """2013-02-10: 356 files from one 5D Mark III -- CR2+JPG pairs and
+    """2013-02-10: 451 files from one 5D Mark III -- CR2+JPG pairs and
     one MOV. Every pair is one act; the MOV is an act with the still's
     facts; the maker zone makes every claim an instant; sessions form
     over acts; the plan and the render say what the camera did."""
-    root = RAW / "2013-02-10"
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(client, root)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            files = conn.execute("SELECT count(*) FROM file").fetchone()[0]
-            occurrences = conn.execute(
-                "SELECT count(*), count(DISTINCT act_key) FROM derived_media_occurrence WHERE kind = 'capture'"
-            ).fetchone()
-            assert occurrences[0] == files, "every file, the MOV included, has a capture occurrence"
-            pairs = conn.execute(
-                "SELECT count(*) FROM (SELECT act_key FROM derived_media_occurrence WHERE kind = 'capture'"
-                " GROUP BY act_key HAVING count(*) = 2)"
-            ).fetchone()[0]
-            assert occurrences[1] == files - pairs
-            assert pairs > 100
-            zones = conn.execute(
-                "SELECT DISTINCT tz_offset_min, time_precision FROM derived_media_occurrence WHERE kind = 'capture'"
-            ).fetchall()
-            assert zones == [(-300, "subsecond")], "the maker note's zone and the subsecond clock, on every file"
-            supports = conn.execute(
-                "SELECT supports, count(*) FROM derived_media_occurrence WHERE kind = 'capture' GROUP BY supports"
-            ).fetchall()
-            assert all('"maker_timezone"' in s and '"mtime_write_consistent"' in s for s, _ in supports), supports
-            events = conn.execute(
-                "SELECT e.id, (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id)"
-                " FROM derived_event e WHERE e.kind = 'capture_session' ORDER BY 2 DESC"
-            ).fetchall()
-            assert events
-            assert sum(n for _, n in events) == files
-            first_pair = conn.execute(
-                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
-                " WHERE ef.event_id = ? ORDER BY ef.ordinal LIMIT 2",
-                (events[0][0],),
-            ).fetchall()
-            assert first_pair[0][0].endswith(".CR2"), "inside one act the RAW leads"
-            assert first_pair[0][0][:-4] == first_pair[1][0][:-4]
-            snap = stories.snapshot_event(conn, events[0][0], NOW + 30 * HOUR)
-            conn.commit()
-            document = stories.load_snapshot(conn, snap.id)
-            plan = planning.CaptureHistoryPlanner().plan(document, snap.sha256)
-            assert planning.validate_current_plan(plan, document, snap.sha256) == []
-            kinds = {c["kind"] for c in plan["claims"]}
-            assert {"burst", "exposure_range", "equipment", "renditions", "video_clip"} <= kinds, kinds
-            assert plan["subject"]["label_hint"].startswith("Canon EOS 5D Mark III session")
-            render = rendering.TemplateStoryRenderer("memory").render(
-                document, plan, snap.sha256, planning.identity(plan)[1]
-            )
-            assert rendering.violations(render, plan, document, snap.sha256, planning.identity(plan)[1]) == []
-            assert "with the Canon EOS 5D Mark III from February 10, 2013" in render["title"]
-        finally:
-            connect.close(conn)
+    import shutil
+
+    def built(home: pathlib.Path) -> pathlib.Path:
+        with TestClient(app=build_app(str(home), worker=False)) as client:
+            _library(client, RAW / "2013-02-10")
+            return pathlib.Path(client.app.state.db_path)
+
+    # The derivation is a constant of frozen bytes and current code;
+    # tests/staging.corpus_snapshot builds it once per (corpus, code)
+    # and hands the copy back in milliseconds -- a fresh build hashes
+    # 9 GB of CR2 and cost this test 11.3 of its 11.6 seconds. The
+    # assertions below run in full either way, on a working copy
+    # because snapshot_event writes.
+    working = tmp_path / "day.db"
+    shutil.copyfile(corpus_snapshot(RAW / "2013-02-10", built), working)
+    conn = connect.connect(str(working))
+    try:
+        files = conn.execute("SELECT count(*) FROM file").fetchone()[0]
+        occurrences = conn.execute(
+            "SELECT count(*), count(DISTINCT act_key) FROM derived_media_occurrence WHERE kind = 'capture'"
+        ).fetchone()
+        assert occurrences[0] == files, "every file, the MOV included, has a capture occurrence"
+        pairs = conn.execute(
+            "SELECT count(*) FROM (SELECT act_key FROM derived_media_occurrence WHERE kind = 'capture'"
+            " GROUP BY act_key HAVING count(*) = 2)"
+        ).fetchone()[0]
+        assert occurrences[1] == files - pairs
+        assert pairs > 100
+        zones = conn.execute(
+            "SELECT DISTINCT tz_offset_min, time_precision FROM derived_media_occurrence WHERE kind = 'capture'"
+        ).fetchall()
+        assert zones == [(-300, "subsecond")], "the maker note's zone and the subsecond clock, on every file"
+        supports = conn.execute(
+            "SELECT supports, count(*) FROM derived_media_occurrence WHERE kind = 'capture' GROUP BY supports"
+        ).fetchall()
+        assert all('"maker_timezone"' in s and '"mtime_write_consistent"' in s for s, _ in supports), supports
+        events = conn.execute(
+            "SELECT e.id, (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id)"
+            " FROM derived_event e WHERE e.kind = 'capture_session' ORDER BY 2 DESC"
+        ).fetchall()
+        assert events
+        assert sum(n for _, n in events) == files
+        first_pair = conn.execute(
+            "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+            " WHERE ef.event_id = ? ORDER BY ef.ordinal LIMIT 2",
+            (events[0][0],),
+        ).fetchall()
+        assert first_pair[0][0].endswith(".CR2"), "inside one act the RAW leads"
+        assert first_pair[0][0][:-4] == first_pair[1][0][:-4]
+        snap = stories.snapshot_event(conn, events[0][0], NOW + 30 * HOUR)
+        conn.commit()
+        document = stories.load_snapshot(conn, snap.id)
+        plan = planning.CaptureHistoryPlanner().plan(document, snap.sha256)
+        assert planning.validate_current_plan(plan, document, snap.sha256) == []
+        kinds = {c["kind"] for c in plan["claims"]}
+        assert {"burst", "exposure_range", "equipment", "renditions", "video_clip"} <= kinds, kinds
+        assert plan["subject"]["label_hint"].startswith("Canon EOS 5D Mark III session")
+        render = rendering.TemplateStoryRenderer("memory").render(
+            document, plan, snap.sha256, planning.identity(plan)[1]
+        )
+        assert rendering.violations(render, plan, document, snap.sha256, planning.identity(plan)[1]) == []
+        assert "with the Canon EOS 5D Mark III from February 10, 2013" in render["title"]
+    finally:
+        connect.close(conn)

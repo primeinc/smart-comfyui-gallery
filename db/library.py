@@ -49,6 +49,24 @@ def _write_marker(path, identity: bytes) -> None:
         _logger.warning("%s: marker not written, the root matches by path: %s: %s", path, type(why).__name__, why)
 
 
+def where(path) -> str:
+    """A root's path as it will be STORED: absolute and normalised.
+
+    Every path in this library is composed from a root's -- `path_of`
+    joins the root's recorded path to the folder names below it -- so a
+    root stored relative makes every file's location depend on which
+    directory the reading process happens to be in. The registering
+    request and the background worker have no reason to share one, and
+    the failure it produces is the confusing kind: FileNotFoundError on a
+    file that is not missing, naming half a path.
+
+    `abspath`, not `realpath`: a library deliberately reached through a
+    symlink is a library at that path, and resolving the link would
+    silently re-register it somewhere its owner did not name.
+    """
+    return os.path.abspath(os.path.normpath(str(path)))
+
+
 def add_root(conn, path, kind: str, now: float) -> int:
     """Register a place bytes live.
 
@@ -56,8 +74,12 @@ def add_root(conn, path, kind: str, now: float) -> int:
     under. Registering a moved library used to mint a second root and leave
     the whole library behind the first one, which then read as offline; the
     marker inside the directory is what makes that a relocation instead.
+
+    Normalising first makes the CHEAP half of that idempotence work as
+    well: `lib`, `./lib` and the absolute spelling now match on the path
+    column rather than falling through to the marker read.
     """
-    path = str(path)
+    path = where(path)
     row = conn.execute("SELECT id FROM root WHERE path = ?", (path,)).fetchone()
     if row:
         return row[0]
@@ -92,7 +114,7 @@ def relocate(conn, root_id: int, path) -> None:
     the operation that did not exist, which is why a moved library had no way
     back short of a rebuild.
     """
-    path = str(path)
+    path = where(path)
     row = conn.execute("SELECT uuid FROM root WHERE id = ?", (root_id,)).fetchone()
     if row is None:
         raise LookupError(f"no root {root_id}")
@@ -150,6 +172,69 @@ def check_roots(conn) -> list[tuple[int, str, bool]]:
     for root_id, _, reachable in seen:
         set_online(conn, root_id, reachable)
     return seen
+
+
+#: What hangs off a file, as (name, table, its file column). Counted so
+#: a person removing "just a directory" is told what else goes with it.
+_ATTACHED = (
+    ("ratings", "rating", "file_id"),
+    ("favorites", "favorite", "file_id"),
+    ("comments", "comment", "file_id"),
+    ("people_named", "person_assertion", "file_id"),
+    ("places", "file_place", "file_id"),
+    ("keywords", "file_tag", "file_id"),
+    ("in_collections", "collection_file", "file_id"),
+)
+
+
+def removal_cost(conn, root_id: int) -> dict:
+    """Everything that goes if this root is removed.
+
+    Counted BEFORE anything is touched, because the answer is the point:
+    `folder.root_id` cascades to folders, folders cascade to files, and
+    files cascade to every rating, comment, favourite, name and place
+    somebody attached to them. A person deleting "just a directory"
+    would otherwise find that out afterwards.
+
+    Nothing on disk is counted because nothing on disk is touched. This
+    removes rows.
+    """
+    told = {
+        "root": root_id,
+        "path": root_path(conn, root_id),
+        "folders": conn.execute("SELECT count(*) FROM folder WHERE root_id = ?", (root_id,)).fetchone()[0],
+        "files": conn.execute(
+            "SELECT count(*) FROM file f JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?", (root_id,)
+        ).fetchone()[0],
+    }
+    for name, table, column in _ATTACHED:
+        told[name] = conn.execute(
+            f"SELECT count(*) FROM {table} t JOIN file f ON f.id = t.{column}"
+            "  JOIN folder d ON d.id = f.folder_id WHERE d.root_id = ?",
+            (root_id,),
+        ).fetchone()[0]
+    return told
+
+
+def forget_root(conn, root_id: int) -> dict:
+    """Stop indexing a directory, and drop what was indexed from it.
+
+    NOT a deletion of anything on disk -- the bytes are exactly where
+    they were, and re-adding the directory finds them again. What goes
+    is this library's knowledge of them, which is the part that cannot
+    be recomputed: the ratings, the names, the places, the memberships.
+
+    Returns what it removed, counted first, so a caller can say what
+    happened rather than "done".
+    """
+    cost = removal_cost(conn, root_id)
+    if cost["path"] is None:
+        raise LookupError(f"no root {root_id}")
+    # ON DELETE CASCADE does the rest: root -> folder -> file -> every
+    # row that hangs off a file. Said here so the one line below is not
+    # mistaken for a small one.
+    conn.execute("DELETE FROM root WHERE id = ?", (root_id,))
+    return cost
 
 
 def roots(conn, *, kind=None) -> list[tuple]:

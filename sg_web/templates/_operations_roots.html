@@ -14,11 +14,23 @@
 {% else %}
 <p class="empty">no media directories registered yet.</p>
 {% endif %}
+{% if behind %}
+{# A scan LISTS files and derives nothing. Somebody who has just added a
+   library is looking at pictures with no metadata, no search and no
+   people, and the button that fixes that lives in a different section
+   further down the page -- which is the "order only the application
+   knows" this whole surface exists to stop charging people for. So the
+   work the scan left undone is named HERE, beside the thing that left
+   it. Sweep names and their counts, never a total: a file missing both
+   a reading and a caption is one file and two sweeps. #}
+<p class="operations-hint" data-root-behind>
+  Scanning only lists files &mdash; it does not read, fingerprint or caption them. Still to do:
+  {% for kind, n in behind.items() %}<code class="raw" data-behind="{{ kind }}">{{ kind }} {{ n }}</code>{{ " " if not loop.last }}{% endfor %}
+  <button type="button" data-launch="catch_up" data-root-catch-up
+          hx-post="/operations/jobs/catch_up" hx-target="#shell-notice" hx-swap="innerHTML">bring the library up to date, in order</button>
+</p>
+{% endif %}
 <form class="operations-form" data-add-root hx-post="/operations/roots" hx-target="#operations-roots" hx-swap="innerHTML">
   <input name="path" placeholder="D:/pictures" aria-label="directory path" required>
-  <select name="kind" aria-label="kind">
-    <option value="library">library</option>
-    <option value="mount">mount</option>
-  </select>
   <button type="submit">add root</button>
 </form>

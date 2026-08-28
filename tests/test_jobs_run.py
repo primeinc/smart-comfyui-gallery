@@ -8,27 +8,23 @@ table directly, because the semantics under test are the runner's.
 
 from __future__ import annotations
 
-import pathlib
-
 import numpy as np
 import pytest
 
-from db import connect, jobs, runner, scan
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-
-
-@pytest.fixture(scope="module")
-def ddl():
-    return SCHEMA.read_text(encoding="utf-8")
+from db import jobs, runner, scan
+from tests.staging import fresh_schema
 
 
 @pytest.fixture
-def db(ddl):
-    conn = connect.memory()
-    conn.executescript(ddl)
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+def db():
+    """The schema, from the per-process master rather than the DDL.
+
+    `executescript` of the whole schema is ~11 ms and a backup from a
+    master built once is ~0.5 ms (tests/staging.py `fresh_schema`, whose
+    measurements these are). Thirty tests here start from exactly this,
+    in front of calls that answer in a hundredth of a second.
+    """
+    return fresh_schema()
 
 
 class Counter:
@@ -468,6 +464,184 @@ def test_the_embed_job_fills_the_joint_space_with_provenance(db, tmp_path, monke
     assert preprocess == "open_clip.transforms"
 
 
+def test_one_encoder_pass_covers_many_items_and_each_keeps_its_own_vector(db, tmp_path, monkeypatch):
+    """An adapter that can encode a group is given one, and the items it
+    covered commit exactly as if they had been encoded alone.
+
+    The durable contract does not move: every item is still started,
+    worked and settled on its own row, so the job stays resumable,
+    cancellable at a boundary, and able to lose one picture without the
+    rest. What changes is only WHEN the arithmetic happened.
+
+    The vectors are checked per file, not merely counted. A group encode
+    hands back a list, and a list zipped against the wrong items would
+    give every picture a plausible vector belonging to its neighbour --
+    a defect no count, and no assertion about dimensions, would catch.
+    """
+    from db import detect, oriented, similarity
+    from vision import semantic
+
+    calls: list[int] = []
+
+    class Grouping:
+        dimensions = 4
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+
+        def _vector(self, frame):
+            # The mean pixel is enough to tell these fixtures apart, and
+            # it is a property of the PICTURE, so a misplaced vector is
+            # visible rather than merely different.
+            mean = float(np.asarray(frame.convert("RGB"), dtype=np.float64).mean())
+            v = np.array([mean, 1.0, 0.0, 0.0], dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+        def encode_media(self, media):
+            calls.append(1)
+            return self._vector(media.frame())
+
+        def encode_many(self, framers):
+            calls.append(len(framers))
+            return [self._vector(framer()) for framer in framers]
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Grouping())
+    files = _pictures(db, tmp_path, {f"p{i}.png": i for i in range(6)})
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 6, "failed": 0}
+
+    assert max(calls) > 1, "the adapter was never handed a group"
+    assert sum(calls) == len(files), f"pictures were encoded more than once: {calls}"
+
+    # every item settled on its own row, as before
+    states = [row[0] for row in db.execute("SELECT state FROM job_item WHERE job_id = ?", (job_id,))]
+    assert states == ["done"] * len(files)
+
+    # and every file kept ITS OWN vector
+    backend = Grouping()
+    for name, file_id in files.items():
+        blob = db.execute("SELECT vector FROM derived_embedding WHERE file_id = ?", (file_id,)).fetchone()
+        assert blob is not None, f"{name} recorded nothing"
+        stored = np.frombuffer(blob[0], dtype=np.float32)
+        want = backend._vector(oriented.for_model(db, file_id, detect.path_of(db, file_id)))
+        assert np.allclose(stored, want), f"{name} was given another picture's vector"
+
+
+def test_two_jobs_over_the_same_files_never_read_each_other_vectors():
+    """The held vectors are keyed by job, space AND file, all three.
+
+    An earlier lookup searched every held job for a matching space and
+    file, which made the real contract `space + file` while the storage
+    key said otherwise. Two jobs over overlapping files in one space
+    would have crossed -- and the reason it would usually have looked
+    fine, that the same file in the same space encodes to nearly the same
+    vector, is exactly what would have kept it hidden.
+    """
+
+    class Space:
+        key = "semantic.openclip.ViT-B-32.laion2b_s34b_b79k"
+
+    class Other:
+        key = "semantic.qwen.something"
+
+    other = Other
+    held = runner._Ahead()
+    held._held[(1, Space.key)] = {42: "job one's vector"}
+    held._held[(2, Space.key)] = {42: "job two's vector"}
+    held._held[(1, other.key)] = {42: "another space's vector"}
+
+    assert held.take(1, Space(), 42) == "job one's vector"
+    assert held.take(2, Space(), 42) == "job two's vector"
+    assert held.take(1, other(), 42) == "another space's vector"
+    assert held.take(3, Space(), 42) is None, "a job that held nothing must not read a neighbour's"
+    assert held.take(1, Space(), 42) is None, "and a vector is taken once"
+
+    held.forget(1)
+    held._held[(2, Space.key)] = {7: "still job two's"}
+    assert held.take(2, Space(), 7) == "still job two's", "forgetting one job leaves the others alone"
+
+
+def test_a_batch_is_bounded_by_pixels_including_the_item_that_leads_it(db, tmp_path, monkeypatch):
+    """`BATCH_MEGAPIXELS` bounds the WHOLE batch.
+
+    The leader decodes like any other member and the item leading a batch
+    pays for all of it, so leaving it out of the budget made the stated
+    bound a bound on the followers only: a 100-megapixel leader plus 150
+    of followers formed a 250-megapixel batch under a limit of 160.
+
+    Cancellation is checked between items, so this bound is also the
+    longest a stop request can wait.
+    """
+    from db import similarity
+    from vision import semantic
+
+    widest: list[int] = []
+
+    class Grouping:
+        dimensions = 4
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+
+        def _v(self):
+            v = np.ones(4, dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+        def encode_media(self, media):
+            widest.append(1)
+            return self._v()
+
+        def encode_many(self, framers):
+            widest.append(len(framers))
+            return [self._v() for _ in framers]
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Grouping())
+    monkeypatch.setattr(runner, "BATCH_MEGAPIXELS", 100.0)
+    files = _pictures(db, tmp_path, {f"p{i}.png": i for i in range(8)})
+    # 40 megapixels each against a bound of 100. Charging the leader
+    # leaves room for exactly one follower, so batches are of two.
+    # WITHOUT charging it there is room for two followers and they would
+    # be three -- which is what makes this test tell the two apart rather
+    # than pass either way.
+    db.execute("UPDATE file SET width = 5000, height = 8000")
+    db.commit()
+
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 8, "failed": 0}
+    assert max(widest) == 2, f"batches of {max(widest)}: the leader's own pixels were not charged"
+    assert sum(widest) == len(files), f"pictures were encoded more than once: {widest}"
+
+
+def test_an_adapter_without_a_group_encoder_is_still_called_one_at_a_time(db, tmp_path, monkeypatch):
+    """The fallback is not a special case, it is the older path intact.
+
+    Qwen has no `encode_many`, and a provider added tomorrow will not
+    have one either until somebody writes it. Nothing about the job may
+    depend on it existing.
+    """
+    from db import similarity
+    from vision import semantic
+
+    seen: list[int] = []
+
+    class Single:
+        dimensions = 4
+
+        def space(self):
+            return similarity.semantic_space("ViT-B-32", "laion2b_s34b_b79k", 4)
+
+        def encode_media(self, media):
+            seen.append(1)
+            v = np.ones(4, dtype=np.float32)
+            return v / np.linalg.norm(v)
+
+    monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Single())
+    files = _pictures(db, tmp_path, {"a.png": 0, "b.png": 1, "c.png": 2})
+    [job_id] = runner.submit_embed(db, 0.0, models_dir=str(tmp_path))
+    assert runner.run_next(db, "w1", 1.0) == {"job": job_id, "state": "done", "did": 3, "failed": 0}
+    assert len(seen) == len(files), "an adapter with no group encoder must be called once per picture"
+
+
 def test_the_embed_sweep_queues_only_pictures_without_a_current_vector(db, tmp_path, monkeypatch):
     """A second sweep over an embedded library has nothing to do and
     queues no job; new bytes put a picture back; `everything` puts them
@@ -674,7 +848,7 @@ def test_one_failing_provider_costs_its_own_space_only(db, tmp_path, monkeypatch
     )
 
 
-def test_the_qwen_adapter_takes_the_native_link_for_video():
+def test_the_qwen_adapter_takes_the_native_link_for_video(monkeypatch):
     """Video reaches the model as the FILE with sampling budgets -- the
     whole point of the media-aware seam. Calling the canonical poster
     frame instead would judge a clip by one picture and make the seam
@@ -689,7 +863,7 @@ def test_the_qwen_adapter_takes_the_native_link_for_video():
         seen.update({"instruction": instruction, "content": content})
         return np.zeros(1, dtype=np.float32)
 
-    backend._embed = record
+    monkeypatch.setattr(backend, "_embed", record)
 
     def never_the_frame():
         raise AssertionError("a video must go through its own path, not the poster frame")
@@ -701,7 +875,7 @@ def test_the_qwen_adapter_takes_the_native_link_for_video():
     assert (seen["content"]["fps"], seen["content"]["max_frames"]) == (qwen_vl.FPS, qwen_vl.MAX_FRAMES)
 
 
-def test_a_failed_decode_fails_the_item_and_embeds_nothing():
+def test_a_failed_decode_fails_the_item_and_embeds_nothing(monkeypatch):
     """The upstream wrapper swaps a failed decode for the literal text
     "NULL" to keep an evaluation batch alive; this adapter must NOT --
     a NULL vector in the space is a picture that answers queries about
@@ -716,7 +890,7 @@ def test_a_failed_decode_fails_the_item_and_embeds_nothing():
         called.append(content)
         return np.zeros(1, dtype=np.float32)
 
-    backend._embed = record
+    monkeypatch.setattr(backend, "_embed", record)
 
     def undecodable():
         raise ValueError("the bytes are not a picture")
@@ -778,3 +952,46 @@ def test_a_failed_item_is_a_warning_naming_the_item_and_the_reason(db, caplog):
 
     warned = [r for r in caplog.records if r.name == "db.runner" and r.levelno == logging.WARNING]
     assert [r.getMessage() for r in warned] == [f"job #{job_id} embed: item 2 failed: item 2 is broken"]
+
+
+def test_the_ingest_sweep_can_be_bounded_to_one_folder(db, tmp_path):
+    """Re-reading is how this application corrects itself -- improving a
+    parser is a re-parse -- and "re-read all eighty thousand files" is a
+    price nobody pays to fix one folder of album tracks. A correction
+    too expensive to apply is not a correction.
+
+    The SUBTREE, not the one folder: somebody pointing at `music` means
+    the albums inside it, and a scope that stopped at the top level
+    would silently do a fraction of what was asked.
+    """
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/x','library',0)")
+    named = {}
+    for at, (name, parent) in enumerate([("lib", None), ("music", 1), ("album", 2), ("pictures", 1)], start=1):
+        db.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(?,?,'folder',?)", (at, bytes([at]) * 16, name))
+        db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(?,1,?,?,0)", (at, parent, name))
+        named[name] = at
+    for at, folder in enumerate([named["music"], named["album"], named["pictures"]], start=10):
+        db.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(?,?,'file',?)", (at, bytes([at]) * 16, f"f{at}"))
+        db.execute(
+            "INSERT INTO file(id,folder_id,name,kind,size,mtime,first_seen_at,last_seen_at)"
+            " VALUES(?,?,?,'audio',1,0,0,0)",
+            (at, folder, f"t{at}.m4a"),
+        )
+    db.commit()
+
+    whole = runner.submit_ingest(db, 1.0, everything=True)
+    assert db.execute("SELECT count(*) FROM job_item WHERE job_id = ?", (whole,)).fetchone()[0] == 3
+
+    bounded = runner.submit_ingest(db, 2.0, everything=True, folder_id=named["music"])
+    held = [row[0] for row in db.execute("SELECT item_id FROM job_item WHERE job_id = ? ORDER BY item_id", (bounded,))]
+    assert held == [10, 11], "the subtree, and nothing outside it"
+
+
+def test_a_bounded_sweep_with_nothing_to_do_says_so(db):
+    """None, not an empty job: "already read" is an answer, and a job
+    with no items would sit in the console claiming work."""
+    db.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/x','library',0)")
+    db.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,?,'folder','lib')", (b"\x01" * 16,))
+    db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'lib',0)")
+    db.commit()
+    assert runner.submit_ingest(db, 1.0, everything=True, folder_id=1) is None

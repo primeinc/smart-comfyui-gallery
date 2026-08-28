@@ -15,7 +15,7 @@
         <a class="shelf-name" href="{{ shelf.link }}/{{ one.slug }}" data-artifact="{{ one.slug }}">{{ one.name }}</a>
         <span class="shelf-count">{{ "{:,}".format(one.pictures) }} pictures</span>
         <a class="shelf-strip" href="/g?artifact={{ one.slug }}" title="all {{ "{:,}".format(one.pictures) }} in the gallery">
-          {% for slug in one.samples %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}
+          {% for address in one.samples %}<img src="{{ address }}" alt="" loading="lazy">{% endfor %}
         </a>
       </li>
       {% endfor %}

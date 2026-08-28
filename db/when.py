@@ -172,7 +172,11 @@ class Verdict:
         outside the claim (then it is a conflict, already named)."""
         if self.estimated_at is None or self.local_at is None:
             return None
-        span = {"day": 86400.0, "hour": 3600.0, "minute": 60.0}.get(self.precision)
+        # `_SPAN` minus the precisions that cannot contain a finer reading:
+        # a claim already at the second has nothing to refine INTO it. The
+        # coarse end does -- a photograph claimed to 1998 by its folder is
+        # refined by any consistent finer signal the file carries.
+        span = _SPAN.get(self.precision) if self.precision not in ("second", "subsecond") else None
         if span is None:
             return None
         return self.estimated_at if self.local_at <= self.estimated_at < self.local_at + span else None
@@ -355,7 +359,26 @@ _NAME_EPOCH_MS = re.compile(r"(?<!\d)(?P<v>1[3-9]\d{11})(?!\d)")
 _NAME_EPOCH_S = re.compile(r"(?<!\d)(?P<v>1\d{9})(?!\d)")
 #: A dated folder: 2013-02-10, 2013_02_10, 2013.02.10, 20130210.
 _FOLDER_DAY = re.compile(r"^(\d{4})[-_.]?(\d{2})[-_.]?(\d{2})$")
-_YEARS = range(1990, 2101)
+#: A folder naming a MONTH: 2003-07, 2003_07, 2003.07. Not `200307`, which
+#: is four digits followed by two and reads as a year with a counter.
+_FOLDER_MONTH = re.compile(r"^(\d{4})[-_.](\d{2})$")
+#: A folder naming a YEAR, and nothing else in it.
+_FOLDER_YEAR = re.compile(r"^(\d{4})$")
+#: A folder naming a DECADE: `1970s`, `1970's`.
+_FOLDER_DECADE = re.compile(r"^(\d{3})0'?s$", re.IGNORECASE)
+
+#: Which years a four-digit number is allowed to be.
+#:
+#: It was `range(1990, 2101)`, which is a DIGITAL camera's lifetime, and this
+#: application holds photographs. Measured against the corpus: six of the
+#: Commons photographs are from 1964, 1965, 1977, 1978, 1982 and 1989, and
+#: every one of them had its folder or filename date thrown away and fell
+#: back to mtime -- a 1964 photograph dated by when somebody last copied it.
+#:
+#: 1826 is the earliest surviving photograph, so nothing older can be a
+#: capture year. The lower bound is what stops `1234` reading as a date;
+#: it does not need to be recent to do that.
+_YEARS = range(1826, 2101)
 
 
 def _day_of(y: int, mo: int, d: int) -> float | None:
@@ -363,6 +386,16 @@ def _day_of(y: int, mo: int, d: int) -> float | None:
         return None
     try:
         return datetime.datetime(y, mo, d, tzinfo=datetime.UTC).timestamp()
+    except ValueError:
+        return None
+
+
+def _start_of(y: int, mo: int = 1) -> float | None:
+    """The first instant of a year or a month, or None if out of range."""
+    if y not in _YEARS or not 1 <= mo <= 12:
+        return None
+    try:
+        return datetime.datetime(y, mo, 1, tzinfo=datetime.UTC).timestamp()
     except ValueError:
         return None
 
@@ -400,26 +433,109 @@ def name_stamp(name: str) -> tuple[float, str] | None:
     return None
 
 
-def folder_day(folders: list[str]) -> float | None:
-    """The day a folder names, nearest folder first: `2013-02-10` in any
-    spelling, or a `2013/02/10` chain (year, month, day as successive
-    folders). None when no folder names one."""
+def folder_when(folders: list[str]) -> tuple[float, str] | None:
+    """`(wall-clock epoch, precision)` a folder names, nearest folder first.
+
+    A folder is often the ONLY date a scanned or exported photograph has,
+    and it is frequently coarser than a day: `1998/`, `2003-07/`, `1970s/`.
+    This used to answer with a day or with nothing, so every one of those
+    fell through to mtime -- dating a photograph by when it was last
+    copied. Measured on the corpus: six Commons photographs from 1964 to
+    1989, and every folder-dated scan.
+
+    FINEST WINS, and a coarse answer is still an answer. The chain form
+    `2013/02/10` is read at whatever depth it reaches: `2013/02` is a
+    month, `2013` alone is a year.
+    """
     for i in range(len(folders) - 1, -1, -1):
-        match = _FOLDER_DAY.match(folders[i])
+        one = folders[i]
+
+        match = _FOLDER_DAY.match(one)
         if match:
             day = _day_of(int(match.group(1)), int(match.group(2)), int(match.group(3)))
             if day is not None:
-                return day
+                return day, "day"
+
         if i >= 2 and all(f.isdigit() for f in folders[i - 2 : i + 1]):
             y, mo, d = folders[i - 2], folders[i - 1], folders[i]
             if len(y) == 4 and len(mo) in (1, 2) and len(d) in (1, 2):
                 day = _day_of(int(y), int(mo), int(d))
                 if day is not None:
-                    return day
+                    return day, "day"
+
+        match = _FOLDER_MONTH.match(one)
+        if match:
+            start = _start_of(int(match.group(1)), int(match.group(2)))
+            if start is not None:
+                return start, "month"
+
+        if i >= 1 and folders[i - 1].isdigit() and one.isdigit():
+            y, mo = folders[i - 1], one
+            if len(y) == 4 and len(mo) in (1, 2):
+                start = _start_of(int(y), int(mo))
+                if start is not None:
+                    return start, "month"
+
+        match = _FOLDER_YEAR.match(one)
+        if match:
+            start = _start_of(int(match.group(1)))
+            if start is not None:
+                return start, "year"
+
+        match = _FOLDER_DECADE.match(one)
+        if match:
+            start = _start_of(int(match.group(1)) * 10)
+            if start is not None:
+                return start, "decade"
     return None
 
 
-_SPAN = {"day": 86400.0, "hour": 3600.0, "minute": 60.0, "second": 1.0, "subsecond": 0.001}
+def folder_day(folders: list[str]) -> float | None:
+    """The day a folder names, or None when it names something coarser.
+
+    Kept for callers that can only use a day. `folder_when` is the whole
+    answer and says how precise it is.
+    """
+    held = folder_when(folders)
+    return held[0] if held is not None and held[1] == "day" else None
+
+
+#: How wide a claim at each precision is, in seconds. DERIVED, not typed.
+#:
+#: Written out by hand it was wrong twice over: this table said a decade was
+#: 315_569_520 while db/pages.py said 315_576_000, and a year 31_556_952
+#: against 31_557_600 -- the Gregorian mean against the Julian one, for the
+#: same word, three files apart. Four copies of the same table existed and
+#: no two had to agree.
+#:
+#: So the calendar constant is stated ONCE and everything else multiplies
+#: from it. `year` and `month` are means on purpose: a claim's window is
+#: used to ask whether a finer reading falls INSIDE it, and a mean month
+#: answers that for every month without needing the calendar.
+SECOND = 1.0
+MINUTE = 60.0 * SECOND
+HOUR = 60.0 * MINUTE
+DAY = 24.0 * HOUR
+#: The Gregorian mean year: 365.2425 days, the definition the calendar
+#: actually implements. Julian 365.25 is the one that drifts.
+YEAR = 365.2425 * DAY
+MONTH = YEAR / 12.0
+DECADE = 10.0 * YEAR
+
+SPAN = {
+    "decade": DECADE,
+    "year": YEAR,
+    "month": MONTH,
+    "day": DAY,
+    "hour": HOUR,
+    "minute": MINUTE,
+    "second": SECOND,
+    "subsecond": 0.001,
+}
+
+#: The old private name, kept so nothing in this module has to change at
+#: the same time as the table it reads.
+_SPAN = SPAN
 
 
 def judge_file(
@@ -430,26 +546,33 @@ def judge_file(
     btime: float | None,
 ) -> Verdict | None:
     """Rule 4: the file's own claims. A stamped name is the claim at its
-    own precision; else a dated folder is a day claim; mtime and btime
-    then support or dispute it through the host's zone. A folder day
-    that does not contain a stamped name's day is a `file: ` conflict
-    between the file's own claims (the name, being finer, stands). With
-    no claim the occurrence is the earliest known existence: the
-    smaller of mtime and btime, an instant, basis naming which."""
+    own precision; else a dated folder is a claim at ITS precision -- a
+    day, a month, a year, or a decade; mtime and btime then support or
+    dispute it through the host's zone. A folder window that does not
+    contain a stamped name's moment is a `file: ` conflict between the
+    file's own claims (the name, being finer, stands). With no claim the
+    occurrence is the earliest known existence: the smaller of mtime and
+    btime, an instant, basis naming which.
+
+    The folder used to be read as a day or not at all, so `1998/` and
+    `2003-07/` were no claim and the file fell to mtime -- which dates a
+    scanned photograph by when somebody last copied it."""
     stamp = name_stamp(name)
-    day = folder_day(folders)
+    dated = folder_when(folders)
     supports: list[str] = []
     conflicts: list[str] = []
     if stamp is not None:
         at, precision = stamp
         basis = "filename"
-        if day is not None:
-            if day <= at < day + 86400.0:
-                supports.append("folder_day")
+        if dated is not None:
+            start, coarse = dated
+            if start <= at < start + _SPAN[coarse]:
+                supports.append(f"folder_{coarse}")
             else:
-                conflicts.append(f"{FILE}the folder says {_spell(day)[:10]} but the name says {_spell(at)}")
-    elif day is not None:
-        at, precision, basis = day, "day", "folder"
+                conflicts.append(f"{FILE}the folder says {_spell(start)[:10]} but the name says {_spell(at)}")
+    elif dated is not None:
+        at, precision = dated
+        basis = "folder"
     else:
         if mtime is None and btime is None:
             return None

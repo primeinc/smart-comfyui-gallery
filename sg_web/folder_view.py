@@ -36,6 +36,7 @@ from litestar.response import Redirect, Response, Template
 from db import connect, facets, library, naming, pages, resultset, settings
 from sg_web import home
 from sg_web.presenting import presented_page, wants_json
+from vision import thumbs
 
 
 @get("/folders", sync_to_thread=True)
@@ -52,7 +53,7 @@ def folders_index(state: State, request: Request) -> Template | Response:
     operational paths that commit it."""
     conn = connect.connect(state.db_path, read_only=True)
     try:
-        online = {root_id: reachable for root_id, _, reachable in library.probe_roots(conn, kinds=("library", "mount"))}
+        online = {root_id: reachable for root_id, _, reachable in library.probe_roots(conn, kinds=("library",))}
         told = []
         for root_id, kind in pages.roots_shelf(conn):
             spans = pages.folder_top_spans(conn, root_id)
@@ -128,7 +129,9 @@ def view(conn, models_dir: str, folder_id: int, slug: str, now: float, *, legacy
                 for place_id, place_slug, name, kind, pictures in pages.folder_places(conn, folder_id)
             ],
             "gallery": {
-                "items": grid["items"],
+                # Content-addressed, so the page's pictures cost no
+                # connection at all (vision/thumbs.py `address`).
+                "items": thumbs.address(grid["items"]),
                 "total": grid["total"],
                 "pages": grid["pages"],
                 "qs": grid["qs"],

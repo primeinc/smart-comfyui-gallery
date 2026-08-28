@@ -8,35 +8,16 @@ avatar is the face their cluster actually points at.
 
 from __future__ import annotations
 
+import os
 import pathlib
 
 import numpy as np
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
-from db import connect, derived, ingest, library, naming, scan
-from sg_web.app import build_app
+from db import connect, derived, ingest, naming
 from tests.staging import Stage, staged
 from vision import decode
-
-
-def _library(tmp_path, write_media):
-    """Real media on disk, scanned and ingested into a run's home."""
-    root = tmp_path / "lib"
-    root.mkdir()
-    write_media(root)
-    burrow = tmp_path / "run"
-    burrow.mkdir()
-    conn = connect.connect(burrow / "gallery.db")
-    conn.executescript(connect.schema_sql())
-    conn.execute("PRAGMA foreign_keys=ON")
-    root_id = library.add_root(conn, str(root), "library", 0.0)
-    scan.scan(conn, root_id, str(root), 0.0)
-    for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():
-        ingest.one(conn, file_id, root / name, 0.0)
-    conn.commit()
-    return conn, burrow, root
 
 
 def _rgb(image: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
@@ -54,6 +35,12 @@ def _slug_of(conn, name: str) -> str:
 
 
 def _media(root: pathlib.Path) -> None:
+    # Two pictures of one "face": a red rectangle on blue, so a crop of
+    # the asserted region is red where the whole picture is blue.
+    canvas = Image.new("RGB", (800, 600), (0, 0, 255))
+    canvas.paste(Image.new("RGB", (200, 150), (255, 0, 0)), (200, 150))
+    canvas.save(root / "ana_1.png")
+    canvas.save(root / "ana_2.png")
     Image.new("RGB", (900, 400), (200, 30, 30)).save(root / "wide.png")
     turned = Image.new("RGB", (600, 400), (30, 30, 200))
     tag = Image.Exif()
@@ -170,8 +157,21 @@ def test_a_raw_latin1_range_octet_is_answered_not_crashed(served):
     """The wire case the test client cannot send: httpx refuses non-ASCII
     header values, but a socket delivers any octet and the server decodes
     it latin-1. Driven at the ASGI layer, `Range: bytes=-\xb2` must get
-    the whole file with 200, not a 500."""
+    the whole file with 200, not a 500.
+
+    Driven on a THREAD of its own, which is what this test learned the
+    hard way. `asyncio.run` refuses to start where a loop is already
+    running, and this suite runs after tests that leave one -- so it
+    raised `asyncio.run() cannot be called from a running event loop`,
+    and the coroutine it had already built was never awaited. The
+    RuntimeWarning for THAT arrives at the next garbage collection,
+    inside whichever unrelated test the collector reaches first, where
+    `filterwarnings = error` turns it into a second failure some
+    distance from its cause. A fresh thread has no loop, so neither
+    happens and this stops depending on what ran before it.
+    """
     import asyncio
+    import concurrent.futures
 
     client, slugs, root = served
 
@@ -212,7 +212,8 @@ def test_a_raw_latin1_range_octet_is_answered_not_crashed(served):
         await client.app(scope, receive, send)
         return told
 
-    told = asyncio.run(drive())
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as apart:
+        told = apart.submit(lambda: asyncio.run(drive())).result(timeout=30)
     start = next(message for message in told if message["type"] == "http.response.start")
     assert start["status"] == 200
     body = b"".join(message.get("body", b"") for message in told if message["type"] == "http.response.body")
@@ -234,9 +235,20 @@ def test_head_answers_what_get_would_say_without_the_body(served):
     assert client.head("/media/no-such-thing").status_code == 404
 
 
-def test_a_thumbnail_renders_once_and_serves_from_cache(served):
+def test_a_thumbnail_renders_once_and_serves_from_cache(served, request):
     client, slugs, root = served
     slug = slugs["wide.png"]
+    # The rewrite below is the claim; leaving it there is a library the
+    # next test's restore cannot put back, and it rebuilds the whole
+    # world instead. The file is written in place, so its bytes and its
+    # stamp go back and the listing is the one the world snapshotted.
+    was, stamped = (root / "wide.png").read_bytes(), (root / "wide.png").stat()
+
+    def put_back() -> None:
+        (root / "wide.png").write_bytes(was)
+        os.utime(root / "wide.png", ns=(stamped.st_atime_ns, stamped.st_mtime_ns))
+
+    request.addfinalizer(put_back)
     first = client.get(f"/thumb/{slug}")
     assert first.status_code == 200
     assert first.headers["content-type"].startswith("image/webp")
@@ -260,16 +272,24 @@ def test_a_sideways_phone_photo_is_thumbnailed_upright(served):
     assert small.height > small.width, "the EXIF turn was dropped on the way to the grid"
 
 
-def test_a_video_thumbnail_is_a_frame_and_a_preview_is_bigger(served):
+def test_a_video_thumbnail_is_a_poster_frame_at_the_clips_own_size(served):
+    """This clip is 320x180, under both derivative edges, so both are the
+    poster frame as decoded.
+
+    They used to be enlarged to 512 and 1440. Nothing asked for that --
+    the grid is `object-fit: cover` and the lightbox `object-fit:
+    contain` -- and encoding the invented pixels was the most expensive
+    phase in the pipeline for small sources.
+    """
     client, slugs, _ = served
 
     slug = slugs["clip.mp4"]
     thumb = decode.open_bytes(client.get(f"/thumb/{slug}").content)
-    assert thumb.size == (512, 288)
-    centre = _rgb(thumb, (256, 144))
+    assert thumb.size == (320, 180)
+    centre = _rgb(thumb, (160, 90))
     assert centre[2] > centre[0], "the poster frame is not the clip's pixels"
     preview = decode.open_bytes(client.get(f"/preview/{slug}").content)
-    assert preview.size == (1440, 810)
+    assert preview.size == (320, 180)
 
 
 def test_what_has_no_picture_says_so(served):
@@ -277,17 +297,17 @@ def test_what_has_no_picture_says_so(served):
     assert client.get(f"/thumb/{slugs['voice.wav']}").status_code == 404
 
 
-def test_an_avatar_is_the_face_the_cluster_points_at(tmp_path):
-    def write(root):
-        canvas = Image.new("RGB", (800, 600), (0, 0, 255))
-        canvas.paste(Image.new("RGB", (200, 150), (255, 0, 0)), (200, 150))
-        canvas.save(root / "ana_1.png")
-        canvas.save(root / "ana_2.png")
-
-    conn, burrow, _ = _library(tmp_path, write)
+def test_an_avatar_is_the_face_the_cluster_points_at(served):
+    """The two `ana_*.png` in this module's library are the face; every
+    other picture here is one nothing was ever detected in."""
+    client, _slugs, _ = served
+    conn = connect.connect(client.app.state.db_path)
     rng = np.random.default_rng(9)
     vector = rng.standard_normal(32).astype(np.float32)
-    sha_by_id = dict(conn.execute("SELECT id, content_sha256 FROM file"))
+    sha_by_id = dict(
+        conn.execute("SELECT id, content_sha256 FROM file WHERE name LIKE 'ana_%'"),
+    )
+    assert len(sha_by_id) == 2
     for file_id, sha in sha_by_id.items():
         derived.record_faces(
             conn,
@@ -312,13 +332,12 @@ def test_an_avatar_is_the_face_the_cluster_points_at(tmp_path):
     conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Ana', 0)", (person_id,))
     conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, made[0]))
     conn.commit()
-    conn.close()
+    connect.close(conn)
 
-    with TestClient(app=build_app(str(burrow))) as client:
-        answer = client.get("/avatar/ana")
-        assert answer.status_code == 200
-        avatar = decode.open_bytes(answer.content)
-        assert avatar.size == (256, 256)
-        centre = _rgb(avatar, (128, 128))
-        assert centre[0] > centre[2], "the avatar is not the asserted face"
-        assert client.get("/avatar/nobody").status_code == 404
+    answer = client.get("/avatar/ana")
+    assert answer.status_code == 200
+    avatar = decode.open_bytes(answer.content)
+    assert avatar.size == (256, 256)
+    centre = _rgb(avatar, (128, 128))
+    assert centre[0] > centre[2], "the avatar is not the asserted face"
+    assert client.get("/avatar/nobody").status_code == 404

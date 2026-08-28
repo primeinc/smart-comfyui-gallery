@@ -35,9 +35,6 @@ import os
 from dataclasses import dataclass, field
 from fractions import Fraction
 
-import pypdf
-import pypdf.errors
-
 _logger = logging.getLogger(__name__)
 
 #: Seconds to wait for bytes before an unreadable file is a finding.
@@ -107,6 +104,16 @@ def read(path: str | os.PathLike[str]) -> Probed:
         with av.open(os.fspath(path), "r", timeout=TIMEOUT, metadata_errors="replace") as container:
             video = container.streams.video[0] if container.streams.video else None
             audio = container.streams.audio[0] if container.streams.audio else None
+            # A stream can exist and carry NO codec context. PyAV opens
+            # the container, finds a video stream, and hands back a
+            # stream whose `codec_context` is None -- which every read
+            # below then dereferenced. Two real files do it, both on
+            # suffixes this application claims: a Canon CR3 (ISOBMFF
+            # RAW, opened as a container and described by nothing) and a
+            # JPEG XL. An AttributeError out of a reader is not a
+            # refusal any caller can handle.
+            vcodec = video.codec_context if video is not None else None
+            acodec = audio.codec_context if audio is not None else None
 
             # The container's duration, not the stream's: a stream
             # frequently omits it -- matroska routinely does -- while the
@@ -121,8 +128,8 @@ def read(path: str | os.PathLike[str]) -> Probed:
                 frame = _first_frame(container, video)
                 if frame is not None:
                     turn = int(frame.rotation) % 360
-                width = int(video.codec_context.width or 0) or None
-                height = int(video.codec_context.height or 0) or None
+                width = int(getattr(vcodec, "width", 0) or 0) or None
+                height = int(getattr(vcodec, "height", 0) or 0) or None
                 if turn in (90, 270):
                     width, height = height, width
                 out.width, out.height = width, height
@@ -132,12 +139,12 @@ def read(path: str | os.PathLike[str]) -> Probed:
             for key, value in (
                 ("Format", container.format.name if container.format else None),
                 ("BitRate", container.bit_rate or None),
-                ("VideoCodec", video.codec_context.name if video is not None else None),
-                ("PixelFormat", video.codec_context.pix_fmt if video is not None else None),
+                ("VideoCodec", vcodec.name if vcodec is not None else None),
+                ("PixelFormat", vcodec.pix_fmt if vcodec is not None else None),
                 ("FrameCount", (video.frames or None) if video is not None else None),
-                ("AudioCodec", audio.codec_context.name if audio is not None else None),
-                ("SampleRate", audio.codec_context.sample_rate if audio is not None else None),
-                ("Channels", audio.codec_context.channels if audio is not None else None),
+                ("AudioCodec", acodec.name if acodec is not None else None),
+                ("SampleRate", acodec.sample_rate if acodec is not None else None),
+                ("Channels", acodec.channels if acodec is not None else None),
             ):
                 if value is None or str(value).strip() == "":
                     continue
@@ -171,7 +178,14 @@ def document(path) -> Probed:
     An encrypted PDF raises `FileNotDecryptedError`, a subclass of
     `PdfReadError` and so of `PyPdfError` (pypdf/errors.py:19-49). That is a
     fact about the file, reported, not an error to end a scan with.
+
+    pypdf is imported here, the way `av` is above: 90ms of import
+    (pypdf.filters alone 26ms, measured with -X importtime) that only a
+    scan meeting a PDF ever needs, and every app boot was paying it.
     """
+    import pypdf
+    import pypdf.errors
+
     out = Probed()
     try:
         reader = pypdf.PdfReader(os.fspath(path))

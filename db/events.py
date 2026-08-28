@@ -45,13 +45,12 @@ interpretations, not history.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 import typing
 
 from vision.decode import RAW_SUFFIXES
 
-from . import context
+from . import context, naming, when
 
 #: How coarse each precision is, in seconds. A member enters gap
 #: arithmetic at the finest CONSISTENT reading it has: its refined
@@ -59,7 +58,9 @@ from . import context
 #: claim -- and only when that granule fits inside the gap. A bare
 #: day-fine date with nothing to refine it cannot be minutes from
 #: anything; 'insufficient temporal precision' is then the answer.
-_GRANULE = {"day": 86_400.0, "hour": 3_600.0, "minute": 60.0, "second": 1.0, "subsecond": 0.001}
+#: `db/when.py SPAN`, not a copy: how wide a claim is does not get to be
+#: two different numbers depending on which module is asking.
+_GRANULE = when.SPAN
 
 
 def _moment(one: context.Occurrence) -> float | None:
@@ -208,7 +209,7 @@ class GenerationSessionGrouper:
     settings: typing.ClassVar[dict] = {"gap_minutes": 30}
 
     def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
-        return _gapped(held, "generation_session", self.settings["gap_minutes"] * 60.0)
+        return _gapped(held, "generation_session", self.settings["gap_minutes"] * when.MINUTE)
 
 
 class CaptureSessionGrouper:
@@ -224,7 +225,7 @@ class CaptureSessionGrouper:
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
     def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
-        return _gapped(held, "capture_session", self.settings["gap_minutes"] * 60.0)
+        return _gapped(held, "capture_session", self.settings["gap_minutes"] * when.MINUTE)
 
 
 class FileSessionGrouper:
@@ -243,7 +244,7 @@ class FileSessionGrouper:
     settings: typing.ClassVar[dict] = {"gap_minutes": 180}
 
     def groups(self, held: list[context.Occurrence]) -> list[GroupProposal]:
-        return _gapped(held, "file_session", self.settings["gap_minutes"] * 60.0)
+        return _gapped(held, "file_session", self.settings["gap_minutes"] * when.MINUTE)
 
 
 #: The grouping adapters this build runs, in one place. The events job
@@ -253,14 +254,14 @@ GROUPERS = (GenerationSessionGrouper(), CaptureSessionGrouper(), FileSessionGrou
 
 
 def settings_hash(grouper) -> str:
-    return hashlib.sha256(json.dumps(grouper.settings, sort_keys=True).encode()).hexdigest()[:16]
+    return naming.short_hash(json.dumps(grouper.settings, sort_keys=True))
 
 
 def member_hash(uuids) -> str:
     """The membership's identity: ordered file uuids, hashed -- change
     one member or their order and every consumer sees a different
     event."""
-    return hashlib.sha256(",".join(uuids).encode()).hexdigest()[:16]
+    return naming.short_hash(",".join(uuids))
 
 
 def _shared_place(conn, file_ids, policy: int) -> int | None:

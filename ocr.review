@@ -1,0 +1,513 @@
+Review partially complete: 33 finding(s); 8 of 103 selected item(s) failed.
+
+─── frontend/src/install.ts:130-134 ───
+[documentation · low] The third paragraph of this comment (lines 130-134) reads like a personal
+debugging/test note rather than documentation of the code. It has no clear subject ("It also put a
+navigation..."), references Playwright test measurements and a Chromium error message that are
+irrelevant to anyone reading the source. The first two paragraphs already explain the
+`wasControlled` flag thoroughly; this fragment should be removed or rewritten as part of the commit
+message instead of living in the source.
+
+
+
+─── sg_web/static/build/story.js:541-548 ───
+[maintainability · low] The `degrade` function relies on the caller to pre-filter for already-failed
+images (`picture.complete && picture.naturalWidth === 0`). Consider documenting this contract in the
+function's leading comment so future callers know the function assumes the image has already failed
+to load.
+
+
+
+─── tests/test_a_keyword_vocabulary_can_be_kept_honest.py:105-110 ───
+[bug · medium] The newly-extracted `_typed` helper opens `connect.connect(client.app.state.db_path,
+read_only=True)` and only calls `connect.close(conn)` after a successful SELECT. If the SELECT
+raises (corrupt DB, schema mismatch, unexpected rows), the file-based read-only connection is
+leaked. The staging module's own `Stage.restore` comment explicitly warns about this case ("a
+connection a test leaked still holds the -wal open on Windows, and the backup writes the destination
+through its own pager with such connections present"), and `connect.connect` returns a plain
+`Connection` rather than a context manager (db/connect.py:152), so `with connect.connect(...) as
+conn:` is not available. Wrap the SELECT in `try: ... finally: connect.close(conn)` — the pattern is
+the same shape already used in `tests/staging.py:407-418` (`migrated`).
+
+- def _typed(stage) -> None:
+-     """The year of typing this page exists to fix, once."""
+-     client = stage.client
+      conn = connect.connect(client.app.state.db_path, read_only=True)
++     try:
+      slugs = [slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")]
++     finally:
+      connect.close(conn)
+
+
+─── tests/staging.py:222-230 ───
+[maintainability · low] Sibling helpers in this module (`_built_master`, `seeded`, `migrated`,
+`_corpus_key`) all annotate their path arguments as `pathlib.Path`. `fresh_db(path)` is the lone
+exception.
+
+- def fresh_db(path) -> sqlite3.Connection:
+-     """A REAL FILE holding the current schema, foreign keys on.
+- 
+-     For the claims :memory: cannot carry -- anything reading
+-     `PRAGMA data_version`, taking a second connection, or proving what a
+-     restore does -- where `fresh_schema` would be the wrong shape rather
+-     than merely a faster one."""
+-     shutil.copy(_built_master(), path)
+-     return connect.connect(str(path))
++ def fresh_db(path: pathlib.Path) -> sqlite3.Connection:
+
+
+─── tests/staging.py:732-744 ───
+[bug · medium] _rebuilt_none() is the last statement of the `finally` clause in both `hosting()` and
+`staged()`, so its AssertionError REPLACES any test failure raised during the `yield` instead of
+being reported alongside it. A test that legitimately fails AND happens to leave the library mutated
+will surface only the rebuild assertion, hiding the actual failure (and the rebuild's likely role as
+cleanup that never ran). Use `raise AssertionError(...) from exc` or skip the assertion when an
+exception is already in flight.
+
+
+
+─── tests/test_a_search_is_a_set.py:36-37 ───
+[maintainability · low] Dead code: `SCHEMA` module-level variable is now unused. The refactor
+replaced the manual `conn.executescript(SCHEMA.read_text(...))` with `fresh_schema()` (which itself
+reads SCHEMA from `tests.staging`), so this declaration has no readers. The accompanying `import
+pathlib` is also unused — `pathlib` is only referenced on this line.
+
+
+
+─── tests/test_a_search_is_a_set.py:85-87 ───
+[maintainability · low] Docstring inaccuracy: the comment claims "the six tests over this shape only
+read it" but seven tests take `sharp` (test_a_search_returns_fewer_files_than_it_ranked,
+test_the_answer_says_how_much_it_ranked_to_get_there,
+test_every_cell_carries_how_far_above_the_middle_it_stands,
+test_a_timed_answer_has_no_relevance_to_report, test_depth_all_gives_back_the_whole_ranked_library,
+test_depth_rides_the_url_so_the_answer_is_addressable, test_the_two_depths_are_two_questions).
+
+
+
+─── tests/test_a_walk_says_what_it_is_doing.py:60-60 ───
+[style · low] Minor style inconsistency: this line uses `where.joinpath(...)` while the line above
+uses the `/` operator (`stage.root / "deeper"`), and the surrounding codebase overwhelmingly prefers
+the `/` form (only `tests/scanned.py` and a couple of other test files use `joinpath`). For
+consistency, prefer `where / f"p{i:05d}.png"`.
+
+
+
+─── tests/test_a_thumbnail_is_a_static_asset.py:160-162 ───
+[maintainability · medium] Pre-existing test
+`test_a_file_with_no_decodable_frame_is_a_404_not_a_500` (line 438, unchanged here) writes
+`broken.mp4` into the staged library root and never removes it. Under the OLD per-test `served`
+fixture, that file died with the tmp_path; under the NEW module-scoped `served`, `_world.restore()`
+compares the library listing against the snapshot (staging.py:637) and rebuilds the world if
+anything changed. The module declares `rebuilds=0`, so a single rebuild fires `_rebuilt_none`
+(staging.py:688). This works today only because pytest runs tests in file order and this test
+happens to be last (line 438 of 463). Any test added after it, `--random-order`, or a reordering
+will surface this. Add `broken.unlink(missing_ok=True)` in a finally (or declare `rebuilds=1` with
+the rationale, mirroring `test_events_are_grouping_hypotheses`).
+
+
+
+─── tests/test_a_search_is_a_set.py:36-37 ───
+[maintainability · low] Dead code: the SCHEMA constant and its `import pathlib` are no longer
+referenced. The refactor moved schema bootstrap into `fresh_schema()` (which reads its own copy of
+`db/schema.sql` from `tests.staging`), so neither the path computation nor the pathlib import has
+any reader in this module.
+
+- SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
+  CLIP = ("openclip", "ViT-B-32", "laion2b_s34b_b79k")
+
+
+─── tests/test_a_search_is_a_set.py:85-87 ───
+[documentation · low] Docstring inaccuracy: the comment claims "the six tests over this shape only
+read it", but seven tests now take `sharp`: `test_a_search_returns_fewer_files_than_it_ranked`,
+`test_the_answer_says_how_much_it_ranked_to_get_there`,
+`test_every_cell_carries_how_far_above_the_middle_it_stands`,
+`test_a_timed_answer_has_no_relevance_to_report`,
+`test_depth_all_gives_back_the_whole_ranked_library`,
+`test_depth_rides_the_url_so_the_answer_is_addressable`, and
+`test_the_two_depths_are_two_questions`.
+
+      """The SHARP shelf built once: writing a hundred PNGs, scanning them
+-     and recording a hundred embeddings costs ~300ms, and the six tests
++     and recording a hundred embeddings costs ~300ms, and the seven tests
+      over this shape only read it."""
+
+
+─── tests/test_every_claimed_suffix_is_supported.py:282-290 ───
+[maintainability · medium] The docstring promises "a run that dies mid-encode leaves nothing for the
+next one to copy as a sample", but this only holds for the cached-name file under `_SAMPLES`. If
+`write(building)` raises mid-encode, neither `os.replace` nor the `contextlib.suppress(OSError)
+scratch.rmdir()` runs, so the partial `building-*` artifact persists inside the scratch directory
+and prevents the scratch dir from ever being removed. Over many failed runs the scratch dir
+accumulates orphan building files. Consider wrapping `write(building)` and `os.replace` in a
+try/finally so the partial file (and the scratch dir) is cleaned up on failure, or moving the
+cleanup out of the `os.replace` branch.
+
+
+
+─── tests/test_every_claimed_suffix_is_supported.py:295-297 ───
+[maintainability · medium] Importing this test module now has the side effect of creating
+`.pytest_cache/suffix-samples/` under the repo root (`_SAMPLES.mkdir(parents=True, exist_ok=True)`).
+In environments where the source directory is read-only or where the test runner lacks write
+permission (CI containers, sandboxes, installed copies), test collection itself will fail with
+`PermissionError` instead of failing inside a specific test. The pre-PR module had no import-time
+filesystem side effects. Consider deferring the directory creation to the first call inside
+`_cached` so importing the module remains pure.
+
+
+
+─── tests/test_every_claimed_suffix_is_supported.py:460-462 ───
+[style · low] `developed.copy()` here is redundant. `oriented.upright` returns
+`image.transpose(turn)` (a new Image; PIL `transpose` does not mutate), and `decode.open_still`
+already returns an in-memory image for RAW (`Image.fromarray(array)`), so there is no lazy handle or
+shared buffer to defensively copy. Passing `developed` directly is equivalent and avoids an extra
+full-frame memcpy of a ~22-megapixel development.
+
+
+
+─── tests/test_the_application_asks_in_its_own_words.py:65-67 ───
+[bug · medium] After removing `page.wait_for_selector("[data-grid]", timeout=10_000)` before
+`page.click("[data-save-smart]")`/`page.click("[data-replace-smart]")`, the click happens
+immediately after `page.goto(...)`. If the button isn't rendered or enabled yet, the click is
+silently dropped and the subsequent `wait_for_selector("dialog.ask-box[open]", timeout=10_000)` will
+time out with a less actionable error than waiting for the grid first. Consider keeping the grid
+readiness wait, or wait for the trigger button to be visible/enabled before clicking.
+
+      page.goto("/g")
++     page.wait_for_selector("[data-grid]", timeout=10_000)
+      page.click("[data-save-smart]")
+      page.wait_for_selector("dialog.ask-box[open]", timeout=10_000)
+
+
+─── tests/test_a_thumbnail_is_a_static_asset.py:145-174 ───
+[bug · medium] Latent test-isolation bug from the move to module-scoped `_world`.
+`test_a_file_with_no_decodable_frame_is_a_404_not_a_500` (around line 438) writes `broken.mp4` into
+the staged library root and never removes it. Under the old per-test `served` fixture, that file
+died with `tmp_path`; under the new module-scoped one, the library directory is shared across all
+tests. Because `_world` is declared with `keep_thumbs=True` and the default `rebuilds=0`, any
+subsequent test in this module that calls `served` (which calls `_world.restore()`) will see
+`_listing(self.root) != self.library`, force a rebuild, increment `stage.rebuilds`, and trip the
+`_rebuilt_none` teardown assertion. The bug is masked only because this test happens to be the LAST
+one in source order; any test added after it, any reordering, or any `pytest-randomly`-style shuffle
+will surface it. Fix: clean up `broken.mp4` at the end of the broken-frame test (try/finally, or
+write to a per-test tmp_path), or move the file outside the staged library root.
+
+
+
+─── tests/test_the_bytes_are_served.py:263-267 ───
+[style · low] The local name `stamped` is misleading: `(root / "wide.png").stat()` returns an
+`os.stat_result`, not a timestamp. Reading the line as `was, st = (root / "wide.png").read_bytes(),
+(root / "wide.png").stat()` (or even inlining `was = …` and `st = …` on separate lines) makes
+`st.st_atime_ns` / `st.st_mtime_ns` unambiguous inside `put_back` and avoids the reader wondering
+where the "stamp" is.
+
+- was, stamped = (root / "wide.png").read_bytes(), (root / "wide.png").stat()
++ was = (root / "wide.png").read_bytes()
++     st = (root / "wide.png").stat()
+  
+      def put_back() -> None:
+          (root / "wide.png").write_bytes(was)
+-         os.utime(root / "wide.png", ns=(stamped.st_atime_ns, stamped.st_mtime_ns))
++         os.utime(root / "wide.png", ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
+─── tests/test_one_missing_thumbnail_is_rendered_once.py:121-122 ───
+[style · low] The `with contextlib.nullcontext(client):` wrapper is a no-op:
+`contextlib.nullcontext` only yields its argument when used with `as client:`, and there is no `as`
+clause here. The `client` argument therefore has no effect, and the `with` block is purely
+structural. If the indentation grouping is wanted, `with contextlib.nullcontext():` (or simply
+dropping the `with` and re-indenting) makes the intent clearer; the `import contextlib` exists
+solely for this call.
+
+- with contextlib.nullcontext(client):
+          url = _asset_urls(client)[0]
+
+
+─── tests/test_every_claimed_suffix_is_supported.py:252-252 ───
+[maintainability · low] The docstring says "the versions of the four libraries that produce the
+bytes", but the loop iterates over FIVE names: "av", "pillow", "psd-tools", "tifffile", "pypdf". The
+count is off by one — either the docstring or the list needs to be updated.
+
++ # docstring says "the four libraries"; loop iterates over five
+  for name in ("av", "pillow", "psd-tools", "tifffile", "pypdf"):
+
+
+─── tests/test_the_bytes_are_served.py:23-38 ───
+[maintainability · low] Dead code: `_library` is no longer called after the refactor of
+`test_an_avatar_is_the_face_the_cluster_points_at` (it was the sole caller). It should be removed
+along with its `tmp_path` / `write_media` parameters, and the `library` and `scan` imports from `db`
+become unused as a consequence.
+
+
+
+─── tests/test_the_bytes_are_served.py:18-18 ───
+[maintainability · low] Unused imports: `library` and `scan` from `db` are no longer referenced now
+that `_library` is dead. Drop them from the import line.
+
+- from db import connect, derived, ingest, library, naming, scan
++ from db import connect, derived, ingest, naming
+
+
+─── tests/test_one_missing_thumbnail_is_rendered_once.py:165-166 ───
+[bug · medium] Same no-op `with contextlib.nullcontext(client):` wrapper as the previously confirmed
+finding in `test_four_cells_wanting_one_picture_render_it_once`: `nullcontext` only yields its
+argument when used with `as client:`, and there is no `as` clause here, so the block is purely
+structural and the `client` argument has no effect.
+
+
+
+─── tests/test_one_missing_thumbnail_is_rendered_once.py:226-227 ───
+[bug · medium] Same no-op `with contextlib.nullcontext(client):` wrapper as the previously confirmed
+finding in `test_four_cells_wanting_one_picture_render_it_once`: `nullcontext` only yields its
+argument when used with `as client:`, and there is no `as` clause here, so the block is purely
+structural and the `client` argument has no effect.
+
+
+
+─── tests/test_what_you_said_leaves_with_you.py:98-112 ───
+[other · medium] The connection is opened before the `yield` but only closed after it. If
+`conn.execute(...)` or `_said_stage.restore()` raises, fixture setup fails and pytest skips
+teardown, leaking the handle. The rest of this file already uses `try`/`finally` for this exact
+pattern (`_what_was_said`, `_slug`). Wrap the body in `try`/`finally` so the connection is closed on
+the setup-failure path too.
+
+Also, `_said_stage.conn()` (defined in tests/staging.py:657) is the staged-fixture idiom for getting
+a connection against the snapshot's database (see test_a_verdict_leaves_without_the_picture.py:87,
+test_a_duplicate_is_reviewed_before_it_is_resolved.py:87,
+test_a_face_vector_leaves_with_its_provenance.py:100, test_a_word_you_wrote_on_a_picture.py:53);
+using it instead of `connect.connect(stage.client.app.state.db_path)` keeps the fixture anchored to
+the same path the stage built and snapshotted.
+
+  @pytest.fixture
+  def said(_said_stage):
+      """The world with everything already said, restored between tests.
+  
+      Four pictures, an application, a scan and a page of INSERTs cost a
+      fifth of a second per test to answer questions that cost a
+      hundredth. The snapshot holds the same rows and gives each test a
+      clean one.
+      """
+      _said_stage.restore()
+-     client = _said_stage.client
+-     conn = connect.connect(client.app.state.db_path)
++     conn = _said_stage.conn()
++     try:
+      ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
+-     yield client, conn, ids
++         yield _said_stage.client, conn, ids
++     finally:
+      connect.close(conn)
+
+
+─── tests/test_what_you_said_leaves_with_you.py:34-36 ───
+[maintainability · low] `_library(root)` is missing a type annotation on `root`. `staged` declares
+it as `Callable[[pathlib.Path], None]`, and `root / f"p{i}.png"` requires `Path`; annotating makes
+the contract explicit and matches the `_what_was_said` helper's style.
+
+- def _library(root) -> None:
++ def _library(root: pathlib.Path) -> None:
+      for i in range(4):
+          Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+
+
+─── tests/test_what_you_said_leaves_with_you.py:39-39 ───
+[maintainability · low] The `stage` parameter is missing a type annotation. `staged`'s signature
+declares `setup: Callable[[Stage], None] | None`, and the function reads
+`stage.client.app.state.db_path`, which only type-checks when `stage` is annotated as `Stage`.
+Annotating the parameter makes the contract explicit and matches the role of the parameter.
+
+- def _what_was_said(stage) -> None:
++ def _what_was_said(stage: Stage) -> None:
+
+
+─── vision/semantic/openclip.py:382-388 ───
+[maintainability · high] Behaviour change vs the previous guard: `provisioned()` returns `None`
+whenever the `provisioned.json` record has no entry for this `(model, checkpoint)`, even if
+`_cached_checkpoint()` would still find the weights in `models_dir` or the shared HF cache. The old
+guard inside `ClipBackend.__init__` only consulted the cache, so a model that was placed in the
+cache by another tool (or whose record was deleted) used to be served offline. With this new check
+the offline refusal now triggers for that case as well, even though `ClipBackend.__init__` still has
+its own `_cached_checkpoint` check immediately below.
+
+If the intent is to make the record authoritative, document that explicitly and consider whether the
+second `_cached_checkpoint` inside `ClipBackend.__init__` is still reachable. Otherwise, fall back
+to `_cached_checkpoint()` when the record is empty so a record miss with a cache hit still loads the
+file from disk:
+
+  # The offline refusal must not cost torch's import: without
+              # this record check the 400 for an unprovisioned model paid
+              # ~9s of open_clip+torch just to say no (measured in
+              # test_search_never_downloads_a_model). ClipBackend keeps its
+              # own guard for the path that really loads.
+-             if offline and provisioned(models_dir, model, checkpoint) is None:
++             if offline and _cached_checkpoint(models_dir, model, checkpoint) is None:
+                  raise _unprovisioned(models_dir, model, checkpoint)
+
+
+─── vision/semantic/openclip.py:129-133 ───
+[maintainability · medium] `record_provision()` does a non-atomic read-modify-write on
+`provisioned.json`: it reads, mutates, then `write_text`s back. If two `encoder()` calls for
+*different* `(models_dir, model, checkpoint)` keys race (or if a crash happens between the in-memory
+merge and the write), one provision record can clobber another. `_LOCK` serializes calls within one
+process, but cross-process writers (e.g. one worker serving `/search` and another running
+`/jobs/embed` on the same `models_dir`) have no protection. Write to a temp file and `os.replace` it
+onto the target so each write is atomic on POSIX:
+
++ import os
++     import tempfile
++ 
+  held = _read_record(models_dir)
+      held[f"{model}/{checkpoint}"] = {"repo": repo, "names": list(names)}
+      path = _record_path(models_dir)
+      path.parent.mkdir(parents=True, exist_ok=True)
+-     path.write_text(json.dumps(held, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++     payload = json.dumps(held, indent=2, sort_keys=True) + "\n"
++     fd, tmp = tempfile.mkstemp(prefix=".provisioned-", dir=path.parent)
++     try:
++         with os.fdopen(fd, "w", encoding="utf-8") as f:
++             f.write(payload)
++         os.replace(tmp, path)
++     except Exception:
++         try:
++             os.unlink(tmp)
++         except FileNotFoundError:
++             pass
++         raise
+
+
+─── vision/semantic/openclip.py:152-155 ───
+[documentation · low] `_unprovisioned()` is reused for two distinct situations -- "the record says
+no and the cache has nothing" and "the record said yes but the cache file is gone" -- and the
+message points at `/jobs/embed` in both. The latter case means the user previously provisioned and
+lost the cache, not that they never provisioned. Tighten the wording (or branch on the case) so the
+suggestion matches what the user has to do:
+
+- def _unprovisioned(models_dir: str, model: str, checkpoint: str) -> LookupError:
+-     return LookupError(
+-         f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
++ def _unprovisioned(models_dir: str, model: str, checkpoint: str, *, cached: bool = False) -> LookupError:
++     if cached:
++         msg = (
++             f"{model}/{checkpoint} was provisioned before but its weight file "
++             f"is no longer under {models_dir} or the shared HF cache; "
++             f"run /jobs/embed once to re-download it"
++         )
++     else:
++         msg = (
++             f"{model}/{checkpoint} is not provisioned under {models_dir}; "
++             f"run /jobs/embed once to download it"
+      )
++     return LookupError(msg)
+
+
+─── vision/semantic/openclip.py:382-388 ───
+[maintainability · high] Behaviour change vs the previous guard: `provisioned()` returns `None`
+whenever `provisioned.json` has no entry for `(model, checkpoint)`, even if the cache itself still
+holds the weights. The old guard inside `ClipBackend.__init__` only consulted the cache, so a model
+placed there by another tool, or one whose record was lost (corruption, manual wipe, restore from a
+snapshot that excludes `provisioned.json`), used to be served offline. With this new check the
+offline refusal now triggers for that case as well, even though the second `_cached_checkpoint` call
+in `ClipBackend.__init__` immediately below would still have found the file.
+
+If making the record authoritative is the intent, document that explicitly. The fast-path rationale
+(no torch/open_clip import) rules out simply falling back to `_cached_checkpoint()` here, since
+`_hub_names` still imports `open_clip`. If preserving the cache-only-fallback is desired, write the
+record from every code path that could land a weight file under `models_dir`/the shared cache (not
+just `ClipBackend.__init__`), or accept the import cost only when the record is empty:
+
+  # The offline refusal must not cost torch's import: without
+              # this record check the 400 for an unprovisioned model paid
+              # ~9s of open_clip+torch just to say no (measured in
+              # test_search_never_downloads_a_model). ClipBackend keeps its
+              # own guard for the path that really loads.
+-             if offline and provisioned(models_dir, model, checkpoint) is None:
++             cached = provisioned(models_dir, model, checkpoint)
++             if offline and cached is None:
++                 # Fast record miss: refuse without importing anything.
++                 # Cache hit without a record is a deliberate, documented
++                 # trade-off -- the user must run /jobs/embed to make a
++                 # weight file reachable offline.
+                  raise _unprovisioned(models_dir, model, checkpoint)
+
+
+─── vision/semantic/openclip.py:129-133 ───
+[maintainability · medium] `record_provision()` does a non-atomic read-modify-write on
+`provisioned.json`: read, mutate, `write_text`. Within one process `_LOCK` serialises callers, but
+two processes sharing a `models_dir` (e.g. one serving `/search` while another runs `/jobs/embed`)
+can clobber each other's entries, and a crash between the in-memory merge and the write can leave a
+truncated or empty file. Write to a temp file in the same directory and `os.replace` it so each
+write is atomic on POSIX:
+
+  held = _read_record(models_dir)
+      held[f"{model}/{checkpoint}"] = {"repo": repo, "names": list(names)}
+      path = _record_path(models_dir)
+      path.parent.mkdir(parents=True, exist_ok=True)
+-     path.write_text(json.dumps(held, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++     payload = json.dumps(held, indent=2, sort_keys=True) + "\n"
++     fd, tmp = tempfile.mkstemp(prefix=".provisioned-", dir=path.parent)
++     try:
++         with os.fdopen(fd, "w", encoding="utf-8") as f:
++             f.write(payload)
++         os.replace(tmp, path)
++     except Exception:
++         try:
++             os.unlink(tmp)
++         except FileNotFoundError:
++             pass
++         raise
+
+
+─── vision/semantic/openclip.py:152-155 ───
+[documentation · low] `_unprovisioned()` is reused for two distinct situations -- "the record says
+no and the cache has nothing" and "the record said yes but the cache file is gone" -- and the
+message points at `/jobs/embed` in both. The latter case means the user previously provisioned and
+lost the cache, not that they never provisioned. Tighten the wording (or branch on the case) so the
+suggestion matches what the user has to do:
+
+- def _unprovisioned(models_dir: str, model: str, checkpoint: str) -> LookupError:
+-     return LookupError(
+-         f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
++ def _unprovisioned(models_dir: str, model: str, checkpoint: str, *, cached: bool = False) -> LookupError:
++     if cached:
++         msg = (
++             f"{model}/{checkpoint} was provisioned before but its weight file "
++             f"is no longer under {models_dir} or the shared HF cache; "
++             f"run /jobs/embed once to re-download it"
++         )
++     else:
++         msg = (
++             f"{model}/{checkpoint} is not provisioned under {models_dir}; "
++             f"run /jobs/embed once to download it"
+      )
++     return LookupError(msg)
+
+
+─── vision/semantic/openclip.py:112-118 ───
+[bug · medium] `_read_record()` only catches `FileNotFoundError` and `json.JSONDecodeError`, but
+`path.read_text(encoding="utf-8")` can also raise `PermissionError`, `IsADirectoryError`, or
+`UnicodeDecodeError` (none of which subclass the two caught), and `json.loads(...)` can return any
+JSON value (e.g. `None`, list, string) without raising. The function's annotation `-> dict` is
+therefore a lie: it can return `None`/list/str, and `provisioned()` then does `.get(...)` on it,
+raising `AttributeError` and turning the supposed-fast offline guard into a 500 instead of a clean
+refusal. Broaden the `except` to catch the I/O subclasses (`OSError`, `UnicodeDecodeError`) and
+validate the parsed value is a dict before returning it.
+
+
+
+LLM retry report summary: 23 of 1186 requests affected -- 8 requests failed, 1 request cancelled, 14 requests recovered after retry
+
+Review planning (2 requests):
+- tests/test_a_root_can_be_forgotten.py: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+- tests/test_a_scan_says_what_it_left_undone.py: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> succeeded
+
+Core review (20 requests):
+- frontend/src/pictures.ts: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> failed
+- sg_web/app.py: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> failed
+- sg_web/operations.py: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> failed
+- sg_web/static/build/collection.js: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> failed
+- sg_web/static/build/keywords.js: rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> rate limited (HTTP 429) -> failed
+- ... and 15 more
+
+Context compaction (1 request):
+- tests/test_a_thumbnail_is_a_static_asset.py: cancelled
+
+Per-attempt detail: --format json (retry_report).

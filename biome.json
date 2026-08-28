@@ -7,12 +7,7 @@
     "defaultBranch": "dev"
   },
   "files": {
-    "includes": [
-      "sg_web/static/**/*.js",
-      "sg_web/static/**/*.css",
-      "!!sg_web/static/htmx-2.0.7.min.js",
-      "!!sg_web/static/htmx-ext-ws-2.0.3.js"
-    ],
+    "includes": ["frontend/src/**/*.ts", "sg_web/static/**/*.css", "!!sg_web/static/build", "!!frontend/src/generated"],
     "ignoreUnknown": false
   },
   "formatter": {

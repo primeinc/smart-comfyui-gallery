@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The gallery mark: four tiles on the app's ground, one lit in the
+       accent -- the palette is gallery.css (ground #14151a, ink #e8e6df,
+       accent #d8a24a). favicon.ico is this drawing rasterized; change
+       one, regenerate the other (see sg_web/app.py favicon route). -->
+  <rect width="32" height="32" rx="6" fill="#14151a"/>
+  <rect x="4" y="4" width="11" height="11" rx="2" fill="#e8e6df"/>
+  <rect x="17" y="4" width="11" height="11" rx="2" fill="#d8a24a"/>
+  <rect x="4" y="17" width="11" height="11" rx="2" fill="#e8e6df" opacity="0.55"/>
+  <rect x="17" y="17" width="11" height="11" rx="2" fill="#e8e6df" opacity="0.8"/>
+</svg>

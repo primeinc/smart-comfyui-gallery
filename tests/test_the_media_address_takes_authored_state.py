@@ -21,21 +21,54 @@ from PIL import Image
 
 from db import authored, collections, connect
 from sg_web.app import build_app
+from tests import retrieving
+from tests.staging import hosting, seeded
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
 AS_OVERLAY = {"hx-request": "true"}
 
 
+@pytest.fixture(scope="module")
+def _bare_stage(tmp_path_factory):
+    """One application over an EMPTY home, for the tests that bring their
+    own library. Each was building its own -- an interpreter's worth of
+    imports and a migration, measured at 0.31s -- to register a root."""
+    with hosting(tmp_path_factory, "authored_bare") as stage:
+        yield stage
+
+
+@pytest.fixture
+def bare(_bare_stage):
+    """That application with nothing in it: restored, so `/roots` numbers
+    from 1 again and no test inherits another's library."""
+    _bare_stage.restore()
+    return _bare_stage.client
+
+
 def _library(tmp) -> tuple:
+    """Pictures on disk and a home ready for `build_app` to open.
+
+    The home arrives with the built database already in it: what the
+    three tests that call this prove is what the application does with a
+    library, never that it can create its own database, and `build_app`
+    finding one costs 0.16s against 0.22s for building one (measured
+    over four runs each).
+    """
     root = tmp / "lib"
     root.mkdir()
+    _pictures(root)
+    burrow = tmp / "run"
+    seeded(burrow)
+    return burrow, root
+
+
+def _pictures(root) -> None:
     stamped = 1_700_000_000
     for i in range(4):
         path = root / f"pic_{i}.png"
         Image.new("RGB", (12, 12), (60 + i * 20, 90, 140)).save(path)
         os.utime(path, (stamped + i * 60, stamped + i * 60))
-    return tmp / "run", root
 
 
 @pytest.fixture(scope="module")
@@ -55,8 +88,14 @@ def kept(tmp_path_factory):
 def test_the_three_faces_report_one_authored_state(kept):
     assert kept.post("/i/pic-1/favorite", json={"value": True}).json()["authored"]["favorite"] is True
     assert kept.post("/i/pic-1/rating", json={"value": 4}).json()["authored"]["rating"] == 4
-    told = kept.post("/i/pic-1/collections/keep", json={"value": True}).json()["authored"]
-    assert told == {"favorite": True, "rating": 4, "collections": [{"slug": "keep", "name": "Keep"}]}
+    kept.post("/i/pic-1/collections/keep", json={"value": True})
+    told = kept.post("/i/pic-1/tags", json={"name": "Harbour"}).json()["authored"]
+    assert told == {
+        "favorite": True,
+        "rating": 4,
+        "collections": [{"slug": "keep", "name": "Keep"}],
+        "tags": [{"tag": "harbour", "label": "Harbour"}],
+    }
 
     body = kept.get("/i/pic-1", headers=AS_MACHINE).json()
     assert body["authored"] == told
@@ -66,6 +105,7 @@ def test_the_three_faces_report_one_authored_state(kept):
         assert re.search(r'data-fav\s+aria-pressed="true"', face), "the favorite must render pressed"
         assert 'data-rating="4"' in face
         assert 'href="/t/keep"' in face, "the strip must show the membership in every presentation"
+        assert 'data-tag="harbour"' in face, "the strip must show the keyword in every presentation"
 
 
 def test_desired_state_retries_are_idempotent(kept):
@@ -134,6 +174,11 @@ def test_a_favorite_moves_the_currency_but_not_the_answer(kept):
     so a favorite invalidates the projection -- but the re-answered
     question orders the same files, and the answer hash says so. A
     membership write against the walked album is the opposite case."""
+    # Its own arrangement: the walked file is filed and favorited HERE.
+    # It used to lean on a sibling test's writes, which held until the
+    # affected-test selector ran this test without its module-mates.
+    kept.post("/i/pic-1/collections/keep", json={"value": True})
+    kept.post("/i/pic-1/favorite", json={"value": True})
     before = kept.get("/g", params={"album": "keep"})
     held = dict(re.findall(r'data-(currency|answer)="([^"]*)"', before.text))
     kept.post("/i/pic-1/favorite", json={"value": False})
@@ -197,7 +242,7 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
         # The walk carries the judgement: arrows walk MY favorites.
         walked = client.get("/i/pic-0", params={"favorite": "1"}, headers=AS_MACHINE).json()
         assert walked["context"]["total"] == 2
-        assert walked["previous"] == "pic-2"
+        assert walked["context"]["previous"] == "pic-2"
         assert walked["context"]["qs"] == "favorite=1"
 
         # The actor lives in the projection identity, not the spelling:
@@ -238,18 +283,22 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
 
         def fused(conn_, models_dir, phrase, k, now, *, offline=True, allowed=None):
             seen.update({"allowed": allowed})
-            return {"results": [], "participants": [], "contributors": [], "missing": {}}
+            return retrieving.answered([], participants=[], contributors=[])
 
         monkeypatch.setattr(retrieval, "query", fused)
         rated = {
             row[0] for row in conn.execute("SELECT file_id FROM rating WHERE user_id = ? AND rating >= 4", (mine,))
         }
-        constrained: dict[str, Any]
-        for constrained, expected in (
+        # the TABLE, not the loop variable: a for-target takes its type
+        # from the iterable's elements, so a declaration above it does
+        # not reach. `favorite` is request-shaped ("1") and `rating_min`
+        # a number -- which is what `parse` takes.
+        cases: tuple[tuple[dict[str, Any], set], ...] = (
             ({"favorite": "1"}, favorites),
             ({"rating_min": 4}, rated),
             ({"favorite": "1", "rating_min": 4}, favorites & rated),
-        ):
+        )
+        for constrained, expected in cases:
             seen.clear()
             resultset.describe(conn, "", resultset.parse(text="sunset", **constrained), 0.0, actor_id=mine)
             assert seen["allowed"] == expected, (
@@ -258,46 +307,77 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
         connect.close(conn)
 
 
-def test_authored_eligibility_rides_the_indexes(tmp_path):
+def test_authored_eligibility_rides_the_indexes(bare, tmp_path):
     """The plan pin: a time-sorted authored question is the file table's
     own ordered walk plus indexed existence probes against the authored
     primary keys -- no read-time sort, no scan of favorite or rating."""
     from db import resultset
 
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        client.post("/i/pic-0/favorite", json={"value": True})
-        client.post("/i/pic-0/rating", json={"value": 4})
-        actor = client.app.state.actor_id
-        conn = connect.connect(client.app.state.db_path)
-        walked: list[str] = []
-        conn.set_trace_callback(walked.append)
-        told = resultset.describe(conn, "", resultset.parse(favorite="1", rating_min=3), 0.0, actor_id=actor)
-        conn.set_trace_callback(None)
-        assert told["total"] == 1
-        membership = [one for one in walked if one.lstrip().startswith("SELECT f.id FROM file f")]
-        assert len(membership) == 1, walked
-        args = tuple([actor] * membership[0].count("?"))
-        plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + membership[0], args))
-        # The RIGHT index, by name: "an index was involved" is not the
-        # contract -- the global time walk rides file_recent whole.
-        assert "TEMP B-TREE" not in plan.upper(), plan
-        assert "SCAN f USING INDEX file_recent" in plan, plan
-        assert "SEARCH fav USING" in plan, plan
-        assert "SEARCH r USING" in plan, plan
+    _burrow, root = _library(tmp_path)
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    client.post("/i/pic-0/favorite", json={"value": True})
+    client.post("/i/pic-0/rating", json={"value": 4})
+    actor = client.app.state.actor_id
+    conn = connect.connect(client.app.state.db_path)
+    walked: list[str] = []
+    conn.set_trace_callback(walked.append)
+    told = resultset.describe(conn, "", resultset.parse(favorite="1", rating_min=3), 0.0, actor_id=actor)
+    conn.set_trace_callback(None)
+    assert told["total"] == 1
+    membership = [one for one in walked if one.lstrip().startswith("SELECT f.id FROM file f")]
+    assert len(membership) == 1, walked
+    args = tuple([actor] * membership[0].count("?"))
+    plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + membership[0], args))
+    # The RIGHT index, by name: "an index was involved" is not the
+    # contract -- the global time walk rides file_recent whole.
+    assert "TEMP B-TREE" not in plan.upper(), plan
+    assert "SCAN f USING INDEX file_recent" in plan, plan
+    assert "SEARCH fav USING" in plan, plan
+    assert "SEARCH r USING" in plan, plan
 
-        # And a folder-scoped authored question rides the folder's own
-        # time index -- never the global walk probing folder_id per file.
-        walked.clear()
-        conn.set_trace_callback(walked.append)
-        resultset.describe(conn, "", resultset.parse(folder="lib", favorite="1"), 0.0, actor_id=actor)
-        conn.set_trace_callback(None)
-        scoped = [one for one in walked if one.lstrip().startswith("SELECT f.id FROM file f")]
-        assert len(scoped) == 1, walked
-        args = tuple([actor] * scoped[0].count("?"))
-        plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + scoped[0], args))
-        connect.close(conn)
-        assert "TEMP B-TREE" not in plan.upper(), plan
-        assert "USING INDEX file_in_folder_by_time" in plan, plan
+    # And a folder-scoped authored question rides the folder's own
+    # time index -- never the global walk probing folder_id per file.
+    walked.clear()
+    conn.set_trace_callback(walked.append)
+    resultset.describe(conn, "", resultset.parse(folder="lib", favorite="1"), 0.0, actor_id=actor)
+    conn.set_trace_callback(None)
+    scoped = [one for one in walked if one.lstrip().startswith("SELECT f.id FROM file f")]
+    assert len(scoped) == 1, walked
+    args = tuple([actor] * scoped[0].count("?"))
+    plan = " | ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + scoped[0], args))
+    connect.close(conn)
+    assert "TEMP B-TREE" not in plan.upper(), plan
+    assert "USING INDEX file_in_folder_by_time" in plan, plan
+
+
+def test_a_body_the_contract_does_not_name_is_refused(kept):
+    """sg_web/wire.py says a JSON contract names every field that crosses
+    and refuses the rest, in BOTH directions. For a request that means a
+    misspelled field is a 400 at the seam, not a key silently ignored while
+    the route reports success for a write that never carried it.
+
+    The pair matters: the same body without the surprise must still be
+    accepted, or this would pass just as well against a route that refused
+    everything.
+    """
+    good = kept.post("/i/pic-3/favorite", json={"value": True})
+    assert good.status_code == 201, good.text
+
+    surprised = kept.post("/i/pic-3/favorite", json={"value": True, "supriseFieldNobodyAskedFor": 72})
+    assert surprised.status_code == 400, surprised.text
+
+    # And the coercion half, which no linter can see: Litestar decodes a
+    # body with model_validate(value, strict=...), and that argument beats
+    # the model's own config, so Wire's strictness is only real while the
+    # application registers PydanticPlugin(validate_strict=True). Lax, the
+    # 1 below would arrive as True and this route would answer 201.
+    coerced = kept.post("/i/pic-3/favorite", json={"value": 1})
+    assert coerced.status_code == 400, coerced.text
+
+    # and the closed vocabulary is closed: a place kind no place can be is
+    # refused by the contract rather than by the database three calls later
+    refused = kept.post("/i/pic-3/place", json={"name": "Lisbon", "kind": "planet"})
+    assert refused.status_code == 400, refused.text
+    assert kept.post("/i/pic-3/place", json={"name": "Lisbon", "kind": "city"}).status_code == 201

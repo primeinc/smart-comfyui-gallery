@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ album.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/t/{{ album.slug }}">{% endblock %}
-{% block scripts %}<script src="/static/collection.js?v={{ static_v }}" defer></script><script src="/static/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
@@ -93,7 +93,7 @@
     <div class="grid">
       {% for pic in album.gallery["items"] %}
       <a class="cell" href="/i/{{ pic.slug }}?{{ album.gallery.qs }}" data-slug="{{ pic.slug }}">
-        <img src="/thumb/{{ pic.slug }}" alt="{{ pic.name }}" loading="lazy">
+        {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
         <span class="cell-name">{{ pic.name }}</span>
       </a>
       {% endfor %}

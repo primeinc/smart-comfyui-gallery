@@ -40,10 +40,110 @@ def test_thumb_and_preview_are_contained_to_their_edges(tmp_path):
     assert _size(thumbs.path_for(tmp_path, SHA, "preview")) == (1440, 720)
 
 
-def test_a_tiny_source_is_enlarged_to_grid_size(tmp_path):
+def test_a_tiny_source_is_cached_at_its_own_size(tmp_path):
+    """It used to be enlarged to 512, and that was the most expensive
+    thing the pipeline did to small files.
+
+    Encoding is priced by the pixels handed to the encoder, not by the
+    source, so blowing a 200x150 animation up to 1440 cost 173 ms per
+    file to store detail that was never in it. Nothing needed the
+    enlargement: every grid cell is `object-fit: cover` and the lightbox
+    is `object-fit: contain` (gallery.css:97-100), so the browser scales
+    a small picture to its cell for free.
+    """
     speck = Image.new("RGB", (64, 32), (10, 200, 30))
     thumbs.put(tmp_path, SHA, speck)
-    assert _size(thumbs.path_for(tmp_path, SHA)) == (512, 256)
+    assert _size(thumbs.path_for(tmp_path, SHA)) == (64, 32)
+
+
+def test_the_thumb_comes_off_the_preview_not_the_original(tmp_path):
+    """`put_all` decodes once and steps down through the variants.
+
+    Proven by geometry rather than by timing: a source whose longest side
+    exceeds both edges must land on exactly the two edges, which is only
+    true if each step resized the one above it rather than the original.
+    Resizing 22 megapixels straight to 512 costs 111 ms; resizing the
+    1440 preview to 512 costs 14.
+    """
+    big = Image.new("RGB", (4000, 3000), (10, 200, 30))
+    thumbs.put_all(tmp_path, SHA, big)
+    assert _size(thumbs.path_for(tmp_path, SHA, "preview")) == (1440, 1080)
+    assert _size(thumbs.path_for(tmp_path, SHA, "thumb")) == (512, 384)
+
+
+def test_fit_returns_the_same_image_when_nothing_needs_doing(tmp_path):
+    """The negative control for `fit`: no allocation, no resample, and
+    no silent enlargement of a picture that already fits."""
+    small = Image.new("RGB", (100, 80), (10, 200, 30))
+    assert thumbs.fit(small, 512) is small
+    assert thumbs.fit(small, 100) is small
+    shrunk = thumbs.fit(small, 50)
+    assert shrunk is not small
+    assert shrunk.size == (50, 40)
+
+
+def test_a_bounded_open_asks_the_decoder_for_the_right_shape(tmp_path):
+    """`draft` is asked in the picture's own aspect, not a square.
+
+    JpegImagePlugin.draft takes `min(width // want_w, height // want_h)`
+    and snaps it to 8, 4, 2 or 1 (:447-460), so the SHORTER side governs.
+    Asking a 4000x2000 JPEG for (1440, 1440) gives min(2, 1) = 1: no
+    reduction at all. Asking for (1440, 720) gives min(2, 2) = 2, and the
+    decoder returns half. Four times the pixels rode on that, through the
+    resize and the encode as well as the decode.
+
+    Scales are powers of two, so what comes back is never smaller than
+    asked -- `thumbs.fit` after it can only ever shrink.
+    """
+    source = tmp_path / "wide.jpg"
+    Image.new("RGB", (4000, 2000), (10, 200, 30)).save(source, quality=90)
+
+    with decode.open_still(source) as square:
+        square.draft(None, (1440, 1440))
+        assert square.size == (4000, 2000), "a square ask reduces this by nothing at all"
+
+    # the handle rides with the `with`, the way for_derivatives holds it
+    with decode.open_bounded(source, 1440) as bounded:
+        assert max(bounded.size) < 4000, "the bounded open did not reduce anything"
+        assert max(bounded.size) >= 1440, "it reduced below what the preview edge needs"
+        assert bounded.size == (2000, 1000)
+        assert thumbs.fit(bounded, 1440).size == (1440, 720), "and the picture survives the shortcut"
+
+
+@pytest.mark.parametrize("tag", [1, 2, 3, 4, 5, 6, 7, 8])
+def test_libvips_and_pillow_turn_a_picture_the_same_way(tmp_path, tag):
+    """The two orientation tables must agree, tag for tag.
+
+    There are now two of them -- db/oriented.TURNS for Pillow and
+    vision/derive.TURNS for libvips -- because the same eight EXIF values
+    need different operations in each: libvips `rot` angles are clockwise
+    where Pillow's ROTATE_* are counter-clockwise, so 6 and 8 swap. That
+    is exactly the kind of hand-written mapping that is wrong in one cell
+    and silently serves a picture upside down.
+
+    Proven on pixels: the fixture has a different colour in each corner,
+    so a wrong turn moves one and no assertion about size would notice.
+    """
+    from db import oriented
+    from vision import derive
+
+    source = tmp_path / f"corners_{tag}.png"
+    canvas = Image.new("RGB", (64, 32), (0, 0, 0))
+    canvas.paste(Image.new("RGB", (16, 8), (255, 0, 0)), (0, 0))
+    canvas.paste(Image.new("RGB", (16, 8), (0, 255, 0)), (48, 0))
+    canvas.paste(Image.new("RGB", (16, 8), (0, 0, 255)), (0, 24))
+    canvas.save(source)
+
+    with decode.open_still(source) as opened:
+        opened.load()
+        by_pillow = oriented.upright(opened, tag).convert("RGB")
+
+    turned = derive.opened(source, 512, tag)
+    assert turned is not None, "libvips reads PNG; if it stopped, this test is no longer proving anything"
+    by_vips = Image.frombuffer("RGB", (turned.width, turned.height), turned.write_to_memory(), "raw", "RGB", 0, 1)
+
+    assert by_vips.size == by_pillow.size, f"tag {tag}: the two libraries disagree on shape"
+    assert by_vips.tobytes() == by_pillow.tobytes(), f"tag {tag}: same shape, different picture"
 
 
 def test_an_unknown_variant_is_refused(tmp_path):
@@ -55,7 +155,8 @@ def test_a_cache_hit_never_rerenders(tmp_path):
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (255, 0, 0)))
     thumbs.put(tmp_path, SHA, Image.new("RGB", (100, 100), (0, 0, 255)))
     with decode.open_still(thumbs.path_for(tmp_path, SHA)) as kept:
-        r, _, b = _rgb(kept, (128, 128))
+        assert kept.size == (100, 100), "a source under the edge is cached as it is"
+        r, _, b = _rgb(kept, (50, 50))
     assert r > b, "the second render overwrote a cache that was already warm"
 
 
@@ -150,7 +251,10 @@ def test_detection_caches_every_variant_as_a_byproduct(tmp_path):
     cache = tmp_path / "thumbs"
     detect.harvest(conn, StubFaceBackend(_always_one_face), file_id, media_path, 0.0, thumbs_dir=str(cache))
     assert _size(thumbs.path_for(cache, sha)) == (512, 228)
-    assert _size(thumbs.path_for(cache, sha, "preview")) == (1440, 640)
+    # 900x400 already fits inside the 1440 preview edge, so the preview
+    # is the frame itself. Enlarging it would cost an encode and add no
+    # detail; every surface that shows it scales with object-fit.
+    assert _size(thumbs.path_for(cache, sha, "preview")) == (900, 400)
     conn.close()
 
 
@@ -173,7 +277,10 @@ def test_the_thumbs_job_fills_only_what_the_cache_lacks(tmp_path):
     assert job_id is not None
     assert runner.run_next(conn, "w1", 1.0) == {"job": job_id, "state": "done", "did": 1, "failed": 0}
     assert _size(thumbs.path_for(cache, sha)) == (512, 228)
-    assert _size(thumbs.path_for(cache, sha, "preview")) == (1440, 640)
+    # 900x400 already fits inside the 1440 preview edge, so the preview
+    # is the frame itself. Enlarging it would cost an encode and add no
+    # detail; every surface that shows it scales with object-fit.
+    assert _size(thumbs.path_for(cache, sha, "preview")) == (900, 400)
     assert runner.submit_thumbs(conn, 2.0, thumbs_dir=str(cache)) is None, "a warm cache queued a job"
     unchanged = scan.ScanResult(matched=1, replaced=0, added=0, ambiguous=0, missing=0, hashed=0)
     thumbs.path_for(cache, sha).unlink()

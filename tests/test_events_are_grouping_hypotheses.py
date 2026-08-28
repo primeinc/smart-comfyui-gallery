@@ -23,10 +23,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, events, ingest, pages, runner
-from tests.staging import Stage, staged
+from tests.staging import HOUR, NOW, Stage, staged
 
-NOW = 1_700_000_000.0
-HOUR = 3600.0
 MIN = 60.0
 Y2023 = 1_685_577_600.0  # 2023-06-01
 Y2026 = 1_787_308_800.0  # 2026-08-19
@@ -156,15 +154,6 @@ def test_a_mixed_file_tells_each_story_at_its_own_time():
     assert sessions[0].instant_start is None, "an unzoned generator claim invents no instant"
 
 
-def test_groupers_consume_the_metadata_interface_not_source_tables():
-    import pathlib
-
-    source = (pathlib.Path(__file__).resolve().parent.parent / "db" / "events.py").read_text(encoding="utf-8")
-    for named in ("FROM file", "FROM capture", "FROM generation", "JOIN entity", "FROM entity"):
-        assert named not in source, f"a grouper read {named!r}; groupers consume the Metadata interface"
-    assert "context.occurrences(" in source, "the grouping input is the per-claim occurrence interface"
-
-
 # --- currentness, persistence and the jobs -----------------------------------
 
 
@@ -198,7 +187,14 @@ def _claims(stage: Stage) -> None:
 
 @pytest.fixture(scope="module")
 def _grouped(tmp_path_factory):
-    with staged(tmp_path_factory, "events", _library, _claims) as stage:
+    # One rebuild, declared. `test_a_departed_file...` REMOVES two
+    # pictures, and a removed file cannot be put back as the same file --
+    # the identity a rescan reads is not in the bytes. Moving it last was
+    # tried and it fails there: the tests around it are one sequence
+    # about a library shrinking, so its position is part of what it
+    # proves. The next test therefore pays one rebuild, and the number is
+    # exact so a SECOND one is still caught.
+    with staged(tmp_path_factory, "events", _library, _claims, rebuilds=1) as stage:
         yield stage
 
 
@@ -206,6 +202,31 @@ def _grouped(tmp_path_factory):
 def grouped(_grouped):
     _grouped.restore()
     return _grouped.client
+
+
+@pytest.fixture
+def no_arrivals(_grouped):
+    """Take away again whatever the test added to the library.
+
+    `Stage.restore` compares the library listing and REBUILDS the whole
+    world when it differs (tests/staging.py), so a test that leaves a
+    new picture behind charges the NEXT test a fresh application rather
+    than a millisecond restore -- measured at 0.29 s.
+
+    ARRIVALS only. A departed file cannot be put back: the listing is
+    (size, mtime), but the database records the scanner's identity,
+    which is (size, mtime, fs_id) -- and a filesystem id does not
+    survive being rewritten. Restoring one hands the snapshot a file it
+    does not recognise, and the test after it fails on a coverage count
+    rather than merely costing a rebuild. The departure test keeps its
+    rebuild honestly.
+    """
+    root = _grouped.root
+    before = {path for path in root.iterdir() if path.is_file()}
+    yield
+    for path in root.iterdir():
+        if path.is_file() and path not in before:
+            path.unlink()
 
 
 def _drain(client) -> None:
@@ -279,16 +300,19 @@ def test_an_upgraded_policy_blinds_every_reader_until_rebuild(grouped, monkeypat
         day = pages.timeline_days(conn)[0][0]
         assert pages.timeline_months(conn) != []
         assert len(pages.timeline_events(conn)) >= 1
-        link_sql, link_value = facets.predicate(facets.facet("context.local_day", "eq", day))
-        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", (link_value,)).fetchone()[0]
+        # `predicate` returns the values a template binds, as a LIST:
+        # most keys bind one, and an advanced `key=value` binds two,
+        # because the long tail is rows rather than columns.
+        link_sql, link_values = facets.predicate(facets.facet("context.local_day", "eq", day))
+        opened = conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", link_values).fetchone()[0]
         assert opened >= 1, "the link answers while the interpretation is current"
 
         monkeypatch.setattr(context, "POLICY_VERSION", context.POLICY_VERSION + 1)
         assert pages.timeline_months(conn) == [], "an upgraded build shows honest absence, not yesterday's ladder"
         assert pages.timeline_days(conn) == []
         assert pages.timeline_events(conn) == []
-        link_sql, link_value = facets.predicate(facets.facet("context.local_day", "eq", day))
-        assert conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", (link_value,)).fetchone()[0] == 0, (
+        link_sql, link_values = facets.predicate(facets.facet("context.local_day", "eq", day))
+        assert conn.execute(f"SELECT count(*) FROM file f WHERE {link_sql}", link_values).fetchone()[0] == 0, (
             "the facet link and the timeline must agree on what 'current' means"
         )
         assert context.occurrences(conn, "generation") == [], "the occurrence reader goes dark with every other reader"
@@ -411,7 +435,7 @@ def test_a_departed_file_makes_the_hypothesis_stale_in_the_same_scan(grouped):
         connect.close(conn)
 
 
-def test_an_arrived_file_makes_the_hypothesis_stale_and_regroup_refuses(grouped):
+def test_an_arrived_file_makes_the_hypothesis_stale_and_regroup_refuses(grouped, no_arrivals):
     """The inverse ordering: complete, published -- then the library
     GROWS. The scan advances the proof identity, the old event stops
     rendering immediately, and regroup refuses the now-incomplete

@@ -11,9 +11,9 @@ narrowest seam that proves it; the browser proof lives beside this file.
 from __future__ import annotations
 
 import json
-import pathlib
 import re
 import time
+import typing
 
 import pytest
 from litestar.testing import TestClient
@@ -22,10 +22,7 @@ from PIL import Image
 from db import connect, inspecting, jobs, ledger, runner
 from sg_web import console
 from sg_web.app import build_app
-from tests.staging import fresh_schema
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-NOW = 1_700_000_000.0
+from tests.staging import NOW, fresh_schema, hosting
 
 
 @pytest.fixture
@@ -80,19 +77,6 @@ def _types(db, job_id):
 # --- the vocabulary is closed, and every word has a rendering ----------------
 
 
-def test_the_vocabulary_is_one_list_in_three_places():
-    """db/ledger.py TYPES, the schema's CHECK, and the console's
-    renderings name exactly the same set: a type the ledger can write
-    without words, or words for a type that cannot be written, fails."""
-    ddl = SCHEMA.read_text(encoding="utf-8")
-    found = re.search(r"CREATE TABLE job_event \((.*?)\) STRICT;", ddl, re.DOTALL)
-    assert found is not None, "job_event left the schema"
-    block = found.group(1)
-    checked = set(re.findall(r"'([a-z_]+\.[a-z_]+)'", block.split("type ", 1)[1].split("item_id", 1)[0]))
-    assert checked == set(ledger.TYPES), "the schema CHECK and ledger.TYPES disagree"
-    assert set(console.RENDERINGS) == set(ledger.TYPES), "an event type has no console rendering"
-
-
 @pytest.mark.parametrize("type_", ledger.TYPES)
 def test_every_event_type_renders_to_words(type_):
     event = {"id": 1, "job_id": 7, "at": NOW, "type": type_, "item_id": 3, "phase": "decoding", "severity": "info"}
@@ -101,8 +85,8 @@ def test_every_event_type_renders_to_words(type_):
     words = console.describe(event)
     assert words.strip(), type_
     told = console.envelope(event)
-    assert told["text"] == words
-    assert told["type"] == type_
+    assert told.text == words
+    assert told.type == type_
 
 
 def test_an_item_failure_and_a_worker_defect_are_distinct_conditions():
@@ -172,6 +156,51 @@ def test_a_turn_is_a_typed_append_only_history_with_item_starts_and_phases(db):
     assert json.loads(failed[2])["job_continues"] is True
 
 
+def test_a_finished_phase_says_how_long_it_took(db):
+    """`phase.finished` carries its own duration.
+
+    It used to carry nothing, so anything that wanted to know where a
+    job's time went had to pair the started/finished events itself and
+    subtract their `at` stamps. That made "which phase is slow" a
+    question only a program could answer, and every consumer wrote a
+    different program.
+
+    The duration is `perf_counter`, not the ledger's clock. This test
+    pins `at` to NOW for every row, so a clock-derived elapsed would be
+    exactly 0.0 for every phase -- a plausible-looking zero rather than a
+    visible absence, which is the failure this asserts against.
+    """
+    slept = 0.02
+
+    def slow(conn, item_id, payload, now):
+        told = runner.report()
+        told.phase("dawdling")
+        time.sleep(slept)
+        told.phase("brisk")
+
+    job_id = jobs.submit(db, "embed", NOW, items=[1])
+    runner.run_next(db, "w1", NOW + 1, handlers={"embed": slow})
+
+    finished = db.execute(
+        "SELECT phase, at, message, data FROM job_event WHERE job_id = ? AND type = 'phase.finished' ORDER BY id",
+        (job_id,),
+    ).fetchall()
+    took = {}
+    for phase, at, message, data in finished:
+        assert at == NOW + 1, "the ledger stamp is still the turn's clock"
+        held = json.loads(data)
+        assert "elapsed_ms" in held, f"{phase} finished without saying how long it took"
+        assert "ms" in message, "the message a person reads carries it too"
+        took[phase] = held["elapsed_ms"]
+
+    assert set(took) == {"dawdling", "brisk"}
+    # The phase that slept must report having slept. A duration derived
+    # from `at` could not: this turn stamps every row NOW + 1, so it would
+    # read 0.0 here and look plausible while measuring nothing.
+    assert took["dawdling"] >= slept * 1000 * 0.5, f"the slow phase reported {took['dawdling']} ms"
+    assert took["brisk"] < took["dawdling"], "and the phase that did nothing is the shorter of the two"
+
+
 def test_a_worker_defect_is_recorded_with_its_traceback_and_the_job_stays_running(db):
     job_id = jobs.submit(db, "embed", NOW, items=[1, 2])
     said = Spoken()
@@ -228,23 +257,6 @@ def test_a_checkpoint_move_is_an_event(db):
     jobs.checkpoint(db, job_id, fence, {"page": 3}, 30, at=NOW + 1)
     row = db.execute("SELECT data FROM job_event WHERE type = 'checkpoint.changed'").fetchone()
     assert json.loads(row[0]) == {"checkpoint": {"page": 3}, "done": 30, "fence": fence}
-
-
-def test_every_shipped_handler_reports_from_inside_its_item():
-    """Contract 5: a long handler that says nothing between item.started
-    and item.done is a frozen bar. Every handler the runner ships reaches
-    the reporting seam; a new kind that does not fails here."""
-    import inspect as inspecting_source
-
-    silent = [
-        kind
-        for kind, handler in runner.HANDLERS.items()
-        if kind != "hash" and "report()" not in inspecting_source.getsource(handler)
-    ]
-    assert silent == [], f"these handlers never report a phase: {silent}"
-    # the hash kind dispatches to four modes; each of those reports too
-    for mode in (runner._verify_item, runner._perceptual_item, runner._thumbs_item, runner._dupe_groups_item):
-        assert "report()" in inspecting_source.getsource(mode), mode.__name__
 
 
 # --- the read model exposes what the row knows -------------------------------
@@ -372,6 +384,23 @@ def served(tmp_path_factory):
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         yield client
+
+
+@pytest.fixture(scope="module")
+def _bare_stage(tmp_path_factory):
+    """One application over an EMPTY home, for the tests that bring their
+    own library. Each was building its own -- 0.31s of interpreter and
+    migrations, measured -- to register a root and read it back."""
+    with hosting(tmp_path_factory, "console_bare") as stage:
+        yield stage
+
+
+@pytest.fixture
+def bare(_bare_stage):
+    """That application with nothing in it: the snapshot is restored, so
+    `/roots` numbers from 1 again and no test inherits another's library."""
+    _bare_stage.restore()
+    return _bare_stage.client
 
 
 def _turn(client, job_id: int) -> dict:
@@ -557,47 +586,53 @@ def test_the_shell_counts_what_is_running(served):
     assert _turn(client, job_id)["state"] == "done"
 
 
-def _schema_job_kinds() -> set[str]:
-    table = SCHEMA.read_text(encoding="utf-8").split("CREATE TABLE job (", 1)[1]
-    check = re.search(r"kind\s+TEXT NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", table)
-    assert check is not None
-    return set(re.findall(r"'([a-z_]+)'", check.group(1)))
-
-
-def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
+def test_every_job_kind_has_words_beside_its_raw_name(bare, tmp_path):
     """The console shows what a job does AND the schema's name for it.
     A kind the schema admits but the console cannot word is a row that
-    reads as its identifier -- the contract holds the two vocabularies
-    equal, and the hash kind's modes are told apart by the payload."""
-    assert set(console.KINDS) == _schema_job_kinds()
+    reads as its identifier. The vocabulary is read from db/jobs.py, the
+    one place it is spelled -- sglint SG709 holds that equal to the
+    schema's CHECK, so this file never parses the DDL to learn it."""
+    assert set(console.KINDS) == set(typing.get_args(jobs.JobKind))
     assert console.describe_kind("hash") == "verify every file's bytes"
     assert console.describe_kind("hash", "groups") == "group perceptual copies"
     assert console.describe_kind("annotate") == "caption every picture"
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "one.png")
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        fingerprint = client.post("/operations/jobs/phash").text
-        dupes = client.post("/operations/jobs/dupes").text
-        assert "queued #" in fingerprint
-        assert "queued #" in dupes
-        matrix = client.get("/operations/overview").json()["matrix"]
-        told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
-        assert told[("hash", "perceptual")] == "fingerprint every picture"
-        assert told[("hash", "groups")] == "group perceptual copies"
-        page = client.get("/operations", headers={"accept": "text/html"}).text
-        assert "fingerprint every picture" in page
-        assert '<code class="raw">hash</code>' in page
-        one = next(row["id"] for row in matrix if row.get("derive") == "perceptual")
-        detail = client.get(f"/operations/job/{one}", headers={"accept": "application/json"}).json()
-        assert detail["what"] == "fingerprint every picture"
-        inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
-        assert "fingerprint every picture" in inspector
+    # No worker: every claim below is about how the console WORDS these
+    # two jobs, and a running one fingerprints and groups the library to
+    # tell it nothing it did not already know from the queued rows.
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    fingerprint = client.post("/operations/jobs/phash").text
+    dupes = client.post("/operations/jobs/dupes").text
+    assert "queued #" in fingerprint
+    assert "queued #" in dupes
+    matrix = client.get("/operations/overview").json()["matrix"]
+    told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
+    # The claim is that the MODE is told apart -- these are two acts
+    # behind one kind. The count comes from the row and so depends
+    # on the library, which is why this asserts the shape rather
+    # than a sentence: a test that pinned "fingerprint every
+    # picture" is what kept the line a constant.
+    assert told[("hash", "perceptual")].startswith("fingerprint ")
+    assert "group perceptual copies" in told[("hash", "groups")]
+    assert told[("hash", "perceptual")] != told[("hash", "groups")]
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert "fingerprint " in page
+    assert '<code class="raw">hash</code>' in page
+    one = next(row["id"] for row in matrix if row.get("derive") == "perceptual")
+    detail = client.get(f"/operations/job/{one}", headers={"accept": "application/json"}).json()
+    # The inspector reads the same line as the matrix -- one library,
+    # one job, one description, whichever surface asks.
+    assert detail["what"] == told[("hash", "perceptual")]
+    assert detail["what"].startswith("fingerprint ")
+    inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
+    assert detail["what"] in inspector
 
 
-def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
+def test_the_console_says_what_each_sweep_still_has_to_do(bare, tmp_path):
     """Coverage beside the buttons: present files, and per missing-only
     sweep how many it would still queue -- counted the way the sweep
     counts, so the number beside the button and the job it queues agree.
@@ -606,38 +641,38 @@ def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
     root.mkdir()
     for i in range(2):
         Image.new("RGB", (8, 8), (1, 2, 3 + i)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            while runner.run_next(conn, "test-worker", time.time()) is not None:  # the scan's precache job
-                conn.commit()
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        while runner.run_next(conn, "test-worker", time.time()) is not None:  # the scan's precache job
             conn.commit()
-        finally:
-            connect.close(conn)
-        told = client.get("/operations/overview").json()["overview"]["coverage"]
-        assert told["files"] == 2
-        assert told["missing"] == {"annotate": 2, "context": 2, "embed": 2, "faces": 2, "ingest": 2, "phash": 2}
-        assert list(told["embed_spaces"].values()) == [2], "one configured space, nothing minted: every picture"
-        page = client.get("/operations", headers={"accept": "text/html"}).text
-        assert re.search(r'data-missing="phash"[^>]*>2 missing', page)
-        assert re.search(r'data-missing="ingest"[^>]*>2 missing', page)
-        assert 'data-missing="verify"' not in page, "verify reads everything by design; no count"
+        conn.commit()
+    finally:
+        connect.close(conn)
+    told = client.get("/operations/overview").json()["overview"]["coverage"]
+    assert told["files"] == 2
+    assert told["missing"] == {"annotate": 2, "context": 2, "embed": 2, "faces": 2, "ingest": 2, "phash": 2}
+    assert list(told["embed_spaces"].values()) == [2], "one configured space, nothing minted: every picture"
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert re.search(r'data-missing="phash"[^>]*>2 missing', page)
+    assert re.search(r'data-missing="ingest"[^>]*>2 missing', page)
+    assert 'data-missing="verify"' not in page, "verify reads everything by design; no count"
 
-        assert client.post("/jobs/phash").status_code == 201
-        assert client.post("/jobs/ingest").status_code == 201
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            while runner.run_next(conn, "test-worker", time.time()) is not None:
-                conn.commit()
+    assert client.post("/jobs/phash").status_code == 201
+    assert client.post("/jobs/ingest").status_code == 201
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        while runner.run_next(conn, "test-worker", time.time()) is not None:
             conn.commit()
-        finally:
-            connect.close(conn)
-        after = client.get("/operations/overview").json()["overview"]["coverage"]["missing"]
-        assert (after["phash"], after["ingest"]) == (0, 0)
-        assert after["context"] == 2, "untouched sweeps keep their count"
-        assert client.post("/jobs/phash").status_code == 204, "the count beside the button and the job agree"
+        conn.commit()
+    finally:
+        connect.close(conn)
+    after = client.get("/operations/overview").json()["overview"]["coverage"]["missing"]
+    assert (after["phash"], after["ingest"]) == (0, 0)
+    assert after["context"] == 2, "untouched sweeps keep their count"
+    assert client.post("/jobs/phash").status_code == 204, "the count beside the button and the job agree"
 
 
 def test_the_activity_surface_words_the_hash_kinds_mode_too():
@@ -646,10 +681,42 @@ def test_the_activity_surface_words_the_hash_kinds_mode_too():
     from sg_web import activity
 
     row = {"id": 1, "kind": "hash", "state": "queued", "done_count": 0, "total": 3, "cancel_requested": 0}
-    assert activity.row_view({**row, "derive": "perceptual"})["what"] == "fingerprint every picture"
-    assert activity.row_view({**row, "derive": None})["what"] == "verify every file's bytes"
+    # And it reads THIS job's numbers, not its kind's: the row says 3.
+    assert activity.row_view({**row, "derive": "perceptual"})["what"] == "fingerprint 3 pictures"
+    assert activity.row_view({**row, "derive": None})["what"] == "verify the bytes of 3 files"
     delta = {"job": 1, "kind": "hash", "state": "running", "done": 1, "total": 3, "derive": "groups"}
-    assert activity.delta_view(delta)["what"] == "group perceptual copies"
+    assert activity.delta_view(delta)["what"] == "group perceptual copies across 3 pictures"
+
+
+def test_a_phase_speaks_on_the_delta_feed_while_it_is_true(db):
+    """The activity row's live line: a beginning or progressing phase
+    rides the DELTA feed as `doing`, not only the events channel -- a
+    one-item clustering held at "running, 0 / 1" for its whole life
+    because its phases were audible only to the expert console."""
+    jobs.submit(db, "embed", NOW, items=[1])
+    said = Spoken()
+    runner.run_next(db, "w1", NOW + 1, handlers={"embed": Reporting()}, on_progress=said.progress)
+    doing = [(d["state"], d["doing"]) for d in said.deltas]
+    assert doing[0] == ("running", None), "the claim is a boundary, not a phase"
+    assert ("running", "decoding") in doing
+    assert ("running", "decoding: 48 / 220 frames") in doing, "progress carries its phase and its own words"
+    assert ("running", "embedding") in doing
+    assert doing[-1] == ("done", None), "a terminal delta clears the line"
+
+
+def test_the_activity_row_renders_the_doing_line_only_while_there_is_one(served):
+    """On the module's application, not one of its own: this asks what a
+    delta RENDERS to, so all it needs is the template engine. Building a
+    whole application for that cost more than the assertion."""
+    from sg_web import activity
+
+    engine = served.app.template_engine
+    delta = {"job": 5, "kind": "embed", "state": "running", "done": 0, "total": 1, "doing": "clustering"}
+    row = activity.render_delta(engine, delta, {5})
+    assert "job-doing" in row
+    assert "clustering" in row
+    settled = activity.render_delta(engine, {**delta, "state": "done", "doing": None}, {5})
+    assert "job-doing" not in settled
 
 
 def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
@@ -663,7 +730,7 @@ def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
     assert "annotate" in inspecting.coverage(conn)["missing"]
 
 
-def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(tmp_path):
+def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(bare, tmp_path):
     """`/operations/events/before` is the tape's "earlier" button: paging
     down from the newest id reaches every persisted event once, and
     meets `/operations/events?after=` coming up -- never sampled."""
@@ -671,37 +738,354 @@ def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(tm
     root.mkdir()
     for i in range(3):
         Image.new("RGB", (8, 8), (1, 2, 3 + i)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        client.post("/jobs/ingest")
-        client.post("/jobs/context")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            while runner.run_next(conn, "test-worker", time.time()) is not None:
-                conn.commit()
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    client.post("/jobs/ingest")
+    client.post("/jobs/context")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        while runner.run_next(conn, "test-worker", time.time()) is not None:
             conn.commit()
-            produced = ledger.count(conn)
-        finally:
-            connect.close(conn)
-        assert produced > 6
-        forward: list[int] = []
-        after = 0
-        while True:
-            page = client.get("/operations/events", params={"after": after, "limit": 3}).json()
-            forward.extend(e["id"] for e in page["events"])
-            if page.get("next_after") is None or not page["events"]:
-                break
-            after = page["next_after"]
-        assert len(forward) == produced
-        backward: list[int] = []
-        before = forward[-1] + 1
-        while True:
-            page = client.get("/operations/events/before", params={"before": before, "limit": 3}).json()
-            if not page["events"]:
-                break
-            ids = [e["id"] for e in page["events"]]
-            assert ids == sorted(ids), "a page is ascending"
-            backward = ids + backward
-            before = ids[0]
-        assert backward == forward, "backwards reaches every event once and meets the forward walk"
+        conn.commit()
+        produced = ledger.count(conn)
+    finally:
+        connect.close(conn)
+    assert produced > 6
+    forward: list[int] = []
+    after = 0
+    while True:
+        page = client.get("/operations/events", params={"after": after, "limit": 3}).json()
+        forward.extend(e["id"] for e in page["events"])
+        if page.get("next_after") is None or not page["events"]:
+            break
+        after = page["next_after"]
+    assert len(forward) == produced
+    backward: list[int] = []
+    before = forward[-1] + 1
+    while True:
+        page = client.get("/operations/events/before", params={"before": before, "limit": 3}).json()
+        if not page["events"]:
+            break
+        ids = [e["id"] for e in page["events"]]
+        assert ids == sorted(ids), "a page is ascending"
+        backward = ids + backward
+        before = ids[0]
+    assert backward == forward, "backwards reaches every event once and meets the forward walk"
+
+
+# --- saying what THIS job is, not what its kind is --------------------------
+
+
+def test_a_job_says_its_own_numbers_not_its_kind(db):
+    """The complaint, exactly: every description was the same all the
+    time. `job.total`, the hash mode and a walk's own root path were all
+    on the row and none of them was read, so "read every file's
+    metadata" was the line for four files and for eighty thousand."""
+    from sg_web import console
+
+    assert console.describe_kind("scan", None, 412) == "read metadata for 412 files"
+    assert console.describe_kind("scan", None, 1) == "read metadata for 1 file"
+    assert console.describe_kind("embed", None, 400) == "embed 400 pictures for search"
+    # The LEAF, never the path. This line is not only the console's: the
+    # activity strip carries it onto /folders and /f/<slug>, whose rule is
+    # that a place is entered by entity and never by path -- and the whole
+    # absolute path really did appear there. `root.path` is where a library
+    # sits, not what it is (schema.sql `root.uuid`).
+    assert console.describe_kind("walk", None, None, "D:/Photos/2019") == "look for files under 2019"
+    assert console.describe_kind("walk", None, None, "D:/") == "look for files under D:/", (
+        "a root with no leaf still says something"
+    )
+
+
+def test_four_acts_behind_one_kind_read_as_four(db):
+    """`hash` is verify, fingerprint, render thumbnails and group copies,
+    told apart only by the payload's `derive` -- and one of them is the
+    one somebody would cancel."""
+    from sg_web import console
+
+    assert console.describe_kind("hash", "thumbs", 1204) == "render 1,204 missing thumbnails"
+    assert console.describe_kind("hash", None, 1204) == "verify the bytes of 1,204 files"
+    assert console.describe_kind("hash", "perceptual", 9) != console.describe_kind("hash", "groups", 9)
+
+
+def test_a_job_with_no_count_still_says_something_true(db):
+    """`every` survives where the items were never enumerable. Inventing
+    a number for a job that has none would be worse than the constant it
+    replaced."""
+    from sg_web import console
+
+    assert console.describe_kind("scan") == "read every file's metadata"
+    assert console.describe_kind("scan", None, 0) == "read every file's metadata"
+    assert console.describe_kind("walk") == "look for files on disk"
+
+
+def test_an_item_is_named_where_the_runner_knows_the_name(db):
+    """ "item 41 started" is a hundred thousand lines naming an integer
+    nobody can resolve. The file's name was one indexed lookup away."""
+    from sg_web import console
+
+    told = console.describe(
+        {"type": "item.started", "item_id": 41, "data": {"item_name": "DSC_0042.NEF"}, "message": "item 41 started"}
+    )
+    assert "41" in told, "the number stays: it is what job_item is keyed on"
+    assert "DSC_0042.NEF" in told
+
+
+def test_an_item_the_runner_cannot_name_still_reads(db):
+    """A `cluster_faces` item is an index into a payload, not a file --
+    so there is no name, and inventing one by looking up the integer as
+    a file id would put a real picture's name beside item 2 of a
+    clustering run."""
+    from sg_web import console
+
+    told = console.describe({"type": "item.started", "item_id": 2, "data": {}, "message": "item 2 started"})
+    assert told == "item 2 started"
+
+
+def test_the_observation_name_and_the_file_name_stay_apart(db):
+    """Two facts, two keys. Read from one, an observed event rendered
+    its own name twice and the file's not at all."""
+    from sg_web import console
+
+    told = console.describe(
+        {
+            "type": "item.observed",
+            "item_id": 7,
+            "data": {"name": "captioned", "item_name": "beach.png", "words": 12},
+            "message": "",
+        }
+    )
+    assert "beach.png" in told
+    assert told.count("captioned") == 1
+
+
+# --- the operating point is reachable ----------------------------------------
+
+
+def test_the_face_threshold_is_a_setting_and_auto_means_measured(db):
+    """The knob, and its default.
+
+    Per-embedder operating points were constants in vision/faces.py:
+    changing one was an edit and a restart. "auto" keeps the measured
+    point (db/derived.py SAME_PERSON), which is what it should stay
+    unless somebody is deliberately experimenting -- the spaces are not
+    comparable and one number is wrong for all but one of them.
+    """
+    from db import runner, settings
+
+    assert settings.value(db, "face_cluster_threshold") == "auto"
+    assert runner.chosen_threshold(db) is None, "auto must not pin a number over the measured one"
+
+    settings.put(db, "face_cluster_threshold", "0.62")
+    assert runner.chosen_threshold(db) == pytest.approx(0.62)
+
+
+def test_a_threshold_that_could_not_mean_anything_is_refused_at_submit(db):
+    """Validated where `dupe_threshold` is, and for the same reason: a
+    bad value must be a refused submit, never a job that fails on its
+    third item.
+
+    The bounds are wide on purpose -- this is somebody's own library and
+    the point of the knob is finding out what a different point does.
+    What is refused is where the answer is not interesting but broken."""
+    from db import runner, settings
+
+    for bad in ("0", "1", "1.5", "-0.2", "tight"):
+        settings.put(db, "face_cluster_threshold", bad)
+        with pytest.raises(ValueError, match="face_cluster_threshold"):
+            runner.chosen_threshold(db)
+
+
+def test_the_operating_point_is_pinned_at_submit_not_read_per_item(db):
+    """One run, one threshold. Read per item, a setting changed while the
+    job runs gives two embedding spaces two different answers inside one
+    run -- and the run row records a single number for both."""
+    import numpy as np
+
+    from db import derived, runner, scan, settings
+
+    root = int(db.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x','library',0)").lastrowid or 0)
+    folder = scan.mint(db, "folder", "x")
+    db.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?,?,NULL,'x',0)", (folder, root))
+    file_id = scan.mint(db, "file", "one")
+    db.execute(
+        "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+        " VALUES(?, ?, 'one.png', 'image', 1, 0, ?, 0, 0)",
+        (file_id, folder, "a" * 64),
+    )
+    derived.record_faces(
+        db,
+        file_id,
+        "opencv/yunet+sface",
+        "1",
+        "a" * 64,
+        0.0,
+        [{"region": derived.region(db, 0.1, 0.1, 0.2, 0.2), "embedding": np.ones(4, np.float32).tobytes()}],
+    )
+    settings.put(db, "face_cluster_threshold", "0.71")
+    db.commit()
+
+    job = runner.submit_cluster(db, 0.0)
+    payload = json.loads(db.execute("SELECT payload FROM job WHERE id = ?", (job,)).fetchone()[0])
+    assert payload["threshold"] == pytest.approx(0.71)
+
+    # and changing it now cannot reach the job already queued
+    settings.put(db, "face_cluster_threshold", "auto")
+    db.commit()
+    payload = json.loads(db.execute("SELECT payload FROM job WHERE id = ?", (job,)).fetchone()[0])
+    assert payload["threshold"] == pytest.approx(0.71)
+
+
+def test_a_run_queued_before_the_setting_existed_still_clusters(db):
+    """`.get`, not `[]`. A job sitting in the queue from an older build
+    carries no threshold key, and it must cluster at the measured point
+    rather than fail on a KeyError nobody can act on."""
+    from db import derived
+
+    assert derived.threshold_for("opencv/yunet+arcface") == pytest.approx(0.48)
+    payload: dict = {"spaces": [["opencv/yunet+arcface", "1"]]}
+    asked = payload.get("threshold")
+    assert asked is None
+
+
+# --- and two runs can be put side by side ------------------------------------
+
+
+def _two_runs(conn):
+    """One file both runs name, one they disagree about, one only one names."""
+    import numpy as np
+
+    from db import derived, scan
+
+    root = int(conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/c','library',0)").lastrowid or 0)
+    folder = scan.mint(conn, "folder", "c")
+    conn.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?,?,NULL,'c',0)", (folder, root))
+    files = []
+    for i in range(3):
+        file_id = scan.mint(conn, "file", f"c{i}")
+        conn.execute(
+            "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, first_seen_at, last_seen_at)"
+            " VALUES(?, ?, ?, 'image', 1, 0, ?, 0, 0)",
+            (file_id, folder, f"c{i}.png", f"{i:064d}"),
+        )
+        derived.record_faces(
+            conn,
+            file_id,
+            "opencv/yunet+sface",
+            "1",
+            f"{i:064d}",
+            0.0,
+            [{"region": derived.region(conn, 0.1, 0.1, 0.2, 0.2), "embedding": np.ones(4, np.float32).tobytes()}],
+        )
+        files.append(file_id)
+    hannah = authored_module().person(conn, "Hannah", 0.0)
+    ivan = authored_module().person(conn, "Ivan", 0.0)
+    left = derived.run_for(conn, "opencv/yunet+sface", "1", derived.DEFAULT_METHOD, 0.55, 0.0)
+    right = derived.run_for(conn, "opencv/yunet+sface", "1", derived.DEFAULT_METHOD, 0.40, 0.0)
+    # agree about the first, disagree about the second, only left names the third
+    derived.attribute(conn, files[0], hannah, left, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[0], hannah, right, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[1], hannah, left, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[1], ivan, right, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(conn, files[2], ivan, left, "opencv/yunet+sface", "1", face_count=1)
+    conn.commit()
+    return left, right, hannah, ivan, files
+
+
+def authored_module():
+    from db import authored
+
+    return authored
+
+
+def test_two_runs_are_compared_by_what_they_say_about_the_same_picture(db):
+    """The other half of a reachable threshold.
+
+    Trying one is safe because a new threshold writes a new run beside
+    the old. That left somebody with two runs, two numbers, and no way
+    to see what moved -- and the counts cannot tell them, because "more
+    groups" is both what a threshold that split one person in four does
+    and what one that stopped welding strangers does.
+    """
+    from db import pages
+
+    left, right, _hannah, _ivan, files = _two_runs(db)
+    held = pages.disagreements(db, left, right)
+
+    assert held["total"] == 2, "the picture both name the same way is not a disagreement"
+    named = {one["name"]: (one["left_says"], one["right_says"]) for one in held["pictures"]}
+    assert named["c1.png"] == ("Hannah", "Ivan")
+    assert named["c2.png"] == ("Ivan", None), "a run naming nobody is an answer, not a missing value"
+    assert "c0.png" not in named
+    assert {one["id"] for one in held["pictures"]} == {files[1], files[2]}
+
+
+def test_both_columns_spell_their_people_the_same_readable_way(db):
+    """Side by side, so spelled alike -- and by NAME.
+
+    Without an ORDER BY, `group_concat` concatenates in scan order,
+    which for this WITHOUT ROWID table is person_id: the order the
+    people were CREATED in. That is consistent between the two columns,
+    so the comparison is sound either way -- this is not a correctness
+    fix and should not be mistaken for one. It is that "Ivan, Hannah" is
+    the order somebody happened to be added to the library in, and a
+    reader scanning two columns for a name is looking alphabetically.
+
+    Measured on 3.47.1: unordered both sides read "Ivan,Hannah".
+    """
+    from db import authored, derived, pages
+
+    left, right, hannah, _ivan, files = _two_runs(db)
+    # Created LAST and sorting FIRST, which is the only arrangement that
+    # can tell the two orders apart. Named alike and the test passes
+    # whether or not the query orders anything.
+    aaron = authored.person(db, "Aaron", 0.0)
+    assert aaron > hannah, "the fixture must create Aaron after Hannah for this to discriminate"
+    for who in (hannah, aaron):
+        derived.attribute(db, files[0], who, left, "opencv/yunet+sface", "1", face_count=1)
+    derived.attribute(db, files[0], hannah, right, "opencv/yunet+sface", "1", face_count=1)
+    db.commit()
+
+    held = pages.disagreements(db, left, right)
+    said = {one["name"]: one["left_says"] for one in held["pictures"]}
+    assert said["c0.png"] == "Aaron,Hannah", said["c0.png"]
+
+
+def test_the_comparison_says_how_many_it_did_not_show(db):
+    """A bounded list alone cannot tell "these are the only twelve" from
+    "the first fifty of nine thousand", and those are opposite answers to
+    the question being asked."""
+    from db import pages
+
+    left, right, _hannah, _ivan, _files = _two_runs(db)
+    held = pages.disagreements(db, left, right, limit=1)
+    assert held["shown"] == 1
+    assert held["total"] == 2, "the total must survive the limit"
+
+
+def test_the_console_offers_the_comparison_and_renders_it(bare):
+    """Reachable from the panel where the threshold is changed, against
+    the run the site is actually showing."""
+    from db import connect, derived
+
+    client = bare
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        left, right, _hannah, _ivan, _files = _two_runs(conn)
+        derived.make_primary(conn, left)
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert f'data-compare-run="{right}"' in page, "no way to compare from the panel"
+    assert f'data-compare-run="{left}"' not in page, "the primary has nothing to be compared against"
+
+    told = client.get(f"/operations/clusterings/{left}/against/{right}", headers={"accept": "text/html"})
+    assert told.status_code == 200, told.text
+    assert 'data-compare-total="2"' in told.text
+    assert "Hannah" in told.text
+    assert "Ivan" in told.text
+
+    assert client.get(f"/operations/clusterings/{left}/against/424242").status_code == 404

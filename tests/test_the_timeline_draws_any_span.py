@@ -19,20 +19,30 @@ import re
 import pytest
 from PIL import Image
 
-from db import connect, context, ingest
+from db import connect, context, ingest, when
 from tests.staging import staged
 from tests.test_the_timeline_is_a_surface import NOW, _drain
 
 PICTURES = 9
-YEAR = 365.25 * 86_400
+
+#: The fixture spans, in `db/when.py`'s units. These BUILD the libraries
+#: below; they are not expected answers, so taking them from the module
+#: under test is not circular -- it is the only way "5 years" here means
+#: the same five years the surface draws.
+#:
+#: It said `YEAR = 365.25 * 86_400`, the JULIAN year. `when.YEAR` is the
+#: Gregorian mean, 31_556_952. A third spelling lived in
+#: `tests/test_empty_time_does_not_get_the_pixels.py` as `365 * DAY`.
+#: Three values for one word across the tests of one surface, none of
+#: them the one the code uses.
 SPANS = {
-    "5 minutes": 5 * 60,
-    "5 days": 5 * 86_400,
-    "5 weeks": 5 * 7 * 86_400,
-    "5 months": 5 * 30 * 86_400,
-    "5 years": 5 * YEAR,
-    "55 years": 55 * YEAR,
-    "555 years": 555 * YEAR,
+    "5 minutes": 5 * when.MINUTE,
+    "5 days": 5 * when.DAY,
+    "5 weeks": 5 * 7 * when.DAY,
+    "5 months": 5 * when.MONTH,
+    "5 years": 5 * when.YEAR,
+    "55 years": 55 * when.YEAR,
+    "555 years": 555 * when.YEAR,
 }
 
 
@@ -43,46 +53,62 @@ def _library(root: pathlib.Path) -> None:
         os.utime(path, (NOW, NOW))
 
 
-def _moments_of(span: float):
-    """Interpret the library, then spread its moments evenly back over
-    `span` from NOW, the newest at NOW. No grouping: a file session
-    groups by when the files arrived, which is one moment here, and
-    this is about where the pictures sit, not how they group."""
+def _interpreted(stage) -> None:
+    """Read the library and run the context job.
 
-    def interpret(stage) -> None:
-        client, root = stage.client, stage.root
-        conn = stage.conn()
-        try:
-            chains = context._folder_names(conn)
-            for name, file_id, folder_id in conn.execute("SELECT f.name, f.id, f.folder_id FROM file f").fetchall():
-                sub = root.joinpath(*chains[folder_id][1:]) if len(chains[folder_id]) > 1 else root
-                ingest.one(conn, file_id, sub / name, NOW)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        _drain(client)
-        conn = stage.conn()
-        try:
-            ids = [row[0] for row in conn.execute("SELECT file_id FROM derived_media_context ORDER BY file_id")]
-            assert len(ids) == PICTURES
-            for i, file_id in enumerate(ids):
-                at = NOW - span + (span * i) / (PICTURES - 1)
-                conn.execute(
-                    "UPDATE derived_media_context SET local_at = NULL, instant_at = ? WHERE file_id = ?", (at, file_id)
-                )
-            conn.commit()
-        finally:
-            connect.close(conn)
+    Span-independent, and the expensive half: the same nine pictures are
+    ingested and interpreted identically whatever span the test then
+    imposes. It is the snapshot every span starts from.
+    """
+    client, root = stage.client, stage.root
+    conn = stage.conn()
+    try:
+        chains = context._folder_names(conn)
+        for name, file_id, folder_id in conn.execute("SELECT f.name, f.id, f.folder_id FROM file f").fetchall():
+            sub = root.joinpath(*chains[folder_id][1:]) if len(chains[folder_id]) > 1 else root
+            ingest.one(conn, file_id, sub / name, NOW)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    _drain(client)
 
-    return interpret
+
+def _spread(stage, span: float) -> None:
+    """Spread the interpreted moments evenly back over `span` from NOW,
+    the newest at NOW. No grouping: a file session groups by when the
+    files arrived, which is one moment here, and this is about where the
+    pictures sit, not how they group.
+
+    This is ALL that differs between the spans -- nine UPDATEs -- so it
+    is what each test does, over a restored snapshot, rather than a
+    reason to build a seventh application.
+    """
+    conn = stage.conn()
+    try:
+        ids = [row[0] for row in conn.execute("SELECT file_id FROM derived_media_context ORDER BY file_id")]
+        assert len(ids) == PICTURES
+        for i, file_id in enumerate(ids):
+            at = NOW - span + (span * i) / (PICTURES - 1)
+            conn.execute(
+                "UPDATE derived_media_context SET local_at = NULL, instant_at = ? WHERE file_id = ?", (at, file_id)
+            )
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _span_stage(tmp_path_factory):
+    with staged(tmp_path_factory, "the_timeline_draws_any_span", _library, _interpreted) as stage:
+        yield stage
 
 
 @pytest.fixture(params=list(SPANS), ids=list(SPANS))
-def spanned(request, tmp_path_factory):
-    name = f"span-{request.param.replace(' ', '-')}"
-    with staged(tmp_path_factory, name, _library, _moments_of(SPANS[request.param])) as stage:
-        yield stage.client, SPANS[request.param]
+def spanned(request, _span_stage):
+    _span_stage.restore()
+    _spread(_span_stage, SPANS[request.param])
+    return _span_stage.client, SPANS[request.param]
 
 
 def _json(client, **params):
@@ -157,9 +183,9 @@ def test_every_span_draws_its_opening_window_and_its_whole_extent(spanned):
         assert answer.status_code == 400 or sum(1 for b in answer.json()["bins"] if b["pictures"]) > 40, (
             f"{finer[-1]} would have done and {unit} was chosen"
         )
-    if span == 300:
+    if span == 5 * when.MINUTE:
         assert unit == "minute"
-    if span >= 555 * YEAR:
+    if span >= 555 * when.YEAR:
         assert unit == "year", "centuries scrub by year"
         assert len(segments) < 600
     page = client.get(

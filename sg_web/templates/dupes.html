@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Duplicates{% endblock %}
+{% block scripts %}
+  <script src="/static/build/dupes.js?v={{ static_v }}" defer></script>
+{% endblock %}
+{% block body %}
+  <header class="bar">
+    <nav class="crumbs">
+      <span class="crumbs-here">Duplicates</span>
+      <span class="crumbs-where">{{ groups|length }} {{ "group" if groups|length == 1 else "groups" }}</span>
+    </nav>
+  </header>
+  <main class="stage">
+    {% if groups %}
+    {# Read-only, on purpose. The operation worth building is not "delete
+       duplicates" but "consolidate redundant storage while preserving
+       every logical placement", and a preview that is wrong is worse
+       than no preview -- so the preview ships first and alone. #}
+    <p class="operations-hint">Nothing here deletes anything. What a copy is FILED under is shown beside it, because three copies of one photograph in <em>Iowa 2019</em>, <em>Family</em> and <em>Old Backup</em> are one picture and three placements &mdash; and removing two of them quietly leaves two collections incomplete.</p>
+    <ul class="dupe-groups" data-dupe-groups>
+      {% for group in groups %}
+      <li class="dupe-group" data-dupe-group="{{ group.slug }}" data-dupe-kind="{{ group.kind }}">
+        <h2>
+          <a href="/i/{{ group.slug }}">{{ group.name }}</a>
+          <span class="dupe-count" data-dupe-copies="{{ group.copies }}">{{ group.copies }} copies</span>
+        </h2>
+        {# The evidence, above the claim that rests on it. The verdict
+           below ends "every collection still complete", and that is a
+           sentence somebody is being asked to believe about their own
+           albums -- so the albums are named here, each with how whole it
+           is right now. A count short of its own total is a fact about
+           the library, not about consolidating, and seeing it here is
+           the point: it is the number that would move if the operation
+           were the naive one. #}
+        {% if group.placements %}
+        <p class="dupe-placements" data-dupe-placements>
+          Filed in:
+          {% for one in group.placements %}<span class="dupe-placement" data-dupe-placement="{{ one.name }}">{{ one.name }}
+            <code class="raw" data-placement-whole="{{ one.present }}/{{ one.members }}">{{ one.present }}/{{ one.members }} present</code></span>{% if not loop.last %}<span class="muted"> · </span>{% endif %}{% endfor %}
+        </p>
+        {% endif %}
+        {# The distinction that decides whether consolidating is even
+           safe. These groups are PERCEPTUAL: a re-encode, a resize and a
+           different crop all land in one, and only identical bytes can
+           become one stored payload without losing something. #}
+        {% if group.consolidates_to %}
+        <p class="dupe-verdict" data-dupe-identical>
+          Byte-identical &mdash; one stored payload.
+          <b>After consolidating: {{ group.consolidates_to }} placements, 1 payload, every collection still complete.</b>
+        </p>
+        {% else %}
+        <p class="dupe-verdict" data-dupe-alike>
+          Alike, but <b>not the same bytes</b> &mdash; {{ group.payloads }} distinct payloads. A re-encode, a resize or a
+          different crop lands here too. These cannot be collapsed into one file without losing whichever one is not kept.
+        </p>
+        {% endif %}
+        <ul class="dupe-members">
+          {% for one in group.members %}
+          <li class="dupe-member" data-dupe-member="{{ one.slug }}"{% if one.is_best %} data-dupe-best{% endif %} data-kind="{{ one.kind }}">
+            <a class="cell" href="/i/{{ one.slug }}" data-slug="{{ one.slug }}" data-kind="{{ one.kind }}">
+              {% if one.thumb %}<img src="{{ one.thumb }}" alt="{{ one.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ one.kind }}" aria-hidden="true">{{ "audio" if one.kind == "audio" else "doc" }}</span>{% endif %}
+            </a>
+            <div class="dupe-member-said">
+              <span class="dupe-member-name">{{ one.name }}</span>
+              <span class="muted">in <a href="/f/{{ one.folder }}">{{ one.folder }}</a></span>
+              {# A placement, not a decoration: this is the thing that is
+                 lost if the wrong copy goes. #}
+              {% if one.collections %}<span class="dupe-member-filed" data-dupe-filed>filed under {{ one.collections }}</span>{% else %}<span class="muted" data-dupe-unfiled>in no collection</span>{% endif %}
+              {% if one.is_best %}<span class="dupe-best">best of the group</span>
+              {% else %}<span class="muted" title="hamming bits from this copy's perceptual hash to the best one's">{{ one.distance }} bits from the best{% if one.verified %} &middot; a second fingerprint agreed{% endif %}</span>
+              {# A group is a GUESS: pHash sees composition, so two
+                 photographs of one scene a second apart are close in
+                 it. This is the page disagreeing with one -- and it
+                 survives the next sweep, which reads the verdicts back
+                 before it writes a group. #}
+              <button type="button" class="dupe-not" data-not-a-duplicate="{{ one.slug }}" data-against="{{ group.slug }}"
+                      title="not the same picture as {{ group.name }} &mdash; and remember that">not a duplicate</button>{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty" data-dupes-none>No duplicate groups. Either this library has none, or the sweep has not run &mdash; the operations console queues it as <em>group perceptual copies</em>.</p>
+    {% endif %}
+  </main>
+{% endblock %}

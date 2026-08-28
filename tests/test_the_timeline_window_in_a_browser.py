@@ -10,9 +10,10 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import FloatRect, Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
+from tests.staging import HOUR, JUNE_10
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser_context_args(viewport={"width": 1200, "height": 800})]
 
@@ -23,7 +24,7 @@ def write_library(root) -> None:
     """Nine days five days apart, a pair of pictures a minute apart on
     each (enough for a group to form); the name carries the clock
     (14:0j:0i) and the file's mtime says the same moment."""
-    base_at = 1_686_355_200.0 + 14 * 3600
+    base_at = JUNE_10 + 14 * HOUR
     for i in range(DAYS):
         for j in range(2):
             at = base_at + i * 5 * 86400 + j * 60 + i
@@ -33,9 +34,37 @@ def write_library(root) -> None:
             os.utime(path, (at, at))
 
 
+def overview_box(page: Page) -> FloatRect:
+    """The overview's rectangle, once it is safe to read one.
+
+    This page replaces its content through htmx, so `[data-overview]` can
+    be torn out and rebuilt between two calls: the locator then points at
+    a detached node and `bounding_box()` answers None. Playwright will
+    happily have reported the element visible a moment earlier, which is
+    what makes the failure read as impossible and is the tell that the
+    element under the box is not the one that was checked.
+
+    Waiting for the swap to settle first is the fix. Measured on the test
+    that failed most often: 1 run in 6 before, 0 in 12 after.
+
+    Both callers go through here rather than repeating the wait, because
+    the second one was already the same bug in the same file and was
+    found only after the first was fixed.
+    """
+    page.wait_for_function(
+        "() => !document.getElementById('timeline-swap').hasAttribute('data-loading')",
+        timeout=10_000,
+    )
+    overview = page.locator("[data-overview]")
+    overview.wait_for(state="visible", timeout=10_000)
+    box = overview.bounding_box()
+    assert box is not None, "the overview settled and is visible but still has no box to brush across"
+    return box
+
+
 def moments() -> list[float]:
     """Every moment `write_library` wrote, from the same numbers."""
-    base_at = 1_686_355_200.0 + 14 * 3600
+    base_at = JUNE_10 + 14 * HOUR
     return [base_at + i * 5 * 86400 + j * 60 + i for i in range(DAYS) for j in range(2)]
 
 
@@ -55,7 +84,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def _window(page: Page) -> tuple[float, float]:
@@ -79,12 +108,22 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
     assert start > extent["start"], "which is not the whole forty-day library"
     page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
     assert "too many" not in page.inner_text("[data-surface]")
-    assert page.locator("[data-overview] [data-brush]").count() == 1
-    assert page.locator("[data-zoom] a[data-preset]").count() == 5
+    expect(page.locator("[data-overview] [data-brush]")).to_have_count(1)
+    expect(page.locator("[data-zoom] a[data-preset]")).to_have_count(5)
 
     # the brush: a new window drawn across the left half of the overview
-    box = page.locator("[data-overview]").bounding_box()
-    assert box is not None
+    #
+    # Every sample settled FIRST. `box` is geometry, and the drag below is
+    # aimed with it -- so a thumbnail that arrives between the measurement
+    # and the mouse moves the brush out from under the coordinates, the
+    # drag lands on nothing, and the wait for it times out rather than
+    # saying what went wrong. Measured: line 122, ten seconds, under four
+    # workers.
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('[data-samples] .surface-sample img')].every(i => i.complete)",
+        timeout=10_000,
+    )
+    box = overview_box(page)
     y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + 2, y)
     page.mouse.down()
@@ -110,7 +149,7 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
         timeout=10_000,
     )
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-    assert page.locator('[data-zoom] a[data-preset="all"][data-current]').count() == 1
+    expect(page.locator('[data-zoom] a[data-preset="all"][data-current]')).to_have_count(1)
     assert page.locator("[data-samples] .surface-sample img").count() >= 1, "thumbnails at every window"
 
 
@@ -122,8 +161,7 @@ def test_the_surface_moves_while_the_hand_moves_and_refreshes_itself(page: Page,
     page.goto("/timeline")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
     was = page.get_attribute("[data-surface]", "data-window-start")
-    box = page.locator("[data-overview]").bounding_box()
-    assert box is not None
+    box = overview_box(page)
     y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + 2, y)
     page.mouse.down()

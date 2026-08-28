@@ -93,7 +93,15 @@ CREATE TABLE root (
     -- 'trash' is a real location, not a state: a deleted file's bytes are
     -- still somewhere, restore is a move, and views exclude the subtree by
     -- ancestry rather than by matching paths against a configured string.
-    kind          TEXT    NOT NULL CHECK (kind IN ('library','mount','trash')),
+    --
+    -- There was a 'mount' beside 'library' and nothing anywhere branched
+    -- on the difference -- every read that cared spelled
+    -- `kind IN ('library','mount')`. The distinction it reached for,
+    -- "this one is not always attached", is `online` below: per-root,
+    -- set by probing, and what the whole deletion doctrine rests on. So
+    -- it was a choice offered on the add-a-folder form that changed
+    -- nothing, made by somebody who had no way to know that.
+    kind          TEXT    NOT NULL CHECK (kind IN ('library','trash')),
     -- `online` is the flag the whole deletion doctrine rests on: an unplugged
     -- drive and an emptied folder look identical from a directory listing, so
     -- an unreadable root is marked offline and its files are left alone.
@@ -118,7 +126,21 @@ CREATE TABLE folder (
     -- A HINT, never identity: it is volume-scoped, lost on copy or restore,
     -- and absent on filesystems that do not report one. Matched only when
     -- present and unique, and name matching still has to work on its own.
-    inode     INTEGER,
+    --
+    -- TEXT, and the decimal spelling of the identifier, because the value is
+    -- OPAQUE: nothing does arithmetic on it, only equality. Since Python 3.12
+    -- Windows reports `st_ino` "up to 128 bits, depending on the file system"
+    -- (cpython Doc/library/os.rst), SQLite's INTEGER is signed 64-bit
+    -- (sqlite/sqlite src/sqliteInt.h:1031 LARGEST_INT64), and binding a
+    -- larger one raised `OverflowError: Python int too large to convert to
+    -- SQLite INTEGER` -- killing the scan on the first ReFS directory. TEXT
+    -- rather than an INTEGER column holding a string: affinity is not a
+    -- constraint, and an INTEGER-affinity column silently converts
+    -- '340282366920938463463374607431768211455' to the REAL
+    -- 3.402823669209385e+38, which is the wrong identity rather than a
+    -- refusal. Named `fs_id` and not `inode` because on the stated platform
+    -- it is not one.
+    fs_id     TEXT,
     -- Set when the directory was not found where it was last seen. Presence
     -- is a state here for the same reason it is one on `file`: without it,
     -- "gone" and "the drive is unplugged" are the same row, and the only way
@@ -142,7 +164,7 @@ CREATE UNIQUE INDEX folder_child_unique ON folder(parent_id, name COLLATE NOCASE
 -- No index on parent_id alone. folder_child_unique leads on it, and although
 -- that index is partial the planner does use it for `parent_id = ?`, which is
 -- the shape the foreign key runs on every delete -- checked, not assumed.
-CREATE UNIQUE INDEX folder_inode ON folder(root_id, inode) WHERE inode IS NOT NULL;
+CREATE UNIQUE INDEX folder_fs_id ON folder(root_id, fs_id) WHERE fs_id IS NOT NULL;
 
 -- Both guards cover INSERT and UPDATE. INSERT-only was bypassable: a row
 -- naming itself as its own parent satisfies the foreign key, because the row
@@ -200,7 +222,10 @@ CREATE TABLE file (
     -- A HINT for change detection, never identity and never a matcher:
     -- content is what proves continuity. Absent where the filesystem
     -- reports none, and different after a copy or a restore.
-    inode          INTEGER,
+    --
+    -- TEXT for the reason `folder.fs_id` is: the value is opaque, only ever
+    -- compared for equality, and on Windows can exceed what an INTEGER holds.
+    fs_id          TEXT,
     content_sha256 TEXT,
     -- The pixels actually on disk, not what any recipe asked for; see
     -- `generation.width`, which is the request and may differ. Written by
@@ -224,7 +249,27 @@ CREATE TABLE file (
     -- when a content match was ambiguous. Deletion is then a deliberate act
     -- rather than a scan side effect: unreachable is not the same as deleted.
     missing_since  REAL
-, ingested_sha256 TEXT) STRICT;
+, ingested_sha256 TEXT, ingested_by TEXT) STRICT;
+-- file.ingested_by: WHICH READER took it, so improving one re-reads.
+--
+-- `ingested_sha256` says which BYTES were read, which makes a file stale
+-- when its bytes change and never when the READER changes. That is half a
+-- freshness rule, and the missing half cost a person a folder of broken
+-- pictures: the sniffer called every .m4a a video, ingest wrote the wrong
+-- `kind`, and fixing the sniffer could not fix the rows -- nothing recorded
+-- that they had been read by the version that was wrong. The only repair
+-- was re-reading the entire library by hand, which is a bug turned into a
+-- chore.
+--
+-- So the reader states its own identity (db/ingest.py READER) and bumps it
+-- whenever a change alters what it would WRITE for the same bytes. Every
+-- file read by an older one is then stale by the ordinary rule, and the
+-- ordinary sweep -- the one for what is missing, the one a worker already
+-- runs -- repairs the library with nobody asked to do anything.
+--
+-- NULL means "read before this column existed". Treated as stale, because
+-- it is exactly the population that may carry what an old reader decided.
+--
 -- file.ingested_sha256: the bytes the last metadata read was taken from
 -- (db/ingest.py one). NULL until ingest reads the file; unequal to
 -- content_sha256 once a scan records new bytes. The ingest sweep queues
@@ -268,7 +313,35 @@ CREATE TABLE person (
     id         INTEGER PRIMARY KEY REFERENCES entity(id) ON DELETE CASCADE,
     name       TEXT,
     created_at REAL NOT NULL
-) STRICT;
+, exemplar_file_id INTEGER REFERENCES file(id) ON DELETE SET NULL) STRICT;
+-- person.exemplar_file_id: which picture their face is taken FROM.
+--
+-- Spelled as ALTER TABLE leaves it, the convention this file holds for
+-- every added column (see file.ingested_sha256): SQLite stores the
+-- literal statement text and `build.drift` compares it.
+--
+-- A FILE and not a face, which is the whole point. `/avatar/<slug>`
+-- crops the highest-confidence detection in the primary run, and that
+-- is usually right and sometimes a blurred profile in a crowd. But a
+-- face is a DERIVED row: `derived.drop_all` deletes every
+-- `derived_face_instance` and a rebuild mints new ones, so a remembered
+-- face id would be a pointer at something the next re-detect destroys --
+-- exactly the mistake `person_assertion` exists to avoid by naming a
+-- file and a region rather than a cluster.
+--
+-- Naming the picture survives all of it. After any rebuild the avatar
+-- takes whichever face of theirs is in that picture, and if they are no
+-- longer found there it falls back to the confident one rather than
+-- showing nothing.
+--
+-- SET NULL, because deleting the picture is not a statement about the
+-- person: they simply go back to the automatic choice.
+--
+-- And indexed, for the reason `job_target` is: SQLite runs
+-- `SELECT 1 FROM child WHERE child_key = ?` against every child table
+-- when a parent row goes, so without this every file deletion scans
+-- every person.
+CREATE INDEX person_exemplar ON person(exemplar_file_id);
 
 -- One table, not one per kind. A checkpoint, a LoRA, a VAE, a ControlNet and a
 -- camera body are the same shape: a named thing that exists independently of
@@ -579,8 +652,15 @@ CREATE TABLE job (
     -- Constrained like every other `kind` here. A typo is otherwise a job
     -- that queues successfully and no worker ever claims, because claim()
     -- filters on the kinds it knows -- so it waits forever and looks fine.
+    -- 'walk' is the directory walk itself, which for a long time was the
+    -- one expensive thing in this application that was NOT a job: the
+    -- scan route did it inline, so a person who asked to scan 80,000
+    -- files watched a request hang for a minute with nothing to look at,
+    -- while every cheaper sweep after it reported progress. 'scan' was
+    -- already taken -- it is the metadata read (db/runner.py _ingest_item)
+    -- -- so the walk gets its own word rather than borrowing one.
     kind             TEXT NOT NULL CHECK (kind IN
-                       ('scan','hash','embed','detect_faces','cluster_faces',
+                       ('walk','scan','hash','embed','detect_faces','cluster_faces',
                         'sample_frames','annotate','remix','zip','context','events',
                         'story_plan','embed_prompts')),
     target_id        INTEGER REFERENCES entity(id) ON DELETE SET NULL,
@@ -605,8 +685,40 @@ CREATE TABLE job (
     created_at       REAL NOT NULL,
     started_at       REAL,
     finished_at      REAL
-) STRICT;
+, collection TEXT, after_id INTEGER REFERENCES job(id) ON DELETE SET NULL) STRICT;
+-- job.collection / job.after_id: a job that is a STEP of something.
+--
+-- Spelled as ALTER TABLE leaves them, which is the convention this file
+-- holds for every added column (see file.ingested_sha256 above): SQLite
+-- stores the literal statement text, `build.drift` compares it, and a
+-- migrated database must be indistinguishable from a fresh build down to
+-- the words. The documentation goes here rather than inside the parens
+-- because ALTER cannot put it there.
+--
+-- Adding a root meant pressing eight buttons in an order only the
+-- application knew: scan, ingest, context, events, embed, detect_faces,
+-- cluster_faces, annotate. The order is REAL -- cluster_faces over an
+-- unembedded library is a job that honestly settles `done` having
+-- clustered nothing -- and the application knew it and made a person
+-- re-derive it every time.
+--
+-- `after_id` is that order, recorded where the claim can read it:
+-- db/jobs.py `claim` will not take a job whose predecessor has not
+-- settled `done`. SET NULL rather than CASCADE, because an aged-out
+-- predecessor must not delete the step that ran after it, and a NULL
+-- edge reads as "nothing gates this" -- true, once it is gone.
+--
+-- `collection` is the name the steps share. A free name rather than a
+-- table: a collection has no identity of its own to keep, it IS the
+-- jobs, and a row per group would need deleting when the last one aged
+-- out. The console groups on it, and a schedule NAMES it -- "every
+-- night, catch up" points at a collection, where naming individual
+-- kinds would mean re-deriving the order at 3am.
 CREATE INDEX job_state ON job(state);
+-- The claim reads it on every attempt, and a cascade-cancel walks it
+-- backwards from a failed step to everything that depended on it.
+CREATE INDEX job_after ON job(after_id);
+CREATE INDEX job_collection ON job(collection) WHERE collection IS NOT NULL;
 -- Not for a query anyone writes: SQLite runs `SELECT 1 FROM child WHERE
 -- child_key = ?` against every child table when a parent row is deleted, and
 -- without an index that is a full scan per delete. Its own shell ships
@@ -1544,6 +1656,56 @@ CREATE TABLE favorite (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX favorite_user ON favorite(user_id);
 
+-- A keyword. The oldest idea in digital asset management and the last
+-- one this schema grew, so the reasons it looks like this are worth
+-- stating.
+--
+-- NOT an entity, unlike `person`, `place` and `collection`. `entity.kind`
+-- is a CHECK constraint, so admitting one more kind means rebuilding the
+-- most-referenced table in the file -- and a tag would get nothing for
+-- it. An entity exists to have an address, a history of spellings and a
+-- page; a keyword has a name, and renaming one is this UPDATE rather
+-- than a retired slug somebody may still hold a bookmark to.
+--
+-- NOT `derived_annotation` with kind='tag' either, which is where this
+-- nearly went. That namespace requires a model_id and a source_sha256
+-- and is deleted wholesale by derived.drop_all -- so a keyword a person
+-- typed would be a durable claim living in the disposable half, gone at
+-- the next re-annotate with nothing reporting it. Authored facts sit
+-- here beside `rating` and `file_place`: they survive every rebuild.
+--
+-- Two columns for one name because case is not identity. `tag` is the
+-- normalised form (casefolded, whitespace collapsed -- db/authored.py
+-- `normalised`) and carries the UNIQUE; `label` is what somebody
+-- actually typed, so "New York" is displayed the way they wrote it and
+-- "new york" typed later lands on the same keyword rather than
+-- splitting the library in two. Folded in Python and not by COLLATE
+-- NOCASE, which folds ASCII only and would leave CAFE and Cafe apart.
+CREATE TABLE tag (
+    id         INTEGER PRIMARY KEY,
+    tag        TEXT NOT NULL UNIQUE,
+    label      TEXT NOT NULL,
+    created_at REAL NOT NULL
+) STRICT;
+
+-- Shared rather than per-actor, which is the difference from `rating`
+-- and `favorite` beside it: those are one person's opinion and two
+-- people may hold different ones, while a keyword is a fact about the
+-- picture that everybody reads. So the key is (file, tag) and `user_id`
+-- records who first said it rather than whose it is.
+CREATE TABLE file_tag (
+    file_id    INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tag(id)  ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (file_id, tag_id)
+) STRICT, WITHOUT ROWID;
+-- Both for the reason `job_target` is indexed: SQLite checks every child
+-- table when a parent row goes, and an unindexed FK makes that a full
+-- scan of `file_tag` per deleted file.
+CREATE INDEX file_tag_tag  ON file_tag(tag_id);
+CREATE INDEX file_tag_user ON file_tag(user_id);
+
 -- Feedback is authored and survives every rebuild, so it must not point at a
 -- row that a rebuild destroys. An earlier version carried
 -- (target_kind, target_ref) with no constraint -- reintroducing the exact
@@ -1570,12 +1732,27 @@ CREATE TABLE feedback (
     verdict        TEXT NOT NULL CHECK (verdict IN ('right','wrong','unsure')),
     note           TEXT,
     user_id        INTEGER REFERENCES user(id) ON DELETE SET NULL,
-    created_at     REAL NOT NULL,
+    created_at     REAL NOT NULL, model_id TEXT, model_version TEXT,
     CHECK (other_file_id IS NULL OR other_file_id <> file_id)
 ) STRICT;
+-- feedback.model_id / model_version: WHICH producer was judged, copied at
+-- judgement time. Not a foreign key, and deliberately not the annotation's
+-- row -- the derived layer is disposable and a judgement has to outlive
+-- being rebuilt, which is why `annotation_kind` is a column here rather
+-- than an id. Without these two the table could say a caption was wrong and
+-- never which model wrote it, so "this model gets 12% of my library wrong"
+-- -- the reason to collect verdicts at all -- was unanswerable the moment
+-- the layer was rebuilt. Null where a verdict is not about a model: a
+-- person judgement names a person.
+--
+-- Spelled exactly as SQLite stores an ALTER TABLE ADD COLUMN on the v33
+-- text -- inside the parenthesis, after the table constraint, no comment --
+-- so a migrated file's DDL reads equal to a fresh build's (db/build.py
+-- drift). The same reason file.ingested_sha256 is written that way.
 -- Enforced at write, not as a row invariant: ON DELETE SET NULL must be able
 -- to detach a judged target without the row becoming illegal. Losing the
 -- pointer is acceptable; losing the human judgement is not.
+CREATE INDEX feedback_producer ON feedback(model_id, model_version, annotation_kind);
 CREATE TRIGGER feedback_names_a_target BEFORE INSERT ON feedback BEGIN
   SELECT RAISE(ABORT,'feedback must name what it judges')
   WHERE NOT (
@@ -1603,9 +1780,27 @@ CREATE TABLE person_assertion (
     -- it stands whether or not anybody drew a box around them.
     region_id  INTEGER REFERENCES region(id) ON DELETE SET NULL,
     user_id    INTEGER REFERENCES user(id) ON DELETE SET NULL,
-    created_at REAL NOT NULL,
+    created_at REAL NOT NULL, stance     TEXT NOT NULL DEFAULT 'is' CHECK (stance IN ('is','is_not')),
     PRIMARY KEY (person_id, file_id)
 ) STRICT, WITHOUT ROWID;
+-- person_assertion.stance: whether the claim is that this person IS in this
+-- file or is NOT.
+--
+-- A negative is a CLAIM, and that is the whole reason it is a row rather
+-- than the absence of one. Retracting an assertion deletes it, which means
+-- "I take that back" -- and the next clustering run is then free to decide
+-- the same thing again, because nothing recorded that it was wrong. "Not
+-- her" has to survive the rebuild and constrain it, exactly as a positive
+-- does, which is what makes a correction permanent instead of a chore
+-- somebody repeats after every re-run.
+--
+-- One row per (person, file) either way: a person cannot both be and not be
+-- in one picture, and the upsert makes saying the second withdraw the first.
+--
+-- Spelled the way ALTER TABLE ADD COLUMN leaves it in v35 -- inside the
+-- parenthesis, before the PRIMARY KEY, no comment -- so a migrated file and
+-- a fresh build hold the same DDL text (db/build.py drift). The same reason
+-- file.ingested_sha256 and feedback.model_id are written that way.
 CREATE INDEX person_assertion_file   ON person_assertion(file_id);
 CREATE INDEX person_assertion_user   ON person_assertion(user_id);
 CREATE INDEX person_assertion_region ON person_assertion(region_id);
@@ -1617,9 +1812,72 @@ CREATE TABLE watched_folder (
     added_at  REAL NOT NULL
 ) STRICT, WITHOUT ROWID;
 
+-- A question worth asking again.
+--
+-- The third thing people mean, and the one that had nowhere to go.
+-- An ALBUM is what somebody deliberately put together; a SMART
+-- COLLECTION is a dynamic grouping that behaves like one -- it has
+-- members, an address, a place on the shelf, things filed under it. A
+-- SAVED VIEW is none of that: it is "that was a useful question,
+-- remember it", and making one a collection put five things that are
+-- not albums into somebody's album list.
+--
+-- They share a GalleryQuery underneath without being one product
+-- object, which is why this stores the canonical SPELLING
+-- (db/resultset.py `canonical`) rather than a rule: the spelling is
+-- entity-aware and heals a retired slug to the live one as it is
+-- navigated, so a view saved before a rename still answers.
+CREATE TABLE saved_view (
+    id           INTEGER PRIMARY KEY,
+    -- NOCASE, like every other name a person types here: "Portraits"
+    -- and "portraits" are the same question asked twice, and the second
+    -- should replace the first rather than sit beside it.
+    name         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- The canonical query string, without a page: a remembered question
+    -- opens at its beginning, never at page 7 of an answer that has
+    -- since changed length.
+    qs           TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    -- So the list can put what somebody actually uses at the top. NULL
+    -- until it is opened once.
+    last_used_at REAL
+) STRICT;
+
 CREATE TABLE setting (
     key TEXT PRIMARY KEY, value TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
+
+-- What runs without being asked, and how often.
+--
+-- A schedule points at a COLLECTION, never at a kind. Naming kinds would
+-- mean re-deriving the order at 3am -- which of scan, ingest, embed,
+-- detect_faces, cluster_faces, and in which sequence -- and that order is
+-- the thing job.after_id exists so nobody has to carry.
+--
+-- One row per collection, by the UNIQUE: two schedules for one act would
+-- disagree about when it last ran, and the guard against queueing a
+-- second catch-up over a draining first one is per-collection.
+--
+-- An interval in hours rather than a cron expression. A cron string is a
+-- small language, and a small language wants a parser, a validator and a
+-- way to say what it will do next; hours answer the question somebody
+-- actually has ("nightly", "twice a day") and can be shown as a time
+-- without interpreting anything.
+CREATE TABLE schedule (
+    id              INTEGER PRIMARY KEY,
+    collection      TEXT NOT NULL UNIQUE,
+    every_hours     REAL NOT NULL CHECK (every_hours > 0),
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    -- When this schedule last STARTED the collection, not when that
+    -- collection finished. The next run is measured from the start, so a
+    -- catch-up that takes three hours on a nightly schedule still runs
+    -- once a night rather than drifting later every day.
+    --
+    -- NULL means it has never run, which is due now: a schedule somebody
+    -- just turned on should not wait a full interval to prove it works.
+    last_started_at REAL,
+    created_at      REAL NOT NULL
+) STRICT;
 
 -- A deduplicated payload with no remaining referrer is garbage; without this it
 -- accumulates for the life of the library. RESTRICT protects referenced blobs,
@@ -1755,8 +2013,12 @@ CREATE TABLE derived_media_context (
     -- never unexplained and a conflict is never silently resolved.
     -- time_certainty is an ORDINAL's fixed spelling (corroborated .9,
     -- claimed .6, contested .4), not a probability.
+    -- `first_seen` was declared here and nothing could ever write it:
+    -- `judge_file`'s no-claim branch returns None when mtime and btime
+    -- are both absent, so the one case it named produces no row at all,
+    -- and derived_media_occurrence.basis below never listed it.
     time_basis          TEXT CHECK (time_basis IN
-                          ('capture','embedded','filename','folder','btime','mtime','first_seen')),
+                          ('capture','embedded','filename','folder','btime','mtime')),
     time_certainty      REAL CHECK (time_certainty BETWEEN 0 AND 1),
     time_supports       TEXT,
     time_conflicts      TEXT,
@@ -1768,13 +2030,30 @@ CREATE TABLE derived_media_context (
     -- write inside a claimed day) and the refinement is the moment
     -- shown: a signal not exposed is wasted. Only an estimate that
     -- contradicts its claim is held back, as a named conflict.
+    -- The coarse half is not decoration. A scanned photograph's only date
+    -- is often the folder it sits in -- `1998/`, `2003-07/`, `1970s/` --
+    -- and with nowhere to put that claim the file fell through to mtime,
+    -- which dates a 1964 photograph by when somebody last copied it. Six
+    -- of the corpus's Commons photographs are pre-1990.
+    -- No `hour`. Every precision this column can hold is one `db/when.py`
+    -- constructs a Verdict with: a stamped name gives day, second or
+    -- subsecond, a folder gives day, month, year or decade, a generator
+    -- date gives second, day or minute, and the filesystem fallback gives
+    -- subsecond. Nothing reads an hour without also reading its minutes.
+    -- The hour remains a real unit in `when.SPAN` and a real timeline bin;
+    -- it was never a precision a file could claim.
     time_precision      TEXT CHECK (time_precision IN
-                          ('day','hour','minute','second','subsecond')),
+                          ('decade','year','month','day','minute','second','subsecond')),
     gps_lat             REAL,
     gps_lon             REAL,
     place_id            INTEGER REFERENCES place(id) ON DELETE SET NULL,
+    -- Two, not four. `db/context.py` assigns `authored` when a person has
+    -- said where a picture happened and `gps` when the camera wrote a
+    -- fix; `sidecar` and `inferred` were vocabulary for readers that do
+    -- not exist -- sidecar ingest carries generation parameters and never
+    -- a location, and nothing infers one.
     location_basis      TEXT CHECK (location_basis IN
-                          ('gps','sidecar','inferred','authored')),
+                          ('gps','authored')),
     location_certainty  REAL CHECK (location_certainty BETWEEN 0 AND 1),
     -- WHICH MEANING produced this row: the interpretation ladder's own
     -- version, so a better ladder tomorrow visibly obsoletes today's
@@ -1837,8 +2116,16 @@ CREATE TABLE derived_media_occurrence (
     -- the millisecond and the camera's frame name, so renditions share it
     -- wherever they were copied; a grouper counts acts, not files
     act_key        TEXT,
+    -- The SAME vocabulary as derived_media_context above, and it has to
+    -- be: an occurrence is where a claim is recorded and the context is
+    -- what is concluded from it, so a precision the context can hold and
+    -- the occurrence cannot is a claim with nowhere to be written. Exactly
+    -- that happened -- the coarse rungs were added to one CHECK and not
+    -- the other, and every context job item died on `CHECK constraint
+    -- failed: time_precision IN` while the context table would have taken
+    -- the row.
     time_precision TEXT NOT NULL CHECK (time_precision IN
-                     ('day','hour','minute','second','subsecond')),
+                     ('decade','year','month','day','minute','second','subsecond')),
     policy_version INTEGER NOT NULL,
     PRIMARY KEY (file_id, kind),
     -- an occurrence with no time is not an occurrence
@@ -2014,8 +2301,216 @@ BEGIN
   SELECT RAISE(ABORT,'a story render is immutable; render again under a new policy');
 END;
 
+-- The generation of everything an ANSWER can be computed from.
+--
+-- db/resultset.py caches the whole ordered answer and pages it by
+-- slicing, valid for one (question, library state) pair. That state was
+-- `PRAGMA data_version`, which bumps when any connection commits
+-- anything -- the same mechanism FTS5 uses for its own structure cache
+-- (sqlite/sqlite ext/fts5/fts5_index.c fts5IndexDataVersion). FTS5 can
+-- afford it because the thing it re-reads is one small record. Ours is
+-- the whole library, so at 80,000 files a page cost 0.18 ms at rest and
+-- 38 ms while anything wrote -- 214x -- and jobs commit per item.
+--
+-- Traced, the job that runs for hours writes ONLY the ledger: a thumbs
+-- pass over 12 files made 180 writes, all of them `job`, `job_item` and
+-- `job_event`, none able to change any answer.
+--
+-- So this counter moves for every table EXCEPT those three. Stated that
+-- way round on purpose: a table wrongly included costs a little speed,
+-- a table wrongly excluded serves a stale answer, which is the one
+-- failure the currency contract exists to prevent. The FTS tables are
+-- absent because a virtual table cannot carry a trigger and its rows
+-- only change when `file` or `folder` do, which are here.
+--
+-- tests/test_an_answer_knows_when_it_is_stale.py holds the coverage, so
+-- a table added later without its triggers fails the gate rather than
+-- quietly stopping invalidation. Measured cost on the ingest path:
+-- 1.02x over 20,000 inserts.
+CREATE TABLE answer_generation (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL
+) STRICT;
+INSERT INTO answer_generation(id, value) VALUES(1, 0);
+
+CREATE TRIGGER answer_moved_artifact_ins AFTER INSERT ON artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_artifact_upd AFTER UPDATE ON artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_artifact_del AFTER DELETE ON artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_blob_ins AFTER INSERT ON blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_blob_upd AFTER UPDATE ON blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_blob_del AFTER DELETE ON blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_capture_ins AFTER INSERT ON capture BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_capture_upd AFTER UPDATE ON capture BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_capture_del AFTER DELETE ON capture BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_ins AFTER INSERT ON collection BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_upd AFTER UPDATE ON collection BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_del AFTER DELETE ON collection BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_file_ins AFTER INSERT ON collection_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_file_upd AFTER UPDATE ON collection_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_file_del AFTER DELETE ON collection_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_rule_ins AFTER INSERT ON collection_rule BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_rule_upd AFTER UPDATE ON collection_rule BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_collection_rule_del AFTER DELETE ON collection_rule BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_comment_ins AFTER INSERT ON comment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_comment_upd AFTER UPDATE ON comment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_comment_del AFTER DELETE ON comment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derivation_intent_ins AFTER INSERT ON derivation_intent BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derivation_intent_upd AFTER UPDATE ON derivation_intent BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derivation_intent_del AFTER DELETE ON derivation_intent BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_annotation_ins AFTER INSERT ON derived_annotation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_annotation_upd AFTER UPDATE ON derived_annotation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_annotation_del AFTER DELETE ON derived_annotation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_context_state_ins AFTER INSERT ON derived_context_state BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_context_state_upd AFTER UPDATE ON derived_context_state BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_context_state_del AFTER DELETE ON derived_context_state BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_dupe_group_ins AFTER INSERT ON derived_dupe_group BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_dupe_group_upd AFTER UPDATE ON derived_dupe_group BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_dupe_group_del AFTER DELETE ON derived_dupe_group BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_embedding_ins AFTER INSERT ON derived_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_embedding_upd AFTER UPDATE ON derived_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_embedding_del AFTER DELETE ON derived_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_ins AFTER INSERT ON derived_event BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_upd AFTER UPDATE ON derived_event BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_del AFTER DELETE ON derived_event BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_file_ins AFTER INSERT ON derived_event_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_file_upd AFTER UPDATE ON derived_event_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_file_del AFTER DELETE ON derived_event_file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_run_ins AFTER INSERT ON derived_event_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_run_upd AFTER UPDATE ON derived_event_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_event_run_del AFTER DELETE ON derived_event_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_cluster_ins AFTER INSERT ON derived_face_cluster BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_cluster_upd AFTER UPDATE ON derived_face_cluster BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_cluster_del AFTER DELETE ON derived_face_cluster BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_instance_ins AFTER INSERT ON derived_face_instance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_instance_upd AFTER UPDATE ON derived_face_instance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_instance_del AFTER DELETE ON derived_face_instance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_membership_ins AFTER INSERT ON derived_face_membership BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_membership_upd AFTER UPDATE ON derived_face_membership BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_membership_del AFTER DELETE ON derived_face_membership BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_run_ins AFTER INSERT ON derived_face_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_run_upd AFTER UPDATE ON derived_face_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_run_del AFTER DELETE ON derived_face_run BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_scan_ins AFTER INSERT ON derived_face_scan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_scan_upd AFTER UPDATE ON derived_face_scan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_face_scan_del AFTER DELETE ON derived_face_scan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_hash_ins AFTER INSERT ON derived_file_hash BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_hash_upd AFTER UPDATE ON derived_file_hash BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_hash_del AFTER DELETE ON derived_file_hash BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_person_ins AFTER INSERT ON derived_file_person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_person_upd AFTER UPDATE ON derived_file_person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_file_person_del AFTER DELETE ON derived_file_person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_context_ins AFTER INSERT ON derived_media_context BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_context_upd AFTER UPDATE ON derived_media_context BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_context_del AFTER DELETE ON derived_media_context BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_occurrence_ins AFTER INSERT ON derived_media_occurrence BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_occurrence_upd AFTER UPDATE ON derived_media_occurrence BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_occurrence_del AFTER DELETE ON derived_media_occurrence BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_sample_ins AFTER INSERT ON derived_media_sample BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_sample_upd AFTER UPDATE ON derived_media_sample BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_media_sample_del AFTER DELETE ON derived_media_sample BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_embedding_ins AFTER INSERT ON derived_prompt_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_embedding_upd AFTER UPDATE ON derived_prompt_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_embedding_del AFTER DELETE ON derived_prompt_embedding BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_section_ins AFTER INSERT ON derived_prompt_section BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_section_upd AFTER UPDATE ON derived_prompt_section BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_derived_prompt_section_del AFTER DELETE ON derived_prompt_section BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_entity_ins AFTER INSERT ON entity BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_entity_upd AFTER UPDATE ON entity BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_entity_del AFTER DELETE ON entity BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_favorite_ins AFTER INSERT ON favorite BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_favorite_upd AFTER UPDATE ON favorite BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_favorite_del AFTER DELETE ON favorite BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_feedback_ins AFTER INSERT ON feedback BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_feedback_upd AFTER UPDATE ON feedback BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_feedback_del AFTER DELETE ON feedback BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_ins AFTER INSERT ON file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_upd AFTER UPDATE ON file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_del AFTER DELETE ON file BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_artifact_ins AFTER INSERT ON file_artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_artifact_upd AFTER UPDATE ON file_artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_artifact_del AFTER DELETE ON file_artifact BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_blob_ins AFTER INSERT ON file_blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_blob_upd AFTER UPDATE ON file_blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_blob_del AFTER DELETE ON file_blob BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_derivation_ins AFTER INSERT ON file_derivation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_derivation_upd AFTER UPDATE ON file_derivation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_derivation_del AFTER DELETE ON file_derivation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_param_ins AFTER INSERT ON file_param BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_param_upd AFTER UPDATE ON file_param BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_param_del AFTER DELETE ON file_param BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_place_ins AFTER INSERT ON file_place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_place_upd AFTER UPDATE ON file_place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_place_del AFTER DELETE ON file_place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_relation_ins AFTER INSERT ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_relation_upd AFTER UPDATE ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_relation_del AFTER DELETE ON file_relation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_tag_ins AFTER INSERT ON file_tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_tag_upd AFTER UPDATE ON file_tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_file_tag_del AFTER DELETE ON file_tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_folder_ins AFTER INSERT ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_folder_upd AFTER UPDATE ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_folder_del AFTER DELETE ON folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_ins AFTER INSERT ON generation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_upd AFTER UPDATE ON generation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_del AFTER DELETE ON generation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_prompt_ins AFTER INSERT ON generation_prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_prompt_upd AFTER UPDATE ON generation_prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_generation_prompt_del AFTER DELETE ON generation_prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_param_key_ins AFTER INSERT ON param_key BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_param_key_upd AFTER UPDATE ON param_key BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_param_key_del AFTER DELETE ON param_key BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_ins AFTER INSERT ON person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_upd AFTER UPDATE ON person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_del AFTER DELETE ON person BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_assertion_ins AFTER INSERT ON person_assertion BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_assertion_upd AFTER UPDATE ON person_assertion BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_person_assertion_del AFTER DELETE ON person_assertion BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_place_ins AFTER INSERT ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_place_upd AFTER UPDATE ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_place_del AFTER DELETE ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_prompt_ins AFTER INSERT ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_prompt_upd AFTER UPDATE ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_prompt_del AFTER DELETE ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_rating_ins AFTER INSERT ON rating BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_rating_upd AFTER UPDATE ON rating BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_rating_del AFTER DELETE ON rating BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_region_ins AFTER INSERT ON region BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_region_upd AFTER UPDATE ON region BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_region_del AFTER DELETE ON region BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_root_ins AFTER INSERT ON root BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_root_upd AFTER UPDATE ON root BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_root_del AFTER DELETE ON root BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_setting_ins AFTER INSERT ON setting BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_setting_upd AFTER UPDATE ON setting BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_setting_del AFTER DELETE ON setting BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_similarity_space_ins AFTER INSERT ON similarity_space BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_similarity_space_upd AFTER UPDATE ON similarity_space BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_similarity_space_del AFTER DELETE ON similarity_space BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_slug_history_ins AFTER INSERT ON slug_history BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_slug_history_upd AFTER UPDATE ON slug_history BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_slug_history_del AFTER DELETE ON slug_history BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_plan_ins AFTER INSERT ON story_plan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_plan_upd AFTER UPDATE ON story_plan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_plan_del AFTER DELETE ON story_plan BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_render_ins AFTER INSERT ON story_render BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_render_upd AFTER UPDATE ON story_render BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_render_del AFTER DELETE ON story_render BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_snapshot_ins AFTER INSERT ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_snapshot_upd AFTER UPDATE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_story_snapshot_del AFTER DELETE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_tag_ins AFTER INSERT ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_tag_upd AFTER UPDATE ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_tag_del AFTER DELETE ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_user_ins AFTER INSERT ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_user_upd AFTER UPDATE ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_user_del AFTER DELETE ON user BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_watched_folder_ins AFTER INSERT ON watched_folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_watched_folder_upd AFTER UPDATE ON watched_folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+
+
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 30;
+PRAGMA user_version   = 44;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

@@ -23,19 +23,21 @@ mounts over.
 
 from __future__ import annotations
 
-import dataclasses
 import time
 import urllib.parse
 
-from litestar import Request, get, post
+from litestar import MediaType, Request, get, post
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import FromPath
 from litestar.response import Redirect, Response, Template
 
 from db import authored, connect, facets, naming, pages, resultset, settings
-from sg_web import home
+from sg_web import home, media
 from sg_web.presenting import presented, presented_page, wants_json
+from sg_web.wire import Wire
+from vision import thumbs
 
 
 def _wall(conn, event_id: int) -> bool:
@@ -66,6 +68,15 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
         told = {
             "slug": slug,
             "name": pages.person_name(conn, person_id),
+            # None when there is no clustered face to crop, and then no
+            # surface points at one. `/avatar/<slug>` answers 404 for a
+            # person with no exemplar -- correctly -- and the pages
+            # requested it unconditionally, so a person nothing has
+            # clustered a face for showed a broken image where their
+            # face goes. The same rule vision/thumbs.py `asset_url`
+            # states for a medium with no picture: a surface must be
+            # able to ask before it points.
+            "avatar": f"/avatar/{slug}" if media.exemplar_face(conn, person_id) is not None else None,
             "count": grid["total"],
             "sessions": [
                 {
@@ -83,10 +94,7 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                     # the session's hour window on the timeline, where its
                     # story is told; None while the session has no time
                     "timeline": (
-                        "/timeline?"
-                        + urllib.parse.urlencode(
-                            {"bin": "hour", "start": int(start // 3600) * 3600, "end": int(end // 3600) * 3600 + 3600}
-                        )
+                        "/timeline?" + urllib.parse.urlencode(pages.hour_window_qs(start, end))
                         if start is not None and end is not None
                         else None
                     ),
@@ -114,7 +122,9 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
                 for f, fs, p in pages.person_across_folders(conn, person_id)
             ],
             "gallery": {
-                "items": grid["items"],
+                # Content-addressed, so the page's pictures cost no
+                # connection at all (vision/thumbs.py `address`).
+                "items": thumbs.address(grid["items"]),
                 "total": grid["total"],
                 "pages": grid["pages"],
                 "qs": grid["qs"],
@@ -125,7 +135,39 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
         return told
 
 
-@get("/people", sync_to_thread=True)
+class PersonListed(Wire):
+    """One person on the index: who, where, how many, and when.
+
+    Named because a machine reads it and the browser is typed against
+    it. The route negotiates -- a page to a person, JSON to everything
+    else -- and a union that mixes a page with a JSON answer reaches
+    OpenAPI as the empty schema however precisely the arms are written,
+    so the answer is declared in `responses=` instead.
+    """
+
+    name: str | None
+    slug: str
+    pictures: int
+    #: where their face is, or null when no run has clustered one --
+    #: `/avatar/<slug>` 404s for those, which is a normal state
+    avatar: str | None
+    #: the first and last moment anything places them, when anything does
+    first_seen: float | None
+    last_seen: float | None
+
+
+@get(
+    "/people",
+    responses={
+        200: ResponseSpec(
+            data_container=list[PersonListed],
+            description="Everyone, most pictures first",
+            media_type=MediaType.JSON,
+            generate_examples=False,
+        )
+    },
+    sync_to_thread=True,
+)
 def people_index(state: State, request: Request) -> Template | Response:
     """Everyone, most pictures first -- rendered for a browser, the
     historical JSON list for everything else."""
@@ -133,11 +175,17 @@ def people_index(state: State, request: Request) -> Template | Response:
     try:
         spans = pages.people_spans(conn)
         ids = {slug: person_id for person_id, slug in pages.people_ids(conn)}
+        # Asked once for the whole index rather than once per card: the
+        # route 404s for a person nothing has clustered a face for, and
+        # a page that points at one anyway draws a broken image where a
+        # face goes.
+        facing = pages.people_with_a_face(conn)
         told = [
             {
                 "name": name,
                 "slug": slug,
                 "pictures": pictures,
+                "avatar": f"/avatar/{slug}" if ids.get(slug) in facing else None,
                 "first_seen": spans.get(ids.get(slug, -1), (None, None))[0],
                 "last_seen": spans.get(ids.get(slug, -1), (None, None))[1],
             }
@@ -149,7 +197,17 @@ def people_index(state: State, request: Request) -> Template | Response:
         runs = pages.standings(conn) if not told else []
     finally:
         connect.close(conn)
-    return presented_page(request, told, page="people.html", context={"people": told, "runs": runs})
+    # The work still to do, apart and AFTER the named: a clustering run
+    # mints one placeholder person per group nobody has named, and a
+    # queue of forty strangers must not bury the twelve people somebody
+    # HAS named (people.html holds the order).
+    unknown = [one for one in told if not one["name"]]
+    return presented_page(
+        request,
+        told,
+        page="people.html",
+        context={"people": [one for one in told if one["name"]], "unknown": unknown, "runs": runs},
+    )
 
 
 @get("/p/{slug:str}", sync_to_thread=True)
@@ -177,16 +235,129 @@ def person_page(state: State, request: Request, slug: FromPath[str]) -> Template
     return presented(request, told, page="person.html", fragment="_person_drawer.html", name="person")
 
 
-@dataclasses.dataclass
-class NewName:
-    """The body of POST /p/{slug}/name. Typed so a nameless request is a
-    400 from the signature model."""
+class NamedPerson(Wire):
+    """What naming a person answers.
+
+    The name became the ADDRESS, so `slug` is where the person lives now
+    and the browser replaces its location with it -- the old slug retires
+    into history and answers 301, and leaving it as a history stop would
+    put a redirect between Back and the index.
+    """
+
+    slug: str
+    name: str
+    #: how many of the person's faces the name was written down against.
+    #: A name with none would be lost by the next re-cluster, so the write
+    #: is refused before the commit rather than accepted and forgotten.
+    asserted: int
+
+
+class NewName(Wire):
+    """The body of POST /p/{slug}/name."""
 
     name: str
 
 
+class SameAs(Wire):
+    """The body of POST /p/{slug}/same-as: the OTHER person's address.
+
+    The one at `slug` survives, because that is the page somebody is
+    standing on when they notice the split.
+    """
+
+    other: str
+
+
+class Merged(Wire):
+    """What one person is, after being told they were two."""
+
+    slug: str
+    #: the address that no longer names anybody, and now redirects here
+    folded: str
+    #: how many durable claims moved across
+    assertions: int
+
+
+class ChosenFace(Wire):
+    """The body of POST /p/{slug}/face: which picture to take it from.
+
+    `null` goes back to automatic, which is not "no avatar" -- it is the
+    highest-confidence detection they had before saying anything.
+    """
+
+    file: str | None = None
+
+
+@post("/p/{slug:str}/face", sync_to_thread=True)
+def choose_face(state: State, slug: FromPath[str], data: ChosenFace) -> Response[None]:
+    """Take this person's face from this picture.
+
+    The automatic choice is their highest-confidence detection in the
+    primary run: usually right, and sometimes a blurred profile in a
+    crowd. This is the only one of the four face corrections that is not
+    a durability problem -- a wrong avatar is a wrong picture, not a
+    wrong record -- so it is a preference, and clearing it is allowed.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        found = naming.resolve(conn, "person", slug)
+        if found is None:
+            raise NotFoundException(f"no person at /p/{slug}")
+        file_id = None
+        if data.file:
+            held = naming.resolve(conn, "file", data.file.strip().removeprefix("/i/"))
+            if held is None:
+                raise NotFoundException(f"no picture at /i/{data.file}")
+            file_id = held[0]
+        authored.choose_face(conn, found[0], file_id)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return Response(content=None, status_code=204)
+
+
+@post("/p/{slug:str}/same-as", sync_to_thread=True)
+def same_person(state: State, slug: FromPath[str], data: SameAs) -> Merged:
+    """Say these two are one person.
+
+    The ordinary failure of face clustering is a split: one person
+    arrives as four, and a threshold cannot fix it without trading away
+    somebody else's correct grouping. Said here it is local, permanent
+    and survives every future run -- the claims move, and
+    `seed_clusters_from_assertions` re-applies them after each rebuild.
+
+    Every address the folded person answered to redirects here
+    afterwards, so a link somebody saved or shared keeps working. A
+    merge is one more kind of retirement rather than a new sort of hole.
+    """
+    conn = connect.connect(state.db_path)
+    try:
+        keep = naming.resolve(conn, "person", slug)
+        if keep is None:
+            raise NotFoundException(f"no person at /p/{slug}")
+        other = naming.resolve(conn, "person", data.other.strip().removeprefix("/p/"))
+        if other is None:
+            raise NotFoundException(f"no person at /p/{data.other}")
+        held = naming.entity_slug(conn, other[0])
+        try:
+            told = authored.merge_people(conn, keep[0], other[0], state.actor_id, time.time())
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        conn.commit()
+        live = naming.entity_slug(conn, keep[0])
+    finally:
+        connect.close(conn)
+    return Merged(
+        slug=live[1] if live else slug,
+        folded=held[1] if held else data.other,
+        assertions=told["assertions"],
+    )
+
+
 @post("/p/{slug:str}/name", sync_to_thread=True)
-def name_person(state: State, slug: FromPath[str], data: NewName) -> dict:
+def name_person(state: State, slug: FromPath[str], data: NewName) -> NamedPerson:
     """Name a person -- the People page's primary action.
 
     The name becomes the address: a new slug is minted and the old one
@@ -214,6 +385,6 @@ def name_person(state: State, slug: FromPath[str], data: NewName) -> dict:
             # what it cannot keep.
             raise ClientException(f"/p/{slug} has no clustered face to keep the name by; nothing was renamed")
         conn.commit()
-        return {"slug": fresh, "name": cleaned, "asserted": asserted}
+        return NamedPerson(slug=fresh, name=cleaned, asserted=asserted)
     finally:
         connect.close(conn)

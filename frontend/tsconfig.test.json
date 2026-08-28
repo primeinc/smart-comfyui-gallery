@@ -1,0 +1,39 @@
+{
+  // A third host, and the reason there are three: `node --test` runs these
+  // files, so node's module rules and node's types apply -- but what they
+  // EXERCISE is browser source, so the DOM has to be in scope too. Neither
+  // of the other two projects can say both: the browser project deliberately
+  // sets `types: []` so @types/node cannot redefine setTimeout under code
+  // that runs in a browser, and the build project deliberately has no DOM
+  // because build.ts never touches one.
+  //
+  // Same doctrine as those two, one line further: one project per host
+  // contract, and a test that bridges two hosts is its own contract.
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+    "rewriteRelativeImportExtensions": true,
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "noEmit": true,
+    "allowJs": false
+  },
+
+  "include": ["src/**/*.test.ts"]
+}

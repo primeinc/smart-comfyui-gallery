@@ -3,6 +3,7 @@
   <span class="job-state">{% if job.cancelling %}cancelling{% else %}{{ job.state }}{% endif %}</span>
   <progress class="job-progress"{% if job.total %} value="{{ job.done }}" max="{{ job.total }}"{% endif %}></progress>
   <span class="job-count">{{ job.done }}{% if job.total is not none %} / {{ job.total }}{% endif %}</span>
+  {% if job.doing %}<span class="job-doing" data-job-doing>{{ job.doing }}</span>{% endif %}
   {% if not job.settled and not job.cancelling %}
   <button type="button" class="job-cancel" hx-post="/jobs/{{ job.id }}/cancel" hx-swap="none" title="cancel">&times;</button>
   {% endif %}

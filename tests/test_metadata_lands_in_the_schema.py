@@ -335,10 +335,16 @@ def ingest(db):
     return Ingest(db)
 
 
-@pytest.fixture
-def written(tmp_path):
-    """Every writer's file, paired with the parse options it needs."""
-    return {name: (build(tmp_path), options) for name, (build, options) in WRITERS.items()}
+@pytest.fixture(scope="module")
+def written(tmp_path_factory):
+    """Every writer's file, paired with the parse options it needs.
+
+    Written once. These are read-only inputs -- the tests parse them and
+    write to the database, never to the files -- and every test asks for
+    the whole set, so per-test rebuilding paid for eight PNGs to use one.
+    """
+    where = tmp_path_factory.mktemp("written")
+    return {name: (build(where), options) for name, (build, options) in WRITERS.items()}
 
 
 # --- the contracts ---------------------------------------------------------

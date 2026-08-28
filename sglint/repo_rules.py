@@ -17,6 +17,7 @@ import tempfile
 import tomllib
 import typing
 
+from . import policy
 from .rules import REPO_ROOT, Finding
 
 Git = typing.Callable[..., "subprocess.CompletedProcess[str]"]
@@ -34,7 +35,12 @@ def real_git(*args: str, cwd: pathlib.Path | None = None) -> subprocess.Complete
     if git is None:
         raise FileNotFoundError("git is not on PATH")
     return subprocess.run(
-        [git, *args], cwd=str(cwd or REPO_ROOT), capture_output=True, text=True, timeout=900, check=False
+        [git, *args],
+        cwd=str(cwd or REPO_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=policy.GIT_TIMEOUT_SECONDS,
+        check=False,
     )
 
 
@@ -50,7 +56,7 @@ def rule_index(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -> list[Find
     found: list[Finding] = []
     at = root / ".gitignore"
     tracked = _lines(git("ls-files"))
-    if len(tracked) <= 100 or "db/schema.sql" not in tracked:
+    if len(tracked) <= policy.TRACKED_MINIMUM or "db/schema.sql" not in tracked:
         return [
             Finding(
                 at, 1, 0, "SG800", f"git lists {len(tracked)} tracked files; the sweep is not seeing the repository"
@@ -106,7 +112,7 @@ def rule_line_endings(git: Git = real_git, root: pathlib.Path = REPO_ROOT, *, ch
     found: list[Finding] = []
     at = root / ".gitattributes"
     endings = committed_line_endings(git)
-    if len(endings) <= 100 or sum(1 for k in endings.values() if k == "lf") <= 50:
+    if len(endings) <= policy.ENDINGS_MINIMUM or sum(1 for k in endings.values() if k == "lf") <= policy.LF_MINIMUM:
         found.append(
             Finding(at, 1, 0, "SG800", "the index reading finds too few lf files; the parse misses i/<eolinfo>")
         )
@@ -127,7 +133,11 @@ def rule_line_endings(git: Git = real_git, root: pathlib.Path = REPO_ROOT, *, ch
                 if done.returncode != 0:
                     found.append(
                         Finding(
-                            at, 1, 0, "SG806", f"checkout-index failed under autocrlf={autocrlf}: {done.stderr[:200]}"
+                            at,
+                            1,
+                            0,
+                            "SG806",
+                            f"checkout-index failed under autocrlf={autocrlf}: {done.stderr[: policy.STDERR_SHOWN]}",
                         )
                     )
                     continue
@@ -149,8 +159,15 @@ def rule_line_endings(git: Git = real_git, root: pathlib.Path = REPO_ROOT, *, ch
     return found
 
 
-def _shape(requirement) -> tuple[str, str]:
-    return str(requirement.specifier), str(requirement.marker) if requirement.marker else ""
+def _shape(requirement) -> tuple[str, str, str]:
+    """Everything about a dependency that decides what gets installed.
+
+    Extras count: `litestar[pydantic]` and `litestar` install different
+    packages, so a file that carries the extra and a file that does not do
+    not agree, however identical their specifiers.
+    """
+    extras = ",".join(sorted(requirement.extras))
+    return str(requirement.specifier), str(requirement.marker) if requirement.marker else "", extras
 
 
 def rule_requirements(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
@@ -167,7 +184,7 @@ def rule_requirements(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     for entry in project["project"]["dependencies"]:
         requirement = Requirement(entry)
         declared[canonicalize_name(requirement.name)] = _shape(requirement)
-    listed: dict[str, tuple[str, str]] = {}
+    listed: dict[str, tuple[str, str, str]] = {}
     at = root / "requirements.txt"
     with open(at, encoding="utf-8") as fh:
         for line in fh:
@@ -262,10 +279,113 @@ def rule_commit_stamp(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -> li
     return found
 
 
+def recipe_commands(text: str, name: str) -> list[str]:
+    """One `just` recipe's RUNNABLE lines, with its comments dropped.
+
+    Comments are dropped because a recipe is entitled to explain itself:
+    the `fresh` recipe's comment says why `git diff` is the wrong tool,
+    and a rule reading the whole block would find that sentence and call
+    it the defect. Matched at a line start rather than after a newline,
+    so the first recipe in a file is not invisible to its own rule.
+    """
+    marker = f"{name}:"
+    start = 0 if text.startswith(marker) else text.find(f"\n{marker}") + 1
+    if start <= 0 and not text.startswith(marker):
+        return []
+    rest = text[start:]
+    end = rest.find("\n\n")
+    return [
+        line.strip()
+        for line in (rest if end < 0 else rest[:end]).splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def rule_bundle_freshness(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG811 the committed-bundle gate compares against the INDEX, so it
+    cannot see a bundle git was never told about.
+
+    `web::fresh` rebuilds and then asks whether the bundles differ. It
+    asked with `git diff --quiet`, which compares the working tree to
+    the index -- and a newly generated file is in neither. Add an entry
+    point, forget to `git add` its output, and the gate stayed silent
+    while a clean checkout served a template loading a 404.
+
+    Proved rather than read: a bundle-shaped file is planted, and the
+    two commands are asked about it. `git status --porcelain` must call
+    it `??` and `git diff` must miss it, or the change this rule guards
+    was pointless. It lives here and not in a test because starting a
+    program is what `sglint --repo` is for (SG006).
+    """
+    at = root / "web.just"
+    ran = recipe_commands(at.read_text(encoding="utf-8"), "fresh")
+    found: list[Finding] = []
+    # TWO questions, because neither command answers both. `git diff`
+    # sees a rebuilt bundle nobody staged and deliberately not one that
+    # was staged -- which matters, since build/gate/add/commit is the
+    # ordinary flow and a gate refusing staged output could never be
+    # passed. `ls-files --others` is the only one that sees a file git
+    # was never told about.
+    if not any("ls-files --others" in line for line in ran):
+        found.append(
+            Finding(at, 1, 0, "SG811", "the freshness gate must ask `git ls-files --others` about untracked bundles")
+        )
+    if not any("git diff" in line for line in ran):
+        found.append(
+            Finding(at, 1, 0, "SG811", "the freshness gate must ask `git diff` about a rebuilt bundle nobody staged")
+        )
+
+    planted = root / "sg_web" / "static" / "build" / "sglint-never-added.js"
+    planted.parent.mkdir(parents=True, exist_ok=True)
+    planted.write_text("// planted by sglint; removed below\n", encoding="utf-8")
+    try:
+        listed = [
+            line
+            for line in _lines(git("ls-files", "--others", "--exclude-standard", "--", "sg_web/static/build"))
+            if planted.name in line
+        ]
+        if not listed:
+            found.append(Finding(at, 1, 0, "SG811", "git ls-files --others did not report an untracked bundle"))
+        if git("diff", "--quiet", "--", "sg_web/static/build").returncode != 0:
+            found.append(
+                Finding(at, 1, 0, "SG811", "git diff noticed an untracked bundle; this rule rests on it not doing so")
+            )
+    finally:
+        planted.unlink(missing_ok=True)
+    return found
+
+
+def rule_one_build_contract(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG812 the documented build command and the gate's build command
+    are two contracts, and only one of them clears stale output.
+
+    The README hands people `npm run build-web`; the gate runs `just web
+    build`. esbuild does not empty its own outdir (`BuildOptions` has
+    `outdir` and nothing that clears it -- refs/evanw/esbuild
+    lib/shared/types.ts), so whoever owns the clean decides whether a
+    renamed surface leaves its old bundle behind for a template to load.
+    It must be the bundler, which both commands go through.
+    """
+    at = root / "frontend" / "build.ts"
+    builder = at.read_text(encoding="utf-8")
+    found: list[Finding] = []
+    if "rm(" not in builder or "recursive: true" not in builder:
+        found.append(Finding(at, 1, 0, "SG812", "the bundler must clear its own outdir; esbuild will not"))
+
+    recipe = root / "web.just"
+    ran = recipe_commands(recipe.read_text(encoding="utf-8"), "build")
+    if any("rm -rf" in line for line in ran):
+        found.append(Finding(recipe, 1, 0, "SG812", "the recipe owns a clean the documented command does not"))
+    if not any("build-web" in line for line in ran):
+        found.append(Finding(recipe, 1, 0, "SG812", "the recipe must delegate to the documented command"))
+    return found
+
+
 def run() -> list[Finding]:
     found: list[Finding] = []
-    for rule in (rule_index, rule_line_endings, rule_commit_stamp):
+    for rule in (rule_index, rule_line_endings, rule_commit_stamp, rule_bundle_freshness):
         found.extend(rule())
     found.extend(rule_requirements())
     found.extend(rule_pytest_path())
+    found.extend(rule_one_build_contract())
     return sorted(found, key=lambda f: (str(f.path), f.line, f.col, f.code))

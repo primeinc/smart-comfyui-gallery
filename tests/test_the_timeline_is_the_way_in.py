@@ -95,7 +95,7 @@ def test_the_gallery_shows_its_facets_as_chips_that_can_go(links):
     assert 'data-chip="context.local_day:eq:2023-06-10"' in page
     assert "day 2023-06-10" in page
     assert "origin imported" in page
-    removes = re.findall(r'data-chip="([^"]+)">[^<]*<a href="([^"]+)"', page)
+    removes = re.findall(r'data-chip="([^"]+)"[\s\S]*?<a href="([^"]+)"[^>]*data-chip-remove', page)
     assert removes == [
         ("context.local_day:eq:2023-06-10", "/g?f=context.origin%3Aeq%3Aimported&amp;sort=moment"),
         ("context.origin:eq:imported", "/g?f=context.local_day%3Aeq%3A2023-06-10&amp;sort=moment"),
@@ -259,7 +259,12 @@ def test_a_picture_says_when_and_in_which_sessions(links):
     assert [s["kind"] for s in when["sessions"]] == ["file_session"]
     assert _total(links, when["sessions"][0]["qs"]) == 5
     fragment = links.get(f"/i/{slugs[1]}", headers={"hx-request": "true"}).text
-    assert 'data-lightbox-day href="/g?f=context.local_day%3Aeq%3A2023-06-10' in fragment, "the lightbox opens the day"
+    # The overlay carries the day as a link into the gallery. It moved from
+    # the old lightbox's stuffed label into the viewer's About panel when
+    # one viewer replaced two presentations; what it must still be is an
+    # address, not a client-side filter.
+    assert 'href="/g?f=context.local_day%3Aeq%3A2023-06-10' in fragment, "the overlay opens the day"
+    assert "data-when-day" in fragment
     html = links.get(f"/i/{slugs[1]}", headers={"accept": "text/html"}).text
     for marker in ('data-when data-domain="wall"', "data-when-sessions", "data-when-day", "data-when-session-tell"):
         assert marker in html, marker
@@ -276,7 +281,9 @@ def test_the_contested_count_is_a_link_onto_exactly_the_disputed(links):
         "every interpreted picture is one or the other"
     )
     page = links.get("/g?f=context.disputed%3Aeq%3A1").text
-    assert "disputed 1" in page or coverage["contested"] == 0
+    # "date disputed yes", not "disputed 1": the chip reads as a person
+    # says it now, from the one vocabulary (db/vocabulary.py)
+    assert "date disputed yes" in page or coverage["contested"] == 0
 
 
 def test_every_scope_page_opens_its_pictures_in_time_order(links):

@@ -26,11 +26,29 @@ SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 #: A bump is not enough on its own: db/migrate.py needs a step registered for
 #: the version being left behind, or an existing database cannot be opened.
 #: test_every_version_left_behind_has_a_step_off_it enforces that.
-USER_VERSION = 30
+USER_VERSION = 44
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.
 CACHE_KIB = 65_536
+#: How many values one `... IN (?,?,...)` batch binds -- the ONE batching
+#: constant. Six call sites carried private copies (500 at five of them,
+#: 900 in db/scan.py), each typed twice as a range() step and a slice
+#: bound, and nothing said why the scan path could bind more than the
+#: rest. The ceiling is SQLITE_MAX_VARIABLE_NUMBER, a compile-time choice
+#: whose default is 32766 (sqlite/sqlite@b09c88c14 src/sqliteLimit.h:189-191)
+#: and not this application's to assume, so `_prepared` asks the linked
+#: library what it actually grants (Connection.getlimit, python/cpython
+#: Doc/library/sqlite3.rst:1201-1228, 3.11+) and refuses a build that
+#: grants less. Well under the ceiling on purpose: a batch is also a
+#: statement to parse and a parameter row to bind, and hundreds is where
+#: these sites were tuned.
+PARAM_BATCH = 900
+#: How long a connection waits out another process's lock, in seconds:
+#: the WAL conversion's own wait (`_ensure_wal`) and the busy_timeout
+#: every statement gets. One duration, two units, stated once so the two
+#: waits cannot drift apart.
+LOCK_WAIT_SECONDS = 5.0
 
 
 class WrongVersion(RuntimeError):
@@ -58,7 +76,7 @@ def _mode(conn: sqlite3.Connection) -> str:
     return (conn.execute("PRAGMA journal_mode").fetchone()[0] or "").lower()
 
 
-def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = 5.0) -> None:
+def _ensure_wal(conn: sqlite3.Connection, *, seconds: float = LOCK_WAIT_SECONDS) -> None:
     """Put the file in WAL, tolerating everyone else doing the same.
 
     Converting takes an exclusive lock, and `busy_timeout` does not cover it,
@@ -104,10 +122,31 @@ class Connection(sqlite3.Connection):
         self.pending: list = []
 
 
+def _prepare_or_close(conn: Connection, *, journal: bool) -> Connection:
+    """Hand back a prepared connection, or close the raw handle and raise.
+
+    Between sqlite3.connect returning and _prepared finishing, the handle
+    is open and nobody owns it: the caller has no name for it yet. A
+    pragma that raises there -- _ensure_wal timing out against another
+    process holding the file, a read-only open refusing a write pragma --
+    dropped it, and it then leaked exactly like a connection a caller
+    forgot, surfacing as a ResourceWarning at some later collection.
+
+    Raw `conn.close()`, not this module's `close()`: that one discards
+    index notes and asks for PRAGMA optimize, which is bookkeeping for a
+    connection that was used. This one was never handed over.
+    """
+    try:
+        return _prepared(conn, journal=journal)
+    except BaseException:
+        conn.close()
+        raise
+
+
 def memory() -> Connection:
     """An in-memory database: the same connection class, foreign keys on.
     Fixtures and the schema reference are built on this."""
-    return _prepared(sqlite3.connect(":memory:", factory=Connection), journal=False)
+    return _prepare_or_close(sqlite3.connect(":memory:", factory=Connection), journal=False)
 
 
 def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_thread: bool = False) -> Connection:
@@ -139,20 +178,27 @@ def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_th
     """
     if read_only:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=not cross_thread, factory=Connection)
-        return _prepared(conn, journal=False)
+        return _prepare_or_close(conn, journal=False)
     if cross_thread:
         # A shared writer would need every consumer to serialise every
         # statement; nothing in this application wants that, and a
         # silently ignored flag would look honoured.
         raise ValueError("cross_thread connections are read-only")
     conn = sqlite3.connect(str(path), isolation_level=None if autocommit else "IMMEDIATE", factory=Connection)
-    return _prepared(conn, journal=True)
+    return _prepare_or_close(conn, journal=True)
 
 
 def _prepared(conn: Connection, *, journal: bool) -> Connection:
     """Every per-connection setting, applied once, to every connection."""
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute(f"PRAGMA busy_timeout={int(LOCK_WAIT_SECONDS * 1000)}")
+    # The batching sites bind PARAM_BATCH values in one statement; the
+    # ceiling is compiled into the library, so ask it rather than assume.
+    granted = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    if granted < PARAM_BATCH:
+        raise RuntimeError(
+            f"this SQLite grants {granted} bound parameters per statement; batching assumes {PARAM_BATCH}"
+        )
     # Negative N means approximately abs(N*1024) BYTES rather than a page
     # count (sqlite/sqlite@b09c88c14 src/pcache.c:284-288), so this is 64 MiB.
     #

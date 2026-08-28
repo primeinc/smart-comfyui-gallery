@@ -22,5 +22,26 @@
     {% endfor %}
   </span>
   <button type="button" class="authored-picker" data-album-picker title="albums (A)">+ album</button>
+  {# A keyword links into the FILTER rather than to a page of its own:
+     a tag has no address, which is the whole reason it is not an entity.
+     `f=tag:eq:<word>` is the same spelling the drawer and every chip
+     use, so arriving from here and arriving from the drawer are one
+     question with one answer. #}
+  <span class="authored-tags" data-tags>
+    {% for held in item.authored.tags %}
+    <span class="authored-tag" data-tag="{{ held.tag }}"><a href="/g?f=tag%3Aeq%3A{{ held.tag|urlencode }}">{{ held.label }}</a><button
+      type="button" class="authored-untag" data-untag="{{ held.tag }}" title="remove {{ held.label }}" aria-label="remove {{ held.label }}">&times;</button></span>
+    {% endfor %}
+  </span>
+  {# A form, so Enter submits and the browser does the work. The
+     datalist is filled on first focus from the same /g/options the
+     filter drawer reads -- typo prevention is the whole keyword
+     problem, and a list of what this library already calls things is
+     the cheapest fix for it. #}
+  <form class="authored-tagging" data-tagging>
+    <input type="text" data-tag-input list="authored-keywords" maxlength="100" autocomplete="off"
+           placeholder="+ keyword" aria-label="add a keyword" title="keyword (T)">
+    <datalist id="authored-keywords" data-keyword-list></datalist>
+  </form>
   <div class="authored-choices" data-album-choices hidden></div>
 </section>
