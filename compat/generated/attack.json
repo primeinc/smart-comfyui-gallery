@@ -45,6 +45,14 @@
     },
     {
       "detected": true,
+      "expected": "a second run serialises to the same bytes as the first",
+      "name": "evidence_not_reproducible",
+      "notes": [],
+      "observed": "a second run reproduced all 291,908 bytes of the evidence",
+      "targets": "generated/cases.json"
+    },
+    {
+      "detected": true,
       "expected": "provenance PASSES and the matrix reports every consumer exercised",
       "name": "positive_control",
       "notes": [],

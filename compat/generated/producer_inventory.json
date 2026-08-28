@@ -388,7 +388,6 @@
       ],
       "height": 4032,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_2.jpg",
-      "seconds": 0.44645130005665123,
       "sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
       "width": 3024
     },
@@ -505,7 +504,6 @@
       ],
       "height": 4032,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_1.jpg",
-      "seconds": 0.232169600087218,
       "sha256": "fb197f235ae684d9f5a9f600a480475d0eafb946fcfbd306a40239ff0a3eefe6",
       "width": 3024
     },
@@ -622,7 +620,6 @@
       ],
       "height": 3088,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_4.jpg",
-      "seconds": 0.23593690001871437,
       "sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
       "width": 2316
     },
@@ -739,7 +736,6 @@
       ],
       "height": 3088,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_3.jpg",
-      "seconds": 0.23901160003151745,
       "sha256": "4a7ce0cb76dc4a5fb9f495b86b1f79cf05b94789597b2c94c0bf653d83f517b7",
       "width": 2316
     },
@@ -856,7 +852,6 @@
       ],
       "height": 4000,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_1.jpg",
-      "seconds": 0.21737029997166246,
       "sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
       "width": 3000
     },
@@ -973,7 +968,6 @@
       ],
       "height": 4000,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_2.jpg",
-      "seconds": 0.22936150000896305,
       "sha256": "f14f0c7b547477dc0804f7bb1e0fadae297934938439d5643b763f62ab4adb02",
       "width": 3000
     },
@@ -1090,7 +1084,6 @@
       ],
       "height": 6528,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_5.jpg",
-      "seconds": 0.23614679998718202,
       "sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
       "width": 4896
     },
@@ -1207,7 +1200,6 @@
       ],
       "height": 6528,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_1.jpg",
-      "seconds": 0.21137209993321449,
       "sha256": "4f96680fab3b37037169bbd1ed4126b67f8e75f1fd582425b72ce98326fea40b",
       "width": 4896
     },
@@ -1324,7 +1316,6 @@
       ],
       "height": 4032,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_2.jpg",
-      "seconds": 0.2221939000301063,
       "sha256": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474",
       "width": 3024
     },
@@ -1441,7 +1432,6 @@
       ],
       "height": 4032,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_1.jpg",
-      "seconds": 0.22081860003527254,
       "sha256": "fe9915cd9e674f4a8d801ebf8f566ea1f1e5f3e595391423d23d03e7d285acbc",
       "width": 3024
     },
@@ -1558,7 +1548,6 @@
       ],
       "height": 3088,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_6.jpg",
-      "seconds": 0.22287579998373985,
       "sha256": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e",
       "width": 2316
     },
@@ -1675,7 +1664,6 @@
       ],
       "height": 3088,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_3.jpg",
-      "seconds": 0.22315420000813901,
       "sha256": "28b17b45b7518ee7cdbecd46b04edb58ba30c57e82c204404e8ef66e84e05aed",
       "width": 2316
     },
@@ -1792,7 +1780,6 @@
       ],
       "height": 3120,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_2.jpg",
-      "seconds": 0.22284880001097918,
       "sha256": "395f6b43d6f60b51c0182ff7341453ffce3058cd5d10f18221287843968a7d2a",
       "width": 4160
     },
@@ -1909,7 +1896,6 @@
       ],
       "height": 4160,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_1.jpg",
-      "seconds": 0.2337202999042347,
       "sha256": "95a5c76bd2402cefd0849d09249764da6b500038e47df29687549ad8cab0a94e",
       "width": 3120
     },
@@ -2026,7 +2012,6 @@
       ],
       "height": 3264,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_12.jpg",
-      "seconds": 0.23494910006411374,
       "sha256": "079e94f7952579f7676ffab8e2f43dfe9ca15434f4c52203d02a8babe3f35053",
       "width": 2448
     },
@@ -2143,7 +2128,6 @@
       ],
       "height": 3264,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_8.jpg",
-      "seconds": 0.2558463999303058,
       "sha256": "5921403529b9cf5e1defb5a2840b8ca5ef0f0f4a83c92aab0516d6fbecdf36cc",
       "width": 2448
     },
@@ -2260,7 +2244,6 @@
       ],
       "height": 4032,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_1.jpg",
-      "seconds": 0.24952140008099377,
       "sha256": "942a86cdc40eff42a6808b30a4dd88c681c26e649952bbc30ea39fde84e3fb92",
       "width": 3024
     },
@@ -2377,7 +2360,6 @@
       ],
       "height": 4032,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_2.jpg",
-      "seconds": 0.21743550000246614,
       "sha256": "ec476d963f46ca35b697d6c3ce1764d407c5813a64d287b6f1c1200d0f8da870",
       "width": 3024
     },
@@ -2494,7 +2476,6 @@
       ],
       "height": 3088,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_9.jpg",
-      "seconds": 0.21474229998420924,
       "sha256": "03d845f448d6f8e73d2837dd73fd519f9104c979081b3e17ae6d28486fcf6ee7",
       "width": 2316
     },
@@ -2611,7 +2592,6 @@
       ],
       "height": 3088,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_5.jpg",
-      "seconds": 0.21620659995824099,
       "sha256": "0f4f50ebbfc628676c04a667f221f9ff9f42dafbed7a738e24c3ffdb3d8a3ed4",
       "width": 2316
     },
@@ -2728,7 +2708,6 @@
       ],
       "height": 4000,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_1.jpg",
-      "seconds": 0.2220069000031799,
       "sha256": "241d9d238c8c545995c5e1e2cf707b4701abdcb20c660f13e6a6d7aa07a7a154",
       "width": 3000
     },
@@ -2845,7 +2824,6 @@
       ],
       "height": 4000,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_2.jpg",
-      "seconds": 0.21988160000182688,
       "sha256": "d54b857141de35f4a214f96c27efa78b24b68066e0f758f9b20626edbfdd97c4",
       "width": 3000
     },
@@ -2962,7 +2940,6 @@
       ],
       "height": 6560,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_12.jpg",
-      "seconds": 0.22666909999679774,
       "sha256": "120f14390283089226f25d589555ef880b8e284757d733157ceb5edb6e4863e3",
       "width": 4928
     },
@@ -3079,7 +3056,6 @@
       ],
       "height": 6560,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_6.jpg",
-      "seconds": 0.21336129994597286,
       "sha256": "299fe0cc6700b05e7da00b4961053f7dc6bd2cb44336bdbb636e971651366ed9",
       "width": 4928
     },
@@ -3196,7 +3172,6 @@
       ],
       "height": 4160,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_1.jpg",
-      "seconds": 0.19435330003034323,
       "sha256": "1becc6271525ee1ca858a479b74206017371b240dfe87011a9cb0c1058c7f4ae",
       "width": 3120
     },
@@ -3313,7 +3288,6 @@
       ],
       "height": 4160,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_2.jpg",
-      "seconds": 0.20136679999995977,
       "sha256": "4691e0b470202724bd1511739339d6e8f8c2a84332c50e1a941607e90c6f96b3",
       "width": 3120
     },
@@ -3430,7 +3404,6 @@
       ],
       "height": 3264,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_13.jpg",
-      "seconds": 0.19206420006230474,
       "sha256": "2dc1b4e0824db259d03efe5a71f3f2050f20ea530a1f52ee665ea18cb000d36e",
       "width": 2448
     },
@@ -3547,7 +3520,6 @@
       ],
       "height": 3264,
       "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_6.jpg",
-      "seconds": 0.2333454000763595,
       "sha256": "36da6f92e75bd568d19691ef8b6a769975b7b1d82f900ad781bbc0b9451166d6",
       "width": 2448
     }

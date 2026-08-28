@@ -4,7 +4,7 @@ Every other module here tries to establish that something holds. This one
 tries to break the machinery that establishes it, because a harness reporting
 green has two possible causes and only one of them is good news.
 
-Six attacks, each on a different load-bearing claim:
+Seven attacks, each on a different load-bearing claim:
 
     pin_mutated          change a pinned commit -> provenance must FAIL
     blob_mutated         change a recorded blob digest -> must FAIL
@@ -13,6 +13,9 @@ Six attacks, each on a different load-bearing claim:
                          that case must stop reproducing
     population_shrunk    delete a consumer's cases -> the matrix must report
                          it NOT EXERCISED rather than omitting it
+    evidence_not_reproducible
+                         run the whole executor again -> the evidence must
+                         serialise to the same bytes
     positive_control     the unmodified suite must still pass, so a red
                          result above is the attack and not a broken machine
 
@@ -212,6 +215,46 @@ def attack_population_shrunk(where: Path) -> Attack:
     return out
 
 
+def attack_evidence_not_reproducible() -> Attack:
+    """Two runs of the same inputs must produce the same evidence bytes.
+
+    Not a corruption like the others -- an assertion the suite could not make
+    at all until timings were moved out of `cases.json`. Every run used to
+    rewrite it with fresh wall clocks, so "the evidence is unchanged" was
+    never checkable and a diff between two runs was pure noise.
+
+    Re-runs the case executor in-process and compares the serialisation it
+    would write against the serialisation on disk. A difference here means
+    something in the pipeline is not deterministic, and every byte-exact
+    claim this suite makes rests on that not being true.
+    """
+    from compat.harness import run as case_runner
+
+    out = Attack(
+        name="evidence_not_reproducible",
+        targets="generated/cases.json",
+        expected="a second run serialises to the same bytes as the first",
+    )
+    on_disk = (GENERATED / "cases.json").read_text(encoding="utf-8")
+    fresh = case_runner.run_all()
+    fresh.pop("seconds_by_case", None)
+    rebuilt = json.dumps(fresh, indent=2, sort_keys=True, default=str) + chr(10)
+
+    out.detected = rebuilt == on_disk
+    if out.detected:
+        out.observed = f"a second run reproduced all {len(on_disk):,} bytes of the evidence"
+    else:
+        first = next(
+            (i for i, (a, b) in enumerate(zip(on_disk, rebuilt, strict=False)) if a != b),
+            min(len(on_disk), len(rebuilt)),
+        )
+        out.observed = (
+            f"the two runs differ from byte {first:,}: "
+            f"{on_disk[first : first + 50]!r} against {rebuilt[first : first + 50]!r}"
+        )
+    return out
+
+
 def attack_positive_control(repo_root: Path) -> Attack:
     """The untouched suite must still pass, or the reds above prove nothing."""
     out = Attack(
@@ -245,6 +288,7 @@ def run_all() -> list[Attack]:
             attacks.append(build_local(where))
         finally:
             shutil.rmtree(where, ignore_errors=True)
+    attacks.append(attack_evidence_not_reproducible())
     attacks.append(attack_positive_control(repo_root))
     return attacks
 

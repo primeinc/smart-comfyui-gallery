@@ -86,7 +86,11 @@ def run(per_role: int = PER_ROLE) -> dict[str, Any]:
                 "rule": "raw / linalg.norm(raw), float32",
             }
         },
-        "images": [asdict(one) for one in reports],
+        # `seconds` is dropped for the same reason the case evidence drops it:
+        # it is a fact about this machine, not about the observation, and
+        # leaving it in means two identical passes can never be compared. It
+        # was the ONLY thing that changed between consecutive runs.
+        "images": [{key: value for key, value in asdict(one).items() if key != "seconds"} for one in reports],
     }
 
 

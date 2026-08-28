@@ -145,3 +145,8 @@ sg_web/.template-cache/
 .testmondata
 .testmondata-shm
 .testmondata-wal
+
+# Wall clock, not evidence. It is a fact about the machine that ran the
+# suite, and keeping it out of compat/generated/cases.json is what lets
+# `just compat attack` assert two runs produce byte-identical evidence.
+compat/generated/timings.json

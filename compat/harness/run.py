@@ -207,6 +207,11 @@ def runners() -> tuple[Runner, ...]:
     )
 
 
+def _without_timing(row: dict[str, Any]) -> dict[str, Any]:
+    """One evidence row with the wall clock taken out."""
+    return {key: value for key, value in row.items() if key != "seconds"}
+
+
 def run_all() -> dict[str, Any]:
     registry = Registry()
     results: list[CaseResult] = []
@@ -234,7 +239,18 @@ def run_all() -> dict[str, Any]:
     return {
         "runtime": provenance.runtime_identity(),
         "cases": len(registry),
-        "results": [asdict(one) for one in results],
+        # Timing is stripped from the EVIDENCE and reported beside it. It is a
+        # property of the machine, not of the observation, and leaving it in
+        # made the evidence non-reproducible by construction: two identical
+        # runs produced different files, so "the evidence is unchanged" was
+        # never a statement anyone could make. Now it is, and `attack.py`
+        # asserts it.
+        "results": [_without_timing(asdict(one)) for one in results],
+        # Reported beside the evidence, never inside it. `main` moves this into
+        # timings.json; `attack.py` re-runs the executor and asserts what is
+        # left serialises to the same bytes, which is only a question that can
+        # be asked once the wall clock is out of the way.
+        "seconds_by_case": {one.case: round(one.seconds, 3) for one in results},
         "population": {
             "declared": sorted(declared),
             "consumer_tier_covered": sorted(covered & declared),
@@ -276,12 +292,19 @@ def main() -> int:
     out = run_all()
     report(out)
 
-    where = ROOT / "generated" / "cases.json"
-    where.parent.mkdir(parents=True, exist_ok=True)
-    with where.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(json.dumps(out, indent=2, sort_keys=True, default=str))
-        handle.write("\n")
-    print(f"\nwrote {where}")
+    # Timings leave the evidence and land beside it, so two identical runs
+    # produce byte-identical cases.json and a diff of that file means
+    # something. Before this, every run rewrote it with new wall clocks and
+    # "the evidence is unchanged" was not a statement anyone could make.
+    timings = {"runtime": out["runtime"], "seconds_by_case": out.pop("seconds_by_case")}
+    generated = ROOT / "generated"
+    generated.mkdir(parents=True, exist_ok=True)
+    for name, body in (("cases.json", out), ("timings.json", timings)):
+        target = generated / name
+        with target.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(body, indent=2, sort_keys=True, default=str))
+            handle.write("\n")
+        print(f"wrote {target}")
 
     # The suite is green only when every case reproduced AND every consumer in
     # the frozen population was exercised. One unexercised consumer is a red
