@@ -111,7 +111,7 @@ def _with_clause(query: resultset.GalleryQuery, key: str, value: str, view: str)
     if one is None:
         return resultset.canonical(query)
     if one.carried == "scope":
-        held = dataclasses.replace(query, **{key: value})
+        held = resultset.with_scope(query, key, value)
     else:
         made = facets_module.facet(key, one.ops[0], value)
         held = dataclasses.replace(

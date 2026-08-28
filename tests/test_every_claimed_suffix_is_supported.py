@@ -108,6 +108,11 @@ def _video(fmt, codec, *, size=SIZE, rate=10, frames=8, pix="yuv420p"):
         width, height = size
         with av.open(str(path), "w", format=fmt) as container:
             stream = container.add_stream(codec, rate=rate)
+            # `add_stream` answers VideoStream | AudioStream |
+            # SubtitleStream -- the codec name decides which, and only the
+            # first has a frame size. Asserted rather than assumed, so a
+            # codec typo fails here instead of on the attribute.
+            assert isinstance(stream, av.VideoStream)
             stream.width, stream.height = width, height
             stream.pix_fmt = pix
             for n in range(frames):
@@ -129,6 +134,7 @@ def _audio(fmt, codec, *, rate=44100, bit_rate=None, options=None):
 
         with av.open(str(path), "w", format=fmt) as container:
             stream = container.add_stream(codec, rate=rate, options=options or {})
+            assert isinstance(stream, av.AudioStream)
             if bit_rate:
                 stream.codec_context.bit_rate = bit_rate
             samples = (np.sin(np.arange(rate) * 0.05) * 20000).astype(np.int16).reshape(1, -1)

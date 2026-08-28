@@ -206,7 +206,7 @@ def compare(name: str, base_scores, base_order, other_scores, other_order, depth
         landed[other_order[q]] = np.arange(other_order.shape[1])
 
         at_risk = np.flatnonzero(gaps < drift)
-        close += int(at_risk.size)
+        close += at_risk.size
         swapped += int(np.count_nonzero(landed[order[at_risk]] > landed[order[at_risk + 1]]))
 
         near_top = at_risk[at_risk < deepest]

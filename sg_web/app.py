@@ -29,7 +29,7 @@ import threading
 import time
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, override
 
 from litestar import Litestar, Request, delete, get, post, route, websocket
 from litestar.channels import ChannelsPlugin
@@ -738,7 +738,7 @@ def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
     try:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         try:
-            found = retrieval.query(conn, weights, q, int(k), time.time(), offline=True)
+            found = retrieval.query(conn, weights, q, k, time.time(), offline=True)
         except (ValueError, LookupError) as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()  # align may have minted registry rows on the way
@@ -2050,6 +2050,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         worker last -- first to exit, stopped and joined while the channel
         it publishes to is still alive."""
 
+        @override
         def on_app_init(self, app_config):
             app_config.lifespan.append(working)
             return app_config

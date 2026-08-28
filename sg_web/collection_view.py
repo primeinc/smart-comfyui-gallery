@@ -385,8 +385,8 @@ def document(held: Facts) -> CollectionDocument:
     make it, carrying no field that variant cannot have.
 
     Every field is named at every variant. A dict splatted into these
-    constructors would read shorter and check nothing -- neither pyright
-    nor ty can follow a heterogeneous mapping into a typed signature, and
+    constructors would read shorter and check nothing -- no checker can
+    follow a heterogeneous mapping into a typed signature, and
     this function's whole job is to be the place where the facts become a
     contract.
 

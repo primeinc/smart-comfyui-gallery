@@ -31,6 +31,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import override
 
 import cv2
 import numpy as np
@@ -135,7 +136,7 @@ class FaceDetection:
         if self.embedding is not None:
             arr = np.asarray(self.embedding, dtype=np.float32).reshape(-1)
             self.embedding = arr
-            self.dim = int(arr.shape[0])
+            self.dim = arr.shape[0]
 
 
 #: The shared operating point both backends construct with -- one edit
@@ -179,6 +180,7 @@ class StubFaceBackend(FaceBackend):
     def __init__(self, source: Callable[[Image.Image], list] | Mapping):
         self._source = source
 
+    @override
     def detect(self, img: Image.Image) -> list:
         """Replay the pre-programmed detections for `img`; unknown images
         detect as no faces."""
@@ -288,7 +290,7 @@ class OpenCVFaceBackend(FaceBackend):
         # dimension does not change. The same benchmark that justifies the
         # 1600 cap measured a 2x recall difference between those regimes.
         base = "yunet-2023mar+arcface-glintr100" if embedder == "arcface" else "yunet-2023mar+sface-2021dec-v2"
-        self.model_version = f"{base}-ms{int(detect_max_side)}"
+        self.model_version = f"{base}-ms{detect_max_side}"
         # Operating points from the labeled three-way A/B sweep
         # (benchmarks/face_embedder_ab.py, 175 faces / 31 identities):
         # glintr100 pairwise-F1 is flat 0.926-0.933 across 0.30-0.50; 0.48
@@ -324,6 +326,7 @@ class OpenCVFaceBackend(FaceBackend):
         self._min_face_px = min_face_px
         self._detect_max_side = detect_max_side
 
+    @override
     def detect(self, img: Image.Image) -> list:
         """Detect faces, embed each via SFace on the aligned crop, and return
         `FaceDetection`s with coordinates normalized to [0, 1]. Detection and
@@ -435,6 +438,7 @@ class InsightFaceBackend(FaceBackend):
         self._min_det_score = min_det_score
         self._min_face_px = min_face_px
 
+    @override
     def detect(self, img: Image.Image) -> list:
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]
@@ -442,6 +446,12 @@ class InsightFaceBackend(FaceBackend):
             return []
         detections = []
         for face in self._app.get(bgr):
+            # insightface leaves both optional on its Face record. A
+            # detection without a box or a confidence is not a detection
+            # this pipeline can place or rank, so it is dropped here
+            # rather than raising four frames later.
+            if face.det_score is None or face.bbox is None:
+                continue
             score = float(face.det_score)
             if score < self._min_det_score:
                 continue

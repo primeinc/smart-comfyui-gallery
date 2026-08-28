@@ -12,10 +12,17 @@
 name = "smartgallery"
 version = "0.0.0"
 description = "Local-first browser-based DAM for ComfyUI with an optional derived AI layer"
-# 3.11: the floor Qwen3-VL-Embedding declares upstream; the adapter is
-# core, so the application's supported contract cannot sit below its own
-# model runtime's.
-requires-python = ">=3.11"
+# 3.13: what this project is CHECKED against, which is the only floor it
+# can honestly claim. Qwen3-VL-Embedding declares 3.11 upstream and the
+# adapter is core, so 3.11 is the lowest this could ever be -- but a floor
+# nothing verifies is a floor nothing keeps.
+#
+# This number is read, not decorative. ty takes the lower bound of this
+# range as its target version (ty python-version.md:29-31) and ruff infers
+# `target-version` from it (see [tool.ruff] below), so moving it moves what
+# both of them accept. pyrefly is told the same number in its own table,
+# because it asks the interpreter instead.
+requires-python = ">=3.13"
 dependencies = [
     # [pydantic]: the HTTP seam's contracts are pydantic models, so every
     # JSON body and response has a named schema Litestar puts in its OpenAPI
@@ -80,12 +87,26 @@ dev = [
     # when the installed version falls outside that specifier, so an
     # unbounded floor here would resolve a build the config then rejects.
     "ruff>=0.16.3,<0.17",
-    # [tool.pyright] has been configured in this file since before the
-    # linter work and was never installed, so nothing has ever run it. It
-    # is the half ruff cannot do: ruff does no cross-module type
-    # inference, which is why it stays silent on the possibly-unbound
-    # names and argument-type mismatches pyright reports.
-    "pyright",
+    # The half ruff cannot do: ruff does no cross-module type inference,
+    # which is why it stays silent on the possibly-unbound names and
+    # argument-type mismatches these two report. Two checkers, not one,
+    # because they disagree: measured on this tree at the versions pinned
+    # here, ty reports diagnostics pyrefly does not and the reverse, and a
+    # tool that fits the ten-second gate is cheap enough to run both.
+    #
+    # Banded, not floored, for the reason [tool.ruff].required-version is:
+    # the risk is a NEWER build promoting rules into the default set. ty is
+    # 0.0.x with no stability promise, so its band is a single release;
+    # pyrefly gets a minor band and repeats it as `required-version` below,
+    # which ty has no equivalent for (searched its docs: `error-on-warning`
+    # hits in four files, `required-version` in none).
+    "ty>=0.0.75,<0.0.76",
+    "pyrefly>=1.2,<1.3",
+    # defusedxml publishes no py.typed, so metaparse/adapters.py imports it
+    # untyped and pyrefly says so (untyped-import). This is typeshed's stub
+    # package for it -- the fix that produces types rather than hiding the
+    # absence of them.
+    "types-defusedxml",
     "tifffile>=2025.5.10",
     "psd-tools>=1.18.0",
     "playwright>=1.62.0",
@@ -104,6 +125,7 @@ dev = [
     # Dev, not runtime: nothing the application serves imports it.
     "msgspec",
 ]
+
 [tool.uv]
 # Application, not a distributable package: uv manages the environment but
 # never builds/installs the project itself.
@@ -177,13 +199,13 @@ explicit = true
 # tools" (ruff_workspace/src/options.rs:362-364). With a [tool.ruff] table
 # present, an omitted target-version is inferred from requires-python
 # (configuration.md:307-313). One source of truth, at pyproject.toml's
-# `requires-python`, which pyright and uv also read.
+# `requires-python`, which ty and uv also read.
 #
 # Caveat: inference is skipped when a config file is passed explicitly --
 # "If a configuration file is passed directly, Ruff does not attempt to
 # infer a missing `target-version`" (configuration.md:310) -- and the
 # compiled default applies instead. That default is py310, BELOW this
-# project's 3.11 floor -- so a directly-passed config lints for a version
+# project's 3.13 floor -- so a directly-passed config lints for a version
 # the project does not support. Nothing here passes one; invoke ruff from
 # the repository root and inference reads requires-python.
 
@@ -276,8 +298,9 @@ allowed-confusables = ["–"]
 #                                 ' vs " assert nothing about behaviour
 #                                 (Q000 5739, Q001 21, Q002 1)
 #   D/DOC docstring style      -- documentation policy
-#   ANN   annotation coverage  -- typing policy; pyright judges the types
-#                                 themselves, which is the part that bites
+#   ANN   annotation coverage  -- typing policy; ty and pyrefly judge the
+#                                 types themselves, which is the part that
+#                                 bites
 #   COM   trailing commas      -- formatter's job, and COM812 is one of the
 #                                 only two unconditional formatter
 #                                 conflicts in ruff (formatter.md:438,
@@ -310,7 +333,7 @@ allowed-confusables = ["–"]
 #   FA    future annotations   -- every FA rule is gated below py39/py310
 #                                 (checkers/ast/analyze/expression.rs:38,
 #                                 :76, :318, :440, :1575). At this
-#                                 project's 3.11 floor the selector cannot
+#                                 project's 3.13 floor the selector cannot
 #                                 fire; one that asserts nothing is worse
 #                                 than an absent one.
 #
@@ -542,10 +565,12 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-# `nested-string-quote-style` is deliberately NOT pinned here: it "has no
-# effect when targeting Python versions below 3.12" (options.rs:3963) and
-# this project resolves to 3.11, so pinning it would be the same dead
-# assertion the FA selector was dropped for.
+# `nested-string-quote-style` is pinned on the same grounds as its
+# siblings, and it is live: the setting "has no effect when targeting
+# Python versions below 3.12" (`ruff config format.nested-string-quote-style`)
+# and this project resolves to 3.13, so an upstream change of its default
+# would rewrite every f-string carrying a quoted subscript.
+nested-string-quote-style = "alternating"
 
 # The one formatter default upstream has announced it intends to change:
 # "This is currently disabled by default, but it is planned for this to be
@@ -557,58 +582,168 @@ skip-magic-trailing-comma = false
 # (options.rs:4104), which the line above turns off.
 docstring-code-format = false
 
-# Interpreter and Python version come from `uv run` (import-resolution.md:41,
-# configuration.md:35); venvPath in a config file is documented as less
-# robust and not for shared configs (configuration.md:27). Specifying
-# exclude REPLACES the defaults, so they are restated; vendor/ is the
-# prebuilt faiss GPU build.
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-include = ["db", "metaparse", "sg_web", "sglint", "story_renderers", "vision", "tests", "benchmarks"]
-exclude = ["**/node_modules", "**/__pycache__", "**/.*", "vendor"]
-enableTypeIgnoreComments = false
-reportUnnecessaryCast = "error"
-
-# A warning is an error. `pytest.ini` has said so about runtime warnings
-# since it was written (`filterwarnings = error`); this says it about the
-# type checker, which had every unused-symbol rule off and so reported a
-# clean tree while the editor showed 189 findings nobody read.
+# Two checkers over the same tree, and the SCOPE is the point: one that
+# is faster because it is checking less is not faster. Both include lists
+# below are the same nine entries, and `conftest.py` is one of them --
+# root test infrastructure that neither tool reaches from a directory
+# list, and that nothing type checked until it was named.
 #
-# Measured before turning them on, over 245 files:
+# vendor/ is the prebuilt faiss GPU build, third-party sources whose
+# diagnostics are not ours to fix. It has to be named in both: `git
+# check-ignore` reports only .venv/, and both tools respect ignore files,
+# so .venv needs no mention and vendor/ does.
 #
-#   reportUnusedVariable    1    genuinely dead, deleted
-#   reportUnusedFunction   63    ALL false: 41 are migrate.py steps the
-#                                @step(n) decorator registers into STEPS,
-#                                the rest are pytest fixtures
-#   reportPrivateUsage    125    tests reaching past an underscore
+# The two exclude lists are NOT copies of each other and must not be made
+# into one. ty's `exclude` EXTENDS its defaults (ty exclusions.md:25-33);
+# pyrefly's `project-excludes` APPENDS to its own, which already cover
+# node_modules, __pycache__, venv and dot-directories (pyrefly
+# configuration.mdx:175-177). Ruff, above, is a third semantics again --
+# its `exclude` REPLACES, which is why `extend-exclude` is used there.
 #
-# So the two with no false positives are errors, and the two that are all
-# false positives stay off with the reason written down rather than
-# rediscovered. `reportPrivateUsage` is a real design question -- 125
-# places where the private boundary is fiction -- and turning it on today
-# would be 125 edits to code that works, so it is a decision, not a gate.
-reportUnusedVariable = "error"
-reportUnusedExpression = "error"
-reportUnusedCoroutine = "error"
-reportUnusedExcept = "error"
-# Off, with evidence: the registry decorator and pytest's fixture
-# injection are both invisible to the checker.
-reportUnusedFunction = "none"
-reportPrivateUsage = "none"
-
-# The same tree, for ty. Python version and interpreter are inferred:
-# requires-python above, then the .venv in the project root
-# (ty configuration.md:347-365, 433-451).
+# The Python version is stated once, and not to ty: ty reads
+# `requires-python`'s lower bound itself (ty python-version.md:29-31).
+# pyrefly queries the interpreter, so it is told.
+#
+# Platform is NOT pinned here, and the reason is not that it does not
+# matter. Each tool defaults to the platform it is running on, so this
+# table checks the developer's own; the other two this project ships to
+# are a pass each in `just check-deep`.
+#
+# `python-platform = "all"` is not that pass and must not be mistaken for
+# it. Measured 2026-08-28: "all" reports exactly what win32 reports,
+# because it takes the UNION of the platform stubs -- a win32-only name
+# RESOLVES under it rather than being refused. Pinning one platform reads
+# that platform; "all" reads none of them strictly.
 [tool.ty.src]
-# `exclude` takes precedence over `include`, and ty already skips .venv,
-# node_modules and the rest of the usual list (configuration.md:989-1010),
-# so only the prebuilt faiss GPU build has to be named.
-include = ["db", "metaparse", "sg_web", "sglint", "story_renderers", "vision", "tests", "benchmarks"]
+include = [
+    "db",
+    "metaparse",
+    "sg_web",
+    "sglint",
+    "story_renderers",
+    "vision",
+    "tests",
+    "benchmarks",
+    "conftest.py",
+]
 exclude = ["vendor"]
 
 [tool.ty.analysis]
-# The same decision pyright's enableTypeIgnoreComments = false makes: a
-# comment does not get to turn a type error off.
+# A comment does not get to turn a type error off. The tree carries no
+# suppression directive of any kind -- searched for every spelling the
+# five checkers accept and found none, against a positive control of
+# `noqa`, which finds two in tests/corpus.py -- and this setting is half
+# of what keeps it that way. The other half is pyrefly's
+# `enabled-ignores` below, whose default would go on honouring the bare
+# `type` directive after ty stopped.
 respect-type-ignore-comments = false
+
+[tool.ty.terminal]
+# A warning is an error. `pytest.ini` has said so about runtime warnings
+# since it was written (`filterwarnings = error`). This is ty's own
+# default (reference/configuration.md, `error-on-warning`) and it is
+# pinned anyway, because the same intent needs the OPPOSITE setting in
+# pyrefly -- `min-severity` there defaults to hiding warnings and exiting
+# zero on them -- and a reader comparing the two tables should not have
+# to know which tool defaults which way.
+error-on-warning = true
+
+[tool.ty.rules]
+# ty ships 128 rules: 93 error by default, 23 warn, and 12 are off. "Nearly
+# all ty rules are enabled by default"
+# (coming-from-mypy-or-pyright.md:33-37) is true of the first two groups
+# only, so the 12 were measured one at a time rather than assumed.
+#
+# Six find NOTHING on this tree and are on for what they would catch
+# tomorrow. `possibly-unresolved-reference` is why this table exists at
+# all: it is the possibly-unbound-name check, the half ruff cannot do,
+# and it ships off.
+possibly-unresolved-reference = "error"
+possibly-missing-import = "error"
+blanket-ignore-comment = "error"
+division-by-zero = "error"
+unsound-yield = "error"
+unsupported-dynamic-base = "error"
+# 14 findings, every one mechanical: a method overriding one it never
+# declared it was overriding. pyrefly's `strict` preset independently
+# reports 13 of the same.
+missing-override-decorator = "error"
+#
+# The five left OFF, each with the count that decides it, measured with
+# `ty check --error all`:
+#
+#   missing-type-argument             757
+#   unsound-return-statement          186
+#   dynamic-function-decorator-return  43
+#   unsound-assignment                 18
+#   possibly-missing-attribute          1
+#
+# `possibly-missing-attribute`'s one finding is false, and the mechanism
+# is worth recording because it looks true: `ort.get_available_providers`
+# in vision/faces.py is bound inside a `try` in onnxruntime's own
+# `__init__.py`, so ty is right that the name is conditional -- but the
+# next statement there re-raises the stored exception, so a module that
+# imports at all has the name. The call site already catches
+# AttributeError besides. Reaching it through `getattr` would satisfy
+# the rule by adding a branch that cannot run.
+#
+# The first three are annotation-coverage rules under another name, and
+# this project settled that question when it dropped ruff's ANN family:
+# typing policy. `unsound-assignment` is not that -- its 18 are real,
+# every one an Any or Unknown out of sqlite landing in a narrower declared
+# type -- and it is off because fixing them means changing how database
+# rows are typed, which is its own change and not a rider on a checker
+# swap.
+
+[tool.pyrefly]
+project-includes = [
+    "db",
+    "metaparse",
+    "sg_web",
+    "sglint",
+    "story_renderers",
+    "vision",
+    "tests",
+    "benchmarks",
+    "conftest.py",
+]
+project-excludes = ["vendor"]
+python-version = "3.13"
+
+# The line that makes pyrefly a gate rather than a report. `min-severity`
+# "only controls CLI display and exit code" and defaults to `"error"`
+# (configuration.mdx:554-583), so at the default pyrefly HID 94 warnings
+# and exited zero with every one of them outstanding. At `"warn"` they
+# print and they fail. This is the display-and-exit lever; the `errors`
+# table below is the severity lever, and they are deliberately not the
+# same knob.
+min-severity = "warn"
+
+# `enabled-ignores` defaults to `["type", "pyrefly"]`
+# (configuration.mdx:1124), so out of the box pyrefly honours the bare
+# `type` suppression comment -- the exact one ty is configured above to
+# disregard. Dropping it closes the hole; pyrefly's own directive stays,
+# and `unused-ignore` below is what keeps one from going stale.
+enabled-ignores = ["pyrefly"]
+
+# No `required-version` here, though pyrefly documents one
+# (configuration.mdx:603+): 1.2.0 rejects the key in a pyproject.toml
+# `[tool.pyrefly]` table -- "Extra keys found in config: required-version"
+# -- and a warning is all it emits, so the setting would have looked
+# enforced while doing nothing. ty documents no equivalent at all
+# (`error-on-warning` appears in four of its docs, `required-version` in
+# none). Both bands are held by [dependency-groups] instead.
+
+# `infer-with-first-use` is deliberately not set, which leaves it true.
+# `false` "will make Pyrefly infer `Any` for unsolved type variables"
+# (configuration.mdx:796), and measured on this tree that hides three real
+# findings -- two bad-argument-type and one not-iterable, in
+# vision/faces.py and tests/needs.py. A migration setting, not a
+# preference.
+
+[tool.pyrefly.errors]
+# A stale `pyrefly` suppression is a comment that stopped suppressing
+# anything, which is the defect RUF100 catches for `noqa`. Off by
+# default; zero findings today, because the tree carries no such comment.
+unused-ignore = "error"
 

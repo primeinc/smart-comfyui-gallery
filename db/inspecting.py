@@ -349,7 +349,7 @@ def events(conn, *, job_id: int | None = None, after: int = 0, limit: int = ledg
     """A page of the ledger, ascending by id: the whole ledger or one
     job's. `next_after` is the cursor for the following page, None when
     this page reached the head."""
-    limit = max(1, min(int(limit), ledger.PAGE_MOST))
+    limit = max(1, min(limit, ledger.PAGE_MOST))
     page = (
         ledger.for_job(conn, job_id, after=after, limit=limit)
         if job_id is not None
@@ -378,7 +378,7 @@ def items(conn, job_id: int, *, state: str | None = None, after: int = 0, limit:
     if row is None:
         raise LookupError(f"no job {job_id}")
     kind, payload = row[0], _json(row[1])
-    limit = max(1, min(int(limit), ledger.PAGE_MOST))
+    limit = max(1, min(limit, ledger.PAGE_MOST))
     if state is None:
         rows = conn.execute(
             "SELECT item_id, state, error FROM job_item WHERE job_id = ? AND item_id > ? ORDER BY item_id LIMIT ?",

@@ -56,6 +56,7 @@ class _WireSchema(PydanticSchemaPlugin):
     """
 
     @classmethod
+    @typing.override
     def for_pydantic_model(cls, field_definition: FieldDefinition, schema_creator: SchemaCreator) -> Schema:
         model = field_definition.annotation
         if isinstance(model, type) and issubclass(model, RootModel):

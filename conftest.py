@@ -2,8 +2,8 @@
 
 `pytest.ini` runs the suite on four workers grouped by module, and that
 is right for the suite: `--dist loadscope` keeps a module's tests on one
-worker because its server is module-scoped, and four measured 194.8s ->
-65.8s.
+worker because its server is module-scoped, and the count is measured
+there.
 
 It is exactly wrong for one module. `loadscope` cannot split a module, so
 a run naming a single file has ONE scope group: worker gw0 does all of it
@@ -34,7 +34,7 @@ import pytest
 def _one_module(args: list[str]) -> bool:
     """True when the arguments name tests in a single file.
 
-    Anything that is not a plain path leaves the four workers alone: this
+    Anything that is not a plain path leaves the workers alone: this
     only ever answers True for the one shape it is about.
     """
     named = {arg.split("::", 1)[0] for arg in args if not arg.startswith("-")}

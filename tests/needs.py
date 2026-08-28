@@ -193,7 +193,7 @@ def _read(path: pathlib.Path) -> dict:
             got = probe.read(str(path))
             held["decodes"] = bool(got and not got.unreadable)
             if got and got.unreadable:
-                held["decodes_why"] = str(got.unreadable)[:120]
+                held["decodes_why"] = got.unreadable[:120]
         except _reader_failures() as why:
             held["decodes"] = False
             held["decodes_why"] = f"{type(why).__name__}: {why}"[:120]
@@ -439,7 +439,11 @@ def measure(root: pathlib.Path | None = None, db_path: pathlib.Path | None = Non
     # only that: a need a file now satisfies keeps SATISFIED, so a stale
     # excuse is visible to the gate instead of silently absorbing it.
     for one in needs:
-        held = BLOCKED.get(one["need"])
+        # A need row is a record of mixed types, so its `need` is only a
+        # string -- and only a usable key for BLOCKED -- once said so.
+        name = one["need"]
+        assert isinstance(name, str)
+        held = BLOCKED.get(name)
         if held is not None and one["state"] == "UNSATISFIED":
             one["state"] = "BLOCKED_EXTERNALLY"
             one["why"] = held["why"]

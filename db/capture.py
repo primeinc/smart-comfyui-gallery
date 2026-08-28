@@ -333,9 +333,12 @@ def _scalar(value):
     if text is not None:
         return text, None
     if isinstance(value, (tuple, list)):
-        scalars = [_scalar(part) for part in value]
-        if scalars and all(part is not None for part in scalars):
-            return ", ".join(part[0] for part in scalars), None
+        # Kept only where every part has a scalar form -- a partial list
+        # would read as a complete one. Collected narrowed rather than
+        # tested with `all(...)`, which leaves the Nones in the list.
+        scalars = [made for part in value if (made := _scalar(part)) is not None]
+        if scalars and len(scalars) == len(value):
+            return ", ".join(text for text, _ in scalars), None
     return None
 
 
@@ -550,7 +553,7 @@ def _read_image(image: Image.Image, path, out: Capture) -> Capture:
         out.focal_length = _number(merged.get(ExifTags.Base.FocalLength))
         out.focal_35mm = _number(merged.get(ExifTags.Base.FocalLengthIn35mmFilm))
         orientation = merged.get(ExifTags.Base.Orientation)
-        out.orientation = int(orientation) if isinstance(orientation, int) else None
+        out.orientation = orientation if isinstance(orientation, int) else None
 
         out.camera = _camera_name(merged.get(ExifTags.Base.Make), merged.get(ExifTags.Base.Model))
         out.lens = _camera_name(merged.get(ExifTags.Base.LensMake), merged.get(ExifTags.Base.LensModel))

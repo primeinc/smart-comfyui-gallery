@@ -425,7 +425,7 @@ def neighbours(
     manager = similarity.manager_for(conn)
     key = similarity.align(conn, manager, spec, ids, lambda wanted: _vectors(conn, wanted), now, lane=lane(policy))
     query = np.frombuffer(own[2], dtype=np.float32)
-    depth = len(ids) if allowed is not None else min(max(int(k), 1) + 1, len(ids))
+    depth = len(ids) if allowed is not None else min(max(k, 1) + 1, len(ids))
     labels, scores = manager.search(key, [query], depth)
     ranked = [
         (to_prompt[int(label)], float(score))
@@ -435,7 +435,7 @@ def neighbours(
     if allowed is not None:
         ranked = [(other, score) for other, score in ranked if other in allowed]
     results = []
-    for other, score in ranked[: max(int(k), 1)]:
+    for other, score in ranked[: max(k, 1)]:
         row = conn.execute(
             "SELECT e.uuid, e.slug, p.text FROM prompt p JOIN entity e ON e.id = p.id WHERE p.id = ?", (other,)
         ).fetchone()

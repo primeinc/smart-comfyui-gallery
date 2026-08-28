@@ -93,9 +93,21 @@ class BlipCaptioner:
         self.processor = BlipProcessor.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded = BlipForConditionalGeneration.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded.eval()
-        # `Module.to` reaches pyright as the functools-wrapped descriptor
-        # transformers decorates it with, unbound; call it as the method it is
-        self.model = cast(BlipForConditionalGeneration, torch.nn.Module.to(loaded, self.device))
+        # Unbound, and the return value is DISCARDED. Two separate facts:
+        #
+        # `loaded.to(...)` does not type check, because transformers
+        # decorates `Module.to` with a functools wrapper whose `__call__`
+        # still wants the model as its first argument -- the descriptor
+        # never binds, so the device string lands in the `self` slot.
+        #
+        # And the return has to go unused, because taking it costs the
+        # concrete class: `Module.to` is annotated to return Self, ty
+        # resolves that through the unbound call and pyrefly does not, so
+        # the assigned name becomes plain `Module` for one of the two and
+        # `self.model.generate` stops existing. Both calls mutate the
+        # module in place and hand back the same object, so `loaded` is
+        # already the moved model and keeps the type it was loaded with.
+        torch.nn.Module.to(loaded, self.device)
         # HALF PRECISION ON A GPU.
         #
         # Measured (`just bench captions`, 48 real pictures, 3070 Ti):
@@ -121,7 +133,8 @@ class BlipCaptioner:
         # CUDA only. Half precision on a CPU is emulated for most of
         # these kernels and would be slower than the float32 it replaced.
         if self.device == "cuda":
-            self.model = cast(BlipForConditionalGeneration, torch.nn.Module.half(self.model))
+            torch.nn.Module.half(loaded)
+        self.model = loaded
         self.model_id = model
         # In the hub cache layout the snapshot directory IS the commit:
         # the version recorded on every caption is immutable, never `main`.

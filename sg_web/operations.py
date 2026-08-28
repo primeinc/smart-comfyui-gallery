@@ -1315,7 +1315,7 @@ def events_before(
     """The `limit` events with id < `before`, ascending: the tape's
     "earlier" button. Bounded; walks the index backwards and stops.
     No `before` is nothing earlier than the beginning: an empty page."""
-    limit = max(1, min(int(limit), ledger.PAGE_MOST))
+    limit = max(1, min(limit, ledger.PAGE_MOST))
     conn = connect.connect(state.db_path, read_only=True)
     try:
         page = inspecting.events_before(conn, before, job_id=job, limit=limit)

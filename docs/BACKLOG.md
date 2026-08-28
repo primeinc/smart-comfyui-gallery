@@ -555,155 +555,50 @@ consequences the architecture should keep room for, not work.
   `grep`/`curl`/`seq` rather than `rg`: a lane that proves a cold
   machine can run this must not need a tool a cold machine lacks.
 
-## The gate's remaining hole
+## The gate's remaining hole, closed
 
-- **The ten-second gate has no Python type check.** `just check` is held
-  to ten seconds (`just budget` proves it) and pyright cannot fit: 137.5s
-  over 170 files, `--threads` makes it 181s. The cost is one import --
-  `vision/semantic/openclip.py`, `vision/semantic/qwen_vl.py` and
-  `vision/captions.py` each take ~90s ALONE and share `torch`. torch and
-  transformers both ship `py.typed`, so pyright reads their inline
-  annotations from source and `useLibraryCodeForTypes = false` does not
-  skip them; no setting keeps torch's types and avoids parsing torch. So
-  pyright moved to `just check-deep` and the fast gate lost cross-module
-  Python inference entirely.
+- **The ten-second gate type checks the Python now.** `just check` runs
+  ty and pyrefly over the whole tree and stays inside its budget: 6.0s
+  measured by `just budget`, against 4.9s before they went in. Both are
+  in `[dependency-groups]`, both are banded, and pyright is gone -- it
+  cost 137.5s, which is why Python inference had sat in `check-deep`
+  where no hook ran it.
 
-  The lead: **ty 0.0.74 checks the same tree in 4.6s** -- 30x -- and
-  `pyproject.toml` has carried `[tool.ty.src]` and `[tool.ty.analysis]`
-  since before this.
+  Two checkers rather than one because they do not agree and neither
+  contains the other; `justfile` `types` records which findings are
+  whose, and `pyproject.toml` records every rule decision with the count
+  that decided it.
 
-  Triaged 2026-08-25, and the count in this entry was the wrong unit.
-  ty reported 89 diagnostics, but many are one call site reported once
-  per overload: `test_the_resultset_is_authoritative.py:276` is eleven
-  of them. **48 distinct sites** was the real number, now **18** (21
-  diagnostics).
+  The three sites this entry called blocked are all resolved, and none
+  of them needed a suppression:
 
-  (An earlier revision of this line said 16, which was a miscount --
-  the count command was run against a tree that had not been re-checked.
-  The number here is what `uvx ty@0.0.74 check` reports today.)
+  - `db/planning.py` -- every planner takes
+    `similarity: PromptSimilarity | None` and `GenerationHistoryPlanner`
+    refuses None by name. The caller picks the class at runtime and
+    constructs all three the same way, so one constructor shape is the
+    honest one; the guard that was invisible to the checker is now a
+    statement in the constructor.
+  - `vision/semantic/qwen_vl.py` -- a `cast` at the call, because
+    transformers' annotation contradicts its own docstring twenty lines
+    below the signature: `conversation: list[dict[str, str]]` against a
+    documented `content` that is a LIST of typed parts.
+  - `benchmarks/thumb_delivery.py` -- `mock.patch.object` inside a
+    context manager. The standoff was between a bare assignment and
+    `setattr`; the third form is better than both, because the restore
+    now happens on the way out of the block whatever the block did.
 
-  Two were the real bugs this entry named, and one of them is fixed:
+  The `redundant-cast` conflict resolved itself: those casts existed FOR
+  pyright, and both they and the `Module.to` unbound-call workaround they
+  wrapped went with it. The remaining unbound call is documented where it
+  stands -- transformers' functools wrapper never binds, and the return
+  value is discarded because taking it costs the concrete class in one
+  checker or the other.
 
-  - `db/capture.py:101` -- FIXED. `_CLAIMED` was inferred `set[Base]`
-    and the very next statement unioned `set[GPS | IFD]` into it. Right
-    at runtime, since these are all IntEnum and are tested against the
-    raw integer keys of an EXIF dict; wrong as a claim. Both membership
-    sets say `set[int]` now, which is what they hold.
-  - `db/planning.py:1367` and `:1375` -- NOT fixed, and it is not the
-    quick one it looks like. `STORY_PLAN_V3["claims"] | frozenset(...)`
-    fails because the plan dicts are heterogeneous, so every key infers
-    as `int | frozenset[str]`. The code is correct; the type is
-    invisible. Fixing it means a TypedDict over a structure whose own
-    comments say FROZEN, and `respect-type-ignore-comments = false`
-    means this tree does not get to silence it instead.
-
-  **Almost all of the rest is one pattern**, not 32 separate defects: a
-  dict literal holding an int, a str, a None and a list infers every key
-  as the union of those, so `held["pictures"].append(...)` is `.append`
-  on `int | None | ...`. The fix is a TypedDict per shape, and it is
-  worth doing for its own sake -- the checker found two annotations that
-  were simply wrong while this was being written, `_drawn` returning
-  thumbnail ADDRESSES where the shape said picture rows.
-
-  `sg_web/timeline_view.py` is done as the worked example: 12 sites to
-  0, four shapes spelled out (`_Segment`, `_Cell`, `_Bin`, `_Group`).
-  Annotated dict literals rather than constructor calls, so the readable
-  form and the checkable one are the same thing.
-
-  Also fixed, all the same pattern:
-
-  - `db/pages.py:1403` -- the second real one. The signature and the
-    docstring both said `{bin: [(slug, sha, kind), ...]}` and the local
-    said `dict[int, list[str]]`. The annotation was the lie.
-  - `db/stories.py:67` -- one site, NINE diagnostics: `**_CANONICAL`
-    into `json.dumps` offered `bool | tuple[str, str]` to each keyword.
-  - `metaparse/adapters.py:214`, `sg_web/collection_view.py:619` --
-    `.rsplit` and `.append` on the union a heterogeneous literal infers.
-
-  The test bulk is gone, and it was three annotations for 27
-  diagnostics. All the same shape -- a TABLE of request-shaped arguments
-  spread with `**` into a function whose parameters are differently
-  typed. One thing learned doing it: **a declaration on the loop
-  variable does not reach a for-target**, whose type comes from the
-  iterable's elements. `refused: dict[str, Any]` above
-  `for refused, why in (...)` had been written and did nothing;
-  annotating the TUPLE is what works.
-
-  `db/planning.py`'s FROZEN plan dicts are done, 4 sites to 2, and the
-  shape is why one TypedDict was not enough. `settings` is a flat set of
-  keys through v3 and one set PER PLANNER from v4 on -- it changed
-  exactly once. A single dict with
-  `frozenset[str] | dict[str, frozenset[str]]` merely moved the
-  complaint: it says v3 might carry a dict and v5 might carry a set, so
-  every construction in the chain has to be read as if it could, and the
-  count came back to 4. Two names -- `StoryPlanFlat` and `StoryPlan` --
-  say what actually happened and cost nothing, because a frozen version
-  is frozen and both shapes are live for ever.
-
-  Six more went as one pattern: an attribute PATCHED with a
-  differently-typed function -- `backend._embed = record`,
-  `manager.upsert = broken`, `connect.connect = counting`. They are
-  `monkeypatch.setattr` now, which the checker does not object to and
-  which is better besides: it puts the real one back when an assertion
-  inside the patched region fails, where a hand-written try/finally
-  only does if somebody wrote it, and two of these had none.
-
-  **THREE errors left.** Five more went, and two of them were real
-  annotation defects rather than checker noise:
-
-  - `vision/faces.py` narrowed on `callable()`, which narrows to "some
-    callable" and loses the signature, so the call could not be checked
-    at all. It asks `isinstance(..., Mapping)` now -- the half with a
-    runtime-checkable ABC -- and both branches have a type.
-  - `plan_snapshot` was annotated `planner: GenerationHistoryPlanner`
-    and is handed any of THREE. A `Planner` union now sits beside the
-    `PLANNERS` registry, because the two lists are the same list and
-    one drifting from the other is how that happened.
-
-  The three that remain are each blocked on something outside this
-  tree, and none of them blocks the gate more than the others:
-
-      db/planning.py:2098   `maker(None, ...)` is safe because
-                            `if maker.uses_similarity` guards it, and a
-                            checker cannot see a guard on a class
-                            attribute. Annotating it `| None` would be a
-                            LIE: that planner reads `.similarity.name`.
-      qwen_vl.py:358        transformers types `apply_chat_template`
-                            more narrowly than it accepts.
-      thumb_delivery.py:86  a genuine RUFF/TY standoff: ty rejects the
-                            assignment, and ruff's B010 forbids the
-                            `setattr` the tests use through monkeypatch.
-                            No form satisfies both.
-
-  So the fast gate is three sites away, and all three want a decision
-  about SUPPRESSION rather than more typing -- which the overrides
-  mechanism above can now express, per file and with a reason.
-
-  **The count that matters is 17 ERRORS, not 21 diagnostics.** ty exits
-  0 when only warning-level violations remain
-  (`../refs/astral-sh/ty/docs/rules.md:16`), so the three
-  `redundant-cast` warnings do not block the gate -- which is just as
-  well, because they are a genuine two-checker conflict: those casts
-  exist FOR pyright, whose `Module.to` sees the wrapped descriptor
-  transformers decorates it with. Removing them to please ty would
-  break `just check-deep`.
-
-  And a correction to what this entry said last: **a suppression
-  mechanism does exist.** `[[tool.ty.overrides]]` takes a glob and
-  per-rule severities
-  (`../refs/astral-sh/ty/docs/reference/configuration.md:551`), which is
-  not what `respect-type-ignore-comments = false` forbids -- that bans a
-  COMMENT silencing an error on the author's say so, where an override
-  is a named file, a named rule and a reason in the file everyone reads,
-  one grep from a list of every exception granted. Exactly the shape
-  `sglint/policy.py` already uses.
-
-  It was not needed for the jinja line, and that is worth keeping: an
-  override is per FILE, so ignoring `invalid-assignment` across a
-  2000-line composition root to silence one line would stop checking
-  everything else in it. A local `cast` says the same thing in one place
-  -- and the tree already casts for exactly this reason in
-  `vision/captions.py`, around the same missing-annotation problem.
+  **Still open, and recorded rather than done:** ty's `unsound-assignment`
+  reports 18 places where an Any or Unknown out of sqlite lands in a
+  narrower declared type. They are real. Fixing them means changing how
+  database rows are typed, which is its own change; the rule is off in
+  `[tool.ty.rules]` with that count beside it.
 
 ## The query workspace, as far as it got
 

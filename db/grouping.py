@@ -127,7 +127,7 @@ def spherical_kmeans(
 
         sizes = Counter(connected_components(graph))
         people = max(1, sum(1 for count in sizes.values() if count >= 2))
-    people = max(1, min(int(people), n))
+    people = max(1, min(people, n))
 
     faiss = _faiss()
     # The dataset being clustered IS the training set, which upstream calls
@@ -146,7 +146,7 @@ def spherical_kmeans(
         niter=iterations,
         nredo=redo,
         spherical=True,
-        gpu=bool(gpu) and faiss.get_num_gpus() > 0,
+        gpu=gpu and faiss.get_num_gpus() > 0,
         min_points_per_centroid=1,
         max_points_per_centroid=10_000_000,
     )

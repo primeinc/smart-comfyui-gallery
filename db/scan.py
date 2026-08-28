@@ -269,7 +269,7 @@ def slugify(text: str) -> str:
     Never the address by itself: `mint` owns collisions, because two files
     may legitimately share a name.
     """
-    folded = unicodedata.normalize("NFKD", str(text))
+    folded = unicodedata.normalize("NFKD", text)
     ascii_only = folded.encode("ascii", "ignore").decode("ascii").lower()
     return _SLUG_STRIP.sub("-", ascii_only).strip("-")
 

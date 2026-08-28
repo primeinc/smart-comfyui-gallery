@@ -17,11 +17,15 @@ python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { '.
 #
 # pytest exits 5 when it collects nothing, which is the expected
 # outcome here and not a failure. The suite is `just test-slow`.
-# No xdist: sixteen workers importing sixty test modules to collect
-# nothing cost 13.4s of the lane's 18.8s. One process collects the same
-# nothing in a third of that.
+#
+# `-n 0` on the command line, because pytest.ini's `-n` is global and
+# every worker it starts is an interpreter importing sixty test modules
+# to collect nothing. Measured on this lane: 4.7s with the workers, 2.4s
+# without -- two seconds of a ten-second budget, spent to parallelise an
+# empty set. (The cost scales with the count, which is how it was found:
+# at eight it was 7.4s.)
 test: web::build
-    {{ python }} -m pytest tests/ -m "not slow" || [ $? -eq 5 ]
+    {{ python }} -m pytest tests/ -m "not slow" -n 0 || [ $? -eq 5 ]
 
 # The suite. All of it: real sample libraries, real browsers, real
 # migration chains. Minutes, not seconds -- which is why it is not in
@@ -173,17 +177,19 @@ fmt-web:
 
 # The cross-module inference neither ruff nor esbuild can do.
 #
-# SPLIT BY COST, not by importance. tsc over the browser source is ~2s and
-# stays in the ten-second gate; pyright over the Python is 137s and cannot
-# be in it.
+# TWO Python checkers, and both fit the ten-second gate. Measured on this
+# tree with hyperfine, 3 runs after warmup, the venv's own binaries: ty
+# 2.865s +/- 0.049, pyrefly 1.772s +/- 0.058, tsc over the browser source
+# ~2s. That is what keeps them here rather than in `check-deep`, which no
+# hook runs: a Python type check nobody waits for is one nobody reads.
 #
-# Measured, whole tree, 170 files: pyright 137.5s. `--threads` makes it
-# WORSE (181s). The cost is one import: vision/semantic/openclip.py,
-# vision/semantic/qwen_vl.py and vision/captions.py each take ~90s ALONE,
-# and what they share is `torch`. torch and transformers both ship
-# py.typed, so pyright reads their inline annotations from source and
-# `useLibraryCodeForTypes = false` does not skip them. There is no setting
-# that keeps torch's types and avoids parsing torch.
+# Both, not one, because they do not agree and neither is a superset. On
+# the tree as it stands each finds things the other does not: pyrefly
+# reports `unnecessary-type-conversion` and `non-convergent-recursion`,
+# which ty has no rule for; ty reports `redundant-cast` where pyrefly is
+# silent, and its `possibly-unresolved-reference` is the possibly-unbound
+# check pyproject.toml turns on by name. At four and a half seconds for
+# the pair, the question is not which one.
 #
 # Both halves always run where they run. As a dependency with a body, the
 # body was skipped whenever the dependency failed, so a red browser source
@@ -192,9 +198,17 @@ fmt-web:
 [parallel]
 types: web::types types-python
 
+[parallel]
 [private]
-types-python:
-    {{ python }} -m pyright
+types-python: types-ty types-pyrefly
+
+[private]
+types-ty:
+    {{ python }} -m ty check
+
+[private]
+types-pyrefly:
+    {{ python }} -m pyrefly check
 
 # Repository hygiene: the git index, line endings, the requirements
 # file, the test command, the evidence stamp -- sglint's SG8xx, which ask
@@ -216,17 +230,46 @@ check: web::fresh gates
 
 [parallel]
 [private]
-gates: api::check lint fmt-check web::types web::unit db-check
+gates: api::check lint fmt-check web::types types-python web::unit db-check
 
-# What could not be made to fit ten seconds. Not less important -- pyright
-# is the only cross-module inference this project has over its Python, and
-# repo-check is what keeps a clone honest. Measured: pyright 137s (torch;
-# see `types` above), repo-check 9.3s (two full `git checkout-index -a`
-# into temporary trees plus a scratch repository, on a platform where each
-# git spawn costs about 200ms).
-[doc('What cannot fit ten seconds: pyright over the Python, repo hygiene')]
+# What could not be made to fit ten seconds. Not less important --
+# repo-check is what keeps a clone honest, and `types-elsewhere` is the
+# only thing that reads the platforms this machine is not. Measured:
+# repo-check 9.3s (two full `git checkout-index -a` into temporary trees
+# plus a scratch repository, on a platform where each git spawn costs
+# about 200ms).
+#
+# Python type checking is NOT here any more; at four and a half seconds
+# for both checkers it moved into `check`, and so into the pre-commit
+# hook, which is where it can catch anything.
+[doc('What cannot fit ten seconds: repo hygiene, and the platforms this machine is not')]
 [parallel]
-check-deep: types-python repo-check
+check-deep: repo-check types-elsewhere
+
+# The same two checkers, at the platforms nobody here is running.
+#
+# `check` runs them at each tool's default, which is the developer's own
+# machine, and platform-conditional code is then read for that platform
+# alone. This project ships a Linux container and declares a darwin branch
+# of its dependencies, so two thirds of what it targets went unread.
+#
+# `python-platform = "all"` is NOT this, measured: "all" takes the UNION
+# of the platform stubs, so a win32-only name RESOLVES under it and the
+# diagnostic disappears. A pass per platform is the only form that checks
+# a platform.
+[parallel]
+[private]
+types-elsewhere: types-linux types-darwin
+
+[private]
+types-linux:
+    {{ python }} -m ty check --python-platform linux
+    {{ python }} -m pyrefly check --python-platform linux
+
+[private]
+types-darwin:
+    {{ python }} -m ty check --python-platform darwin
+    {{ python }} -m pyrefly check --python-platform darwin
 
 # Everything: the gate, the deep gate, the suite, and the real run walked.
 [doc('Everything: both gates, the suite, and the real run walked')]

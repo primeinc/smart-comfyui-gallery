@@ -27,6 +27,7 @@ Run through `just bench thumbs-delivery`.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import pathlib
@@ -61,49 +62,59 @@ def _library(root: pathlib.Path) -> None:
         Image.new("RGB", (1600, 1200), (20 + i % 200, 90, 140)).save(root / f"p{i:03d}.png", pnginfo=info)
 
 
+@contextlib.contextmanager
 def _counted_connections():
     """Count every SQLite connection the application opens.
 
     Patched at `db.connect.connect`, which every route reaches through --
     so the number is what the application really did, not what this file
     believes about it.
+
+    A context manager, and `mock.patch.object` rather than an assignment
+    and a restore callable, for two reasons. The restore now happens on
+    the way out of the block whatever the block did, where before a raised
+    request left the whole process counting connections through a closure.
+    And a plain `connect.connect = counting` is a type error: the module
+    symbol's declared type is the `def` that made it, so no other function
+    inhabits it, however exactly the signature is copied.
+
+    `counting` spells that signature out anyway. It stands in for the real
+    function, and a wrapper taking `*args, **kwargs` would accept calls the
+    real one refuses.
     """
+    from unittest import mock
+
     from db import connect
 
     seen = {"opened": 0}
     real = connect.connect
 
-    def counting(*args, **kwargs):
+    def counting(
+        path, *, read_only: bool = False, autocommit: bool = False, cross_thread: bool = False
+    ) -> connect.Connection:
         seen["opened"] += 1
-        return real(*args, **kwargs)
+        return real(path, read_only=read_only, autocommit=autocommit, cross_thread=cross_thread)
 
-    # ty reports this assignment -- a counting wrapper is not of
-    # `connect`'s exact type -- and there is no fix here that both tools
-    # accept: `setattr` is what the tests reach for through
-    # `monkeypatch`, and ruff's B010 forbids it with a constant
-    # attribute. Left as the assignment, which is the form ruff wants
-    # and the one this file's own restore mirrors.
-    connect.connect = counting
-    return seen, lambda: setattr(connect, "connect", real)
+    with mock.patch.object(connect, "connect", counting):
+        yield seen
 
 
 def _measure(client, page_html: str) -> dict:
     """Fetch every thumbnail the page asks for, as a browser would."""
     sources = [one for one in _SRC.findall(page_html) if "/thumb" in one or "/t/" in one]
-    counted, restore = _counted_connections()
-    started = time.perf_counter()
     total = 0
     cacheable = 0
     statuses: dict[int, int] = {}
-    for src in sources:
-        answered = client.get(src)
-        statuses[answered.status_code] = statuses.get(answered.status_code, 0) + 1
-        total += len(answered.content)
-        control = answered.headers.get("cache-control", "")
-        if "immutable" in control or "max-age" in control:
-            cacheable += 1
-    spent = time.perf_counter() - started
-    restore()
+    with _counted_connections() as counted:
+        started = time.perf_counter()
+        for src in sources:
+            answered = client.get(src)
+            statuses[answered.status_code] = statuses.get(answered.status_code, 0) + 1
+            total += len(answered.content)
+            control = answered.headers.get("cache-control", "")
+            if "immutable" in control or "max-age" in control:
+                cacheable += 1
+        spent = time.perf_counter() - started
     return {
         "thumbnails": len(sources),
         "app_requests": len(sources),
@@ -149,12 +160,11 @@ def main() -> int:
         client.post("/jobs/thumbs")
         _drained(client)
 
-        counted, restore = _counted_connections()
-        started = time.perf_counter()
-        page = client.get("/g").text
-        shell_ms = round((time.perf_counter() - started) * 1000, 1)
-        shell_connections = counted["opened"]
-        restore()
+        with _counted_connections() as counted:
+            started = time.perf_counter()
+            page = client.get("/g").text
+            shell_ms = round((time.perf_counter() - started) * 1000, 1)
+            shell_connections = counted["opened"]
 
         told = _measure(client, page)
         told["label"] = asked.label

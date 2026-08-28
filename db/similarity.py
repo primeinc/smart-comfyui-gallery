@@ -75,7 +75,7 @@ def face_space(model_id: str, model_version: str, dimensions: int) -> SpaceSpec:
     return SpaceSpec(
         key=f"face.{model_id}.{model_version}",
         representation="float32",
-        dimensions=int(dimensions),
+        dimensions=dimensions,
         metric="cosine",
         producer=model_id,
         producer_version=model_version,
@@ -320,7 +320,7 @@ def note(conn, spec: SpaceSpec, subject_id: int, value, now: float, *, lane: str
     Nothing touches the resident index here -- the write may yet roll
     back. The runner applies the note after its commit succeeds."""
     named = keyed(spec, space_id(conn, spec, now), lane)
-    pending(conn).append((named.key, int(subject_id), value))
+    pending(conn).append((named.key, subject_id, value))
 
 
 def note_gone(conn, sid: int, subject_id: int, *, lane: str = "") -> None:
@@ -330,7 +330,7 @@ def note_gone(conn, sid: int, subject_id: int, *, lane: str = "") -> None:
     row = conn.execute("SELECT key FROM similarity_space WHERE id = ?", (sid,)).fetchone()
     if row is not None:
         key = f"{row[0]}@{sid}" + (f"+{lane}" if lane else "")
-        pending(conn).append((key, int(subject_id), None))
+        pending(conn).append((key, subject_id, None))
 
 
 def apply_pending(conn, manager: IndexManager | None = None) -> None:

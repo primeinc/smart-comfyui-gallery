@@ -75,7 +75,7 @@ def without(query: resultset.GalleryQuery, key: str) -> resultset.GalleryQuery:
     if one is None:
         raise ValueError(f"there is no filter named {key!r}")
     if one.carried == "scope":
-        return dataclasses.replace(query, **{key: None})
+        return resultset.with_scope(query, key, None)
     return dataclasses.replace(query, facets=tuple(held for held in query.facets if held.key != key))
 
 

@@ -350,7 +350,7 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
                 stream = container.streams.video[0]
                 if not stream.width or not stream.height:
                     return None
-                return int(stream.width), int(stream.height)
+                return stream.width, stream.height
         except (FFmpegError, OSError, ValueError) as why:
             _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
             return None
@@ -361,7 +361,7 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
         try:
             with rawpy.imread(os.fspath(path)) as raw:
                 held = raw.sizes
-                return int(held.width), int(held.height)
+                return held.width, held.height
         except (LibRawError, OSError, ValueError) as why:  # the documented name (docs/api/exceptions.rst)
             _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
             return None
@@ -370,7 +370,7 @@ def dimensions(path: str | os.PathLike[str], kind: str) -> tuple[int, int] | Non
 
     try:
         with Image.open(path) as image:
-            return int(image.size[0]), int(image.size[1])
+            return image.size[0], image.size[1]
     except (OSError, ValueError, Image.DecompressionBombError) as why:
         _logger.warning("%s: no dimensions: %s: %s", path, type(why).__name__, why)
         return None

@@ -24,6 +24,7 @@ import os
 import sqlite3
 import time
 import traceback
+import typing
 from collections.abc import Callable
 from concurrent import futures
 
@@ -155,6 +156,7 @@ class _Silent(Report):
     def __init__(self) -> None:
         super().__init__(0, None, lambda: 0.0, lambda told: None)
 
+    @typing.override
     def _note(self, type_: str, *, phase, message, data) -> None:
         return
 
@@ -816,7 +818,7 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     # The adapter names its own stages through this. Handed in rather
     # than reached for: the reporter lives here and vision must not
     # import db (db/oriented.py already imports vision/decode).
-    media = semantic.MediaRef(path=str(path), kind=kind, frame=representative_frame, phase=told.phase)
+    media = semantic.MediaRef(path=path, kind=kind, frame=representative_frame, phase=told.phase)
     provider, model, checkpoint = payload["choice"]
     told.phase("loading-encoder", provider=provider, model=model)
     encoder = semantic.encoder(provider, payload["models_dir"], model, checkpoint)

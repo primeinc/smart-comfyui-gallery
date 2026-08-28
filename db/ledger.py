@@ -137,7 +137,7 @@ def since(conn, after: int, *, limit: int = PAGE_MOST) -> list[dict]:
     backlog a reconnecting client asks for. One ordered index walk."""
     rows = conn.execute(
         "SELECT " + _COLUMNS + " FROM job_event WHERE id > ? ORDER BY id LIMIT ?",
-        (after, min(int(limit), PAGE_MOST)),
+        (after, min(limit, PAGE_MOST)),
     )
     return [_row(row) for row in rows]
 
@@ -145,7 +145,7 @@ def since(conn, after: int, *, limit: int = PAGE_MOST) -> list[dict]:
 def latest(conn, *, limit: int = PAGE_DEFAULT) -> list[dict]:
     """The newest `limit` events, ascending -- the cold tape."""
     rows = conn.execute(
-        "SELECT " + _COLUMNS + " FROM job_event ORDER BY id DESC LIMIT ?", (min(int(limit), PAGE_MOST),)
+        "SELECT " + _COLUMNS + " FROM job_event ORDER BY id DESC LIMIT ?", (min(limit, PAGE_MOST),)
     ).fetchall()
     return [_row(row) for row in reversed(rows)]
 
@@ -154,7 +154,7 @@ def for_job(conn, job_id: int, *, after: int = 0, limit: int = PAGE_MOST) -> lis
     """One job's events with id > `after`, ascending; rides job_event_job."""
     rows = conn.execute(
         "SELECT " + _COLUMNS + " FROM job_event WHERE job_id = ? AND id > ? ORDER BY id LIMIT ?",
-        (job_id, after, min(int(limit), PAGE_MOST)),
+        (job_id, after, min(limit, PAGE_MOST)),
     )
     return [_row(row) for row in rows]
 
@@ -162,7 +162,7 @@ def for_job(conn, job_id: int, *, after: int = 0, limit: int = PAGE_MOST) -> lis
 def before(conn, before_id: int, *, job_id: int | None = None, limit: int = PAGE_MOST) -> list[dict]:
     """The `limit` events with id < `before_id`, ascending -- the page
     above a held one, the whole ledger's or one job's."""
-    most = min(int(limit), PAGE_MOST)
+    most = min(limit, PAGE_MOST)
     if job_id is None:
         rows = conn.execute(
             "SELECT " + _COLUMNS + " FROM job_event WHERE id < ? ORDER BY id DESC LIMIT ?", (before_id, most)

@@ -1553,7 +1553,7 @@ def timeline_nth(conn, lo: float, hi: float, k: int, scope: tuple[str, list] = (
     )
     if not n:
         return None, 0
-    k = min(max(0, int(k)), n - 1)
+    k = min(max(0, k), n - 1)
     row = conn.execute(
         _TIMELINE_NTH_HEAD + scope[0] + _TIMELINE_NTH_TAIL, (context.POLICY_VERSION, lo, hi, *scope[1], k)
     ).fetchone()

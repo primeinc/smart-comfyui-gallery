@@ -19,6 +19,8 @@ targeted re-run rather than a full rebuild.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
+from typing import SupportsFloat
 
 
 def plain(value):
@@ -96,14 +98,30 @@ def drop_all(conn) -> list[str]:
 # --- where in the picture --------------------------------------------------
 
 
-def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None = None) -> int:
+def region(
+    conn,
+    x: SupportsFloat,
+    y: SupportsFloat,
+    w: SupportsFloat,
+    h: SupportsFloat,
+    *,
+    mask: bytes | None = None,
+) -> int:
     """A rectangle, in fractions of the frame.
 
     Normalized because a box in pixels is a box against one particular
     rendering: the same coordinates on a thumbnail or a re-encoded proxy
     point somewhere else. A mask goes to the blob store rather than to a
     path, so moving a cache directory cannot void it.
+
+    `SupportsFloat`, not `float`, because that is what the callers hand
+    over: `region_from_pixels` divides a detector's box by a frame size,
+    and a detector reports numpy. `np.float64` subclasses Python's float
+    and `np.float32` does not -- the same asymmetry `plain` above was
+    written for -- so a `float` here would be a claim the caller cannot
+    keep. The conversion below is the one place it is made.
     """
+    x, y, w, h = float(x), float(y), float(w), float(h)
     # A detector's box can run off the edge: a face at the side of the frame
     # is reported with the whole head's extent, and part of that is not in
     # the picture. Measured on 423 real YuNet detections, one overhung, by
@@ -120,12 +138,12 @@ def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None =
     # unconditionally put floating-point error into ones that were already
     # inside -- 0.6 + 0.3 - 0.6 is 0.29999999999999993 -- so a coordinate
     # made a round trip it never asked for and came back different.
-    if float(x) < 0 or float(y) < 0 or float(x) + float(w) > 1 or float(y) + float(h) > 1:
-        left, top = min(max(float(x), 0.0), 1.0), min(max(float(y), 0.0), 1.0)
-        right = min(max(float(x) + float(w), 0.0), 1.0)
-        bottom = min(max(float(y) + float(h), 0.0), 1.0)
+    if x < 0 or y < 0 or x + w > 1 or y + h > 1:
+        left, top = min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)
+        right = min(max(x + w, 0.0), 1.0)
+        bottom = min(max(y + h, 0.0), 1.0)
         kept = (right - left) * (bottom - top)
-        asked = float(w) * float(h)
+        asked = w * h
         if asked > 0 and kept < asked / 2:
             raise ValueError(
                 f"the box ({x}, {y}, {w}, {h}) is mostly outside the frame. "
@@ -148,20 +166,30 @@ def region(conn, x: float, y: float, w: float, h: float, *, mask: bytes | None =
     return int(cursor.lastrowid or 0)
 
 
-def region_from_pixels(conn, box, width: int, height: int, **kwargs) -> int:
+def region_from_pixels(
+    conn, box: Iterable[SupportsFloat], width: SupportsFloat, height: SupportsFloat, **kwargs
+) -> int:
     """The same, given pixels and the size they were measured against.
 
     Offered so a caller with pixel coordinates converts once, here, rather
     than each detector inventing its own convention.
 
+    This IS the foreign boundary: a detector hands over a numpy box and a
+    numpy frame size, which is what
+    `test_a_detectors_own_numbers_can_be_stored` passes. The parameters
+    say so -- `SupportsFloat` is the `__float__` protocol, which numpy
+    and torch scalars answer and `float` does not describe -- and the
+    division below is on real floats.
+
     A zero dimension is what a truncated decode reports, and dividing by it
     raised ZeroDivisionError out of whatever job was running. It is refused
     by name instead: there is no rectangle inside a frame with no area.
     """
-    if width <= 0 or height <= 0:
+    across, down = float(width), float(height)
+    if across <= 0 or down <= 0:
         raise ValueError(f"a {width}x{height} frame has nowhere to put a box")
-    x, y, w, h = box
-    return region(conn, x / width, y / height, w / width, h / height, **kwargs)
+    x, y, w, h = (float(one) for one in box)
+    return region(conn, x / across, y / down, w / across, h / down, **kwargs)
 
 
 # --- content hashes --------------------------------------------------------
@@ -445,7 +473,7 @@ def record_face_scan(conn, file_id: int, model_id: str, model_version: str, sha:
         " VALUES(?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(file_id, model_id, model_version) DO UPDATE SET source_sha256 = excluded.source_sha256,"
         " faces = excluded.faces, computed_at = excluded.computed_at",
-        tuple(plain(v) for v in (file_id, model_id, model_version, sha, int(faces), now)),
+        tuple(plain(v) for v in (file_id, model_id, model_version, sha, faces, now)),
     )
 
 
@@ -977,7 +1005,7 @@ def health(conn, run_id: int) -> dict:
             "silhouette": silhouette,
             # Groups far larger than the middle of the distribution -- the shape
             # chaining makes, and invisible to a mean.
-            "outliers": int(sum(1 for n in sizes if median and n > 4 * median)),
+            "outliers": sum(1 for n in sizes if median and n > 4 * median),
         }
     )
     if math.isnan(reading["silhouette"]):

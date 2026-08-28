@@ -236,9 +236,10 @@ def settled(client: TestClient, job_id: int, timeout: float = 120.0) -> str:
     sees may be reading somebody else's; the row cannot be mistaken.
 
     The deadline is for HANGS, not pacing -- polling returns the moment
-    the row settles. 120 because a paused-and-resumed job on a
-    saturated `-n 4` runner legitimately outlived 30, three pushes in
-    a row."""
+    the row settles. 120 because a paused-and-resumed job on a saturated
+    runner legitimately outlived 30, three pushes in a row -- and the
+    runner is four workers wide, and eight was tried and put this very
+    kind of clock over its head."""
     import time
 
     deadline = time.monotonic() + timeout

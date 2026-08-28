@@ -60,6 +60,7 @@ class CollectionChanged(Exception):
 
 
 class _Unset:
+    @typing.override
     def __repr__(self) -> str:  # in refusal messages
         return "UNSET"
 

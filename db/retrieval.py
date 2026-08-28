@@ -222,7 +222,7 @@ def query(
     from . import derived, similarity
 
     manager = similarity.manager_for(conn)
-    final_k = max(int(k), 1)
+    final_k = max(k, 1)
     #: (ranking name, [(file_id, score)]) per ranking that enters the fusion
     per_space: list[tuple[str, list[tuple[int, float]]]] = []
     to_file: dict[int, int] = {}

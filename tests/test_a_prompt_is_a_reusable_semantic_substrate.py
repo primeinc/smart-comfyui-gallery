@@ -23,6 +23,7 @@ import pathlib
 import sqlite3
 import sys
 import types
+import typing
 
 import numpy as np
 import pytest
@@ -560,6 +561,7 @@ def test_the_cache_adapter_is_exact_and_computes_each_text_once():
     seen: list[list[str]] = []
 
     class Counting(planning.LexicalPromptSimilarity):
+        @typing.override
         def embed(self, texts):
             seen.append(list(texts))
             return super().embed(texts)
@@ -684,7 +686,17 @@ def test_written_versus_run_is_a_claim_about_a_member_never_a_boundary():
     assert claims["prompt_rewrite"]["facts"]["members"] == 1
     assert claims["prompt_rewrite"]["facts"]["min_cosine"] < 0.5
     assert "member-004" not in json.dumps(claims["prompt_rewrite"]), "wildcard-level drift is not a rewrite"
-    bare = planner.plan(*_snapshot([_member(i, m["generation"]["prompt"]) for i, m in enumerate(members)]))
+    # Narrowed on the way out: a member is a JSON record, so `generation`
+    # and the prompt inside it are only a mapping and a string once
+    # something says so.
+    originals = []
+    for i, m in enumerate(members):
+        generation = m["generation"]
+        assert isinstance(generation, dict)
+        ran = generation["prompt"]
+        assert isinstance(ran, str)
+        originals.append(_member(i, ran))
+    bare = planner.plan(*_snapshot(originals))
     assert [p["member_refs"] for p in plan["phases"]] == [p["member_refs"] for p in bare["phases"]], (
         "originals never move a boundary"
     )
@@ -706,7 +718,11 @@ def test_written_versus_run_is_a_claim_about_a_member_never_a_boundary():
             " Minimum similarity between written and run prompt is 0%."
         )
     ]
-    daily = [dict(m, occurrence={**m["occurrence"], "precision": "day"}) for m in members]
+    daily = []
+    for m in members:
+        occurrence = m["occurrence"]
+        assert isinstance(occurrence, dict)
+        daily.append(dict(m, occurrence={**occurrence, "precision": "day"}))
     document, sha = _snapshot(daily)
     plan = planner.plan(document, sha)
     assert "prompt_rewrite" in {c["kind"] for c in plan["claims"]}

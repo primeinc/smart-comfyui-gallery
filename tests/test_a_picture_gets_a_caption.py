@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import pathlib
 import time
+import typing
 
 import pytest
 from PIL import Image
@@ -326,6 +327,7 @@ def test_a_clip_is_captioned_whole_and_at_its_sampled_moments(tmp_path, monkeypa
     file_id = conn.execute("SELECT id FROM file WHERE kind = 'video'").fetchone()[0]
 
     class Moments(FakeCaptioner):
+        @typing.override
         def describe(self, image):
             self.seen.append(image.size)
             return f"frame {len(self.seen)}"
@@ -397,6 +399,7 @@ class BatchCaptioner(FakeCaptioner):
         self.alone = 0
         self.fail_batches = fail_batches
 
+    @typing.override
     def describe(self, image):
         self.alone += 1
         return super().describe(image)

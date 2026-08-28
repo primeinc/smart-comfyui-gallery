@@ -6,7 +6,8 @@
 # change scope, and the FULL proof runs exactly once, asynchronously,
 # never inside anybody's write path.
 #
-#   per commit   `just check`       ~7s: lint, format, types-lite, web unit
+#   per commit   `just check`       6.0s measured: lint, format, types over
+#                                   BOTH languages, web unit
 #   per push     `just prove-push`  an already-proven tree passes in
 #                                   milliseconds; else the AFFECTED slice
 #                                   of the suite (pytest-testmon, selected

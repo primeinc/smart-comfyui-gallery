@@ -29,6 +29,12 @@ from collections.abc import Callable, Iterable
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
+#: `sys.settrace`'s local trace function, which returns ITSELF to keep
+#: tracing the frame it was called for. Named because the type is
+#: recursive: left to inference the fixpoint does not close, and the
+#: checker says so rather than guessing (pyrefly non-convergent-recursion).
+type _Tracer = Callable[[types.FrameType, str, object], "_Tracer | None"]
+
 #: The readers a media corpus is FOR. Each turns bytes on disk into
 #: something the library believes, and each is full of branches only a
 #: particular shape of file reaches. Everything else in the tree is out
@@ -88,7 +94,7 @@ class Reached:
         self._watching = {str(REPO / one): one for one in readers}
         self.lines: dict[str, set[int]] = {one: set() for one in readers}
 
-    def _trace(self, frame, event, _arg):
+    def _trace(self, frame: types.FrameType, event: str, _arg: object) -> _Tracer | None:
         name = self._watching.get(frame.f_code.co_filename)
         if name is None:
             return None

@@ -248,8 +248,8 @@ def candidates(category: str, most: int = 60) -> list[Picture]:
         if not info.get("url"):
             continue
         tags, extra = _exif(info), _extra(info)
-        make, model = str(tags.get("Make", "")).strip(), str(tags.get("Model", "")).strip()
-        taken = str(tags.get("DateTimeOriginal", "")).strip()
+        make, model = tags.get("Make", "").strip(), tags.get("Model", "").strip()
+        taken = tags.get("DateTimeOriginal", "").strip()
         if not (make and model and taken):
             continue
         if int(info.get("size") or 0) > MOST_BYTES:

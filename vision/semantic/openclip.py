@@ -73,7 +73,7 @@ def space(model: str, checkpoint: str, dimensions: int):
     return SpaceSpec(
         key=f"semantic.openclip.{model}.{checkpoint}",
         representation="float32",
-        dimensions=int(dimensions),
+        dimensions=dimensions,
         metric="cosine",
         producer=f"open_clip:{model}",
         producer_version=checkpoint,
@@ -178,6 +178,30 @@ def _unprovisioned(models_dir: str, model: str, checkpoint: str) -> LookupError:
     )
 
 
+def _tag_text(tag: dict, key: str) -> str | None:
+    """One string-valued key of an open_clip pretrained-tag config.
+
+    The config is a heterogeneous dict -- `url`, `hf_hub`,
+    `interpolation` and `resize_mode` are strings while `mean` and `std`
+    are float triples, and `_pcfg` merges arbitrary `**kwargs` on top
+    (refs/mlfoundations/open_clip src/open_clip/pretrained.py:38-49). So
+    a value read out of it is that whole union until something says
+    which key it came from; this and `_tag_numbers` are that something,
+    and a key holding the wrong shape reads as absent rather than
+    travelling on into a factory argument.
+    """
+    value = tag.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _tag_numbers(tag: dict, key: str) -> tuple[float, ...] | None:
+    """One float-sequence key of an open_clip pretrained-tag config."""
+    value = tag.get(key)
+    if isinstance(value, (list, tuple)):
+        return tuple(float(one) for one in value)
+    return None
+
+
 def _hub_names(model: str, checkpoint: str) -> tuple[str, tuple[str, ...]] | None:
     """The hub repo and candidate file names open_clip gives this tag,
     or None for a tag that is not hub-hosted. Imports open_clip."""
@@ -186,7 +210,7 @@ def _hub_names(model: str, checkpoint: str) -> tuple[str, tuple[str, ...]] | Non
     from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
     from open_clip.pretrained import get_pretrained_cfg
 
-    hf_hub = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "")
+    hf_hub = _tag_text(get_pretrained_cfg(model, checkpoint) or {}, "hf_hub") or ""
     if not hf_hub:
         return None
     repo, filename = os.path.split(hf_hub)
@@ -265,10 +289,10 @@ class ClipBackend:
                 model,
                 pretrained=found,
                 cache_dir=models_dir,
-                image_mean=tag.get("mean"),
-                image_std=tag.get("std"),
-                image_interpolation=tag.get("interpolation"),
-                image_resize_mode=tag.get("resize_mode"),
+                image_mean=_tag_numbers(tag, "mean"),
+                image_std=_tag_numbers(tag, "std"),
+                image_interpolation=_tag_text(tag, "interpolation"),
+                image_resize_mode=_tag_text(tag, "resize_mode"),
             )
         # the factory returns nn.Module; the two encode_* links live on
         # the contrastive classes, and only those are a space here
@@ -399,7 +423,7 @@ _LOCK = threading.Lock()
 
 
 def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *, offline: bool = False) -> ClipBackend:
-    key = (str(models_dir), model, checkpoint)
+    key = (models_dir, model, checkpoint)
     with _LOCK:
         if key not in _LOADED:
             # The offline refusal must not cost torch's import: without
@@ -416,5 +440,5 @@ def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *
             # seconds this check exists to avoid.
             if offline and provisioned(models_dir, model, checkpoint) is None:
                 raise _unprovisioned(models_dir, model, checkpoint)
-            _LOADED[key] = ClipBackend(str(models_dir), model, checkpoint, offline=offline)
+            _LOADED[key] = ClipBackend(models_dir, model, checkpoint, offline=offline)
         return _LOADED[key]

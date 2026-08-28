@@ -2707,7 +2707,7 @@ def _queue_thumbs_of_that_day(conn: sqlite3.Connection, cache: str, now: float) 
         "INSERT INTO job(kind, state, payload, total, created_at) VALUES('hash', 'queued', ?, ?, ?)",
         (json.dumps({"derive": "thumbs", "thumbs_dir": cache}), len(items), now),
     )
-    job_id = int(cursor.lastrowid or 0)
+    job_id = cursor.lastrowid or 0
     conn.executemany(
         "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
         [(job_id, one) for one in items],

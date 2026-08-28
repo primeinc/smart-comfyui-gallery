@@ -56,7 +56,7 @@ def put(conn, collection: str, every_hours: float, now: float, *, enabled: bool 
     conn.execute(
         "INSERT INTO schedule(collection, every_hours, enabled, created_at) VALUES(?, ?, ?, ?)"
         " ON CONFLICT(collection) DO UPDATE SET every_hours = excluded.every_hours, enabled = excluded.enabled",
-        (collection, float(every_hours), int(enabled), now),
+        (collection, every_hours, int(enabled), now),
     )
 
 

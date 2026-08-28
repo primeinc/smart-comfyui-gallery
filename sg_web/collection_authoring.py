@@ -220,7 +220,7 @@ async def edit_definition(
     sqlite work crosses to a thread."""
     from anyio import to_thread
 
-    return await to_thread.run_sync(_edit_definition, state, str(slug), data)
+    return await to_thread.run_sync(_edit_definition, state, slug, data)
 
 
 class _Question(Wire):

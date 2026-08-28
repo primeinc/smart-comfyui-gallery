@@ -299,9 +299,9 @@ def parse(
         # Tri-state, two spellings: 1 favorited, 0 not favorited, and
         # dropping the parameter stops constraining. Nothing else.
         raise ValueError(f"favorite is 1 (favorited) or 0 (not favorited), not favorite={liked!r}")
-    if rating_min is not None and not 1 <= int(rating_min) <= 5:
+    if rating_min is not None and not 1 <= rating_min <= 5:
         raise ValueError(f"rating_min names the minimum stars, 1..5, not {rating_min!r}")
-    chosen = DEFAULT_PAGE_SIZE if size is None else int(size)
+    chosen = DEFAULT_PAGE_SIZE if size is None else size
     if not 1 <= chosen <= MAX_PAGE_SIZE:
         raise ValueError(f"page size must be 1..{MAX_PAGE_SIZE}, not {chosen}")
     from . import facets as facets_module
@@ -314,13 +314,47 @@ def parse(
         artifact=artifact,
         kind=kind,
         favorite=None if liked is None else liked == "1",
-        rating_min=None if rating_min is None else int(rating_min),
+        rating_min=None if rating_min is None else rating_min,
         text=text,
         facets=held,
         sort=sort,
         depth=chosen_depth or "head",
         size=chosen,
     )
+
+
+def with_scope(query: GalleryQuery, key: str, value: str | None) -> GalleryQuery:
+    """`query` with one scope dimension set from its URL spelling, or
+    cleared when `value` is None.
+
+    Scope dimensions are the ones a GalleryQuery carries as a field of
+    its own rather than as a facet (db/vocabulary.py, `carried ==
+    "scope"`), and they are NOT all strings: `favorite` holds
+    `bool | None` and `rating_min` holds `int | None`. So the obvious
+    `dataclasses.replace(query, **{key: value})` writes a URL string into
+    two fields that do not hold one -- `favorite="1"` instead of
+    `favorite=True` -- and nothing catches it, because a `**` spread of
+    `dict[str, str]` says nothing about which field it lands in. Written
+    out, every branch is checked against the field it assigns, and the
+    two conversions are the ones `parse` already makes for the same
+    spellings.
+    """
+    match key:
+        case "folder":
+            return dataclasses.replace(query, folder=value)
+        case "album":
+            return dataclasses.replace(query, album=value)
+        case "person":
+            return dataclasses.replace(query, person=value)
+        case "artifact":
+            return dataclasses.replace(query, artifact=value)
+        case "kind":
+            return dataclasses.replace(query, kind=value)
+        case "favorite":
+            return dataclasses.replace(query, favorite=None if value is None else value == "1")
+        case "rating_min":
+            return dataclasses.replace(query, rating_min=None if value is None else int(value))
+    raise ValueError(f"{key!r} is not a scope dimension of a gallery query")
 
 
 def fingerprint(query: GalleryQuery) -> str:
@@ -655,8 +689,13 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     asks_authored = query.favorite is not None or query.rating_min is not None
     if asks_authored and actor_id is None:
         raise ValueError("an authored facet (favorite, rating) is one actor's judgement; no actor was bound")
+    # Retired slugs answered with their current spelling, one field at a
+    # time: `live` only ever carries the four slug fields resolved above.
+    spelled_now = query
+    for field, slug in live.items():
+        spelled_now = with_scope(spelled_now, field, slug)
     return _Bound(
-        query=dataclasses.replace(query, **live) if live else query,
+        query=spelled_now,
         folder_id=held["folder"],
         collection_id=held["album"],
         person_id=held["person"],
@@ -1119,7 +1158,7 @@ def page(conn, models_dir: str, query: GalleryQuery, number: int, now: float, *,
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
-        number = min(max(1, int(number)), shape["pages"])
+        number = min(max(1, number), shape["pages"])
         start = (number - 1) * bound.query.size
         shape["page"] = number
         shape["items"] = _named(conn, held.ids[start : start + bound.query.size], start, held.relevance)
@@ -1142,9 +1181,9 @@ def peek(
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
         shape = _shape(bound, held)
-        number = min(max(1, int(number)), shape["pages"])
+        number = min(max(1, number), shape["pages"])
         start = (number - 1) * bound.query.size
-        take = min(max(1, int(count)), PEEK_MOST, bound.query.size)
+        take = min(max(1, count), PEEK_MOST, bound.query.size)
         return {
             "page": number,
             "pages": shape["pages"],
@@ -1202,7 +1241,7 @@ def locate(
     the membership at all."""
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
-        position = held.ordinal.get(int(file_id))
+        position = held.ordinal.get(file_id)
         return None if position is None else _located(conn, bound, held, position)
 
 
@@ -1252,11 +1291,11 @@ def neighborhood(
     """
     with snapshot(conn):
         bound, held = _current(conn, models_dir, query, now, actor_id)
-        position = held.ordinal.get(int(file_id))
+        position = held.ordinal.get(file_id)
         if position is None:
             return None
         told = _located(conn, bound, held, position)
-        take = min(max(1, int(count)), NEIGHBORHOOD_MOST)
+        take = min(max(1, count), NEIGHBORHOOD_MOST)
         start = max(0, min(position - take // 2, max(0, len(held.ids) - take)))
         # No caption: `FilmstripItem` renders a 64-pixel square and says
         # in its own docstring that it carries neither a uuid nor a
@@ -1375,7 +1414,11 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, 
     marks = ",".join("?" for _ in ids)
     from . import derived, settings
 
-    held = {
+    # `dict[str, object]`, stated: a member row is a heterogeneous record
+    # -- ids, names, a hex uuid, a caption filled in below, a float
+    # relevance -- and inferring the value type from the literal gives
+    # `said` the type `None`, which the caption pass then cannot write to.
+    held: dict[int, dict[str, object]] = {
         row[0]: {
             "id": row[0],
             "slug": row[1],

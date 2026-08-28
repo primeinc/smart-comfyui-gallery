@@ -304,9 +304,9 @@ def read(payload) -> Recipe | None:
         denoise = graph.value(sampler, "denoise")
         out.denoise = float(denoise) if isinstance(denoise, (int, float)) else None
         name = graph.value(sampler, "sampler_name")
-        out.sampler = str(name) if isinstance(name, str) else None
+        out.sampler = name if isinstance(name, str) else None
         scheduler = graph.value(sampler, "scheduler")
-        out.scheduler = str(scheduler) if isinstance(scheduler, str) else None
+        out.scheduler = scheduler if isinstance(scheduler, str) else None
 
         # The slot each link arrives on rides with it: a node conditioning
         # both prompts is told which one is being asked for.

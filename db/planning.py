@@ -383,7 +383,14 @@ class GenerationHistoryPlanner:
     version = 10
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
-    def __init__(self, similarity: PromptSimilarity, settings: dict | None = None):
+    def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
+        # One constructor shape for every planner, because the caller
+        # picks the class at runtime and constructs it the same way
+        # (`plan_request` below). `uses_similarity = True` is what tells
+        # that caller to bring an engine; this is what happens when it
+        # does not, instead of an AttributeError several phases later.
+        if similarity is None:
+            raise ValueError("GenerationHistoryPlanner compares prompts and needs a similarity engine")
         self.similarity = similarity
         self.settings = validated_settings(settings, self.defaults)
 
@@ -694,7 +701,7 @@ class CaptureHistoryPlanner:
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 10, "burst_seconds": 2.0}
 
-    def __init__(self, similarity=None, settings: dict | None = None):
+    def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
         self.similarity = _NoSimilarity()
         self.settings = validated_settings(settings, self.defaults)
 
@@ -935,7 +942,7 @@ class FileHistoryPlanner:
     uses_similarity = False
     defaults: typing.ClassVar[dict] = {"pause_minutes": 30, "burst_seconds": 5.0}
 
-    def __init__(self, similarity=None, settings: dict | None = None):
+    def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
         self.similarity = _NoSimilarity()
         self.settings = validated_settings(settings, self.defaults)
 
@@ -1408,8 +1415,13 @@ STORY_PLAN_V3: StoryPlanFlat = {
 #: the camera's clock and optics -- a pause, a lens change, a burst, the
 #: exposure range, the equipment in hand, renditions of one act, clips.
 STORY_PLAN_V4: StoryPlan = {
-    **STORY_PLAN_V3,
+    # Spelled out, not spread: v4 is the version where `settings` stops
+    # being one flat frozenset and becomes a set per planner, so V3 is a
+    # StoryPlanFlat and this is a StoryPlan, and `**STORY_PLAN_V3` would
+    # be carrying the old shape in. Every other key is overridden below;
+    # `unsupported` is the one that rides across unchanged.
     "version": 4,
+    "unsupported": STORY_PLAN_V3["unsupported"],
     "planners": STORY_PLAN_V3["planners"] | frozenset({"capture_history"}),
     "claims": STORY_PLAN_V3["claims"]
     | frozenset({"pause", "lens_change", "burst", "exposure_range", "equipment", "renditions", "video_clip"}),

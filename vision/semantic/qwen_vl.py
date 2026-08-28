@@ -36,7 +36,7 @@ import threading
 # runs get_type_hints over the class, which evaluates the (lazily stringified)
 # ClassVar annotation in THIS module's globals -- a function-local import is
 # invisible there and the class definition dies with a NameError.
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel
@@ -147,7 +147,7 @@ def space(model: str, checkpoint: str, dimensions: int):
     return SpaceSpec(
         key=f"semantic.qwen.{model}.{checkpoint}",
         representation="float32",
-        dimensions=int(dimensions),
+        dimensions=dimensions,
         metric="cosine",
         producer=f"qwen3vl:{model}",
         producer_version=checkpoint,
@@ -271,12 +271,15 @@ def _for_embedding() -> type[PreTrainedModel]:
             self.model = Qwen3VLModel(config)
             self.post_init()
 
+        @override
         def get_input_embeddings(self):
             return self.model.get_input_embeddings()
 
+        @override
         def set_input_embeddings(self, value):
             self.model.set_input_embeddings(value)
 
+        @override
         def forward(self, **inputs):
             return self.model(**inputs)
 
@@ -357,7 +360,16 @@ class QwenBackend:
             {"role": "system", "content": [{"type": "text", "text": instruction}]},
             {"role": "user", "content": [content]},
         ]
-        text = self.processor.apply_chat_template([conversation], add_generation_prompt=True, tokenize=False)
+        # `apply_chat_template` is annotated `conversation: list[dict[str,
+        # str]] | list[list[dict[str, str]]]` and its own docstring, twenty
+        # lines below the signature, shows `content` as a LIST of typed
+        # parts -- exactly what is built above and what the template
+        # requires for anything but plain text. The annotation describes
+        # the text-only special case; the cast says which of the two to
+        # believe, because the multimodal path is the one this file exists
+        # for.
+        conversations = cast("list[list[dict[str, str]]]", [conversation])
+        text = self.processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
         images, video_inputs, video_kwargs = process_vision_info(
             [conversation], image_patch_size=IMAGE_PATCH_SIZE, return_video_metadata=True, return_video_kwargs=True
         )
@@ -409,11 +421,11 @@ _LOCK = threading.Lock()
 
 
 def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *, offline: bool = False) -> QwenBackend:
-    pinned = pin(str(models_dir), model, checkpoint)
-    key = (str(models_dir), model, pinned)
+    pinned = pin(models_dir, model, checkpoint)
+    key = (models_dir, model, pinned)
     with _LOCK:
         if key not in _LOADED:
-            backend = QwenBackend(str(models_dir), model, pinned, offline=offline)
+            backend = QwenBackend(models_dir, model, pinned, offline=offline)
             _LOADED[key] = backend
-            _LOADED[(str(models_dir), model, backend.checkpoint)] = backend
+            _LOADED[(models_dir, model, backend.checkpoint)] = backend
         return _LOADED[key]

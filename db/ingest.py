@@ -142,7 +142,7 @@ def _name_key(text: str) -> str:
     Ingest and the search box have to agree on this or the library grows a
     row per spelling of the same model.
     """
-    return "".join(character for character in str(text).lower() if character.isalnum())
+    return "".join(character for character in text.lower() if character.isalnum())
 
 
 def artifact(conn, kind: str, name: str, now: float, *, quoted=None, sha=None) -> int:
@@ -162,7 +162,7 @@ def artifact(conn, kind: str, name: str, now: float, *, quoted=None, sha=None) -
     conn.execute(
         "INSERT INTO artifact(id, kind, name, name_key, content_sha256, quoted_hash,"
         " first_seen_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-        (artifact_id, kind, str(name), _name_key(name), sha, quoted, now),
+        (artifact_id, kind, name, _name_key(name), sha, quoted, now),
     )
     return artifact_id
 

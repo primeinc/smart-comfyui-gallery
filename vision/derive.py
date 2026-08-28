@@ -138,7 +138,7 @@ logging.getLogger("pyvips").setLevel(logging.WARNING)
 #: a named alias says dynamic-on-purpose where a bare Any looks careless.
 #: `pyvips.Image.thumbnail` and `pyvips.Error` below are real attributes
 #: and are used as themselves.
-Raster: typing.TypeAlias = typing.Any
+type Raster = typing.Any
 
 #: EXIF orientation -> the turn libvips must make. db/oriented.TURNS is the
 #: same mapping for Pillow and the two are NOT interchangeable: `rot`
@@ -161,7 +161,7 @@ def upright(image: Raster, orientation: int | None) -> Raster:
     The counterpart of db/oriented.upright, which does this for Pillow.
     Orientation 1 returns the image untouched, as there.
     """
-    what = TURNS.get(int(orientation or 1))
+    what = TURNS.get(orientation or 1)
     if what is None:
         return image
     how, argument = what

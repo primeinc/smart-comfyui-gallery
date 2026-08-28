@@ -337,7 +337,7 @@ def describe_kind(kind: str, derive: str | None = None, total: int | None = None
     counted = COUNTED_HASH.get(derive) if kind == "hash" else COUNTED.get(kind)
     if counted is not None and total:
         template, unit = counted
-        return template.format(n=_many(int(total), unit))
+        return template.format(n=_many(total, unit))
     if kind == "hash":
         return HASH_MODES.get(derive, f"hash, mode {derive}")
     return KINDS.get(kind, kind.replace("_", " "))

@@ -71,7 +71,12 @@ HELMET = [
 ]
 
 
-def _member(ordinal, prompt, *, seed=100, precision="second", artifacts=(), sampler="Euler a", steps=20):
+def _member(
+    ordinal, prompt, *, seed=100, precision="second", artifacts=(), sampler="Euler a", steps=20
+) -> dict[str, object]:
+    # Stated, because tests below replace `annotations` and `place` on the
+    # result: inferred from this literal alone their type is `None`, and a
+    # snapshot member is a heterogeneous record either way.
     return {
         "ordinal": ordinal,
         "file_uuid": f"{ordinal:032x}",
@@ -591,6 +596,7 @@ def test_a_blank_prompt_is_never_embedded():
     class Spy(planning.LexicalPromptSimilarity):
         seen: typing.ClassVar[list] = []
 
+        @typing.override
         def embed(self, texts):
             self.seen.append(list(texts))
             return super().embed(texts)

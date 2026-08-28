@@ -2,7 +2,7 @@
 
 sg_web/wire.py is integration code: it decides how litestar validates a
 body and how it describes one. Both decisions are invisible to ruff, to
-pyright and to sglint -- they live in arguments litestar passes and in a
+the type checkers and to sglint -- they live in arguments litestar passes and in a
 schema it builds -- and both have been wrong here in ways nothing else
 caught.
 

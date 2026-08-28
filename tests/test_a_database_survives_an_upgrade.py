@@ -72,7 +72,7 @@ def library(tmp_path):
     path = tmp_path / "gallery.db"
     _built(path)
     conn = connect.connect(path)
-    root = int(
+    root = (
         conn.execute(
             "INSERT INTO root(path, kind, created_at) VALUES(?, 'library', ?)",
             (str(tmp_path / "pics"), NOW),
@@ -737,7 +737,7 @@ def v3_database_with_embeddings(tmp_path):
     path = tmp_path / "gallery.db"
     schemas.seed(path, 3)
     conn = connect.connect(path)
-    root = int(
+    root = (
         # The uuid stated, not the schema's randomblob(16): the fixture
         # feeds `migrated`'s cache key, which a random blob drifts.
         conn.execute(

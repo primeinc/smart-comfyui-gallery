@@ -423,7 +423,7 @@ class NovelAIAdapter:
             detection="marker",
             raw=raw.text.get("Comment") or raw.text.get("Description", ""),
         )
-        result.positive = str(raw.text.get("Description", "") or "").strip()
+        result.positive = (raw.text.get("Description", "") or "").strip()
         cls._apply_comment(result, comment)
         if not result.params.get("size"):
             set_param(result, "size", size_string(raw.width, raw.height))

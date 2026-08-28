@@ -111,7 +111,7 @@ the app runs; the vocabulary is `db/settings.py REGISTRY`
 ## Develop
 
 ```
-just check          ruff, sglint, format, pyright, repo hygiene, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
+just check          ruff, sglint, format, ty and pyrefly over the Python, tsc over the browser source, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
 just test           collects nothing: conftest marks the whole suite slow, so this
                     lane is empty by construction and exits clean. `just test-slow`
                     is the suite.

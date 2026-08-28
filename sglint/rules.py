@@ -596,7 +596,7 @@ def rule_connection_lifetime(
         # has already built for the other rules -- against `_closed_here`
         # and `_opened_here` each walking every function in the file.
         # This rule was 0.587s of the 1.09s every rule costs together.
-        if str(source.relative) not in excused_in and not any(
+        if source.relative not in excused_in and not any(
             isinstance(node, ast.Name) and node.id == "connect" for node in walked(source.tree)
         ):
             continue

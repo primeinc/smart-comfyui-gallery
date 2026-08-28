@@ -117,7 +117,7 @@ class GenerationParams:
         for name in cls._STR_FIELDS:
             value = params.pop(name, None)
             if value is not None:
-                setattr(gp, name, str(value))
+                setattr(gp, name, value)
         for name, coerce in ((n, to_int) for n in cls._INT_FIELDS):
             value = params.pop(name, None)
             if value is None:

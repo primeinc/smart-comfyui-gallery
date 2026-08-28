@@ -172,7 +172,7 @@ def plan_snapshot(state: State, data: PlanRequest) -> Response:
         except ValueError as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        told = {"request_sha256": asked.request_sha256, "plan_id": asked.plan_id, "job": None}
+        told: dict[str, object] = {"request_sha256": asked.request_sha256, "plan_id": asked.plan_id, "job": None}
         if asked.job_id is not None:
             # Announced and woken like every other submit: a plan job is
             # a job on the feed from the moment it is queued.

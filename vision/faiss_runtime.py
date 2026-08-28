@@ -68,18 +68,25 @@ def _register_cuda_dll_dirs() -> int:
     being missing.
     """
     registered = 0
-    for d in _cuda_dll_dirs():
-        if not os.path.isdir(d) or d in _REGISTERED_DLL_DIRS:
-            continue
-        _REGISTERED_DLL_DIRS.add(d)
-        try:
-            os.add_dll_directory(d)
-            registered += 1
-        except OSError as why:
-            _logger.warning("%s: not registered as a DLL directory: %s: %s", d, type(why).__name__, why)
-        current = os.environ.get("PATH", "")
-        if d not in current.split(os.pathsep):
-            os.environ["PATH"] = d + os.pathsep + current
+    # Windows-only, said HERE and not only at the call site:
+    # `os.add_dll_directory` exists on no other platform, and a
+    # precondition that lives in the caller is one a second caller does
+    # not have. `import_faiss` still gates on the same test. Written as
+    # the positive test around the body rather than an early return
+    # because that is the shape both type checkers narrow on.
+    if sys.platform == "win32":
+        for d in _cuda_dll_dirs():
+            if not os.path.isdir(d) or d in _REGISTERED_DLL_DIRS:
+                continue
+            _REGISTERED_DLL_DIRS.add(d)
+            try:
+                os.add_dll_directory(d)
+                registered += 1
+            except OSError as why:
+                _logger.warning("%s: not registered as a DLL directory: %s: %s", d, type(why).__name__, why)
+            current = os.environ.get("PATH", "")
+            if d not in current.split(os.pathsep):
+                os.environ["PATH"] = d + os.pathsep + current
     return registered
 
 

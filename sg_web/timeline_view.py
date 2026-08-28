@@ -57,7 +57,7 @@ def _bin_link(at: float, width: int, question: resultset.GalleryQuery = WHOLE) -
     hour's window was not counted in that bar and must not open from it."""
     low = facets.facet("context.moment", "gte", str(int(at)))
     high = facets.facet("context.moment", "lt", str(int(at) + width))
-    fine = facets.facet("context.granule", "lte", str(int(width)))
+    fine = facets.facet("context.granule", "lte", str(width))
     return _link(question, low, high, fine)
 
 
@@ -782,7 +782,7 @@ def _scrubber(conn, scope, question, whole_lo: float, whole_hi: float, lo: float
     # picture's moment + 1): a bin past it would be a gap after the
     # library, its range clipped to nothing
     while at <= whole_hi - 1.0:
-        told.append({"at": at, "end": at + width, "pictures": counts.get(int(at), 0), "units": 1})
+        told.append({"at": at, "end": at + width, "pictures": counts.get(at, 0), "units": 1})
         at += width
     told.reverse()
     # bins with pictures stand alone; empty bins run together

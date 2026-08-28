@@ -164,7 +164,7 @@ def for_derivatives(path, want: int, orientation: int | None) -> Image.Image:
 
 def is_turned(orientation: int | None) -> bool:
     """Whether this orientation changes which way up the picture is."""
-    return int(orientation or 1) in _turns()
+    return (orientation or 1) in _turns()
 
 
 # TURNS is still public -- module __getattr__ above serves it (PEP 562) so

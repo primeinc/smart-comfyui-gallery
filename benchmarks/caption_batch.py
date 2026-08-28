@@ -31,7 +31,6 @@ import json
 import pathlib
 import sys
 import time
-from typing import TYPE_CHECKING, cast
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -41,9 +40,6 @@ if str(REPO) not in sys.path:
 #: something other than occupancy, and the batch is a longer wait for
 #: whoever asked the job to stop.
 BATCHES = (1, 2, 4, 8, 16)
-
-if TYPE_CHECKING:
-    from transformers import BlipForConditionalGeneration
 
 
 def corpus(db: pathlib.Path, count: int, under: str | None) -> list[tuple[int, str]]:
@@ -190,11 +186,11 @@ def main() -> None:
         nonlocal baseline
         want = torch.float16 if half else torch.float32
         if next(captioner.model.parameters()).dtype != want:
-            # `Module.to` reaches pyright as the functools-wrapped
-            # descriptor transformers decorates it with, unbound; called
-            # as the method it is, and cast back to what it still is,
-            # exactly as vision/captions.py does.
-            captioner.model = cast("BlipForConditionalGeneration", torch.nn.Module.to(captioner.model, want))
+            # Unbound and unassigned, exactly as vision/captions.py does
+            # and for the same two reasons: transformers' functools wrapper
+            # around `Module.to` never binds, and the call mutates in place,
+            # so taking its return would only cost the concrete class.
+            torch.nn.Module.to(captioner.model, want)
         if captioner.device == "cuda":
             torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter()

@@ -406,7 +406,7 @@ def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path, console):
         try:
             # a library with a file and no faces at all, then the chain
             made = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/s','library',0)")
-            root = int(made.lastrowid or 0)
+            root = made.lastrowid or 0
             folder = scan.mint(conn, "folder", "s")
             conn.execute(
                 "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?,?,NULL,'s',0)", (folder, root)

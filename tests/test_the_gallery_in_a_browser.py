@@ -51,7 +51,7 @@ def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live, unbr
     # `to_have_count`, not `count() ==`: the first cell having an image
     # does not mean the last cell exists yet, and `count()` answers about
     # the instant it is asked rather than about the page. A web-first
-    # assertion retries. Measured: this line, under four workers.
+    # assertion retries. Measured: this line, under a loaded runner.
     expect(page.locator("[data-grid] a.cell")).to_have_count(FILES)
     # every thumbnail really loaded: natural size, not a broken image
     page.wait_for_function(
