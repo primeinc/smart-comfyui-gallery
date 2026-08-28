@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_name.html" import middle %}
 {% import "_pictures.html" as pictures %}
 {% from "_bar.html" import index %}
 {% block title %}Duplicates{% endblock %}
@@ -17,7 +18,7 @@
       {% for group in groups %}
       <li class="dupe-group" data-dupe-group="{{ group.slug }}" data-dupe-kind="{{ group.kind }}">
         <h2>
-          <a href="/i/{{ group.slug }}">{{ group.name }}</a>
+          <a href="/i/{{ group.slug }}">{{ middle(group.name) }}</a>
           <span class="dupe-count" data-dupe-copies="{{ group.copies }}">{{ group.copies }} copies</span>
         </h2>
         {# The evidence, above the claim that rests on it. The verdict
@@ -57,7 +58,7 @@
               {{ pictures.face(one) }}
             </a>
             <div class="dupe-member-said">
-              <span class="dupe-member-name">{{ one.name }}</span>
+              <span class="dupe-member-name">{{ middle(one.name) }}</span>
               <span class="muted">in <a href="/f/{{ one.folder }}">{{ one.folder }}</a></span>
               {# A placement, not a decoration: this is the thing that is
                  lost if the wrong copy goes. #}

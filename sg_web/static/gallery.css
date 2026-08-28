@@ -2514,9 +2514,20 @@ p {
   margin: 0 0 4px;
   font-size: 1.05rem;
 }
+/* The name is middle-cut (templates/_name.html), so it is one run that
+   never breaks -- the head ellipsizes INSTEAD of wrapping. A flex item
+   will not shrink below its content unless it is told to, so without
+   this the whole heading pushed the page 43px sideways rather than
+   cutting the name it was given a cut for. */
+.dupe-group h2 > a {
+  min-width: 0;
+}
+/* "6 copies" is one phrase. Beside a long filename on a narrow window it
+   broke across the line, leaving a bare "6" above the word it counts. */
 .dupe-count {
   color: var(--ink-muted);
   font-weight: normal;
+  white-space: nowrap;
 }
 .dupe-verdict {
   margin: 0 0 8px;
@@ -2543,7 +2554,10 @@ p {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  max-width: 30rem;
+  /* A cap, not a width. `30rem` alone is 480px, so on a 390px window the
+     row kept its full measure and took the page sideways with it. */
+  max-width: min(30rem, 100%);
+  min-width: 0;
 }
 .dupe-member[data-dupe-best] {
   border-color: var(--accent);
@@ -3731,8 +3745,22 @@ p {
   .river-rail .stamp {
     --t-stamp-display: 30px;
   }
+  /* The axis loses 60px here, and the two layers inside it are anchored
+     to opposite edges: .axis-frames from the top (34px down, 120 tall),
+     .axis-samples from the bottom (52 up, 40 tall). At 260 that leaves
+     154 -> 168, a 14px gap. At 200 the samples move up to 108 -> 148 and
+     land INSIDE the frames, so a bin's picture painted over the session
+     caption underneath it and "100 pictures generated" was readable only
+     in the gaps between pictures -- 71% of every label covered, measured
+     at 390px.
+
+     So the frames band gives up the same 60px the axis did, which puts
+     the gap back at 94 -> 108. Both layers are still whole. */
   .axis {
     height: 200px;
+  }
+  .axis-frames {
+    height: 60px;
   }
   .surface-head {
     grid-template-areas: "window" "note" "zoom";
@@ -4154,6 +4182,27 @@ body:has([data-viewer-page]) .shell:focus-within {
   padding: 6px 12px;
   color: var(--ink-muted);
 }
+/* A SHEET at narrow widths, the same answer the filters panel gets.
+
+   The rule above opens the panel UPWARD, which is right when the shell
+   is a rail down the left and its foot sits at the bottom of the window.
+   Below 860px the shell is a row across the TOP, so upward put the panel
+   at y = -248 -- off the top of the page and unreachable -- while its
+   300px minimum started wherever `activity` happened to land and pushed
+   the page sideways too.
+
+   After the rule it overrides, not with the other narrow-width rules:
+   those are written earlier in this file and would lose on source
+   order. */
+@media (max-width: 860px) {
+  .activity-jobs {
+    position: fixed;
+    inset: auto var(--s3) var(--s3) var(--s3);
+    width: auto;
+    min-width: 0;
+    max-height: 60vh;
+  }
+}
 .job {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -4326,16 +4375,30 @@ kbd {
   margin: 0 0 12px;
   padding: 0;
 }
+/* These rows hold identifiers nothing can break for them: a model
+   version like `yunet-2023mar+arcface-glintr100-ms1600`, a library path.
+   Unwrapped, one of them demanded 446px inside a 390px window and took
+   the whole console sideways with it -- and a page that scrolls sideways
+   hides its right-hand half, which here is the `set` button.
+
+   So the row wraps and the long word may break inside itself. Breaking
+   an identifier mid-token is ugly; hiding half the console is worse. */
 .operations-roots li,
 .operations-clusterings li {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
   padding: 8px 12px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   margin-bottom: 6px;
+}
+.operations-roots li > *,
+.operations-clusterings li > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* --- settings, by what the row is about -----------------------------
@@ -5710,6 +5773,26 @@ body:has(.tray[data-tray="closed"]:not([hidden])) .person-grid {
 .operations-settings .operations-form > label > :is(input, select) {
   width: 100%;
   max-width: 34ch;
+}
+/* On a phone the key goes ABOVE its control rather than beside it.
+   Beside it the row cannot shrink: the key track is a fixed 22ch and the
+   input carries its own intrinsic width, so the label measured 389px in a
+   390px window and the whole page scrolled sideways by 88 -- with the
+   `set` button and the default off the right edge, which is the half you
+   need to change anything. Same order, one column.
+
+   Here rather than with the other narrow-width rules, for the reason the
+   block above gives: these have to outrank `.operations-form label`, and
+   that is written later in this file. */
+@media (max-width: 760px) {
+  .operations-settings .operations-form > label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s1);
+    min-width: 0;
+  }
+  .operations-settings .operations-form > label > :is(input, select) {
+    max-width: none;
+  }
 }
 
 /* --- the picture's own band -----------------------------------------
