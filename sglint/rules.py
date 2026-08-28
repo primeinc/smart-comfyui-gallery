@@ -1422,6 +1422,28 @@ UNSURFACED = {
     # Reached by an address the SERVER hands the client, so the string
     # check below cannot see it.
     "/search": "linked from the evolution surface as view.links.search (frontend/src/evolution.ts)",
+    # The sweeps, in their machine spelling. Nothing in the interface posts
+    # to these: a person starts the same work from the operations console,
+    # which posts to /operations/jobs/{kind} and is answered by LAUNCHERS
+    # (sg_web/operations.py). Every one of these twelve has an entry there,
+    # so the CAPABILITY is reachable and only this address is not.
+    #
+    # Kept rather than deleted because they are the API a script uses, and
+    # the console's own route takes a kind rather than a path. If one is
+    # ever dropped from LAUNCHERS, its work stops being reachable by
+    # pointing and this record becomes the wrong answer.
+    "/jobs/verify": "console sweep `verify`",
+    "/jobs/faces": "console sweep `faces`",
+    "/jobs/annotate": "console sweep `annotate`",
+    "/jobs/catch-up": "console sweep `catch_up`",
+    "/jobs/thumbs": "console sweep `thumbs`",
+    "/jobs/phash": "console sweep `phash`",
+    "/jobs/embed": "console sweep `embed`",
+    "/jobs/embed_prompts": "console sweep `embed_prompts`",
+    "/jobs/dupes": "console sweep `dupes`",
+    "/jobs/context": "console sweep `context`",
+    "/jobs/events": "console sweep `events`",
+    "/jobs/cluster": "console sweep `cluster`",
 }
 
 #: Capabilities that are not addresses. Same contract as above -- recorded
@@ -1484,12 +1506,24 @@ def _reachable_text(root: pathlib.Path) -> str:
 def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     """SG010: something the application can do that no surface reaches.
 
-    The source of truth is the addresses served, not anybody's memory: a
-    GET whose static prefix appears in no template and no authored module
-    is not reachable.
+    The source of truth is the addresses served, not anybody's memory: an
+    address whose static prefix appears in no template and no authored
+    module is not reachable.
 
     The prefix rather than the whole path, because a parameterised address
     is built and never written out: `/f/{slug}` is reached by `/f/`.
+
+    EVERY VERB, not only GET. This read `@get` alone, which left every
+    POST outside the rule -- and twelve of them were unreached: the sweep
+    endpoints in app.py, whose work a person starts from the console at
+    /operations/jobs/{kind} instead. A capability you can only start by
+    writing your own request is the same defect as one you can only start
+    by pressing an undocumented letter.
+
+    The router prefix, too. A decorator path is not the address:
+    operations.py ends in `Router(path="/operations", ...)`, so its
+    `@post("/jobs/{kind}")` answers at /operations/jobs/{kind}. Reading
+    the decorator alone files it under the wrong name.
 
     Capabilities that are not addresses cannot be found by reading routes.
     Those are recorded by hand in UNSURFACED_BEYOND_ROUTES.
@@ -1501,12 +1535,16 @@ def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding
     reachable = _reachable_text(root)
 
     served: list[tuple[str, pathlib.Path, int]] = []
-    getter = re.compile(r"@get\(\"([^\"]+)\"")
+    verb = re.compile(r"@(?:get|post|put|patch|delete)\(\"([^\"]+)\"")
+    mounted = re.compile(r"Router\(\s*path=\"([^\"]+)\"")
     for source in sorted(web.glob("*.py")):
-        for n, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
-            hit = getter.search(line)
+        text = source.read_text(encoding="utf-8")
+        at = mounted.search(text)
+        prefix = at.group(1).rstrip("/") if at else ""
+        for n, line in enumerate(text.splitlines(), 1):
+            hit = verb.search(line)
             if hit:
-                served.append((hit.group(1), source, n))
+                served.append((f"{prefix}{hit.group(1)}", source, n))
 
     for path, source, line in served:
         cut = path.find("{")
