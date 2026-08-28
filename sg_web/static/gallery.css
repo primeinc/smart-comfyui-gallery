@@ -1807,7 +1807,17 @@ p {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /* The floor answers to the shelf's own width, not to a breakpoint.
+     A flat 190px floor needed 400px for two columns -- 190 + 190 + a
+     16px gap -- and a 390px phone offers 358, so it missed by 42 and
+     every shelf was one card per row: six folders, six screens.
+
+     45% of the shelf is 161px on that phone, which fits two, and is far
+     past 190 on a desktop, where the clamp holds the card at 190 and the
+     row count is unchanged. Percentages in a track size resolve against
+     the grid's content box, so this reads the container it is in rather
+     than guessing at the window. */
+  grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 45%, 190px), 1fr));
   gap: var(--s4);
   max-width: 1100px;
 }
