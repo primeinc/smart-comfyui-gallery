@@ -2855,6 +2855,26 @@ p {
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
+/* The strip takes an `auto` column, and three 64px thumbnails plus their
+   gaps are 200 of it. On a 390px phone that left the words about 118px,
+   so "226 photographs with the Canon EOS 5D Mark III from February 10,
+   2013" came down the card SEVEN lines high with the meta five more
+   under it -- a title read one or two words at a time.
+
+   Below 520px of its own width the card stacks: pictures across the top,
+   words full width beneath. Asked of the list rather than the window,
+   the way the console does it (sg_web/static/operations.css, @container
+   console), because the same card in a narrow column on a wide screen
+   has the same problem. */
+.stories {
+  container-type: inline-size;
+  container-name: stories;
+}
+@container stories (max-width: 520px) {
+  .story-card {
+    grid-template-columns: 1fr;
+  }
+}
 .story-strip {
   display: flex;
   gap: 4px;
