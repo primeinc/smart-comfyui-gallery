@@ -1,21 +1,17 @@
 /**
  * The generation recipe: readable, editable, and copyable.
  *
- * Two things this surface has to get right.
- *
  * The text is a SCRATCH COPY. Somebody looking at a generated picture
- * wants the prompt in order to take it somewhere else -- usually with a
- * word changed, a clause deleted, a LoRA dropped. So the fields are real
- * textareas: caret, selection, undo, Ctrl-A, delete the lot. And none of
- * it is saved. What a file says it is is a FACT, not a preference; the
- * next picture brings the file's own text back, and nothing recorded
- * moves. `revert` puts this picture's text back without walking away.
+ * wants the prompt in order to take it somewhere else, usually with a
+ * word changed or a LoRA dropped, so the fields are real textareas --
+ * caret, selection, undo, select-all. None of it is saved: what a file
+ * says it is is a fact, not a preference. The next picture brings its own
+ * text back, and `revert` restores this one's without navigating away.
  *
- * Copying has to produce something USABLE. A "copy all" that omits LoRA
- * weights or the sampler is the complaint people have about every other
- * gallery's copy button -- it looks like it worked and the picture does
- * not come back. So the whole recipe is emitted in the shape the tools
- * that made it already read, and it copies what is ON SCREEN: an edited
+ * Copying has to produce something that works. A "copy all" that omits
+ * LoRA weights or the sampler looks like it worked and does not bring the
+ * picture back, so the whole recipe is emitted in the shape the tools
+ * that made it already read. It copies what is ON SCREEN: an edited
  * prompt is the one you meant to take.
  */
 

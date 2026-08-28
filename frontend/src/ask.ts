@@ -1,26 +1,21 @@
-// Asking a person something, in the application, rather than through the
-// browser's own 1995 boxes.
+// Asking a person something, inside the application.
 //
-// `window.prompt`, `window.confirm` and `window.alert` were the last
-// surfaces here that did not look like this application. They are worse
-// than ugly: prompt has one unlabelled text field and no way to offer
-// choices, so "which smart collection?" became a comma-joined list of
-// slugs pasted into a sentence with an instruction to type one back. That
-// is the application asking a person to remember its internal spelling,
-// which is the one thing it exists to do for them.
+// `window.prompt` offers one unlabelled text field and no choices, so
+// "which smart collection?" became a comma-joined list of slugs pasted
+// into a sentence, with an instruction to type one back. That asks a
+// person to remember the application's internal spelling.
 //
-// Built on the native <dialog>, so the parts that are hard to get right
-// are the browser's: focus moves in and returns to whatever opened it,
-// everything else goes inert, Escape closes, the top layer is above every
-// stacking context on the page, and ::backdrop is a real element to style.
-// A hand-rolled div reimplements all of that, usually badly -- the MDN
-// note is blunt about it ("ensure that all expected default behaviors are
-// supported").
+// Built on the native <dialog>, so the hard parts are the browser's:
+// focus moves in and returns to whatever opened it, everything else goes
+// inert, Escape closes, the top layer sits above every stacking context
+// on the page, and ::backdrop is a real element to style. A hand-rolled
+// div has to reimplement all of that.
 //
 // One shape underneath: a <form method="dialog"> whose submitting button
-// SETS the return value. So "which one" and "yes or no" are the same
-// mechanism -- the buttons differ, the reading does not -- and a dismissal
-// is the empty return value the browser leaves behind when nobody chose.
+// sets the return value. "Which one" and "yes or no" are the same
+// mechanism -- the buttons differ, the reading does not -- and a
+// dismissal is the empty return value the browser leaves when nobody
+// chose.
 import { requireElement } from "./dom";
 
 /** What the browser leaves in `returnValue` when nothing was chosen. */
