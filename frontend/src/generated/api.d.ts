@@ -3831,6 +3831,7 @@ export interface components {
             x: number;
             label: string;
             major: boolean;
+            named: boolean;
         };
         /** TimelineYearCell */
         TimelineYearCell: {

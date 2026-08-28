@@ -20471,6 +20471,9 @@
                     },
                     "major": {
                         "type": "boolean"
+                    },
+                    "named": {
+                        "type": "boolean"
                     }
                 },
                 "additionalProperties": false,
@@ -20478,6 +20481,7 @@
                 "required": [
                     "label",
                     "major",
+                    "named",
                     "x"
                 ],
                 "title": "TimelineTick"

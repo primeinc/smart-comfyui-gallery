@@ -77,7 +77,7 @@
       {% if surface.now_x is not none %}<g class="now"><line x1="{{ surface.now_x }}" x2="{{ surface.now_x }}" y1="0" y2="200"/></g>{% endif %}
     </svg>
     <div class="axis-skips" aria-hidden="true">{% for gap in surface.skipped %}<span style="left:{{ gap.x / 10 }}%;width:{{ gap.w / 10 }}%">{{ gap.lasted }}</span>{% endfor %}</div>
-    <div class="axis-labels" aria-hidden="true">{% for tk in surface.ticks %}<span class="{% if tk.major %}major{% endif %}" style="left:{{ tk.x / 10 }}%">{{ tk.label }}</span>{% endfor %}{% if surface.now_x is not none %}<span class="now" style="left:{{ surface.now_x / 10 }}%">now</span>{% endif %}</div>
+    <div class="axis-labels" aria-hidden="true">{% for tk in surface.ticks if tk.named %}<span class="{% if tk.major %}major{% endif %}" style="left:{{ tk.x / 10 }}%">{{ tk.label }}</span>{% endfor %}{% if surface.now_x is not none %}<span class="now" style="left:{{ surface.now_x / 10 }}%">now</span>{% endif %}</div>
     <div class="axis-frames">
       {% for s in surface.sessions %}<a class="frame" data-frame="{{ s.id }}" href="#session-{{ s.id }}" style="left:{{ s.x / 10 }}%;width:{{ s.w / 10 }}%" title="{{ s.title }} · {{ s.when }}"><span class="frame-strip">{% for src in s.samples[:4] %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</span><span class="frame-label">{{ s.title }}</span></a>{% endfor %}
     </div>

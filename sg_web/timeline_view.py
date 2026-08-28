@@ -470,7 +470,7 @@ def _ticks(lo: float, hi: float, axis: projecting.Projection | None = None) -> l
                     }
                 )
             d = _next_month(d)
-        return out
+        return _thin(out, TICK_LABEL_WIDE, "named")
     step = next(s for most, s in _TICK_STEPS if span <= most)
     t = -(-int(lo) // step) * step
     while t < hi:
@@ -482,7 +482,7 @@ def _ticks(lo: float, hi: float, axis: projecting.Projection | None = None) -> l
         else:
             out.append({"x": x(t), "label": day_label if midnight else d.strftime("%H:%M"), "major": midnight})
         t += step
-    return out
+    return _thin(out, TICK_LABEL_WIDE, "named")
 
 
 def _picture(row, qs: str) -> dict:
@@ -887,28 +887,31 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
     return months
 
 
-#: How much room a four-digit year needs on the overview, in the strip's
-#: own units. It is 1000 units wide and renders around 1150px, and the
-#: label measures 25px.
+#: Room a label needs, in the 1000 units both axes are drawn in. They
+#: render around 1150px wide, so a unit is about 1.15px. A year measures
+#: 25px and a clock time 36px.
 YEAR_LABEL_WIDE = 28.0
+TICK_LABEL_WIDE = 34.0
 
 
-def _year_labels(years: list[dict], apart: float = YEAR_LABEL_WIDE) -> list[dict]:
-    """Which year gridlines get a label.
+def _thin(marks: list[dict], apart: float, into: str) -> list[dict]:
+    """Set `into` on the marks with room to be named.
 
-    The overview axis collapses runs that hold nothing, so a library with
-    a gap between 2013 and 2024 packs eleven years into twenty pixels.
-    Every year keeps its line; only years far enough from the last label
-    get one, or they are drawn on top of each other and none is legible.
+    Both axes collapse runs that hold nothing, so marks chosen by elapsed
+    time can land a couple of pixels apart: a library with a gap between
+    2013 and 2024 packs eleven years into twenty pixels, and an hour tick
+    either side of a collapsed run does the same. Every mark keeps its
+    line — only the ones far enough from the last name get named, or they
+    are drawn on top of each other and none is legible.
 
-    Newest first, so the year holding the pictures is always named.
+    Walked newest first, so the end holding the pictures is always named.
     """
     last: float | None = None
-    for one in reversed(years):
-        one["label"] = last is None or last - one["x"] >= apart
-        if one["label"]:
+    for one in reversed(marks):
+        one[into] = last is None or last - one["x"] >= apart
+        if one[into]:
             last = one["x"]
-    return years
+    return marks
 
 
 #: The widest window that draws month sheets; wider, the body is years.
@@ -1212,14 +1215,16 @@ def _surface(
         one["drawn_pictures"] = drawn.get(one["id"], [])
         one["drawn_lead"] = _lead(one["drawn_pictures"]) if one["drawn_pictures"] else None
         one["drawn_leads"] = _leads(one["drawn_pictures"]) if one["drawn_pictures"] else []
-    overview["years"] = _year_labels(
+    overview["years"] = _thin(
         [
             {
                 "year": y,
                 "x": round(whole_axis.x(datetime.datetime(y, 1, 1, tzinfo=datetime.UTC).timestamp()), 2),
             }
             for y in range(_utc(whole_lo).year + 1, _utc(whole_hi).year + 1)
-        ]
+        ],
+        YEAR_LABEL_WIDE,
+        "label",
     )
     return {
         "composition": composition,
@@ -1459,6 +1464,10 @@ class TimelineTick(Wire):
     x: float
     label: str
     major: bool
+    #: Whether to print the label. The axis collapses runs holding
+    #: nothing, so ticks either side of one land a few pixels apart; every
+    #: tick keeps its line, only those with room are named.
+    named: bool
 
 
 class TimelineOrigin(Wire):
