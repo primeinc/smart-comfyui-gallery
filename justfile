@@ -435,6 +435,13 @@ mod api
 # Authentic historical db/schema.sql, vendored for migration fixtures (schema.just)
 mod schema
 
+# Its runtimes live in the `compat` dependency group, which `uv sync` does
+# not install by default: `uv sync --group compat`. Nothing under db/ or
+# sg_web/ may import any of them.
+#
+# What must be durably stored after an expensive face observation
+mod compat
+
 # A decades-wide sample library on disk: mixed modalities, several
 # generator dialects, and the holes a real folder has (corpus.just)
 mod corpus

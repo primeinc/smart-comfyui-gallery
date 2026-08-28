@@ -90,6 +90,36 @@ dependencies = [
 ]
 
 [dependency-groups]
+# The consumer compatibility suite's runtimes (compat/). NOT in
+# `default-groups`, so `uv sync` leaves them out and the application's
+# environment is unchanged by them; `uv sync --group compat` installs them.
+# That separation is deliberate: nothing under db/ or sg_web/ may import any
+# of this, and a group nobody syncs by accident is the cheapest way to keep
+# that true.
+#
+# These three are pinned to COMMITS in compat/manifest.toml, and a wheel is
+# not automatically the commit it claims. `compat/harness/provenance.py`
+# hashes the installed file against `git show <sha>:<path>` and fails when
+# they diverge -- verified at facexlib 0.3.0 / 260620ae9399 and diffusers
+# 0.40.0 / c1bf18c92c62, both byte-identical. Moving a floor here without
+# moving the manifest pin is what that check exists to catch.
+compat = [
+    # PuLID, ConsisID and InfiniteYou all re-detect with facexlib's OWN
+    # retinaface rather than reusing insightface's keypoints, so whether a
+    # retained patch is large enough for them to find the same face is not
+    # derivable -- it has to be measured with the real detector in the loop.
+    "facexlib>=0.3.0",
+    # ConsisID's entrypoint is committed in diffusers, not in its own repo:
+    # pipelines/consisid/consisid_utils.py::process_face_embeddings.
+    "diffusers>=0.40.0",
+    # ReActor's face model is a safetensors file and its LOADER is upstream
+    # code, which makes it the one consumer whose assertion can be "upstream
+    # accepted our bytes" rather than "our two functions agree". Explicit
+    # rather than leaned on transitively through transformers.
+    "safetensors>=0.8.0",
+    "consisid-eva-clip>=1.0.2",
+    "torchaudio>=2.11.0",
+]
 dev = [
     "pytest",
     # Banded, matching [tool.ruff].required-version: ruff refuses to run
@@ -195,6 +225,18 @@ torchvision = [
 torchcodec = [
   { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+# torchaudio is DELIBERATELY not pinned here, and it is the only one of the
+# four that is not. The cu132 index publishes no build for the whole Python
+# range this project declares -- attempted, and uv refused: "only
+# torchaudio<=2.2.0 is available" for python_full_version >= 3.14 against a
+# requirement of >=2.11.0. So the pin cannot resolve.
+#
+# It therefore comes from PyPI as 2.11.0+cpu beside torch 2.13.0+cu132. That
+# mismatch is acceptable ONLY because of what uses it: compat/ calls exactly
+# one function, `torchaudio.functional.resample`, on CPU, to reproduce the
+# deterministic waveform ID-LoRA feeds its audio VAE. Nothing the application
+# ships imports torchaudio at all. If anything ever needs it on the GPU, this
+# note is wrong and the version range has to be revisited first.
 
 # explicit = true keeps this index to the packages pinned to it above, so
 # generic dependencies (jinja2, numpy, ...) still come from PyPI -- uv's
@@ -628,6 +670,7 @@ docstring-code-format = false
 # that platform; "all" reads none of them strictly.
 [tool.ty.src]
 include = [
+    "compat",
     "db",
     "metaparse",
     "sg_web",
@@ -709,6 +752,7 @@ missing-override-decorator = "error"
 
 [tool.pyrefly]
 project-includes = [
+    "compat",
     "db",
     "metaparse",
     "sg_web",

@@ -1,0 +1,3577 @@
+{
+  "corpus": {
+    "licence": "cc-by-nc-nd-4.0",
+    "root": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset",
+    "sampled": [
+      {
+        "identity": "1",
+        "role": "id_document",
+        "sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc"
+      },
+      {
+        "identity": "1",
+        "role": "id_document",
+        "sha256": "fb197f235ae684d9f5a9f600a480475d0eafb946fcfbd306a40239ff0a3eefe6"
+      },
+      {
+        "identity": "1",
+        "role": "selfie",
+        "sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87"
+      },
+      {
+        "identity": "1",
+        "role": "selfie",
+        "sha256": "4a7ce0cb76dc4a5fb9f495b86b1f79cf05b94789597b2c94c0bf653d83f517b7"
+      },
+      {
+        "identity": "2",
+        "role": "id_document",
+        "sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4"
+      },
+      {
+        "identity": "2",
+        "role": "id_document",
+        "sha256": "f14f0c7b547477dc0804f7bb1e0fadae297934938439d5643b763f62ab4adb02"
+      },
+      {
+        "identity": "2",
+        "role": "selfie",
+        "sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382"
+      },
+      {
+        "identity": "2",
+        "role": "selfie",
+        "sha256": "4f96680fab3b37037169bbd1ed4126b67f8e75f1fd582425b72ce98326fea40b"
+      },
+      {
+        "identity": "3",
+        "role": "id_document",
+        "sha256": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474"
+      },
+      {
+        "identity": "3",
+        "role": "id_document",
+        "sha256": "fe9915cd9e674f4a8d801ebf8f566ea1f1e5f3e595391423d23d03e7d285acbc"
+      },
+      {
+        "identity": "3",
+        "role": "selfie",
+        "sha256": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e"
+      },
+      {
+        "identity": "3",
+        "role": "selfie",
+        "sha256": "28b17b45b7518ee7cdbecd46b04edb58ba30c57e82c204404e8ef66e84e05aed"
+      },
+      {
+        "identity": "4",
+        "role": "id_document",
+        "sha256": "395f6b43d6f60b51c0182ff7341453ffce3058cd5d10f18221287843968a7d2a"
+      },
+      {
+        "identity": "4",
+        "role": "id_document",
+        "sha256": "95a5c76bd2402cefd0849d09249764da6b500038e47df29687549ad8cab0a94e"
+      },
+      {
+        "identity": "4",
+        "role": "selfie",
+        "sha256": "079e94f7952579f7676ffab8e2f43dfe9ca15434f4c52203d02a8babe3f35053"
+      },
+      {
+        "identity": "4",
+        "role": "selfie",
+        "sha256": "5921403529b9cf5e1defb5a2840b8ca5ef0f0f4a83c92aab0516d6fbecdf36cc"
+      },
+      {
+        "identity": "5",
+        "role": "id_document",
+        "sha256": "942a86cdc40eff42a6808b30a4dd88c681c26e649952bbc30ea39fde84e3fb92"
+      },
+      {
+        "identity": "5",
+        "role": "id_document",
+        "sha256": "ec476d963f46ca35b697d6c3ce1764d407c5813a64d287b6f1c1200d0f8da870"
+      },
+      {
+        "identity": "5",
+        "role": "selfie",
+        "sha256": "03d845f448d6f8e73d2837dd73fd519f9104c979081b3e17ae6d28486fcf6ee7"
+      },
+      {
+        "identity": "5",
+        "role": "selfie",
+        "sha256": "0f4f50ebbfc628676c04a667f221f9ff9f42dafbed7a738e24c3ffdb3d8a3ed4"
+      },
+      {
+        "identity": "6",
+        "role": "id_document",
+        "sha256": "241d9d238c8c545995c5e1e2cf707b4701abdcb20c660f13e6a6d7aa07a7a154"
+      },
+      {
+        "identity": "6",
+        "role": "id_document",
+        "sha256": "d54b857141de35f4a214f96c27efa78b24b68066e0f758f9b20626edbfdd97c4"
+      },
+      {
+        "identity": "6",
+        "role": "selfie",
+        "sha256": "120f14390283089226f25d589555ef880b8e284757d733157ceb5edb6e4863e3"
+      },
+      {
+        "identity": "6",
+        "role": "selfie",
+        "sha256": "299fe0cc6700b05e7da00b4961053f7dc6bd2cb44336bdbb636e971651366ed9"
+      },
+      {
+        "identity": "7",
+        "role": "id_document",
+        "sha256": "1becc6271525ee1ca858a479b74206017371b240dfe87011a9cb0c1058c7f4ae"
+      },
+      {
+        "identity": "7",
+        "role": "id_document",
+        "sha256": "4691e0b470202724bd1511739339d6e8f8c2a84332c50e1a941607e90c6f96b3"
+      },
+      {
+        "identity": "7",
+        "role": "selfie",
+        "sha256": "2dc1b4e0824db259d03efe5a71f3f2050f20ea530a1f52ee665ea18cb000d36e"
+      },
+      {
+        "identity": "7",
+        "role": "selfie",
+        "sha256": "36da6f92e75bd568d19691ef8b6a769975b7b1d82f900ad781bbc0b9451166d6"
+      }
+    ],
+    "vendored": false
+  },
+  "derivability": {
+    "normed_embedding_from_embedding": {
+      "exact": 28,
+      "faces": 28,
+      "inexact": 0,
+      "rule": "raw / linalg.norm(raw), float32",
+      "worst_max_abs_diff": 0.0
+    }
+  },
+  "fields": {
+    "age": {
+      "at_1k": 8000,
+      "at_1m": 8000000,
+      "at_22k": 176000,
+      "bytes_min": 8,
+      "bytes_per_face": 8,
+      "dtype": "int64",
+      "faces": 28,
+      "kind": "int",
+      "shapes": [
+        "None"
+      ]
+    },
+    "bbox": {
+      "at_1k": 16000,
+      "at_1m": 16000000,
+      "at_22k": 352000,
+      "bytes_min": 16,
+      "bytes_per_face": 16,
+      "dtype": "float32",
+      "faces": 28,
+      "kind": "ndarray",
+      "shapes": [
+        "(4,)"
+      ]
+    },
+    "det_score": {
+      "at_1k": 8000,
+      "at_1m": 8000000,
+      "at_22k": 176000,
+      "bytes_min": 8,
+      "bytes_per_face": 8,
+      "dtype": "float64",
+      "faces": 28,
+      "kind": "float",
+      "shapes": [
+        "None"
+      ]
+    },
+    "embedding": {
+      "at_1k": 2048000,
+      "at_1m": 2048000000,
+      "at_22k": 45056000,
+      "bytes_min": 2048,
+      "bytes_per_face": 2048,
+      "dtype": "float32",
+      "faces": 28,
+      "kind": "ndarray",
+      "shapes": [
+        "(512,)"
+      ]
+    },
+    "gender": {
+      "at_1k": 8000,
+      "at_1m": 8000000,
+      "at_22k": 176000,
+      "bytes_min": 8,
+      "bytes_per_face": 8,
+      "dtype": "int64",
+      "faces": 28,
+      "kind": "int",
+      "shapes": [
+        "None"
+      ]
+    },
+    "kps": {
+      "at_1k": 40000,
+      "at_1m": 40000000,
+      "at_22k": 880000,
+      "bytes_min": 40,
+      "bytes_per_face": 40,
+      "dtype": "float32",
+      "faces": 28,
+      "kind": "ndarray",
+      "shapes": [
+        "(5, 2)"
+      ]
+    },
+    "landmark_2d_106": {
+      "at_1k": 848000,
+      "at_1m": 848000000,
+      "at_22k": 18656000,
+      "bytes_min": 848,
+      "bytes_per_face": 848,
+      "dtype": "float32",
+      "faces": 28,
+      "kind": "ndarray",
+      "shapes": [
+        "(106, 2)"
+      ]
+    },
+    "landmark_3d_68": {
+      "at_1k": 816000,
+      "at_1m": 816000000,
+      "at_22k": 17952000,
+      "bytes_min": 816,
+      "bytes_per_face": 816,
+      "dtype": "float32",
+      "faces": 28,
+      "kind": "ndarray",
+      "shapes": [
+        "(68, 3)"
+      ]
+    },
+    "pose": {
+      "at_1k": 12000,
+      "at_1m": 12000000,
+      "at_22k": 264000,
+      "bytes_min": 12,
+      "bytes_per_face": 12,
+      "dtype": "float32",
+      "faces": 28,
+      "kind": "ndarray",
+      "shapes": [
+        "(3,)"
+      ]
+    }
+  },
+  "images": [
+    {
+      "faces": [
+        {
+          "bbox": [
+            1112.2454833984375,
+            916.2637329101562,
+            1742.3544921875,
+            1856.06787109375
+          ],
+          "det_score": 0.8734099864959717,
+          "embedding_norm": 25.081518173217773,
+          "embedding_sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -2.672457695007324,
+            "roll": -0.4571410119533539,
+            "yaw": -1.2033953666687012
+          }
+        }
+      ],
+      "height": 4032,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_2.jpg",
+      "seconds": 0.44645130005665123,
+      "sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "width": 3024
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1155.9639892578125,
+            2078.35009765625,
+            1852.4190673828125,
+            3049.598388671875
+          ],
+          "det_score": 0.8168540000915527,
+          "embedding_norm": 24.052093505859375,
+          "embedding_sha256": "d44f256492ebebc51e0f029551dc5c0b88b0140b9236805949cfc26895689979",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -4.102226257324219,
+            "roll": -1.6733355522155762,
+            "yaw": 2.889671564102173
+          }
+        }
+      ],
+      "height": 4032,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_1.jpg",
+      "seconds": 0.232169600087218,
+      "sha256": "fb197f235ae684d9f5a9f600a480475d0eafb946fcfbd306a40239ff0a3eefe6",
+      "width": 3024
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            679.7242431640625,
+            482.2749328613281,
+            1639.129150390625,
+            1866.865478515625
+          ],
+          "det_score": 0.8631995916366577,
+          "embedding_norm": 23.230085372924805,
+          "embedding_sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -4.7785258293151855,
+            "roll": -0.4210277497768402,
+            "yaw": 2.553389310836792
+          }
+        }
+      ],
+      "height": 3088,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_4.jpg",
+      "seconds": 0.23593690001871437,
+      "sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "width": 2316
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            705.4370727539062,
+            494.10699462890625,
+            1672.40771484375,
+            1880.3072509765625
+          ],
+          "det_score": 0.8899534940719604,
+          "embedding_norm": 21.298358917236328,
+          "embedding_sha256": "799dd967e599ba28c6f0a382f156ddc16c0e24db1b26da2f2766d2413d303783",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -4.135493278503418,
+            "roll": -1.9363776445388794,
+            "yaw": 0.991223156452179
+          }
+        }
+      ],
+      "height": 3088,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_3.jpg",
+      "seconds": 0.23901160003151745,
+      "sha256": "4a7ce0cb76dc4a5fb9f495b86b1f79cf05b94789597b2c94c0bf653d83f517b7",
+      "width": 2316
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1194.6123046875,
+            1400.59375,
+            1742.716796875,
+            2120.69580078125
+          ],
+          "det_score": 0.806139349937439,
+          "embedding_norm": 23.554641723632812,
+          "embedding_sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -6.981744289398193,
+            "roll": -2.2698686122894287,
+            "yaw": 0.7794461846351624
+          }
+        }
+      ],
+      "height": 4000,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_1.jpg",
+      "seconds": 0.21737029997166246,
+      "sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "width": 3000
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1116.826904296875,
+            1573.2926025390625,
+            1834.534912109375,
+            2503.5888671875
+          ],
+          "det_score": 0.7936835289001465,
+          "embedding_norm": 24.192129135131836,
+          "embedding_sha256": "ae86fcc7e82887beaefc61da212761f3838e57819caecd38153633e9a503e68c",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -8.71459674835205,
+            "roll": 0.6741886734962463,
+            "yaw": 3.709459066390991
+          }
+        }
+      ],
+      "height": 4000,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_2.jpg",
+      "seconds": 0.22936150000896305,
+      "sha256": "f14f0c7b547477dc0804f7bb1e0fadae297934938439d5643b763f62ab4adb02",
+      "width": 3000
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1058.9832763671875,
+            1891.0712890625,
+            3093.63232421875,
+            4763.203125
+          ],
+          "det_score": 0.8910139799118042,
+          "embedding_norm": 19.901992797851562,
+          "embedding_sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -4.001424789428711,
+            "roll": 2.3179988861083984,
+            "yaw": -4.2771148681640625
+          }
+        }
+      ],
+      "height": 6528,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_5.jpg",
+      "seconds": 0.23614679998718202,
+      "sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "width": 4896
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            970.6444091796875,
+            1881.529052734375,
+            3031.1279296875,
+            4689.7744140625
+          ],
+          "det_score": 0.911290168762207,
+          "embedding_norm": 21.17870330810547,
+          "embedding_sha256": "3d0100fa54e917695228f0c57225a018eda11042d43d3e55909ed3753a468113",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -6.13107442855835,
+            "roll": 4.3791375160217285,
+            "yaw": 1.463657259941101
+          }
+        }
+      ],
+      "height": 6528,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_1.jpg",
+      "seconds": 0.21137209993321449,
+      "sha256": "4f96680fab3b37037169bbd1ed4126b67f8e75f1fd582425b72ce98326fea40b",
+      "width": 4896
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            683.3511962890625,
+            1640.1046142578125,
+            1328.0596923828125,
+            2484.182861328125
+          ],
+          "det_score": 0.8365457653999329,
+          "embedding_norm": 25.11669158935547,
+          "embedding_sha256": "fe6492aecf56349ae1e887d2312fb740da2b601a6a1b0a323ba229f8c4494b53",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -9.261229515075684,
+            "roll": -1.46854829788208,
+            "yaw": 0.6783047318458557
+          }
+        }
+      ],
+      "height": 4032,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_2.jpg",
+      "seconds": 0.2221939000301063,
+      "sha256": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474",
+      "width": 3024
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            653.68701171875,
+            1850.574951171875,
+            1337.4638671875,
+            2773.241943359375
+          ],
+          "det_score": 0.8993505239486694,
+          "embedding_norm": 22.90386199951172,
+          "embedding_sha256": "2e8efa066c15e55e796bcf3a90e9ab4cc8a130fb15565aae805a17164fbb794c",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -4.629642486572266,
+            "roll": -0.5726486444473267,
+            "yaw": 0.46277764439582825
+          }
+        }
+      ],
+      "height": 4032,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_1.jpg",
+      "seconds": 0.22081860003527254,
+      "sha256": "fe9915cd9e674f4a8d801ebf8f566ea1f1e5f3e595391423d23d03e7d285acbc",
+      "width": 3024
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            598.130615234375,
+            474.099609375,
+            1622.2174072265625,
+            1905.7822265625
+          ],
+          "det_score": 0.8844277858734131,
+          "embedding_norm": 21.082599639892578,
+          "embedding_sha256": "846a089407a8279dceb5acd90610a77f0b24d58b9484eff2f32e4cf0c20b62ed",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -13.430795669555664,
+            "roll": 3.2151660919189453,
+            "yaw": 3.8436079025268555
+          }
+        }
+      ],
+      "height": 3088,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_6.jpg",
+      "seconds": 0.22287579998373985,
+      "sha256": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e",
+      "width": 2316
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            629.1415405273438,
+            500.1717834472656,
+            1502.075439453125,
+            1712.9656982421875
+          ],
+          "det_score": 0.8964549899101257,
+          "embedding_norm": 22.30022621154785,
+          "embedding_sha256": "8225913e0cdb68bd8dfafab8852b44c4d1f810a0935efcd54007912044285622",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -3.5909626483917236,
+            "roll": 2.0813894271850586,
+            "yaw": 5.669582843780518
+          }
+        }
+      ],
+      "height": 3088,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_3.jpg",
+      "seconds": 0.22315420000813901,
+      "sha256": "28b17b45b7518ee7cdbecd46b04edb58ba30c57e82c204404e8ef66e84e05aed",
+      "width": 2316
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            954.4829711914062,
+            673.4191284179688,
+            2547.8466796875,
+            1712.036376953125
+          ],
+          "det_score": 0.8025315403938293,
+          "embedding_norm": 22.89834976196289,
+          "embedding_sha256": "66b82d4b6a0fb59eb91b1f7dce017c4e9f9d23876c5a6ff24ab498e75015912d",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": 0.025059007108211517,
+            "roll": -90.38795471191406,
+            "yaw": -3.7607476711273193
+          }
+        }
+      ],
+      "height": 3120,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_2.jpg",
+      "seconds": 0.22284880001097918,
+      "sha256": "395f6b43d6f60b51c0182ff7341453ffce3058cd5d10f18221287843968a7d2a",
+      "width": 4160
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            829.115478515625,
+            1319.75341796875,
+            2392.815673828125,
+            2318.44775390625
+          ],
+          "det_score": 0.726021409034729,
+          "embedding_norm": 21.11582374572754,
+          "embedding_sha256": "50804f3df0f1af2e383b78830c946f7aa07e1bd6572e86f40d11c2aeabe5e84f",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -1.980387568473816,
+            "roll": 90.53252410888672,
+            "yaw": 1.2233651876449585
+          }
+        }
+      ],
+      "height": 4160,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_1.jpg",
+      "seconds": 0.2337202999042347,
+      "sha256": "95a5c76bd2402cefd0849d09249764da6b500038e47df29687549ad8cab0a94e",
+      "width": 3120
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            729.2926025390625,
+            1249.6275634765625,
+            1650.9298095703125,
+            2522.01025390625
+          ],
+          "det_score": 0.869869589805603,
+          "embedding_norm": 22.695219039916992,
+          "embedding_sha256": "3ab5d21ccd6ecb25eb52f9b75aaad67c210cdcbd4be36f902e5aa6fabc8f0ba5",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -6.13220739364624,
+            "roll": 0.3475944697856903,
+            "yaw": -8.754599571228027
+          }
+        }
+      ],
+      "height": 3264,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_12.jpg",
+      "seconds": 0.23494910006411374,
+      "sha256": "079e94f7952579f7676ffab8e2f43dfe9ca15434f4c52203d02a8babe3f35053",
+      "width": 2448
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            386.9861755371094,
+            725.4140625,
+            1289.0755615234375,
+            1942.7535400390625
+          ],
+          "det_score": 0.8619081974029541,
+          "embedding_norm": 24.36529541015625,
+          "embedding_sha256": "ac64b2d3eb6285cc8a9c71f599a83b638f53adb2fe55bd3dcf3843c1389f2923",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -0.49422651529312134,
+            "roll": 6.666855812072754,
+            "yaw": 4.653666019439697
+          }
+        }
+      ],
+      "height": 3264,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_8.jpg",
+      "seconds": 0.2558463999303058,
+      "sha256": "5921403529b9cf5e1defb5a2840b8ca5ef0f0f4a83c92aab0516d6fbecdf36cc",
+      "width": 2448
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1272.0279541015625,
+            1474.625244140625,
+            2475.310546875,
+            3183.605712890625
+          ],
+          "det_score": 0.851594090461731,
+          "embedding_norm": 24.978607177734375,
+          "embedding_sha256": "9fe7410a92d3805cdbec0bf1a053f3e02ea99f5781d790956f6552b8355a2fbf",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -9.091665267944336,
+            "roll": 0.5834237337112427,
+            "yaw": -0.09464173763990402
+          }
+        }
+      ],
+      "height": 4032,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_1.jpg",
+      "seconds": 0.24952140008099377,
+      "sha256": "942a86cdc40eff42a6808b30a4dd88c681c26e649952bbc30ea39fde84e3fb92",
+      "width": 3024
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1185.7706298828125,
+            1164.1710205078125,
+            2155.7587890625,
+            2473.13818359375
+          ],
+          "det_score": 0.7694380879402161,
+          "embedding_norm": 25.136600494384766,
+          "embedding_sha256": "a4e680961e8d284b09d933a811611026ffb683cc3b3dd69d2caf1336cc608ecb",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -5.206954479217529,
+            "roll": -0.7364938259124756,
+            "yaw": 0.7452521920204163
+          }
+        }
+      ],
+      "height": 4032,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_2.jpg",
+      "seconds": 0.21743550000246614,
+      "sha256": "ec476d963f46ca35b697d6c3ce1764d407c5813a64d287b6f1c1200d0f8da870",
+      "width": 3024
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            540.4318237304688,
+            1439.775146484375,
+            1493.2642822265625,
+            2841.32666015625
+          ],
+          "det_score": 0.8823009729385376,
+          "embedding_norm": 24.292945861816406,
+          "embedding_sha256": "4ecafc8b062a87a4979a1b0e08340cee67b1b64d6831b8706e5d1208ff47542f",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -3.204256057739258,
+            "roll": -0.25784623622894287,
+            "yaw": 3.1397268772125244
+          }
+        }
+      ],
+      "height": 3088,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_9.jpg",
+      "seconds": 0.21474229998420924,
+      "sha256": "03d845f448d6f8e73d2837dd73fd519f9104c979081b3e17ae6d28486fcf6ee7",
+      "width": 2316
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            611.3548583984375,
+            872.9495849609375,
+            1799.2366943359375,
+            2683.252685546875
+          ],
+          "det_score": 0.8181465864181519,
+          "embedding_norm": 26.326873779296875,
+          "embedding_sha256": "2b55ff2f51be8bedd4fd01d67b25d1acbc6dc922a30c2c7c758f4a5f8754ee55",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": 3.3177714347839355,
+            "roll": 0.15155260264873505,
+            "yaw": 4.74082612991333
+          }
+        }
+      ],
+      "height": 3088,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_5.jpg",
+      "seconds": 0.21620659995824099,
+      "sha256": "0f4f50ebbfc628676c04a667f221f9ff9f42dafbed7a738e24c3ffdb3d8a3ed4",
+      "width": 2316
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            968.4300537109375,
+            1617.7288818359375,
+            1703.56005859375,
+            2589.409423828125
+          ],
+          "det_score": 0.845176100730896,
+          "embedding_norm": 24.717819213867188,
+          "embedding_sha256": "4abbe552fdeb587f71e332579e4f2a311afb73c8d715afb83552ee2fcafd2d42",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": 3.0740764141082764,
+            "roll": 0.8776934742927551,
+            "yaw": -3.855963945388794
+          }
+        }
+      ],
+      "height": 4000,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_1.jpg",
+      "seconds": 0.2220069000031799,
+      "sha256": "241d9d238c8c545995c5e1e2cf707b4701abdcb20c660f13e6a6d7aa07a7a154",
+      "width": 3000
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            974.5740966796875,
+            1545.308349609375,
+            1533.1341552734375,
+            2304.593994140625
+          ],
+          "det_score": 0.8558802604675293,
+          "embedding_norm": 24.428884506225586,
+          "embedding_sha256": "ea4cf38aaf90f464b8d743cee2553a1df9a1fdb043d1580dc95d7107309d2a48",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -0.14637304842472076,
+            "roll": -0.0304808858782053,
+            "yaw": 1.1798831224441528
+          }
+        }
+      ],
+      "height": 4000,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_2.jpg",
+      "seconds": 0.21988160000182688,
+      "sha256": "d54b857141de35f4a214f96c27efa78b24b68066e0f758f9b20626edbfdd97c4",
+      "width": 3000
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1818.30712890625,
+            1904.634765625,
+            3555.51025390625,
+            4461.38134765625
+          ],
+          "det_score": 0.8873234987258911,
+          "embedding_norm": 21.950803756713867,
+          "embedding_sha256": "327c4091ae61d8aeb018f297bbe3ec1bee961f8476160d7f8ae1fd10b820fae1",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -7.97352409362793,
+            "roll": -1.030883550643921,
+            "yaw": 1.4385371208190918
+          }
+        }
+      ],
+      "height": 6560,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_12.jpg",
+      "seconds": 0.22666909999679774,
+      "sha256": "120f14390283089226f25d589555ef880b8e284757d733157ceb5edb6e4863e3",
+      "width": 4928
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            1595.4752197265625,
+            1886.4512939453125,
+            3393.930908203125,
+            4522.0419921875
+          ],
+          "det_score": 0.900282621383667,
+          "embedding_norm": 22.511564254760742,
+          "embedding_sha256": "b88dde08a6b5f54c45b18e0118e10e11a298a3184b2da126ee7a002fa639ca61",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -7.067389488220215,
+            "roll": -2.8540539741516113,
+            "yaw": -1.3387062549591064
+          }
+        }
+      ],
+      "height": 6560,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_6.jpg",
+      "seconds": 0.21336129994597286,
+      "sha256": "299fe0cc6700b05e7da00b4961053f7dc6bd2cb44336bdbb636e971651366ed9",
+      "width": 4928
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            882.026611328125,
+            1028.1751708984375,
+            2252.2216796875,
+            2782.79736328125
+          ],
+          "det_score": 0.8528222441673279,
+          "embedding_norm": 23.873210906982422,
+          "embedding_sha256": "d9907462895d29a13bd16ba3649505e044f09d682d4743b1696be572e753885b",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -12.375737190246582,
+            "roll": 1.2273694276809692,
+            "yaw": 0.015190516598522663
+          }
+        }
+      ],
+      "height": 4160,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_1.jpg",
+      "seconds": 0.19435330003034323,
+      "sha256": "1becc6271525ee1ca858a479b74206017371b240dfe87011a9cb0c1058c7f4ae",
+      "width": 3120
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            886.9599609375,
+            1442.491455078125,
+            2037.5390625,
+            2953.60498046875
+          ],
+          "det_score": 0.8595463037490845,
+          "embedding_norm": 23.658042907714844,
+          "embedding_sha256": "e94a18d9e7f00e51c3d25a0cb1335a49de6d357208d6f7b51cb4f02d724db9e0",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -5.441104412078857,
+            "roll": 0.43933767080307007,
+            "yaw": 2.505983352661133
+          }
+        }
+      ],
+      "height": 4160,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_2.jpg",
+      "seconds": 0.20136679999995977,
+      "sha256": "4691e0b470202724bd1511739339d6e8f8c2a84332c50e1a941607e90c6f96b3",
+      "width": 3120
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            842.8447265625,
+            1146.48974609375,
+            1764.389404296875,
+            2508.43896484375
+          ],
+          "det_score": 0.8489459753036499,
+          "embedding_norm": 24.38150978088379,
+          "embedding_sha256": "55a4d2072581789b20ebfcab90ace6ebe089feb13448fdbf2be2d62b5c1bcde9",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": 2.920311450958252,
+            "roll": 0.372517466545105,
+            "yaw": -1.0569260120391846
+          }
+        }
+      ],
+      "height": 3264,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_13.jpg",
+      "seconds": 0.19206420006230474,
+      "sha256": "2dc1b4e0824db259d03efe5a71f3f2050f20ea530a1f52ee665ea18cb000d36e",
+      "width": 2448
+    },
+    {
+      "faces": [
+        {
+          "bbox": [
+            774.6582641601562,
+            1097.2353515625,
+            1748.583984375,
+            2576.562744140625
+          ],
+          "det_score": 0.8773990273475647,
+          "embedding_norm": 24.043729782104492,
+          "embedding_sha256": "4fe77929f6110f84e99521f3a03f40f56e85ed85ca9a1963b5eb503529f69201",
+          "fields": [
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "age",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 16,
+              "dtype": "float32",
+              "key": "bbox",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                4
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "float64",
+              "key": "det_score",
+              "kind": "float",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 2048,
+              "dtype": "float32",
+              "key": "embedding",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                512
+              ]
+            },
+            {
+              "bytes_raw": 8,
+              "dtype": "int64",
+              "key": "gender",
+              "kind": "int",
+              "note": "",
+              "shape": null
+            },
+            {
+              "bytes_raw": 40,
+              "dtype": "float32",
+              "key": "kps",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                5,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 848,
+              "dtype": "float32",
+              "key": "landmark_2d_106",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                106,
+                2
+              ]
+            },
+            {
+              "bytes_raw": 816,
+              "dtype": "float32",
+              "key": "landmark_3d_68",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                68,
+                3
+              ]
+            },
+            {
+              "bytes_raw": 12,
+              "dtype": "float32",
+              "key": "pose",
+              "kind": "ndarray",
+              "note": "",
+              "shape": [
+                3
+              ]
+            }
+          ],
+          "index": 0,
+          "normed_is_derivable": true,
+          "normed_max_abs_diff": 0.0,
+          "pose": {
+            "pitch": -2.979276418685913,
+            "roll": 0.3700213134288788,
+            "yaw": 0.6593309640884399
+          }
+        }
+      ],
+      "height": 3264,
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_6.jpg",
+      "seconds": 0.2333454000763595,
+      "sha256": "36da6f92e75bd568d19691ef8b6a769975b7b1d82f900ad781bbc0b9451166d6",
+      "width": 2448
+    }
+  ],
+  "producer": {
+    "det_size": [
+      640,
+      640
+    ],
+    "heads": {
+      "detection": "SCRFD",
+      "genderage": "Attribute",
+      "landmark_2d_106": "Landmark",
+      "landmark_3d_68": "Landmark",
+      "recognition": "ArcFaceONNX"
+    },
+    "pack": "antelopev2",
+    "providers": [
+      "CPUExecutionProvider"
+    ],
+    "root": "C:\\ComfyUI\\output\\.AImodels\\insightface"
+  },
+  "runtime": {
+    "faces": 28,
+    "images": 28
+  }
+}

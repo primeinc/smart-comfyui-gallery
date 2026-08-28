@@ -1,0 +1,927 @@
+{
+  "consumers": [
+    {
+      "at_pin": true,
+      "commit": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
+      "consumer": "anystory",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/junjiehe96/AnyStory.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "consumer": "consisid",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/huggingface/diffusers.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "arcface_footprint_only"
+        },
+        {
+          "serves": false,
+          "swap": "generous_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "consumer": "id_lora",
+      "consumer_cases": 1,
+      "derivable_or_unused": [],
+      "necessary": [
+        "audio_sample_rate",
+        "audio_waveform"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+      "status": "REPRODUCED",
+      "substitutions": [],
+      "verdicts": {
+        "PASS": 1
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
+      "consumer": "id_v2v",
+      "consumer_cases": 1,
+      "derivable_or_unused": [],
+      "necessary": [
+        "source_video_bytes"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/Eyeline-Labs/ID-V2V.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_row_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 1
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "consumer": "infiniteyou",
+      "consumer_cases": 12,
+      "derivable_or_unused": [
+        "reference_pixels"
+      ],
+      "necessary": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 12
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
+      "consumer": "instantcharacter",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/Tencent-Hunyuan/InstantCharacter.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
+      "consumer": "instantid",
+      "consumer_cases": 8,
+      "derivable_or_unused": [
+        "reference_pixels"
+      ],
+      "necessary": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/cubiq/ComfyUI_InstantID.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 8
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "2145b67f9607da6234702063692330185f374486",
+      "consumer": "instantid_upstream",
+      "consumer_cases": 8,
+      "derivable_or_unused": [
+        "reference_pixels"
+      ],
+      "necessary": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/instantX-research/InstantID.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 8
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer": "ipadapter_faceid",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "embedding_raw"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer": "ipadapter_faceid_plus",
+      "consumer_cases": 16,
+      "derivable_or_unused": [],
+      "necessary": [
+        "embedding_raw",
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "primitive_cases": 20,
+      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 16
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "consumer": "ipadapter_upstream",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "embedding_raw"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
+      "consumer": "omnigen2",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/VectorSpaceLab/OmniGen2.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "consumer": "photomaker_v2",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "embedding_raw"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/TencentARC/PhotoMaker.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "93e0c4c226b87b23c0009d671978bad0e77289ff",
+      "consumer": "pulid_comfyui",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "embedding_raw"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/cubiq/PuLID_ComfyUI.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "consumer": "pulid_upstream",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "embedding_raw"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/ToTheBeginning/PuLID.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
+      "consumer": "qwen_image_edit_2509",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/QwenLM/Qwen-Image.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "consumer": "reactor",
+      "consumer_cases": 8,
+      "derivable_or_unused": [],
+      "necessary": [
+        "age",
+        "bbox",
+        "det_score",
+        "embedding",
+        "embedding_raw",
+        "gender",
+        "kps",
+        "landmark_2d_106",
+        "landmark_3d_68"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": true,
+          "swap": "stored_glintr100_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 8
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "aada3dc32990ae82061857ebe911b2c15621571a",
+      "consumer": "umo",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/bytedance/UMO.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "consumer": "uniportrait",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/junjiehe96/UniPortrait.git",
+      "status": "REPRODUCED",
+      "substitutions": [],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "a563432dcfb4caf98df4368facb8102bf97d376c",
+      "consumer": "uno",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/bytedance/UNO.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
+      "consumer": "uso",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/bytedance/USO.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": true,
+      "commit": "65e2581aac0faffe4607881a10cc486186f6499d",
+      "consumer": "xverse",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [
+        "whole_reference_image"
+      ],
+      "primitive_cases": 0,
+      "repo": "https://github.com/bytedance/XVerse.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "serves": false,
+          "swap": "face_patch_substituted"
+        }
+      ],
+      "verdicts": {
+        "PASS": 4
+      }
+    }
+  ],
+  "generated_from": {
+    "cases": 146,
+    "producer_heads": {
+      "detection": "SCRFD",
+      "genderage": "Attribute",
+      "landmark_2d_106": "Landmark",
+      "landmark_3d_68": "Landmark",
+      "recognition": "ArcFaceONNX"
+    },
+    "provenance_ok": true,
+    "runtime": {
+      "backends": {
+        "insightface": "1.0.1",
+        "numpy": "2.5.2",
+        "onnx": "1.22.0",
+        "onnxruntime": {
+          "available_providers": [
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+          "device": "GPU",
+          "version": "1.29.0"
+        },
+        "opencv-python": "4.14.0.94",
+        "scikit-image": "0.26.0",
+        "torch": "2.13.0+cu132"
+      },
+      "implementation": "CPython",
+      "machine": "AMD64",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.5"
+    },
+    "weights": [
+      {
+        "file": "glintr100.onnx",
+        "pack": "antelopev2",
+        "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+      },
+      {
+        "file": "scrfd_10g_bnkps.onnx",
+        "pack": "antelopev2",
+        "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+      },
+      {
+        "file": "1k3d68.onnx",
+        "pack": "antelopev2",
+        "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+      },
+      {
+        "file": "2d106det.onnx",
+        "pack": "antelopev2",
+        "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+      },
+      {
+        "file": "genderage.onnx",
+        "pack": "antelopev2",
+        "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+      },
+      {
+        "file": "det_10g.onnx",
+        "pack": "buffalo_l",
+        "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+      },
+      {
+        "file": "w600k_r50.onnx",
+        "pack": "buffalo_l",
+        "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+      },
+      {
+        "file": "detection_Resnet50_Final.pth",
+        "pack": "facexlib",
+        "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
+      },
+      {
+        "file": "recognition_arcface_ir_se50.pth",
+        "pack": "facexlib",
+        "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
+      },
+      {
+        "file": "parsing_bisenet.pth",
+        "pack": "facexlib",
+        "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
+      }
+    ]
+  },
+  "primitives": [
+    {
+      "breaks": 52,
+      "cases": 52,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "primitive": "kps_source_px",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 40,
+      "cases": 40,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid",
+        "ipadapter_faceid_plus",
+        "ipadapter_upstream",
+        "photomaker_v2",
+        "pulid_comfyui",
+        "pulid_upstream",
+        "reactor"
+      ],
+      "primitive": "embedding_raw",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 40,
+      "cases": 40,
+      "consumers": [
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "primitive": "patch_origin",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 40,
+      "cases": 40,
+      "consumers": [
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "primitive": "source_region_pixels",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 36,
+      "cases": 36,
+      "consumers": [
+        "anystory",
+        "consisid",
+        "instantcharacter",
+        "omnigen2",
+        "qwen_image_edit_2509",
+        "umo",
+        "uno",
+        "uso",
+        "xverse"
+      ],
+      "primitive": "whole_reference_image",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 12,
+      "cases": 12,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
+      ],
+      "primitive": "frame_dimensions",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 10,
+      "cases": 10,
+      "consumers": [
+        "insightface_producer",
+        "reactor"
+      ],
+      "primitive": "embedding",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 10,
+      "cases": 10,
+      "consumers": [
+        "insightface_producer",
+        "reactor"
+      ],
+      "primitive": "landmark_3d_68",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 5,
+      "cases": 5,
+      "consumers": [
+        "ipadapter_faceid_plus"
+      ],
+      "primitive": "derive_256_from_336",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 4,
+      "cases": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "primitive": "age",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 4,
+      "cases": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "primitive": "bbox",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 4,
+      "cases": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "primitive": "det_score",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 4,
+      "cases": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "primitive": "gender",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 4,
+      "cases": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "primitive": "kps",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 4,
+      "cases": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "primitive": "landmark_2d_106",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 1,
+      "cases": 1,
+      "consumers": [
+        "id_lora"
+      ],
+      "primitive": "audio_sample_rate",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 1,
+      "cases": 1,
+      "consumers": [
+        "id_lora"
+      ],
+      "primitive": "audio_waveform",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 1,
+      "cases": 1,
+      "consumers": [
+        "id_v2v"
+      ],
+      "primitive": "source_video_bytes",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 0,
+      "cases": 12,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
+      ],
+      "primitive": "reference_pixels",
+      "survives": 12,
+      "verdict": "NOT NECESSARY"
+    }
+  ],
+  "storage": [
+    {
+      "at_1000": 2048000,
+      "at_1000000": 2048000000,
+      "at_22000": 45056000,
+      "bytes_per_face": 2048,
+      "dtype": "float32",
+      "field": "embedding",
+      "shapes": [
+        "(512,)"
+      ]
+    },
+    {
+      "at_1000": 848000,
+      "at_1000000": 848000000,
+      "at_22000": 18656000,
+      "bytes_per_face": 848,
+      "dtype": "float32",
+      "field": "landmark_2d_106",
+      "shapes": [
+        "(106, 2)"
+      ]
+    },
+    {
+      "at_1000": 816000,
+      "at_1000000": 816000000,
+      "at_22000": 17952000,
+      "bytes_per_face": 816,
+      "dtype": "float32",
+      "field": "landmark_3d_68",
+      "shapes": [
+        "(68, 3)"
+      ]
+    },
+    {
+      "at_1000": 40000,
+      "at_1000000": 40000000,
+      "at_22000": 880000,
+      "bytes_per_face": 40,
+      "dtype": "float32",
+      "field": "kps",
+      "shapes": [
+        "(5, 2)"
+      ]
+    },
+    {
+      "at_1000": 16000,
+      "at_1000000": 16000000,
+      "at_22000": 352000,
+      "bytes_per_face": 16,
+      "dtype": "float32",
+      "field": "bbox",
+      "shapes": [
+        "(4,)"
+      ]
+    },
+    {
+      "at_1000": 12000,
+      "at_1000000": 12000000,
+      "at_22000": 264000,
+      "bytes_per_face": 12,
+      "dtype": "float32",
+      "field": "pose",
+      "shapes": [
+        "(3,)"
+      ]
+    },
+    {
+      "at_1000": 8000,
+      "at_1000000": 8000000,
+      "at_22000": 176000,
+      "bytes_per_face": 8,
+      "dtype": "int64",
+      "field": "age",
+      "shapes": [
+        "None"
+      ]
+    },
+    {
+      "at_1000": 8000,
+      "at_1000000": 8000000,
+      "at_22000": 176000,
+      "bytes_per_face": 8,
+      "dtype": "float64",
+      "field": "det_score",
+      "shapes": [
+        "None"
+      ]
+    },
+    {
+      "at_1000": 8000,
+      "at_1000000": 8000000,
+      "at_22000": 176000,
+      "bytes_per_face": 8,
+      "dtype": "int64",
+      "field": "gender",
+      "shapes": [
+        "None"
+      ]
+    }
+  ],
+  "totals": {
+    "bytes_per_observation": 3804,
+    "declared": 22,
+    "not_exercised": 0,
+    "reproduced": 22
+  }
+}

@@ -1,0 +1,830 @@
+{
+  "manifest_version": 1,
+  "population": {
+    "source_unread": [
+      "omnigen2",
+      "instantcharacter",
+      "id_v2v"
+    ],
+    "total": 22,
+    "unclassified": [],
+    "unproven": [
+      "instantid",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "pulid_comfyui",
+      "reactor",
+      "infiniteyou",
+      "uniportrait",
+      "photomaker_v2",
+      "consisid",
+      "instantid_upstream",
+      "ipadapter_upstream",
+      "pulid_upstream",
+      "umo",
+      "uno",
+      "uso",
+      "omnigen2",
+      "instantcharacter",
+      "qwen_image_edit_2509",
+      "anystory",
+      "xverse",
+      "id_v2v",
+      "id_lora"
+    ]
+  },
+  "provenance_ok": true,
+  "recorded_at": "2026-08-28",
+  "refs_root": "C:\\Users\\will\\dev\\refs",
+  "repos": [
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\deepinsight\\insightface",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+      "key": "upstream:insightface",
+      "paths": [
+        {
+          "blob_sha256": "48480e52d27954f3e82032a929c5c1503e4b6e1e23a6f8725b504d73ba81acd0",
+          "locator_only": false,
+          "note": null,
+          "path": "python-package/insightface/utils/face_align.py",
+          "present": true,
+          "symbol": "norm_crop",
+          "symbol_present": true
+        },
+        {
+          "blob_sha256": "f962cc9b7e19ad4e663f341ffdab187e200797adc7c7ff020a8573db2b3aed28",
+          "locator_only": false,
+          "note": null,
+          "path": "python-package/insightface/model_zoo/landmark.py",
+          "present": true,
+          "symbol": "Landmark.get",
+          "symbol_present": true
+        },
+        {
+          "blob_sha256": "593e125999efab5f67bcd8684151e42677597fe374cd43638af68b56555c3466",
+          "locator_only": false,
+          "note": null,
+          "path": "python-package/insightface/app/common.py",
+          "present": true,
+          "symbol": "Face.sex",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+      "repo": "https://github.com/deepinsight/insightface.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\xinntao\\facexlib",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "260620ae93990a300f4b16448df9bb459f1caba9",
+      "key": "upstream:facexlib",
+      "paths": [
+        {
+          "blob_sha256": "467448b3fea0db8b17dce02ed50ed0d6609f5c951ad13d60b6afea2861a2b88a",
+          "locator_only": false,
+          "note": null,
+          "path": "facexlib/utils/face_restoration_helper.py",
+          "present": true,
+          "symbol": "FaceRestoreHelper.align_warp_face",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "260620ae93990a300f4b16448df9bb459f1caba9",
+      "repo": "https://github.com/xinntao/facexlib.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\huggingface\\diffusers",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "key": "upstream:diffusers",
+      "paths": [],
+      "pinned_commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "repo": "https://github.com/huggingface/diffusers.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Comfy-Org\\ComfyUI",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "key": "upstream:comfyui",
+      "paths": [],
+      "pinned_commit": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\cubiq\\ComfyUI_InstantID",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
+      "key": "consumer:instantid",
+      "paths": [
+        {
+          "blob_sha256": "8e8a71267a969dfbc2d367a5d6cc77723a9b08085d9025155d9dcb6b5f41555e",
+          "locator_only": false,
+          "note": null,
+          "path": "InstantID.py",
+          "present": true,
+          "symbol": "extractFeatures",
+          "symbol_present": true
+        },
+        {
+          "blob_sha256": "8e8a71267a969dfbc2d367a5d6cc77723a9b08085d9025155d9dcb6b5f41555e",
+          "locator_only": false,
+          "note": null,
+          "path": "InstantID.py",
+          "present": true,
+          "symbol": "ApplyInstantID.apply_instantid",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
+      "repo": "https://github.com/cubiq/ComfyUI_InstantID.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\cubiq\\ComfyUI_IPAdapter_plus",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "key": "consumer:ipadapter_faceid",
+      "paths": [
+        {
+          "blob_sha256": "c10f4a8dd8e96b1c1733f513a22d2468c7687c2dd45a0d7ddf5a5b1f7e811c23",
+          "locator_only": false,
+          "note": null,
+          "path": "IPAdapterPlus.py",
+          "present": true,
+          "symbol": "ipadapter_execute",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\cubiq\\ComfyUI_IPAdapter_plus",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "key": "consumer:ipadapter_faceid_plus",
+      "paths": [
+        {
+          "blob_sha256": "c10f4a8dd8e96b1c1733f513a22d2468c7687c2dd45a0d7ddf5a5b1f7e811c23",
+          "locator_only": false,
+          "note": null,
+          "path": "IPAdapterPlus.py",
+          "present": true,
+          "symbol": "ipadapter_execute",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\cubiq\\PuLID_ComfyUI",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "93e0c4c226b87b23c0009d671978bad0e77289ff",
+      "key": "consumer:pulid_comfyui",
+      "paths": [
+        {
+          "blob_sha256": "f0e6764bab9ea6b56b3479b6f991b073bbd660d1fa6f0cb6b358ac50661ffac7",
+          "locator_only": false,
+          "note": null,
+          "path": "pulid.py",
+          "present": true,
+          "symbol": "ApplyPulid.apply_pulid",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "93e0c4c226b87b23c0009d671978bad0e77289ff",
+      "repo": "https://github.com/cubiq/PuLID_ComfyUI.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Gourieff\\ComfyUI-ReActor",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "key": "consumer:reactor",
+      "paths": [
+        {
+          "blob_sha256": "d41e3e9de4199e7766dbfbd33925c1c577ccf35a8c5b161b363a7c112f20e1f3",
+          "locator_only": false,
+          "note": null,
+          "path": "reactor_utils.py",
+          "present": true,
+          "symbol": "save_face_model",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\bytedance\\ComfyUI_InfiniteYou",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "key": "consumer:infiniteyou",
+      "paths": [
+        {
+          "blob_sha256": "d0fa41340a3539b793679ba82649cb145f3f488b0921608e2eeb7c6bbecf13f1",
+          "locator_only": false,
+          "note": null,
+          "path": "nodes.py",
+          "present": true,
+          "symbol": "ExtractIDEmbedding.extract_id_embedding",
+          "symbol_present": true
+        },
+        {
+          "blob_sha256": "22ced931b78e208e57f35e54b8ab1d932b12bd276b71f4420884d478e2658009",
+          "locator_only": false,
+          "note": null,
+          "path": "utils.py",
+          "present": true,
+          "symbol": "extract_arcface_bgr_embedding",
+          "symbol_present": true
+        },
+        {
+          "blob_sha256": "d0fa41340a3539b793679ba82649cb145f3f488b0921608e2eeb7c6bbecf13f1",
+          "locator_only": false,
+          "note": null,
+          "path": "nodes.py",
+          "present": true,
+          "symbol": "ExtractFacePoseImage.extract_face_pose",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\junjiehe96\\UniPortrait",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "key": "consumer:uniportrait",
+      "paths": [
+        {
+          "blob_sha256": "a78a0aace75a5e260c02a200af9eacfa839a4773b95090a5f3c286a2344b0d86",
+          "locator_only": false,
+          "note": null,
+          "path": "gradio_app.py",
+          "present": true,
+          "symbol": "process_faceid_image",
+          "symbol_present": true
+        },
+        {
+          "blob_sha256": "75dcda5bf326a661652734f5964e1155d98273379e044d8447b2e00ad14cc8c2",
+          "locator_only": false,
+          "note": null,
+          "path": "uniportrait/uniportrait_pipeline.py",
+          "present": true,
+          "symbol": "UniPortraitPipeline.get_single_faceid_embeds",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "repo": "https://github.com/junjiehe96/UniPortrait.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\TencentARC\\PhotoMaker",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "key": "consumer:photomaker_v2",
+      "paths": [
+        {
+          "blob_sha256": "7329a7cbd4c74e5477f089a218f9c4dd3e4cd0af1b8a093e487005c53d8f3984",
+          "locator_only": true,
+          "note": null,
+          "path": "inference_scripts/inference_pmv2_ip_adapter.py",
+          "present": true,
+          "symbol": "__main__",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "repo": "https://github.com/TencentARC/PhotoMaker.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\huggingface\\diffusers",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "key": "consumer:consisid@diffusers",
+      "paths": [
+        {
+          "blob_sha256": "0376262a69353fab5d9db068ead89602cd2787e247bb98b8e6b271ff03148559",
+          "locator_only": false,
+          "note": null,
+          "path": "src/diffusers/pipelines/consisid/consisid_utils.py",
+          "present": true,
+          "symbol": "process_face_embeddings",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "repo": "https://github.com/huggingface/diffusers.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\instantX-research\\InstantID",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "2145b67f9607da6234702063692330185f374486",
+      "key": "consumer:instantid_upstream",
+      "paths": [
+        {
+          "blob_sha256": "c5b7860b75a131411a0dfb1397c955d8b2e74a7664e455ca8214cabe6a519cfd",
+          "locator_only": true,
+          "note": null,
+          "path": "infer.py",
+          "present": true,
+          "symbol": "__main__",
+          "symbol_present": null
+        },
+        {
+          "blob_sha256": "7790d53e5848030ea3be89ad7c911ced31363114549e40784e821147d0a2ba80",
+          "locator_only": false,
+          "note": null,
+          "path": "pipeline_stable_diffusion_xl_instantid.py",
+          "present": true,
+          "symbol": "draw_kps",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "2145b67f9607da6234702063692330185f374486",
+      "repo": "https://github.com/instantX-research/InstantID.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\tencent-ailab\\IP-Adapter",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "key": "consumer:ipadapter_upstream",
+      "paths": [
+        {
+          "blob_sha256": "d9af16837f224e14081f588eab35354903c0167d6581d478274b5dee42e21de0",
+          "locator_only": false,
+          "note": null,
+          "path": "ip_adapter/ip_adapter_faceid.py",
+          "present": true,
+          "symbol": "IPAdapterFaceID.get_image_embeds",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "repo": "https://github.com/tencent-ailab/IP-Adapter.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\ToTheBeginning\\PuLID",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "key": "consumer:pulid_upstream",
+      "paths": [
+        {
+          "blob_sha256": "5ef84d18bf89eb268e1477c7629be3e29dd5aa60efab81bc3694276534629b73",
+          "locator_only": false,
+          "note": null,
+          "path": "pulid/pipeline.py",
+          "present": true,
+          "symbol": "PuLIDPipeline.get_id_embedding",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "repo": "https://github.com/ToTheBeginning/PuLID.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\bytedance\\UMO",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "aada3dc32990ae82061857ebe911b2c15621571a",
+      "key": "consumer:umo",
+      "paths": [
+        {
+          "blob_sha256": "7791796b51ef1db495a173300562e4048313c1ec2d16815f238100d8430e52fd",
+          "locator_only": false,
+          "note": null,
+          "path": "eval/UNO/inference_omnicontext.py",
+          "present": true,
+          "symbol": "main",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "aada3dc32990ae82061857ebe911b2c15621571a",
+      "repo": "https://github.com/bytedance/UMO.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\bytedance\\UNO",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a563432dcfb4caf98df4368facb8102bf97d376c",
+      "key": "consumer:uno",
+      "paths": [
+        {
+          "blob_sha256": "b50d899ce88de03bd2b32aa5550537ef704f8caba841bbb3d959932ae4d429cb",
+          "locator_only": true,
+          "note": null,
+          "path": "inference.py",
+          "present": true,
+          "symbol": "__main__",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "a563432dcfb4caf98df4368facb8102bf97d376c",
+      "repo": "https://github.com/bytedance/UNO.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\bytedance\\USO",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
+      "key": "consumer:uso",
+      "paths": [
+        {
+          "blob_sha256": "6a588a8a38fec2e82ad0f837868f63940f1fb81c56cb1aa4be1b7d026cf27614",
+          "locator_only": true,
+          "note": null,
+          "path": "inference.py",
+          "present": true,
+          "symbol": "__main__",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
+      "repo": "https://github.com/bytedance/USO.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\VectorSpaceLab\\OmniGen2",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
+      "key": "consumer:omnigen2",
+      "paths": [
+        {
+          "blob_sha256": "89bec6902f29097d17db3b07bde50107e749f52ebc2e8f281c435c0392e640f4",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "quickstart",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
+      "repo": "https://github.com/VectorSpaceLab/OmniGen2.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Tencent-Hunyuan\\InstantCharacter",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
+      "key": "consumer:instantcharacter",
+      "paths": [
+        {
+          "blob_sha256": "4db05327faab7d6b7417465426622ac2f22ef7bee2b59deb1e19ed2dc579383e",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "quickstart",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
+      "repo": "https://github.com/Tencent-Hunyuan/InstantCharacter.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\QwenLM\\Qwen-Image",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
+      "key": "consumer:qwen_image_edit_2509",
+      "paths": [
+        {
+          "blob_sha256": "90795fcd82588cdbaed3517b32891e391fc560af085cb21771b3fe249e60bc34",
+          "locator_only": false,
+          "note": null,
+          "path": "src/examples/edit_demo.py",
+          "present": true,
+          "symbol": "infer",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
+      "repo": "https://github.com/QwenLM/Qwen-Image.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\junjiehe96\\AnyStory",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
+      "key": "consumer:anystory",
+      "paths": [
+        {
+          "blob_sha256": "d3f302fe9499c68eb5e7699c11e1bf32bb93f36a11214d2161a927a086ceae26",
+          "locator_only": true,
+          "note": null,
+          "path": "inference.py",
+          "present": true,
+          "symbol": "__main__",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
+      "repo": "https://github.com/junjiehe96/AnyStory.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\bytedance\\XVerse",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "65e2581aac0faffe4607881a10cc486186f6499d",
+      "key": "consumer:xverse",
+      "paths": [
+        {
+          "blob_sha256": "ba229e9103a8fa36b45c0dee8e931652fdf4199b0150623341fcc88e5af704b3",
+          "locator_only": true,
+          "note": null,
+          "path": "inference_single_sample.py",
+          "present": true,
+          "symbol": "__main__",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "65e2581aac0faffe4607881a10cc486186f6499d",
+      "repo": "https://github.com/bytedance/XVerse.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Eyeline-Labs\\ID-V2V",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
+      "key": "consumer:id_v2v",
+      "paths": [
+        {
+          "blob_sha256": "101c2ac5dce2da084687a5d6ccb60e5bfdfd953b9f9cffc089807430a159c6e6",
+          "locator_only": true,
+          "note": null,
+          "path": "scripts/preprocess.sh",
+          "present": true,
+          "symbol": "preprocess",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
+      "repo": "https://github.com/Eyeline-Labs/ID-V2V.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Comfy-Org\\ComfyUI",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "key": "consumer:id_lora@comfyui",
+      "paths": [
+        {
+          "blob_sha256": "2b6c74daaffd929499167b06f8dd3269e779a619e204448cb65c59687e032084",
+          "locator_only": false,
+          "note": null,
+          "path": "comfy_extras/nodes_lt.py",
+          "present": true,
+          "symbol": "LTXVReferenceAudio.execute",
+          "symbol_present": true
+        }
+      ],
+      "pinned_commit": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "repo": "https://github.com/Comfy-Org/ComfyUI.git"
+    }
+  ],
+  "runtime": {
+    "backends": {
+      "insightface": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  },
+  "runtimes": [
+    {
+      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\utils\\face_restoration_helper.py",
+      "installed_sha256": "0a2387b0faa3729d7a13176b4e53cab4ad6ed2c92ec75ea24b5d59aaeabb69bc",
+      "matches": true,
+      "note": null,
+      "package": "facexlib",
+      "path": "facexlib/utils/face_restoration_helper.py",
+      "pinned_commit": "260620ae93990a300f4b16448df9bb459f1caba9",
+      "pinned_sha256": "0a2387b0faa3729d7a13176b4e53cab4ad6ed2c92ec75ea24b5d59aaeabb69bc"
+    },
+    {
+      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\diffusers\\pipelines\\consisid\\consisid_utils.py",
+      "installed_sha256": "7ae159fa6608d339f66df1427d6af638beb1b430db9ce6528fe57223d80baed6",
+      "matches": true,
+      "note": null,
+      "package": "diffusers",
+      "path": "src/diffusers/pipelines/consisid/consisid_utils.py",
+      "pinned_commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "pinned_sha256": "7ae159fa6608d339f66df1427d6af638beb1b430db9ce6528fe57223d80baed6"
+    },
+    {
+      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\insightface\\utils\\face_align.py",
+      "installed_sha256": "a8b34ddd06716f5ca7e7501415cbd3789ccbce18db9e557b35e537695290d922",
+      "matches": true,
+      "note": null,
+      "package": "insightface",
+      "path": "python-package/insightface/utils/face_align.py",
+      "pinned_commit": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+      "pinned_sha256": "a8b34ddd06716f5ca7e7501415cbd3789ccbce18db9e557b35e537695290d922"
+    }
+  ],
+  "weights": [
+    {
+      "bytes": 260665334,
+      "file": "glintr100.onnx",
+      "pack": "antelopev2",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
+      "present": true,
+      "role": "recognition -- the 512-d embedding every identity claim rests on",
+      "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+    },
+    {
+      "bytes": 16923827,
+      "file": "scrfd_10g_bnkps.onnx",
+      "pack": "antelopev2",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
+      "present": true,
+      "role": "detection -- bbox, det_score and the 5 keypoints the whole arcface family aligns on",
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+    },
+    {
+      "bytes": 143607619,
+      "file": "1k3d68.onnx",
+      "pack": "antelopev2",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
+      "present": true,
+      "role": "landmark_3d_68, and pose is derived from its output rather than emitted separately",
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+    },
+    {
+      "bytes": 5030888,
+      "file": "2d106det.onnx",
+      "pack": "antelopev2",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\2d106det.onnx",
+      "present": true,
+      "role": "landmark_2d_106 -- 848 bytes per face, the second-largest retained candidate",
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+    },
+    {
+      "bytes": 1322532,
+      "file": "genderage.onnx",
+      "pack": "antelopev2",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\genderage.onnx",
+      "present": true,
+      "role": "gender and age; not derivable from anything else the pass returns",
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+    },
+    {
+      "bytes": 16923827,
+      "file": "det_10g.onnx",
+      "pack": "buffalo_l",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\det_10g.onnx",
+      "present": true,
+      "role": "detection for UniPortrait; NOT the same detector as antelopev2",
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+    },
+    {
+      "bytes": 174383860,
+      "file": "w600k_r50.onnx",
+      "pack": "buffalo_l",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
+      "present": true,
+      "role": "buffalo_l recognition; a third embedding space alongside glintr100 and facexlib arcface",
+      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+    },
+    {
+      "bytes": 109497761,
+      "file": "detection_Resnet50_Final.pth",
+      "pack": "facexlib",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
+      "present": true,
+      "role": "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou",
+      "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
+    },
+    {
+      "bytes": 175367323,
+      "file": "recognition_arcface_ir_se50.pth",
+      "pack": "facexlib",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
+      "present": true,
+      "role": "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100",
+      "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
+    },
+    {
+      "bytes": 53289463,
+      "file": "parsing_bisenet.pth",
+      "pack": "facexlib",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
+      "present": true,
+      "role": "face parsing for PuLID/ConsisID masked crops",
+      "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
+    }
+  ]
+}

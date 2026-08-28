@@ -1,0 +1,1078 @@
+{
+  "samples": [
+    {
+      "age": 21,
+      "bytes": 2732458,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "fb197f235ae684d9f5a9f600a480475d0eafb946fcfbd306a40239ff0a3eefe6"
+    },
+    {
+      "age": 21,
+      "bytes": 2795752,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc"
+    },
+    {
+      "age": 21,
+      "bytes": 2280424,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "eed4b5c3e9a93d0fbcc76ccbe8272b510caa381f2f783b1e4c90e1586805b59a"
+    },
+    {
+      "age": 21,
+      "bytes": 1815152,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "ab931f77e3f4b6d31e68a98de4c60a242535d2eb8728d2fa5366c85f2722b438"
+    },
+    {
+      "age": 21,
+      "bytes": 1785363,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "7bca017ce80d212f840bb6105cafa46240ddaf4d9b8061e736a5c5e37a7aaebd"
+    },
+    {
+      "age": 21,
+      "bytes": 1482155,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "694356d5024b185db2fac138fc8a6c7980e453ea6c83670529cf66596bd8ab47"
+    },
+    {
+      "age": 21,
+      "bytes": 1706208,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "a455cbbb7aee1dd532cb9dea24b9d2374eeaf4de7913aab3d24cd0bb06fe96b3"
+    },
+    {
+      "age": 21,
+      "bytes": 1887339,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "e444e188bfe0009ce7f130070720fa2ac0b860a79639fd4858753adb30ae143a"
+    },
+    {
+      "age": 21,
+      "bytes": 1760623,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "4a7ce0cb76dc4a5fb9f495b86b1f79cf05b94789597b2c94c0bf653d83f517b7"
+    },
+    {
+      "age": 21,
+      "bytes": 1640820,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87"
+    },
+    {
+      "age": 21,
+      "bytes": 2320168,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "a2c9e5f8da2cba389d6ea459ed34ce871531a4cfa2a2e4e61843253fa7c60417"
+    },
+    {
+      "age": 21,
+      "bytes": 2287414,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "f419136c972c19ed70fb476fb01b055a19f82cca016cce189f5f0cb35dd60635"
+    },
+    {
+      "age": 21,
+      "bytes": 2184061,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "786b890ad1ed1628c14ac277f3b2cb1165b8dbc331a6a8a830a123ac388e63b3"
+    },
+    {
+      "age": 21,
+      "bytes": 1636131,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "5b9beda2104cc3549049afc2b400fdaac0b3449e834b196d50c33506bb45d0ff"
+    },
+    {
+      "age": 21,
+      "bytes": 1924300,
+      "country": "RU",
+      "gender": "FEMALE",
+      "identity": "1",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "aa984917c6ea81ed7a5c4d09705b54790444837df82134f11689fd83553233a4"
+    },
+    {
+      "age": 36,
+      "bytes": 2700090,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4"
+    },
+    {
+      "age": 36,
+      "bytes": 3328452,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "f14f0c7b547477dc0804f7bb1e0fadae297934938439d5643b763f62ab4adb02"
+    },
+    {
+      "age": 36,
+      "bytes": 6058271,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "4f96680fab3b37037169bbd1ed4126b67f8e75f1fd582425b72ce98326fea40b"
+    },
+    {
+      "age": 36,
+      "bytes": 6305371,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "d7c5bf47b95b7a5c7b5473222c00397ee8b8c53b3c00441a16b6d7a34ed3dfd5"
+    },
+    {
+      "age": 36,
+      "bytes": 6739803,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "67071c3c86b17b616783dd7a6e8423a12925ee3aac6e3298df9f7aa5045a212a"
+    },
+    {
+      "age": 36,
+      "bytes": 6422278,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "dae408d4b17b3b70806abb64bd7e804cfddc420cb483bef8b207bd9e2483e7c6"
+    },
+    {
+      "age": 36,
+      "bytes": 6888016,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "aa306df50e79c260f45f352156e5539ffcb7403f11773ed5ad210675901917ef"
+    },
+    {
+      "age": 36,
+      "bytes": 5883628,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "854b00294ffceb03e3c2d577a6b4720255885659962b33ce6505f7f08f1b451b"
+    },
+    {
+      "age": 36,
+      "bytes": 6028288,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "c035c11e6ec2d0249725625a328878d21a13316882d5788d5a09d8910c2974bf"
+    },
+    {
+      "age": 36,
+      "bytes": 5898291,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "90487dd9841999280c9c6332c928c70aa5816751976bc98d26f9c99f5c560ba4"
+    },
+    {
+      "age": 36,
+      "bytes": 6722913,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382"
+    },
+    {
+      "age": 36,
+      "bytes": 5619906,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "a3a507001efd8f4e13196c9f012d92b45c0a7066c4ab7fec3a3227e5d40cb4b1"
+    },
+    {
+      "age": 36,
+      "bytes": 6463179,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "faf15189998fa4f4229d6cd3341a5f249b50b9921dee43a0b2a3dc0bbe99b31f"
+    },
+    {
+      "age": 36,
+      "bytes": 6589916,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "cb9776f7616a3a6eda27d8d46213f6f28aa3149d5aa26de53edb78949af608b8"
+    },
+    {
+      "age": 36,
+      "bytes": 6888397,
+      "country": "UA",
+      "gender": "FEMALE",
+      "identity": "2",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "f81cd931f0e29f2ba82729724a5753812ad7bdb8a067f63efddbd1a3710ffdf8"
+    },
+    {
+      "age": 22,
+      "bytes": 2855655,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "fe9915cd9e674f4a8d801ebf8f566ea1f1e5f3e595391423d23d03e7d285acbc"
+    },
+    {
+      "age": 22,
+      "bytes": 2995562,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474"
+    },
+    {
+      "age": 22,
+      "bytes": 1837963,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "386e164ce4db726f8b57967c83b49e020165be197a9cbc679d91636413d3ac58"
+    },
+    {
+      "age": 22,
+      "bytes": 1866390,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "393b7464ee6ec145dce52979fe1d9f9c9794a241238f8231d5934bfaf62e283f"
+    },
+    {
+      "age": 22,
+      "bytes": 1993378,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "dc392a9bdf1fe4938a8ae44f3897869c6fef7e25f17ebd22b3f30a19d191828c"
+    },
+    {
+      "age": 22,
+      "bytes": 1885319,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "733274d62e35a25326844b26ef3995689ec53546287f9dee38c50907f97749c6"
+    },
+    {
+      "age": 22,
+      "bytes": 1840697,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "66c3b5737ab65217c8badd61a123f9285e4645742bb327691b4207e8214c01ba"
+    },
+    {
+      "age": 22,
+      "bytes": 1816576,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "d64d253be4e16ac8bd5573d45fd843bdb6aa1a92a4af9ea44cf41ca2d9c80208"
+    },
+    {
+      "age": 22,
+      "bytes": 1649828,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "28b17b45b7518ee7cdbecd46b04edb58ba30c57e82c204404e8ef66e84e05aed"
+    },
+    {
+      "age": 22,
+      "bytes": 1604642,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "576c78e58f7c2dc0c5d8b7baf26d93b3d4874acae4a9c843671a00b876575e29"
+    },
+    {
+      "age": 22,
+      "bytes": 1782278,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "92ba1527a8f9f84f16eb6df049084f95190b9b5065b3cd54bcdc00c9c09ade90"
+    },
+    {
+      "age": 22,
+      "bytes": 1872002,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e"
+    },
+    {
+      "age": 22,
+      "bytes": 1779230,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "9c76c9fbf2981dbdfbacf68762fa12aa4c36c50772ab64957f0bab8b01d526c3"
+    },
+    {
+      "age": 22,
+      "bytes": 1881311,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "b49152c5ff9d9c4897c47cdcf8921fe3bf4c6820428107ab7909649f45d909e2"
+    },
+    {
+      "age": 22,
+      "bytes": 2004795,
+      "country": "MD",
+      "gender": "FEMALE",
+      "identity": "3",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "48fa261ce555f3a571b47e5b2503963099c502aed04d9bc1f9d9295d3f96b6a4"
+    },
+    {
+      "age": 40,
+      "bytes": 3336397,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "95a5c76bd2402cefd0849d09249764da6b500038e47df29687549ad8cab0a94e"
+    },
+    {
+      "age": 40,
+      "bytes": 3525216,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "395f6b43d6f60b51c0182ff7341453ffce3058cd5d10f18221287843968a7d2a"
+    },
+    {
+      "age": 40,
+      "bytes": 2469922,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "ece1deab55a05eac7cb9a3394cabd0079a282ebd4d708ed556e96e5f470d9a3d"
+    },
+    {
+      "age": 40,
+      "bytes": 1937311,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "6f9186061a00c9ab5252eeda95e1ccc1939fc1b3a0b603dafce5091b28597f9d"
+    },
+    {
+      "age": 40,
+      "bytes": 1894243,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "b78a6c70b0ae724278d1539c11f515e00ad6e22e0dfab5ddd07f7ba2e90a1ddc"
+    },
+    {
+      "age": 40,
+      "bytes": 2351633,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "079e94f7952579f7676ffab8e2f43dfe9ca15434f4c52203d02a8babe3f35053"
+    },
+    {
+      "age": 40,
+      "bytes": 2289093,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "aa5e4e2abdc6da50df2b7760c74578e9a68ac6a564afdc3358a056a835cdaa83"
+    },
+    {
+      "age": 40,
+      "bytes": 2622624,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "735bd97587db97c1f92109a43a1f1ec7e10f7929ff38b91572abfeac58b7547c"
+    },
+    {
+      "age": 40,
+      "bytes": 2056003,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "a8b89f672ab25a1147e38ae330d18f7e95c218f1fb5a676f378848dce243c24c"
+    },
+    {
+      "age": 40,
+      "bytes": 1726594,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "6262235f757fc67f20149539a49c3fdfb59513688c71c2164f0ebd4f2cf376d9"
+    },
+    {
+      "age": 40,
+      "bytes": 2211004,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "bd5b21d79ae9b1a8727832e0ca196ad41b3b0a17361751af1f2729d2e6e73f4a"
+    },
+    {
+      "age": 40,
+      "bytes": 2252583,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "c7d6170beb919785b0f307c94233e3839b9849ec35ef055e60a31548226847dc"
+    },
+    {
+      "age": 40,
+      "bytes": 2353430,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "c28917f71530974f18c1fa5ddc381698b79f14083ab65a6a49442ed4a2a23b29"
+    },
+    {
+      "age": 40,
+      "bytes": 1906504,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "5921403529b9cf5e1defb5a2840b8ca5ef0f0f4a83c92aab0516d6fbecdf36cc"
+    },
+    {
+      "age": 40,
+      "bytes": 2212772,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "4",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "76106831bd8c272f540e963c8cf55c8fdc5838c94a37f0131dd1770fabf67551"
+    },
+    {
+      "age": 19,
+      "bytes": 1617308,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "942a86cdc40eff42a6808b30a4dd88c681c26e649952bbc30ea39fde84e3fb92"
+    },
+    {
+      "age": 19,
+      "bytes": 1498156,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "ec476d963f46ca35b697d6c3ce1764d407c5813a64d287b6f1c1200d0f8da870"
+    },
+    {
+      "age": 19,
+      "bytes": 2384647,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "279af91c1fcff4874a847cc05f050a0a913bbc7d58fc60f318111991108eb430"
+    },
+    {
+      "age": 19,
+      "bytes": 2160322,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "1d280a2945e3edee5f9b786dfb0a095f9c5b7342b4ee13581c999c91bfb70a8a"
+    },
+    {
+      "age": 19,
+      "bytes": 1632149,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "5ab087c6b6081ebd03a78e1d4dea1f84f3ee3ed0347edc1372ed170520a1e680"
+    },
+    {
+      "age": 19,
+      "bytes": 2320797,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "95b0e05400589db45420fe2029508b1573cfcd4e1c28eb5165d8a9c4383d71a8"
+    },
+    {
+      "age": 19,
+      "bytes": 2480047,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "9b66406f71ce0d0c812876b71bbf44e25f03e8d66bed406fd3620809f9c95776"
+    },
+    {
+      "age": 19,
+      "bytes": 1538120,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "f2ed8f95ecf8fba320013c3c84206e912a4461186cc40cc015d59075b0cc97eb"
+    },
+    {
+      "age": 19,
+      "bytes": 2223038,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "8f1b601f69dc9bb52b3b2daff49867e3f3a3a6b5e4fc762c3442b7e878f682a8"
+    },
+    {
+      "age": 19,
+      "bytes": 1256806,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "f22dbfb7d77466a8c74c763d2e97854c18285104d8cecf40224c026b81060575"
+    },
+    {
+      "age": 19,
+      "bytes": 996364,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "0f4f50ebbfc628676c04a667f221f9ff9f42dafbed7a738e24c3ffdb3d8a3ed4"
+    },
+    {
+      "age": 19,
+      "bytes": 1785341,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "565d34e94b366b28e221eed54dee48a5d6d67812df830a6ed3eddf4e27b9190f"
+    },
+    {
+      "age": 19,
+      "bytes": 2239634,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "f93bba9d4fd13e853434a8baf99d9a045d813694f3d72952d7725f7d856b8191"
+    },
+    {
+      "age": 19,
+      "bytes": 2564514,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "6c2478004179f78ab10de54dfb9be0f2365ca26ccbf9ce763eb8005605f823d4"
+    },
+    {
+      "age": 19,
+      "bytes": 2139665,
+      "country": "RU",
+      "gender": "MALE",
+      "identity": "5",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "03d845f448d6f8e73d2837dd73fd519f9104c979081b3e17ae6d28486fcf6ee7"
+    },
+    {
+      "age": 29,
+      "bytes": 4249392,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "241d9d238c8c545995c5e1e2cf707b4701abdcb20c660f13e6a6d7aa07a7a154"
+    },
+    {
+      "age": 29,
+      "bytes": 5342683,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "d54b857141de35f4a214f96c27efa78b24b68066e0f758f9b20626edbfdd97c4"
+    },
+    {
+      "age": 29,
+      "bytes": 12640364,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "817c338734c791a9b38c25d3eb8c6eae2024be1dfc36e124011d6eead64c69fb"
+    },
+    {
+      "age": 29,
+      "bytes": 12214048,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "323e0ebb29d2d376d3a7705ebb7067e4ceca784c6d4af47b5250ffa05409e422"
+    },
+    {
+      "age": 29,
+      "bytes": 10184187,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "59e1a6a3b1aeaa1e56be6c70408f99fdc1e4463e393d5c266202a303c77a8e9b"
+    },
+    {
+      "age": 29,
+      "bytes": 9901650,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "120f14390283089226f25d589555ef880b8e284757d733157ceb5edb6e4863e3"
+    },
+    {
+      "age": 29,
+      "bytes": 12791069,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "f64c4b6638a03e431a59570fa2b16a0599a99441890028734f13619171c534b1"
+    },
+    {
+      "age": 29,
+      "bytes": 9191263,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "91e84ef8519af4cca00602bb0dc388036b84670ba043821ad44d8c4d175160be"
+    },
+    {
+      "age": 29,
+      "bytes": 9870795,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "57a1c28fcf74b4e1d02487d7ab1a8172dba10ab94065e011e59f9ed162af59da"
+    },
+    {
+      "age": 29,
+      "bytes": 10673245,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "3b9edd3c127ea06db1cfa4bca1e7a065bc6da38b22f1cceb8c8203d9a56ea2b2"
+    },
+    {
+      "age": 29,
+      "bytes": 10613795,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "78280d958e23ef863176ed4a71f1134ca39a0039e18496d19fefb086840ad952"
+    },
+    {
+      "age": 29,
+      "bytes": 10045430,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "299fe0cc6700b05e7da00b4961053f7dc6bd2cb44336bdbb636e971651366ed9"
+    },
+    {
+      "age": 29,
+      "bytes": 11741239,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "2ea85419488e52050603e599f54eb886783496abfa555988daae703cc9c77ab6"
+    },
+    {
+      "age": 29,
+      "bytes": 9577990,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "5e097f03044f284c75f375621ee057dcdbbd88ae59565082038539a62a3eea97"
+    },
+    {
+      "age": 29,
+      "bytes": 10806113,
+      "country": "KZ",
+      "gender": "FEMALE",
+      "identity": "6",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "754f481f0acbe54a28370865d41513ab1648f04ff4b3514f95207f0a9b804496"
+    },
+    {
+      "age": 36,
+      "bytes": 2483156,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_1.jpg",
+      "role": "id_document",
+      "sha256": "1becc6271525ee1ca858a479b74206017371b240dfe87011a9cb0c1058c7f4ae"
+    },
+    {
+      "age": 36,
+      "bytes": 2804777,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_2.jpg",
+      "role": "id_document",
+      "sha256": "4691e0b470202724bd1511739339d6e8f8c2a84332c50e1a941607e90c6f96b3"
+    },
+    {
+      "age": 36,
+      "bytes": 2026628,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_1.jpg",
+      "role": "selfie",
+      "sha256": "8949f1967e185d7ce0f273c2eb3d6760319957cb7f49e9e69150ffafff7723d7"
+    },
+    {
+      "age": 36,
+      "bytes": 2041249,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_10.jpg",
+      "role": "selfie",
+      "sha256": "97ead461ef57e4be0538fb72a5721b333faf2936a6a16c1b7cec12c7c2bb2d00"
+    },
+    {
+      "age": 36,
+      "bytes": 1901419,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_11.jpg",
+      "role": "selfie",
+      "sha256": "b4a86b76747e17579cf296cb7a23dd689e711ac7be7bc030444ce97a9e424911"
+    },
+    {
+      "age": 36,
+      "bytes": 1687745,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_12.jpg",
+      "role": "selfie",
+      "sha256": "9473b8b1ee188d347214add9686216b0bf51cb3ed9e290b911a4f4a8fbbaa9fe"
+    },
+    {
+      "age": 36,
+      "bytes": 2386061,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_13.jpg",
+      "role": "selfie",
+      "sha256": "2dc1b4e0824db259d03efe5a71f3f2050f20ea530a1f52ee665ea18cb000d36e"
+    },
+    {
+      "age": 36,
+      "bytes": 2025480,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_2.jpg",
+      "role": "selfie",
+      "sha256": "4212d1c1c69428ee58f3bdbf78e917f3ddcc80fd4e8f3014f7f2ff6af818b07d"
+    },
+    {
+      "age": 36,
+      "bytes": 2155236,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_3.jpg",
+      "role": "selfie",
+      "sha256": "5aabed0924797111a14227b47ce5bfcfb806cce6d01199e2d5169de86c359d0c"
+    },
+    {
+      "age": 36,
+      "bytes": 2334416,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_4.jpg",
+      "role": "selfie",
+      "sha256": "c4117c515b753e25ae3a20c250844889627c6a18120f2f61eed54a44f3413ab7"
+    },
+    {
+      "age": 36,
+      "bytes": 2149667,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_5.jpg",
+      "role": "selfie",
+      "sha256": "ad6e906ba8c12947fd370fa328e8e9076f22b5717de833bdb271ca0ff7e63b7d"
+    },
+    {
+      "age": 36,
+      "bytes": 1781272,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_6.jpg",
+      "role": "selfie",
+      "sha256": "36da6f92e75bd568d19691ef8b6a769975b7b1d82f900ad781bbc0b9451166d6"
+    },
+    {
+      "age": 36,
+      "bytes": 1946736,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_7.jpg",
+      "role": "selfie",
+      "sha256": "de68305c8aa8a7d4384f8d892571d0552a8681555fe32da45d50e97f34d625d7"
+    },
+    {
+      "age": 36,
+      "bytes": 2069263,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_8.jpg",
+      "role": "selfie",
+      "sha256": "52cec87f14e7aeaf0eeacc52f25e3a8a42260291a233bed3d188491e5213e169"
+    },
+    {
+      "age": 36,
+      "bytes": 1739857,
+      "country": "BY",
+      "gender": "MALE",
+      "identity": "7",
+      "path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_9.jpg",
+      "role": "selfie",
+      "sha256": "7c36358199af2f2994ccdb763dde64ebad361327920544d48d7fff3f92e13bc7"
+    }
+  ],
+  "source": {
+    "licence": "cc-by-nc-nd-4.0",
+    "note": "referenced by absolute path and sha256; no file is copied, resized or rewritten",
+    "root": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset",
+    "vendored": false
+  },
+  "summary": {
+    "by_role": {
+      "id_document": 14,
+      "selfie": 91
+    },
+    "distinct_content": 105,
+    "identities": 7,
+    "images": 105,
+    "per_identity": {
+      "1": 15,
+      "2": 15,
+      "3": 15,
+      "4": 15,
+      "5": 15,
+      "6": 15,
+      "7": 15
+    }
+  }
+}

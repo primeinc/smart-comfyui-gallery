@@ -1,0 +1,732 @@
+# The frozen consumer population, pinned.
+#
+# Every consumer here names the symbol that was READ, at the commit named here.
+# Nothing in this file asserts a replay works: `status` is `unproven` until a
+# runner executes and writes evidence, and `unclassified` where the contract
+# has not been established yet. The harness FAILS while any member is
+# unclassified, so adding a row is a commitment to prove it.
+#
+# TOML, not YAML: `tomllib` is stdlib from 3.11, so the manifest parses with a
+# real parser and no dependency. This tree forbids regex-parsing a structured
+# format, and a harness about proof should not begin by guessing at its own
+# input.
+#
+# Lives outside the application import graph on purpose. These upstreams pull
+# torch, onnxruntime, insightface, facexlib and diffusers; none of that may
+# reach `db/` or `sg_web/`.
+#
+# The boundary is always the EARLIEST deterministic consumer output, never a
+# generated image: sampling is nondeterministic across machines and would turn
+# a storage proof into a GPU lottery.
+
+version = 1
+recorded_at = "2026-08-28"
+refs_root = "../refs"          # relative to the repository root
+
+[equivalence]
+# Default comparison for tensor boundaries. A runner may NARROW this; widening
+# it requires an `equivalence` block on the runner naming the first stage at
+# which exactness is lost and why.
+method = "exact_bytes"
+
+[equivalence.fallback]
+method = "allclose"
+rtol = 0.0
+atol = 1e-6
+why = "Permitted only where the same op runs on a device with unfixed reduction order."
+
+# --- shared upstreams -------------------------------------------------------
+# Named once, referenced by key. A dependency that participates in
+# preprocessing or conditioning belongs here, not in prose.
+
+[upstreams.insightface]
+repo = "https://github.com/deepinsight/insightface.git"
+commit = "7fadd420c2351d0ffa8cac403421c1a3ed733365"
+read = [
+  "python-package/insightface/utils/face_align.py::norm_crop",
+  "python-package/insightface/model_zoo/landmark.py::Landmark.get",
+  "python-package/insightface/app/common.py::Face.sex",
+]
+notes = [
+  "arcface_dst is a 112 template; estimate_norm asserts size%112==0 OR size%128==0, and the 128 branch adds diff_x = 8.0*ratio -- so 256 is NOT a scaled 224. Three alignment families, not one.",
+  "pose is ordered [pitch, yaw, roll]; require_pose is gated on output_shape[1]==3309, i.e. the 1k3d68 head.",
+  "Face.sex derives from gender; normed_embedding is a property computed on access, never stored.",
+]
+
+[upstreams.facexlib]
+repo = "https://github.com/xinntao/facexlib.git"
+commit = "260620ae93990a300f4b16448df9bb459f1caba9"
+version = "0.3.0"
+read = ["facexlib/utils/face_restoration_helper.py::FaceRestoreHelper.align_warp_face"]
+notes = [
+  "FFHQ-512 template, cv2.estimateAffinePartial2D with LMEDS, gray border (135,133,132).",
+  "Landmarks come from its OWN retinaface_resnet50 detector, not from insightface kps.",
+  "get_inverse_affine already exists -- that is the mechanism for a source-space footprint.",
+]
+unpinned_by_consumers = ["pulid_comfyui", "consisid", "infiniteyou"]
+
+[upstreams.diffusers]
+repo = "https://github.com/huggingface/diffusers.git"
+commit = "c1bf18c92c6285334adcaac7e75ef8946a227f49"
+
+[upstreams.comfyui]
+repo = "https://github.com/Comfy-Org/ComfyUI.git"
+commit = "a9ab2b62dac17743c62fc1cab8468340496d302e"
+
+# --- runtimes: what the interpreter will actually import --------------------
+# Some consumers run from an INSTALLED wheel rather than from the clone, and a
+# wheel is not automatically the commit it claims. Each row names a file that
+# exists in both places; `provenance.py` hashes the installed bytes against
+# `git show <commit>:<path>` and fails when they diverge.
+#
+# Without this the suite could cite a commit and execute something else, which
+# is the most expensive kind of wrong evidence -- it looks fully sourced.
+# Installed through `uv sync --group compat`; the group is NOT in
+# `default-groups`, so the application's environment never carries it.
+
+[[runtimes]]
+package = "facexlib"
+upstream = "facexlib"
+path = "facexlib/utils/face_restoration_helper.py"
+installed_path = "facexlib/utils/face_restoration_helper.py"
+
+[[runtimes]]
+package = "diffusers"
+upstream = "diffusers"
+path = "src/diffusers/pipelines/consisid/consisid_utils.py"
+installed_path = "diffusers/pipelines/consisid/consisid_utils.py"
+
+[[runtimes]]
+package = "insightface"
+upstream = "insightface"
+path = "python-package/insightface/utils/face_align.py"
+installed_path = "insightface/utils/face_align.py"
+
+# --- weights: what actually computed the numbers ----------------------------
+# Pinning twenty repositories to the commit and leaving the model files
+# unnamed would let this suite reproduce its own code exactly and still
+# produce different embeddings on another machine, with nothing in the record
+# able to explain it. These are hashed by content on every provenance run.
+#
+# Not vendored and not downloadable from here: `vision/weights.py` owns
+# provisioning, and the licence is non-commercial research
+# (deepinsight/insightface). A missing file makes cases UNSUPPORTED, which is
+# the honest outcome, and stays visible in the evidence.
+
+[[weights]]
+pack = "antelopev2"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
+file = "glintr100.onnx"
+role = "recognition -- the 512-d embedding every identity claim rests on"
+
+[[weights]]
+pack = "antelopev2"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
+file = "scrfd_10g_bnkps.onnx"
+role = "detection -- bbox, det_score and the 5 keypoints the whole arcface family aligns on"
+
+[[weights]]
+pack = "antelopev2"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
+file = "1k3d68.onnx"
+role = "landmark_3d_68, and pose is derived from its output rather than emitted separately"
+
+[[weights]]
+pack = "antelopev2"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
+file = "2d106det.onnx"
+role = "landmark_2d_106 -- 848 bytes per face, the second-largest retained candidate"
+
+[[weights]]
+pack = "antelopev2"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
+file = "genderage.onnx"
+role = "gender and age; not derivable from anything else the pass returns"
+
+# buffalo_l: insightface's DEFAULT_MP_NAME. UniPortrait constructs
+# FaceAnalysis with no name=, so it gets THIS pack -- det_10g + w600k_r50,
+# different files from antelopev2's scrfd_10g_bnkps + glintr100. Different
+# detector means different keypoints, so antelopev2 kps cannot serve it.
+
+[[weights]]
+pack = "buffalo_l"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
+file = "det_10g.onnx"
+role = "detection for UniPortrait; NOT the same detector as antelopev2"
+
+[[weights]]
+pack = "buffalo_l"
+root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
+file = "w600k_r50.onnx"
+role = "buffalo_l recognition; a third embedding space alongside glintr100 and facexlib arcface"
+
+# facexlib's own weights. PuLID, ConsisID and InfiniteYou re-detect with
+# retinaface_resnet50 rather than reusing insightface keypoints, and
+# InfiniteYou's embedding is facexlib's arcface -- not glintr100 at all.
+# Downloaded by facexlib itself into its package directory.
+
+[[weights]]
+pack = "facexlib"
+root = "C:/Users/will/dev/smart-comfyui-gallery/.venv/Lib/site-packages/facexlib/weights"
+file = "detection_Resnet50_Final.pth"
+role = "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou"
+
+[[weights]]
+pack = "facexlib"
+root = "C:/Users/will/dev/smart-comfyui-gallery/.venv/Lib/site-packages/facexlib/weights"
+file = "recognition_arcface_ir_se50.pth"
+role = "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100"
+
+[[weights]]
+pack = "facexlib"
+root = "C:/Users/will/dev/smart-comfyui-gallery/.venv/Lib/site-packages/facexlib/weights"
+file = "parsing_bisenet.pth"
+role = "face parsing for PuLID/ConsisID masked crops"
+
+# --- face-native consumers --------------------------------------------------
+
+[[consumers]]
+id = "instantid"
+family = "face_native"
+repo = "https://github.com/cubiq/ComfyUI_InstantID.git"
+commit = "72495e806bc2ab9c41581e15ccaa1bcf83c477e8"
+entrypoint = "InstantID.py::extractFeatures"
+also_read = ["InstantID.py::ApplyInstantID.apply_instantid"]
+dependencies = ["insightface"]
+boundary = ["id_embedding", "pose_control_image"]
+retained = ["raw_embedding", "kps_source_px", "frame_dimensions"]
+rebuilt = ["pose_control_image"]
+claim = "no source pixels required: draw_kps uses the reference image ONLY for its size"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+# Copied from the vendor's own loader and extractor at this row's commit.
+cited = ["InstantID.py:217 load_insight_face", "InstantID.py:171-191 extractFeatures"]
+loader = 'FaceAnalysis(name="antelopev2", root=INSIGHTFACE_DIR, providers=[provider+"ExecutionProvider"])'
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = [640, 128, -64]           # range(640, 128, -64); first size that finds a face wins
+select = "largest_bbox_area"      # sorted(face, key=area)[-1]
+embedding = "raw"                 # face['embedding'], NOT normed
+crop_sizes = []
+kps_render = "draw_kps_array"     # cubiq's draw_kps takes an ndarray: h, w, _ = image.shape
+combine = "mean"                  # torch.mean(clip_embed, dim=0) when >1 reference
+
+[[consumers]]
+id = "ipadapter_faceid"
+family = "face_native"
+repo = "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+commit = "a0f451a5113cf9becb0847b92884cb10cbdec0ef"
+entrypoint = "IPAdapterPlus.py::ipadapter_execute"
+dependencies = ["insightface"]
+boundary = ["face_cond_embeds"]
+retained = ["raw_embedding"]
+rebuilt = ["unit_embedding"]
+claim = "unit is derivable from raw; raw is NOT derivable from unit -- the norm carries quality"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["IPAdapterPlus.py:350-367 ipadapter_execute face branch"]
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = [640, 256, -64]
+select = "first"                  # face[0], NOT the largest -- differs from InstantID
+embedding = "normed"              # normed_embedding unless is_portrait_unnorm
+embedding_alt = "raw"             # is_portrait_unnorm -> face[0].embedding
+crop_sizes = []
+kps_render = "none"
+combine = "concat"
+
+[[consumers]]
+id = "ipadapter_faceid_plus"
+family = "face_native"
+repo = "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+commit = "a0f451a5113cf9becb0847b92884cb10cbdec0ef"
+entrypoint = "IPAdapterPlus.py::ipadapter_execute"
+dependencies = ["insightface"]
+boundary = ["face_cond_embeds", "aligned_crop_224", "aligned_crop_256", "aligned_crop_336"]
+retained = ["source_region_pixels", "kps_source_px", "frame_dimensions"]
+rebuilt = ["aligned_crop_224", "aligned_crop_256", "aligned_crop_336"]
+claim = "one source patch regenerates all three sizes; a 336 crop downscaled to 256 does NOT -- 256 is the 128-family with x += 16"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["IPAdapterPlus.py:350-367 ipadapter_execute face branch"]
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = [640, 256, -64]
+select = "first"
+embedding = "normed"
+embedding_alt = "raw"
+crop_sizes = [224, 256, 336]      # 224 sd15, 256 sdxl, 336 kwai kolors
+kps_render = "none"
+combine = "concat"
+
+[[consumers]]
+id = "pulid_comfyui"
+family = "face_native"
+repo = "https://github.com/cubiq/PuLID_ComfyUI.git"
+commit = "93e0c4c226b87b23c0009d671978bad0e77289ff"
+entrypoint = "pulid.py::ApplyPulid.apply_pulid"
+dependencies = ["insightface", "facexlib"]
+boundary = ["iface_embeds", "cropped_face", "id_cond_vit"]
+retained = ["source_region_pixels", "frame_dimensions", "raw_embedding"]
+rebuilt = ["facexlib_landmarks_5", "facexlib_crop", "eva_clip_features"]
+risk = "facexlib runs its OWN detector over pixels, so the retained patch must be large enough for retinaface to find the same face. Not analytically derivable: needs four-sided ablation."
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["pulid.py:240-241 load_insightface", "pulid.py:350-363 apply_pulid sweep"]
+loader = 'FaceAnalysis(name="antelopev2", root=INSIGHTFACE_DIR, providers=[provider+"ExecutionProvider"])'
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = [640, 256, -64]
+select = "largest_bbox_area"
+embedding = "raw"
+crop_sizes = []
+kps_render = "none"
+combine = "none"
+
+[[consumers]]
+id = "reactor"
+family = "face_native"
+repo = "https://github.com/Gourieff/ComfyUI-ReActor.git"
+commit = "6ad6b35a4df250d14cb2abf0808c9ffedf59f747"
+entrypoint = "reactor_utils.py::save_face_model"
+verifier = "reactor_utils.py::load_face_model"
+dependencies = ["insightface"]
+boundary = ["face_model_safetensors"]
+retained = ["native_face_observation"]
+rebuilt = ["face_model_safetensors"]
+claim = "nine keys: bbox kps det_score landmark_3d_68 pose landmark_2d_106 embedding gender age. The pipeline retains three. No pixels required."
+note = "the only consumer with a first-party LOADER, so its assertion is upstream's own code accepting our bytes"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["reactor_utils.py:184-208 save_face_model/load_face_model", "reactor_core/face_objects.py Face"]
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = []
+select = "first"
+embedding = "raw"
+crop_sizes = []
+kps_render = "none"
+combine = "none"
+face_class = "reactor_core.face_objects.Face"
+
+[[consumers]]
+id = "infiniteyou"
+family = "face_native"
+repo = "https://github.com/bytedance/ComfyUI_InfiniteYou.git"
+commit = "1c979397c5c80f5ac83a2473a2f7d4503104110f"
+entrypoint = "nodes.py::ExtractIDEmbedding.extract_id_embedding"
+also_read = ["utils.py::extract_arcface_bgr_embedding", "nodes.py::ExtractFacePoseImage.extract_face_pose"]
+dependencies = ["insightface", "facexlib"]
+boundary = ["arcface_embedding", "pose_control_image"]
+retained = ["source_region_pixels", "kps_source_px", "frame_dimensions"]
+rebuilt = ["aligned_crop_112", "arcface_embedding", "pose_control_image"]
+claim = "uses facexlib's arcface over norm_crop@112, NOT glintr100 -- the stored embedding cannot serve this consumer at all"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+# NOT a sweep on one app: a SEPARATE FaceAnalysis per det_size, tried in order.
+cited = ["nodes.py:35-49 FaceDetector", "nodes.py:104-108 AUTO det sizes", "utils.py:22-29 extract_arcface_bgr_embedding"]
+loader = 'FaceAnalysis(name="antelopev2", root=root_dir, providers=providers) per det_size'
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+det_size_ladder = [640, 320, 160]
+sweep = []
+select = "largest_bbox_area"
+embedding = "raw"                 # utils.py:28 says the model already returns it normalized
+embedding_model = "facexlib_arcface"   # init_recognition_model('arcface'); NOT glintr100
+embedding_preprocess = "norm_crop@112 -> /255 -> 2x-1 -> arcface_model -> [512] normalized"
+crop_sizes = [112]
+kps_render = "draw_kps_pil"
+combine = "none"
+
+[[consumers]]
+id = "uniportrait"
+family = "face_native"
+repo = "https://github.com/junjiehe96/UniPortrait.git"
+commit = "a4deff2b48e3f67c8466905f27b5a662fc9e912e"
+entrypoint = "gradio_app.py::process_faceid_image"
+also_read = ["uniportrait/uniportrait_pipeline.py::UniPortraitPipeline.get_single_faceid_embeds"]
+dependencies = ["insightface"]
+boundary = ["aligned_crop_224", "faceid_prompt_embeds"]
+retained = ["source_region_pixels", "kps_source_px", "frame_dimensions"]
+rebuilt = ["aligned_crop_224"]
+claim = "consumes NO embedding: FaceAnalysis(allowed_modules=['detection']). N crops become 49 spatial tokens each, concatenated."
+note = "pads by 1.25 with grey and retries when detection fails"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+# No name= on FaceAnalysis, so the pack is insightface's DEFAULT_MP_NAME
+# (buffalo_l), NOT antelopev2 -- a different detector, so different keypoints.
+cited = ["gradio_app.py:65-66 face_app", "gradio_app.py:69-103 pad_np_bgr_image/process_faceid_image"]
+loader = 'FaceAnalysis(providers=["CUDAExecutionProvider"], allowed_modules=["detection"])'
+pack = "buffalo_l"
+allowed_modules = ["detection"]
+prepare_det_size = [640, 640]
+sweep = []
+retry_pad_scale = 1.25            # cv2.copyMakeBorder BORDER_CONSTANT value (128,128,128), then subtract left_top
+select = "largest_bbox_area"      # sorted(..., reverse=True)[0]
+embedding = "none"                # allowed_modules is detection only: no vector exists
+crop_sizes = [224]
+kps_render = "none"
+combine = "concat_tokens"
+
+[[consumers]]
+id = "photomaker_v2"
+family = "face_native_plus_reference"
+repo = "https://github.com/TencentARC/PhotoMaker.git"
+commit = "060b4fcb10b76a4554edf565d6106b7e36c968f0"
+entrypoint = "inference_scripts/inference_pmv2_ip_adapter.py::__main__"
+dependencies = ["insightface"]
+boundary = ["id_embeds", "input_id_images"]
+retained = ["raw_embedding_per_image", "whole_reference_image"]
+rebuilt = ["id_embeds_stack"]
+claim = "needs BOTH the vector and the framed image for every reference; torch.stack, never averaged"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+# FaceAnalysis2 (photomaker/insightface_package.py) overrides ONLY `get`, to
+# take a per-call det_size. `__init__` is NOT overridden, so `name` falls to
+# insightface's DEFAULT_MP_NAME -- buffalo_l -- and the README instructs no
+# other pack, only photomaker-v1.bin. With allowed_modules detection +
+# recognition that loads det_10g and w600k_r50.
+#
+# w600k_r50 is not glintr100, MEASURED rather than inferred from the
+# filename: different sha256, and the cosine between the two models on the
+# SAME face is 0.022-0.031 -- inside the 0.001-0.006 band that separates
+# DIFFERENT identities within one model. Two spaces, so the vector this
+# application stores cannot serve this consumer at all.
+#
+# The filename caution is not theoretical: antelopev2's scrfd_10g_bnkps.onnx
+# and buffalo_l's det_10g.onnx ARE byte-identical (sha256 5838f7fe0536), so
+# names here prove nothing either way and every such claim is hashed.
+cited = [
+  "photomaker/insightface_package.py FaceAnalysis2 + analyze_faces",
+  "inference_scripts/inference_pmv2_ip_adapter.py:13-14 construction",
+  "inference_scripts/inference_pmv2_ip_adapter.py:77-87 id_embed_list/torch.stack",
+]
+loader = "FaceAnalysis2(providers=['CUDAExecutionProvider'], allowed_modules=['detection','recognition'])"
+pack = "buffalo_l"
+allowed_modules = ["detection", "recognition"]
+prepare_det_size = [640, 640]
+sweep = [640, 256, -64]
+sweep_note = "analyze_faces tries [None] + range(640,256,-64) + [(256,256)]; None means whatever det_size is already set"
+pinned_insightface = "0.7.3"
+select = "first"
+embedding = "raw"
+embedding_model = "w600k_r50"
+crop_sizes = []
+kps_render = "none"
+combine = "stack"
+note_setup = "torch.stack, never averaged; input_id_images (whole PIL images) are passed alongside the vectors"
+
+[[consumers]]
+id = "consisid"
+family = "face_native"
+repo = "https://github.com/PKU-YuanGroup/ConsisID.git"
+commit = "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e"
+entrypoint = "src/diffusers/pipelines/consisid/consisid_utils.py::process_face_embeddings"
+entrypoint_in = "diffusers"
+dependencies = ["insightface", "facexlib", "diffusers"]
+boundary = ["id_cond", "id_vit_hidden", "face_kps", "parsed_face_image"]
+retained = ["source_region_pixels", "frame_dimensions", "raw_embedding"]
+rebuilt = ["facexlib_crop_512", "parsed_face_image", "eva_clip_336", "id_cond"]
+claim = "id_cond = cat(ante_512, eva_clip_768) = 1280; largest pixel requirement in the population at 512x512"
+note = "the whole image is pre-resized to long-edge 1024 BEFORE detection"
+status = "unproven"
+
+[[consumers]]
+id = "instantid_upstream"
+family = "face_native"
+repo = "https://github.com/instantX-research/InstantID.git"
+commit = "2145b67f9607da6234702063692330185f374486"
+entrypoint = "infer.py::__main__"
+also_read = ["pipeline_stable_diffusion_xl_instantid.py::draw_kps"]
+dependencies = ["insightface"]
+boundary = ["face_emb", "face_kps_image"]
+retained = ["raw_embedding", "kps_source_px", "frame_dimensions"]
+rebuilt = ["face_kps_image"]
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["pipeline_stable_diffusion_xl_instantid.py:107-134 draw_kps"]
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = []
+select = "largest_bbox_area"
+embedding = "raw"
+crop_sizes = []
+kps_render = "draw_kps_pil"       # upstream's draw_kps takes a PIL image: w, h = image_pil.size
+combine = "none"
+
+[[consumers]]
+id = "ipadapter_upstream"
+family = "face_native"
+repo = "https://github.com/tencent-ailab/IP-Adapter.git"
+commit = "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2"
+entrypoint = "ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds"
+dependencies = ["insightface"]
+boundary = ["image_prompt_embeds"]
+retained = ["raw_embedding"]
+rebuilt = ["unit_embedding", "image_prompt_embeds"]
+claim = "generate() takes faceid_embeds and NO image -- vector-only, proven by the signature"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["ip_adapter/ip_adapter_faceid.py:183-188 IPAdapterFaceID.get_image_embeds"]
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = []
+select = "first"
+embedding = "normed"
+crop_sizes = []
+kps_render = "none"
+combine = "none"
+
+[[consumers]]
+id = "pulid_upstream"
+family = "face_native"
+repo = "https://github.com/ToTheBeginning/PuLID.git"
+commit = "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa"
+entrypoint = "pulid/pipeline.py::PuLIDPipeline.get_id_embedding"
+dependencies = ["insightface", "facexlib"]
+boundary = ["id_ante_embedding", "id_cond_vit"]
+retained = ["raw_embedding", "source_region_pixels"]
+rebuilt = ["facexlib_crop", "eva_clip_features"]
+status = "unproven"
+
+[consumers.vendor_setup]
+cited = ["pulid/pipeline.py:87-92 FaceAnalysis + handler_ante", "pulid/pipeline.py:144-157 get_id_embedding"]
+loader = "FaceAnalysis(name='antelopev2', root='.', providers=['CUDAExecutionProvider','CPUExecutionProvider'])"
+pack = "antelopev2"
+prepare_det_size = [640, 640]
+sweep = []
+select = "largest_bbox_area"
+embedding = "raw"
+crop_sizes = []
+kps_render = "none"
+combine = "none"
+note_setup = "no det_size sweep, unlike the ComfyUI port; facexlib FaceRestoreHelper and eva_clip follow"
+
+# --- whole-reference-image consumers ---------------------------------------
+
+[[consumers]]
+id = "umo"
+family = "whole_reference"
+repo = "https://github.com/bytedance/UMO.git"
+commit = "aada3dc32990ae82061857ebe911b2c15621571a"
+entrypoint = "eval/UNO/inference_omnicontext.py::main"
+dependencies = ["insightface", "facexlib"]
+boundary = ["reference_images"]
+retained = ["whole_reference_image"]
+rebuilt = []
+status = "unproven"
+
+
+[consumers.vendor_setup]
+# UMO does not have its own reference preprocessing: it imports UNO's.
+cited = ["eval/UNO/inference_omnicontext.py:29 import", "eval/UNO/inference_omnicontext.py:108-113"]
+kind = "whole_reference"
+preprocess = "uno_preprocess_ref"
+preprocess_from = "uno"
+long_size_single = 512
+long_size_multi = 320
+exif_transpose = true
+note_setup = "ImageOps.exif_transpose BEFORE preprocess_ref -- UNO's own inference.py does not do this"
+
+[[consumers]]
+id = "uno"
+family = "whole_reference"
+repo = "https://github.com/bytedance/UNO.git"
+commit = "a563432dcfb4caf98df4368facb8102bf97d376c"
+entrypoint = "inference.py::__main__"
+boundary = ["reference_images"]
+retained = ["whole_reference_image"]
+rebuilt = []
+constraint = "long side 512 single-subject, 320 multi-subject (README:146)"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["uno/flux/pipeline.py:70-98 preprocess_ref", "inference.py:94-97 ref_size selection"]
+kind = "whole_reference"
+preprocess = "uno_preprocess_ref"
+preprocess_symbol = "uno/flux/pipeline.py::preprocess_ref"
+long_size_single = 512
+long_size_multi = 320
+exif_transpose = false
+note_setup = "LANCZOS to the long edge, then //16*16 centre crop, then convert RGB"
+
+[[consumers]]
+id = "uso"
+family = "whole_reference"
+repo = "https://github.com/bytedance/USO.git"
+commit = "6587514aa3adf8e8f46e5f7e804239651d30b32d"
+entrypoint = "inference.py::__main__"
+boundary = ["reference_images"]
+retained = ["whole_reference_image"]
+rebuilt = []
+constraint = "framing is load-bearing: half-body close-ups for half-body prompts, full-body when framing shifts (README:117). A face crop cannot substitute -- the ablation must show it."
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["inference.py:132-137 ref_imgs", "inference.py:69 content_ref"]
+kind = "whole_reference"
+preprocess = "rgb_only"
+exif_transpose = false
+content_ref = 512
+note_setup = "Image.open(...).convert('RGB') and nothing else; framing is load-bearing per README:117"
+
+[[consumers]]
+id = "omnigen2"
+family = "whole_reference"
+repo = "https://github.com/VectorSpaceLab/OmniGen2.git"
+commit = "18e6f9d5271b517fcb32e999f10df943ae9b8f20"
+entrypoint = "README.md::quickstart"
+source_unread = true
+boundary = ["reference_images"]
+retained = ["whole_reference_image"]
+rebuilt = []
+constraint = ">512x512, person large in frame; max_pixels default 1024*1024"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["README.md:184-186 max_pixels", "README.md:205 resolution guidance"]
+kind = "whole_reference"
+preprocess = "rgb_only"
+exif_transpose = false
+max_pixels = 1048576
+note_setup = "resizes when width*height exceeds max_pixels (default 1024*1024), aspect preserved"
+
+[[consumers]]
+id = "instantcharacter"
+family = "whole_reference"
+repo = "https://github.com/Tencent-Hunyuan/InstantCharacter.git"
+commit = "5f5c49a98ba15eb75caf70e60787156c6ae619b0"
+entrypoint = "README.md::quickstart"
+source_unread = true
+boundary = ["subject_image"]
+retained = ["whole_reference_image"]
+rebuilt = []
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["README.md:105-106 ref_image", "README.md:114 subject_image="]
+kind = "whole_reference"
+preprocess = "rgb_only"
+exif_transpose = false
+note_setup = "Image.open(ref_image_path).convert('RGB'); no resize in the vendor's own quickstart"
+
+[[consumers]]
+id = "qwen_image_edit_2509"
+family = "whole_reference"
+repo = "https://github.com/QwenLM/Qwen-Image.git"
+commit = "6b5e1f5cec987d404be5ac6657db3b9aacb56a89"
+entrypoint = "src/examples/edit_demo.py::infer"
+boundary = ["reference_images"]
+retained = ["whole_reference_image"]
+rebuilt = []
+constraint = "1 to 3 images"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+# The .md this row cited is prose with no code. The runnable entrypoint is
+# src/examples/edit_demo.py, and it does NO preprocessing: a gradio
+# gr.Image(type="pil") goes straight into QwenImageEditPipeline.
+cited = ["src/examples/edit_demo.py:36-60 infer", "src/examples/edit_demo.py:82 gr.Image type=pil"]
+kind = "whole_reference"
+preprocess = "rgb_only"
+exif_transpose = false
+note_setup = "the vendor performs no reference preprocessing; resizing happens inside the diffusers pipeline"
+
+[[consumers]]
+id = "anystory"
+family = "whole_reference_masked"
+repo = "https://github.com/junjiehe96/AnyStory.git"
+commit = "c38fef83a35512b2a00c072a95bc0ff56b003f93"
+entrypoint = "inference.py::__main__"
+boundary = ["subject_images", "subject_masks"]
+retained = ["whole_reference_image", "subject_mask"]
+rebuilt = []
+claim = "masks are mode L, one per subject, supplied as separate files"
+status = "unproven"
+
+
+[consumers.vendor_setup]
+cited = ["inference.py:19-20 subject_image/subject_mask", "inference.py:23 images=/masks="]
+kind = "whole_reference_masked"
+preprocess = "rgb_only"
+mask_mode = "L"
+exif_transpose = false
+note_setup = "one mode-L mask per subject, supplied as a separate file alongside the RGB image"
+
+[[consumers]]
+id = "xverse"
+family = "whole_reference"
+repo = "https://github.com/bytedance/XVerse.git"
+commit = "65e2581aac0faffe4607881a10cc486186f6499d"
+entrypoint = "inference_single_sample.py::__main__"
+boundary = ["input_images"]
+retained = ["whole_reference_image"]
+rebuilt = []
+note = "eval/tools/face_utils/face.py loose_warp_face(scale=1.3, 512) is the identity METRIC, not a generation input."
+status = "unproven"
+
+# --- temporal and audio -----------------------------------------------------
+
+
+[consumers.vendor_setup]
+# The facer/loose_warp_face code lives under eval/tools/, so it is the
+# identity METRIC rather than a generation input. What the pipeline is given
+# is whole reference images.
+cited = ["inference_single_sample.py input_images", "eval/tools/face_utils/face.py:75 loose_warp_face (metric, not input)"]
+kind = "whole_reference"
+preprocess = "rgb_only"
+exif_transpose = false
+note_setup = "eval/tools/face_utils/face.py:29 resize_image(max_size=1024) is evaluation-side"
+
+[[consumers]]
+id = "id_v2v"
+family = "temporal_control"
+repo = "https://github.com/Eyeline-Labs/ID-V2V.git"
+commit = "33dd047835cf03a41d7ca6f3a93508946ad6b4d9"
+entrypoint = "scripts/preprocess.sh::preprocess"
+source_unread = true
+boundary = ["orig_pixel_mp4", "normals_mp4", "depth_mp4"]
+retained = ["source_video", "control_stream"]
+rebuilt = []
+claim = "SAM3 foreground-on-gray; DAViD normals and DepthAnything-V2 depth in the alternate variant. Keyed to source media, not to a face."
+status = "unproven"
+
+[[consumers]]
+id = "id_lora"
+family = "audio_identity"
+repo = "https://github.com/ID-LoRA/ID-LoRA.git"
+commit = "13dc9c286a2d3c1a21a7781f9ac0fe7727ec56cd"
+entrypoint = "comfy_extras/nodes_lt.py::LTXVReferenceAudio.execute"
+entrypoint_in = "comfyui"
+dependencies = ["comfyui"]
+boundary = ["ref_tokens"]
+retained = ["audio_waveform", "audio_sample_rate"]
+rebuilt = ["ref_tokens"]
+constraint = "~5s; resampled to audio_vae.audio_sample_rate, default 44100"
+claim = "the latents are the consumer's VAE output and must NOT be stored -- the durable artifact is the waveform, exactly as pixels are durable and crops are not"
+status = "unproven"

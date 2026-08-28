@@ -1,0 +1,36 @@
+{
+  "frame": {
+    "dtype": "uint8",
+    "height": 1200,
+    "sha256": "926046e7439d75df2b03bb3f8c277467d36d1e22f060e5c42ab51901d189be60",
+    "width": 900
+  },
+  "keypoints": {
+    "order": "right_eye,left_eye,nose,right_mouth,left_mouth",
+    "sha256": "a2093da81d724ceefdf2e0c4c1a2fc76ed6abccc20d5324824dabae0822a9396",
+    "space": "source_pixels",
+    "values": [
+      [
+        352.0,
+        471.0
+      ],
+      [
+        528.0,
+        455.0
+      ],
+      [
+        447.0,
+        566.0
+      ],
+      [
+        369.0,
+        663.0
+      ],
+      [
+        521.0,
+        649.0
+      ]
+    ]
+  },
+  "seed": 20260828
+}
