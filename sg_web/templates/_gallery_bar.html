@@ -1,0 +1,80 @@
+{# the question: what to ask, and what came back #}
+{# The header is a SEARCH BAR and one door, not a control panel.
+
+   It used to carry the whole filter vocabulary the browser knew
+   about -- kind, rating and favorite as three <select> elements --
+   which is four questions out of a vocabulary of thirty, and no room
+   to add a fifth without the header growing taller than the
+   photographs. Those three now live in the drawer with the rest of
+   their kind, as hidden inputs here so a search does not drop the
+   question a person already asked.
+
+   `filters` is always visible and always says how many clauses are
+   held. A filter surface reachable only by knowing a keyboard
+   shortcut is a filter surface for whoever wrote it. #}
+<header class="bar">
+  <form class="ask" method="get" action="/g" data-ask>
+    <input type="search" name="q" value="{{ q }}" placeholder="search by what it looks like, or a word a caption says" aria-label="search">
+    {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+    {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
+    {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
+    {% if artifact %}<input type="hidden" name="artifact" value="{{ artifact }}">{% endif %}
+    {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+    {% if favorite %}<input type="hidden" name="favorite" value="{{ favorite }}">{% endif %}
+    {% if rating_min %}<input type="hidden" name="rating_min" value="{{ rating_min }}">{% endif %}
+    {% for one in facets %}<input type="hidden" name="f" value="{{ one }}">{% endfor %}
+    <select name="sort" aria-label="sort" data-sort>
+      {% for one in sorts %}
+      <option value="{{ one }}"{% if one == sort %} selected{% endif %}>{{ one }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">show</button>
+  </form>
+  {# Row two: what came back, and what can be done with it. One row
+     rather than five loose controls in the header's flex soup. #}
+  <div class="ask-result">
+  <button type="button" class="ask-filters" data-filters-open
+          aria-expanded="false" aria-controls="filters"
+          title="filter this question">filters{% if filters_held %} <b class="ask-filters-count" data-filters-held>{{ filters_held }}</b>{% endif %}</button>
+  <span class="ask-total" data-total-count>{{ "{:,}".format(total) }} result{{ "" if total == 1 else "s" }}</span>
+  {# A phrase ranks every file a space holds, so the answer is a CUT of
+     that ranking, not the ranking. Saying where it was made is the
+     difference between "these answered" and a library that looks
+     small; and the way back is a link, because whoever wants the
+     whole ranked walk should not have to know a URL. #}
+  {% if ranked and depth == "head" and ranked > total %}
+  <span class="ask-cut" data-cut data-ranked="{{ ranked }}">
+    of {{ "{:,}".format(ranked) }} ranked &middot;
+    <a href="/g?{{ whole_qs }}{% if view != "gallery" %}&view={{ view }}{% endif %}"
+       data-show-all title="every file the spaces ranked, best first">show all</a>
+  </span>
+  {% elif ranked and depth == "all" %}
+  <span class="ask-cut" data-cut data-depth="all">
+    the whole ranking &middot;
+    <a href="/g?{{ head_qs }}{% if view != "gallery" %}&view={{ view }}{% endif %}"
+       data-show-head title="only what stands above the middle">just the answer</a>
+  </span>
+  {% endif %}
+  {# One answer, two presentations. `view` is not part of the question:
+     switching leaves membership and total exactly where they were,
+     which is the whole contract between them. #}
+  <span class="ask-views" role="group" aria-label="how to show this answer">
+    {% for one in views %}
+    <a class="ask-view{% if one == view %} is-here{% endif %}"
+       href="/g?{% if qs %}{{ qs }}{% endif %}{% if one != "gallery" %}{% if qs %}&{% endif %}view={{ one }}{% endif %}"
+       data-view="{{ one }}"{% if one == view %} aria-current="page"{% endif %}>{{ one }}</a>
+    {% endfor %}
+  </span>
+  {# Three things, said as three things. "save view" made a smart
+     COLLECTION, so remembering five good questions put five things
+     that are not albums into somebody's album list. #}
+  <button type="button" class="ask-save" data-remember-view
+          title="remember this question, without making a collection of it">remember</button>
+  <button type="button" class="ask-save" data-save-smart
+          title="save this view as a smart collection: it gets members, an address and a place on the shelf">make a smart collection</button>
+  <button type="button" class="ask-save" data-replace-smart
+          title="make this view an existing smart collection's new rule">replace a rule</button>
+  {% if not q %}<a class="ask-save" data-timeline-link href="/timeline{% if qs %}?{{ qs }}{% endif %}"
+          title="these pictures on the timeline">on the timeline</a>{% endif %}
+  </div>
+</header>
