@@ -716,7 +716,7 @@ def prompt_neighbours(
 
 
 @get("/search", sync_to_thread=True)
-def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
+def search(state: State, request: Request, q: FromQuery[str], k: FromQuery[int] = 60) -> Template | Response:
     """Pictures by what they LOOK like: the phrase becomes a query vector
     in every participating joint space, each resident index answers with
     its nearest pictures, and the rankings fuse (db/retrieval.py) -- no
@@ -733,6 +733,7 @@ def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
     answer is refused.
     """
     from db import retrieval
+    from vision import thumbs
 
     conn = _connect(state.db_path)
     try:
@@ -743,21 +744,40 @@ def search(state: State, q: FromQuery[str], k: FromQuery[int] = 60) -> dict:
             raise ClientException(str(refused)) from refused
         conn.commit()  # align may have minted registry rows on the way
         results = found["results"]
-        told = []
-        named = pages.files_named(conn, [row["file_id"] for row in results])
+        shown = pages.files_shown(conn, [row["file_id"] for row in results])
+        # The machine answer is addresses, scores and provenance -- what a
+        # caller can act on. The page needs a picture as well, so it is
+        # drawn from a second shape rather than by widening this one:
+        # `presented_page` hands `told` to a machine and `drawn` to the
+        # template.
+        told, drawn = [], []
         for row in results:
-            if row["file_id"] in named:
-                slug, name = named[row["file_id"]]
-                told.append({"slug": slug, "name": name, "score": row["score"], "sources": row["sources"]})
-        return {
+            if row["file_id"] not in shown:
+                continue
+            slug, name, kind, sha, width, height = shown[row["file_id"]]
+            told.append({"slug": slug, "name": name, "score": row["score"], "sources": row["sources"]})
+            drawn.append(
+                {
+                    "slug": slug,
+                    "name": name,
+                    #: Content-addressed, so a page of sixty costs no
+                    #: connections; None for a kind with no picture.
+                    "thumb": thumbs.asset_url(sha, slug, medium=kind),
+                    "width": width,
+                    "height": height,
+                }
+            )
+        answer = {
             "results": told,
             "participants": found["participants"],
             "contributors": found["contributors"],
             "missing": found["missing"],
             "unmatched": found["unmatched"],
         }
+        page = {**answer, "results": drawn}
     finally:
         connect.close(conn)
+    return presented_page(request, answer, page="search.html", context={"told": page, "q": q})
 
 
 @post("/jobs/dupes", sync_to_thread=True)

@@ -142,16 +142,23 @@ def file_bytes(conn, file_id: int) -> tuple[str, str | None] | None:
     return None if row is None else (row[0], row[1])
 
 
-def files_named(conn, ids) -> dict[int, tuple[str, str]]:
-    """`id -> (slug, name)` for an id set the caller already ranked --
-    the search answer's addresses. A retired or unknown id is absent."""
+def files_shown(conn, ids) -> dict[int, tuple[str, str, str, str | None, int | None, int | None]]:
+    """`id -> (slug, name, kind, sha, width, height)` for an id set the
+    caller already ranked -- the search answer's addresses and enough to
+    draw each one. A retired or unknown id is absent.
+
+    The kind and the sha make the thumbnail address; the dimensions let a
+    cell be as wide as its own picture wants to be, the way every other
+    grid in the application draws.
+    """
     if not ids:
         return {}
     marks = ",".join("?" for _ in ids)
     return {
-        row[0]: (row[1], row[2])
+        row[0]: (row[1], row[2], row[3], row[4], row[5], row[6])
         for row in conn.execute(
-            f"SELECT f.id, e.slug, f.name FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
+            "SELECT f.id, e.slug, f.name, f.kind, f.content_sha256, f.width, f.height "
+            f"FROM file f JOIN entity e ON e.id = f.id WHERE f.id IN ({marks})",
             list(ids),
         )
     }

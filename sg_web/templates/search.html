@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_bar.html" import index %}
+{% block title %}{{ q }}{% endblock %}
+{% block body %}
+  {{ index("Like “" ~ q ~ "”", told.results | length, "picture", "pictures") }}
+  <main class="stage">
+    {# Which spaces answered, and which did not. A page that hides an
+       absent model reports an agreement that never happened. #}
+    {% if told.missing %}
+    <p class="operations-hint" data-search-missing>
+      {{ told.missing | length }} configured {{ "space" if told.missing | length == 1 else "spaces" }} did not answer:
+      {% for one in told.missing %}<code class="raw">{{ one }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      &mdash; <a href="/operations">embed them</a> and ask again.
+    </p>
+    {% endif %}
+
+    {% if told.results %}
+    {# The same justified grid the gallery draws: a row of fixed height,
+       each cell as wide as its own picture wants to be at that height.
+       `--ar` is 1 when nothing has measured the file yet — a square is
+       the honest fallback, never a collapsed cell. #}
+    <div class="grid" data-search-results>
+      {% for one in told.results %}
+      <a class="cell" href="/i/{{ one.slug }}" data-search-result="{{ one.slug }}"
+         style="--ar: {{ "%.4f" | format(one.width / one.height) if one.width and one.height else "1" }}"
+         title="{{ one.name }}">
+        {% if one.thumb %}
+        <img src="{{ one.thumb }}" alt="" loading="lazy" decoding="async">
+        {% else %}
+        <span class="shelf-cover-none" aria-hidden="true">{{ one.name.rsplit(".", 1)[-1] }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+    <p class="operations-hint" data-search-how>
+      Ranked by what the pictures look like, not by their names or captions
+      &mdash; {{ told.contributors | length }} of {{ told.participants | length }}
+      {{ "space" if told.participants | length == 1 else "spaces" }} answered.
+    </p>
+    {% else %}
+    <p class="empty" data-search-none>
+      Nothing looks like that yet.
+      {% if told.missing %}The spaces above have not been embedded.{% else %}Try fewer words, or describe what is in the picture.{% endif %}
+    </p>
+    {% endif %}
+  </main>
+{% endblock %}
