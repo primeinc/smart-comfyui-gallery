@@ -153,6 +153,14 @@
   max-height: 52vh;
   overflow-y: auto;
 }
+/* With the room, jobs tile instead of queueing in one column: you see the
+   whole run at once, and picking one puts the list back beside the
+   inspector. */
+.console-split:has([data-inspector-body] > .empty) .matrix {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  align-content: start;
+  gap: 8px;
+}
 .matrix-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -240,6 +248,15 @@
 
 .console-inspector {
   min-width: 0;
+}
+
+/* Nothing selected: the jobs take the whole width instead of sitting in a
+   360px column beside a panel that says "nothing selected". */
+.console-split:has([data-inspector-body] > .empty) {
+  grid-template-columns: 1fr;
+}
+.console-split:has([data-inspector-body] > .empty) .console-inspector {
+  display: none;
 }
 .inspect {
   display: grid;
@@ -680,6 +697,15 @@
   border-radius: var(--radius);
   padding: 10px 12px;
   min-width: 0;
+}
+
+/* Nothing selected: the ledger takes the width rather than sitting beside
+   a panel that says "select an event". Same as the inspector above. */
+.tape-body:has([data-tape-raw-body].empty) {
+  grid-template-columns: 1fr;
+}
+.tape-body:has([data-tape-raw-body].empty) .tape-raw {
+  display: none;
 }
 .tape-raw pre {
   margin: 0;

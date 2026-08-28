@@ -225,6 +225,9 @@ type LiveReport = components["schemas"]["LiveReport"];
 
   function select(e: ReadableEvent): void {
     selectedEvent = e.id;
+    // The panel is hidden while it holds only its placeholder, so the
+    // ledger has the width until there is something to show in it.
+    rawBody.classList.remove("empty");
     rawBody.textContent = JSON.stringify(e, null, 2);
     for (const li of everyElement(rows, "[data-event]", HTMLLIElement)) {
       li.setAttribute("aria-selected", li.dataset.event === String(e.id) ? "true" : "false");

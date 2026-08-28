@@ -712,6 +712,7 @@
     }
     function select(e) {
       selectedEvent = e.id;
+      rawBody.classList.remove("empty");
       rawBody.textContent = JSON.stringify(e, null, 2);
       for (const li of everyElement(rows, "[data-event]", HTMLLIElement)) {
         li.setAttribute("aria-selected", li.dataset.event === String(e.id) ? "true" : "false");

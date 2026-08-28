@@ -729,9 +729,8 @@ p {
 /* 2, not 3: the zoomed stage is 3, and `a zoomed picture is on top of
    the furniture` is a contract -- the stage must outrank what it stands
    in front of, and equal is not above. */
-/* The stage's column, for the same reason as the filmstrip below: the
-   close button and the ordinal belong over the picture, not over the
-   panel that has its own close. */
+/* The stage's column, like the filmstrip: the close button and the
+   ordinal belong over the picture, not over a panel with its own close. */
 .viewer-chrome {
   grid-area: stage;
   align-self: start;
@@ -843,10 +842,8 @@ p {
    facts ABOUT it and stay quiet chips beside it. It truncates rather
    than pushing the ordinal off the bar: a generated filename can be
    ninety characters and none of them are worth the whole measure. */
-/* Cut in the middle, not at the end: see templates/_name.html. The head
-   takes the ellipsis and all of the squeeze; the tail -- the part that
-   tells one generated file from another, and the extension -- never
-   shrinks. */
+/* Middle-cut filenames (templates/_name.html). The head takes the
+   ellipsis and all the squeeze; the tail never shrinks. */
 .midcut {
   display: inline-flex;
   min-width: 0;
@@ -1086,14 +1083,8 @@ p {
 
 /* --- the filmstrip: the local neighbourhood of the walk -------------- */
 
-/* In the STAGE's column, not across the window.
-   It spanned both columns, and the justification written here was that
-   the grid said so -- `"filmstrip filmstrip"`. That area does not exist:
-   the grid declares `"stage inspector"` and the span came from
-   `position: absolute` on `.viewer`, which ignores columns. So the width
-   was incidental, and what it bought was four thumbnails drawn under an
-   opaque panel, where they cannot be seen or clicked. The neighbourhood
-   is only a neighbourhood where it is reachable. */
+/* In the stage's column. Across the window it ran under the inspector,
+   where its last thumbnails could not be seen or clicked. */
 .viewer-filmstrip {
   grid-area: stage;
   align-self: end;
@@ -1223,11 +1214,9 @@ p {
   padding: 12px 0;
   background: var(--panel);
 }
-/* The subject of the picture, which is a sentence, not a filename. It is
-   allowed three lines and then it is cut -- a hundred-word prompt is a
-   thing to read in CREATION, and the heading only has to say which
-   picture this is. `anywhere` stays for the case where the subject IS a
-   filename, because nothing truer was known. */
+/* The subject is a sentence. Three lines, then cut — a long prompt is
+   for CREATION to show; this only has to say which picture you are on.
+   `anywhere` is for when the subject falls back to a filename. */
 .inspector-bar h2 {
   font-size: var(--t-lead);
   margin: 0;
@@ -1256,11 +1245,8 @@ p {
   padding: 4px 0;
   text-transform: uppercase;
 }
-/* Forensics, drawn as forensics. Six sections carried one weight, so the
-   panel never said which of them anybody wanted -- RAW METADATA had the
-   same claim on the eye as the prompt. These three are what you open when
-   something is WRONG with the picture, and they sit below the rule that
-   separates them from what the picture is. */
+/* Forensics: opened when something is wrong with the picture, so drawn
+   quieter than the sections that say what it is. */
 .panel-fine {
   padding-block: 2px;
 }
@@ -1402,10 +1388,9 @@ p {
   margin-top: 4px;
 }
 
-/* `minmax(0, 1fr)`, not the implicit `auto` track: a grid item's
-   min-width is `auto`, so the row's min-content -- which includes a tail
-   that must not wrap -- pushed the track wider than the panel and the
-   checkpoint ran off the right edge instead of being cut. */
+/* `minmax(0, 1fr)`: a grid item's min-width is `auto`, so an implicit
+   track grows to the row's min-content and pushes long names off the
+   panel instead of cutting them. */
 .recipe-models {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1423,15 +1408,10 @@ p {
   flex: none;
   width: 72px;
 }
-/* The weight, not decoration: a LoRA without its number does not
-   reproduce the picture, so it is set where the eye lands.
-
-   A NUMBER, so it never wraps. `.recipe-model` carries
-   `overflow-wrap: anywhere` for the filenames, the weight inherited it,
-   and a long LoRA name squeezed this to 28px -- where `1.00` broke after
-   the second character and rendered as `1.0` above `0`. Two lines that
-   read as two values, for the one field the recipe cannot be reproduced
-   without. The name absorbs the squeeze instead. */
+/* A LoRA without its weight does not reproduce the picture, so the
+   number is set where the eye lands — and it never wraps. `1.00` broken
+   across two lines reads as two values. The name absorbs the squeeze
+   instead (`.recipe-name` below). */
 .recipe-weight {
   flex: none;
   white-space: nowrap;
@@ -1440,8 +1420,8 @@ p {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
-/* The name is what absorbs the squeeze -- the label is fixed and the
-   weight is a number that must not break. */
+/* The name absorbs the squeeze: the label is fixed and the weight must
+   not break. */
 .recipe-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -1591,12 +1571,9 @@ p {
   padding: 10px 12px;
   border-radius: var(--radius);
 }
-/* `fixed`, so `width: 100%` is obeyed. Under the default `auto` layout a
-   table sizes its columns to content and grows past its own declared
-   width, and raw metadata is exactly the content that does it:
-   `generationdebug_backend.debug_internal_prompt` has nowhere to break,
-   so the table ran 133px outside the inspector. Fixed layout divides the
-   width it is given and the cells wrap inside it. */
+/* `fixed`, so `width: 100%` is obeyed. Under `auto` a table sizes to its
+   content and grows past its declared width, and raw metadata keys have
+   nowhere to break. */
 .detail-params {
   border-collapse: collapse;
   width: 100%;
@@ -1609,8 +1586,7 @@ p {
   vertical-align: top;
   overflow-wrap: anywhere;
 }
-/* Where the value came from is a word; the key and the value split what
-   is left. */
+/* The source is one word; key and value split the rest. */
 .detail-params td:first-child {
   width: 5.5em;
 }
@@ -1766,20 +1742,12 @@ p {
 }
 
 /* --- the shelf: albums, folders, places, artifacts ----------------------
-   Four pages showing one object -- a thing that holds pictures -- in
-   three markup vocabularies (`album-*`, `shelf-*`, and a `.place-card`
-   wrapping an `.album-card`) with three sets of rules behind them. Whoever
-   crossed from /albums to /folders to /places met three slightly
-   different cards for the same idea, and every change to one of them was
-   first a decision about which of the three to make it in.
+   One card for all four, from templates/_shelf.html. Each page keeps its
+   own loop; only the card is shared.
 
-   One card, in templates/_shelf.html. What actually differs between these
-   pages is how they ITERATE -- albums nest, folders group by root, places
-   carry a second destination -- and that stays in the page.
-
-   In a library of photographs the picture is how you know which thing you
-   are looking at; the name confirms it. So the cover leads and the rest
-   is a caption under it. */
+   The cover leads and everything else is a caption under it: in a photo
+   library the picture is how you recognise the thing, and the name
+   confirms it. */
 .shelf {
   list-style: none;
   margin: 0;
@@ -1789,13 +1757,12 @@ p {
   gap: var(--s4);
   max-width: 1100px;
 }
-/* A slot holds one card plus whatever the page hangs off it: nested
-   albums, a second destination. Pages with neither put the card straight
-   into the grid, so both are laid out.
+/* A slot holds one card plus anything the page hangs off it — nested
+   albums, a second link. Pages with neither put the card straight in the
+   grid, so both are laid out.
 
-   The card takes the flexible row and whatever hangs off it takes its own
-   height, so a name that wraps to three lines does not leave its
-   neighbours short: cards on a row end level whatever their names do. */
+   The card takes the flexible row so cards end level however their names
+   wrap. */
 .shelf-slot {
   display: grid;
   grid-template-rows: 1fr auto;
@@ -1824,8 +1791,7 @@ p {
   font-size: var(--t-small);
   font-variant-numeric: tabular-nums;
 }
-/* Quiet in the state everything is normally in, so the one card that is
-   NOT reachable is the thing your eye lands on. */
+/* Quiet in the normal state, so an unreachable card is what you notice. */
 .shelf-state {
   font-size: var(--t-micro);
   letter-spacing: 0.08em;
@@ -1838,9 +1804,8 @@ p {
   display: block;
   color: var(--ink-faint);
 }
-/* The cover IS the content. One shot fills the frame; several tile it,
-   which is what a model or a LoRA needs -- no single picture is the thing
-   that made it. */
+/* One shot fills the frame; several tile it, which is what a model or a
+   LoRA needs — no single picture is the thing that made it. */
 .shelf-cover {
   display: grid;
   grid-template-columns: 1fr;
@@ -1852,9 +1817,8 @@ p {
   margin-bottom: var(--s2);
   transition: opacity var(--dur) var(--ease);
 }
-/* A rule-defined collection is a question rather than a container, and an
-   unscanned folder is a promise. Neither gets a broken image or a grey
-   square pretending to be a photograph. */
+/* A rule-defined collection and an unscanned folder have no picture to
+   show. Say so, rather than draw a grey square. */
 .shelf-cover-none {
   place-items: center;
   font-size: var(--t-micro);
@@ -1875,8 +1839,7 @@ p {
 .shelf-cover[data-shots="4"] {
   grid-template-columns: 1fr 1fr;
 }
-/* Three is a big one and two small, not three in a row of two with a gap
-   where the fourth would be. */
+/* Three: one big, two small. */
 .shelf-cover[data-shots="3"] img:first-child {
   grid-row: span 2;
 }
@@ -1891,17 +1854,15 @@ p {
 .shelf-card:hover .shelf-cover {
   opacity: 0.82;
 }
-/* The second destination on a place card. The pictures are the card;
-   WHEN they happened is a different question, and a second <a> cannot sit
-   inside the first. */
+/* A place card's second link. It sits outside the card because an <a>
+   cannot nest inside an <a>. */
 .shelf-aside {
   color: var(--accent);
   font-size: var(--t-small);
   padding-left: 4px;
 }
-/* Children of a nesting album: under it, and across the whole shelf.
-   Reached by structure because the nested list carries no class -- the
-   suite asserts the nesting as a literal `<ul>`. */
+/* Children of a nesting album, under it and across the whole shelf.
+   Matched by structure: the suite asserts the nesting as a bare <ul>. */
 .shelf-slot > ul {
   list-style: none;
   margin: var(--s2) 0 0;
@@ -1912,16 +1873,13 @@ p {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--s3);
 }
-/* A folder whose root is not mounted is still an address; its pictures
-   are not going to load. The card says so itself rather than sitting
-   under a heading, because that heading was the word "library" repeated
-   once per root. */
+/* A folder on an unmounted root is still an address, but its pictures
+   will not load. */
 .shelf-card[data-online="no"] .shelf-state {
   color: var(--danger);
 }
-/* Whether a root is mounted, on the surface that manages roots
-   (_operations_roots.html). Coloured with the rest of that surface's
-   rules; this is only the base. */
+/* Root reachability in Operations (_operations_roots.html). The colour
+   for "offline" is with that surface's other rules. */
 .root-state {
   color: var(--ink-muted);
   font-size: 0.7em;

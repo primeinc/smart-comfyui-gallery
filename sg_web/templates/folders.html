@@ -12,26 +12,20 @@
   </header>
   <main class="stage">
     {% if counted %}
-    {# ONE shelf, not one per root.
+    {# One shelf for every root.
 
-       These were grouped under a heading of the root's KIND, and the
-       route asks for kinds=("library",) -- so the heading was the word
-       "library", repeated once per root, and it could never be anything
-       else. Six roots holding one folder each became six identical
-       headings above six one-card grids: five screens of scrolling for
-       what is one row.
+       The route asks for kinds=("library",), so grouping by root kind
+       would print the word "library" once per root and say nothing. What
+       a root does contribute is whether it is reachable, which decides
+       whether the pictures load — that rides the card.
 
-       What a root actually contributes is whether it is reachable right
-       now, because that decides whether the pictures load. That rides
-       the card. The grouped shape is still what a machine is handed
-       (sg_web/folder_view.py); this is what a person is shown. #}
+       Machines still get the grouped shape (sg_web/folder_view.py). #}
     <div class="shelf">
       {% for shelf in shelves %}
       {% for one in shelf.folders %}
-      {# `below` is the folder and everything under it, which is the number
-         somebody means by "how big is this". `here` is worth a phrase only
-         when there IS something here and it differs -- "2898 pictures ·
-         0 here" spent a clause saying nothing. #}
+      {# `below` counts the folder and everything under it — what people
+         mean by "how big is this". `here` is only worth saying when it is
+         non-zero and different. #}
       {{ card(
            "/f/" ~ one.slug, one.name,
            "{:,} pictures{}".format(
