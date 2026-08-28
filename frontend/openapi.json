@@ -19552,11 +19552,15 @@
                     },
                     "x": {
                         "type": "number"
+                    },
+                    "label": {
+                        "type": "boolean"
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
+                    "label",
                     "x",
                     "year"
                 ],

@@ -90,7 +90,7 @@
        aria-valuemin="{{ surface.overview.start }}" aria-valuemax="{{ surface.overview.end }}" aria-valuenow="{{ surface.start }}"
        aria-label="the window on the whole library: drag to move, drag an edge to widen, arrows to step, + and - to zoom">
     {% for bar in surface.overview.bars %}<rect class="overview-bar" data-at="{{ bar.at }}" data-end="{{ bar.at + surface.overview.bin_seconds }}" data-pictures="{{ bar.pictures }}" x="{{ bar.x }}" y="{{ 34 - bar.h * 0.9 }}" width="{{ bar.w }}" height="{{ bar.h * 0.9 }}"><title>{{ bar.spelled }} · {{ bar.pictures }} pictures</title></rect>{% endfor %}
-    {% for y in surface.overview.years %}<line class="overview-year" x1="{{ y.x }}" x2="{{ y.x }}" y1="0" y2="34"/><text class="overview-year-label" x="{{ y.x + 3 }}" y="10">{{ y.year }}</text>{% endfor %}
+    {% for y in surface.overview.years %}<line class="overview-year" x1="{{ y.x }}" x2="{{ y.x }}" y1="0" y2="34"/>{% if y.label %}<text class="overview-year-label" x="{{ y.x + 3 }}" y="10">{{ y.year }}</text>{% endif %}{% endfor %}
     <rect class="brush" data-brush x="{{ surface.overview.brush.x }}" y="0" width="{{ surface.overview.brush.w }}" height="34"></rect>
     <rect class="brush-edge" data-brush-edge="start" x="{{ surface.overview.brush.x - 3 }}" y="0" width="6" height="34"></rect>
     <rect class="brush-edge" data-brush-edge="end" x="{{ surface.overview.brush.x + surface.overview.brush.w - 3 }}" y="0" width="6" height="34"></rect>

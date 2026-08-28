@@ -887,6 +887,30 @@ def _calendar(conn, lo: float, hi: float, scope, question: resultset.GalleryQuer
     return months
 
 
+#: How much room a four-digit year needs on the overview, in the strip's
+#: own units. It is 1000 units wide and renders around 1150px, and the
+#: label measures 25px.
+YEAR_LABEL_WIDE = 28.0
+
+
+def _year_labels(years: list[dict], apart: float = YEAR_LABEL_WIDE) -> list[dict]:
+    """Which year gridlines get a label.
+
+    The overview axis collapses runs that hold nothing, so a library with
+    a gap between 2013 and 2024 packs eleven years into twenty pixels.
+    Every year keeps its line; only years far enough from the last label
+    get one, or they are drawn on top of each other and none is legible.
+
+    Newest first, so the year holding the pictures is always named.
+    """
+    last: float | None = None
+    for one in reversed(years):
+        one["label"] = last is None or last - one["x"] >= apart
+        if one["label"]:
+            last = one["x"]
+    return years
+
+
 #: The widest window that draws month sheets; wider, the body is years.
 #: In the same year the bins are drawn from -- it was a hand-typed leap
 #: year, `2 * 366 * 86_400`.
@@ -1188,13 +1212,15 @@ def _surface(
         one["drawn_pictures"] = drawn.get(one["id"], [])
         one["drawn_lead"] = _lead(one["drawn_pictures"]) if one["drawn_pictures"] else None
         one["drawn_leads"] = _leads(one["drawn_pictures"]) if one["drawn_pictures"] else []
-    overview["years"] = [
-        {
-            "year": y,
-            "x": round(whole_axis.x(datetime.datetime(y, 1, 1, tzinfo=datetime.UTC).timestamp()), 2),
-        }
-        for y in range(_utc(whole_lo).year + 1, _utc(whole_hi).year + 1)
-    ]
+    overview["years"] = _year_labels(
+        [
+            {
+                "year": y,
+                "x": round(whole_axis.x(datetime.datetime(y, 1, 1, tzinfo=datetime.UTC).timestamp()), 2),
+            }
+            for y in range(_utc(whole_lo).year + 1, _utc(whole_hi).year + 1)
+        ]
+    )
     return {
         "composition": composition,
         "ticks": _ticks(lo, hi, axis),
@@ -1631,6 +1657,10 @@ class TimelineOverviewYear(Wire):
 
     year: int
     x: float
+    #: Whether to draw the year's number. The axis collapses runs holding
+    #: nothing, so years can land a couple of pixels apart; every one
+    #: keeps its line, only those with room are named.
+    label: bool
 
 
 class TimelineOverview(Wire):

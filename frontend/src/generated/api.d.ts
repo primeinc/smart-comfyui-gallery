@@ -3646,6 +3646,7 @@ export interface components {
         TimelineOverviewYear: {
             year: number;
             x: number;
+            label: boolean;
         };
         /** TimelinePerson */
         TimelinePerson: {
