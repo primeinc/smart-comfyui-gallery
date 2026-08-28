@@ -805,6 +805,26 @@
 
 .ops-panel {
   display: none;
+  /* The bar above is `position: sticky; top: 0`, so a jump to #panel-setup
+     scrolled the panel's own heading underneath it -- measured at all
+     twelve widths, "how fast it went, last time anybody measured" and the
+     `just bench` beside it covered by header.bar. /settings sends a browser
+     straight here, so that was the first thing it showed: nothing.
+
+     scroll-margin-top applies to ALL elements (css-scroll-snap-1) and is
+     the target's own say in where a scroll leaves it -- the right end of
+     this, because scroll-padding lives on the scroll container and one
+     value there would have to serve every surface, and the bar is 48px on
+     duplicates and 258px on the gallery at 360.
+
+     The console's own bar, measured: 112px at 390 and below, 55px above
+     600. Rounded up, so the heading clears it rather than touching it. */
+  scroll-margin-top: 72px;
+}
+@media (max-width: 760px) {
+  .ops-panel {
+    scroll-margin-top: 124px;
+  }
 }
 .ops-panel:target {
   display: block;
