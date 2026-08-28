@@ -124,6 +124,21 @@ export interface Workspace {
    * somebody decides otherwise.
    */
   panels?: Record<string, boolean>;
+  /**
+   * The install prompt, told to go away.
+   *
+   * A deliberate arrangement -- somebody said "not this" -- so it lives
+   * with the rest of them. It had its own localStorage key, which is the
+   * scatter this module exists to end.
+   */
+  installDismissed?: boolean;
+  /**
+   * How tall a row of the timeline's river is, in pixels.
+   *
+   * Dragged to a size on purpose and expected to stay there, which is
+   * the definition above. Also had its own key.
+   */
+  timelineRow?: number;
 }
 
 /**

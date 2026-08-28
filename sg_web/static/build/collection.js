@@ -548,7 +548,7 @@
       line.textContent = asked.detail;
       line.hidden = false;
     }
-    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const read2 = build2(requireElement(box, ".ask-body", HTMLElement), box);
     const feet = requireElement(box, ".ask-feet", HTMLElement);
     if (asked.submit !== null) {
       feet.append(button(asked.submit, TAKEN, asked.grave === true ? "ask-take is-grave" : "ask-take"));
@@ -563,7 +563,7 @@
       box.addEventListener(
         "close",
         () => {
-          const taken = box.returnValue !== DISMISSED ? read() : null;
+          const taken = box.returnValue !== DISMISSED ? read2() : null;
           box.remove();
           settle(taken);
         },
@@ -747,6 +747,27 @@
     }
   }
 
+  // src/workspace.ts
+  var VERSION = 1;
+  var KEY = `sg.workspace.v${VERSION}`;
+  function workspace() {
+    try {
+      const held = localStorage.getItem(KEY);
+      if (!held) return {};
+      const parsed = JSON.parse(held);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch {
+      return {};
+    }
+  }
+  function remember(change) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ ...workspace(), ...change }));
+    } catch {
+    }
+  }
+
   // src/timeline.ts
   var INVALIDATES = /* @__PURE__ */ new Set([
     "scan",
@@ -788,7 +809,7 @@
       }
       return end;
     };
-    const read = () => {
+    const read2 = () => {
       const s = surface();
       if (!s || s.dataset.extentStart === void 0) return null;
       return {
@@ -800,14 +821,14 @@
       };
     };
     const urlFor = (start, end, snap = false) => {
-      const qs = new URLSearchParams(read()?.scope ?? "");
+      const qs = new URLSearchParams(read2()?.scope ?? "");
       qs.set("start", String(start));
       qs.set("end", String(end));
       if (snap) qs.set("snap", "true");
       return `/timeline?${qs}`;
     };
     const scopeOf = () => {
-      const qs = new URLSearchParams(read()?.scope ?? "");
+      const qs = new URLSearchParams(read2()?.scope ?? "");
       const rating = qs.get("rating_min");
       return {
         folder: qs.get("folder"),
@@ -986,7 +1007,7 @@
     };
     swap.addEventListener("pointerdown", (event) => {
       const overview = closestFrom(event.target, "[data-overview]", SVGSVGElement);
-      const held = read();
+      const held = read2();
       if (!overview || !held) return;
       const box = overview.getBoundingClientRect();
       const x = overviewX(box, event.clientX);
@@ -1015,7 +1036,7 @@
       drag = null;
       clearTimeout(liveTimer);
       void move(urlFor(Math.round(start), Math.round(end), true), true).then(() => {
-        const held = read();
+        const held = read2();
         if (!held) return;
         const url = urlFor(Math.round(held.start), Math.round(held.end));
         history.replaceState({ url }, "", url);
@@ -1024,7 +1045,7 @@
     let pan = null;
     swap.addEventListener("pointerdown", (event) => {
       const axis = closestFrom(event.target, "[data-strip]", HTMLElement);
-      const held = read();
+      const held = read2();
       if (!axis || !held || event.button !== 0) return;
       pan = {
         axis,
@@ -1073,7 +1094,7 @@
       if (!was.moved) return;
       delete was.axis.dataset.dragging;
       clearTimeout(liveTimer);
-      const held = read();
+      const held = read2();
       if (held) void move(urlFor(Math.round(held.start), Math.round(held.end)), true);
     };
     window.addEventListener("pointerup", unpan);
@@ -1082,7 +1103,7 @@
       "wheel",
       (e) => {
         const stage = closestFrom(e.target, "[data-strip], [data-overview]", Element);
-        const held = read();
+        const held = read2();
         if (!stage || !held || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
         e.preventDefault();
         const width = held.end - held.start;
@@ -1114,7 +1135,7 @@
     window.addEventListener("pointercancel", release);
     swap.addEventListener("keydown", (e) => {
       if (!closestFrom(e.target, "[data-overview]", Element)) return;
-      const held = read();
+      const held = read2();
       if (!held) return;
       const width = held.end - held.start;
       const step = width / 4;
@@ -1273,7 +1294,7 @@
     );
     swap.addEventListener("pointerdown", (event) => {
       const rail = closestFrom(event.target, "[data-scrubber]", HTMLElement);
-      const held = read();
+      const held = read2();
       if (!rail || !held || event.button !== 0) return;
       scrub = { held, rail, pointer: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
       event.preventDefault();
@@ -1317,7 +1338,7 @@
       for (const rail of everyElement(swap, "[data-scrubber]", HTMLElement)) delete rail.dataset.dragging;
       if (!was.moved) return;
       clearTimeout(liveTimer);
-      const held = read();
+      const held = read2();
       if (held) void move(urlFor(Math.round(held.start), Math.round(held.end)), true);
     };
     window.addEventListener("pointerup", unscrub);
@@ -1329,22 +1350,13 @@
       },
       true
     );
-    const ROW = { least: 120, most: 520, fallback: 200, key: "timeline.row" };
-    const rowOf = () => {
-      try {
-        return Number(localStorage.getItem(ROW.key)) || ROW.fallback;
-      } catch {
-        return ROW.fallback;
-      }
-    };
+    const ROW = { least: 120, most: 520, fallback: 200 };
+    const rowOf = () => workspace().timelineRow ?? ROW.fallback;
     const sizeRows = (px) => {
       const row = Math.min(ROW.most, Math.max(ROW.least, Math.round(px)));
       const s = surface();
       if (s) s.style.setProperty("--row", `${row}px`);
-      try {
-        localStorage.setItem(ROW.key, String(row));
-      } catch {
-      }
+      remember({ timelineRow: row });
     };
     const sized = () => {
       const s = surface();
@@ -1425,27 +1437,6 @@
     command.run();
   });
 
-  // src/workspace.ts
-  var VERSION = 1;
-  var KEY = `sg.workspace.v${VERSION}`;
-  function workspace() {
-    try {
-      const held = localStorage.getItem(KEY);
-      if (!held) return {};
-      const parsed = JSON.parse(held);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-      return parsed;
-    } catch {
-      return {};
-    }
-  }
-  function remember(change) {
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ ...workspace(), ...change }));
-    } catch {
-    }
-  }
-
   // src/zoom.ts
   var TRAY_MAX_SCALE = 16;
 
@@ -1475,17 +1466,26 @@
     }
     const under = root.querySelector("a.cell[data-slug]:hover");
     const focused = document.activeElement?.closest?.("a.cell[data-slug]") ?? null;
-    const cell = under ?? focused;
-    if (cell?.dataset.slug) {
-      const shown = cell.querySelector("img");
-      return {
-        slug: cell.dataset.slug,
-        name: shown?.getAttribute("alt") || cell.dataset.slug,
-        kind: cell.dataset.kind ?? "",
-        thumb: shown?.getAttribute("src") ?? ""
-      };
+    return read(under ?? focused);
+  }
+  function read(cell) {
+    if (!cell?.dataset.slug) return null;
+    const shown = cell.querySelector("img");
+    return {
+      slug: cell.dataset.slug,
+      name: shown?.getAttribute("alt") || cell.dataset.slug,
+      kind: cell.dataset.kind ?? "",
+      thumb: shown?.getAttribute("src") ?? ""
+    };
+  }
+  function picked(root) {
+    const found = [];
+    for (const box of root.querySelectorAll("[data-pick]")) {
+      if (!(box instanceof HTMLInputElement) || !box.checked) continue;
+      const one = read(box.closest(".cell-shell")?.querySelector("a.cell[data-slug]") ?? null);
+      if (one) found.push(one);
     }
-    return null;
+    return found;
   }
   function playable(one) {
     if (one.kind === "video" || one.kind === "animated_image") {
@@ -1807,6 +1807,17 @@
       drawTray(tray);
     };
     register([{ key: "c", by: "compare: keep this", run: add }]);
+    for (const button2 of root.querySelectorAll("[data-compare-selection]")) {
+      button2.addEventListener("click", () => {
+        const chosen = picked(root);
+        if (chosen.length === 0) return;
+        const held = kept();
+        const fresh = chosen.filter((one) => !held.some((each) => each.slug === one.slug));
+        keep([...held, ...fresh]);
+        remember({ tray: "open" });
+        drawTray(tray);
+      });
+    }
     drawTray(tray);
   }
 

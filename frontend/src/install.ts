@@ -19,7 +19,7 @@
 // person has dismissed an affordance once -- nagging installed users is a
 // failure equal to showing nothing.
 
-const DISMISSED = "sg-install-dismissed";
+import { remember, workspace } from "./workspace";
 
 // Chromium's non-standard event, absent from lib.dom.
 type InstallPrompt = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> };
@@ -29,21 +29,13 @@ const standalone = (): boolean => (navigator as MaybeStandalone).standalone === 
 
 export const installed = (): boolean => window.matchMedia("not (display-mode: browser)").matches || standalone();
 
-const dismissed = (): boolean => {
-  try {
-    return localStorage.getItem(DISMISSED) === "1";
-  } catch {
-    return false;
-  }
-};
+// Through the workspace, not a key of its own: "do not ask me again" is
+// an arrangement this person made, and workspace.ts owns those. Its own
+// failure handling is the one that already answers an unavailable store
+// with a default, so a browser refusing storage asks again next visit.
+const dismissed = (): boolean => workspace().installDismissed === true;
 
-const markDismissed = (): void => {
-  try {
-    localStorage.setItem(DISMISSED, "1");
-  } catch {
-    /* a browser refusing storage just gets asked again next visit */
-  }
-};
+const markDismissed = (): void => remember({ installDismissed: true });
 
 // iPadOS reports a Macintosh UA; touch points are what give it away.
 const isIOS =

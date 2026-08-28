@@ -78,6 +78,23 @@ export function claimant(key: string): string | null {
   return claimed.get(spelled(key))?.by ?? null;
 }
 
+/**
+ * Every key a surface answers to right now, and what it does.
+ *
+ * The registry is the only place that knows, so it is the only honest
+ * source for a list of them. A help panel written by hand is a second
+ * copy free to disagree with the bindings -- and it will, the first time
+ * a key moves and nobody remembers the panel exists.
+ *
+ * Sorted by what it does rather than by the key, because somebody
+ * reading the list is looking for a capability, not for a letter.
+ */
+export function registered(): { key: string; by: string }[] {
+  return [...claimed.entries()]
+    .map(([key, command]) => ({ key, by: command.by }))
+    .sort((a, b) => a.by.localeCompare(b.by));
+}
+
 document.addEventListener("keydown", (event) => {
   // Somebody typing means the letters: a place name with an "L" in it is
   // not a request to turn the lights out.

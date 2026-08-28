@@ -649,7 +649,7 @@
       line.textContent = asked4.detail;
       line.hidden = false;
     }
-    const read = build2(requireElement(box, ".ask-body", HTMLElement), box);
+    const read2 = build2(requireElement(box, ".ask-body", HTMLElement), box);
     const feet = requireElement(box, ".ask-feet", HTMLElement);
     if (asked4.submit !== null) {
       feet.append(button(asked4.submit, TAKEN, asked4.grave === true ? "ask-take is-grave" : "ask-take"));
@@ -664,7 +664,7 @@
       box.addEventListener(
         "close",
         () => {
-          const taken = box.returnValue !== DISMISSED ? read() : null;
+          const taken = box.returnValue !== DISMISSED ? read2() : null;
           box.remove();
           settle2(taken);
         },
@@ -2815,17 +2815,26 @@
     }
     const under = root.querySelector("a.cell[data-slug]:hover");
     const focused = document.activeElement?.closest?.("a.cell[data-slug]") ?? null;
-    const cell = under ?? focused;
-    if (cell?.dataset.slug) {
-      const shown = cell.querySelector("img");
-      return {
-        slug: cell.dataset.slug,
-        name: shown?.getAttribute("alt") || cell.dataset.slug,
-        kind: cell.dataset.kind ?? "",
-        thumb: shown?.getAttribute("src") ?? ""
-      };
+    return read(under ?? focused);
+  }
+  function read(cell) {
+    if (!cell?.dataset.slug) return null;
+    const shown = cell.querySelector("img");
+    return {
+      slug: cell.dataset.slug,
+      name: shown?.getAttribute("alt") || cell.dataset.slug,
+      kind: cell.dataset.kind ?? "",
+      thumb: shown?.getAttribute("src") ?? ""
+    };
+  }
+  function picked(root) {
+    const found = [];
+    for (const box of root.querySelectorAll("[data-pick]")) {
+      if (!(box instanceof HTMLInputElement) || !box.checked) continue;
+      const one = read(box.closest(".cell-shell")?.querySelector("a.cell[data-slug]") ?? null);
+      if (one) found.push(one);
     }
-    return null;
+    return found;
   }
   function playable(one) {
     if (one.kind === "video" || one.kind === "animated_image") {
@@ -3147,6 +3156,17 @@
       drawTray(tray);
     };
     register([{ key: "c", by: "compare: keep this", run: add }]);
+    for (const button2 of root.querySelectorAll("[data-compare-selection]")) {
+      button2.addEventListener("click", () => {
+        const chosen = picked(root);
+        if (chosen.length === 0) return;
+        const held2 = kept();
+        const fresh = chosen.filter((one) => !held2.some((each) => each.slug === one.slug));
+        keep([...held2, ...fresh]);
+        remember({ tray: "open" });
+        drawTray(tray);
+      });
+    }
     drawTray(tray);
   }
 

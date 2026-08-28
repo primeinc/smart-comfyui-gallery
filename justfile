@@ -75,16 +75,61 @@ prove:
 # same `testmon: changed files: ..., unchanged files: 3` header it
 # prints with the plugin loaded normally, so selection is really
 # running and not a flag being parsed and ignored.
+#
+# It runs in a DETACHED WORKTREE AT HEAD, not in the working tree, because
+# the question a pre-push gate answers is "is the commit I am pushing
+# safe" and pytest imports whatever is on disk. Testing the working tree
+# answers a different question and answers it wrongly in both directions:
+# uncommitted work fails a push that does not contain it (one WIP template
+# attribute broke eleven tests here, and the gate reported it as the
+# pushed commit), and uncommitted work can equally make a broken commit
+# pass.
+#
+# The worktree, not a stash: a gate that moves the developer's files to
+# inspect them can lose them. `git worktree add --detach` writes nothing
+# into the working tree and takes no lock on it.
+#
+# Four things a fresh checkout cannot carry, each measured by watching
+# this run fail without it:
+#   sg_web/static/build   gitignored; `web::build` above made it here
+#   benchmarks/results    gitignored; without it the four throughput
+#                         tests fail on a green commit -- and
+#                         test_a_library_with_no_benchmarks_shows_no_panel
+#                         says a fresh checkout legitimately has none
+#   .testmondata          the selection cache; copied in AND back out, so
+#                         a run in the worktree still teaches the next one
+#   .venv/Scripts on PATH tests/conftest.py boots the app with a bare
+#                         `litestar`, which is FileNotFoundError WinError 2
+#                         from a cwd that is not the repo root
 [doc('Pre-push gate: skip a proven tree, else run the affected slice of the suite')]
 [script]
 prove-push: web::build
     cd "$(git rev-parse --show-toplevel)"
+    root=$(pwd)
     tree=$(git rev-parse 'HEAD^{tree}')
     if [ -f .proven-tree ] && [ "$(cat .proven-tree)" = "$tree" ]; then
         echo "tree already proven by 'just prove'; nothing to re-derive"
         exit 0
     fi
-    {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile -p pytest-testmon --testmon --testmon-forceselect
+    pushed=$(mktemp -d)/pushed
+    git worktree add --detach --quiet "$pushed" HEAD
+    trap 'git -C "$root" worktree remove --force "$pushed" >/dev/null 2>&1 || true' EXIT
+    # `<dir>/.` into an existing `<dir>/`, never `cp -r <dir> <dir>`: the
+    # second nests when the destination already exists, and both of these
+    # DO exist in a checkout (benchmarks/results is tracked; only the
+    # newer results are untracked). Nesting is silent and reads as the
+    # gate failing on a green commit.
+    mkdir -p "$pushed/sg_web/static/build" "$pushed/benchmarks/results"
+    cp -r sg_web/static/build/. "$pushed/sg_web/static/build/"
+    if [ -d benchmarks/results ]; then cp -r benchmarks/results/. "$pushed/benchmarks/results/"; fi
+    if [ -f .testmondata ]; then cp .testmondata "$pushed/.testmondata"; fi
+    cd "$pushed"
+    PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
+      "$root/{{ python }}" -m pytest tests/ -m slow -n 4 --dist loadfile \
+      -p pytest-testmon --testmon --testmon-forceselect
+    settled=$?
+    if [ -f "$pushed/.testmondata" ]; then cp "$pushed/.testmondata" "$root/.testmondata"; fi
+    exit $settled
 
 # The PWA's rasters, drawn from the mark: icons, the iOS splash set,
 # and the install-sheet screenshots photographed off the real app over

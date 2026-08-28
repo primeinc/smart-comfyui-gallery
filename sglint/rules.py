@@ -1351,11 +1351,57 @@ def rule_templates_parse(templates: pathlib.Path = REPO_ROOT / "sg_web" / "templ
     return found
 
 
+#: One concern, one module. The file that owns it, and what nothing else
+#: may reach for directly.
+SOLE_OWNERS = (
+    ("localStorage", "workspace.ts", "the workspace (frontend/src/workspace.ts `remember`)"),
+    ('document.addEventListener("key', "keys.ts", "the key registry (frontend/src/keys.ts `register`)"),
+)
+
+
+def rule_one_owner(source: pathlib.Path = REPO_ROOT / "frontend" / "src") -> list[Finding]:
+    """SG009: a browser concern reached for outside the module that owns it.
+
+    workspace.ts exists because "every surface that wanted to remember
+    something had started inventing its own key in localStorage" -- its
+    own words -- and two surfaces were still doing it: the install prompt
+    kept `sg-install-dismissed` and the timeline kept `timeline.row`.
+    Three keys under a module that says there is one.
+
+    keys.ts says "there is one listener here" and means it, so a second
+    `document.addEventListener("keydown")` anywhere else is a second
+    keyboard nothing can reconcile -- which is the bug that module was
+    written to end.
+
+    Ownership that is only a convention is ownership until somebody is in
+    a hurry. The owner is exempt; nothing else is. A module with a real
+    reason may say so at the call and take the exemption by name.
+    """
+    found: list[Finding] = []
+    if not source.is_dir():
+        return []
+    for path in sorted(source.rglob("*.ts")):
+        if path.name.endswith(".test.ts"):
+            continue
+        for token, owner, instead in SOLE_OWNERS:
+            if path.name == owner:
+                continue
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if token in line and not line.lstrip().startswith(("//", "*", "/*")):
+                    found.append(
+                        Finding(
+                            path, n, line.index(token), "SG009", f"{token} belongs to {owner}; go through {instead}"
+                        )
+                    )
+    return found
+
+
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
     rule_spawns,
     rule_templates_parse,
+    rule_one_owner,
     rule_tests_run_things,
     rule_sql_structure,
     rule_connection_lifetime,

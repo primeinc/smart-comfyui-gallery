@@ -4187,6 +4187,48 @@ body:has([data-viewer-page]) .shell:focus-within {
   border-color: var(--danger);
 }
 
+/* --- what the keyboard does -------------------------------------------
+   Built from the key registry (frontend/src/keys.ts), so the list cannot
+   disagree with the bindings. A caption per key, grouped by the surface
+   that claimed it. */
+.keys-group {
+  margin-bottom: var(--s4);
+}
+.keys-group h3 {
+  margin: 0 0 var(--s2);
+  font-size: var(--t-small);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.keys-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  margin: 0;
+}
+.keys-list dt {
+  justify-self: end;
+}
+.keys-list dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+kbd {
+  display: inline-block;
+  min-width: 1.9em;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--t-mono-small);
+  text-align: center;
+}
+
 /* --- the shell notice: where a refusal or a receipt lands ------------ */
 
 .shell-notice {

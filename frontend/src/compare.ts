@@ -115,17 +115,37 @@ function current(root: HTMLElement): Kept | null {
   // A grid: whatever is under the pointer, else whatever has focus.
   const under = root.querySelector("a.cell[data-slug]:hover");
   const focused = document.activeElement?.closest?.("a.cell[data-slug]") ?? null;
-  const cell = (under ?? focused) as HTMLElement | null;
-  if (cell?.dataset.slug) {
-    const shown = cell.querySelector("img");
-    return {
-      slug: cell.dataset.slug,
-      name: shown?.getAttribute("alt") || cell.dataset.slug,
-      kind: cell.dataset.kind ?? "",
-      thumb: shown?.getAttribute("src") ?? "",
-    };
+  return read((under ?? focused) as HTMLElement | null);
+}
+
+/** One grid cell as a kept thing, or null when it is not one. */
+function read(cell: HTMLElement | null): Kept | null {
+  if (!cell?.dataset.slug) return null;
+  const shown = cell.querySelector("img");
+  return {
+    slug: cell.dataset.slug,
+    name: shown?.getAttribute("alt") || cell.dataset.slug,
+    kind: cell.dataset.kind ?? "",
+    thumb: shown?.getAttribute("src") ?? "",
+  };
+}
+
+/**
+ * The cells whose checkbox is ticked, in the order the grid shows them.
+ *
+ * Read from the DOM rather than from selection.ts, which keeps its set
+ * private and keys it by uuid: the tray needs a slug, a name and a
+ * thumbnail, and the cell carries all three already. One reader, so a
+ * cell means the same thing to the key and to the button.
+ */
+function picked(root: HTMLElement): Kept[] {
+  const found: Kept[] = [];
+  for (const box of root.querySelectorAll("[data-pick]")) {
+    if (!(box instanceof HTMLInputElement) || !box.checked) continue;
+    const one = read(box.closest(".cell-shell")?.querySelector("a.cell[data-slug]") ?? null);
+    if (one) found.push(one);
   }
-  return null;
+  return found;
 }
 
 /**
@@ -608,6 +628,24 @@ export function mountCompare(root: HTMLElement): void {
     drawTray(tray);
   };
   register([{ key: "c", by: "compare: keep this", run: add }]);
+
+  // The visible way in. `c` keeps the picture under the hand, which is
+  // the fast path and was the ONLY path: the tray is hidden while it is
+  // empty, so a person who did not know the letter never saw that any of
+  // this existed. Selecting pictures and pressing a button is how the
+  // rest of the curate bar works, and comparing several is what the tray
+  // is for.
+  for (const button of root.querySelectorAll("[data-compare-selection]")) {
+    button.addEventListener("click", () => {
+      const chosen = picked(root);
+      if (chosen.length === 0) return;
+      const held = kept();
+      const fresh = chosen.filter((one) => !held.some((each) => each.slug === one.slug));
+      keep([...held, ...fresh]);
+      remember({ tray: "open" });
+      drawTray(tray);
+    });
+  }
 
   drawTray(tray);
 }

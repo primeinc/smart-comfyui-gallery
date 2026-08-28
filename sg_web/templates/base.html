@@ -140,6 +140,13 @@
         <summary>activity{% if live %} · {{ live | length }} running{% endif %}</summary>
         {% include "_activity_list.html" %}
       </details>
+      {# What the keyboard does. A control, because ten keys were live and
+         written nowhere a person could find -- `c` keeps a picture for
+         the compare tray, and the tray was reachable by that letter
+         alone. The panel is built from the key registry, so it cannot
+         disagree with the bindings. #}
+      <button type="button" class="btn-quiet shell-keys" data-shortcuts-open>
+        {{ icon("keyboard") }}shortcuts</button>
       {# Hidden until frontend/src/install.ts has a stashed Chromium
          prompt to spend; Safari and Firefox never reveal it. #}
       <button type="button" class="btn-quiet shell-install" data-install hidden>install app</button>

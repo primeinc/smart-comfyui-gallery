@@ -48,6 +48,10 @@
     <path d="m4 6.25 4 4 4-4"/>
   {%- elif name == "plus" -%}
     <path d="M8 3.5v9M3.5 8h9"/>
+  {%- elif name == "keyboard" -%}
+    {# Keys as round-capped hairlines, the way `info` draws its dot. #}
+    <rect x="1.5" y="3.75" width="13" height="8.5" rx="1.5"/>
+    <path d="M4.25 6.75h.01M6.75 6.75h.01M9.25 6.75h.01M11.75 6.75h.01M5.5 9.5h5"/>
   {%- elif name == "lights" -%}
     {# Half the circle filled: the honest mark for a screen that goes
        dark around the picture, and unmistakably not a checkbox. #}

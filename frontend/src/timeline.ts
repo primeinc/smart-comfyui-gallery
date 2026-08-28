@@ -18,6 +18,7 @@ import { closestFrom, everyElement, findElement, requireData } from "./dom";
 import type { components, paths } from "./generated/api";
 import { decodeJobFrame } from "./jobframes";
 import { mountReread } from "./reread";
+import { remember, workspace } from "./workspace";
 
 type JobKind = components["schemas"]["JobListed"]["kind"];
 type JobState = components["schemas"]["JobListed"]["state"];
@@ -836,23 +837,15 @@ type Scope = Required<
   // are layout, not derivation: 120 keeps a row's thumbnails readable,
   // 520 approaches the preview edge (vision/thumbs.py EDGES) past which
   // a row would upscale its tiles, 200 is the comfortable start.
-  const ROW = { least: 120, most: 520, fallback: 200, key: "timeline.row" };
-  const rowOf = (): number => {
-    try {
-      return Number(localStorage.getItem(ROW.key)) || ROW.fallback;
-    } catch {
-      return ROW.fallback;
-    }
-  };
+  // Through the workspace, not a key of its own: a row height somebody
+  // dragged to is an arrangement, and workspace.ts owns those.
+  const ROW = { least: 120, most: 520, fallback: 200 };
+  const rowOf = (): number => workspace().timelineRow ?? ROW.fallback;
   const sizeRows = (px: number) => {
     const row = Math.min(ROW.most, Math.max(ROW.least, Math.round(px)));
     const s = surface();
     if (s) s.style.setProperty("--row", `${row}px`);
-    try {
-      localStorage.setItem(ROW.key, String(row));
-    } catch {
-      /* a private window keeps no size */
-    }
+    remember({ timelineRow: row });
   };
   const sized = () => {
     const s = surface();

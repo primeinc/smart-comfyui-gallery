@@ -103,6 +103,13 @@
       <button type="button" data-bulk-place="1">say where</button>
       <button type="button" data-bulk-place="0">withdraw</button>
     </span>
+    {# The tray is hidden until it holds something and `c` was the only
+       way to fill it, so the whole compare surface was invisible to
+       anyone who did not know the letter. Comparing several pictures is
+       what it is for, and a selection is how you name several. #}
+    <span class="curate-group">
+      <button type="button" data-compare-selection>compare these</button>
+    </span>
     <button type="button" data-curate-clear>clear selection</button>
   </div>
   <div class="lightbox-root" data-lightbox-root hidden></div>

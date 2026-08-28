@@ -150,6 +150,23 @@ async function ask<T>(asked: Asked, build: (body: HTMLElement, box: HTMLDialogEl
 }
 
 /**
+ * Show something and wait for it to be dismissed.
+ *
+ * `say` takes a sentence; this takes nodes, for the case where what has
+ * to be read is a list or a table rather than a line of prose. One
+ * dismissal and no affirmative: there is nothing here to agree to.
+ *
+ * On `ask` rather than a second dialog, so the focus trap, Escape, the
+ * backdrop click and the removal are the ones already proven here.
+ */
+export async function panel(title: string, fill: (body: HTMLElement) => void, dismiss = "close"): Promise<void> {
+  await ask({ question: title, submit: null, dismiss }, (body) => {
+    fill(body);
+    return () => undefined;
+  });
+}
+
+/**
  * Say something and wait for it to be read.
  *
  * The replacement for `window.alert`, and awaited rather than fired off:
