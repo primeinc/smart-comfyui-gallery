@@ -1319,10 +1319,43 @@ def rule_response_contracts(
     return found
 
 
+def rule_templates_parse(templates: pathlib.Path = REPO_ROOT / "sg_web" / "templates") -> list[Finding]:
+    """SG008: a template Jinja cannot parse.
+
+    `just check` runs ruff, ty, pyrefly, biome and tsc, and not one of
+    them reads a `.html`. A template with an unclosed `{#` comment, or a
+    `{# #}` inside a `{{ }}`, passes the whole gate and then 500s on
+    every request to the page that includes it. Both of those shipped
+    green.
+
+    Jinja's own parser, not a pattern: nesting and quoting are what a
+    regex gets wrong here, and the parser is what the application will
+    use at render.
+
+    Parsing only. It cannot know whether a name the template reads was
+    supplied -- that needs a render, and the browser tests do it.
+    """
+    from jinja2 import Environment, FileSystemLoader, TemplateSyntaxError
+
+    if not templates.is_dir():
+        return []
+    # The application's loader, so `{% extends %}` and `{% include %}`
+    # resolve the way they will at render (sg_web/app.py _template_engine).
+    env = Environment(loader=FileSystemLoader(str(templates)), autoescape=True)
+    found: list[Finding] = []
+    for source in sorted(templates.rglob("*.html")):
+        try:
+            env.parse(source.read_text(encoding="utf-8"), name=source.name, filename=str(source))
+        except TemplateSyntaxError as broken:
+            found.append(Finding(source, broken.lineno or 1, 0, "SG008", f"Jinja cannot parse this: {broken.message}"))
+    return found
+
+
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
     rule_spawns,
+    rule_templates_parse,
     rule_tests_run_things,
     rule_sql_structure,
     rule_connection_lifetime,

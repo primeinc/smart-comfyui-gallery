@@ -25,6 +25,37 @@ def test_the_tree_is_clean_under_the_rules():
 
 
 @pytest.mark.slow
+def test_the_template_sweep_reaches_the_tree_and_catches_a_broken_one(tmp_path):
+    """SG008: `just check` reads no .html, so a template that 500s on every
+    request to its page passed the whole gate. Twice.
+
+    The sweep is shown to reach the real templates, then fed each shape
+    that actually shipped: a comment an extraction sliced in half, and a
+    `{# #}` written inside a `{{ }}`.
+    """
+    assert rules.rule_templates_parse() == []
+    reached = list((rules.REPO_ROOT / "sg_web" / "templates").rglob("*.html"))
+    assert len(reached) > 20, f"only {len(reached)} templates found; the sweep is not reaching them"
+
+    def wrote(body: str) -> pathlib.Path:
+        held = tmp_path / "one.html"
+        with held.open("w", encoding="utf-8", newline="") as sink:
+            sink.write(body)
+        return held
+
+    for broken in (
+        "{# a comment nobody closed\n<p>after</p>",
+        '<p>{{ {# why #} "x" }}</p>',
+        "{% for one in many %}<li>{{ one }}</li>",
+    ):
+        wrote(broken)
+        assert [f.code for f in rules.rule_templates_parse(tmp_path)] == ["SG008"], broken
+
+    wrote("{# fine #}<p>{{ one }}</p>")
+    assert rules.rule_templates_parse(tmp_path) == []
+
+
+@pytest.mark.slow
 def test_the_spawn_sweep_reaches_the_tree_and_catches_each_shape():
     total = sum(len(rules.spawn_calls(rules.parsed(s))) for s in rules.every_source())
     assert total >= 2, f"only {total} subprocess calls found; the sweep is not reaching them"
