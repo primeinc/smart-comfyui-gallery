@@ -381,6 +381,31 @@ p {
 .ask-result .ask-save:first-of-type {
   margin-left: auto;
 }
+/* On a phone this row is what stands between somebody and their
+   photographs. Wrapped, it was 141px of a 780px window -- filters, the
+   count, three views and three saved-question actions stacked four deep
+   above the grid. The rule above already says those actions "are never
+   the reason you came to this page", and on a narrow screen that has a
+   cost attached.
+
+   So the row scrolls in itself rather than wrapping. Everything stays in
+   the document and in the tab order; what moves is where it sits. The
+   auto margin has no free space to spend once the row is nowrap, so the
+   actions simply follow the views. */
+@media (max-width: 860px) {
+  .ask-result {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .ask-result::-webkit-scrollbar {
+    display: none;
+  }
+  .ask-result > * {
+    flex: none;
+  }
+}
 .ask-save {
   background: transparent;
   border: 1px solid transparent;
@@ -4074,31 +4099,70 @@ body:has([data-viewer-page]) .shell:focus-within {
   .shell-brand {
     padding: 0;
   }
-  .shell-top {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--s3);
-  }
   /* The caret goes: nothing discloses at this width, the children are
      simply beside their parent. */
   .shell-fold > summary::after {
     display: none;
   }
-  /* Wrapping, not one line. Unwrapped, nine destinations on a 390px row
-     ran `collections` off the right edge mid-word and pushed `review`
-     off the screen entirely -- and a body that scrolls sideways is a
-     broken page, not a dense one. */
+  /* One line that SCROLLS, not four that wrap.
+     Wrapping was the fix for an earlier bug -- nine destinations on a
+     390px row ran `collections` off the right edge and pushed `review`
+     off the screen, because the row could neither wrap nor be scrolled,
+     and a body that scrolls sideways is a broken page. Wrapping cured
+     that and cost the height instead: measured at 360px, the nav alone
+     was 133px and the first photograph did not start until 536px down a
+     780px window. 69% of a gallery is not gallery.
+
+     A row that scrolls in ITSELF is the third option: nothing runs off
+     the edge, nothing is hidden from the document, and the page does not
+     scroll sideways -- only this strip does. The scrollbar is hidden
+     because the row is short and the overflow is obvious from the
+     content being cut. */
   .shell-fold {
     display: flex;
     align-items: baseline;
-    flex-wrap: wrap;
     gap: var(--s2);
+    min-width: 0;
   }
-  .shell-fold > ul {
+  /* The TIERS still wrap; only the children inside a tier scroll.
+     Scrolling the whole list instead put `review` at x=524 in a 360px
+     window -- a top-level destination reachable only by dragging a strip
+     nothing marks as draggable, which is worse than the height it saved.
+     Three lines now (library/timeline, collections + its five, review +
+     its three) where there were five. */
+  .shell-top {
     display: flex;
     flex-wrap: wrap;
     gap: var(--s3);
+  }
+  .shell-fold > ul {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--s3);
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .shell-fold > ul::-webkit-scrollbar {
+    display: none;
+  }
+  /* A strip that scrolls has to LOOK like one. Without this the row
+     simply ended at the window edge and nothing said the rest of the
+     collections were a swipe away -- which is the same "reachable only if
+     you already knew" the compare tray was. The last 20px fade out, so
+     the row reads as cut rather than finished.
+
+     mask-image takes a computed <image> and applies to all elements
+     (w3c/csswg-drafts css-masking-1 Overview.bs:846), so a gradient is a
+     legal mask. When the row does not overflow, the fade lands on the
+     empty end of the strip and there is nothing to see. */
+  .shell-fold > ul,
+  .ask-result {
+    mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  }
+  .shell-fold > ul > * {
+    flex: none;
   }
   .shell-top > li > a,
   .shell-fold > summary,
