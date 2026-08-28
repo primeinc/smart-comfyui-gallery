@@ -1,4 +1,5 @@
 {% from "_icons.html" import icon %}
+{% from "_name.html" import middle %}
 {# The viewer: the photograph, the few facts that change what it means, and
    everything else one click away.
 
@@ -28,7 +29,7 @@
          its WHERE and never the picture: the filename was reachable only
          by opening the inspector, on the one surface in the application
          that shows exactly one file. #}
-      <span class="viewer-name" data-viewer-name title="{{ item.name }}">{{ item.name }}</span>
+      <span class="viewer-name" data-viewer-name>{{ middle(item.name) }}</span>
       {% if item.when %}
       <button type="button" class="chip" data-panel-open="about" data-viewer-when>
         <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>

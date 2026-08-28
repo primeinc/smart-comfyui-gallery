@@ -1,3 +1,4 @@
+{% from "_name.html" import middle %}
 {# Everything one click away, in the order somebody looks for it.
 
    A section exists when it has something to say. "Nobody looked for faces
@@ -13,8 +14,36 @@
    state and the element it describes makes querySelector pick whichever
    comes first in the document. #}
 <aside class="inspector" data-inspector-panel aria-label="information">
+  {# What the picture IS, not what its file is called.
+
+     This was `item.name`, set as the loudest thing in the panel: two bold
+     lines of `20260821_17h55m02s469ms_Krea_2_-fp8-nvfp4_...png` above
+     everything, while "enjoying a Pizza Hut dinner" -- the sentence that
+     made the picture -- sat five rows down at 13px. A generated file's
+     name is a timestamp and a checkpoint; it identifies the bytes and
+     says nothing about the photograph.
+
+     It is also the file's fact and it is still stated as one, in FILE
+     below, and again in the window chrome. Three copies of a timestamp on
+     one screen, and the subject nowhere.
+
+     This file's own rule, at the top: exceptions become visible,
+     normality disappears. A filename is the most normal thing a picture
+     has. It stays here only when there is nothing truer to say.
+
+     The CAPTION first, and the prompt only after it. Not because a
+     caption is better, but because the prompt already has a home with a
+     job -- CREATION's prompt row is the copy source and the editable
+     scratch that frontend/src/recipe.ts reads -- and heading with it put
+     the same sentence on the panel twice, two hundred pixels apart. The
+     caption appears nowhere else in here. They are also different facts,
+     and worth seeing together: what a model SAW against what was ASKED
+     for. #}
+  {% set subject = item.said_first
+                   or (item.creation.prompt if item.creation and item.creation.prompt else none)
+                   or item.name %}
   <header class="inspector-bar">
-    <h2>{{ item.name }}</h2>
+    <h2 data-inspector-subject{% if subject != item.name %} title="{{ item.name }}"{% endif %}>{{ subject }}</h2>
     <button type="button" class="viewer-act" data-inspector-toggle aria-label="close information">&times;</button>
   </header>
 
@@ -164,11 +193,11 @@
     <section class="recipe-models">
       {% if item.creation.checkpoint %}
       <div class="recipe-model"><span class="recipe-label">checkpoint</span>
-        <span class="recipe-name" data-recipe-checkpoint>{{ item.creation.checkpoint }}</span></div>
+        <span class="recipe-name" data-recipe-checkpoint>{{ middle(item.creation.checkpoint, tail=20) }}</span></div>
       {% endif %}
       {% for lora in item.creation.loras %}
       <div class="recipe-model recipe-lora"><span class="recipe-label">lora</span>
-        <span class="recipe-name">{{ lora.name }}</span>
+        <span class="recipe-name">{{ middle(lora.name, tail=20) }}</span>
         {# the weight is why this is not a list of names: without it the
            recipe does not reproduce #}
         {% if lora.weight is not none %}<b class="recipe-weight">{{ "%.2f"|format(lora.weight) }}</b>{% endif %}
@@ -210,7 +239,15 @@
   </details>
   {% endif %}
 
-  <details class="panel" data-panel="file">
+  {# Forensics, and drawn as forensics.
+
+     Six sections carried identical weight -- ABOUT, CONTEXT, CREATION,
+     FILE, TECHNICAL, RAW METADATA, six uppercase rows of the same colour
+     -- so nothing on the panel said which one anybody wanted. The first
+     three are what a picture is; these three are what you open when
+     something is wrong with it. RAW METADATA had the same claim on the
+     eye as the prompt. #}
+  <details class="panel panel-fine" data-panel="file">
     <summary>file</summary>
     <dl>
       <dt>name</dt><dd>{{ item.name }}</dd>
@@ -226,7 +263,7 @@
     </dl>
   </details>
 
-  <details class="panel" data-panel="technical">
+  <details class="panel panel-fine" data-panel="technical">
     <summary>technical</summary>
     <dl>
       <dt>metadata</dt>
@@ -263,7 +300,7 @@
   </details>
 
   {% if item.params %}
-  <details class="panel" data-panel="raw">
+  <details class="panel panel-fine" data-panel="raw">
     <summary>raw metadata</summary>
     <table class="detail-params"><tbody>
       {% for row in item.params %}

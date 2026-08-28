@@ -1,0 +1,29 @@
+{# A filename cut in the MIDDLE, because the middle is the part nobody
+   needs.
+
+   `text-overflow: ellipsis` cuts the end, and for the names this
+   application actually holds that is the worst possible place. A
+   generated file is `<timestamp>_<checkpoint>_<the bit that differs>.png`
+   and a LoRA is `<family>_<variant>_<version>.safetensors` -- the head is
+   a shared pattern and the TAIL is what tells one from another. Cutting
+   the end leaves a column of
+
+     20260821_17h55m02s469ms_Krea_2_-fp8-nv...
+     20260821_17h55m09s112ms_Krea_2_-fp8-nv...
+
+   which are the same forty characters and identify nothing. It also drops
+   the extension, so the one glance that says "this is a .mp4, not a .png"
+   is gone.
+
+   Two spans and no script: the head takes the ellipsis and all the
+   squeeze, the tail refuses to shrink. `textContent` is unchanged, so
+   anything reading the name still reads the whole name. #}
+
+{% macro middle(text, tail=16) %}
+{%- set text = text | string -%}
+{%- if text | length <= tail + 8 -%}
+<span class="midcut"><span class="midcut-head">{{ text }}</span></span>
+{%- else -%}
+<span class="midcut" title="{{ text }}"><span class="midcut-head">{{ text[:-tail] }}</span><span class="midcut-tail">{{ text[-tail:] }}</span></span>
+{%- endif -%}
+{% endmacro %}

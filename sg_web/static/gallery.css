@@ -843,13 +843,31 @@ p {
    facts ABOUT it and stay quiet chips beside it. It truncates rather
    than pushing the ordinal off the bar: a generated filename can be
    ninety characters and none of them are worth the whole measure. */
+/* Cut in the middle, not at the end: see templates/_name.html. The head
+   takes the ellipsis and all of the squeeze; the tail -- the part that
+   tells one generated file from another, and the extension -- never
+   shrinks. */
+.midcut {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+.midcut-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.midcut-tail {
+  flex: none;
+  white-space: nowrap;
+}
 .viewer-name {
   color: var(--ink);
   font-weight: var(--w-label);
   max-width: min(38ch, 30vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
 }
 .viewer-ordinal {
   color: var(--ink-muted);
@@ -1205,10 +1223,20 @@ p {
   padding: 12px 0;
   background: var(--panel);
 }
+/* The subject of the picture, which is a sentence, not a filename. It is
+   allowed three lines and then it is cut -- a hundred-word prompt is a
+   thing to read in CREATION, and the heading only has to say which
+   picture this is. `anywhere` stays for the case where the subject IS a
+   filename, because nothing truer was known. */
 .inspector-bar h2 {
   font-size: var(--t-lead);
   margin: 0;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 .panel {
   border-top: 1px solid var(--line);
@@ -1227,6 +1255,20 @@ p {
   list-style: none;
   padding: 4px 0;
   text-transform: uppercase;
+}
+/* Forensics, drawn as forensics. Six sections carried one weight, so the
+   panel never said which of them anybody wanted -- RAW METADATA had the
+   same claim on the eye as the prompt. These three are what you open when
+   something is WRONG with the picture, and they sit below the rule that
+   separates them from what the picture is. */
+.panel-fine {
+  padding-block: 2px;
+}
+.panel-fine > summary {
+  color: var(--ink-faint);
+}
+.panel-fine + .panel-fine {
+  border-top-color: transparent;
 }
 .panel > summary::-webkit-details-marker {
   display: none;
@@ -1360,14 +1402,20 @@ p {
   margin-top: 4px;
 }
 
+/* `minmax(0, 1fr)`, not the implicit `auto` track: a grid item's
+   min-width is `auto`, so the row's min-content -- which includes a tail
+   that must not wrap -- pushed the track wider than the panel and the
+   checkpoint ran off the right edge instead of being cut. */
 .recipe-models {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   margin: 12px 0;
 }
 .recipe-model {
   align-items: baseline;
   display: flex;
+  min-width: 0;
   gap: 8px;
   overflow-wrap: anywhere;
 }
@@ -1392,7 +1440,10 @@ p {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
+/* The name is what absorbs the squeeze -- the label is fixed and the
+   weight is a number that must not break. */
 .recipe-name {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -1540,15 +1591,28 @@ p {
   padding: 10px 12px;
   border-radius: var(--radius);
 }
+/* `fixed`, so `width: 100%` is obeyed. Under the default `auto` layout a
+   table sizes its columns to content and grows past its own declared
+   width, and raw metadata is exactly the content that does it:
+   `generationdebug_backend.debug_internal_prompt` has nowhere to break,
+   so the table ran 133px outside the inspector. Fixed layout divides the
+   width it is given and the cells wrap inside it. */
 .detail-params {
   border-collapse: collapse;
   width: 100%;
+  table-layout: fixed;
   font-size: var(--t-body);
 }
 .detail-params td {
   border-top: 1px solid var(--line);
   padding: 4px 10px 4px 0;
   vertical-align: top;
+  overflow-wrap: anywhere;
+}
+/* Where the value came from is a word; the key and the value split what
+   is left. */
+.detail-params td:first-child {
+  width: 5.5em;
 }
 
 /* --- people: cards, hero, drawer ------------------------------------ */
