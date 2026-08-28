@@ -493,6 +493,10 @@
     }
     return found;
   }
+  function findElement(root, selector, type) {
+    const found = root.querySelector(selector);
+    return found instanceof type ? found : null;
+  }
   function everyElement(root, selector, type) {
     return [...root.querySelectorAll(selector)].filter((node) => node instanceof type);
   }
@@ -540,7 +544,9 @@
     return esc(value ?? "\u2014");
   }
   (() => {
-    const root = requireElement(document, "[data-evolution]", HTMLElement);
+    const here = findElement(document, "[data-evolution]", HTMLElement);
+    if (!here) return;
+    const root = here;
     const main = requireElement(root, "[data-main]", HTMLElement);
     const selectedPane = requireElement(root, "[data-selected]", HTMLElement);
     const inspector = requireElement(root, "[data-inspector]", HTMLElement);

@@ -8,7 +8,7 @@
 // own contract. It is not serialized into the HTML for this file to parse
 // back out: there is one document and one description of it.
 import { api, refusal } from "./api";
-import { closestFrom, everyElement, requireData, requireElement } from "./dom";
+import { closestFrom, everyElement, findElement, requireData, requireElement } from "./dom";
 import type { components } from "./generated/api";
 
 type EvolutionView = components["schemas"]["EvolutionView"];
@@ -52,7 +52,15 @@ function spell(value: Generation[keyof Generation]): string {
 }
 
 (() => {
-  const root = requireElement(document, "[data-evolution]", HTMLElement);
+  // Nothing on a page that is not this surface. `requireElement` throws
+  // when its element is absent, which is right for the parts of a
+  // surface that must exist and wrong for the surface itself: mounted
+  // anywhere else, the module took the page down with it.
+  const here = findElement(document, "[data-evolution]", HTMLElement);
+  if (!here) return;
+  // Bound to its own name so the narrowing survives into the nested
+  // functions below; a captured `HTMLElement | null` does not.
+  const root = here;
   const main = requireElement(root, "[data-main]", HTMLElement);
   const selectedPane = requireElement(root, "[data-selected]", HTMLElement);
   const inspector = requireElement(root, "[data-inspector]", HTMLElement);

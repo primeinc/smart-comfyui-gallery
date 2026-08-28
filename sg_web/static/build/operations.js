@@ -550,7 +550,9 @@
 
   // src/operations.ts
   (() => {
-    const root = requireElement(document, "[data-console]", HTMLElement);
+    const here = findElement(document, "[data-console]", HTMLElement);
+    if (!here) return;
+    const root = here;
     const ROW_H = 24;
     const OVERSCAN = 12;
     const TAPE_COLD = 500;

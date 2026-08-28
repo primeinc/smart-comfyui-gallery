@@ -45,9 +45,9 @@ def test_every_capability_is_reachable_or_recorded():
     for path in rules.UNSURFACED:
         assert f'"{path}' in addresses, f"{path} is recorded as unsurfaced but nothing serves it"
 
-    # And every recorded kind is one the schema still declares.
-    for kind in rules.UNIMPLEMENTED_KINDS:
-        assert kind in rules._JOB_KINDS, f"{kind} is recorded as unimplemented but is no longer declared"
+    # Declared-versus-implemented is SG713's question, checked against the
+    # vocabulary itself (sglint/schema_rules.py rule_vocabulary_handlers).
+    # This rule asked it too and reached the opposite answer, so it stopped.
 
 
 @pytest.mark.slow

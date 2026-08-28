@@ -4187,6 +4187,36 @@ body:has([data-viewer-page]) .shell:focus-within {
   border-color: var(--danger);
 }
 
+/* --- a hand has no hover -----------------------------------------------
+   Six controls were drawn at opacity 0 and brought back by `:hover`, with
+   `:focus-visible` beside it for the keyboard. Neither reaches a finger:
+   there is no hover on a touch screen, and `:focus-visible` does not match
+   a tap.
+
+   Measured on a 390px touch context, `(hover: none)` matching: `.cell-pick`
+   computed to opacity 0. That is the selection checkbox — so on a phone
+   nothing could be selected, and with nothing selected the whole curate
+   bar (favourite, rating, album, place, compare) was unreachable. The
+   viewer's own walk arrows were invisible for the same reason, and there
+   is no swipe to fall back on.
+
+   Shown outright rather than revealed on tap: a control that appears only
+   after you touch the thing it is on cannot be found by looking, which is
+   the problem being fixed rather than a smaller version of it.
+
+   `.cell-name` is deliberately not here. It is the filename, it is a label
+   rather than an act, and forty of them at once is the noise the hover
+   was avoiding. */
+@media (hover: none) {
+  .cell-pick,
+  .person-deny,
+  .ask-forget,
+  .matrix-stop,
+  .viewer-step {
+    opacity: 1;
+  }
+}
+
 /* --- what the keyboard does -------------------------------------------
    Built from the key registry (frontend/src/keys.ts), so the list cannot
    disagree with the bindings. A caption per key, grouped by the surface

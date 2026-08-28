@@ -1424,25 +1424,49 @@ UNSURFACED = {
     "/search": "linked from the evolution surface as view.links.search (frontend/src/evolution.ts)",
 }
 
-#: Capabilities that are not addresses. Same contract: recorded, with the
-#: evidence, so nobody has to rediscover them.
+#: Capabilities that are not addresses. Same contract as above -- recorded
+#: with the evidence, so nobody has to rediscover them -- and each says
+#: what would have to happen first, because none of these can be surfaced
+#: by drawing something.
+#:
+#: That is the useful part. "No affordance" reads like a decision somebody
+#: could reverse this afternoon; every one of these is blocked further
+#: back, and saying where stops the next person starting at the wrong end.
 UNSURFACED_BEYOND_ROUTES = {
-    "face age/sex/pose": "vision/faces.py computes them and derived_face_instance stores them; no reader",
-    "lineage": "db/lineage.py is called only from tests, so file_derivation is never written",
-    "watched folders": "db/jobs.py watch_folder and unwatch_folder have no route",
-    "face_across_runs": "db/pages.py has no caller for it; the compare page uses disagreements",
-    "comments": "db/authored.py comment and edit_comment have no caller, and nothing reads the table",
-}
-
-#: Kinds JobKind declares that the runner does not implement. Nothing can
-#: start one -- `launch` gates on the console's own list and answers 404 --
-#: so this is vocabulary drift rather than an interface gap, and no
-#: affordance should be built for any of them. Whether they should stay in
-#: JobKind at all is the schema's question, not the interface's.
-UNIMPLEMENTED_KINDS = {
-    "sample_frames": "declared in db/jobs.py JobKind, absent from db/runner.py HANDLERS",
-    "remix": "the same",
-    "zip": "the same",
+    "face age/sex/pose": (
+        "vision/faces.py computes them and derived_face_instance stores them. "
+        "Blocked at the contract: sg_web/media_view.py Person carries slug, name, href and a count, "
+        "so there is nothing for a surface to draw until the wire says it"
+    ),
+    "lineage": (
+        "db/lineage.py is called only from tests, so file_derivation is never written. "
+        "The inspector's parents and children rows already exist and read it, and are therefore "
+        "structurally always empty -- built correctly against a table production never fills"
+    ),
+    "watched folders": (
+        "db/jobs.py watch_folder and unwatch_folder have no route, so there is no address for a control to post to"
+    ),
+    "face_across_runs": (
+        "db/pages.py has no caller for it; the clusterings compare page renders `disagreements` instead, "
+        "which is run-level. Per-face divergence needs the route to ask for it"
+    ),
+    "comments": (
+        "db/authored.py comment and edit_comment have no caller and nothing reads the table. "
+        "Not a missing edit button: there is no write path and no read path, so the whole capability "
+        "is behind a route that does not exist"
+    ),
+    "job kinds sample_frames, remix, zip": (
+        "db/jobs.py JobKind declares fourteen kinds; db/runner.py HANDLERS implements eleven. "
+        "These three are words with nothing behind them and never have been: `git log -S` over "
+        "db/runner.py finds no commit that ever added a handler for one, where the same search "
+        "finds b0e3083 for walk. Nothing should draw a control for them -- there is no code to run. "
+        "They are held in place by db/schema.sql:664, the CHECK on job.kind, which SG709 pins "
+        "JobKind equal to, so dropping them from the Literal alone trips that rule instead. "
+        "Removing them is jobs.py, schema.sql, a new migration step and console.py -- a database "
+        "contract change. Two traps for whoever does it: the four occurrences in db/migrate.py are "
+        "frozen history and must not be edited, and schema.sql:768 and :780 carry `remix` in a "
+        "different vocabulary, the derivation kinds, which this has nothing to do with"
+    ),
 }
 
 
@@ -1460,13 +1484,15 @@ def _reachable_text(root: pathlib.Path) -> str:
 def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     """SG010: something the application can do that no surface reaches.
 
-    Two sources of truth, neither of them anybody's memory: the addresses
-    served, and the job kinds declared. A GET whose static prefix appears
-    in no template and no authored module is not reachable; a declared job
-    kind with no handler is a word with nothing behind it.
+    The source of truth is the addresses served, not anybody's memory: a
+    GET whose static prefix appears in no template and no authored module
+    is not reachable.
 
     The prefix rather than the whole path, because a parameterised address
     is built and never written out: `/f/{slug}` is reached by `/f/`.
+
+    Capabilities that are not addresses cannot be found by reading routes.
+    Those are recorded by hand in UNSURFACED_BEYOND_ROUTES.
     """
     web = root / "sg_web"
     if not web.is_dir():
@@ -1503,49 +1529,7 @@ def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding
         if not any(path.startswith(held) for path in addresses)
     )
 
-    # A declared kind with no handler is vocabulary drift: `launch` refuses
-    # it, so nothing can start it and no affordance should be built for it.
-    jobs = root / "db" / "jobs.py"
-    runner = root / "db" / "runner.py"
-
-    # A kind nothing implements is not a gap in the interface, and the
-    # record of it is only worth keeping while it is true: removing one
-    # from JobKind must trip this rather than pass quietly.
-    found.extend(
-        Finding(jobs, 1, 0, "SG010", f"job kind {kind!r} is recorded as unimplemented and is no longer declared")
-        for kind in sorted(UNIMPLEMENTED_KINDS)
-        if kind not in _JOB_KINDS
-    )
-
-    if jobs.is_file() and runner.is_file():
-        declared = set(re.findall(r"^\s+\"(\w+)\",", jobs.read_text(encoding="utf-8"), re.MULTILINE))
-        handled = set(re.findall(r"^\s+\"(\w+)\": _\w+", runner.read_text(encoding="utf-8"), re.MULTILINE))
-        if handled:
-            found.extend(
-                Finding(jobs, 1, 0, "SG010", f"job kind {kind!r} is declared and no handler implements it")
-                for kind in sorted((declared & _JOB_KINDS) - handled - set(UNIMPLEMENTED_KINDS))
-            )
     return found
-
-
-#: The kinds JobKind declares. Named here so the check above compares two
-#: lists rather than trusting one regex to find both ends of the pair.
-_JOB_KINDS = {
-    "scan",
-    "hash",
-    "detect_faces",
-    "cluster_faces",
-    "embed",
-    "embed_prompts",
-    "annotate",
-    "context",
-    "events",
-    "story_plan",
-    "walk",
-    "sample_frames",
-    "remix",
-    "zip",
-}
 
 
 # --- all of it ----------------------------------------------------------------------------------

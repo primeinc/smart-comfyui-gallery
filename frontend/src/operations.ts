@@ -31,7 +31,14 @@ type Collapsed = components["schemas"]["Collapsed"];
 type LiveReport = components["schemas"]["LiveReport"];
 
 (() => {
-  const root = requireElement(document, "[data-console]", HTMLElement);
+  // Nothing on a page that is not the console. See evolution.ts: the
+  // surface's own root is the one element whose absence means "not
+  // here", not "broken".
+  const here = findElement(document, "[data-console]", HTMLElement);
+  if (!here) return;
+  // Bound to its own name so the narrowing survives into the nested
+  // functions below; a captured `HTMLElement | null` does not.
+  const root = here;
   const ROW_H = 24;
   const OVERSCAN = 12;
   //: how many of the newest rows the cold read asks for
