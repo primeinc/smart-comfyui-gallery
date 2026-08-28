@@ -6403,10 +6403,15 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "items": {
-                                        "type": "object"
-                                    },
-                                    "type": "array"
+                                    "oneOf": [
+                                        {
+                                            "items": {
+                                                "type": "object"
+                                            },
+                                            "type": "array"
+                                        },
+                                        {}
+                                    ]
                                 }
                             }
                         }

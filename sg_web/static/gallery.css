@@ -4083,12 +4083,40 @@ body:has([data-viewer-page]) .shell:focus-within {
     background: none;
     border-bottom-color: var(--accent);
   }
+  /* A ROW here, and one that may wrap. `grid-auto-flow: column` put all
+     five of these in a single track that cannot break, so at 390px each
+     was squeezed to about seventy pixels and every label broke
+     mid-phrase: "install / app", "3,748 / files", "operations" under
+     "activity". `align-items: baseline` then aligned each item by its
+     FIRST line, so the second lines hung below at different depths and
+     the whole foot of the shell read as debris. */
   .shell-runtime {
     margin: 0 0 0 auto;
     padding: 0;
     border-top: 0;
-    grid-auto-flow: column;
-    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+  }
+  /* The stacked shape above is for the rail, where these are a column
+     and `width: 100%` is what puts the count under the word it counts.
+     Beside each other they are phrases, and a phrase that breaks is
+     harder to read than one that wraps to the next line whole. */
+  .shell-machine,
+  .shell-running {
+    width: auto;
+    padding-left: 0;
+  }
+  .shell-machine {
+    gap: var(--s2);
+  }
+  .shell-machine .dot {
+    margin-left: 0;
+  }
+  .shell-runtime > *,
+  .shell-machine > * {
+    white-space: nowrap;
   }
 }
 

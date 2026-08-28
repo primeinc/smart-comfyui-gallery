@@ -1384,8 +1384,21 @@ def avatar_bytes(state: State, slug: FromPath[str]) -> Response[bytes] | Redirec
 
 
 @get("/settings", sync_to_thread=True)
-def all_settings(state: State) -> list[dict]:
-    """Every setting, its value, default and choices -- the whole vocabulary."""
+def all_settings(state: State, request: Request) -> list[dict] | Redirect:
+    """Every setting, its value, default and choices -- the whole
+    vocabulary -- to a machine; a browser is sent to where the settings
+    can actually be CHANGED, which is the operations page's setup panel.
+
+    A person types /settings because they want to change one. They used
+    to get the snapshot as raw JSON: every value on the screen and no way
+    to edit any of it. The same rule as the plan document
+    (sg_web/story_view.py): a person never lands on JSON.
+
+    Sent rather than drawn, because the panel already exists and a second
+    settings page would be a second thing to keep in step with the
+    registry."""
+    if not wants_json(request):
+        return Redirect(path="/operations#panel-setup", status_code=302)
     conn = _connect(state.db_path)
     try:
         return settings.snapshot(conn)
