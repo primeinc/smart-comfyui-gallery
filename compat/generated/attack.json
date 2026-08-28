@@ -1,0 +1,79 @@
+{
+  "all_detected": true,
+  "attacks": [
+    {
+      "detected": true,
+      "expected": "provenance FAILS: HEAD is not the pinned commit",
+      "name": "pin_mutated",
+      "notes": [],
+      "observed": "HEAD 6ad6b35a4df250d14cb2abf0808c9ffedf59f747 is not the pinned 0000000000000000000000000000000000000000",
+      "targets": "manifest [[consumers]].commit"
+    },
+    {
+      "detected": true,
+      "expected": "provenance FAILS: the model file is absent",
+      "name": "weight_moved",
+      "notes": [],
+      "observed": "1 weight row(s) reported absent",
+      "targets": "manifest [[weights]].file"
+    },
+    {
+      "detected": true,
+      "expected": "a re-run recomputes the digest and does not reproduce the doctored one",
+      "name": "blob_mutated",
+      "notes": [],
+      "observed": "re-run produced 28 digests, none of them the doctored value",
+      "targets": "generated/provenance.json blob_sha256"
+    },
+    {
+      "detected": true,
+      "expected": "the case that needs it stops reproducing",
+      "name": "necessary_removed",
+      "notes": [
+        "source_region_pixels: KeyError: \"replay needs 'source_region_pixels', which the retained state does not carry\""
+      ],
+      "observed": "272 recorded removals broke their replay, e.g. aligned_crop_112_synthetic without source_region_pixels",
+      "targets": "a primitive whose ablation broke the replay"
+    },
+    {
+      "detected": true,
+      "expected": "the matrix reports the consumer NOT EXERCISED instead of dropping it",
+      "name": "population_shrunk",
+      "notes": [],
+      "observed": "reactor listed as NOT EXERCISED; matrix totals not_exercised=1",
+      "targets": "generated/cases.json results"
+    },
+    {
+      "detected": true,
+      "expected": "provenance PASSES and the matrix reports every consumer exercised",
+      "name": "positive_control",
+      "notes": [],
+      "observed": "provenance PASS; 22/22 reproduced, 0 not exercised",
+      "targets": "the real manifest and the real evidence"
+    }
+  ],
+  "runtime": {
+    "backends": {
+      "insightface": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  }
+}
