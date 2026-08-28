@@ -842,3 +842,32 @@ body:not(:has(.ops-panel:target)) .ops-tabs [data-ops-tab="run"] {
 .inspect-fine[open] > summary {
   margin-bottom: var(--s2);
 }
+
+/* --- the worker's condition ------------------------------------------
+   The transport had a light and the worker had none, so `disabled` --
+   the state in which nothing queued will ever run -- was drawn in the
+   same ink as `enabled`, beside a green dot that meant only that the
+   socket was up. Four conditions, and only one of them is trouble. */
+[data-worker-condition="working"] .dot {
+  background: var(--ok);
+  animation: pulse 2s ease-in-out infinite;
+}
+[data-worker-condition="idle"] .dot {
+  background: var(--ink-faint);
+}
+/* Off on purpose, with nothing waiting: a decision, not a fault. */
+[data-worker-condition="off"] .dot {
+  background: var(--warn);
+}
+/* Off with work queued: the queue cannot drain and nobody is coming. */
+[data-worker-condition="stalled"] .dot {
+  background: var(--danger);
+}
+[data-worker-condition="stalled"] [data-worker-state] {
+  color: var(--danger);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-worker-condition="working"] .dot {
+    animation: none;
+  }
+}

@@ -39,9 +39,19 @@
         <span class="v"><i class="dot"></i><span data-transport-state>not connected</span></span>
         <code class="raw">last #<span data-transport-last>{{ last_event_id }}</span> · <span data-transport-age>—</span> · <button type="button" class="tape-btn tape-btn-inline" data-transport-reconnect>reconnect</button></code>
       </div>
-      <div class="health-cell" data-health-worker>
+      {# A worker that is off with an empty queue is somebody's decision.
+         A worker that is off with work QUEUED is a stall: the thing that
+         drains the queue is not running, so nothing is going to happen,
+         and the page said so in the same ink as everything else while
+         the transport beside it had a green light. Four conditions, one
+         dot, and the stall says what it MEANS rather than only what it
+         is. #}
+      {% set worker_state = "working" if overview.worker.working
+         else ("stalled" if (not overview.worker.enabled and overview.queue.queued)
+               else ("off" if not overview.worker.enabled else "idle")) %}
+      <div class="health-cell" data-health-worker data-worker-condition="{{ worker_state }}">
         <span class="k">worker</span>
-        <span class="v" data-worker-state>{{ "enabled" if overview.worker.enabled else "disabled" }} · {{ "working" if overview.worker.working else "idle" }} · thread {{ "alive" if overview.worker.thread_alive else "not running" }}</span>
+        <span class="v"><i class="dot"></i><span data-worker-state>{% if worker_state == "stalled" %}disabled &mdash; {{ overview.queue.queued }} queued, nothing will run{% else %}{{ "enabled" if overview.worker.enabled else "disabled" }} · {{ "working" if overview.worker.working else "idle" }} · thread {{ "alive" if overview.worker.thread_alive else "not running" }}{% endif %}</span></span>
         <code class="raw" data-worker-raw>{{ overview.worker.thread or "no thread" }} · {{ overview.worker.owners | join(", ") or "no owner" }} · heartbeat {{ "%.1fs ago" | format(overview.worker.heartbeat_age) if overview.worker.heartbeat_age is not none else "none" }}</code>
       </div>
       <div class="health-cell" data-health-queue>

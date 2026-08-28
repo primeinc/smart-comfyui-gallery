@@ -317,9 +317,19 @@ type LiveReport = components["schemas"]["LiveReport"];
       if (node) node.textContent = text;
     };
     const heartbeat = o.worker.heartbeat_age != null ? `${o.worker.heartbeat_age.toFixed(1)}s ago` : "none";
+    // A worker off with an empty queue is somebody's decision; a worker
+    // off with work QUEUED is a stall -- nothing is going to happen, and
+    // that is the one thing this strip exists to say. Same four
+    // conditions the cold render computes.
+    const stalled = !o.worker.enabled && o.queue.queued > 0;
+    const condition = o.worker.working ? "working" : stalled ? "stalled" : o.worker.enabled ? "idle" : "off";
+    const workerCell = findElement(root, "[data-health-worker]", HTMLElement);
+    if (workerCell) workerCell.dataset.workerCondition = condition;
     say(
       "[data-worker-state]",
-      `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`,
+      stalled
+        ? `disabled — ${o.queue.queued} queued, nothing will run`
+        : `${o.worker.enabled ? "enabled" : "disabled"} · ${o.worker.working ? "working" : "idle"} · thread ${o.worker.thread_alive ? "alive" : "not running"}`,
     );
     say(
       "[data-worker-raw]",

@@ -794,9 +794,13 @@
         if (node) node.textContent = text;
       };
       const heartbeat = o.worker.heartbeat_age != null ? `${o.worker.heartbeat_age.toFixed(1)}s ago` : "none";
+      const stalled = !o.worker.enabled && o.queue.queued > 0;
+      const condition = o.worker.working ? "working" : stalled ? "stalled" : o.worker.enabled ? "idle" : "off";
+      const workerCell = findElement(root, "[data-health-worker]", HTMLElement);
+      if (workerCell) workerCell.dataset.workerCondition = condition;
       say(
         "[data-worker-state]",
-        `${o.worker.enabled ? "enabled" : "disabled"} \xB7 ${o.worker.working ? "working" : "idle"} \xB7 thread ${o.worker.thread_alive ? "alive" : "not running"}`
+        stalled ? `disabled \u2014 ${o.queue.queued} queued, nothing will run` : `${o.worker.enabled ? "enabled" : "disabled"} \xB7 ${o.worker.working ? "working" : "idle"} \xB7 thread ${o.worker.thread_alive ? "alive" : "not running"}`
       );
       say(
         "[data-worker-raw]",
