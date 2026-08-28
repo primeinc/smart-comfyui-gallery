@@ -39,6 +39,16 @@ from sg_web.presenting import presented_page, wants_json
 from vision import thumbs
 
 
+def _cover_url(held: tuple[str | None, str, str] | None) -> str | None:
+    """One folder's newest picture, resolved the way the grid resolves a
+    cell: the content-addressed asset when the bytes are hashed, the slug
+    route when they are not, None for a kind with no picture to take."""
+    if held is None:
+        return None
+    sha, file_slug, kind = held
+    return thumbs.asset_url(sha, file_slug, medium=kind)
+
+
 @get("/folders", sync_to_thread=True)
 def folders_index(state: State, request: Request) -> Template | Response:
     """Where physical navigation enters: each NAVIGABLE root as a shelf
@@ -57,6 +67,7 @@ def folders_index(state: State, request: Request) -> Template | Response:
         told = []
         for root_id, kind in pages.roots_shelf(conn):
             spans = pages.folder_top_spans(conn, root_id)
+            covers = pages.folder_top_covers(conn, root_id)
             told.append(
                 {
                     "kind": kind,
@@ -69,6 +80,7 @@ def folders_index(state: State, request: Request) -> Template | Response:
                             "below": b,
                             "first_seen": spans.get(s, (None, None))[0],
                             "last_seen": spans.get(s, (None, None))[1],
+                            "cover": _cover_url(covers.get(s)),
                         }
                         for s, n, p, b in pages.folder_tops(conn, root_id)
                     ],

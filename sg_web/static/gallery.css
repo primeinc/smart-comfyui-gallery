@@ -1538,10 +1538,13 @@ p {
   overflow-x: auto;
 }
 
+/* Folder cards, the same shelf shape as the albums: a picture first,
+   because a folder is a place pictures are. */
 .album-list {
   display: grid;
-  gap: 10px;
-  max-width: 640px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--s4);
+  max-width: 1100px;
 }
 
 /* --- a shelf of artifacts: models, LoRAs, workflows, by use ----------- */
@@ -1635,10 +1638,10 @@ p {
   overflow-wrap: anywhere;
 }
 .album-card {
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-  padding: 12px 16px;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: var(--s2);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1646,10 +1649,10 @@ p {
   text-decoration: none;
 }
 .album-card:hover {
-  outline: 1px solid var(--accent);
+  border-color: var(--accent);
 }
 .album-name {
-  font-weight: 600;
+  font-weight: var(--w-label);
 }
 .album-kind,
 /* `margin-left: auto` pushed this to the far end of a flex row that no
@@ -1714,12 +1717,17 @@ p {
 /* A shelf in a photo library shows photographs. This was a column of
    words with a count beside each one -- the only page in the application
    that could have shown you what was in a collection and did not. */
+/* The spacing under the picture belongs to the picture, not to the two
+   shelves that use it -- a `.album-card .album-cover` rule for the
+   folders would have sat above this one and read as descending
+   specificity to anyone reordering the file. */
 .album-cover {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: var(--radius);
   background: var(--sunken);
+  margin-bottom: var(--s2);
   transition: opacity var(--dur) var(--ease);
 }
 .album-tree a:hover ~ .album-cover,
@@ -1755,7 +1763,6 @@ p {
   color: var(--ink);
   text-decoration: none;
   font-weight: var(--w-label);
-  margin-top: var(--s2);
 }
 .album-tree a:hover,
 .album-tree a:focus-visible {
@@ -3687,6 +3694,33 @@ body {
   font-size: var(--t-micro);
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
+}
+
+/* --- one picture, and nothing else ------------------------------------
+   The direct viewer is the surface a person spends the most time on and
+   the one place the frame should get out of the way -- every library in
+   this category goes edge to edge here. The rail was still taking 200px
+   of it to offer nine destinations to somebody who is looking at a
+   photograph.
+
+   Hidden, not unmounted: `.shell` stays in the document so the skip
+   link, the activity socket and the install prompt keep working, and so
+   a keyboard can still tab back into the navigation. */
+body:has([data-viewer-page]) {
+  padding-left: 0;
+}
+body:has([data-viewer-page]) .shell {
+  transform: translateX(-100%);
+  transition: transform var(--dur) var(--ease);
+}
+/* It comes back for a keyboard: tab into it and it slides in. */
+body:has([data-viewer-page]) .shell:focus-within {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  body:has([data-viewer-page]) .shell {
+    transition: none;
+  }
 }
 
 /* Off-screen until tabbed to, then the first thing in the tab order. */

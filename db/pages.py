@@ -380,6 +380,31 @@ def collection_spans(conn) -> dict[str, tuple[float, float]]:
     return {slug: (first, last) for slug, first, last in conn.execute(COLLECTION_SPANS, (context.POLICY_VERSION,))}
 
 
+#: One picture from each top folder, descendants included -- the same
+#: reach the `below` count uses, so the cover is drawn from the pictures
+#: the number is about. Newest first, matching every other shelf.
+FOLDER_TOP_COVERS = (
+    "WITH RECURSIVE sub(top, id) AS ("
+    "  SELECT f.id, f.id FROM folder f WHERE f.root_id = ? AND f.parent_id IS NULL AND f.missing_since IS NULL"
+    "  UNION ALL"
+    "  SELECT sub.top, c.id FROM folder c JOIN sub ON c.parent_id = sub.id WHERE c.missing_since IS NULL"
+    ") SELECT slug, sha, file_slug, kind FROM ("
+    "  SELECT te.slug AS slug, f.content_sha256 AS sha, fe.slug AS file_slug, f.kind AS kind,"
+    "         row_number() OVER (PARTITION BY sub.top ORDER BY f.mtime DESC, f.id DESC) AS rn"
+    "    FROM sub"
+    "    JOIN entity te ON te.id = sub.top"
+    "    JOIN file f ON f.folder_id = sub.id AND f.missing_since IS NULL"
+    "    JOIN entity fe ON fe.id = f.id"
+    " ) WHERE rn = 1"
+)
+
+
+def folder_top_covers(conn, root_id: int) -> dict[str, tuple[str | None, str, str]]:
+    """{top folder slug: (sha, file slug, kind)} -- a folder is a place
+    pictures are, and the shelf said so with a number only."""
+    return {row[0]: (row[1], row[2], row[3]) for row in conn.execute(FOLDER_TOP_COVERS, (root_id,))}
+
+
 def folder_tops(conn, root_id: int):
     """One root's depth-0 folder entities -- where physical navigation
     enters. Slugs and names only: the root's path is operational state
