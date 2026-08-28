@@ -375,11 +375,21 @@ def test_the_inspector_stays_as_it_was_arranged(page: Page, live: Live, unbroken
 
 
 def test_the_filmstrip_spans_the_whole_viewer(page: Page, live: Live, unbroken):
-    """The strip under the picture is as wide as the viewer, open or shut.
+    """The strip under the picture is as wide as the STAGE, open or shut.
 
-    The grid says so -- `"filmstrip filmstrip"` across both columns
-    (gallery.css) -- so anything narrower is the layout not doing what it
-    declares, which is a thing only a browser can report.
+    It used to be asserted as the width of the whole viewer, on the stated
+    grounds that the grid said so -- `"filmstrip filmstrip"` across both
+    columns. That area does not exist and the grep for it is empty: the
+    grid declares `"stage inspector"`, and the full width came from
+    `position: absolute` on `.viewer`, which ignores columns. The span was
+    incidental, not declared, and what it bought was four thumbnails drawn
+    underneath an opaque panel, where they can be neither seen nor
+    clicked. A neighbourhood is only a neighbourhood where it is
+    reachable, so the strip lives in the stage's column and this measures
+    that.
+
+    Shut, the stage IS the viewer, so the old number still holds there --
+    which is why the closed case is unchanged.
     """
     _open_page(page, live, "a_big.png")
     page.wait_for_selector("[data-filmstrip]")
@@ -387,8 +397,9 @@ def test_the_filmstrip_spans_the_whole_viewer(page: Page, live: Live, unbroken):
     def widths():
         return page.evaluate(
             "() => { const v = document.querySelector('[data-viewer]').getBoundingClientRect();"
+            " const s = document.querySelector('.viewer-stage').getBoundingClientRect();"
             " const f = document.querySelector('[data-filmstrip]').getBoundingClientRect();"
-            " return {viewer: v.width, strip: f.width}; }"
+            " return {viewer: v.width, stage: s.width, strip: f.width, right: f.right, stageRight: s.right}; }"
         )
 
     shut = widths()
@@ -396,9 +407,13 @@ def test_the_filmstrip_spans_the_whole_viewer(page: Page, live: Live, unbroken):
 
     page.keyboard.press("i")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
-    open_wide = widths()
-    assert open_wide["strip"] == pytest.approx(open_wide["viewer"], abs=2), (
-        f"inspector open, the strip stopped at the stage instead of crossing the inspector: {open_wide}"
+    wide = widths()
+    assert wide["stage"] < wide["viewer"] - 100, f"the inspector did not take a column: {wide}"
+    assert wide["strip"] == pytest.approx(wide["stage"], abs=2), (
+        f"the strip is not the stage's width, so some of it is under the panel: {wide}"
+    )
+    assert wide["right"] == pytest.approx(wide["stageRight"], abs=2), (
+        f"the strip runs past the stage and under the inspector: {wide}"
     )
 
 

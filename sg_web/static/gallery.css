@@ -729,9 +729,12 @@ p {
 /* 2, not 3: the zoomed stage is 3, and `a zoomed picture is on top of
    the furniture` is a contract -- the stage must outrank what it stands
    in front of, and equal is not above. */
+/* The stage's column, for the same reason as the filmstrip below: the
+   close button and the ordinal belong over the picture, not over the
+   panel that has its own close. */
 .viewer-chrome {
-  position: absolute;
-  inset: 0 0 auto 0;
+  grid-area: stage;
+  align-self: start;
   z-index: 2;
   display: flex;
   gap: var(--s3);
@@ -1065,9 +1068,17 @@ p {
 
 /* --- the filmstrip: the local neighbourhood of the walk -------------- */
 
+/* In the STAGE's column, not across the window.
+   It spanned both columns, and the justification written here was that
+   the grid said so -- `"filmstrip filmstrip"`. That area does not exist:
+   the grid declares `"stage inspector"` and the span came from
+   `position: absolute` on `.viewer`, which ignores columns. So the width
+   was incidental, and what it bought was four thumbnails drawn under an
+   opaque panel, where they cannot be seen or clicked. The neighbourhood
+   is only a neighbourhood where it is reachable. */
 .viewer-filmstrip {
-  position: absolute;
-  inset: auto 0 0 0;
+  grid-area: stage;
+  align-self: end;
   z-index: 2;
   padding-top: var(--s5);
   /* No border and no flat panel: a bar ruled off under the picture was a
@@ -1365,11 +1376,24 @@ p {
   width: 72px;
 }
 /* The weight, not decoration: a LoRA without its number does not
-   reproduce the picture, so it is set where the eye lands. */
+   reproduce the picture, so it is set where the eye lands.
+
+   A NUMBER, so it never wraps. `.recipe-model` carries
+   `overflow-wrap: anywhere` for the filenames, the weight inherited it,
+   and a long LoRA name squeezed this to 28px -- where `1.00` broke after
+   the second character and rendered as `1.0` above `0`. Two lines that
+   read as two values, for the one field the recipe cannot be reproduced
+   without. The name absorbs the squeeze instead. */
 .recipe-weight {
+  flex: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+.recipe-name {
+  min-width: 0;
 }
 
 .recipe-numbers {

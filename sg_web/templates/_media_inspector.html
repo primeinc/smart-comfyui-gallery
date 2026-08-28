@@ -164,11 +164,11 @@
     <section class="recipe-models">
       {% if item.creation.checkpoint %}
       <div class="recipe-model"><span class="recipe-label">checkpoint</span>
-        <span data-recipe-checkpoint>{{ item.creation.checkpoint }}</span></div>
+        <span class="recipe-name" data-recipe-checkpoint>{{ item.creation.checkpoint }}</span></div>
       {% endif %}
       {% for lora in item.creation.loras %}
       <div class="recipe-model recipe-lora"><span class="recipe-label">lora</span>
-        <span>{{ lora.name }}</span>
+        <span class="recipe-name">{{ lora.name }}</span>
         {# the weight is why this is not a list of names: without it the
            recipe does not reproduce #}
         {% if lora.weight is not none %}<b class="recipe-weight">{{ "%.2f"|format(lora.weight) }}</b>{% endif %}
