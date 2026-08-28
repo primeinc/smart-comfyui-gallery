@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
 import pathlib
 import sys
 import types
@@ -554,20 +555,36 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     assert view["links"]["search"].startswith("/search")
 
 
-# LAST on purpose. This is the only test here that changes the library on
-# disk -- it replaces one file's bytes and deletes another -- and
-# `Stage.restore` compares the library's (size, mtime) listing before
-# anything else. A file that is gone cannot be put back as the same file,
-# so the mismatch sends the next test down the rebuild path: a whole
-# fresh application, library, scan and plan, measured at 0.41s against
-# the 0.01s a restore costs. Run in the middle of the file that is a
-# rebuild somebody pays for; run last, nothing comes after it to pay.
-def test_the_view_is_immune_to_the_live_library_moving_on(planned):
+# The only test here that changes the library on disk -- it replaces one
+# file's bytes and deletes another -- and `Stage.restore` compares the
+# library's (size, mtime) listing before anything else, so a mismatch
+# sends the NEXT test down the rebuild path: a whole fresh application,
+# library, scan and plan, 0.41s against the 0.01s a restore costs.
+#
+# It used to answer that by being last in the file. That is not an
+# ordering anything guarantees: pytest-testmon selects by coverage and
+# runs what it selected in ITS order, which put this seventh of nine
+# under `just prove-push` and cost the module a rebuild `_rebuilt_none`
+# then reported against whichever test happened to end the run.
+#
+# So it puts the library back instead, which holds in every order. Both
+# mutations are recoverable: `_listing` keys on (size, mtime), the bytes
+# are known, and `os.utime` restores a stamp -- so the deleted file goes
+# back as the same file, not merely as one with the same name.
+def test_the_view_is_immune_to_the_live_library_moving_on(planned, request):
     """The relation changes, a file is replaced, a file is gone: the view
     over the frozen plan reads frozen hashes and frozen bytes only --
     the replacement's vector is never substituted, and what cannot be
     measured says why."""
     client, root, _names, _snap, made = planned
+    held = {at: ((root / at).read_bytes(), (root / at).stat()) for at in ("gen_1.png", "gen_2.png")}
+
+    def put_back() -> None:
+        for at, (was, stamped) in held.items():
+            (root / at).write_bytes(was)
+            os.utime(root / at, ns=(stamped.st_atime_ns, stamped.st_mtime_ns))
+
+    request.addfinalizer(put_back)
     before = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
     conn = connect.connect(client.app.state.db_path)
     try:
