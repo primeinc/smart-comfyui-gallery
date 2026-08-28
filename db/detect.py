@@ -11,7 +11,16 @@ open image files, it calls this.
 The backend contract is `detect(PIL.Image) -> list[FaceDetection]` with
 normalized boxes (vision/faces.py:118-139): `bbox` (x, y, w, h) in
 0..1, `det_score` in 0..1, `embedding` float32 or None, `landmarks` a list
-of (x, y) pairs, `attributes` an optional dict with `age` / `sex`.
+of (x, y) pairs, `attributes` an optional dict of whatever else the model
+produced -- open, not a fixed set, and recorded whole.
+
+A detection pass is the expensive thing in this application and the bytes
+it produces are not: antelopev2 loads a 143 MB session per worker to derive
+head pose and two dense landmark sets, and all of it is ~3.7 KB per face to
+keep. Anything dropped here can only be recovered by reading the whole
+library again, and only while the originals are still on disk. So the rule
+is: whatever a backend emits is persisted, and columns are promotions out
+of that record rather than a filter in front of it.
 """
 
 from __future__ import annotations
@@ -95,11 +104,29 @@ def harvest(
             import numpy as np
 
             record["landmarks"] = np.asarray(found.landmarks, dtype=np.float32).tobytes()
+        # EVERYTHING the backend said, then promotions out of it. Not an
+        # allowlist: this copied `age` and `sex` and dropped pose and two
+        # dense landmark sets on the line that read them, so three columns
+        # that exist were NULL in every row ever written and the detector's
+        # most expensive output went nowhere. An allowlist cannot be right
+        # here -- it can only be wrong later, when a backend emits something
+        # nobody thought to name and the only way back is re-reading the
+        # library.
         traits = found.attributes or {}
+        if traits:
+            record["attributes"] = traits
+        # Promoted because a facet filters on them and JSON extraction is not
+        # an index. `pose` unpacks BY KEY: the source array is
+        # [pitch, yaw, roll] and the columns are yaw-first, so a positional
+        # copy swaps two of three into plausible-looking degrees that no
+        # constraint can catch.
         if "age" in traits:
             record["age"] = int(traits["age"])
         if "sex" in traits:
             record["sex"] = str(traits["sex"])
+        pose = traits.get("pose")
+        if isinstance(pose, dict):
+            record["pose"] = {axis: float(pose[axis]) for axis in ("yaw", "pitch", "roll") if axis in pose}
         faces.append(record)
 
     written = derived.record_faces(

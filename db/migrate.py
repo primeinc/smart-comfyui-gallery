@@ -3807,3 +3807,36 @@ def _a_vocabulary_states_only_what_it_can_write(conn: sqlite3.Connection) -> Non
              ELSE 'imported' END)
 ) STRICT""",
     )
+
+
+@step(44)
+def _an_expensive_pass_is_recorded_whole(conn: sqlite3.Connection) -> None:
+    """v44 -> v45: `derived_face_instance.attributes`.
+
+    The detector produced nine values per face and four were written.
+    `db/detect.py` copied `age` and `sex` off the attribute dict and
+    dropped `pose`, `landmark_2d_106` and `landmark_3d_68` on the line
+    that read them -- so `pose_yaw`, `pose_pitch` and `pose_roll` have
+    been NULL in every row this schema has ever held, and the two dense
+    landmark sets had nowhere to land at all.
+
+    The cost asymmetry is what decides the shape. Producing these loads
+    antelopev2's 143 MB 1k3d68 session and runs inference over every file
+    in the library; keeping them is ~3.7 KB per face. Re-deriving what was
+    already computed means reading the whole library off disk again, and
+    it is only possible at all while the originals are still there.
+
+    JSON and unfiltered, rather than a column per value: an allowlist is
+    what produced this defect, and a second allowlist would only move the
+    next re-detect further out. The promoted columns stay -- a facet
+    filters on them and JSON extraction is not an index -- but they are
+    now promotions out of a complete record instead of the only survivors
+    of a lossy copy.
+
+    Nothing to backfill: the values were never written, so there is
+    nothing here to convert. Existing rows keep NULL until a faces pass
+    looks at their bytes again (`POST /jobs/faces` with
+    `{"everything": true}`), which is the re-read this column exists to
+    make the last one.
+    """
+    conn.execute("ALTER TABLE derived_face_instance ADD COLUMN attributes TEXT")

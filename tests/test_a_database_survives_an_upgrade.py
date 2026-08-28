@@ -397,6 +397,39 @@ def a_file_row(conn):
     return file_id
 
 
+def a_face_row(conn, file_id, model_id, model_version, sha, embedding, *, x=0.1):
+    """One face, in the shape the older schema has.
+
+    Straight INSERT, for the reason `a_file_row` gives above: this row goes
+    into a database stepped BACK to an older shape, and `derived.record_faces`
+    speaks today's column names. It stayed correct here for a long time only
+    because this table did not move -- v25's `derived_face_instance` is
+    byte-identical to v44's -- and it stopped being correct the moment a
+    column was added, which is the failure this helper removes rather than
+    postpones.
+
+    `similarity.space_id` IS called: `similarity_space` has not moved either,
+    and the table's own CHECK requires a space wherever there is an embedding.
+    The post-commit index note that `_insert_face` would make is skipped --
+    these fixtures close the connection immediately and assert on rows, never
+    on the resident index.
+    """
+    from db import derived, similarity
+
+    dim = len(embedding) // 4
+    space_id = similarity.space_id(conn, similarity.face_space(model_id, model_version, dim), NOW)
+    region_id = derived.region(conn, x, 0.1, 0.2, 0.2)
+    return int(
+        conn.execute(
+            "INSERT INTO derived_face_instance(file_id, region_id, embedding, dim,"
+            " model_id, model_version, space_id, source_sha256, computed_at)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (file_id, region_id, embedding, dim, model_id, model_version, space_id, sha, NOW),
+        ).lastrowid
+        or 0
+    )
+
+
 @pytest.mark.slow
 def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     """The real STEPS, executed: every other test here swaps in synthetic
@@ -964,19 +997,14 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path, pinned_identit
     trace and is not invented."""
     import numpy as np
 
-    from db import derived
-
     path = tmp_path / "gallery.db"
     schemas.seed(path, 25)  # the schema that shipped as v25: no derived_face_scan
     conn = connect.connect(path, autocommit=True)
     conn.execute("PRAGMA foreign_keys = ON")
     file_id = a_file_row(conn)
     conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", ("a" * 64, file_id))
-    faces = [
-        {"region": derived.region(conn, 0.1 * i, 0.1, 0.2, 0.2), "embedding": np.full(4, i, np.float32).tobytes()}
-        for i in range(1, 3)
-    ]
-    derived.record_faces(conn, file_id, "m", "1", "a" * 64, NOW, faces)
+    for i in range(1, 3):
+        a_face_row(conn, file_id, "m", "1", "a" * 64, np.full(4, i, np.float32).tobytes(), x=0.1 * i)
     conn.close()
 
     assert migrated(path, name="v26-faces") == list(range(26, connect.USER_VERSION + 1))
@@ -1021,10 +1049,7 @@ def test_v30_retires_everything_derived_from_a_portrait_raw(tmp_path):
         for file_id, orientation in ((portrait, 8), (others["666A0111.CR2"], 1), (others["666A0273.JPG"], 8)):
             conn.execute("INSERT INTO capture(file_id, orientation, parsed_at) VALUES(?, ?, 0)", (file_id, orientation))
             sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
-            faces = [
-                {"region": derived.region(conn, 0.1, 0.1, 0.2, 0.2), "embedding": np.ones(4, np.float32).tobytes()}
-            ]
-            derived.record_faces(conn, file_id, "m", "1", sha, NOW, faces)
+            a_face_row(conn, file_id, "m", "1", sha, np.ones(4, np.float32).tobytes())
             derived.record_face_scan(conn, file_id, "m", "1", sha, NOW, 1)
             derived.record_hash(conn, file_id, sha, NOW, phash64=1)
     finally:

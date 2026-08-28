@@ -1,19 +1,21 @@
-"""Everything a model produced, and the contract that it can be thrown away.
+"""Model output: what producers computed over the library.
 
-One rule holds this group together: **drop every `derived_*` table, re-index,
-and the library is unchanged.** Nothing here may be the only copy of anything
-a person wrote. That is why the name lives on `person`, why the human claim
-lives in `person_assertion`, and why `feedback` keeps its verdict with a
-nulled pointer when its subject is deleted.
+Every row here can be recomputed from the source files, so no row here is
+the only copy of anything a person wrote. Authored rows live in
+`authored.py` and outlive any recomputation.
 
-Staleness is keyed on `source_sha256`, never on a timestamp. A backup
-restore, a sync client, or a copy rewrites mtime without changing a pixel,
-and a library that re-ran every model on that would be unusable. If the bytes
-are the same, the derivation still holds.
+Recomputing is recovery or schema migration, not routine. A face pass reads
+every file and runs a detector and an embedder on every face; the cost is
+GPU time proportional to the library. Callers read stored values instead of
+recomputing them.
 
-`model_id` and `model_version` are on every row for the same reason: upgrading
-a detector invalidates its own output and nothing else, so an upgrade is a
-targeted re-run rather than a full rebuild.
+Staleness is keyed on `source_sha256`, not on a timestamp. A backup restore,
+a sync client or a copy rewrites mtime without changing a byte. Equal bytes
+mean the derivation still holds.
+
+`model_id` and `model_version` are on every row so upgrading one producer
+invalidates that producer's output and nothing else. An upgrade is a
+targeted re-run.
 """
 
 from __future__ import annotations
@@ -53,14 +55,17 @@ def plain(value):
 
 
 def drop_all(conn) -> list[str]:
-    """Delete the derived namespace, minus what human assertions pin.
+    """Delete the derived tables, keeping the rows human assertions point at.
 
-    Segregating these tables by name is what makes the rebuild contract a
-    mechanical operation instead of a careful one -- there is no list to keep
-    in step, because the prefix *is* the list. Two pinned exceptions, both
-    for the same reason: a `person_assertion` locates its claim by a region
-    and, on video, a sampled moment, and deleting either would corrupt the
-    claim's discriminant while the FK quietly nulls the pointer.
+    For recovery and schema migration. Every deleted row must be recomputed
+    to replace it. To invalidate one producer, delete by `model_id` and
+    `model_version` instead of calling this.
+
+    The `derived_` prefix is the table list, so no separate list is kept in
+    step. Two exceptions are retained: a `person_assertion` locates its
+    claim by a region and, on video, by a sampled moment. Deleting either
+    leaves the assertion without its discriminant and the FK nulls the
+    pointer.
     """
     names = [
         row[0]
@@ -313,6 +318,7 @@ def _insert_face(
     age=None,
     sex=None,
     pose=None,
+    attributes=None,
 ) -> int:
     """One detected face. The region is required: a detection with no
     location cannot be shown, cropped, checked, or asserted against.
@@ -320,8 +326,41 @@ def _insert_face(
     Private because it appends. `record_faces` is the way in -- a detector
     run has to replace what it said last time, and a public row-at-a-time
     insert is how "re-running a detector doubles every face" comes back.
+
+    `pose` is a mapping keyed yaw/pitch/roll, never a triple. InsightFace's
+    array is [pitch, yaw, roll] and these columns are yaw-first, so a
+    positional unpack -- which is what this signature used to take -- writes
+    pitch into pose_yaw and no CHECK can see it: three REAL columns holding
+    plausible degrees either way.
+
+    `attributes` is the detector's whole output, stored as JSON. `age`,
+    `sex` and `pose` above are promotions out of it for the values a facet
+    filters on; this is the record they were promoted from.
     """
-    yaw, pitch, roll = pose or (None, None, None)
+    if pose is None:
+        yaw = pitch = roll = None
+    elif hasattr(pose, "get"):
+        yaw, pitch, roll = (pose.get(axis) for axis in ("yaw", "pitch", "roll"))
+    else:
+        # Refused by name rather than unpacked, for the same reason a
+        # det_score outside 0..1 is refused in `record_faces`: the schema
+        # cannot catch this one at all. A triple is ambiguous between the
+        # two orders in play -- InsightFace emits [pitch, yaw, roll]
+        # (deepinsight/insightface model_zoo/landmark.py:111) and these
+        # columns are yaw-first -- so a positional unpack writes pitch into
+        # `pose_yaw`, and three REAL columns hold plausible degrees either
+        # way. There is no value to check and no constraint to fire; the
+        # only defence is refusing the shape that carries no axis names.
+        raise TypeError(
+            f"face pose arrived as {type(pose).__name__}, which has no axis names: "
+            f"pass a mapping keyed yaw/pitch/roll. A triple is ambiguous -- the "
+            f"detector's array is [pitch, yaw, roll] and these columns are yaw-first, "
+            f"so the swap it invites is invisible once written."
+        )
+    if attributes is not None and not isinstance(attributes, str):
+        import json
+
+        attributes = json.dumps(attributes, separators=(",", ":"), sort_keys=True)
     # `dim` describes `embedding`, so it is taken from it rather than trusted
     # from a caller. The schema checks the two agree; deriving it here means
     # nobody has to be told twice. The space id travels with the embedding
@@ -337,8 +376,9 @@ def _insert_face(
     cursor = conn.execute(
         "INSERT INTO derived_face_instance(file_id, sample_id, region_id,"
         " landmarks, embedding, det_score, dim, age, sex, pose_yaw, pose_pitch,"
-        " pose_roll, model_id, model_version, space_id, source_sha256, computed_at)"
-        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " pose_roll, attributes, model_id, model_version, space_id, source_sha256,"
+        " computed_at)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tuple(
             plain(value)
             for value in (
@@ -354,6 +394,7 @@ def _insert_face(
                 yaw,
                 pitch,
                 roll,
+                attributes,
                 model_id,
                 model_version,
                 space_id,
@@ -500,7 +541,10 @@ def record_faces(
 
     `faces` is a sequence of mappings, one per detection: `region` (an id
     from `region()`) is required; `det_score`, `landmarks`, `dim`, `age`,
-    `sex` and `pose` are optional.
+    `sex`, `pose` and `attributes` are optional. `attributes` is the
+    detector's whole output and the others are promotions out of it --
+    `db/detect.py` fills both, and the promotions exist because a facet
+    filters on them, not because they are the part worth keeping.
 
     A score outside 0..1 is refused here, by name, rather than left to the
     CHECK. Run over sixty real photographs, OpenCV's cascade reported reject
@@ -557,6 +601,7 @@ def record_faces(
             age=face.get("age"),
             sex=face.get("sex"),
             pose=face.get("pose"),
+            attributes=face.get("attributes"),
         )
         for face in faces
     ]
