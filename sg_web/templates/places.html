@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_shelf.html" import card %}
 {% block title %}Places{% endblock %}
 {% block scripts %}<script src="/static/build/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
@@ -10,21 +11,21 @@
   </header>
   <main class="stage">
     {% if places %}
-    <div class="album-list" data-places>
+    <div class="shelf" data-places>
       {% for one in places %}
-      <div class="place-card">
-        <a class="album-card" href="/g?{{ one.qs }}" data-place="{{ one.slug }}">
-          {% if one.cover %}
-          <img class="album-cover" src="{{ one.cover }}" alt="" loading="lazy" decoding="async">
-          {% else %}
-          {# Named, and nothing the current interpretation puts here. #}
-          <span class="album-cover album-cover-none" aria-hidden="true">none here</span>
-          {% endif %}
-          <span class="album-name">{{ one.name }}</span>
-          <span class="album-count">{{ one.kind }}{% if one.within %} in {{ one.within }}{% endif %} &middot; {{ one.pictures }} picture{{ "" if one.pictures == 1 else "s" }}</span>
-          {% if one.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ one.first_seen }}" data-domain="day">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}" data-domain="day">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
-        </a>
-        <a class="place-timeline" href="{{ one.timeline }}" data-place-timeline="{{ one.slug }}">on the timeline</a>
+      {# Two destinations, and they are different questions: the card goes
+         to the pictures said to be here, the link under it goes to when
+         they happened. A second <a> cannot sit inside the first. #}
+      <div class="shelf-slot">
+        {{ card(
+             "/g?" ~ one.qs, one.name,
+             "%s%s · %s picture%s" % (one.kind, " in %s" % one.within if one.within else "", one.pictures, "" if one.pictures == 1 else "s"),
+             shots=[one.cover] if one.cover else none,
+             empty="none here",
+             attrs={"data-place": one.slug},
+             first=one.first_seen, last=one.last_seen,
+           ) }}
+        <a class="shelf-aside" href="{{ one.timeline }}" data-place-timeline="{{ one.slug }}">on the timeline</a>
       </div>
       {% endfor %}
     </div>

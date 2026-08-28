@@ -1677,61 +1677,168 @@ p {
   overflow-x: auto;
 }
 
-/* Folder cards, the same shelf shape as the albums: a picture first,
-   because a folder is a place pictures are. */
-.album-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: var(--s4);
-  max-width: 1100px;
-}
+/* --- the shelf: albums, folders, places, artifacts ----------------------
+   Four pages showing one object -- a thing that holds pictures -- in
+   three markup vocabularies (`album-*`, `shelf-*`, and a `.place-card`
+   wrapping an `.album-card`) with three sets of rules behind them. Whoever
+   crossed from /albums to /folders to /places met three slightly
+   different cards for the same idea, and every change to one of them was
+   first a decision about which of the three to make it in.
 
-/* --- a shelf of artifacts: models, LoRAs, workflows, by use ----------- */
+   One card, in templates/_shelf.html. What actually differs between these
+   pages is how they ITERATE -- albums nest, folders group by root, places
+   carry a second destination -- and that stays in the page.
+
+   In a library of photographs the picture is how you know which thing you
+   are looking at; the name confirms it. So the cover leads and the rest
+   is a caption under it. */
 .shelf {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--s4);
+  max-width: 1100px;
+}
+/* A slot holds one card plus whatever the page hangs off it: nested
+   albums, a second destination. Pages with neither put the card straight
+   into the grid, so both are laid out.
+
+   The card takes the flexible row and whatever hangs off it takes its own
+   height, so a name that wraps to three lines does not leave its
+   neighbours short: cards on a row end level whatever their names do. */
+.shelf-slot {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 2px;
 }
 .shelf-card {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 10px;
-  align-items: center;
-  padding: 10px 12px;
+  align-content: start;
+  gap: 2px;
+  height: 100%;
+  padding: var(--s2);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  color: inherit;
+  text-decoration: none;
   min-width: 0;
 }
 .shelf-name {
   color: var(--ink);
-  font-weight: 600;
-  text-decoration: none;
+  font-weight: var(--w-label);
   overflow-wrap: anywhere;
 }
-.shelf-name:hover {
+.shelf-meta {
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+/* Quiet in the state everything is normally in, so the one card that is
+   NOT reachable is the thing your eye lands on. */
+.shelf-state {
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* The span it covers, on its own line: it answers a different question
+   from the count and reads as noise beside it. */
+.shelf-seen {
+  display: block;
+  color: var(--ink-faint);
+}
+/* The cover IS the content. One shot fills the frame; several tile it,
+   which is what a model or a LoRA needs -- no single picture is the thing
+   that made it. */
+.shelf-cover {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--sunken);
+  margin-bottom: var(--s2);
+  transition: opacity var(--dur) var(--ease);
+}
+/* A rule-defined collection is a question rather than a container, and an
+   unscanned folder is a promise. Neither gets a broken image or a grey
+   square pretending to be a photograph. */
+.shelf-cover-none {
+  place-items: center;
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px dashed var(--line-strong);
+  background: none;
+}
+.shelf-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shelf-cover[data-shots="2"],
+.shelf-cover[data-shots="3"],
+.shelf-cover[data-shots="4"] {
+  grid-template-columns: 1fr 1fr;
+}
+/* Three is a big one and two small, not three in a row of two with a gap
+   where the fourth would be. */
+.shelf-cover[data-shots="3"] img:first-child {
+  grid-row: span 2;
+}
+.shelf-card:hover,
+.shelf-card:focus-visible {
+  border-color: var(--accent);
+}
+.shelf-card:hover .shelf-name,
+.shelf-card:focus-visible .shelf-name {
   color: var(--accent);
 }
-.shelf-count {
-  color: var(--ink-muted);
-  font-size: 0.85rem;
-  white-space: nowrap;
+.shelf-card:hover .shelf-cover {
+  opacity: 0.82;
 }
-.shelf-strip {
+/* The second destination on a place card. The pictures are the card;
+   WHEN they happened is a different question, and a second <a> cannot sit
+   inside the first. */
+.shelf-aside {
+  color: var(--accent);
+  font-size: var(--t-small);
+  padding-left: 4px;
+}
+/* Children of a nesting album: under it, and across the whole shelf.
+   Reached by structure because the nested list carries no class -- the
+   suite asserts the nesting as a literal `<ul>`. */
+.shelf-slot > ul {
+  list-style: none;
+  margin: var(--s2) 0 0;
+  padding: 0 0 0 var(--s3);
+  border-left: 1px solid var(--line);
   grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s3);
 }
-.shelf-strip img {
-  width: 56px;
-  height: 56px;
-  object-fit: cover;
-  border-radius: 3px;
-  background: var(--ground);
+/* A folder whose root is not mounted is still an address; its pictures
+   are not going to load. The card says so itself rather than sitting
+   under a heading, because that heading was the word "library" repeated
+   once per root. */
+.shelf-card[data-online="no"] .shelf-state {
+  color: var(--danger);
+}
+/* Whether a root is mounted, on the surface that manages roots
+   (_operations_roots.html). Coloured with the rest of that surface's
+   rules; this is only the base. */
+.root-state {
+  color: var(--ink-muted);
+  font-size: 0.7em;
+  font-weight: 400;
+  margin-left: 8px;
 }
 
 /* --- prompts like this -------------------------------------------------- */
@@ -1776,138 +1883,6 @@ p {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.album-card {
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  padding: var(--s2);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: inherit;
-  text-decoration: none;
-}
-.album-card:hover {
-  border-color: var(--accent);
-}
-.album-name {
-  font-weight: var(--w-label);
-}
-.album-kind,
-/* `margin-left: auto` pushed this to the far end of a flex row that no
-   longer exists -- on the card shelf it shoved the count to the right
-   edge, away from the name it belongs to. */
-.album-count {
-  color: var(--ink-muted);
-  font-size: var(--t-small);
-}
-
-.root-shelf {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 24px;
-}
-.root-shelf h2 {
-  margin: 0;
-  text-transform: capitalize;
-}
-.root-state {
-  color: var(--ink-muted);
-  font-size: 0.7em;
-  font-weight: 400;
-  margin-left: 8px;
-}
-.root-shelf[data-online="no"] .root-state {
-  color: var(--danger);
-}
-
-/* --- the shelf: cards, because an album IS its picture ----------------
-   This was a 640px column of words with a count beside each. Adding a
-   cover to that column made it a list with a 44px favicon in front of
-   every row -- which is what a slot looks like when it is designed
-   without ever being seen full. In a library of photographs the picture
-   is how you know which album it is; the name confirms it. */
-.album-tree {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: var(--s4);
-  max-width: 1100px;
-}
-/* Children of a nesting album, under it and across the whole shelf. */
-.album-tree ul {
-  list-style: none;
-  margin: var(--s2) 0 0;
-  padding: 0 0 0 var(--s3);
-  border-left: 1px solid var(--line);
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--s3);
-}
-.album-tree li {
-  display: grid;
-  grid-template-rows: auto auto auto;
-  gap: 2px;
-  align-content: start;
-}
-/* A shelf in a photo library shows photographs. This was a column of
-   words with a count beside each one -- the only page in the application
-   that could have shown you what was in a collection and did not. */
-/* The spacing under the picture belongs to the picture, not to the two
-   shelves that use it -- a `.album-card .album-cover` rule for the
-   folders would have sat above this one and read as descending
-   specificity to anyone reordering the file. */
-.album-cover {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  border-radius: var(--radius);
-  background: var(--sunken);
-  margin-bottom: var(--s2);
-  transition: opacity var(--dur) var(--ease);
-}
-.album-tree a:hover ~ .album-cover,
-.album-tree li:hover .album-cover {
-  opacity: 0.82;
-}
-.album-cover-none {
-  display: grid;
-  place-items: center;
-  font-size: var(--t-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  border: 1px dashed var(--line-strong);
-  background: none;
-}
-.album-tree .album-kind,
-.album-tree .album-count {
-  color: var(--ink-muted);
-  font-size: var(--t-small);
-  font-variant-numeric: tabular-nums;
-}
-/* The names are the CONTENT of this page, and they were all drawn in the
-   accent -- so a shelf of eleven albums was eleven amber lines and the
-   one control that does something was the twelfth. Ink for the things,
-   the safelight for the act, and the colour arrives on the one you are
-   pointing at. */
-/* The names are the CONTENT of this shelf, and they were all drawn in
-   the accent -- so a shelf of eleven albums was eleven amber lines and
-   the one control that does something was the twelfth. Ink for the
-   things, the safelight for the act. */
-.album-tree a {
-  color: var(--ink);
-  text-decoration: none;
-  font-weight: var(--w-label);
-}
-.album-tree a:hover,
-.album-tree a:focus-visible {
-  color: var(--accent);
-}
-
 .authored {
   display: flex;
   align-items: center;
@@ -3679,10 +3654,6 @@ p {
     grid-template-columns: 1fr;
   }
 }
-.album-seen {
-  color: var(--ink-muted);
-  font-size: 0.85rem;
-}
 /* One row under the crumbs: what this thing IS on the left, what can be
    done to it on the right. They were stacked paragraphs -- a link, a
    button and a place list, each on its own line and related to the
@@ -3705,15 +3676,6 @@ p {
   font-size: var(--t-small);
   margin: 0;
   padding: 0;
-}
-.place-card {
-  display: grid;
-  gap: 2px;
-}
-.place-timeline {
-  color: var(--accent);
-  font-size: 0.8rem;
-  padding-left: 4px;
 }
 .places-line a {
   color: var(--accent);

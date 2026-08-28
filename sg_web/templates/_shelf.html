@@ -1,0 +1,68 @@
+{# A shelf: things that hold pictures, shown as the pictures they hold.
+
+   Albums, folders, places and artifacts are the same object on screen --
+   a cover, a name, and one line saying how much is behind it -- and they
+   were three markup vocabularies (`album-*`, `shelf-*`, and a `place-card`
+   wrapping an `album-card`) with three sets of rules behind them. A person
+   crossing from /albums to /folders to /places met three slightly
+   different cards for the same idea, and every change to one of them was
+   a decision about which of the three to make it in.
+
+   One vocabulary, `shelf-*`. What actually differs between these pages is
+   how they ITERATE -- albums nest, folders group by root, places carry a
+   second link -- so the loop stays in the page and the card lives here. #}
+
+{% macro seen(first, last) %}
+{# The span a thing covers, in the reader's own spelling: the browser
+   turns these epochs into words (frontend/src/spelling.ts). Written five
+   times across five templates before this; identical every time, so a
+   sixth caller does not get to spell it differently. #}
+{%- if last is not none %}
+<span class="shelf-seen" data-seen><time data-epoch="{{ first }}" data-domain="day">{{ first }}</time>{% if last != first %} &ndash; <time data-epoch="{{ last }}" data-domain="day">{{ last }}</time>{% endif %}</span>
+{%- endif %}
+{% endmacro %}
+
+{% macro cover(shots, empty="empty") %}
+{# The pictures, or what the thing IS when it has none to show. A
+   rule-defined collection is a question rather than a container, and an
+   unscanned folder is a promise -- neither gets a broken image or a grey
+   square pretending to be a photograph.
+
+   One shot fills the frame; several tile it. The count rides the element
+   so the stylesheet lays out two, three and four without a class per
+   case. #}
+{%- if shots %}
+<span class="shelf-cover" data-shots="{{ shots | length if shots | length < 4 else 4 }}">
+  {%- for shot in shots[:4] %}<img src="{{ shot }}" alt="" loading="lazy" decoding="async">{% endfor -%}
+</span>
+{%- else %}
+<span class="shelf-cover shelf-cover-none" aria-hidden="true">{{ empty }}</span>
+{%- endif %}
+{% endmacro %}
+
+{% macro card(href, name, meta, shots=None, empty="empty", attrs={}, first=None, last=None, state=None) %}
+{# One card. `attrs` carries the page's own address hooks -- data-album,
+   data-folder, data-place, data-artifact -- which are what the suite and
+   the browser reach for; the classes are the stylesheet's business and
+   nothing outside this file names them.
+
+   The span is passed as its two epochs rather than as rendered markup: a
+   macro's output is escaped where it lands, so handing `seen()` in
+   through a parameter would print the tags. #}
+<a class="shelf-card" href="{{ href }}"{% for key, value in attrs.items() %} {{ key }}="{{ value }}"{% endfor %}>
+  {{- cover(shots, empty) -}}
+  <span class="shelf-name">{{ name }}</span>
+  <span class="shelf-meta">{{ meta }}{{ seen(first, last) if last is not none }}</span>
+  {%- if state %}
+  {# One word about the thing itself rather than a heading over a group of
+     them: a folder whose root is unmounted is still an address and its
+     pictures are not going to load, and that is a fact about THAT folder.
+
+     Last, because it is the least of what the card says. Name, then how
+     much is behind it, then when -- and only then whether the disk it
+     lives on is here, which in the ordinary case is yes for everything on
+     the shelf. #}
+  <span class="shelf-state">{{ state }}</span>
+  {%- endif %}
+</a>
+{% endmacro %}

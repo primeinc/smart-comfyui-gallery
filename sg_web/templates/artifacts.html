@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_shelf.html" import card %}
 {% block title %}{{ shelf.title }}{% endblock %}
 {% block body %}
   <header class="bar">
@@ -9,14 +10,19 @@
   </header>
   <main class="stage">
     {% if artifacts %}
+    {# A model, a LoRA or a workflow is known by what it MAKES, so the
+       card's cover is several of them rather than one: these are the one
+       shelf where no single picture is the thing. #}
     <ol class="shelf" data-shelf="{{ shelf.kind }}">
       {% for one in artifacts %}
-      <li class="shelf-card">
-        <a class="shelf-name" href="{{ shelf.link }}/{{ one.slug }}" data-artifact="{{ one.slug }}">{{ one.name }}</a>
-        <span class="shelf-count">{{ "{:,}".format(one.pictures) }} pictures</span>
-        <a class="shelf-strip" href="/g?artifact={{ one.slug }}" title="all {{ "{:,}".format(one.pictures) }} in the gallery">
-          {% for address in one.samples %}<img src="{{ address }}" alt="" loading="lazy">{% endfor %}
-        </a>
+      <li class="shelf-slot">
+        {{ card(
+             shelf.link ~ "/" ~ one.slug, one.name,
+             "{:,} pictures".format(one.pictures),
+             shots=one.samples,
+             empty="unused",
+             attrs={"data-artifact": one.slug},
+           ) }}
       </li>
       {% endfor %}
     </ol>

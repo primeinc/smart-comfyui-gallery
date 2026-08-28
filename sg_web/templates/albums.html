@@ -1,26 +1,30 @@
 {% extends "base.html" %}
+{% from "_shelf.html" import card %}
 {% block title %}Albums{% endblock %}
 {% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
   <header class="bar">
     <nav class="crumbs">
       <span class="crumbs-here">Albums{% if showing_archived %} &middot; archived{% endif %}</span>
+      {% if not showing_archived and albums %}
+      <span class="crumbs-where">{{ albums | length }} on the shelf</span>
+      {% endif %}
     </nav>
   </header>
   <main class="stage">
     {% if showing_archived %}
     <p class="pager"><a href="/albums">&larr; active collections</a></p>
     {% if archived %}
-    <ul class="album-tree">
+    <ul class="shelf">
       {% for node in archived %}
-      <li>
-        {% include "_album_cover.html" %}
-        <a href="/t/{{ node.slug }}" data-album="{{ node.slug }}">{{ node.name }}</a>
-        {% if node.kind == "smart" %}
-        <span class="album-kind">rule-defined</span>
-        {% else %}
-        <span class="album-count">{{ node.pictures }} picture{{ "" if node.pictures == 1 else "s" }}</span>
-        {% endif %}
+      <li class="shelf-slot">
+        {{ card(
+             "/t/" ~ node.slug, node.name,
+             "rule-defined" if node.kind == "smart" else "%s picture%s" % (node.pictures, "" if node.pictures == 1 else "s"),
+             shots=[node.cover] if node.cover is defined and node.cover else none,
+             empty="rule" if node.kind == "smart" else "empty",
+             attrs={"data-album": node.slug},
+           ) }}
       </li>
       {% endfor %}
     </ul>
@@ -37,17 +41,25 @@
       <button type="submit">create</button>
     </form>
     {% if albums %}
-    <ul class="album-tree">
+    {# `recursive`, and the children are a nested <ul> INSIDE the parent's
+       slot: an album that holds albums is one thing on the shelf, not a
+       sibling of its own contents. #}
+    <ul class="shelf">
       {% for node in albums recursive %}
-      <li>
-        {% include "_album_cover.html" %}
-        <a href="/t/{{ node.slug }}" data-album="{{ node.slug }}">{{ node.name }}</a>
-        {% if node.kind == "smart" %}
-        <span class="album-kind">rule-defined</span>
-        {% else %}
-        <span class="album-count">{{ node.pictures }} picture{{ "" if node.pictures == 1 else "s" }}</span>
-        {% endif %}
-        {% if node.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ node.first_seen }}" data-domain="day">{{ node.first_seen }}</time>{% if node.last_seen != node.first_seen %} – <time data-epoch="{{ node.last_seen }}" data-domain="day">{{ node.last_seen }}</time>{% endif %}</span>{% endif %}
+      <li class="shelf-slot">
+        {{ card(
+             "/t/" ~ node.slug, node.name,
+             "rule-defined" if node.kind == "smart" else "%s picture%s" % (node.pictures, "" if node.pictures == 1 else "s"),
+             shots=[node.cover] if node.cover is defined and node.cover else none,
+             empty="rule" if node.kind == "smart" else "empty",
+             attrs={"data-album": node.slug},
+             first=node.first_seen, last=node.last_seen,
+           ) }}
+        {# A bare <ul>: the nesting IS the statement here, and the suite
+           reads it as one (`data-album="keep".*?<ul>.*?data-album="inner"`
+           in test_a_place_is_an_address_with_a_bounded_answer). The
+           stylesheet reaches it by structure rather than by adding a class
+           the assertion would have to be taught. #}
         {% if node.collections %}
         <ul>{{ loop(node.collections) }}</ul>
         {% endif %}

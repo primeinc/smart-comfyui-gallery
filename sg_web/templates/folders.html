@@ -1,43 +1,54 @@
 {% extends "base.html" %}
+{% from "_shelf.html" import card %}
 {% block title %}Folders{% endblock %}
 {% block scripts %}<script src="/static/build/timeline.js?v={{ static_v }}" defer></script>{% endblock %}
 {% block body %}
+  {% set counted = shelves | map(attribute="folders") | map("length") | sum %}
   <header class="bar">
     <nav class="crumbs">
       <span class="crumbs-here">Folders</span>
-      <span class="crumbs-where">{{ shelves|length }} librar{{ "y" if shelves|length == 1 else "ies" }}</span>
+      <span class="crumbs-where">{{ counted }} folder{{ "" if counted == 1 else "s" }} · {{ shelves|length }} librar{{ "y" if shelves|length == 1 else "ies" }}</span>
     </nav>
   </header>
   <main class="stage">
-    {% if shelves %}
-    {% for shelf in shelves %}
-    <section class="root-shelf" data-online="{{ "yes" if shelf.online else "no" }}">
-      <h2>
-        {{ shelf.kind }}
-        <span class="root-state">{{ "online" if shelf.online else "offline" }}</span>
-      </h2>
-      {% if shelf.folders %}
-      <div class="album-list">
-        {% for one in shelf.folders %}
-        <a class="album-card" href="/f/{{ one.slug }}" data-folder="{{ one.slug }}">
-          {# A folder is a place pictures ARE. The shelf said so with a
-             number and showed none of them. #}
-          {% if one.cover %}
-          <img class="album-cover" src="{{ one.cover }}" alt="" loading="lazy" decoding="async">
-          {% else %}
-          <span class="album-cover album-cover-none" aria-hidden="true">empty</span>
-          {% endif %}
-          <span class="album-name">{{ one.name }}</span>
-          <span class="album-count">{{ one.below }} pictures{% if one.below != one.pictures %} &middot; {{ one.pictures }} here{% endif %}</span>
-          {% if one.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ one.first_seen }}" data-domain="day">{{ one.first_seen }}</time>{% if one.last_seen != one.first_seen %} – <time data-epoch="{{ one.last_seen }}" data-domain="day">{{ one.last_seen }}</time>{% endif %}</span>{% endif %}
-        </a>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="empty">nothing scanned from this root yet.</p>
-      {% endif %}
-    </section>
-    {% endfor %}
+    {% if counted %}
+    {# ONE shelf, not one per root.
+
+       These were grouped under a heading of the root's KIND, and the
+       route asks for kinds=("library",) -- so the heading was the word
+       "library", repeated once per root, and it could never be anything
+       else. Six roots holding one folder each became six identical
+       headings above six one-card grids: five screens of scrolling for
+       what is one row.
+
+       What a root actually contributes is whether it is reachable right
+       now, because that decides whether the pictures load. That rides
+       the card. The grouped shape is still what a machine is handed
+       (sg_web/folder_view.py); this is what a person is shown. #}
+    <div class="shelf">
+      {% for shelf in shelves %}
+      {% for one in shelf.folders %}
+      {# `below` is the folder and everything under it, which is the number
+         somebody means by "how big is this". `here` is worth a phrase only
+         when there IS something here and it differs -- "2898 pictures ·
+         0 here" spent a clause saying nothing. #}
+      {{ card(
+           "/f/" ~ one.slug, one.name,
+           "{:,} pictures{}".format(
+             one.below,
+             " · {:,} in it".format(one.pictures) if one.pictures and one.below != one.pictures else "",
+           ),
+           shots=[one.cover] if one.cover else none,
+           empty="offline" if not shelf.online else "empty",
+           attrs={"data-folder": one.slug, "data-online": "yes" if shelf.online else "no"},
+           first=one.first_seen, last=one.last_seen,
+           state="online" if shelf.online else "offline",
+         ) }}
+      {% endfor %}
+      {% endfor %}
+    </div>
+    {% elif shelves %}
+    <p class="empty">nothing scanned yet — <a href="/operations">run a scan</a>.</p>
     {% else %}
     <p class="empty">no media directories registered yet — <a href="/operations">add one</a>.</p>
     {% endif %}

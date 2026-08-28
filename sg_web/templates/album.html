@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_shelf.html" import seen %}
 {% block title %}{{ album.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/t/{{ album.slug }}">{% endblock %}
 {% block scripts %}<script src="/static/build/collection.js?v={{ static_v }}" defer></script>{% endblock %}
@@ -12,7 +13,7 @@
         {{ album.kind }} &middot;
         {% if album.count is not none %}{{ album.count }} pictures{% else %}rule-defined{% endif %}
         {% if album.archived %}&middot; archived{% endif %}
-        {% if album.last_seen is defined and album.last_seen is not none %}&middot; <span class="album-seen" data-seen><time data-epoch="{{ album.first_seen }}" data-domain="day">{{ album.first_seen }}</time>{% if album.last_seen != album.first_seen %} – <time data-epoch="{{ album.last_seen }}" data-domain="day">{{ album.last_seen }}</time>{% endif %}</span>{% endif %}
+        {% if album.last_seen is defined and album.last_seen is not none %}&middot; {{ seen(album.first_seen, album.last_seen) }}{% endif %}
       </span>
     </nav>
     {% if album.timeline is defined %}<p class="places-line"><a href="{{ album.timeline }}" data-album-timeline>this album on the timeline</a></p>{% endif %}
