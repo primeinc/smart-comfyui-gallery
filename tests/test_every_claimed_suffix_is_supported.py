@@ -241,7 +241,7 @@ def _fixture_key() -> str:
     """What a cached sample is allowed to survive.
 
     This file's own bytes, because the writers are here and a changed
-    writer must write again; and the versions of the four libraries that
+    writer must write again; and the versions of the five libraries that
     produce the bytes, because an upgraded encoder is a different file.
     Nothing else: a sample is test INPUT, and the claim under test is
     that `scan`, `ingest` and `decode` answer for it.
@@ -278,22 +278,30 @@ def _cached(suffix: str, write):
     """
 
     def cached(path):
+        # On first use, not at import: creating it at module scope makes
+        # COLLECTION fail on a read-only checkout, where the failure has
+        # no test to name it.
+        _SAMPLES.mkdir(parents=True, exist_ok=True)
         where = _SAMPLES / f"{_fixture_key()}{suffix}"
         if not where.exists():
             scratch = _SAMPLES / f"building-{os.getpid()}"
             scratch.mkdir(parents=True, exist_ok=True)
             building = scratch / where.name
-            write(building)
-            os.replace(building, where)
-            with contextlib.suppress(OSError):  # another sample may still be building in it
-                scratch.rmdir()
+            try:
+                write(building)
+                os.replace(building, where)
+            finally:
+                # A run that dies mid-encode leaves the partial behind,
+                # and a partial keeps the scratch dir alive for ever.
+                building.unlink(missing_ok=True)
+                with contextlib.suppress(OSError):  # another sample may still be building in it
+                    scratch.rmdir()
         shutil.copy(where, path)
 
     return cached
 
 
 _SAMPLES = pathlib.Path(__file__).resolve().parent.parent / ".pytest_cache" / "suffix-samples"
-_SAMPLES.mkdir(parents=True, exist_ok=True)
 WRITERS = {suffix: _cached(suffix, write) for suffix, write in WRITERS.items()}
 
 #: One suffix per writer configuration -- the decoder families. These run
@@ -457,6 +465,8 @@ def _measure_portrait() -> str:
     with rawpy.imread(str(PORTRAIT_CR2)) as raw:
         stored = [raw.sizes.width, raw.sizes.height]
         flip = raw.sizes.flip
+    measured = decode.dimensions(PORTRAIT_CR2, "image")
+    assert measured is not None, "the portrait RAW has dimensions, or nothing below means anything"
     with decode.open_still(PORTRAIT_CR2) as developed:
         wide = list(developed.size)
         upright = oriented.upright(developed.copy(), 8)
@@ -473,7 +483,7 @@ def _measure_portrait() -> str:
                 "stored": stored,
                 "developed": wide,
                 "shown": list(oriented.open_upright(PORTRAIT_CR2, tag).size),
-                "dimensions": list(decode.dimensions(PORTRAIT_CR2, "image")),
+                "dimensions": list(measured),
                 "bounded": list(bounded.size),
                 "upright_is_tall": shortcut.height > shortcut.width,
                 "shapes_agree": shapes_agree,

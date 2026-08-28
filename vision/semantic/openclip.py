@@ -110,12 +110,19 @@ def _record_path(models_dir: str):
 
 
 def _read_record(models_dir: str) -> dict:
+    """The record, or an empty one. Anything unreadable, undecodable or
+    not an object reads as "nothing provisioned": the caller is the fast
+    offline REFUSAL, and a refusal is the right answer for a record it
+    cannot trust. Returning the parsed value unchecked handed
+    `provisioned()` a list or a None to call `.get` on, turning that
+    refusal into a 500."""
     import json
 
     try:
-        return json.loads(_record_path(models_dir).read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+        held = json.loads(_record_path(models_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
         return {}
+    return held if isinstance(held, dict) else {}
 
 
 def record_provision(models_dir: str, model: str, checkpoint: str, repo: str, names: tuple[str, ...]) -> None:
@@ -124,13 +131,29 @@ def record_provision(models_dir: str, model: str, checkpoint: str, repo: str, na
     exist without asking open_clip, whose import is torch's. The record
     is what lets the serving guard refuse an unprovisioned model in
     milliseconds instead of paying nine seconds of ML import to say no."""
+    import contextlib
     import json
+    import os
+    import tempfile
 
     held = _read_record(models_dir)
     held[f"{model}/{checkpoint}"] = {"repo": repo, "names": list(names)}
     path = _record_path(models_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(held, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # Through a temp file in the same directory. `_LOCK` orders writers
+    # inside ONE process, but a worker serving /search and a worker
+    # running /jobs/embed share a models_dir, and the read-modify-write
+    # above is where one of them loses the other's entry. `os.replace`
+    # also means no reader ever sees a half-written record.
+    fd, tmp = tempfile.mkstemp(prefix=".provisioned-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as out:
+            out.write(json.dumps(held, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def provisioned(models_dir: str, model: str, checkpoint: str) -> str | None:
@@ -384,6 +407,13 @@ def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *
             # ~9s of open_clip+torch just to say no (measured in
             # test_search_never_downloads_a_model). ClipBackend keeps its
             # own guard for the path that really loads.
+            #
+            # So the RECORD is authoritative here, not the cache: weights
+            # another tool dropped into the shared HF cache, or weights
+            # whose record was wiped, refuse offline until /jobs/embed
+            # writes the record back. That is the trade -- reading the
+            # cache instead needs `_hub_names`, whose import is the nine
+            # seconds this check exists to avoid.
             if offline and provisioned(models_dir, model, checkpoint) is None:
                 raise _unprovisioned(models_dir, model, checkpoint)
             _LOADED[key] = ClipBackend(str(models_dir), model, checkpoint, offline=offline)

@@ -106,8 +106,12 @@ def _typed(stage) -> None:
     """The year of typing this page exists to fix, once."""
     client = stage.client
     conn = connect.connect(client.app.state.db_path, read_only=True)
-    slugs = [slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")]
-    connect.close(conn)
+    try:
+        slugs = [
+            slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")
+        ]
+    finally:
+        connect.close(conn)
     # p0: Beaches. p1: BOTH -- the row a fold would collide on.
     # p2: beach. p3: Sunset.
     for at, word in ((0, "Beaches"), (1, "beach"), (1, "Beaches"), (2, "beach"), (3, "Sunset")):

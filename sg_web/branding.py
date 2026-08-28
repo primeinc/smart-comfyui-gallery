@@ -96,7 +96,7 @@ def _mark(size: int, *, tile_span: float, radius_frac: float | None, background:
         draw.rounded_rectangle(
             (x * unit, y * unit, (x + tile) * unit, (y + tile) * unit), radius=int(2 * unit), fill=fill
         )
-    return img.resize((size, size), Image.LANCZOS)
+    return img.resize((size, size), Image.Resampling.LANCZOS)
 
 
 def icons() -> list[pathlib.Path]:

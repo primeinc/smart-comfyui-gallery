@@ -127,11 +127,9 @@ export function mountServiceWorker(): void {
   // controller is the new one either way; what tells an update from a
   // first claim is whether there was one to begin with.
   //
-  // It also put a navigation under the browser suite. One `goto` was
-  // two main-frame navigations with service workers allowed and one
-  // with them blocked (measured), landing at whatever moment activation
-  // finished -- which is what "Execution context was destroyed, most
-  // likely because of a navigation" reads like from a test.
+  // The first-visit reload is also what made one `goto` two main-frame
+  // navigations under the browser suite, at whatever moment activation
+  // finished. Removing this guard brings that flake back.
   const wasControlled = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {

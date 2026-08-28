@@ -255,7 +255,10 @@ class _Servers:
                     app="tests.live_app:create_app",
                     capture_output=False,
                     retry_count=600,
-                    retry_timeout=0.05,
+                    # `int` upstream, but it is handed straight to
+                    # `time.sleep` (subprocess_client.py:60), which takes a
+                    # float. The annotation is narrower than the contract.
+                    retry_timeout=typing.cast("int", 0.05),
                 )
                 url = held.__enter__()
             finally:

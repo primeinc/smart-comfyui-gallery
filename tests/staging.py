@@ -219,7 +219,7 @@ def seeded(home: pathlib.Path) -> pathlib.Path:
     return where
 
 
-def fresh_db(path) -> sqlite3.Connection:
+def fresh_db(path: pathlib.Path) -> sqlite3.Connection:
     """A REAL FILE holding the current schema, foreign keys on.
 
     For the claims :memory: cannot carry -- anything reading

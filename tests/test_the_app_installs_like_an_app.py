@@ -81,7 +81,11 @@ def test_the_maskable_icon_bleeds_to_its_edges_and_keeps_its_mark_in_the_safe_zo
     with decode.open_still(STATIC / "pwa" / "icon-maskable-512.png") as raw:
         held = raw.convert("RGBA")
     for corner in ((0, 0), (511, 0), (0, 511), (511, 511)):
-        assert held.getpixel(corner)[3] == 255, "a transparent corner letterboxes under a mask"
+        # RGBA, so every pixel is the 4-tuple -- `getpixel` also answers a
+        # bare band value for a one-band image and None off the canvas.
+        pixel = held.getpixel(corner)
+        assert isinstance(pixel, tuple), f"{corner} is not an RGBA pixel"
+        assert pixel[3] == 255, "a transparent corner letterboxes under a mask"
     center, radius = 256, 0.4 * 512
     ground = held.getpixel((2, 2))
     for x in range(0, 512, 8):

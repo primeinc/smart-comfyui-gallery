@@ -435,7 +435,7 @@ def test_an_album_track_is_audio_and_not_a_video(tmp_path):
     assert sniff.sniff(movie) == ("video", "mp4")
 
 
-def test_a_file_with_no_decodable_frame_is_a_404_not_a_500(served):
+def test_a_file_with_no_decodable_frame_is_a_404_not_a_500(served, request):
     """Even with the sniff right, anything that sniffs pictured and
     holds no frame -- a truncated clip, a video of zero frames -- must
     answer 404. It arrived as an uncaught 500 with a traceback, once per
@@ -444,6 +444,10 @@ def test_a_file_with_no_decodable_frame_is_a_404_not_a_500(served):
     client, root = served
     broken = root / "broken.mp4"
     broken.write_bytes((0).to_bytes(4, "big") + b"ftyp" + b"mp42" + b"\x00" * 64)
+    # The stub is what this test is for, but leaving it is a library the
+    # next restore cannot match: it rebuilds the whole world and trips
+    # `_rebuilt_none`. Masked today only because this test runs last.
+    request.addfinalizer(lambda: broken.unlink(missing_ok=True))
     client.post("/roots/1/scan")
     _drained(client, __import__("time"))
 

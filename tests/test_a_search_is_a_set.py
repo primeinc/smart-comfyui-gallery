@@ -22,7 +22,6 @@ ranked library back.
 
 from __future__ import annotations
 
-import pathlib
 import statistics
 
 import numpy as np
@@ -33,7 +32,6 @@ from db import derived, resultset, retrieval, scan, settings
 from tests.staging import NOW, fresh_schema, keep
 from vision import semantic
 
-SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 CLIP = ("openclip", "ViT-B-32", "laion2b_s34b_b79k")
 
 
@@ -83,7 +81,7 @@ SHARP = [0.90] * 8 + [0.10 + (i % 7) * 0.001 for i in range(92)]
 @pytest.fixture(scope="module")
 def sharp(tmp_path_factory):
     """The SHARP shelf built once: writing a hundred PNGs, scanning them
-    and recording a hundred embeddings costs ~300ms, and the six tests
+    and recording a hundred embeddings costs ~300ms, and the seven tests
     over this shape only read it."""
     conn = keep(_shelf(tmp_path_factory.mktemp("sharp"), SHARP))
     yield conn

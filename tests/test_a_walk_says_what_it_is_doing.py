@@ -57,7 +57,7 @@ def _world(tmp_path_factory):
             # file, MANY times, to produce input no test reads as an
             # image. Distinct per file, because the walk's whole subject
             # is telling them apart by content.
-            where.joinpath(f"p{i:05d}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + f"{i:05d}".encode() * 8)
+            (where / f"p{i:05d}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + f"{i:05d}".encode() * 8)
         made = stage.client.post("/roots", json={"path": str(stage.root)}).json()
         answer = stage.client.post(f"/roots/{made['id']}/scan")
         assert answer.status_code == 201, answer.text

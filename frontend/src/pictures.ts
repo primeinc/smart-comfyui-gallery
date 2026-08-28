@@ -49,7 +49,11 @@ function label(kind: string | undefined): HTMLElement {
   return said;
 }
 
-/** Swap one failed thumbnail for the words it should have been. */
+/** Swap one failed thumbnail for the words it should have been.
+ *
+ * The caller establishes that it HAS failed -- an `error` event, or
+ * `complete && naturalWidth === 0` for one that failed before the
+ * listener existed. This looks at the src, not at the load state. */
 function degrade(broken: HTMLImageElement): void {
   // Only pictures OF something in the library. A decorative image, a
   // background, an avatar that has its own fallback -- none of those

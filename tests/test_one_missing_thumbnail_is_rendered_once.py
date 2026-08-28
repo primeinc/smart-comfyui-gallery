@@ -23,7 +23,6 @@ that a stopwatch said so.
 
 from __future__ import annotations
 
-import contextlib
 import pathlib
 import threading
 import time
@@ -53,6 +52,7 @@ def _queued(many: int, timeout: float = 10.0) -> None:
     a second had been long enough on this machine.
     """
     ended = time.monotonic() + timeout
+    standing = 0
     while time.monotonic() < ended:
         with app_module._RENDERS_LOCK:
             standing = max((gate.wanted for gate in app_module._RENDERS.values()), default=0)
@@ -118,21 +118,20 @@ def test_four_cells_wanting_one_picture_render_it_once(tmp_path, served, monkeyp
 
     monkeypatch.setattr(app_module, "_render_asset", counted)
 
-    with contextlib.nullcontext(client):
-        url = _asset_urls(client)[0]
+    url = _asset_urls(client)[0]
 
-        together = threading.Barrier(4)
-        answers: dict[int, int] = {}
+    together = threading.Barrier(4)
+    answers: dict[int, int] = {}
 
-        def ask(n: int) -> None:
-            together.wait(timeout=10)
-            answers[n] = client.get(url).status_code
+    def ask(n: int) -> None:
+        together.wait(timeout=10)
+        answers[n] = client.get(url).status_code
 
-        askers = [threading.Thread(target=ask, args=(i,)) for i in range(4)]
-        for one in askers:
-            one.start()
-        for one in askers:
-            one.join(timeout=30)
+    askers = [threading.Thread(target=ask, args=(i,)) for i in range(4)]
+    for one in askers:
+        one.start()
+    for one in askers:
+        one.join(timeout=30)
 
     assert answers == dict.fromkeys(range(4), 200), "somebody waiting on the gate was not served"
     assert len(renders) == 1, f"one missing thumbnail was rendered {len(renders)} times"
@@ -162,21 +161,20 @@ def test_two_different_pictures_are_not_made_to_queue(tmp_path, served, monkeypa
 
     monkeypatch.setattr(app_module, "_render_asset", rendezvous)
 
-    with contextlib.nullcontext(client):
-        urls = _asset_urls(client)
-        assert len(urls) == 2
-        assert urls[0] != urls[1], "both cells wanted the same bytes; that is the other test"
+    urls = _asset_urls(client)
+    assert len(urls) == 2
+    assert urls[0] != urls[1], "both cells wanted the same bytes; that is the other test"
 
-        answers: dict[int, int] = {}
+    answers: dict[int, int] = {}
 
-        def ask(n: int) -> None:
-            answers[n] = client.get(urls[n]).status_code
+    def ask(n: int) -> None:
+        answers[n] = client.get(urls[n]).status_code
 
-        askers = [threading.Thread(target=ask, args=(i,)) for i in range(2)]
-        for one in askers:
-            one.start()
-        for one in askers:
-            one.join(timeout=30)
+    askers = [threading.Thread(target=ask, args=(i,)) for i in range(2)]
+    for one in askers:
+        one.start()
+    for one in askers:
+        one.join(timeout=30)
 
     assert not failed_to_meet, "two different pictures could not be rendered at the same time"
     assert answers == {0: 200, 1: 200}
@@ -223,25 +221,24 @@ def test_the_slug_route_coalesces_too(tmp_path, served, monkeypatch):
 
     monkeypatch.setattr(derive, "put_one", counted)
 
-    with contextlib.nullcontext(client):
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            slug = conn.execute("SELECT slug FROM entity WHERE kind = 'file'").fetchone()[0]
-        finally:
-            connect.close(conn)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        slug = conn.execute("SELECT slug FROM entity WHERE kind = 'file'").fetchone()[0]
+    finally:
+        connect.close(conn)
 
-        together = threading.Barrier(3)
-        answers: dict[int, int] = {}
+    together = threading.Barrier(3)
+    answers: dict[int, int] = {}
 
-        def ask(n: int) -> None:
-            together.wait(timeout=10)
-            answers[n] = client.get(f"/thumb/{slug}").status_code
+    def ask(n: int) -> None:
+        together.wait(timeout=10)
+        answers[n] = client.get(f"/thumb/{slug}").status_code
 
-        askers = [threading.Thread(target=ask, args=(i,)) for i in range(3)]
-        for one in askers:
-            one.start()
-        for one in askers:
-            one.join(timeout=30)
+    askers = [threading.Thread(target=ask, args=(i,)) for i in range(3)]
+    for one in askers:
+        one.start()
+    for one in askers:
+        one.join(timeout=30)
 
     assert answers == dict.fromkeys(range(3), 200)
     assert len(renders) == 1, f"one missing thumbnail was rendered {len(renders)} times"

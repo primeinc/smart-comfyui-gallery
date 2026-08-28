@@ -22,21 +22,23 @@ read -- are untouched.
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 from PIL import Image
 
 from db import authored, collections, connect, derived
-from tests.staging import hosting, staged
+from tests.staging import Stage, hosting, staged
 
 pytestmark = pytest.mark.slow
 
 
-def _library(root) -> None:
+def _library(root: pathlib.Path) -> None:
     for i in range(4):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
 
 
-def _what_was_said(stage) -> None:
+def _what_was_said(stage: Stage) -> None:
     """Everything a person told this library, written once."""
     conn = connect.connect(stage.client.app.state.db_path)
     try:
@@ -105,11 +107,12 @@ def said(_said_stage):
     clean one.
     """
     _said_stage.restore()
-    client = _said_stage.client
-    conn = connect.connect(client.app.state.db_path)
-    ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
-    yield client, conn, ids
-    connect.close(conn)
+    conn = _said_stage.conn()
+    try:
+        ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
+        yield _said_stage.client, conn, ids
+    finally:
+        connect.close(conn)
 
 
 def _slug(client, file_id: int) -> str:

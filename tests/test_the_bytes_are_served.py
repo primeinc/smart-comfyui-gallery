@@ -15,27 +15,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from db import connect, derived, ingest, library, naming, scan
+from db import connect, derived, ingest, naming
 from tests.staging import Stage, staged
 from vision import decode
-
-
-def _library(tmp_path, write_media):
-    """Real media on disk, scanned and ingested into a run's home."""
-    root = tmp_path / "lib"
-    root.mkdir()
-    write_media(root)
-    burrow = tmp_path / "run"
-    burrow.mkdir()
-    conn = connect.connect(burrow / "gallery.db")
-    conn.executescript(connect.schema_sql())
-    conn.execute("PRAGMA foreign_keys=ON")
-    root_id = library.add_root(conn, str(root), "library", 0.0)
-    scan.scan(conn, root_id, str(root), 0.0)
-    for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():
-        ingest.one(conn, file_id, root / name, 0.0)
-    conn.commit()
-    return conn, burrow, root
 
 
 def _rgb(image: Image.Image, xy: tuple[int, int]) -> tuple[int, int, int]:
