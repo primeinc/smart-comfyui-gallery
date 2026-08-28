@@ -700,14 +700,19 @@ p {
   display: grid;
   /* the inspector is a COLUMN that is zero wide until it is open: the
      stage grows back into the space when it closes, with no reflow of
-     anything else. The filmstrip is a row under both, auto-height, so a
-     walk with no neighbours costs no space at all. */
+     anything else.
+
+     The chrome and the filmstrip used to be ROWS -- a 60px bar and a
+     105px strip, both in flow, taking 165px of height off the one thing
+     this screen exists for. The picture is fitted to that height, so the
+     cost was paid in width too: a 740px picture in a 1440px window with
+     350px of dead ground down each side. They overlay now and the stage
+     is the whole viewer. The chrome was already drawn as an overlay --
+     it carries its own gradient scrim and its own resting fade; it was
+     simply occupying a row as well. */
   grid-template-columns: 1fr 0;
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas:
-    "chrome chrome"
-    "stage inspector"
-    "filmstrip filmstrip";
+  grid-template-rows: 1fr;
+  grid-template-areas: "stage inspector";
   background: var(--ground);
 }
 
@@ -717,10 +722,15 @@ p {
 
 /* --- chrome: present, then out of the way ---------------------------- */
 
+/* 2, not 3: the zoomed stage is 3, and `a zoomed picture is on top of
+   the furniture` is a contract -- the stage must outrank what it stands
+   in front of, and equal is not above. */
 .viewer-chrome {
-  grid-area: chrome;
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 2;
   display: flex;
-  gap: 14px;
+  gap: var(--s3);
   align-items: center;
   padding: 10px 14px;
   color: var(--ink-muted);
@@ -779,25 +789,58 @@ p {
   gap: 8px;
   align-items: center;
 }
+/* --- chrome on glass -------------------------------------------------
+   The bar floats on a photograph now, and every control in it was drawn
+   for a dark panel: `background: none` with a --line border. Over a
+   sunlit wall the keyword field disappeared completely -- a text input
+   the reader cannot see is not a control.
+
+   One glass surface per cluster, so the chrome is legible over any
+   picture and still gets out of the way of it. */
+.viewer-back,
+.viewer-acts {
+  background: color-mix(in srgb, var(--ground) 62%, transparent);
+  backdrop-filter: blur(10px);
+}
 .viewer-back,
 .viewer-act {
+  display: grid;
+  place-items: center;
   background: none;
   border: 1px solid transparent;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   color: var(--ink);
-  font-size: var(--t-h3);
   line-height: 1;
-  padding: 5px 10px;
+  padding: 6px;
   cursor: pointer;
   text-decoration: none;
 }
+.viewer-back {
+  border-radius: 999px;
+  padding: 8px;
+}
 .viewer-back:hover,
 .viewer-act:hover {
-  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
 }
-.viewer-act[aria-expanded="true"] {
-  border-color: var(--accent);
+.viewer-act[aria-expanded="true"],
+.viewer-act[aria-pressed="true"] {
   color: var(--accent);
+}
+.viewer-acts {
+  border-radius: 999px;
+  padding: 3px var(--s2);
+  gap: var(--s1);
+}
+/* Facts about the picture, then the window's own controls. They were one
+   undifferentiated run of fourteen: a favourite, five stars, a clear, an
+   album, a keyword field, a slideshow, lights out, information and
+   close, all the same size and weight in the same line. */
+.viewer-acts-split {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
 }
 .viewer-ordinal {
   color: var(--ink-muted);
@@ -813,6 +856,12 @@ p {
   padding: 3px 11px;
   text-decoration: none;
   white-space: nowrap;
+}
+/* After the base rule it refines, not before it. */
+.viewer-said .chip {
+  background: color-mix(in srgb, var(--ground) 62%, transparent);
+  backdrop-filter: blur(10px);
+  border-color: color-mix(in srgb, var(--ink) 20%, transparent);
 }
 .chip:hover {
   border-color: var(--accent);
@@ -977,13 +1026,20 @@ p {
 /* --- the filmstrip: the local neighbourhood of the walk -------------- */
 
 .viewer-filmstrip {
-  grid-area: filmstrip;
-  border-top: 1px solid var(--line);
-  background: color-mix(in srgb, var(--ground) 92%, transparent);
-  /* A grid item's min-width is `auto`, so without this the strip grows to
-     its fifteen thumbnails and takes the whole viewer wider than the
-     window: the PAGE scrolls sideways instead of the strip, and the
-     current picture can never be centred because nothing overflows. */
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  padding-top: var(--s5);
+  /* No border and no flat panel: a bar ruled off under the picture was a
+     second surface competing with it. A scrim the picture fades into
+     instead, so the neighbourhood is legible and the photograph still
+     owns the screen. */
+  background: linear-gradient(to top, color-mix(in srgb, var(--ground) 94%, transparent) 55%, transparent);
+  /* An overflowing flex line's min-width is `auto`, so without this the
+     strip grows to its fifteen thumbnails and takes the whole viewer
+     wider than the window: the PAGE scrolls sideways instead of the
+     strip, and the current picture can never be centred because nothing
+     overflows. */
   min-width: 0;
 }
 
@@ -1957,15 +2013,23 @@ p {
   font-size: 0.9em;
   line-height: 1;
 }
+/* `background: none` with a --line border is a control drawn for a dark
+   panel. In the viewer's chrome it sits on a photograph, and over a
+   bright one it vanished: an empty text field the reader cannot see.
+   Sunken, like every other input in the application. */
 .authored-tagging input {
   width: 9em;
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   color: var(--ink);
   font: inherit;
-  font-size: 0.85em;
-  padding: 2px 6px;
+  font-size: var(--t-small);
+  padding: 3px 8px;
+}
+.authored-tagging input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
 }
 .authored-picker {
   border: 1px solid var(--line);
@@ -3554,7 +3618,12 @@ p {
   flex-wrap: wrap;
   padding: 8px 16px 0;
 }
-.chip {
+/* Scoped to the filter strip. Written as a bare `.chip` this was a
+   second global definition of a class the viewer's date, place and
+   people chips also carry -- and it came later, so it won: every chip in
+   the viewer wore an accent border that only ever meant "this is a
+   filter clause you can drop". */
+.chips .chip {
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -3562,13 +3631,13 @@ p {
   border: 1px solid var(--accent);
   border-radius: 999px;
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: var(--t-small);
 }
-.chip a {
+.chips .chip a {
   color: var(--ink-muted);
   text-decoration: none;
 }
-.chip a:hover {
+.chips .chip a:hover {
   color: var(--danger);
 }
 .when-sessions {
