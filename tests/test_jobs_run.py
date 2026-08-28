@@ -717,13 +717,20 @@ def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
     assert (spec.preprocess, spec.dimensions, spec.metric) == ("qwen3vl.chat-template", 2048, "cosine")
 
     # The preprocess version is a PROPERTY of the policy, not a label:
-    # it names the two packages whose code is the preprocessing, and any
-    # edited knob or media instruction changes the digest, hence the
+    # it names the three packages whose code is the preprocessing, and
+    # any edited knob or media instruction changes the digest, hence the
     # spec hash, hence the space. The QUERY instruction is deliberately
     # outside it -- rewording a query prompt must not force a re-embed
     # of a library whose stored vectors are all still valid.
     assert spec.preprocess_version.startswith("tf")
     assert "+qvu" in spec.preprocess_version
+    # The DECODER, because it decides bytes. qwen_vl_utils names a frame
+    # index; torchcodec is what that index resolves to, so two libraries
+    # built against different torchcodec builds hold different vectors.
+    # A key that omits it calls them comparable.
+    assert "+tc" in spec.preprocess_version, (
+        "the video decoder chooses the pixels and must be part of the space identity"
+    )
     assert spec.preprocess_version.endswith(
         qwen_vl.policy_digest(
             qwen_vl.MAX_LENGTH,

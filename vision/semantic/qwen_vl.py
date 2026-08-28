@@ -106,12 +106,20 @@ def policy_digest(*facts) -> str:
 def policy_version() -> str:
     """Everything that changes a STORED vector without changing weights,
     as one token: the pixel and frame budgets, the token budget, the
-    media instruction, and the versions of the two packages whose code
-    is the preprocessing (transformers renders the chat template and
-    packs the patches; qwen_vl_utils resizes and samples). Editing any
-    of them changes this string, which changes the spec hash, which
-    mints a NEW space -- 'v1' as a hand-bumped label was a promise,
-    this is a property.
+    media instruction, and the versions of the three packages whose code
+    is the preprocessing. transformers renders the chat template and
+    packs the patches; qwen_vl_utils resizes and picks WHICH frames;
+    torchcodec turns those indices into PIXELS. Editing any of them
+    changes this string, which changes the spec hash, which mints a NEW
+    space -- 'v1' as a hand-bumped label was a promise, this is a
+    property.
+
+    torchcodec belongs here for the same reason the other two do, and
+    the reason is not that it is imported: it DECIDES BYTES. Frame 8 of
+    a clip is whatever the decoder says it is, so two libraries built
+    against different torchcodec builds hold different vectors, and a
+    space key that omits it says they are comparable when they are not.
+    qwen_vl_utils names the index; only the decoder resolves it.
 
     QUERY_INSTRUCTION is deliberately absent: it shapes only the
     ephemeral query vector, so folding it in would force a full
@@ -132,12 +140,12 @@ def policy_version() -> str:
         MEDIA_INSTRUCTION,
     )
     told = {}
-    for package in ("transformers", "qwen-vl-utils"):
+    for package in ("transformers", "qwen-vl-utils", "torchcodec"):
         try:
             told[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             told[package] = "unknown"
-    return f"tf{told['transformers']}+qvu{told['qwen-vl-utils']}+{digest}"
+    return f"tf{told['transformers']}+qvu{told['qwen-vl-utils']}+tc{told['torchcodec']}+{digest}"
 
 
 def space(model: str, checkpoint: str, dimensions: int):
