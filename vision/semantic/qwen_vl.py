@@ -337,7 +337,13 @@ class QwenBackend:
         link -- the model samples its own frames under the fps and frame
         budgets; everything else embeds the canonical frame."""
         if media.kind == "video":
-            content = {"type": "video", "video": f"file://{media.path}", "fps": FPS, "max_frames": MAX_FRAMES}
+            # The PATH, not a `file://` link. Every backend's docstring
+            # claims the scheme, and only the torchvision one ever
+            # stripped it -- `_read_video_torchcodec` hands the string
+            # to `VideoDecoder` verbatim, which opens it as a filename
+            # and reports "No such file or directory" for a name that
+            # begins `file://`. The live backend is torchcodec.
+            content = {"type": "video", "video": media.path, "fps": FPS, "max_frames": MAX_FRAMES}
         else:
             frame = media.frame().convert("RGB")
             content = {"type": "image", "image": frame, "min_pixels": MIN_PIXELS, "max_pixels": MAX_PIXELS}

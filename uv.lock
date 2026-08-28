@@ -2294,6 +2294,8 @@ dependencies = [
     { name = "rawpy" },
     { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.13.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "torchcodec", version = "0.16.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torchcodec", version = "0.16.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torchvision", version = "0.28.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torchvision", version = "0.28.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "transformers" },
@@ -2341,6 +2343,8 @@ requires-dist = [
     { name = "rawpy", specifier = ">=0.27.0" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", index = "https://download.pytorch.org/whl/cu132" },
+    { name = "torchcodec", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=0.14" },
+    { name = "torchcodec", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=0.14", index = "https://download.pytorch.org/whl/cu132" },
     { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torchvision", marker = "sys_platform == 'linux' or sys_platform == 'win32'", index = "https://download.pytorch.org/whl/cu132" },
     { name = "transformers", specifier = ">=4.57.3" },
@@ -2511,6 +2515,39 @@ wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu132/torch-2.13.0%2Bcu132-cp315-cp315-manylinux_2_28_x86_64.whl", upload-time = "2026-07-08T11:21:26Z" },
     { url = "https://download-r2.pytorch.org/whl/cu132/torch-2.13.0%2Bcu132-cp315-cp315t-manylinux_2_28_aarch64.whl", upload-time = "2026-07-08T11:21:32Z" },
     { url = "https://download-r2.pytorch.org/whl/cu132/torch-2.13.0%2Bcu132-cp315-cp315t-manylinux_2_28_x86_64.whl", upload-time = "2026-07-08T11:21:39Z" },
+]
+
+[[package]]
+name = "torchcodec"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform != 'linux' and sys_platform != 'win32'",
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/62/59ef3c1f377a08ca965cf71abd763db5cbf8f6a97901ca09dbe0809c4a29/torchcodec-0.16.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:154c5cf6c2dd2801700dcf0939081f614c50dcbf99f5ecc7f6854e98b7959339", size = 3898103, upload-time = "2026-08-13T11:56:15.303Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/ae/ba8a4fcc5af759006c156bae38d12aa6bf9635742a8f8175f33ebe37b50e/torchcodec-0.16.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:9fcda10720fcbccae8744b8581080e985f7743cb8b365f7ce2bb6f045e7b84fd", size = 3898098, upload-time = "2026-08-13T11:56:22.94Z" },
+    { url = "https://files.pythonhosted.org/packages/45/20/c713f33e492e819979322dab56f2807208f0554f92d3f96caa9dd7cf6bef/torchcodec-0.16.0-cp314-cp314t-macosx_14_0_arm64.whl", hash = "sha256:6b28fd96c904f157ee43c417c5d9fdc1a6f5709b3039fa85e0fa943004c9439c", size = 3901916, upload-time = "2026-08-13T11:56:30.498Z" },
+]
+
+[[package]]
+name = "torchcodec"
+version = "0.16.0+cu132"
+source = { registry = "https://download.pytorch.org/whl/cu132" }
+resolution-markers = [
+    "(python_full_version >= '3.14' and sys_platform == 'linux') or (python_full_version >= '3.14' and sys_platform == 'win32')",
+    "(python_full_version < '3.14' and sys_platform == 'linux') or (python_full_version < '3.14' and sys_platform == 'win32')",
+]
+wheels = [
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0b6f79e194d1bdaaf96fdd61cd6a81b7b1ae3fefb83bfcbdc4a393db893621dc", upload-time = "2026-08-13T12:00:30Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8b23defcb2871baa5a030ad9d2b37ea880d17f446d68181aecc655bf57cf4708", upload-time = "2026-08-13T12:00:31Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp313-cp313-win_amd64.whl", hash = "sha256:8c2e29a037aa8867dee135e512d4eddc69091e833d9478a82020f025bd87c597", upload-time = "2026-08-13T12:00:31Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fc9eaf7b2f8fa09a6ed5f1b8e77bf37dc99a08a398762cab7e456d9401a4601e", upload-time = "2026-08-13T12:00:32Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:60a42d9656f6e1b7f2af70930073ebec9b6c99eb4549f86d1f018de67e565087", upload-time = "2026-08-13T12:00:32Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp314-cp314-win_amd64.whl", hash = "sha256:25ef9af1c5a3da66d6e10f2e2e6eedbedd8f4c480effd39885c0761b0d0d1a4e", upload-time = "2026-08-13T12:00:33Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:73c51fe7d7936cfddc992159c018204d3ea3fd7154dd046bcbe317984f7702ad", upload-time = "2026-08-13T12:00:34Z" },
+    { url = "https://download.pytorch.org/whl/cu132/torchcodec-0.16.0%2Bcu132-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:105017ef5a154b58287a33ad40b96e37ae351bd70e275561dc7229a6b339fa93", upload-time = "2026-08-13T12:00:34Z" },
 ]
 
 [[package]]

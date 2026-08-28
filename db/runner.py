@@ -49,6 +49,19 @@ _logger = logging.getLogger(__name__)
 #: docs/CORPUS_FINDINGS.md.
 ITEM_FAILURES = (OSError, ValueError, RuntimeError, LookupError, EOFError, sqlite3.Error)
 
+#: How many turns one item may cost the job before the runner stops
+#: believing the defect is transient. A defect expires the lease so the
+#: job is reclaimed and the item retried, which is the correct answer to
+#: a crashed process or a GPU that went away, and a livelock for a
+#: deterministic fault: the same item is picked first, dies the same way,
+#: and the job never advances past it. Job #83 spent 86 hours and 100
+#: attempts on one .mp4 whose decoder backend no longer existed, holding
+#: 668 items behind it while reporting `failed 0`.
+#:
+#: Three, not one: a lease lapse costs a turn without proving anything
+#: about the item, so the first repeat must still be free.
+DEFECT_LIMIT = 3
+
 #: SQLite saying somebody else is writing. By NAME, not by message: the
 #: driver carries the result code as `sqlite_errorname` (Python 3.11+),
 #: and the strings behind these are "database is locked" and "database
@@ -1768,6 +1781,11 @@ def run_next(
     `worker.turn_failed` event carrying the traceback is committed so the
     console can explain why the job sits under an expiring lease, and the
     exception propagates to take the turn down exactly as before.
+
+    That retry is bounded. An item that has already cost DEFECT_LIMIT
+    turns is settled as failed before the handler is called again: past
+    that count the fault is the item's, not the worker's, and retrying it
+    only spends turns the rest of the job needs.
     """
     from . import similarity as similarity_module
 
@@ -1949,6 +1967,47 @@ def run_next(
         # The start is committed BEFORE the handler runs -- a 47-second
         # decode is then a console row saying so, not a frozen bar.
         named = _item_named(conn, kind, item)
+        # A defect is a claim that the WORKER broke, so the item is left
+        # pending and retried. Repeated on the same item it stops being
+        # that claim: the fault is deterministic and belongs to the item,
+        # and every further turn is one the rest of the job does not get.
+        # Settled here as a failure -- with the defect quoted, because
+        # "gave up after 3 attempts" without the AttributeError is the
+        # counting, not the cause.
+        lost = ledger.defects_for_item(conn, job_id, item)
+        if len(lost) >= DEFECT_LIMIT:
+            why = f"{len(lost)} worker turns died on this item; last: {lost[-1]['message']}"
+            moved = jobs.finish_item(conn, job_id, fence, item, error=why)
+            failed += 1
+            note(
+                "item.failed",
+                item_id=item,
+                severity="warning",
+                message=why,
+                data={
+                    "error": why,
+                    "defects": len(lost),
+                    "job_continues": True,
+                    **({"item_name": named} if named else {}),
+                },
+            )
+            # Settled, so it counts the way the ITEM_FAILURES path counts:
+            # `did` is items this turn disposed of, `failed` the subset
+            # that failed, and "3 items, 1 failed" only reads correctly
+            # if the failure is one of the three.
+            did += 1
+            jobs.heartbeat(conn, job_id, fence, tick())
+            committed()
+            _logger.warning(
+                "job #%d %s: item %r%s failed after %d worker defects; the job moves on",
+                job_id,
+                kind,
+                item,
+                f" ({named})" if named else "",
+                len(lost),
+            )
+            spoke("running", moved)
+            continue
         note(
             "item.started",
             item_id=item,

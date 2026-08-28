@@ -182,6 +182,26 @@ def latest_for_job(conn, job_id: int) -> dict | None:
     return _row(row) if row else None
 
 
+def defects_for_item(conn, job_id: int, item_id: int) -> list[dict]:
+    """The turns of this job that have already died on this one item,
+    oldest first.
+
+    A defect expires the lease and the job is reclaimed, which is right
+    for a transient fault and a livelock for a deterministic one: the
+    same item is picked up, crashes the same way, and the job never
+    advances. The runner counts these to tell the two apart, and quotes
+    the last one so the item's failure names the defect rather than the
+    counting."""
+    return [
+        _row(row)
+        for row in conn.execute(
+            "SELECT " + _COLUMNS + " FROM job_event"
+            " WHERE job_id = ? AND item_id = ? AND type = 'worker.turn_failed' ORDER BY id",
+            (job_id, item_id),
+        )
+    ]
+
+
 def count_for_job(conn, job_id: int) -> int:
     return int(conn.execute("SELECT count(*) FROM job_event WHERE job_id = ?", (job_id,)).fetchone()[0])
 

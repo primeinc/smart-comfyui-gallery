@@ -871,7 +871,12 @@ def test_the_qwen_adapter_takes_the_native_link_for_video(monkeypatch):
     backend.encode_media(semantic.MediaRef(path="C:/pics/clip.mp4", kind="video", frame=never_the_frame))
     assert seen["instruction"] == qwen_vl.MEDIA_INSTRUCTION
     assert seen["content"]["type"] == "video"
-    assert seen["content"]["video"] == "file://C:/pics/clip.mp4"
+    # The bare path. `_read_video_torchcodec` opens this string as a
+    # filename, so a `file://` prefix is a file that does not exist --
+    # and its failure lands in a bare `except` that retries the dead
+    # torchvision backend, so the error names read_video and never the
+    # scheme.
+    assert seen["content"]["video"] == "C:/pics/clip.mp4"
     assert (seen["content"]["fps"], seen["content"]["max_frames"]) == (qwen_vl.FPS, qwen_vl.MAX_FRAMES)
 
 
@@ -995,3 +1000,65 @@ def test_a_bounded_sweep_with_nothing_to_do_says_so(db):
     db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'lib',0)")
     db.commit()
     assert runner.submit_ingest(db, 1.0, everything=True, folder_id=1) is None
+
+
+class Poison:
+    """A handler with a deterministic defect: one item raises something
+    outside ITEM_FAILURES every single time, the way a decoder backend
+    that no longer exists does."""
+
+    def __init__(self, poisons: int):
+        self.performed: list[int] = []
+        self.poisons = poisons
+
+    def __call__(self, conn, item_id, payload, now):
+        if item_id == self.poisons:
+            raise AttributeError("module 'torchvision.io' has no attribute 'read_video'")
+        self.performed.append(item_id)
+
+
+def test_an_item_that_keeps_killing_the_worker_fails_and_the_job_moves_on(db):
+    """A defect leaves the item pending and lets the lease lapse, which
+    is right for a crashed process and a livelock for a fault the item
+    reproduces: the reclaim picks the same item, dies the same way, and
+    nothing behind it is ever reached. Job #83 spent 86 hours and 100
+    attempts on one .mp4 while reporting `failed 0` and holding 668 items.
+
+    After DEFECT_LIMIT turns the item is a verdict, not a mystery."""
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3, 4])
+    handler = Poison(poisons=2)
+    at = 1.0
+    for _ in range(runner.DEFECT_LIMIT):
+        with pytest.raises(AttributeError):
+            runner.run_next(db, "w1", at, handlers={"embed": handler})
+        at += jobs.LEASE_SECONDS + 1
+
+    turn = runner.run_next(db, "w1", at, handlers={"embed": handler})
+    assert turn == {"job": job_id, "state": "done", "did": 3, "failed": 1}
+    assert handler.performed == [1, 3, 4], "item 1 is done already; 3 and 4 were never reachable before"
+
+    state, error = db.execute(
+        "SELECT state, error FROM job_item WHERE job_id = ? AND item_id = 2", (job_id,)
+    ).fetchone()
+    assert state == "failed"
+    assert "read_video" in error, f"the item must carry the defect, not just the count: {error}"
+    assert str(runner.DEFECT_LIMIT) in error
+
+
+def test_a_defect_that_does_not_repeat_still_gets_its_retries(db):
+    """The bound is on REPEATS of one item, never on defects as such: a
+    worker that died once has proved nothing about the item, and turning
+    the first crash into a failed item would throw away work the retry
+    was built to recover."""
+    job_id = jobs.submit(db, "embed", 0.0, items=[1, 2, 3])
+    once = Poison(poisons=2)
+    with pytest.raises(AttributeError):
+        runner.run_next(db, "w1", 1.0, handlers={"embed": once})
+
+    survivor = Counter()
+    turn = runner.run_next(db, "w2", 2.0 + jobs.LEASE_SECONDS, handlers={"embed": survivor})
+    assert turn == {"job": job_id, "state": "done", "did": 2, "failed": 0}
+    assert survivor.performed == [2, 3], "item 2 is retried, not written off"
+    assert (
+        db.execute("SELECT count(*) FROM job_item WHERE job_id = ? AND state = 'failed'", (job_id,)).fetchone()[0] == 0
+    )

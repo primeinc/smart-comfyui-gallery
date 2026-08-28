@@ -27,6 +27,7 @@ insightface>=1.0.1  # FaceAnalysis pipeline (SCRFD + glintr100)
 onnxruntime-gpu; sys_platform == 'linux' or sys_platform == 'win32'  # finds CUDA in torch's lib dir
 onnxruntime; sys_platform == 'darwin'  # no CUDA build for macOS
 torch  # semantic encoders; CUDA build by index choice, see header
-torchvision  # qwen_vl_utils' video reader; index-paired with torch
+torchvision  # index-paired with torch
+torchcodec>=0.14  # qwen_vl_utils' only live video backend; index-paired with torch
 open_clip_torch  # the openclip semantic provider
 transformers>=4.57.3  # the qwen semantic provider; first release with the qwen3_vl family

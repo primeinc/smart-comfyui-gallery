@@ -71,9 +71,18 @@ dependencies = [
     "onnxruntime; sys_platform == 'darwin'",
     # torch resolves through [tool.uv.sources] below; nothing re-picks it
     # at runtime, so a CUDA build is an install-time choice. torchvision
-    # is qwen_vl_utils' video reader and must stay index-paired with torch.
+    # and torchcodec must stay index-paired with torch.
     "torch",
     "torchvision",
+    # qwen_vl_utils' video reader. Its backend probe (vision_process.py
+    # get_video_reader_backend) tries torchcodec, then decord, then falls
+    # back to torchvision -- and that fallback is dead: torchvision.io
+    # dropped read_video, so 0.28 raises AttributeError and the except
+    # clause around the call re-enters the same dead backend. torchcodec
+    # is the only live option; without it every video item crashes the
+    # worker turn. >=0.14 pairs with torch>=2.11 (upstream compatibility
+    # table); 0.16 is what cu132 ships for cp313.
+    "torchcodec>=0.14",
     "open_clip_torch",
     # >=4.57.3: the first release carrying the qwen3_vl model family the
     # qwen embedding adapter subclasses (upstream Qwen3-VL-Embedding pin).
@@ -181,6 +190,9 @@ torch = [
   { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
+  { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchcodec = [
   { index = "pytorch-cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
