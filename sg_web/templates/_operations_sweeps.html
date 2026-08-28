@@ -1,0 +1,19 @@
+{# the sweeps you can start, and what each would still queue #}
+<section class="operations-section" data-operations-launchers>
+  <h2>sweeps</h2>
+  <p class="operations-hint">every sweep is a job row the worker drains; it appears in the matrix and on the ledger the moment it is queued. <span data-coverage-files>{{ overview.coverage.files }}</span> present files; a count beside a sweep is what it would still queue.</p>
+  <div class="operations-launchers">
+    {% for one in launchers %}
+    {# The first is not one sweep among thirteen: it is the answer
+       to the question the other twelve force somebody to answer
+       themselves, which is which of these and in what order. #}
+    <span class="operations-launch"{% if loop.first %} data-launch-primary{% endif %}>
+    <button type="button" data-launch="{{ one.kind }}"
+            hx-post="/operations/jobs/{{ one.kind }}" hx-target="#shell-notice" hx-swap="innerHTML">{{ one.label }}</button>
+    {%- if one.again %}<button type="button" class="operations-again" data-launch-again="{{ one.kind }}" title="all of it again, not only what is missing"
+            hx-post="/operations/jobs/{{ one.kind }}?everything=true" hx-target="#shell-notice" hx-swap="innerHTML">again</button>{% endif %}
+    {%- if one.kind in overview.coverage.missing %}<code class="raw operations-missing" data-missing="{{ one.kind }}" title="present files this sweep would still queue">{{ overview.coverage.missing[one.kind] }} missing</code>{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+</section>

@@ -1,0 +1,51 @@
+{# what the models got right and wrong, judged by you #}
+{% if judged.producers or judged.corrected %}
+<section class="operations-section" data-operations-judged>
+  <h2>what you have told it</h2>
+  {% if judged.producers %}
+  <p class="operations-hint">your own judgements on what the models said, over your own library — the only ground truth there is about them here. A rate needs {{ judged.floor }} verdicts before it is shown, because a sample this small is noise; and people judge what they look at, so these counts say as much about which pictures you opened as about any model.</p>
+  <ul class="operations-judged">
+    {% for one in judged.producers %}
+    <li data-judged="{{ one.model_id }}@{{ one.model_version }}">
+      <span class="v">{{ one.model_id }}</span>
+      <code class="raw">{{ one.kind }} · {{ one.model_version[:12] }}</code>
+      <span class="operations-judged-counts" data-judged-n="{{ one.judged }}">{{ one.judged }} judged · {{ one.wrong }} wrong · {{ one.right }} right{% if one.unsure %} · {{ one.unsure }} unsure{% endif %}</span>
+      {% if one.wrong_share is not none %}<b class="operations-judged-share" data-judged-share>{{ (one.wrong_share * 100) | round | int }}% wrong</b>{% else %}<span class="muted" data-judged-needs>{{ one.needs }} more before a rate means anything</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if judged.corrected %}
+  {# Counted, never rated. A correction is recorded only when
+     somebody says a person is NOT in a picture, so these are 100%
+     "wrong" by construction -- there is no denominator, and a
+     percentage here would be the most confidently wrong number on
+     the page. What the count IS good for is one producer beside
+     another over the same library. #}
+  <h3>faces you have put right</h3>
+  <p class="operations-hint">every time you said &ldquo;that is not them&rdquo; and a clustering run had said it was. No rate: you only ever tell it about the wrong ones, so there is nothing to divide by. Useful beside each other &mdash; a model you never have to correct, next to one you correct constantly, over the same pictures.</p>
+  <ul class="operations-judged" data-judged-corrected>
+    {% for one in judged.corrected %}
+    <li data-corrected="{{ one.model_id }}@{{ one.model_version }}">
+      <span class="v">{{ one.model_id }}</span>
+      <code class="raw">person &middot; {{ one.model_version[:12] }}</code>
+      <span class="operations-judged-counts" data-corrected-n="{{ one.corrections }}">{{ one.corrections }} put right{% if one.people %} &middot; {{ one.people }} {{ "person" if one.people == 1 else "people" }}{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if judged.contests %}
+  <h3>head to head</h3>
+  <p class="operations-hint">over the files you judged BOTH on — same pictures, same day, same you — which is the only comparison a sample like this supports.</p>
+  <ul class="operations-judged" data-judged-contests>
+    {% for held in judged.contests %}
+    <li data-judged-shared="{{ held.shared }}">
+      <span class="v">{% for who, n in held.wrong.items() %}{% if not loop.first %} vs {% endif %}{{ who.split("@")[0] }} <b>{{ n }}</b> wrong{% endfor %}</span>
+      <code class="raw">{{ held.kind }} · {{ held.shared }} shared</code>
+      {% if not held.enough %}<span class="muted">too few to lean on</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}

@@ -1,0 +1,32 @@
+{# taking your verdicts and your own words out of here #}
+{# Two exports, opposite shapes, side by side -- which is how
+   somebody sees they are different things. One is for SHARING and
+   carries no name; the other is for CUSTODY and carries every one.
+   Outside the verdict panel because that panel only appears once
+   somebody has judged something, and what you SAID about your own
+   pictures is not conditional on that. #}
+<section class="operations-section" data-operations-export>
+  <h2>take it with you</h2>
+  {# Verdicts are the cheapest valuable thing this library
+     accumulates and the easiest to share safely: an eval set of
+     "this model got these 41 wrong" can leave the machine with none
+     of the media leaving with it. A producer, a kind, a verdict, the
+     bytes and a time -- no paths, no names, no note, because a note
+     is free text somebody typed and can hold anything. #}
+  <p class="operations-hint">
+    <a href="/operations/export/verdicts.json" download data-export-verdicts>take these with you</a> &mdash;
+    a producer, what kind of claim, the verdict, the bytes it was about and when.
+    No pictures, no paths, no names, and not the notes: those are yours and go only if you
+    <a href="/operations/export/verdicts.json?include=note" download data-export-verdicts-note>ask for them by name</a>.
+  </p>
+  {# The other direction, and the opposite shape on purpose: the one
+     above is for SHARING and carries no name, this one is for
+     CUSTODY and carries every one. An application about keeping
+     your own data must not be the only place it can exist. #}
+  <p class="operations-hint">
+    And everything you told it about your own pictures &mdash;
+    <a href="/operations/export/authored.json" download data-export-authored>names, ratings, places, albums, who is in what</a>.
+    Keyed by the bytes rather than by a row number, so it reads back against the same photographs
+    wherever they end up.
+  </p>
+</section>
