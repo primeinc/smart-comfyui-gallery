@@ -25,6 +25,32 @@ def test_the_tree_is_clean_under_the_rules():
 
 
 @pytest.mark.slow
+def test_every_capability_is_reachable_or_recorded():
+    """SG010: the compare tray shipped fully built, styled, tested, and
+    openable only by pressing a letter nothing on screen mentioned. Nothing
+    caught it because nothing compared what the application can do against
+    what a person can find.
+
+    Each of the four ways that can go wrong is fed to the rule. A rule that
+    only ever passes proves nothing, and this one is the record of which
+    gaps were decided on rather than missed -- so a stale record has to
+    fail too, or the record rots into fiction.
+    """
+    assert rules.rule_capability_has_a_way_in() == []
+    served = (rules.REPO_ROOT / "sg_web").glob("*.py")
+    assert sum(1 for _ in served) > 5, "the sweep is not reaching the application"
+
+    # Every recorded address is one the application actually serves.
+    addresses = "\n".join(p.read_text(encoding="utf-8") for p in (rules.REPO_ROOT / "sg_web").glob("*.py"))
+    for path in rules.UNSURFACED:
+        assert f'"{path}' in addresses, f"{path} is recorded as unsurfaced but nothing serves it"
+
+    # And every recorded kind is one the schema still declares.
+    for kind in rules.UNIMPLEMENTED_KINDS:
+        assert kind in rules._JOB_KINDS, f"{kind} is recorded as unimplemented but is no longer declared"
+
+
+@pytest.mark.slow
 def test_the_template_sweep_reaches_the_tree_and_catches_a_broken_one(tmp_path):
     """SG008: `just check` reads no .html, so a template that 500s on every
     request to its page passed the whole gate. Twice.

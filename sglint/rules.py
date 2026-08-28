@@ -1396,12 +1396,165 @@ def rule_one_owner(source: pathlib.Path = REPO_ROOT / "frontend" / "src") -> lis
     return found
 
 
+# --- SG010: every capability has a way in ---------------------------------------------------------
+
+#: A capability nothing in the interface reaches, and why that is the
+#: right answer today. Anything absent from here must be reachable;
+#: anything here must still exist. Both halves are checked, so a stale
+#: exemption is a finding and a new unsurfaced capability is a finding.
+#:
+#: Recording it is the point. A gap nobody wrote down is indistinguishable
+#: from a gap nobody noticed, which is how a compare tray came to ship
+#: fully built, styled, tested, and openable only by pressing a letter
+#: nothing on screen mentioned.
+UNSURFACED = {
+    # Infrastructure. Nothing should link to these.
+    "/health": "a liveness probe for whatever runs the process",
+    "/favicon.ico": "the browser asks for it; no page links to it",
+    "/ws/jobs/frames": "the shell's activity feed connects by attribute, not by a written address",
+    "/ws/events/frames": "the console's ledger feed, the same way",
+    # Machine reads on purpose: a person reaches the same facts through a page.
+    "/ways": "the query vocabulary, for a client building a question by hand",
+    "/timeline/at": "a moment lookup for a client driving the timeline itself",
+    "/timeline/density": "the same, at bin resolution",
+    "/timeline/pictures": "the same, over a span",
+    "/stories/snapshots": "one frozen snapshot by id, for a client walking a plan",
+    # Reached by an address the SERVER hands the client, so the string
+    # check below cannot see it.
+    "/search": "linked from the evolution surface as view.links.search (frontend/src/evolution.ts)",
+}
+
+#: Capabilities that are not addresses. Same contract: recorded, with the
+#: evidence, so nobody has to rediscover them.
+UNSURFACED_BEYOND_ROUTES = {
+    "face age/sex/pose": "vision/faces.py computes them and derived_face_instance stores them; no reader",
+    "lineage": "db/lineage.py is called only from tests, so file_derivation is never written",
+    "watched folders": "db/jobs.py watch_folder and unwatch_folder have no route",
+    "face_across_runs": "db/pages.py has no caller for it; the compare page uses disagreements",
+    "comments": "db/authored.py comment and edit_comment have no caller, and nothing reads the table",
+}
+
+#: Kinds JobKind declares that the runner does not implement. Nothing can
+#: start one -- `launch` gates on the console's own list and answers 404 --
+#: so this is vocabulary drift rather than an interface gap, and no
+#: affordance should be built for any of them. Whether they should stay in
+#: JobKind at all is the schema's question, not the interface's.
+UNIMPLEMENTED_KINDS = {
+    "sample_frames": "declared in db/jobs.py JobKind, absent from db/runner.py HANDLERS",
+    "remix": "the same",
+    "zip": "the same",
+}
+
+
+def _reachable_text(root: pathlib.Path) -> str:
+    """Everything a person could be led by: the templates and the authored
+    browser source. Generated types are not a way in."""
+    parts: list[str] = []
+    for where, pattern in ((root / "sg_web" / "templates", "*.html"), (root / "frontend" / "src", "*.ts")):
+        if not where.is_dir():
+            continue
+        parts.extend(p.read_text(encoding="utf-8") for p in where.rglob(pattern) if "generated" not in str(p))
+    return "\n".join(parts)
+
+
+def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG010: something the application can do that no surface reaches.
+
+    Two sources of truth, neither of them anybody's memory: the addresses
+    served, and the job kinds declared. A GET whose static prefix appears
+    in no template and no authored module is not reachable; a declared job
+    kind with no handler is a word with nothing behind it.
+
+    The prefix rather than the whole path, because a parameterised address
+    is built and never written out: `/f/{slug}` is reached by `/f/`.
+    """
+    web = root / "sg_web"
+    if not web.is_dir():
+        return []
+    found: list[Finding] = []
+    reachable = _reachable_text(root)
+
+    served: list[tuple[str, pathlib.Path, int]] = []
+    getter = re.compile(r"@get\(\"([^\"]+)\"")
+    for source in sorted(web.glob("*.py")):
+        for n, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+            hit = getter.search(line)
+            if hit:
+                served.append((hit.group(1), source, n))
+
+    for path, source, line in served:
+        cut = path.find("{")
+        prefix = (path[:cut] if cut != -1 else path).rstrip("/")
+        # Matched on the prefix, because a recorded address is written the
+        # way a person says it and the route carries its parameter types.
+        if path == "/" or path in UNSURFACED or prefix in UNSURFACED:
+            continue
+        if prefix and prefix not in reachable:
+            found.append(
+                Finding(source, line, 0, "SG010", f"{path} is served and nothing reaches it; surface it or record it")
+            )
+
+    # A stale exemption says a decision was taken about something that no
+    # longer exists, which is worse than no note at all.
+    addresses = {path for path, _, _ in served}
+    found.extend(
+        Finding(web / "app.py", 1, 0, "SG010", f"{held} is recorded as unsurfaced but is not served")
+        for held in UNSURFACED
+        if not any(path.startswith(held) for path in addresses)
+    )
+
+    # A declared kind with no handler is vocabulary drift: `launch` refuses
+    # it, so nothing can start it and no affordance should be built for it.
+    jobs = root / "db" / "jobs.py"
+    runner = root / "db" / "runner.py"
+
+    # A kind nothing implements is not a gap in the interface, and the
+    # record of it is only worth keeping while it is true: removing one
+    # from JobKind must trip this rather than pass quietly.
+    found.extend(
+        Finding(jobs, 1, 0, "SG010", f"job kind {kind!r} is recorded as unimplemented and is no longer declared")
+        for kind in sorted(UNIMPLEMENTED_KINDS)
+        if kind not in _JOB_KINDS
+    )
+
+    if jobs.is_file() and runner.is_file():
+        declared = set(re.findall(r"^\s+\"(\w+)\",", jobs.read_text(encoding="utf-8"), re.MULTILINE))
+        handled = set(re.findall(r"^\s+\"(\w+)\": _\w+", runner.read_text(encoding="utf-8"), re.MULTILINE))
+        if handled:
+            found.extend(
+                Finding(jobs, 1, 0, "SG010", f"job kind {kind!r} is declared and no handler implements it")
+                for kind in sorted((declared & _JOB_KINDS) - handled - set(UNIMPLEMENTED_KINDS))
+            )
+    return found
+
+
+#: The kinds JobKind declares. Named here so the check above compares two
+#: lists rather than trusting one regex to find both ends of the pair.
+_JOB_KINDS = {
+    "scan",
+    "hash",
+    "detect_faces",
+    "cluster_faces",
+    "embed",
+    "embed_prompts",
+    "annotate",
+    "context",
+    "events",
+    "story_plan",
+    "walk",
+    "sample_frames",
+    "remix",
+    "zip",
+}
+
+
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
     rule_spawns,
     rule_templates_parse,
     rule_one_owner,
+    rule_capability_has_a_way_in,
     rule_tests_run_things,
     rule_sql_structure,
     rule_connection_lifetime,
