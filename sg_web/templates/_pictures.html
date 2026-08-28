@@ -1,0 +1,53 @@
+{# A picture in a grid, and the grids that are not the gallery's own.
+
+   The gallery's grid (_grid.html) carries selection, ordinals, relevance,
+   near-identical counts and a pager it swaps through htmx. The album,
+   artifact and folder pages show a plain set of pictures and link into the
+   gallery for the rest. What every one of them shares is the inside of the
+   cell -- the picture or, where there is none, the kind -- which had been
+   written out seven times.
+
+   `face` is the whole of that shared part, so a change to what a cell
+   shows happens once. The surfaces that wrap it differently keep their own
+   wrappers: the person page hangs two buttons off the shell, and the
+   gallery hangs a checkbox. #}
+
+{# The picture's own proportion. The row is a fixed height and the cell is
+   as wide as its picture wants to be at that height, so a panorama reads
+   as a panorama instead of every file being cropped to a square. 1 when
+   nothing has measured it: a square is the honest fallback, never a
+   collapsed cell. #}
+{% macro proportion(pic) %}{{ "%.4f"|format(pic.width / pic.height) if pic.width and pic.height else "1" }}{% endmacro %}
+
+{# The picture, or what to say instead of one.
+
+   Audio and documents have no picture to take and the raster routes refuse
+   them, so an unconditional <img> made three of eight cells 404 over a
+   mixed library. `data-cell-kind` is the same attribute pictures.ts writes
+   when a thumbnail that WAS expected fails to load, so a cell that never
+   had one and a cell that lost one read the same to anything asking. #}
+{% macro face(pic) -%}
+{% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy" decoding="async"{% if pic.said is defined and pic.said %} title="{{ pic.said }}" data-said{% endif %}>{% else %}<span class="cell-kind" data-cell-kind="{{ pic.kind }}" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
+{%- endmacro %}
+
+{# One linked cell, for the surfaces that only link. #}
+{% macro cell(pic, qs) -%}
+<a class="cell" style="--ar: {{ proportion(pic) }}"
+   href="/i/{{ pic.slug }}{% if qs %}?{{ qs }}{% endif %}" data-slug="{{ pic.slug }}" data-kind="{{ pic.kind }}">
+  {{ face(pic) }}
+  <span class="cell-name">{{ pic.name }}</span>
+</a>
+{%- endmacro %}
+
+{% macro grid(items, qs) -%}
+<div class="grid">
+  {% for pic in items %}{{ cell(pic, qs) }}
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{# Where the rest of them are. These pages hold one page of pictures and
+   hand the whole set to the gallery, which is the surface that pages. #}
+{% macro browse_all(gallery, time_order=true) -%}
+<p class="pager"><a href="/g?{{ gallery.qs }}">browse all {{ gallery.total }} in the gallery</a>{% if time_order %} &middot; <a href="/g?{{ gallery.qs }}&amp;sort=moment" data-in-time-order>in time order</a>{% endif %}</p>
+{%- endmacro %}

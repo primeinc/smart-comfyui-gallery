@@ -1,3 +1,4 @@
+{% import "_pictures.html" as pictures %}
 <div class="drawer" data-drawer data-slug="{{ person.slug }}" role="dialog"
      aria-label="{{ person.name or '(unnamed)' }}">
   <button class="btn-quiet" data-close aria-label="close">&times;</button>
@@ -31,7 +32,7 @@
     {# `pic.thumb`, which the view already resolved from the sha and kind
        the ResultSet read (vision/thumbs.py `address`). The slug route is
        a lookup per picture, and nine of them per drawer opening. #}
-    <a href="/i/{{ pic.slug }}?{{ person.gallery.qs }}">{% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ pic.kind }}" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}</a>
+    <a href="/i/{{ pic.slug }}?{{ person.gallery.qs }}">{{ pictures.face(pic) }}</a>
     {% endfor %}
   </div>
 </div>

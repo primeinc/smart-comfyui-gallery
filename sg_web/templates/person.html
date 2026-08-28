@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_pictures.html" as pictures %}
 {% block title %}{{ person.name or "(unnamed)" }}{% endblock %}
 {% block head %}<link rel="canonical" href="/p/{{ person.slug }}">{% endblock %}
 {% block scripts %}
@@ -97,7 +98,7 @@
                 aria-label="use this picture for their face">&starf;</button>
         <a class="cell" href="/i/{{ pic.slug }}?{{ person.gallery.qs }}"
            data-slug="{{ pic.slug }}" data-kind="{{ pic.kind }}">
-          {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ pic.kind }}" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
+          {{ pictures.face(pic) }}
           <span class="cell-name">{{ pic.name }}</span>
         </a>
       </div>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_pictures.html" as pictures %}
 {% from "_shelf.html" import seen %}
 {% block title %}{{ album.name }}{% endblock %}
 {% block head %}<link rel="canonical" href="/t/{{ album.slug }}">{% endblock %}
@@ -90,19 +91,9 @@
       {% endif %}
     </p>
     {% elif album.gallery["items"] %}
-    <div class="grid">
-      {% for pic in album.gallery["items"] %}
-      {# The picture's own proportion, so this grid justifies its rows
-         the way the gallery's does instead of squaring every file. #}
-      <a class="cell" style="--ar: {{ "%.4f"|format(pic.width / pic.height) if pic.width and pic.height else "1" }}"
-         href="/i/{{ pic.slug }}?{{ album.gallery.qs }}" data-slug="{{ pic.slug }}">
-        {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
-        <span class="cell-name">{{ pic.name }}</span>
-      </a>
-      {% endfor %}
-    </div>
+    {{ pictures.grid(album.gallery["items"], album.gallery.qs) }}
     {% if album.gallery.total %}
-    <p class="pager"><a href="/g?{{ album.gallery.qs }}">browse all {{ album.gallery.total }} in the gallery</a> &middot; <a href="/g?{{ album.gallery.qs }}&amp;sort=moment" data-in-time-order>in time order</a></p>
+    {{ pictures.browse_all(album.gallery, time_order=true) }}
     {% endif %}
     {% else %}
     <p class="empty">nothing in this collection yet.</p>

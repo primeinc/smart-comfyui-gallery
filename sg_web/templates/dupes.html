@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_pictures.html" as pictures %}
 {% from "_bar.html" import index %}
 {% block title %}Duplicates{% endblock %}
 {% block scripts %}
@@ -53,7 +54,7 @@
           {% for one in group.members %}
           <li class="dupe-member" data-dupe-member="{{ one.slug }}"{% if one.is_best %} data-dupe-best{% endif %} data-kind="{{ one.kind }}">
             <a class="cell" href="/i/{{ one.slug }}" data-slug="{{ one.slug }}" data-kind="{{ one.kind }}">
-              {% if one.thumb %}<img src="{{ one.thumb }}" alt="{{ one.name }}" loading="lazy">{% else %}<span class="cell-kind" data-cell-kind="{{ one.kind }}" aria-hidden="true">{{ "audio" if one.kind == "audio" else "doc" }}</span>{% endif %}
+              {{ pictures.face(one) }}
             </a>
             <div class="dupe-member-said">
               <span class="dupe-member-name">{{ one.name }}</span>
