@@ -1758,5 +1758,19 @@
 
   // src/pictures-mount.ts
   mountPictures();
+
+  // src/spelling.ts
+  var pad = (n) => String(n).padStart(2, "0");
+  function spellDays(root) {
+    for (const node of everyElement(root, "time[data-epoch]:not([data-spelled])", HTMLTimeElement)) {
+      const d = new Date(Number(requireData(node, "epoch")) * 1e3);
+      node.textContent = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+      node.dataset.spelled = "";
+    }
+  }
+
+  // src/spelling-mount.ts
+  spellDays(document);
+  new MutationObserver(() => spellDays(document)).observe(document.body, { childList: true, subtree: true });
 })();
 //# sourceMappingURL=timeline.js.map

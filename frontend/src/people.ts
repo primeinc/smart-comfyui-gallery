@@ -8,23 +8,11 @@ import { api, refusal } from "./api";
 import { askChoice, say } from "./ask";
 import { closestFrom, everyElement, requireData, requireElement } from "./dom";
 import { addressableOverlay } from "./overlay";
+import { spellDays } from "./spelling";
 
-// days on the cards and in the drawer, spelled for the reader
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/**
- * Spell every epoch not yet spelled.
- *
- * Only nodes without `data-spelled`: the observer below fires on this very
- * write, and spelling an already-spelled node again would loop forever.
- */
-const spellDays = (root: ParentNode) => {
-  for (const node of everyElement(root, "time[data-epoch]:not([data-spelled])", HTMLTimeElement)) {
-    const d = new Date(Number(requireData(node, "epoch")) * 1000);
-    node.textContent = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-    node.dataset.spelled = "";
-  }
-};
+// days on the cards and in the drawer, spelled for the reader. The
+// speller moved to ./spelling when four other surfaces turned out to
+// render epochs with nothing to spell them.
 
 /**
  * What stands where a denied picture was.

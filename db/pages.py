@@ -1863,6 +1863,28 @@ def places_shelf(conn):
     return conn.execute(PLACES_SHELF, (context.POLICY_VERSION,)).fetchall()
 
 
+#: One picture from each named place, newest first -- the fourth shelf in
+#: this application that showed a name and a count over a library of
+#: photographs. A place with no picture the current interpretation puts
+#: there answers nothing, and the card draws its own mark.
+PLACE_COVERS = (
+    "SELECT slug, sha, file_slug, kind FROM ("
+    "  SELECT e.slug AS slug, f.content_sha256 AS sha, fe.slug AS file_slug, f.kind AS kind,"
+    "         row_number() OVER (PARTITION BY p.id ORDER BY f.mtime DESC, f.id DESC) AS rn"
+    "    FROM place p"
+    "    JOIN entity e ON e.id = p.id"
+    "    JOIN derived_media_context mc ON mc.place_id = p.id AND mc.policy_version = ?"
+    "    JOIN file f ON f.id = mc.file_id AND f.missing_since IS NULL"
+    "    JOIN entity fe ON fe.id = f.id"
+    " ) WHERE rn = 1"
+)
+
+
+def place_covers(conn) -> dict[str, tuple[str | None, str, str]]:
+    """{place slug: (sha, file slug, kind)}."""
+    return {row[0]: (row[1], row[2], row[3]) for row in conn.execute(PLACE_COVERS, (context.POLICY_VERSION,))}
+
+
 #: Every place anyone has named, for the picker. Bounded.
 PLACES_NAMED = "SELECT p.name, p.kind FROM place p ORDER BY p.name COLLATE NOCASE LIMIT ?"
 #: The picker's bound: places are typed by a person one at a time, so

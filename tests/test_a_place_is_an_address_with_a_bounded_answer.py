@@ -224,7 +224,21 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     told = placed.get("/folders", headers=AS_MACHINE)
     assert told.status_code == 200
     assert told.headers["vary"] == "Accept, HX-Request"
-    body = told.json()
+
+    # `cover` is a content address, which is the whole reason it is
+    # allowed on this surface: the assertions below prove no host path
+    # reaches a browsing answer, and /thumbs/<sha> carries none. Lifted
+    # out of BOTH readings rather than popped out of one -- the trash
+    # check further down compares a fresh answer against this body.
+    def without_covers(rows):
+        return [
+            {**shelf, "folders": [{k: v for k, v in one.items() if k != "cover"} for one in shelf["folders"]]}
+            for shelf in rows
+        ]
+
+    body = without_covers(told.json())
+    covers = [one["cover"] for shelf in told.json() for one in shelf["folders"]]
+    assert all(c is None or c.startswith("/thumbs/") for c in covers), covers
     assert body == [
         {
             "kind": "library",
@@ -249,7 +263,9 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     bin_dir = root.parent / "bin"
     bin_dir.mkdir()
     assert placed.post("/roots", json={"path": str(bin_dir), "kind": "trash"}).status_code < 300
-    assert placed.get("/folders", headers=AS_MACHINE).json() == body, "a trash root changed the navigation"
+    assert without_covers(placed.get("/folders", headers=AS_MACHINE).json()) == body, (
+        "a trash root changed the navigation"
+    )
     assert "trash" not in placed.get("/folders", headers=AS_BROWSER).text
 
 

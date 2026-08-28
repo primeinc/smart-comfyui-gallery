@@ -1394,15 +1394,17 @@
     return { root, open, close };
   }
 
-  // src/people.ts
+  // src/spelling.ts
   var pad2 = (n) => String(n).padStart(2, "0");
-  var spellDays = (root) => {
+  function spellDays(root) {
     for (const node of everyElement(root, "time[data-epoch]:not([data-spelled])", HTMLTimeElement)) {
       const d = new Date(Number(requireData(node, "epoch")) * 1e3);
       node.textContent = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
       node.dataset.spelled = "";
     }
-  };
+  }
+
+  // src/people.ts
   var denied = (picture, who) => {
     const held = document.createElement("div");
     held.className = "cell-denied";

@@ -22,8 +22,11 @@ def places_index(state: State, request: Request) -> Template | Response:
     """Every place named, most pictures first -- rendered for a browser,
     a JSON list for everything else. A place nobody's pictures are in
     any more is still listed: it was named, and it is an entity."""
+    from vision import thumbs
+
     conn = connect.connect(state.db_path, read_only=True)
     try:
+        covers = pages.place_covers(conn)
         told = [
             {
                 "id": place_id,
@@ -34,6 +37,13 @@ def places_index(state: State, request: Request) -> Template | Response:
                 "first_seen": first,
                 "last_seen": last,
                 "within": within,
+                #: A place is somewhere pictures were taken; the shelf
+                #: said so with a number and showed none of them.
+                "cover": (
+                    thumbs.asset_url(covers[slug][0], covers[slug][1], medium=covers[slug][2])
+                    if slug in covers
+                    else None
+                ),
                 "qs": urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
                 "timeline": "/timeline?"
                 + urllib.parse.urlencode([("f", facets.spell(facets.facet("place.id", "eq", str(place_id))))]),
