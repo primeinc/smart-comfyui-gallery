@@ -793,6 +793,16 @@ p {
   gap: var(--s3);
   align-items: center;
   padding: 10px 14px;
+  /* A grid item's min-width is `auto`, which is its CONTENT. This bar
+     holds a filename, a date, a place and an ordinal and does not wrap,
+     so its content wanted 774px and it took them -- in a 390px window.
+     Everything inside then measured against 774: the name was handed
+     516px it did not have, so its head never ellipsized and the tail,
+     which is the half that identifies the file, sat off the edge.
+
+     Nothing downstream can fix that. A max-width on the name resolves
+     against a container that is already too wide. */
+  min-width: 0;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
   background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 92%, transparent), transparent);
@@ -919,6 +929,58 @@ p {
   font-weight: var(--w-label);
   max-width: min(38ch, 30vw);
   min-width: 0;
+}
+/* AFTER the rule above, not with the other narrow-width rules: a
+   media query adds no specificity, so placed earlier this loses on
+   source order and changes nothing at all.
+
+   Below 600px the name takes its own line and the chips drop under it.
+   Everything on this row competes for one measure, and the name loses:
+   the middle-cut keeps its last sixteen characters at a fixed width and
+   the head takes all the squeeze, so at 360px the head was 3px and the
+   name read "2.ision-_-_tur.png". The date and place are 101px each and
+   never yield, because they are buttons.
+
+   Nothing is hidden to buy the room. The date chip is the way into the
+   inspector's about panel, and the name is on this row at all because
+   the filename used to be reachable ONLY by opening that panel -- so
+   dropping either would put back a defect the other was added to fix. */
+@media (max-width: 600px) {
+  /* The BAR wraps, not just the group inside it. Wrapping only the group
+     left it a 102px column at 360px, because the back button and the
+     playback controls take the row first and `.viewer-said` gets the
+     remainder. Given its own line it gets the window. */
+  .viewer-chrome {
+    flex-wrap: wrap;
+  }
+  .viewer-said {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  /* The playback controls take the second line, so the name shares the
+     first with the back arrow. Giving `.viewer-said` the whole line
+     instead left the arrow alone on a row of its own, which is 40px of a
+     photograph spent on one glyph. */
+  .viewer-acts {
+    flex: 1 0 100%;
+  }
+  .viewer-name {
+    /* 1 1 100%, not 1 0 100%. With shrink 0 the item will not go below
+       its CONTENT, so the 100% basis never bound and the box stayed at
+       its natural 516px. The head only ellipsizes if the box is allowed
+       to be smaller than the text. */
+    flex: 1 1 100%;
+    /* The cap is min(38ch, 30vw), and 30vw of a 360px phone is 108px --
+       which IS the width the name had, and why its head was 3px of it.
+       On its own line the row is the right limit.
+
+       100%, never `none`. With no limit the box grew to its natural 516px
+       and hung 185px past the window: the head stopped ellipsizing and
+       the TAIL went off the edge -- the identifying half, and the whole
+       reason the cut is in the middle. A middle cut only works while the
+       box is narrower than the text. */
+    max-width: 100%;
+  }
 }
 .viewer-ordinal {
   color: var(--ink-muted);
@@ -2305,6 +2367,24 @@ p {
 .cell-pick:checked,
 .cell-pick:focus-visible {
   opacity: 1;
+}
+/* Bigger where the pointer is a finger. 18px is a comfortable box for a
+   mouse and a small one for a thumb, and this is not an ordinary
+   control: nothing can be SELECTED without it, and the whole curate bar
+   -- favourite, rating, album, place, compare -- only appears once
+   something is. It was drawn at 18px and hidden behind :hover, which on
+   a touch screen meant no selection at all; showing it was the first
+   half of that fix and sizing it is the second.
+
+   `pointer: coarse` rather than a width, because the question is what is
+   doing the pointing, not how wide the window is. A phone plugged into a
+   monitor is still a finger; a narrow window on a laptop is still a
+   mouse. */
+@media (pointer: coarse) {
+  .cell-pick {
+    width: 26px;
+    height: 26px;
+  }
 }
 
 /* "not them", on the page where somebody is actually reviewing who a

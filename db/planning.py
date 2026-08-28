@@ -386,7 +386,7 @@ class GenerationHistoryPlanner:
     def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
         # One constructor shape for every planner, because the caller
         # picks the class at runtime and constructs it the same way
-        # (`plan_request` below). `uses_similarity = True` is what tells
+        # (`request_plan` below). `uses_similarity = True` is what tells
         # that caller to bring an engine; this is what happens when it
         # does not, instead of an AttributeError several phases later.
         if similarity is None:
