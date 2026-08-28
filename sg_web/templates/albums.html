@@ -14,11 +14,12 @@
     <ul class="album-tree">
       {% for node in archived %}
       <li>
+        {% include "_album_cover.html" %}
         <a href="/t/{{ node.slug }}" data-album="{{ node.slug }}">{{ node.name }}</a>
         {% if node.kind == "smart" %}
         <span class="album-kind">rule-defined</span>
         {% else %}
-        <span class="album-count">{{ node.pictures }} pictures</span>
+        <span class="album-count">{{ node.pictures }} picture{{ "" if node.pictures == 1 else "s" }}</span>
         {% endif %}
       </li>
       {% endfor %}
@@ -39,11 +40,12 @@
     <ul class="album-tree">
       {% for node in albums recursive %}
       <li>
+        {% include "_album_cover.html" %}
         <a href="/t/{{ node.slug }}" data-album="{{ node.slug }}">{{ node.name }}</a>
         {% if node.kind == "smart" %}
         <span class="album-kind">rule-defined</span>
         {% else %}
-        <span class="album-count">{{ node.pictures }} pictures</span>
+        <span class="album-count">{{ node.pictures }} picture{{ "" if node.pictures == 1 else "s" }}</span>
         {% endif %}
         {% if node.last_seen is not none %}<span class="album-seen" data-seen><time data-epoch="{{ node.first_seen }}" data-domain="day">{{ node.first_seen }}</time>{% if node.last_seen != node.first_seen %} – <time data-epoch="{{ node.last_seen }}" data-domain="day">{{ node.last_seen }}</time>{% endif %}</span>{% endif %}
         {% if node.collections %}

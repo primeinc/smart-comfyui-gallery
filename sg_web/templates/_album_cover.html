@@ -1,0 +1,17 @@
+{# The newest picture in a collection, or what the collection IS when it
+   holds no pictures to show.
+
+   A rule-defined collection has no members to take a cover from -- it is
+   a question, not a container -- so it draws its own mark rather than a
+   broken image or an empty square pretending to be a photograph. Same
+   for an album nobody has put anything in yet. #}
+{# `is defined` because this shelf is handed two shapes: the archived
+   list's CollectionListed contract, and the active tree's raw nodes. #}
+{% set cover = node.cover if node.cover is defined else none %}
+{% if cover %}
+<img class="album-cover" src="{{ cover }}" alt="" loading="lazy" decoding="async">
+{% elif node.kind == "smart" %}
+<span class="album-cover album-cover-none" aria-hidden="true">rule</span>
+{% else %}
+<span class="album-cover album-cover-none" aria-hidden="true">empty</span>
+{% endif %}

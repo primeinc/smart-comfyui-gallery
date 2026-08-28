@@ -1652,12 +1652,12 @@ p {
   font-weight: 600;
 }
 .album-kind,
+/* `margin-left: auto` pushed this to the far end of a flex row that no
+   longer exists -- on the card shelf it shoved the count to the right
+   edge, away from the name it belongs to. */
 .album-count {
   color: var(--ink-muted);
-  font-size: 0.9em;
-}
-.album-count {
-  margin-left: auto;
+  font-size: var(--t-small);
 }
 
 .root-shelf {
@@ -1679,32 +1679,87 @@ p {
   color: var(--danger);
 }
 
+/* --- the shelf: cards, because an album IS its picture ----------------
+   This was a 640px column of words with a count beside each. Adding a
+   cover to that column made it a list with a 44px favicon in front of
+   every row -- which is what a slot looks like when it is designed
+   without ever being seen full. In a library of photographs the picture
+   is how you know which album it is; the name confirms it. */
 .album-tree {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-width: 640px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--s4);
+  max-width: 1100px;
 }
+/* Children of a nesting album, under it and across the whole shelf. */
 .album-tree ul {
   list-style: none;
-  margin: 0;
-  padding-left: 22px;
+  margin: var(--s2) 0 0;
+  padding: 0 0 0 var(--s3);
   border-left: 1px solid var(--line);
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s3);
 }
 .album-tree li {
-  padding: 6px 0;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 2px;
+  align-content: start;
 }
-.album-tree a {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
+/* A shelf in a photo library shows photographs. This was a column of
+   words with a count beside each one -- the only page in the application
+   that could have shown you what was in a collection and did not. */
+.album-cover {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--sunken);
+  transition: opacity var(--dur) var(--ease);
 }
-.album-tree a:hover {
-  text-decoration: underline;
+.album-tree a:hover ~ .album-cover,
+.album-tree li:hover .album-cover {
+  opacity: 0.82;
+}
+.album-cover-none {
+  display: grid;
+  place-items: center;
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px dashed var(--line-strong);
+  background: none;
 }
 .album-tree .album-kind,
 .album-tree .album-count {
-  margin-left: 10px;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+/* The names are the CONTENT of this page, and they were all drawn in the
+   accent -- so a shelf of eleven albums was eleven amber lines and the
+   one control that does something was the twelfth. Ink for the things,
+   the safelight for the act, and the colour arrives on the one you are
+   pointing at. */
+/* The names are the CONTENT of this shelf, and they were all drawn in
+   the accent -- so a shelf of eleven albums was eleven amber lines and
+   the one control that does something was the twelfth. Ink for the
+   things, the safelight for the act. */
+.album-tree a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: var(--w-label);
+  margin-top: var(--s2);
+}
+.album-tree a:hover,
+.album-tree a:focus-visible {
+  color: var(--accent);
 }
 
 .authored {
@@ -1746,19 +1801,59 @@ p {
 }
 .keyword-row {
   display: grid;
-  grid-template-columns: minmax(6em, 16em) 8em 1fr auto;
+  grid-template-columns: minmax(6em, 14em) 7em 1fr auto auto;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
+  gap: var(--s3);
+  padding: var(--s2);
   border-bottom: 1px solid var(--line);
 }
+/* Ink, like every other name on every other shelf. The word is the
+   content of this page; the accent belongs to acting on it. */
 .keyword-name {
-  color: var(--accent);
+  color: var(--ink);
+  font-weight: var(--w-label);
+  text-decoration: none;
   overflow-wrap: anywhere;
+}
+.keyword-name:hover,
+.keyword-name:focus-visible {
+  color: var(--accent);
 }
 .keyword-count {
   color: var(--ink-muted);
-  font-size: 0.9em;
+  font-size: var(--t-small);
+  font-variant-numeric: tabular-nums;
+}
+/* What the word is on. A strip rather than a grid: it is evidence at a
+   glance, not a gallery -- the gallery is one click away and the whole
+   strip is that link. */
+.keyword-seen {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+.keyword-seen img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--sunken);
+}
+/* Renaming is the reason to be here, but not for every row at once:
+   three keywords meant three open text fields. The field arrives when
+   the row is under the hand or the keyboard. */
+.keyword-rename {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.keyword-row:hover .keyword-rename,
+.keyword-rename:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .keyword-rename {
+    opacity: 1;
+  }
 }
 .keyword-rename {
   display: flex;

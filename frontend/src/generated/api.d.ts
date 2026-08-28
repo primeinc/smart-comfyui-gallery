@@ -2251,6 +2251,7 @@ export interface components {
             pictures: number;
             first_seen?: number | null;
             last_seen?: number | null;
+            cover?: string | null;
         };
         /** CollectionSummary */
         CollectionSummary: {
@@ -2882,6 +2883,7 @@ export interface components {
             label: string;
             pictures: number;
             qs: string;
+            covers: string[];
         };
         /** LedgerHealth */
         LedgerHealth: {

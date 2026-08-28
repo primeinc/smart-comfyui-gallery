@@ -548,12 +548,20 @@ class CollectionListed(Wire):
     pictures: int
     first_seen: float | None = None
     last_seen: float | None = None
+    #: The newest member's thumbnail. This is a library of PHOTOGRAPHS and
+    #: the shelf was a list of words; a collection should show what is in
+    #: it. None for a rule-defined collection, which holds a question
+    #: rather than files, and for one whose members are all missing.
+    cover: str | None = None
 
 
 def _albums_listed(db_path: str) -> list[CollectionListed]:
+    from vision import thumbs
+
     conn = connect.connect(db_path)
     try:
         spans = pages.collection_spans(conn)
+        covers = pages.collection_covers(conn)
         return [
             CollectionListed(
                 name=name,
@@ -562,11 +570,22 @@ def _albums_listed(db_path: str) -> list[CollectionListed]:
                 pictures=pictures,
                 first_seen=spans.get(slug, (None, None))[0],
                 last_seen=spans.get(slug, (None, None))[1],
+                cover=_cover_url(thumbs, covers.get(slug)),
             )
             for name, slug, kind, pictures in pages.albums(conn)
         ]
     finally:
         connect.close(conn)
+
+
+def _cover_url(thumbs, held: tuple[str | None, str, str] | None) -> str | None:
+    """Resolved ONCE per collection, here, the way the grid resolves its
+    cells: the content-addressed asset when the bytes have been hashed,
+    the slug route when they have not."""
+    if held is None:
+        return None
+    sha, file_slug, kind = held
+    return thumbs.asset_url(sha, file_slug, medium=kind)
 
 
 def _albums_archived(db_path: str) -> list[CollectionListed]:
@@ -596,6 +615,10 @@ class _Shelved(TypedDict):
     first_seen: float | None
     last_seen: float | None
     collections: list[_Shelved]
+    #: The newest member's thumbnail; None for a rule-defined node, which
+    #: holds a question rather than files. A shelf in a library of
+    #: photographs shows photographs.
+    cover: str | None
 
 
 def _albums_nested(db_path: str) -> tuple[list[_Shelved], int]:
@@ -617,8 +640,11 @@ def _albums_nested(db_path: str) -> tuple[list[_Shelved], int]:
         rows = pages.collection_shelf(conn)
         retired = pages.archived_count(conn)
         spans = pages.collection_spans(conn)
+        covers = pages.collection_covers(conn)
     finally:
         connect.close(conn)
+    from vision import thumbs
+
     nodes: dict[int, _Shelved] = {
         cid: {
             "slug": slug,
@@ -628,6 +654,7 @@ def _albums_nested(db_path: str) -> tuple[list[_Shelved], int]:
             "first_seen": spans.get(slug, (None, None))[0],
             "last_seen": spans.get(slug, (None, None))[1],
             "collections": [],
+            "cover": _cover_url(thumbs, covers.get(slug)),
         }
         for cid, _, slug, name, kind, pictures in rows
     }

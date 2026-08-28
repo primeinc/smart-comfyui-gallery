@@ -979,6 +979,57 @@ ARCHIVED_ALBUMS = (
 ARCHIVED_COUNT = "SELECT count(*) FROM collection WHERE archived_at IS NOT NULL"
 
 
+#: One picture per collection, for a shelf that shows what is in a
+#: collection instead of only what it is called. Newest member, matching
+#: the gallery's own default order, so the cover is the last thing put
+#: there rather than an arbitrary row.
+#:
+#: A rule-defined collection has no `collection_file` rows -- it is a
+#: question, not a container -- so it has no cover here and the shelf
+#: draws its kind instead. That is the honest answer, not a bug.
+COLLECTION_COVERS = (
+    "SELECT ce.slug, f.content_sha256, fe.slug, f.kind FROM collection c"
+    "  JOIN entity ce ON ce.id = c.id"
+    "  JOIN collection_file cf ON cf.collection_id = c.id"
+    "  JOIN file f ON f.id = cf.file_id AND f.missing_since IS NULL"
+    "  JOIN entity fe ON fe.id = f.id"
+    " WHERE cf.file_id = ("
+    "   SELECT cf2.file_id FROM collection_file cf2"
+    "     JOIN file f2 ON f2.id = cf2.file_id AND f2.missing_since IS NULL"
+    "    WHERE cf2.collection_id = c.id ORDER BY f2.mtime DESC, f2.id DESC LIMIT 1)"
+)
+
+
+#: A few pictures wearing each keyword, newest first. The shelf is the
+#: one place a person sees the whole vocabulary at once, and a word is
+#: only worth keeping if you recognise what it is on -- which a count
+#: cannot tell you and a row of thumbnails can.
+KEYWORD_COVERS = (
+    "SELECT tag, sha, slug, kind FROM ("
+    "  SELECT t.tag AS tag, f.content_sha256 AS sha, fe.slug AS slug, f.kind AS kind,"
+    "         row_number() OVER (PARTITION BY t.id ORDER BY f.mtime DESC, f.id DESC) AS rn"
+    "    FROM tag t"
+    "    JOIN file_tag ft ON ft.tag_id = t.id"
+    "    JOIN file f ON f.id = ft.file_id AND f.missing_since IS NULL"
+    "    JOIN entity fe ON fe.id = f.id"
+    " ) WHERE rn <= ?"
+)
+
+
+def keyword_covers(conn, most: int = 5) -> dict[str, list[tuple[str | None, str, str]]]:
+    """{tag: [(sha, file slug, kind), ...]} -- at most `most` per word."""
+    held: dict[str, list[tuple[str | None, str, str]]] = {}
+    for tag, sha, slug, kind in conn.execute(KEYWORD_COVERS, (most,)):
+        held.setdefault(tag, []).append((sha, slug, kind))
+    return held
+
+
+def collection_covers(conn) -> dict[str, tuple[str | None, str, str]]:
+    """{collection slug: (sha, file slug, kind)} for the collections that
+    hold at least one present file."""
+    return {row[0]: (row[1], row[2], row[3]) for row in conn.execute(COLLECTION_COVERS)}
+
+
 def albums(conn):
     return conn.execute(ALBUMS).fetchall()
 

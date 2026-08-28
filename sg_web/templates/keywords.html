@@ -20,6 +20,14 @@
       <li class="keyword-row" data-keyword="{{ one.tag }}" data-pictures="{{ one.pictures }}">
         <a class="keyword-name" href="/g?{{ one.qs }}">{{ one.label }}</a>
         <span class="keyword-count">{{ one.pictures }} picture{{ "" if one.pictures == 1 else "s" }}</span>
+        {# What the word is ON. Whether "beech" is a typo or a tree is a
+           question about the pictures under it, and this page used to
+           answer it with a number. #}
+        {% if one.covers is defined and one.covers %}
+        <a class="keyword-seen" href="/g?{{ one.qs }}" tabindex="-1" aria-hidden="true">
+          {% for shot in one.covers %}<img src="{{ shot }}" alt="" loading="lazy" decoding="async">{% endfor %}
+        </a>
+        {% endif %}
         <form class="keyword-rename" data-rename>
           <input type="text" data-rename-input maxlength="100" autocomplete="off"
                  value="{{ one.label }}" aria-label="rename {{ one.label }}">

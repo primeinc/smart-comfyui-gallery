@@ -12361,6 +12361,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "cover": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,
@@ -15761,11 +15771,18 @@
                     },
                     "qs": {
                         "type": "string"
+                    },
+                    "covers": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
+                    "covers",
                     "label",
                     "pictures",
                     "qs",

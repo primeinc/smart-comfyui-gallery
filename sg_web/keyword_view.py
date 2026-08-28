@@ -32,7 +32,7 @@ from litestar.exceptions import ClientException
 from litestar.openapi.datastructures import ResponseSpec
 from litestar.response import Response, Template
 
-from db import authored, connect, facets
+from db import authored, connect, facets, pages
 from sg_web.presenting import VARIES, presented_page
 from sg_web.wire import Wire
 
@@ -47,15 +47,39 @@ class KeywordListed(Wire):
     pictures: int
     #: The gallery question this keyword asks, ready to hang on a link.
     qs: str
+    #: A few of the pictures wearing it, newest first. The shelf is the
+    #: one place the whole vocabulary is seen at once, and whether a word
+    #: is worth keeping is a question about the pictures under it -- which
+    #: a count cannot answer and a row of thumbnails can.
+    #: Required rather than defaulted: `_shelf` is the only thing that
+    #: builds one of these and it always answers, so a mutable default
+    #: would be a second, emptier truth nobody produces.
+    covers: list[str]
+
+
+def _cover_urls(thumbs, held: list[tuple[str | None, str, str]]) -> list[str]:
+    """Thumbnail URLs for one keyword's sample, dropping the kinds that
+    have no picture to take -- audio and documents answer None here, and
+    a null in the list would render as a broken image."""
+    told: list[str] = []
+    for sha, file_slug, kind in held:
+        where = thumbs.asset_url(sha, file_slug, medium=kind)
+        if where is not None:
+            told.append(where)
+    return told
 
 
 def _shelf(conn) -> list[KeywordListed]:
+    from vision import thumbs
+
+    covers = pages.keyword_covers(conn)
     return [
         KeywordListed(
             tag=tag,
             label=label,
             pictures=count,
             qs=urllib.parse.urlencode([("f", facets.spell(facets.facet("tag", "eq", tag)))]),
+            covers=_cover_urls(thumbs, covers.get(tag, [])),
         )
         for tag, label, count in authored.vocabulary(conn)
     ]
