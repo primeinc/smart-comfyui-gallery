@@ -1,0 +1,23 @@
+{# the sessions the window holds; the river of days when the zoom calls for it #}
+{% from "_timeline_session.html" import session_card %}
+<ol class="surface-sessions{% if surface.composition == 'river' %} river{% endif %}" data-sessions>
+  {% if surface.sessions_total > surface.sessions | length %}
+  <li class="session-more" data-sessions-more="{{ surface.sessions_total - surface.sessions | length }}">showing the latest {{ surface.sessions | length }} of {{ "{:,}".format(surface.sessions_total) }} groups — show less time to see the rest</li>
+  {% endif %}
+  {% if surface.composition == "river" %}
+  {% for day in surface.river %}
+  {% if day.silence %}<li class="silence" data-silent-days="{{ day.silent_days }}" style="height:{{ day.silence }}px" aria-label="{{ day.silent_days }} days without pictures"><span class="eyebrow">{{ day.silent_days }} day{% if day.silent_days > 1 %}s{% endif %} empty</span></li>{% endif %}
+  {% if day.month_cap %}<li class="river-cap"><span class="stamp">{{ day.month_cap.year }}</span><span class="eyebrow">{{ day.month_cap.month }}</span></li>{% endif %}
+  <li class="river-day{% if day.weekend %} weekend{% endif %}" data-river-day="{{ day.key }}">
+    <div class="river-rail"><span class="stamp">{{ day.day }}</span><span class="eyebrow">{{ day.weekday }}</span></div>
+    <div class="river-body">
+      {% for g in day.groups %}
+      {% if g.session %}<div id="session-{{ g.session.id }}">{{ session_card(g.session, g.pictures, g.lead, g.leads) }}</div>
+      {% else %}<div class="loose"><header class="caption"><span class="meta">{{ g.clock }} · {{ g.pictures | length }} pictures, not in a group</span></header>{{ rows(g.pictures) }}</div>{% endif %}
+      {% endfor %}
+    </div>
+  </li>
+  {% endfor %}
+  {% endif %}
+  {% for s in surface.listed %}<li id="session-{{ s.id }}" class="river-day unplaced"><div class="river-rail"><span class="eyebrow">{{ s.when }}</span></div><div class="river-body">{{ session_card(s, s.drawn_pictures, s.drawn_lead, s.drawn_leads) }}</div></li>{% endfor %}
+</ol>

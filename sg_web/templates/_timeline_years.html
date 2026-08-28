@@ -1,0 +1,13 @@
+{# a row per year, twelve month cells each #}
+{% if surface.composition == "years" %}
+<div class="years">
+  {% for y in surface.years %}
+  <section class="year" data-year="{{ y.year }}">
+    <header class="sheet-head"><span class="stamp">{{ y.year }}</span><span class="sheet-count">{% if y.pictures %}{{ "{:,}".format(y.pictures) }} pictures{% else %}nothing{% endif %}</span></header>
+    {% if y.pictures %}<div class="year-months">
+      {% for m in y.months %}<a class="cell month{% if m.pictures %} has{% endif %}{% if m.outside %} outside{% endif %}" href="{{ m.href }}" data-month-window title="{{ m.month }} {{ y.year }}{% if m.pictures %} · {{ "{:,}".format(m.pictures) }} pictures{% endif %}">{% if m.hero %}<img src="{{ m.hero }}" alt="" loading="lazy">{% endif %}<span class="n">{{ m.month }}</span>{% if m.pictures %}<span class="c">{{ "{:,}".format(m.pictures) }}</span>{% endif %}</a>{% endfor %}
+    </div>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% endif %}

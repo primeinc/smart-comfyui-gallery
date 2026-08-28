@@ -1,0 +1,14 @@
+{# the whole library at the right edge, newest at the top #}
+{# the scrubber: the whole library at the right edge, newest at the top,
+   a segment per month sized by its pictures and faced with its first;
+   drag it and the window follows the hand onto pictures #}
+<div class="scrubber" data-scrubber tabindex="0" role="slider"
+     aria-valuemin="{{ surface.overview.start }}" aria-valuemax="{{ surface.overview.end }}" aria-valuenow="{{ surface.start }}"
+     aria-label="the whole library, newest at the top: drag to move the window, click a month to open it">
+  <div class="scrubber-track">
+    {% for seg in surface.scrubber.segments %}<a class="segment{% if seg.pictures %} held{% else %} gap{% endif %}" draggable="false" data-segment-at="{{ seg.window_start }}" data-bin-window data-at="{{ seg.at }}" data-end="{{ seg.end }}" data-label="{{ seg.label }}" data-pictures="{{ seg.pictures }}"{% if seg.face %} data-face="{{ seg.face }}"{% endif %} href="{{ seg.href }}" style="top:{{ seg.y / 10 }}%;height:{{ seg.h / 10 }}%" title="{% if seg.pictures %}{{ seg.label }} · {{ "{:,}".format(seg.pictures) }} pictures{% else %}{{ seg.label }}{% endif %}">{% if seg.pictures %}<span class="segment-strip" data-segment-strip>{% for src in seg.strip %}<img src="{{ src }}" alt="" loading="lazy" draggable="false">{% endfor %}</span><span class="segment-count">{{ "{:,}".format(seg.pictures) }}</span>{% endif %}</a>{% endfor %}
+    {% for seg in surface.scrubber.segments if seg.year_label %}<span class="segment-year" style="top:{{ seg.y / 10 }}%">{{ seg.year }}</span>{% endfor %}
+    <div class="scrubber-window" data-scrubber-window style="top:{{ surface.scrubber.brush.y / 10 }}%;height:{{ surface.scrubber.brush.h / 10 }}%"></div>
+  </div>
+  <div class="scrubber-peek" data-scrubber-peek hidden><img alt=""><span class="scrubber-peek-label"></span><span class="scrubber-peek-count"></span></div>
+</div>

@@ -1,0 +1,15 @@
+{# month sheets, a cell per day #}
+{% if surface.composition == "calendar" %}
+<div class="calendar">
+  {% for m in surface.calendar %}
+  <section class="sheet" data-sheet="{{ m.year }}-{{ m.month }}">
+    <header class="sheet-head"><span class="stamp">{{ m.year }}</span><span class="eyebrow">{{ m.month }}</span><span class="sheet-count">{% if m.pictures %}{{ "{:,}".format(m.pictures) }} pictures{% else %}—{% endif %}</span></header>
+    <div class="sheet-days">
+      {% for wd in ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN") %}<span class="sheet-wd">{{ wd }}</span>{% endfor %}
+      {% for _ in range(m.lead) %}<span class="cell void"></span>{% endfor %}
+      {% for d in m.days %}{% if d.pictures %}<a class="cell has{% if d.today %} today{% endif %}" href="/g?{{ d.qs }}" title="{{ d.spelled }} · {{ d.pictures }} pictures">{% if d.hero %}<img src="{{ d.hero }}" alt="" loading="lazy">{% endif %}<span class="n">{{ d.n }}</span><span class="c">{{ d.pictures }}</span></a>{% else %}<span class="cell{% if d.today %} today{% endif %}"><span class="n">{{ d.n }}</span></span>{% endif %}{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
