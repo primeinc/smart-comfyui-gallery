@@ -1,0 +1,71 @@
+{# when, where, who, and what a model said about the picture #}
+{# No `open` here. Which sections start disclosed is a decision that
+ belongs to whoever is looking, kept across pictures and reloads; a
+ hard-coded `open` overrode that on every walk. #}
+<details class="panel" data-panel="about">
+  <summary>about</summary>
+  <dl>
+    {% if item.when %}
+    <dt>when</dt>
+    <dd data-when data-domain="{{ item.when.domain }}">
+      <time data-epoch="{{ item.when.moment }}" data-domain="{{ item.when.domain }}">{{ item.when.moment }}</time>
+      <a href="/g?{{ item.when.day_qs }}" data-when-day>{{ item.when.local_day }}</a>
+      {% if item.when.conflicts %}
+      <button type="button" class="badge warn" data-panel-open="technical" data-when-conflicts>date disputed</button>
+      {% endif %}
+    </dd>
+    {% else %}
+    <dt>when</dt><dd class="muted" data-when-missing>not interpreted yet — <a href="/operations">run the context job</a></dd>
+    {% endif %}
+
+    {% if item.where %}
+    <dt>where</dt>
+    <dd data-where="{{ item.where.id }}">
+      <a href="/g?{{ item.where.qs }}" data-where-link>{{ item.where.name }}</a>{% if item.where.chain | length > 1 %}, {{ item.where.chain[1:] | join(", ") }}{% endif %}
+    </dd>
+    {% else %}
+    <dt>where</dt><dd class="muted" data-where-missing>nowhere said{% if item.when and item.when.origin == "captured" %} — the camera's coordinates alone name no place{% endif %}</dd>
+    {% endif %}
+
+    {% if item.faces.people %}
+    <dt>who</dt>
+    {#- The correction sits with the name. This is where somebody is
+        already looking at "Hannah" over a picture that is not Hannah,
+        and the whole value of a denial is that it is said once and
+        holds -- so it must not be a page you have to go and find.
+
+        A BUTTON beside the link, never inside it: the name goes to
+        the person, and the × is a different act. -#}
+    <dd data-people>{% for who in item.faces.people %}<span class="person-said" data-person-said="{{ who.slug }}"><a href="{{ who.href }}" data-person="{{ who.slug }}">{{ who.name or who.slug }}</a><button type="button" class="person-deny" data-person-deny="{{ who.slug }}" title="not {{ who.name or who.slug }} — and remember that" aria-label="say this is not {{ who.name or who.slug }}">&times;</button></span>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+    {% endif %}
+
+    {% if item.said %}
+    <dt>said</dt>
+    <dd data-said>
+      {% for a in item.said %}
+      {#- The thumb sits WHERE THE CLAIM IS SHOWN. A review queue is a
+          chore nobody does; this is where somebody is already reading
+          the sentence and already knows whether it is right. One
+          click, no dialog, and clicking the lit one takes it back. -#}
+      <p data-said-kind="{{ a.kind }}"{% if a.offset_ms is not none %} data-said-at="{{ a.offset_ms }}"{% endif %}
+         data-said-model="{{ a.model_id }}" data-said-version="{{ a.model_version }}"
+         {% if a.verdict %}data-said-verdict="{{ a.verdict }}"{% endif %}>{% if a.offset_ms is not none %}<button type="button" class="said-at" data-said-seek="{{ a.offset_ms }}" title="play from this moment">at {{ a.offset_ms // 60000 }}:{{ "%02d" | format((a.offset_ms // 1000) % 60) }}</button> {% endif %}{{ a.text }}<span class="said-verdict" data-said-judge>{% for one, mark, why in [("right", "&#128077;", "right"), ("wrong", "&#128078;", "wrong")] %}<button type="button" class="said-thumb" data-said-verdict-set="{{ one }}" aria-pressed="{{ "true" if a.verdict == one else "false" }}" title="this caption is {{ why }}" aria-label="this caption is {{ why }}">{{ mark|safe }}</button>{% endfor %}</span></p>
+      {% endfor %}
+    </dd>
+    {% endif %}
+  </dl>
+
+  <form class="ask where-form" data-place-form data-slug="{{ item.slug }}">
+    <input name="name" list="places-named" placeholder="where did this happen?" aria-label="place name" value="{{ item.where.name if item.where and item.where.basis == "authored" else "" }}">
+    <select name="kind" aria-label="kind of place">
+      {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if item.where and item.where.kind == k %} selected{% elif not item.where and k == "locality" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+    </select>
+    <input name="within" list="places-named" placeholder="within (optional)" aria-label="within" value="{{ item.where.chain[1] if item.where and item.where.chain | length > 1 else "" }}">
+    <select name="within_kind" aria-label="kind of the place it is within">
+      {% for k in item.place_choices.kinds %}<option value="{{ k }}"{% if k == "country" %} selected{% endif %}>{{ k }}</option>{% endfor %}
+    </select>
+    <button type="submit">say where</button>
+    {% if item.where and item.where.basis == "authored" %}<button type="button" data-place-clear>withdraw</button>{% endif %}
+    <datalist id="places-named">{% for p in item.place_choices.named %}<option value="{{ p.name }}">{{ p.kind }}</option>{% endfor %}</datalist>
+  </form>
+</details>

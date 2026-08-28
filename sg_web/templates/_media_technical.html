@@ -1,0 +1,36 @@
+{# what was read from the bytes, and what has not been looked at #}
+<details class="panel panel-fine" data-panel="technical">
+  <summary>technical</summary>
+  <dl>
+    <dt>metadata</dt>
+    <dd data-read="{{ item.file.read }}">
+      {% if item.file.read == "current" %}read from these bytes
+      {% elif item.file.read == "stale" %}<span class="warn">read from older bytes</span> — <a href="/operations">run the ingest job</a>
+      {% else %}not read yet — <a href="/operations">run the ingest job</a>{% endif %}
+    </dd>
+    {% if item.when %}
+    <dt>date</dt>
+    <dd>
+      {{ item.when.precision }} precision · {{ item.when.domain }} clock{% if item.when.tz_offset_min is not none %} · zone {{ item.when.tz_offset_min }} min{% endif %}<br>
+      {{ item.when.basis }} · certainty {{ item.when.certainty }}{% if item.when.supports %} · supported by {{ item.when.supports | join(", ") }}{% endif %}<br>
+      origin {{ item.when.origin }} · <a href="{{ item.when.timeline }}" data-when-timeline>on the timeline</a>
+      {% if item.when.conflicts %}<br><span class="warn">{{ item.when.conflicts | join("; ") }}</span>{% endif %}
+    </dd>
+    {% endif %}
+    {% if item.where %}
+    <dt>place</dt><dd>{{ item.where.kind }} · {{ "said by a person" if item.where.basis == "authored" else item.where.basis }} · <a href="{{ item.where.timeline }}" data-where-timeline>on the timeline</a></dd>
+    {% endif %}
+    <dt>faces</dt>
+    {% if item.faces.looked %}
+    <dd data-faces-looked>{% for pass in item.faces.looked %}{{ pass.model_id }} found {{ pass.faces }} face{{ "" if pass.faces == 1 else "s" }} <time data-epoch="{{ pass.at }}" data-domain="instant">{{ pass.at }}</time>{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+    {% else %}
+    <dd class="muted" data-faces-missing>nobody has looked for faces in these bytes — <a href="/operations">run the faces job</a></dd>
+    {% endif %}
+    {% if item.said %}
+    <dt>captions</dt>
+    <dd>{% for a in item.said %}<span class="when-evidence">{{ a.kind }} · {{ a.model_id }} @ {{ a.model_version[:12] }}{% if a.confidence is not none %} · confidence {{ a.confidence }}{% endif %}{% if a.stale %} · <span class="warn" data-said-stale>of older bytes</span>{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
+    {% else %}
+    <dt>captions</dt><dd class="muted" data-said-missing>no caption yet — <a href="/operations">run the annotate job</a></dd>
+    {% endif %}
+  </dl>
+</details>
