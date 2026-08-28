@@ -137,6 +137,49 @@ export interface Workspace {
    * the definition above. Also had its own key.
    */
   timelineRow?: number;
+  /**
+   * The board: what this person has put on their canvas, and where.
+   *
+   * Workspace state in the fullest sense, by this module's own
+   * definition. A pin is a deliberate act -- somebody put a question, a
+   * person or a photograph somewhere on purpose, and the whole point is
+   * that it is still there tomorrow. It changes when they change it and
+   * at no other moment.
+   *
+   * NOT server rows, and the distinction is the one at the top of this
+   * file. An album is a collection: it has members, an address, and a
+   * place on a shelf everybody shares. A pin is where YOU chose to keep
+   * a shortcut to one. Storing pins as rows would make one person's
+   * arrangement of their desk into a fact about the library.
+   */
+  board?: Pin[];
+}
+
+/**
+ * One thing kept on the board.
+ *
+ * `kind` says what it stands for and therefore how it opens; `at` is the
+ * question or address it opens, in the application's own spelling, so a
+ * pin is a bookmark to a surface rather than a copy of one. Nothing
+ * about the pictures is stored here -- a pinned query re-answers itself
+ * every time it is looked at, which is what keeps a pin from slowly
+ * becoming a lie as the library changes underneath it.
+ */
+export interface Pin {
+  /** Unique on this board; also the drawing's identity across a redraw. */
+  id: string;
+  kind: "query" | "person" | "album" | "folder" | "picture" | "compare";
+  /** A compare pin only: the two pins it holds against each other. It
+   *  stores their IDS rather than their questions, so moving or renaming
+   *  one is not a second place the question has to be kept right. */
+  against?: [string, string];
+  /** What to call it. The person's own word where they gave one. */
+  name: string;
+  /** The query string or path this pin opens. */
+  at: string;
+  /** Where it sits on the board, in board units. */
+  x: number;
+  y: number;
 }
 
 /**
@@ -185,6 +228,29 @@ export function panelState(name: string): boolean | undefined {
 /** Record one section's disclosure. */
 export function rememberPanel(name: string, open: boolean): void {
   remember({ panels: { ...(workspace().panels ?? {}), [name]: open } });
+}
+
+/** What is on the board, in the order it was put there. */
+export function board(): Pin[] {
+  const held = workspace().board;
+  return Array.isArray(held) ? held : [];
+}
+
+/**
+ * Put something on the board, or move it if it is already there.
+ *
+ * Keyed by `id` rather than appended, because pinning the same question
+ * twice is somebody expecting one card, not two -- and because dragging
+ * a card is the same write as making it.
+ */
+export function pin(one: Pin): void {
+  const held = board().filter((other) => other.id !== one.id);
+  remember({ board: [...held, one] });
+}
+
+/** Take something off the board. */
+export function unpin(id: string): void {
+  remember({ board: board().filter((one) => one.id !== id) });
 }
 
 /** Forget everything. Exposed for a settings surface and for tests. */

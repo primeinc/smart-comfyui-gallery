@@ -1607,6 +1607,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/field": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FieldPage */
+        get: operations["FieldFieldPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/g/field/against": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FieldAgainst */
+        get: operations["GFieldAgainstFieldAgainst"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/g/field/shape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FieldShape */
+        get: operations["GFieldShapeFieldShape"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/g/field/window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** FieldWindow */
+        get: operations["GFieldWindowFieldWindow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/g/options": {
         parameters: {
             query?: never;
@@ -2671,11 +2739,50 @@ export interface components {
             href: string | null;
             error: string | null;
         };
+        /** FieldAgainst */
+        FieldAgainst: {
+            left: number;
+            right: number;
+            both: number;
+            only_left: number;
+            only_right: number;
+            currency: string;
+            shared: components["schemas"]["FieldItem"][];
+            left_only: components["schemas"]["FieldItem"][];
+            right_only: components["schemas"]["FieldItem"][];
+        };
+        /** FieldItem */
+        FieldItem: {
+            slug: string;
+            name: string;
+            thumb: string | null;
+            ar: number;
+            moment: number | null;
+            dated: boolean;
+            copies: number | null;
+        };
+        /** FieldShape */
+        FieldShape: {
+            total: number;
+            dated: number;
+            currency: string;
+            answer: string;
+            stride: number;
+            samples: number[];
+        };
         /** FieldValues */
         FieldValues: {
             param: string;
             options: components["schemas"]["FilterOption"][];
             more: number;
+        };
+        /** FieldWindow */
+        FieldWindow: {
+            currency: string;
+            answer: string;
+            held: number;
+            more: number;
+            items: components["schemas"]["FieldItem"][];
         };
         /** FileFacts */
         FileFacts: {
@@ -3313,6 +3420,9 @@ export interface components {
             width?: number | null;
             height?: number | null;
             copies?: number | null;
+            moment?: number | null;
+            /** @default true */
+            dated: boolean;
         };
         /** RootForgotten */
         RootForgotten: {
@@ -7333,6 +7443,188 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    FieldFieldPage: {
+        parameters: {
+            query?: {
+                folder?: string | null;
+                album?: string | null;
+                person?: string | null;
+                artifact?: string | null;
+                kind?: string | null;
+                favorite?: string | null;
+                rating_min?: number | null;
+                q?: string | null;
+                f?: string[] | null;
+                sort?: string | null;
+                depth?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    GFieldAgainstFieldAgainst: {
+        parameters: {
+            query: {
+                a: string;
+                b: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldAgainst"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    GFieldShapeFieldShape: {
+        parameters: {
+            query?: {
+                folder?: string | null;
+                album?: string | null;
+                person?: string | null;
+                artifact?: string | null;
+                kind?: string | null;
+                favorite?: string | null;
+                rating_min?: number | null;
+                q?: string | null;
+                f?: string[] | null;
+                sort?: string | null;
+                depth?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldShape"];
+                };
+            };
+            /** @description Bad request syntax or unsupported method */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status_code: number;
+                        detail: string;
+                        extra?: null | {
+                            [key: string]: unknown;
+                        } | unknown[];
+                    };
+                };
+            };
+        };
+    };
+    GFieldWindowFieldWindow: {
+        parameters: {
+            query: {
+                after: number;
+                before: number;
+                folder?: string | null;
+                album?: string | null;
+                person?: string | null;
+                artifact?: string | null;
+                kind?: string | null;
+                favorite?: string | null;
+                rating_min?: number | null;
+                q?: string | null;
+                f?: string[] | null;
+                sort?: string | null;
+                depth?: string | null;
+                most?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldWindow"];
                 };
             };
             /** @description Bad request syntax or unsupported method */

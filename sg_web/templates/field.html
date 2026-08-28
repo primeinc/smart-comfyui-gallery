@@ -1,0 +1,152 @@
+{#- The field, as its own surface: one canvas, the whole viewport.
+
+    NOT `base.html`. The shell's rail, header, notice bar and activity
+    fold are the furniture of a page that scrolls, and this one does not
+    scroll -- it is a place you move a camera through. Wrapping a canvas
+    in a page that has a header above it and a pager below it produces a
+    canvas in a box, which is the thing this surface exists to stop
+    being.
+
+    Everything a person needs is here, floating over the picture plane
+    rather than stacked above it. Nothing is server-rendered into the
+    field: it asks for the answer's shape and then for the pictures where
+    the camera is (sg_web/gallery.py `field_shape`, `field_window`), so
+    the markup is the same size for a library of four hundred and one of
+    four hundred thousand.
+
+    A reader without the bundle gets the justified grid at /g, said out
+    loud in the <noscript> rather than left as a blank rectangle. -#}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{ q if q else "The field" }} &middot; Steadfast</title>
+  <link rel="icon" href="/static/favicon.svg?v={{ static_v }}" type="image/svg+xml">
+  <meta name="theme-color" content="#0d0d12">
+  <link rel="stylesheet" href="/static/gallery.css?v={{ static_v }}">
+  <script src="/static/build/app.js?v={{ static_v }}" defer></script>
+</head>
+<body class="field-body">
+  <noscript>
+    <p class="field-noscript">
+      The field is drawn by the browser. <a href="/g{% if qs %}?{{ qs }}{% endif %}">Open this answer as a grid</a>.
+    </p>
+  </noscript>
+
+  <main class="field field-whole" data-field aria-label="the answer as a place">
+    <canvas class="field-board" data-field-canvas></canvas>
+
+    {#- The question, over the picture plane. It is the one control that
+        changes WHAT is here rather than where you are looking. -#}
+    <form class="field-ask" method="get" action="/field" data-field-ask>
+      <a class="field-home" href="/g{% if qs %}?{{ qs }}{% endif %}" title="back to the grid">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" aria-hidden="true">
+          <rect x="2.6" y="2.6" width="18.8" height="18.8" rx="5.6" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M12 5.6v5.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="12" cy="15" r="3.1" fill="var(--accent)"/>
+        </svg>
+      </a>
+      <input type="search" name="q" value="{{ q if q else '' }}"
+             placeholder="search by what it looks like, or a word a caption says" aria-label="search">
+      {%- for one in carried %}<input type="hidden" name="{{ one.name }}" value="{{ one.value }}">{% endfor %}
+    </form>
+
+    <div class="field-tools">
+      {#- Three arrangements, and BOARD is a different kind from the other
+          two. Order and Time arrange the pictures of one answer; the
+          board arranges ANSWERS -- the questions, people and pictures
+          this person keeps. It is the surface you come back to, and the
+          other two are what you see once you are inside one. -#}
+      <span class="seg" role="group" aria-label="how to arrange these">
+        <button type="button" data-field-mode="rank" aria-pressed="true">Order</button>
+        <button type="button" data-field-mode="time" aria-pressed="false">Time</button>
+        <button type="button" data-field-mode="board" aria-pressed="false">Board</button>
+      </span>
+      <button type="button" class="btn-quiet" data-field-fit title="show all of them">Fit</button>
+      {#- Keeping the question, not its answer: the card re-asks it every
+          time it is looked at, so a board cannot slowly fill up with
+          counts that stopped being true. -#}
+      <button type="button" class="btn-quiet" data-field-pin
+              title="keep this question on the board">Pin</button>
+      <span class="field-count" data-field-count hidden></span>
+    </div>
+
+    {#- What is under the pointer, shown rather than named: at these
+        zooms a picture is twenty pixels across and a filename is not
+        something anybody recognises a photograph by. On a touch screen
+        there is no hover, so a press holds it open. -#}
+    <figure class="field-peek" data-field-chip hidden>
+      <img alt="" data-field-peek-image>
+      <figcaption>
+        <b data-field-peek-name></b>
+        <span data-field-peek-when></span>
+      </figcaption>
+    </figure>
+
+    {#- What you are on, once one picture fills the frame. There is no
+        opening step -- zooming in IS opening -- so this is the page it
+        became, and it says how to leave the way you arrived. -#}
+    <aside class="field-sheet" data-field-sheet hidden>
+      <h2 data-field-name></h2>
+      <p data-field-when></p>
+      <a data-field-open href="#">Everything about this one</a>
+      <span class="field-back">zoom out to go back</span>
+    </aside>
+
+    <p class="field-hint">drag to move &middot; scroll to zoom &middot; push into a picture to open it</p>
+  </main>
+
+  {#- The way to everything else. Each of these is a surface that already
+      exists at its own address and serves its own page; a pane FETCHES
+      that address and shows its `<main class="stage">`, so there is no
+      second copy of any of them to drift out of step.
+
+      Every one is a real link. Middle-click or hold a modifier and you
+      get the page, because that is what a link means -- the pane is what
+      a plain click does, not a replacement for the address. -#}
+  <nav class="launcher" aria-label="everything else">
+    <a class="launch" href="/g" data-pane-open="/g" data-pane-mode="dock" data-pane-title="Library">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <rect x="1.8" y="1.8" width="5" height="5" rx="1.2"/><rect x="9.2" y="1.8" width="5" height="5" rx="1.2"/>
+        <rect x="1.8" y="9.2" width="5" height="5" rx="1.2"/><rect x="9.2" y="9.2" width="5" height="5" rx="1.2"/>
+      </svg><span>Library</span></a>
+    <a class="launch" href="/timeline" data-pane-open="/timeline" data-pane-mode="dock" data-pane-title="Timeline">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.2"/><path d="M8 4.4V8l2.6 1.6" stroke-linecap="round"/>
+      </svg><span>Timeline</span></a>
+    <a class="launch" href="/people" data-pane-open="/people" data-pane-mode="overlay" data-pane-title="People">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <circle cx="6" cy="5.6" r="2.6"/><path d="M1.9 13.4a4.3 4.3 0 0 1 8.2 0"/><path d="M10.6 3.4a2.6 2.6 0 0 1 0 4.6"/>
+      </svg><span>People</span></a>
+    <a class="launch" href="/albums" data-pane-open="/albums" data-pane-mode="overlay" data-pane-title="Albums">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <path d="M8 1.9 14.4 5 8 8.1 1.6 5 8 1.9Z" stroke-linejoin="round"/><path d="m1.6 8 6.4 3.1L14.4 8"/>
+      </svg><span>Albums</span></a>
+    <a class="launch" href="/dupes" data-pane-open="/dupes" data-pane-mode="window" data-pane-title="Duplicates">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <rect x="1.9" y="1.9" width="8.4" height="8.4" rx="1.6"/><rect x="5.7" y="5.7" width="8.4" height="8.4" rx="1.6"/>
+      </svg><span>Duplicates</span></a>
+    {#- Settings are not their own page: they are a section of the
+        operations console, and the address says which section. The pane
+        scrolls to it, so "Settings" lands on the settings rather than at
+        the top of a console. All twelve of them are there --
+        tests/test_the_operations_console_is_expert.py holds
+        SETTING_GROUPS against db/settings.py REGISTRY so a new setting
+        cannot ship without a way to reach it. -#}
+    <a class="launch" href="/operations#operations-settings"
+       data-pane-open="/operations#operations-settings" data-pane-mode="overlay" data-pane-title="Settings">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <circle cx="8" cy="8" r="2.3"/>
+        <path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" stroke-linecap="round"/>
+      </svg><span>Settings</span></a>
+    <a class="launch" href="/operations" data-pane-open="/operations" data-pane-mode="dock" data-pane-title="Operations">
+      <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <path d="M2.2 12a6.2 6.2 0 1 1 11.6 0"/><path d="M8 8.6 11 5.8" stroke-linecap="round"/>
+      </svg><span>Operations</span></a>
+  </nav>
+
+  {#- Where panes live. Empty until one is asked for. -#}
+  <div class="panes" data-panes></div>
+</body>
+</html>

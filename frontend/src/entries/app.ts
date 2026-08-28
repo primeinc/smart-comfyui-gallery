@@ -42,7 +42,9 @@ import "../compare-mount";
 import "../pictures-mount";
 import "../spelling-mount";
 
+import { mountField } from "../field";
 import { mountInstall, mountServiceWorker } from "../install";
+import { mountPanes } from "../panes";
 import { mountShortcuts } from "../shortcuts";
 
 // Last, after every import above has claimed its keys: the panel is built
@@ -50,3 +52,8 @@ import { mountShortcuts } from "../shortcuts";
 mountInstall();
 mountServiceWorker();
 mountShortcuts(document);
+// The canvas over the grid. It reveals itself only where the grid it
+// draws is present, so every other surface is untouched.
+mountField(document.body);
+// The older surfaces, brought to the canvas rather than navigated to.
+mountPanes(document.body);

@@ -499,6 +499,372 @@ def grid_fragment(
     return Template(media_type=MediaType.HTML, template_name="_grid.html", context=_grid_context(state, query, page))
 
 
+class FieldShape(Wire):
+    """Where an answer's pictures fall in time, and nothing else.
+
+    THE COARSE LEVEL OF DETAIL. A canvas showing the whole library needs
+    the distribution -- where the bursts are, how long it went quiet --
+    not forty thousand slugs and thumbnail addresses, which would be
+    megabytes to say something that fits in a few kilobytes and which no
+    screen could draw at once anyway.
+
+    So this is the moments themselves, downsampled BY RANK: every nth one
+    from the sorted walk, both ends included. It is the same size on the
+    wire for a library of four hundred and one of four hundred thousand,
+    which is what lets the field draw any answer without a cap on how big
+    an answer it will draw.
+    """
+
+    #: how many members the answer holds
+    total: int
+    #: how many of them carry a time; the rest cannot be placed
+    dated: int
+    #: the library generation this answer was computed at
+    currency: str
+    #: the identity of the ordering itself
+    answer: str
+    #: how many members each sample stands for -- what turns the spacing
+    #: between two samples back into a count
+    stride: int
+    #: epoch seconds, ascending. A wide jump between neighbours IS a
+    #: stretch with nothing in it: the gaps arrive intact rather than
+    #: being averaged away by a bin that straddles them.
+    samples: list[float]
+
+
+class FieldItem(Wire):
+    """One picture, as a thing to PLACE rather than to lay out in a row.
+
+    Deliberately smaller than `ResultItem`: no caption, no uuid, no
+    ordinal, no relevance. A window of these crosses the wire whenever
+    the camera moves, and every field nothing draws with is bytes
+    somebody waits for.
+    """
+
+    slug: str
+    name: str
+    thumb: str | None
+    #: the picture's own proportion, 1 when nothing has measured it
+    ar: float
+    #: where it sits in time, epoch seconds; see ResultItem.moment
+    moment: float | None
+    #: whether `moment` was read from the picture or is the file's mtime
+    dated: bool
+    #: how many near-identical copies its group holds, itself included
+    copies: int | None
+
+
+class FieldWindow(Wire):
+    """The members of an answer that happened between two moments.
+
+    THE FINE LEVEL OF DETAIL, and the reason there is no ceiling on how
+    large an answer this surface draws: a window is what is on screen,
+    and what is on screen is bounded by the screen. Zooming in narrows
+    the window, so looking closely costs LESS, not more.
+    """
+
+    currency: str
+    answer: str
+    #: how many fell inside the window
+    held: int
+    #: how many fell inside and were not named. Never silently dropped:
+    #: a window that quietly returned the first nine hundred of four
+    #: thousand would be lying about what that stretch of time holds.
+    more: int
+    items: list[FieldItem]
+
+
+def _field_items(rows: list[dict]) -> list[FieldItem]:
+    from vision import thumbs
+
+    return [
+        FieldItem(
+            slug=row["slug"],
+            name=row["name"],
+            thumb=thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"]),
+            # The proportion the justified grid already uses, decided
+            # once here rather than measured again in the browser. A
+            # square is the honest fallback for a file nothing has
+            # measured; a collapsed cell is not.
+            ar=(row["width"] / row["height"]) if row.get("width") and row.get("height") else 1.0,
+            moment=row.get("moment"),
+            dated=bool(row.get("dated", True)),
+            copies=row.get("copies"),
+        )
+        for row in rows
+    ]
+
+
+@get("/field", sync_to_thread=True)
+def field_page(
+    state: State,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
+) -> Template:
+    """The field as its own surface: one canvas, the whole viewport.
+
+    A separate route rather than a view of `/g`, because it is a
+    different KIND of page. The gallery is a document -- a header, rows
+    of pictures, a pager -- and it scrolls. This does not scroll: it is a
+    plane a camera moves over, and every control floats on it. Serving
+    that inside the gallery's chrome puts a canvas in a box under a
+    header, which is the shape this exists to stop being.
+
+    Nothing about the answer is rendered here. The page asks for the
+    answer's shape and then for the pictures where the camera is, so the
+    document is the same size whatever the library holds.
+    """
+    query = _asked(
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        None,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
+        depth=depth,
+    )
+    # The clauses to carry through the search box, so asking a new
+    # question here does not silently drop the ones already held.
+    carried = [
+        {"name": name, "value": value}
+        for name, value in (
+            ("folder", folder),
+            ("album", album),
+            ("person", person),
+            ("artifact", artifact),
+            ("kind", kind),
+            ("favorite", favorite),
+            ("rating_min", rating_min),
+            ("sort", sort),
+            ("depth", depth),
+        )
+        if value is not None
+    ] + [{"name": "f", "value": one} for one in (f or [])]
+    return Template(
+        media_type=MediaType.HTML,
+        template_name="field.html",
+        context={"q": q, "qs": resultset.canonical(query), "carried": carried},
+    )
+
+
+class FieldAgainst(Wire):
+    """What two questions have in common, and what only one of them holds.
+
+    Counted over MEMBERSHIPS, under one snapshot, so `both + only_left`
+    is always `left` -- two separate reads could straddle a commit and
+    report a comparison that was never true at any single moment.
+
+    The three small lists are so a surface can SHOW what it is talking
+    about. A difference of six you cannot look at is a number, not an
+    answer, and the whole reason to put two questions beside each other
+    is to see what fell between them.
+    """
+
+    #: how many each answer holds
+    left: int
+    right: int
+    #: how many are in both
+    both: int
+    #: how many only one of them has
+    only_left: int
+    only_right: int
+    #: the library generation both were computed at
+    currency: str
+    #: a few of each, to look at
+    shared: list[FieldItem]
+    left_only: list[FieldItem]
+    right_only: list[FieldItem]
+
+
+def _question(spelled: str) -> resultset.GalleryQuery:
+    """One question, from the query string the gallery itself spells.
+
+    Questions rather than saved ids: a comparison of two saved
+    collections could only ever compare saved collections, and a
+    comparison of two QUESTIONS compares anything this application can
+    answer -- which includes every collection, because a collection is a
+    question here.
+    """
+    import urllib.parse
+
+    held = urllib.parse.parse_qs(spelled)
+
+    def one(name: str) -> str | None:
+        found = held.get(name)
+        return found[0] if found else None
+
+    rating = one("rating_min")
+    return _asked(
+        one("folder"),
+        one("album"),
+        one("kind"),
+        one("q"),
+        one("sort"),
+        None,
+        person=one("person"),
+        artifact=one("artifact"),
+        favorite=one("favorite"),
+        rating_min=int(rating) if rating is not None and rating.isdigit() else None,
+        facets=held.get("f"),
+        depth=one("depth"),
+    )
+
+
+@get("/g/field/against", sync_to_thread=True)
+def field_against(state: State, a: FromQuery[str], b: FromQuery[str]) -> FieldAgainst:
+    """Two questions, compared."""
+    conn = connect.connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            told = resultset.against(conn, weights, _question(a), _question(b), time.time(), actor_id=state.actor_id)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return FieldAgainst(
+        left=told["left"],
+        right=told["right"],
+        both=told["both"],
+        only_left=told["only_left"],
+        only_right=told["only_right"],
+        currency=told["currency"],
+        shared=_field_items(told["shared"]),
+        left_only=_field_items(told["left_only"]),
+        right_only=_field_items(told["right_only"]),
+    )
+
+
+@get("/g/field/shape", sync_to_thread=True)
+def field_shape(
+    state: State,
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
+) -> FieldShape:
+    """The answer's shape in time, at a fixed cost whatever its size.
+
+    `size` and `page` are not parameters. A shape has no pages: it
+    describes the whole answer, and asking for a page of it would be
+    asking for the shape of something else.
+    """
+    query = _asked(
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        None,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
+        depth=depth,
+    )
+    conn = connect.connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            told = resultset.over_time(conn, weights, query, time.time(), actor_id=state.actor_id)
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return FieldShape(
+        total=told["total"],
+        dated=told["dated"],
+        currency=told["currency"],
+        answer=told["answer"],
+        stride=told["stride"],
+        samples=told["samples"],
+    )
+
+
+@get("/g/field/window", sync_to_thread=True)
+def field_window(
+    state: State,
+    after: FromQuery[float],
+    before: FromQuery[float],
+    folder: FromQuery[str | None] = None,
+    album: FromQuery[str | None] = None,
+    person: FromQuery[str | None] = None,
+    artifact: FromQuery[str | None] = None,
+    kind: FromQuery[str | None] = None,
+    favorite: FromQuery[str | None] = None,
+    rating_min: FromQuery[int | None] = None,
+    q: FromQuery[str | None] = None,
+    f: FromQuery[list[str] | None] = None,
+    sort: FromQuery[str | None] = None,
+    depth: FromQuery[str | None] = None,
+    most: FromQuery[int] = resultset.WINDOW_MOST,
+) -> FieldWindow:
+    """The pictures this answer holds between two moments."""
+    query = _asked(
+        folder,
+        album,
+        kind,
+        q,
+        sort,
+        None,
+        person=person,
+        artifact=artifact,
+        favorite=favorite,
+        rating_min=rating_min,
+        facets=f,
+        depth=depth,
+    )
+    conn = connect.connect(state.db_path)
+    try:
+        weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
+        try:
+            told = resultset.window(
+                conn, weights, query, time.time(), after, before, most=most, actor_id=state.actor_id
+            )
+        except LookupError as missing:
+            raise NotFoundException(str(missing)) from missing
+        except ValueError as refused:
+            raise ClientException(str(refused)) from refused
+        conn.commit()
+    finally:
+        connect.close(conn)
+    return FieldWindow(
+        currency=told["currency"],
+        answer=told["answer"],
+        held=told["held"],
+        more=told["more"],
+        items=_field_items(told["items"]),
+    )
+
+
 class FilterOption(Wire):
     """One value a dimension could take, and what it would leave."""
 
@@ -899,6 +1265,22 @@ class ResultItem(Wire):
     #: forty peers. Marked, never collapsed -- the total, the ordinals
     #: and the rail's map are all about MEMBERS.
     copies: int | None = None
+    #: Where this picture sits in time, epoch seconds. The canvas field
+    #: PLACES pictures by it instead of flowing them into rows, so a busy
+    #: afternoon reads as a tower and a quiet month as a gap you can see
+    #: across.
+    #:
+    #: Never absent for a file that exists: the interpretation when the
+    #: context job has made one, the file's own mtime otherwise. Nothing
+    #: in a library has no time -- a file that has not been interpreted
+    #: still arrived on a day -- so there is no undated band and nothing
+    #: is drawn at the epoch.
+    moment: float | None = None
+    #: Whether `moment` is the INTERPRETATION or only the file's mtime.
+    #: False means "this is when the file landed, not when the photograph
+    #: happened", which a surface must be able to say out loud rather
+    #: than presenting a copy date as a capture date.
+    dated: bool = True
 
 
 def result_items(rows: list[dict]) -> list[ResultItem]:
@@ -917,6 +1299,8 @@ def result_items(rows: list[dict]) -> list[ResultItem]:
             width=row.get("width"),
             height=row.get("height"),
             copies=row.get("copies"),
+            moment=row.get("moment"),
+            dated=bool(row.get("dated", True)),
         )
         for row in rows
     ]

@@ -526,12 +526,12 @@
   // src/ask.ts
   var DISMISSED = "";
   var TAKEN = "ok";
-  var framed = (question2, submit, dismiss, said2) => ({
+  var framed = (question2, submit, dismiss, said3) => ({
     question: question2,
-    submit: said2.submit !== void 0 ? said2.submit : submit,
-    dismiss: said2.dismiss !== void 0 ? said2.dismiss : dismiss,
-    ...said2.detail !== void 0 ? { detail: said2.detail } : {},
-    ...said2.grave !== void 0 ? { grave: said2.grave } : {}
+    submit: said3.submit !== void 0 ? said3.submit : submit,
+    dismiss: said3.dismiss !== void 0 ? said3.dismiss : dismiss,
+    ...said3.detail !== void 0 ? { detail: said3.detail } : {},
+    ...said3.grave !== void 0 ? { grave: said3.grave } : {}
   });
   var button = (words, value, kind) => {
     const control = document.createElement("button");
@@ -594,7 +594,7 @@
     return await ask(framed(question2, "yes", "no", framing), () => () => true) === true;
   }
   async function askText(question2, typed = {}) {
-    const said2 = await ask(framed(question2, "save", "cancel", typed), (body) => {
+    const said3 = await ask(framed(question2, "save", "cancel", typed), (body) => {
       const field = document.createElement("input");
       field.type = "text";
       field.className = "ask-field";
@@ -605,7 +605,7 @@
       body.append(field);
       return () => field.value.trim();
     });
-    return said2 ? said2 : null;
+    return said3 ? said3 : null;
   }
   async function askChoice(question2, choices2, framing = {}) {
     if (choices2.length === 0) return null;
@@ -720,10 +720,145 @@
     });
   })();
 
+  // src/diff.ts
+  var MOVED = 8;
+  var SAMPLE = 512;
+  var load = (src) => new Promise((ok, no) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.addEventListener("load", () => ok(img));
+    img.addEventListener("error", () => no(new Error(`could not load ${src}`)));
+    img.src = src;
+  });
+  function drawn(img, w, h) {
+    const board2 = document.createElement("canvas");
+    board2.width = w;
+    board2.height = h;
+    const hand = board2.getContext("2d", { willReadFrequently: true });
+    if (!hand) throw new Error("no 2d context");
+    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+    const dw = img.naturalWidth * scale;
+    const dh = img.naturalHeight * scale;
+    hand.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    return hand.getImageData(0, 0, w, h);
+  }
+  async function difference(a, b) {
+    const [one, two] = await Promise.all([load(a), load(b)]);
+    const ratio = one.naturalWidth / one.naturalHeight;
+    const w = Math.max(1, Math.round(ratio >= 1 ? SAMPLE : SAMPLE * ratio));
+    const h = Math.max(1, Math.round(ratio >= 1 ? SAMPLE / ratio : SAMPLE));
+    const left = drawn(one, w, h);
+    const right = drawn(two, w, h);
+    const heat = new ImageData(w, h);
+    let moved = 0;
+    let worst = 0;
+    let total = 0;
+    const one8 = left.data;
+    const two8 = right.data;
+    for (let i = 0; i < one8.length; i += 4) {
+      const dr = Math.abs((one8[i] ?? 0) - (two8[i] ?? 0));
+      const dg = Math.abs((one8[i + 1] ?? 0) - (two8[i + 1] ?? 0));
+      const db = Math.abs((one8[i + 2] ?? 0) - (two8[i + 2] ?? 0));
+      const delta = Math.max(dr, dg, db);
+      total += delta;
+      if (delta > worst) worst = delta;
+      if (delta < MOVED) continue;
+      moved += 1;
+      const t = Math.min(1, (delta - MOVED) / (255 - MOVED));
+      heat.data[i] = Math.round(183 + (240 - 183) * t);
+      heat.data[i + 1] = Math.round(156 + (145 - 156) * t);
+      heat.data[i + 2] = Math.round(255 + (60 - 255) * t);
+      heat.data[i + 3] = Math.round(90 + 165 * t);
+    }
+    const pixels2 = one8.length / 4;
+    return { moved: moved / pixels2, worst, mean: total / pixels2, heat };
+  }
+  function paint(board2, heat) {
+    board2.width = heat.width;
+    board2.height = heat.height;
+    const hand = board2.getContext("2d");
+    if (!hand) return;
+    hand.putImageData(heat, 0, 0);
+  }
+  function said2(found) {
+    if (found.moved < 5e-4) return "identical to the eye \u2014 nothing moved";
+    const part = found.moved < 0.01 ? `${(found.moved * 100).toFixed(2)}%` : `${Math.round(found.moved * 100)}%`;
+    const how = found.worst > 160 ? "heavily" : found.worst > 60 ? "noticeably" : "slightly";
+    return `${part} of the frame changed, ${how} (worst ${found.worst} of 255)`;
+  }
+
   // src/dupes.ts
   (() => {
     const groups = document.querySelector("[data-dupe-groups]");
     if (!(groups instanceof HTMLElement)) return;
+    groups.addEventListener("click", (event) => {
+      const pick = closestFrom(event.target, "[data-dupe-pick]", HTMLButtonElement);
+      if (!pick) return;
+      const group = pick.closest("[data-dupe-group]");
+      if (!(group instanceof HTMLElement)) return;
+      const shown = group.querySelector("[data-dupe-shown]");
+      const open = group.querySelector("[data-dupe-open]");
+      const title = group.querySelector("[data-dupe-title]");
+      if (shown instanceof HTMLImageElement) {
+        shown.src = requireData(pick, "thumb");
+        shown.alt = requireData(pick, "name");
+      }
+      if (open instanceof HTMLAnchorElement) open.href = requireData(pick, "href");
+      if (title instanceof HTMLElement) title.textContent = requireData(pick, "name");
+      for (const other of group.querySelectorAll("[data-dupe-pick]")) {
+        other.setAttribute("aria-pressed", String(other === pick));
+      }
+      void compare(group, pick);
+    });
+    groups.addEventListener("click", (event) => {
+      const mode = closestFrom(event.target, "[data-dupe-mode]", HTMLButtonElement);
+      if (!mode) return;
+      const group = mode.closest("[data-dupe-group]");
+      if (!(group instanceof HTMLElement)) return;
+      const canvas = group.querySelector("[data-dupe-canvas]");
+      if (!(canvas instanceof HTMLElement)) return;
+      const wanted = requireData(mode, "dupeMode");
+      canvas.dataset.mode = wanted;
+      for (const other of group.querySelectorAll("[data-dupe-mode]")) {
+        other.setAttribute("aria-pressed", String(other === mode));
+      }
+    });
+    async function compare(group, pick) {
+      const canvas = group.querySelector("[data-dupe-canvas]");
+      const heat = group.querySelector("[data-dupe-heat]");
+      const measure = group.querySelector("[data-dupe-measure]");
+      if (!(canvas instanceof HTMLElement) || !(heat instanceof HTMLCanvasElement)) return;
+      if (!(measure instanceof HTMLElement)) return;
+      const readout = group.querySelector("[data-dupe-readout]");
+      const figure = group.querySelector("[data-dupe-figure]");
+      if (!(readout instanceof HTMLElement) || !(figure instanceof HTMLElement)) return;
+      const best = requireData(canvas, "best");
+      const shown = requireData(pick, "thumb");
+      if (shown === best) {
+        canvas.dataset.mode = "photo";
+        canvas.dataset.same = "";
+        readout.hidden = false;
+        figure.textContent = "\u2605";
+        measure.textContent = "the copy every other one is measured against";
+        for (const m of group.querySelectorAll("[data-dupe-mode]")) {
+          m.setAttribute("aria-pressed", String(requireData(m, "dupeMode") === "photo"));
+        }
+        return;
+      }
+      delete canvas.dataset.same;
+      readout.hidden = false;
+      figure.textContent = "\u2026";
+      measure.textContent = "measuring";
+      try {
+        const found = await difference(best, shown);
+        paint(heat, found.heat);
+        figure.textContent = found.moved < 5e-4 ? "0%" : `${(found.moved * 100).toFixed(found.moved < 0.01 ? 2 : 0)}%`;
+        measure.textContent = said2(found);
+      } catch (why) {
+        figure.textContent = "\u2014";
+        measure.textContent = why instanceof Error ? why.message : "could not compare these";
+      }
+    }
     groups.addEventListener("click", async (event) => {
       const button2 = closestFrom(event.target, "[data-not-a-duplicate]", HTMLButtonElement);
       if (!button2) return;
@@ -856,18 +991,18 @@
       function drift() {
         const W = 420;
         const H = 320;
-        const pad3 = 36;
-        const drawn = view.transitions.filter(
+        const pad2 = 36;
+        const drawn2 = view.transitions.filter(
           (t) => t.prompt_cosine !== null && t.visual_cosine !== null
         );
-        const dots = drawn.map((t) => {
-          const x = pad3 + (1 - Math.max(0, t.prompt_cosine)) * (W - 2 * pad3);
-          const y = H - pad3 - (1 - Math.max(0, t.visual_cosine)) * (H - 2 * pad3);
+        const dots = drawn2.map((t) => {
+          const x = pad2 + (1 - Math.max(0, t.prompt_cosine)) * (W - 2 * pad2);
+          const y = H - pad2 - (1 - Math.max(0, t.visual_cosine)) * (H - 2 * pad2);
           return `<circle data-pair="${esc(t.before)}|${esc(t.after)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${t.phase_boundary ? "#fc6" : "#6cf"}"><title>${esc(t.before)} \u2192 ${esc(t.after)}: prompt ${pct(t.prompt_cosine)}, image ${pct(t.visual_cosine)}</title></circle>`;
         }).join("");
-        const missing = view.transitions.length - drawn.length;
+        const missing = view.transitions.length - drawn2.length;
         main.innerHTML = `<div class="drift"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-      <line x1="${pad3}" y1="${H - pad3}" x2="${W - pad3}" y2="${H - pad3}" stroke="#555"/><line x1="${pad3}" y1="${pad3}" x2="${pad3}" y2="${H - pad3}" stroke="#555"/>
+      <line x1="${pad2}" y1="${H - pad2}" x2="${W - pad2}" y2="${H - pad2}" stroke="#555"/><line x1="${pad2}" y1="${pad2}" x2="${pad2}" y2="${H - pad2}" stroke="#555"/>
       <text x="${W / 2}" y="${H - 8}" fill="#aaa" font-size="11" text-anchor="middle">prompt change from previous \u2192</text>
       <text x="12" y="${H / 2}" fill="#aaa" font-size="11" text-anchor="middle" transform="rotate(-90 12 ${H / 2})">image change from previous \u2192</text>
       ${dots}</svg>
@@ -1325,11 +1460,11 @@
       const held2 = new URLSearchParams(window.location.search);
       if (page > 1) held2.set("page", String(page));
       else held2.delete("page");
-      const spelled2 = held2.toString();
+      const spelled3 = held2.toString();
       window.history.replaceState(
         window.history.state,
         "",
-        spelled2 ? `${window.location.pathname}?${spelled2}` : window.location.pathname
+        spelled3 ? `${window.location.pathname}?${spelled3}` : window.location.pathname
       );
     };
     window.addEventListener(
@@ -1402,6 +1537,17 @@
   function rememberPanel(name, open) {
     remember({ panels: { ...workspace().panels ?? {}, [name]: open } });
   }
+  function board() {
+    const held2 = workspace().board;
+    return Array.isArray(held2) ? held2 : [];
+  }
+  function pin(one) {
+    const held2 = board().filter((other) => other.id !== one.id);
+    remember({ board: [...held2, one] });
+  }
+  function unpin(id) {
+    remember({ board: board().filter((one) => one.id !== id) });
+  }
 
   // src/filters.ts
   var NOT_THE_QUESTION = /* @__PURE__ */ new Set(["page"]);
@@ -1412,8 +1558,8 @@
     return held2;
   }
   function go(held2) {
-    const spelled2 = held2.toString();
-    const url = spelled2 ? `${window.location.pathname}?${spelled2}` : window.location.pathname;
+    const spelled3 = held2.toString();
+    const url = spelled3 ? `${window.location.pathname}?${spelled3}` : window.location.pathname;
     let editing = false;
     try {
       editing = sessionStorage.getItem(EDITING) === "1";
@@ -1436,8 +1582,8 @@
       return new Set(value ? [value] : []);
     }
     const found = /* @__PURE__ */ new Set();
-    for (const spelled2 of asked4.getAll("f")) {
-      const parts = spelled2.split(":");
+    for (const spelled3 of asked4.getAll("f")) {
+      const parts = spelled3.split(":");
       if (parts.length >= 3 && parts[0] === key) found.add(parts.slice(2).join(":"));
     }
     return found;
@@ -1449,11 +1595,11 @@
       else asked4.delete(key);
       return asked4;
     }
-    const spelled2 = `${key}:${op}:${value}`;
-    const rest = asked4.getAll("f").filter((one) => one !== spelled2);
+    const spelled3 = `${key}:${op}:${value}`;
+    const rest = asked4.getAll("f").filter((one) => one !== spelled3);
     asked4.delete("f");
     for (const one of rest) asked4.append("f", one);
-    if (on) asked4.append("f", spelled2);
+    if (on) asked4.append("f", spelled3);
     return asked4;
   }
   function toggledExact(key, op, param, value) {
@@ -1500,7 +1646,7 @@
       choice.className = "filter-choice";
       choice.dataset.filterChoice = told.key;
       const all = panelState(`all:${told.key}`) === true;
-      for (const [mode, said2, why] of [
+      for (const [mode, said3, why] of [
         ["any", "any of", `media with any one of these ${told.label}s`],
         ["all", "all of", `media carrying every one of these ${told.label}s`]
       ]) {
@@ -1509,7 +1655,7 @@
         button2.className = "filter-choice-mode";
         button2.dataset.mode = mode;
         button2.title = why;
-        button2.textContent = said2;
+        button2.textContent = said3;
         button2.setAttribute("aria-pressed", String(all === (mode === "all")));
         button2.addEventListener("click", () => {
           rememberPanel(`all:${told.key}`, mode === "all");
@@ -1579,7 +1725,7 @@
     if (kind === "bool") {
       const pair = document.createElement("div");
       pair.className = "filter-choice";
-      for (const [value, said2] of [
+      for (const [value, said3] of [
         ["1", "yes"],
         ["0", "no"]
       ]) {
@@ -1587,8 +1733,8 @@
         button2.type = "button";
         button2.className = "filter-choice-mode";
         button2.dataset.option = value;
-        button2.dataset.label = said2;
-        button2.textContent = said2;
+        button2.dataset.label = said3;
+        button2.textContent = said3;
         const on = now.has(value);
         button2.setAttribute("aria-pressed", String(on));
         button2.addEventListener("click", () => go(onlyClause(key, carried, ops[0] ?? "eq", on ? null : value)));
@@ -1624,22 +1770,22 @@
       if (op !== "gte" && op !== "lte" && op !== "eq") continue;
       const wrap = document.createElement("label");
       wrap.className = "filter-range-field";
-      const said2 = document.createElement("span");
-      said2.textContent = op === "gte" ? "from" : op === "lte" ? "to" : "exactly";
+      const said3 = document.createElement("span");
+      said3.textContent = op === "gte" ? "from" : op === "lte" ? "to" : "exactly";
       const input = document.createElement("input");
       input.type = kind === "date" ? "date" : "number";
       if (kind === "num") input.step = "any";
       input.name = op;
-      input.setAttribute("aria-label", `${key} ${said2.textContent}`);
-      for (const spelled2 of question().getAll("f")) {
-        const parts = spelled2.split(":");
+      input.setAttribute("aria-label", `${key} ${said3.textContent}`);
+      for (const spelled3 of question().getAll("f")) {
+        const parts = spelled3.split(":");
         if (parts[0] === key && parts[1] === op) input.value = parts.slice(2).join(":");
       }
       if (carried === "scope" && op === ops[0]) {
         const value = [...now][0];
         if (value) input.value = value;
       }
-      wrap.append(said2, input);
+      wrap.append(said3, input);
       form.append(wrap);
       fields.push({ op, input });
     }
@@ -1677,19 +1823,19 @@
       const row = document.createElement("label");
       row.className = "filter-range";
       row.dataset.paramOp = op;
-      const said2 = document.createElement("span");
-      said2.textContent = op === "gte" ? "at least" : "at most";
+      const said3 = document.createElement("span");
+      said3.textContent = op === "gte" ? "at least" : "at most";
       const box = document.createElement("input");
       box.type = "number";
       box.step = "any";
-      box.setAttribute("aria-label", `${param} ${said2.textContent}`);
+      box.setAttribute("aria-label", `${param} ${said3.textContent}`);
       const held2 = question().getAll("f").find((one) => one.startsWith(`param.num:${op}:${param}=`));
       if (held2) box.value = held2.slice(held2.lastIndexOf("=") + 1);
       box.addEventListener("change", () => {
         const wanted = box.value.trim();
         go(toggledExact("param.num", op, param, wanted));
       });
-      row.append(said2, box);
+      row.append(said3, box);
       body.append(row);
     }
   }
@@ -1727,10 +1873,10 @@
     }
   }
   async function drawParamValues(body, param, label2) {
-    const said2 = document.createElement("p");
-    said2.className = "filter-note";
-    said2.textContent = `${label2} \u2014 counting\u2026`;
-    body.replaceChildren(said2);
+    const said3 = document.createElement("p");
+    said3.className = "filter-note";
+    said3.textContent = `${label2} \u2014 counting\u2026`;
+    body.replaceChildren(said3);
     body.dataset.state = "counting";
     body.dataset.param = param;
     const asked4 = question();
@@ -1741,8 +1887,8 @@
       if (!answered2.ok) throw new Error(`${answered2.status}`);
       told = await answered2.json();
     } catch {
-      said2.className = "filter-note warn";
-      said2.textContent = `could not count ${label2}`;
+      said3.className = "filter-note warn";
+      said3.textContent = `could not count ${label2}`;
       body.dataset.state = "failed";
       return;
     }
@@ -1845,11 +1991,11 @@
       if (one.key === "param.num") {
         body.replaceChildren();
         body.dataset.param = one.param;
-        const said2 = document.createElement("p");
-        said2.className = "filter-note";
-        said2.dataset.paramSpelling = one.param;
-        said2.textContent = one.param;
-        body.append(said2);
+        const said3 = document.createElement("p");
+        said3.className = "filter-note";
+        said3.dataset.paramSpelling = one.param;
+        said3.textContent = one.param;
+        body.append(said3);
         drawParamRange(body, one.param, one.ops);
         body.dataset.state = "ready";
         return;
@@ -1948,8 +2094,8 @@
     if (close) close.addEventListener("click", () => show(false));
     for (const section of everyElement(drawer, "[data-filter]", HTMLDetailsElement)) {
       const key = section.dataset.filter ?? "";
-      const said2 = panelState(`filter:${key}`);
-      if (said2) section.open = true;
+      const said3 = panelState(`filter:${key}`);
+      if (said3) section.open = true;
       section.addEventListener("toggle", () => {
         rememberPanel(`filter:${key}`, section.open);
         if (section.open && !section.dataset.filled) {
@@ -2172,7 +2318,7 @@
       return size.width * look.scale > box.width + 1 || size.height * look.scale > box.height + 1;
     };
     const zoomedIn = () => look.scale > 1 || canPan();
-    const paint = () => {
+    const paint2 = () => {
       if (!media) return;
       media.style.transform = `translate(${look.x}px, ${look.y}px) scale(${look.scale})`;
       stageBox.dataset.framing = look.framing;
@@ -2195,27 +2341,27 @@
         promoted = false;
       });
     };
-    const clamp = (scale) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+    const clamp2 = (scale) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
     const frame = (framing) => {
       if (!still) return;
       const box = stageBox.getBoundingClientRect();
       const size = fitted();
       const scale = framing === "fit" ? 1 : framing === "fill" ? fillScale(size, box) : still.source ? actualScale(still.source, size) : 1;
-      look = { framing, scale: clamp(scale), x: 0, y: 0 };
-      paint();
+      look = { framing, scale: clamp2(scale), x: 0, y: 0 };
+      paint2();
       promote();
     };
     const zoomAbout = (factor, clientX, clientY) => {
       if (!still) return;
       const box = stageBox.getBoundingClientRect();
-      const next = clamp(look.scale * factor);
+      const next = clamp2(look.scale * factor);
       if (next === look.scale) return;
       const px = clientX - (box.left + box.width / 2);
       const py = clientY - (box.top + box.height / 2);
       const ratio = next / look.scale;
       const held2 = tethered(px - (px - look.x) * ratio, py - (py - look.y) * ratio, next);
       look = { framing: "free", scale: next, ...held2 };
-      paint();
+      paint2();
       promote();
     };
     const resettle = () => {
@@ -2225,7 +2371,7 @@
         return;
       }
       look = { ...look, ...tethered(look.x, look.y, look.scale) };
-      paint();
+      paint2();
     };
     const watching = new ResizeObserver(() => resettle());
     watching.observe(stageBox);
@@ -2289,12 +2435,12 @@
         const walking = event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && walksOnWheel();
         if (!plain && !walking) return;
         event.preventDefault();
-        const pixels = (delta) => event.deltaMode === 0 ? delta : delta * 16;
+        const pixels2 = (delta) => event.deltaMode === 0 ? delta : delta * 16;
         if (walking) {
-          stepped(pixels(event.deltaY || event.deltaX));
+          stepped(pixels2(event.deltaY || event.deltaX));
           return;
         }
-        zoomAbout(Math.exp(-pixels(event.deltaY) / 400), event.clientX, event.clientY);
+        zoomAbout(Math.exp(-pixels2(event.deltaY) / 400), event.clientX, event.clientY);
       },
       // not passive: the page must not scroll out from under a zoom
       { passive: false }
@@ -2317,7 +2463,7 @@
         if (dragging !== event.pointerId) return;
         const held2 = tethered(from.ox + (event.clientX - from.x), from.oy + (event.clientY - from.y), look.scale);
         look = { framing: "free", scale: look.scale, ...held2 };
-        paint();
+        paint2();
       });
       const release = (event) => {
         if (dragging !== event.pointerId) return;
@@ -2452,8 +2598,8 @@
       showInspector(kept2.inspector ? kept2.inspector === "open" : false, false);
       for (const section of everyElement(inspector, "[data-panel]", HTMLDetailsElement)) {
         const named = section.dataset.panel ?? "";
-        const said2 = panelState(named);
-        section.open = said2 ?? (generated ? named === "creation" : named === "about");
+        const said3 = panelState(named);
+        section.open = said3 ?? (generated ? named === "creation" : named === "about");
         onElement(section, "toggle", () => rememberPanel(named, section.open));
       }
     }
@@ -2461,7 +2607,7 @@
     root.dataset.inspector = root.dataset.inspector ?? "closed";
     root.dataset.chrome = "visible";
     stageBox.dataset.quality = "preview";
-    paint();
+    paint2();
     wake();
     return {
       /**
@@ -2502,8 +2648,8 @@
   }
 
   // src/gallery.ts
-  var asked = (spelled2, take) => {
-    const question2 = new URLSearchParams(spelled2);
+  var asked = (spelled3, take) => {
+    const question2 = new URLSearchParams(spelled3);
     const one = (name) => question2.get(name);
     const counted2 = (name) => {
       const held2 = question2.get(name);
@@ -2554,8 +2700,8 @@
       question2.delete("size");
       return question2.toString();
     };
-    const cutoff = (spelled2) => {
-      if (!new URLSearchParams(spelled2).get("q")) return null;
+    const cutoff = (spelled3) => {
+      if (!new URLSearchParams(spelled3).get("q")) return null;
       const mounted2 = grid();
       const total = mounted2 ? Number(requireData(mounted2, "total")) : Number.NaN;
       return Number.isFinite(total) && total > 0 ? total : 1;
@@ -2594,15 +2740,15 @@
     }
     const saver = findElement(document, "[data-save-smart]", HTMLElement);
     saver?.addEventListener("click", async () => {
-      const spelled2 = spelling();
+      const spelled3 = spelling();
       const name = await askText("name this smart collection", {
         detail: "the question you are looking at becomes its rule, and its members follow the library",
         placeholder: "portraits from June",
         label: "collection name"
       });
       if (name === null) return;
-      const take = cutoff(spelled2);
-      const { data, error } = await api.POST("/albums/smart", { body: { name, ...asked(spelled2, take) } });
+      const take = cutoff(spelled3);
+      const { data, error } = await api.POST("/albums/smart", { body: { name, ...asked(spelled3, take) } });
       if (!data) {
         await say(refusal(error, "the view could not be saved"));
         return;
@@ -2633,11 +2779,11 @@
         await say(`no collection at /t/${named}`);
         return;
       }
-      const spelled2 = spelling();
-      const take = cutoff(spelled2);
+      const spelled3 = spelling();
+      const take = cutoff(spelled3);
       const { data, error } = await api.PUT("/t/{slug}/rule", {
         params: { path: { slug: named } },
-        body: { expected_rev: current2.data.definition_rev, ...asked(spelled2, take) }
+        body: { expected_rev: current2.data.definition_rev, ...asked(spelled3, take) }
       });
       if (!data) {
         await say(refusal(error, "the rule could not be replaced"));
@@ -2721,12 +2867,12 @@
       popGrid.replaceChildren(
         ...told.items.map((item) => {
           if (!item.thumb) {
-            const said2 = document.createElement("span");
-            said2.className = "cell-kind";
-            said2.dataset.cellKind = item.kind;
-            said2.textContent = item.kind === "audio" ? "audio" : "doc";
-            said2.title = item.name;
-            return said2;
+            const said3 = document.createElement("span");
+            said3.className = "cell-kind";
+            said3.dataset.cellKind = item.kind;
+            said3.textContent = item.kind === "audio" ? "audio" : "doc";
+            said3.title = item.name;
+            return said3;
           }
           const img = new Image();
           img.src = item.thumb;
@@ -2920,7 +3066,6 @@
   })();
 
   // src/media.ts
-  var pad = (n) => String(n).padStart(2, "0");
   var asPlaceKind = (held2) => {
     const known = ["country", "region", "island", "county", "city", "locality", "neighborhood", "poi"];
     const found = known.find((one) => one === held2);
@@ -2928,11 +3073,6 @@
     return found;
   };
   (() => {
-    for (const node of everyElement(document, "time[data-epoch]", HTMLTimeElement)) {
-      const d = new Date(Number(requireData(node, "epoch")) * 1e3);
-      const z = node.dataset.domain === "instant" ? "Z" : " wall";
-      node.textContent = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}${z}`;
-    }
     const video = findElement(document, "video", HTMLVideoElement);
     for (const at of everyElement(document, "[data-said-seek]", HTMLElement)) {
       at.addEventListener("click", () => {
@@ -3106,7 +3246,7 @@
     const here = findElement(document, "[data-console]", HTMLElement);
     if (!here) return;
     const root = here;
-    const ROW_H = 24;
+    const ROW_H2 = 24;
     const OVERSCAN = 12;
     const TAPE_COLD = 500;
     const TAPE_PAGE = 2e3;
@@ -3143,16 +3283,16 @@
     const pauseBtn = requireElement(root, "[data-tape-pause]", HTMLButtonElement);
     const follow = requireElement(root, "[data-tape-autoscroll]", HTMLInputElement);
     const jobFilter = requireElement(root, "[data-tape-filter-job]", HTMLInputElement);
-    const pad3 = (n, w = 2) => String(n).padStart(w, "0");
+    const pad2 = (n, w = 2) => String(n).padStart(w, "0");
     function clock(epoch) {
       const d = new Date(epoch * 1e3);
-      return `${pad3(d.getHours())}:${pad3(d.getMinutes())}:${pad3(d.getSeconds())}.${pad3(d.getMilliseconds(), 3)}`;
+      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad2(d.getMilliseconds(), 3)}`;
     }
     function seconds(v) {
       if (v == null) return "\u2014";
       if (v < 60) return `${v.toFixed(1)}s`;
-      if (v < 3600) return `${Math.floor(v / 60)}m ${pad3(Math.floor(v % 60))}s`;
-      return `${Math.floor(v / 3600)}h ${pad3(Math.floor(v % 3600 / 60))}m`;
+      if (v < 3600) return `${Math.floor(v / 60)}m ${pad2(Math.floor(v % 60))}s`;
+      return `${Math.floor(v / 3600)}h ${pad2(Math.floor(v % 3600 / 60))}m`;
     }
     function el(tag, attrs, text) {
       const node = document.createElement(tag);
@@ -3233,14 +3373,14 @@
       li.addEventListener("click", () => select(e));
       return li;
     }
-    function paint() {
+    function paint2() {
       if (paused) return;
       const total = view.length;
-      spacer.style.height = `${total * ROW_H}px`;
+      spacer.style.height = `${total * ROW_H2}px`;
       const top = scroller.scrollTop;
-      const first = Math.max(0, Math.floor(top / ROW_H) - OVERSCAN);
-      const last = Math.min(total, Math.ceil((top + scroller.clientHeight) / ROW_H) + OVERSCAN);
-      rows.style.transform = `translateY(${first * ROW_H}px)`;
+      const first = Math.max(0, Math.floor(top / ROW_H2) - OVERSCAN);
+      const last = Math.min(total, Math.ceil((top + scroller.clientHeight) / ROW_H2) + OVERSCAN);
+      rows.style.transform = `translateY(${first * ROW_H2}px)`;
       rows.textContent = "";
       const headId = held2.at(-1)?.id;
       let previous = first > 0 ? view[first - 1] : void 0;
@@ -3262,7 +3402,7 @@
     function repaint(scrollToEnd) {
       rebuildView();
       if (paused) return;
-      paint();
+      paint2();
       if (scrollToEnd && follow.checked) scroller.scrollTop = scroller.scrollHeight;
     }
     function select(e) {
@@ -3274,10 +3414,10 @@
       }
     }
     scroller.addEventListener("scroll", () => {
-      if (!paused) paint();
+      if (!paused) paint2();
     });
     window.addEventListener("resize", () => {
-      if (!paused) paint();
+      if (!paused) paint2();
     });
     pauseBtn.addEventListener("click", () => {
       paused = !paused;
@@ -3491,10 +3631,10 @@
       }
     }
     inspectorBody.addEventListener("click", (ev) => {
-      const load = closestFrom(ev.target, "[data-items-load], [data-items-more]", HTMLAnchorElement);
-      if (load) {
+      const load2 = closestFrom(ev.target, "[data-items-load], [data-items-more]", HTMLAnchorElement);
+      if (load2) {
         ev.preventDefault();
-        void loadItems(load);
+        void loadItems(load2);
         return;
       }
       const tapeFilter = closestFrom(ev.target, "[data-tape-job-filter]", HTMLElement);
@@ -3537,7 +3677,7 @@
       for (const node of everyElement(inspectorBody, "time[data-epoch]", HTMLTimeElement)) {
         const epoch = Number(requireData(node, "epoch"));
         const d = new Date(epoch * 1e3);
-        node.textContent = `${d.getFullYear()}-${pad3(d.getMonth() + 1)}-${pad3(d.getDate())} ${clock(epoch)}`;
+        node.textContent = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${clock(epoch)}`;
         node.title = `epoch ${epoch}`;
       }
       inspectorHint.textContent = `job #${job} \xB7 refreshed ${clock(Date.now() / 1e3)}`;
@@ -3675,11 +3815,18 @@
   })();
 
   // src/spelling.ts
-  var pad2 = (n) => String(n).padStart(2, "0");
+  var pad = (n) => String(n).padStart(2, "0");
   function spellDays(root) {
     for (const node of everyElement(root, "time[data-epoch]:not([data-spelled])", HTMLTimeElement)) {
       const d = new Date(Number(requireData(node, "epoch")) * 1e3);
-      node.textContent = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+      const day = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+      const domain = node.dataset.domain;
+      if (domain === "instant" || domain === "wall") {
+        const clock = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+        node.textContent = domain === "instant" ? `${day} ${clock}Z` : `${day} ${clock} wall`;
+      } else {
+        node.textContent = day;
+      }
       node.dataset.spelled = "";
     }
   }
@@ -3969,9 +4116,9 @@
       if (!held2.length) return start + x / W * (end - start);
       for (const one of held2) {
         if (x < one.x1) {
-          const drawn = one.x1 - one.x0;
-          if (drawn <= 0) return one.t0;
-          return one.t0 + (x - one.x0) / drawn * (one.t1 - one.t0);
+          const drawn2 = one.x1 - one.x0;
+          if (drawn2 <= 0) return one.t0;
+          return one.t0 + (x - one.x0) / drawn2 * (one.t1 - one.t0);
         }
       }
       return end;
@@ -5071,8 +5218,8 @@
     sheet.setAttribute("aria-label", "comparing");
     const bar = document.createElement("header");
     bar.className = "compare-view-bar";
-    const said2 = document.createElement("span");
-    said2.className = "compare-view-said";
+    const said3 = document.createElement("span");
+    said3.className = "compare-view-said";
     const zoom = document.createElement("button");
     zoom.type = "button";
     zoom.className = "compare-zoom";
@@ -5090,7 +5237,7 @@
     modes.className = "compare-modes";
     modes.setAttribute("role", "group");
     modes.setAttribute("aria-label", "how to compare");
-    bar.append(said2, modes, zoom, close);
+    bar.append(said3, modes, zoom, close);
     const strip2 = document.createElement("div");
     strip2.className = "compare-view-strip";
     for (const [at2, one] of held2.entries()) {
@@ -5128,15 +5275,15 @@
       zoom.textContent = glass.scale === 1 ? "fit" : `${Math.round(glass.scale * 100)}%`;
       zoom.setAttribute("aria-label", glass.scale === 1 ? "fit" : `zoomed to ${Math.round(glass.scale * 100)}%`);
     };
-    const clamp = (n) => Math.min(1, Math.max(0, n));
+    const clamp2 = (n) => Math.min(1, Math.max(0, n));
     const zoomTo = (scale, x, y) => {
       glass.scale = Math.min(TRAY_MAX_SCALE, Math.max(1, scale));
       if (glass.scale === 1) {
         glass.x = 0.5;
         glass.y = 0.5;
       } else {
-        glass.x = clamp(x);
-        glass.y = clamp(y);
+        glass.x = clamp2(x);
+        glass.y = clamp2(y);
       }
       magnify();
     };
@@ -5166,8 +5313,8 @@
     strip2.addEventListener("pointermove", (event) => {
       if (!dragging) return;
       const box = dragging.frame.getBoundingClientRect();
-      glass.x = clamp(glass.x - (event.clientX - dragging.x) / box.width / glass.scale);
-      glass.y = clamp(glass.y - (event.clientY - dragging.y) / box.height / glass.scale);
+      glass.x = clamp2(glass.x - (event.clientX - dragging.x) / box.width / glass.scale);
+      glass.y = clamp2(glass.y - (event.clientY - dragging.y) / box.height / glass.scale);
       dragging = { ...dragging, x: event.clientX, y: event.clientY };
       magnify();
     });
@@ -5180,7 +5327,7 @@
     let mode = workspace().compareMode === "flip" ? "flip" : "side";
     let at = 0;
     const columns = () => everyElement(strip2, "[data-compare-column]", HTMLElement);
-    const paint = () => {
+    const paint2 = () => {
       sheet.dataset.mode = mode;
       const all = columns();
       at = (at % all.length + all.length) % all.length;
@@ -5189,7 +5336,7 @@
         column.dataset.showing = String(mode === "side" || index === at);
       }
       const one = held2[at];
-      said2.textContent = mode === "side" ? `${held2.length} side by side` : `${letter(at)} of ${held2.length} \xB7 ${one ? one.name : ""}`;
+      said3.textContent = mode === "side" ? `${held2.length} side by side` : `${letter(at)} of ${held2.length} \xB7 ${one ? one.name : ""}`;
       for (const button2 of everyElement(modes, "[data-compare-mode]", HTMLElement)) {
         button2.setAttribute("aria-pressed", String(button2.dataset.compareMode === mode));
       }
@@ -5207,7 +5354,7 @@
       button2.addEventListener("click", () => {
         mode = name;
         remember({ compareMode: name });
-        paint();
+        paint2();
       });
       modes.append(button2);
     }
@@ -5217,9 +5364,9 @@
         mode = "flip";
         remember({ compareMode: "flip" });
       }
-      paint();
+      paint2();
     };
-    paint();
+    paint2();
     const dismiss = () => sheet.remove();
     close.addEventListener("click", dismiss);
     sheet.addEventListener("click", (event) => {
@@ -5373,13 +5520,13 @@
 
   // src/pictures.ts
   function label(kind) {
-    const said2 = document.createElement("span");
-    said2.className = "cell-kind";
-    said2.dataset.cellKind = kind ?? "";
-    said2.dataset.brokenPicture = "";
-    said2.setAttribute("aria-hidden", "true");
-    said2.textContent = kind === "audio" ? "audio" : "doc";
-    return said2;
+    const said3 = document.createElement("span");
+    said3.className = "cell-kind";
+    said3.dataset.cellKind = kind ?? "";
+    said3.dataset.brokenPicture = "";
+    said3.setAttribute("aria-hidden", "true");
+    said3.textContent = kind === "audio" ? "audio" : "doc";
+    return said3;
   }
   function degrade(broken) {
     const src = broken.getAttribute("src") ?? "";
@@ -5411,6 +5558,1231 @@
   // src/spelling-mount.ts
   spellDays(document);
   new MutationObserver(() => spellDays(document)).observe(document.body, { childList: true, subtree: true });
+
+  // src/field.ts
+  var TINY = 26;
+  var PAGE_COVER = 0.62;
+  var IN_FLIGHT = 6;
+  var TIME_H = 132;
+  var TIME_W0 = 3200;
+  var TOP_INSET = 62;
+  var ROW_H = 260;
+  var GAP = 8;
+  var VOID_W = 190;
+  var CARD_W = 300;
+  var CARD_H = 186;
+  var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  var easeOut = (t) => 1 - (1 - t) ** 3;
+  var lerp = (a, b, t) => a + (b - a) * t;
+  var lerpBox = (a, b, t) => ({
+    x: lerp(a.x, b.x, t),
+    y: lerp(a.y, b.y, t),
+    w: lerp(a.w, b.w, t),
+    h: lerp(a.h, b.h, t)
+  });
+  function seeded(slug) {
+    let h = 0;
+    for (let i = 0; i < slug.length; i++) h = h * 31 + slug.charCodeAt(i) | 0;
+    return `hsl(${Math.abs(h) % 360} 14% 22%)`;
+  }
+  function token(root, name) {
+    return getComputedStyle(root).getPropertyValue(name).trim() || "#888";
+  }
+  function averaged(img) {
+    try {
+      const board2 = document.createElement("canvas");
+      board2.width = 1;
+      board2.height = 1;
+      const hand = board2.getContext("2d", { willReadFrequently: true });
+      if (!hand) return null;
+      hand.drawImage(img, 0, 0, 1, 1);
+      const [r, g, b] = hand.getImageData(0, 0, 1, 1).data;
+      return `rgb(${r ?? 0} ${g ?? 0} ${b ?? 0})`;
+    } catch {
+      return null;
+    }
+  }
+  function pixels(event) {
+    if (event.deltaMode === 1) return event.deltaY * 16;
+    if (event.deltaMode === 2) return event.deltaY * window.innerHeight;
+    return event.deltaY;
+  }
+  function spelled2(at, span) {
+    const d = new Date(at * 1e3);
+    if (span > 86400 * 365 * 4) return String(d.getFullYear());
+    if (span > 86400 * 120) return d.toLocaleDateString(void 0, { month: "short", year: "numeric" });
+    if (span > 86400 * 3) return d.toLocaleDateString(void 0, { day: "numeric", month: "short" });
+    return d.toLocaleTimeString(void 0, { hour: "2-digit", minute: "2-digit" });
+  }
+  function mountField(root) {
+    const found = findElement(root, "[data-field]", HTMLElement);
+    const surface = findElement(root, "[data-field-canvas]", HTMLCanvasElement);
+    const held2 = findElement(root, "[data-cells]", HTMLElement);
+    if (!found || !surface) return;
+    const context = surface.getContext("2d");
+    if (!context) return;
+    const stage = found;
+    const board2 = surface;
+    const cells = held2;
+    const hand = context;
+    const chip = findElement(stage, "[data-field-chip]", HTMLElement);
+    const sheet = findElement(stage, "[data-field-sheet]", HTMLElement);
+    const sheetName = findElement(stage, "[data-field-name]", HTMLElement);
+    const sheetWhen = findElement(stage, "[data-field-when]", HTMLElement);
+    const sheetOpen = findElement(stage, "[data-field-open]", HTMLAnchorElement);
+    const clock = findElement(stage, "[data-field-clock]", HTMLElement);
+    const count = findElement(stage, "[data-field-count]", HTMLElement);
+    let nodes = [];
+    let mode = "rank";
+    let cards = [];
+    let cam = { x: 0, y: 0, k: 0.2 };
+    let bounds = { x: 0, y: 0, w: 1e3, h: 1e3 };
+    let hovering = null;
+    let page = null;
+    let width = 0;
+    let height = 0;
+    let runs = [];
+    let morphAt = 0;
+    const MORPH = 620;
+    let flight = null;
+    let drawing = false;
+    let loading = 0;
+    let whole = false;
+    let total = 0;
+    let span = [0, 0];
+    let samples = [];
+    let stride = 1;
+    let covering = null;
+    let cut = false;
+    let asking = false;
+    let asked4 = 0;
+    let settled = false;
+    function made(key, slug, name, kind, thumb, ar, moment, dated, copies) {
+      return {
+        key,
+        slug,
+        name,
+        kind,
+        thumb,
+        ar,
+        moment,
+        dated,
+        copies,
+        rank: { x: 0, y: 0, w: 0, h: 0 },
+        time: { x: 0, y: 0, w: 0, h: 0 },
+        box: { x: 0, y: 0, w: 0, h: 0 },
+        from: { x: 0, y: 0, w: 0, h: 0 },
+        tint: seeded(slug),
+        img: null,
+        full: null,
+        state: "cold"
+      };
+    }
+    function question2() {
+      const asked5 = new URLSearchParams(window.location.search);
+      for (const drop of ["page", "size", "view"]) asked5.delete(drop);
+      return asked5;
+    }
+    async function fetchAnswer() {
+      const asked5 = question2();
+      try {
+        const outline = await fetch(`/g/field/shape?${asked5}`, { headers: { accept: "application/json" } });
+        if (!outline.ok) return;
+        const shape = await outline.json();
+        const stamps = shape.samples;
+        if (!Array.isArray(stamps) || stamps.length < 1) return;
+        span = [stamps[0] ?? 0, stamps[stamps.length - 1] ?? 0];
+        total = shape.total ?? 0;
+        samples = stamps;
+        stride = Math.max(1, shape.stride ?? 1);
+        await fetchWindow(span[0], span[1]);
+      } catch {
+      }
+    }
+    async function fetchWindow(after, before) {
+      if (asking) return;
+      asking = true;
+      const mine = ++asked4;
+      try {
+        const wanted = new URLSearchParams(question2());
+        wanted.set("after", String(after));
+        wanted.set("before", String(before));
+        const answer = await fetch(`/g/field/window?${wanted}`, { headers: { accept: "application/json" } });
+        if (!answer.ok || mine !== asked4) return;
+        const told = await answer.json();
+        if (!told || typeof told !== "object") return;
+        const held3 = told;
+        if (!Array.isArray(held3.items) || !held3.items.length) return;
+        nodes = held3.items.map((raw) => {
+          const one = raw;
+          const slug = one.slug ?? "";
+          return made(
+            slug,
+            slug,
+            one.name ?? slug,
+            "image",
+            one.thumb ?? null,
+            one.ar && Number.isFinite(one.ar) ? one.ar : 1,
+            typeof one.moment === "number" && Number.isFinite(one.moment) ? one.moment : null,
+            one.dated !== false,
+            one.copies ?? 1
+          );
+        });
+        whole = true;
+        covering = [after, before];
+        cut = (held3.more ?? 0) > 0;
+        if (count) {
+          count.textContent = cut ? `${nodes.length.toLocaleString()} of the ${(held3.held ?? 0).toLocaleString()} here \u2014 zoom in for the rest` : `${nodes.length.toLocaleString()} of ${total.toLocaleString()}`;
+          count.hidden = false;
+        }
+        const first = !settled;
+        settled = true;
+        layout();
+        for (const n of nodes) {
+          n.box = mode === "time" ? { ...n.time } : { ...n.rank };
+          n.from = { ...n.box };
+        }
+        if (first) {
+          resize();
+          fit2(false);
+        } else draw4();
+      } catch {
+      } finally {
+        asking = false;
+      }
+    }
+    function ingest() {
+      if (whole || !cells) return;
+      const seen = new Map(nodes.map((n) => [n.key, n]));
+      const held3 = [];
+      for (const shell2 of cells.querySelectorAll("[data-selection-key]")) {
+        if (!(shell2 instanceof HTMLElement)) continue;
+        const key = shell2.dataset.selectionKey;
+        if (!key) continue;
+        const kept2 = seen.get(key);
+        if (kept2) {
+          held3.push(kept2);
+          continue;
+        }
+        const link = shell2.querySelector("[data-slug]");
+        if (!(link instanceof HTMLElement)) continue;
+        const slug = link.dataset.slug ?? "";
+        const picture = shell2.querySelector("img");
+        const raw = shell2.dataset.moment;
+        const moment = raw ? Number(raw) : null;
+        held3.push(
+          made(
+            key,
+            slug,
+            shell2.querySelector(".cell-name")?.textContent?.trim() ?? slug,
+            link.dataset.kind ?? "image",
+            picture instanceof HTMLImageElement ? picture.src : null,
+            // `--ar` is what the server already computed for the justified
+            // grid: the picture's own proportion, or 1 for a file nothing
+            // has measured. Reading it keeps one answer to that question.
+            Number(getComputedStyle(shell2).getPropertyValue("--ar")) || 1,
+            moment !== null && Number.isFinite(moment) ? moment : null,
+            shell2.dataset.dated !== "file",
+            Number(shell2.querySelector(".cell-copies")?.textContent ?? "1") || 1
+          )
+        );
+      }
+      const grew = held3.length !== nodes.length;
+      nodes = held3;
+      layout();
+      if (grew) {
+        for (const n of nodes) {
+          n.box = mode === "time" ? { ...n.time } : { ...n.rank };
+          n.from = { ...n.box };
+        }
+      }
+    }
+    function layoutRanked() {
+      const area = nodes.reduce((sum, n) => sum + ROW_H * ROW_H * n.ar, 0);
+      const shape = Math.max(0.5, width / Math.max(1, height - TOP_INSET));
+      const wide = clamp(Math.sqrt(area * shape), ROW_H * 3, ROW_H * 40);
+      let x = 0;
+      let y = 0;
+      let row = [];
+      const flush = (last) => {
+        if (!row.length) return;
+        const used = row.reduce((sum, n) => sum + ROW_H * n.ar, 0);
+        const gaps = GAP * (row.length - 1);
+        const scale = last ? 1 : (wide - gaps) / used;
+        const h = ROW_H * scale;
+        let at2 = 0;
+        for (const n of row) {
+          const w = h * n.ar;
+          n.rank = { x: at2, y, w, h };
+          at2 += w + GAP;
+        }
+        y += h + GAP;
+        row = [];
+        x = 0;
+      };
+      for (const n of nodes) {
+        const w = ROW_H * n.ar;
+        if (x > 0 && x + w > wide) flush(false);
+        row.push(n);
+        x += w + GAP;
+      }
+      flush(true);
+    }
+    function layoutTime() {
+      const placed = nodes.filter((n) => n.moment !== null);
+      if (!placed.length) {
+        for (const n of nodes) n.time = { ...n.rank };
+        return;
+      }
+      const first = Math.min(...placed.map((n) => n.moment ?? 0));
+      const sorted = [...nodes].sort((a, b) => (a.moment ?? first) - (b.moment ?? first));
+      runs = samples.length > 1 ? axisOf(samples, stride) : axisOf(
+        sorted.map((n) => n.moment ?? first),
+        1
+      );
+      const lanes = [];
+      let r = 0;
+      sorted.forEach((n) => {
+        const t = n.moment ?? first;
+        while (r < runs.length - 1 && t > (runs[r]?.t1 ?? 0)) r += 1;
+        const run = runs[r];
+        const w = TIME_H * n.ar;
+        const x = run ? placed_at(run, t) : 0;
+        let lane = lanes.findIndex((edge) => x >= edge);
+        if (lane === -1) {
+          lane = lanes.length;
+          lanes.push(0);
+        }
+        lanes[lane] = x + w + GAP;
+        n.time = { x, y: -lane * (TIME_H + GAP), w, h: TIME_H };
+      });
+    }
+    function placed_at(run, t) {
+      const width2 = run.x1 - run.x0;
+      const marks = run.at;
+      if (marks.length < 2) return run.x0 + width2 / 2;
+      let lo = 0;
+      let hi = marks.length - 1;
+      while (lo < hi) {
+        const mid = lo + hi >> 1;
+        if ((marks[mid] ?? 0) < t) lo = mid + 1;
+        else hi = mid;
+      }
+      const before = marks[Math.max(0, lo - 1)] ?? t;
+      const after = marks[lo] ?? t;
+      const inner = after > before ? clamp((t - before) / (after - before), 0, 1) : 0;
+      return run.x0 + (Math.max(0, lo - 1) + inner) / (marks.length - 1) * width2;
+    }
+    function axisOf(times, weight) {
+      if (times.length < 2) return [];
+      const steps = [];
+      for (let i = 1; i < times.length; i++) steps.push((times[i] ?? 0) - (times[i - 1] ?? 0));
+      const ordered = [...steps].sort((a, b) => a - b);
+      const median = ordered[Math.floor(ordered.length / 2)] ?? 0;
+      const wide = Math.max(3600, median * 60);
+      const cuts = [];
+      let start = times[0] ?? 0;
+      let at2 = [start];
+      for (let i = 1; i < times.length; i++) {
+        const t = times[i] ?? 0;
+        if ((steps[i - 1] ?? 0) > wide) {
+          cuts.push({ t0: start, t1: times[i - 1] ?? start, count: at2.length, at: at2 });
+          start = t;
+          at2 = [t];
+        } else at2.push(t);
+      }
+      cuts.push({ t0: start, t1: times[times.length - 1] ?? start, count: at2.length, at: at2 });
+      const total2 = cuts.reduce((sum, c) => sum + c.count, 0);
+      const content = Math.max(TIME_W0, total2 * weight * TIME_H * 0.42);
+      const built = [];
+      let x = 0;
+      cuts.forEach((c, i) => {
+        const w = c.count / total2 * content;
+        built.push({ t0: c.t0, t1: c.t1, x0: x, x1: x + w, count: c.count * weight, gapAfter: 0, at: c.at });
+        x += w;
+        const next = cuts[i + 1];
+        if (next) {
+          const held3 = built[built.length - 1];
+          if (held3) held3.gapAfter = next.t0 - c.t1;
+          x += VOID_W;
+        }
+      });
+      return built;
+    }
+    function timeAt(x) {
+      const opening = runs[0];
+      if (!opening) return 0;
+      if (x <= opening.x0) return opening.t0;
+      for (const run of runs) {
+        if (x <= run.x1) {
+          const width2 = run.x1 - run.x0;
+          return width2 <= 0 ? run.t0 : run.t0 + (x - run.x0) / width2 * (run.t1 - run.t0);
+        }
+        if (run.gapAfter && x <= run.x1 + VOID_W) {
+          return run.t1 + (x - run.x1) / VOID_W * run.gapAfter;
+        }
+      }
+      return runs[runs.length - 1]?.t1 ?? 0;
+    }
+    let refocusing = 0;
+    function refocus() {
+      if (mode !== "time" || !samples.length || !covering) return;
+      window.clearTimeout(refocusing);
+      refocusing = window.setTimeout(() => {
+        if (!covering) return;
+        const t0 = timeAt(cam.x - width / 2 / cam.k);
+        const t1 = timeAt(cam.x + width / 2 / cam.k);
+        const [c0, c1] = covering;
+        const outside = t0 < c0 || t1 > c1;
+        const closer = cut && t1 - t0 < (c1 - c0) * 0.6;
+        if (outside || closer) void fetchWindow(t0, t1);
+      }, 280);
+    }
+    function layout() {
+      layoutRanked();
+      layoutTime();
+      layoutBoard();
+      measure();
+    }
+    function layoutBoard() {
+      for (const card of cards) {
+        card.box = { x: card.pin.x, y: card.pin.y, w: CARD_W, h: CARD_H };
+      }
+    }
+    function loadBoard() {
+      const held3 = board();
+      const seen = new Map(cards.map((c) => [c.pin.id, c]));
+      cards = held3.map(
+        (one) => seen.get(one.id) ?? {
+          pin: one,
+          box: { x: one.x, y: one.y, w: CARD_W, h: CARD_H },
+          covers: [],
+          held: null,
+          state: "cold"
+        }
+      );
+      for (const card of cards) {
+        const now = held3.find((one) => one.id === card.pin.id);
+        if (now) card.pin = now;
+      }
+      layoutBoard();
+      for (const card of cards) void fillCard(card);
+    }
+    async function fillCard(card) {
+      if (card.state !== "cold") return;
+      card.state = "loading";
+      const show = (src) => {
+        const img = new Image();
+        img.decoding = "async";
+        img.addEventListener("load", () => {
+          card.covers.push(img);
+          draw4();
+        });
+        img.src = src;
+      };
+      if (card.pin.kind === "compare") {
+        const [one, two] = card.pin.against ?? ["", ""];
+        const held3 = board();
+        const left = held3.find((p) => p.id === one);
+        const right = held3.find((p) => p.id === two);
+        if (!left || !right) {
+          card.state = "failed";
+          card.held = 0;
+          draw4();
+          return;
+        }
+        try {
+          const asked5 = new URLSearchParams({ a: left.at, b: right.at });
+          const answer = await fetch(`/g/field/against?${asked5}`, { headers: { accept: "application/json" } });
+          if (!answer.ok) throw new Error(String(answer.status));
+          card.against = await answer.json();
+          card.held = card.against.both;
+          card.state = "warm";
+          const telling = [...card.against.left_only, ...card.against.right_only];
+          for (const one2 of (telling.length ? telling : card.against.shared).slice(0, 4)) {
+            if (one2.thumb) show(one2.thumb);
+          }
+          draw4();
+        } catch {
+          card.state = "failed";
+          draw4();
+        }
+        return;
+      }
+      if (card.pin.kind === "picture") {
+        card.held = 1;
+        card.state = "warm";
+        show(`/preview/${card.pin.at}`);
+        return;
+      }
+      try {
+        const asked5 = new URLSearchParams(card.pin.at);
+        asked5.set("after", "0");
+        asked5.set("before", "99999999999");
+        asked5.set("most", "4");
+        const answer = await fetch(`/g/field/window?${asked5}`, { headers: { accept: "application/json" } });
+        if (!answer.ok) throw new Error(String(answer.status));
+        const told = await answer.json();
+        card.held = told.held ?? 0;
+        card.state = "warm";
+        for (const one of told.items ?? []) if (one.thumb) show(one.thumb);
+        draw4();
+      } catch {
+        card.state = "failed";
+        draw4();
+      }
+    }
+    function measure() {
+      if (mode === "board") {
+        if (!cards.length) {
+          bounds = { x: -CARD_W, y: -CARD_H, w: CARD_W * 2, h: CARD_H * 2 };
+          return;
+        }
+        let bx0 = Infinity;
+        let by0 = Infinity;
+        let bx1 = -Infinity;
+        let by1 = -Infinity;
+        for (const card of cards) {
+          bx0 = Math.min(bx0, card.box.x);
+          by0 = Math.min(by0, card.box.y);
+          bx1 = Math.max(bx1, card.box.x + card.box.w);
+          by1 = Math.max(by1, card.box.y + card.box.h);
+        }
+        bounds = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
+        return;
+      }
+      if (!nodes.length) return;
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (const n of nodes) {
+        const b = mode === "time" ? n.time : n.rank;
+        x0 = Math.min(x0, b.x);
+        y0 = Math.min(y0, b.y);
+        x1 = Math.max(x1, b.x + b.w);
+        y1 = Math.max(y1, b.y + b.h);
+      }
+      bounds = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    const fitScale = () => Math.min(width / Math.max(1, bounds.w), (height - TOP_INSET) / Math.max(1, bounds.h)) * 0.94;
+    function fit2(animate = true) {
+      const whole2 = fitScale();
+      const tall = (height - TOP_INSET) / Math.max(1, bounds.h) * 0.9;
+      const k = mode === "time" ? clamp(tall, whole2, 1.4) : whole2;
+      const to = {
+        x: mode === "time" ? bounds.x + bounds.w - width / 2 / k + 40 : bounds.x + bounds.w / 2,
+        // Centred in the band BELOW the floating controls rather than in
+        // the whole box, so fitting never parks the first row under them.
+        y: bounds.y + bounds.h / 2 - TOP_INSET / 2 / k,
+        k
+      };
+      if (animate) flyTo(to, 520);
+      else {
+        cam = to;
+        draw4();
+      }
+    }
+    function flyTo(to, ms = 460) {
+      flight = { from: { ...cam }, to, at: performance.now(), ms };
+      tick();
+    }
+    function enter(n) {
+      const b = n.box;
+      const k = Math.min(width / b.w, height / b.h) * 0.86;
+      flyTo({ x: b.x + b.w / 2, y: b.y + b.h / 2, k }, 480);
+    }
+    function anchor() {
+      const halfW = width / 2 / cam.k;
+      const halfH = height / 2 / cam.k;
+      cam.x = clamp(cam.x, bounds.x - halfW / 2, bounds.x + bounds.w + halfW / 2);
+      cam.y = clamp(cam.y, bounds.y - halfH / 2, bounds.y + bounds.h + halfH / 2);
+    }
+    const toWorld = (sx, sy) => ({
+      x: (sx - width / 2) / cam.k + cam.x,
+      y: (sy - height / 2) / cam.k + cam.y
+    });
+    function at(sx, sy) {
+      const p = toWorld(sx, sy);
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        if (!n) continue;
+        const b = n.box;
+        if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return n;
+      }
+      return null;
+    }
+    function want(n) {
+      if (n.state !== "cold" || !n.thumb || loading >= IN_FLIGHT) return;
+      n.state = "loading";
+      loading += 1;
+      const img = new Image();
+      img.decoding = "async";
+      img.addEventListener("load", () => {
+        loading -= 1;
+        n.img = img;
+        n.state = "warm";
+        const mean = averaged(img);
+        if (mean) n.tint = mean;
+        draw4();
+      });
+      img.addEventListener("error", () => {
+        loading -= 1;
+        n.state = "failed";
+        draw4();
+      });
+      img.src = n.thumb;
+    }
+    function wantFull(n) {
+      if (n.full || !n.slug) return;
+      const img = new Image();
+      img.decoding = "async";
+      img.addEventListener("load", () => {
+        n.full = img;
+        draw4();
+      });
+      img.src = `/preview/${n.slug}`;
+    }
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const rect = board2.getBoundingClientRect();
+      width = Math.max(1, Math.round(rect.width));
+      height = Math.max(1, Math.round(rect.height));
+      board2.width = Math.round(width * dpr);
+      board2.height = Math.round(height * dpr);
+      hand.setTransform(dpr, 0, 0, dpr, 0, 0);
+      hand.imageSmoothingEnabled = true;
+      hand.imageSmoothingQuality = "high";
+      draw4();
+    }
+    function draw4() {
+      if (drawing) return;
+      drawing = true;
+      requestAnimationFrame(() => {
+        drawing = false;
+        paint2();
+      });
+    }
+    function paint2() {
+      const ground = token(stage, "--sunken");
+      const line = token(stage, "--line");
+      const brand = token(stage, "--brand");
+      const accent = token(stage, "--accent");
+      const faint = token(stage, "--ink-faint");
+      const panel2 = token(stage, "--panel");
+      const ink = token(stage, "--ink");
+      hand.save();
+      hand.fillStyle = ground;
+      hand.fillRect(0, 0, width, height);
+      const k = cam.k;
+      const left = cam.x - width / 2 / k;
+      const right = cam.x + width / 2 / k;
+      const top = cam.y - height / 2 / k;
+      const bottom = cam.y + height / 2 / k;
+      if (mode === "board") {
+        paintBoard(panel2, line, ink, faint, brand, accent);
+        paintMinimap(accent, line, panel2, faint);
+        hand.restore();
+        return;
+      }
+      if (mode === "time") paintTimeRules(left, right, line, faint, ground);
+      const near = [...nodes].sort(
+        (a, b) => Math.abs(a.box.x - cam.x) + Math.abs(a.box.y - cam.y) - (Math.abs(b.box.x - cam.x) + Math.abs(b.box.y - cam.y))
+      );
+      for (const n of near) {
+        const b = n.box;
+        if (b.x + b.w < left || b.x > right || b.y + b.h < top || b.y > bottom) continue;
+        want(n);
+      }
+      for (const n of nodes) {
+        const b = n.box;
+        const sx = (b.x - cam.x) * k + width / 2;
+        const sy = (b.y - cam.y) * k + height / 2;
+        const sw = b.w * k;
+        const sh = b.h * k;
+        if (sx + sw < -40 || sx > width + 40 || sy + sh < -40 || sy > height + 40) continue;
+        if (n.copies > 1 && sw > TINY) {
+          hand.fillStyle = n.tint;
+          hand.globalAlpha = 0.5;
+          for (let i = Math.min(n.copies - 1, 3); i > 0; i--) {
+            hand.fillRect(sx + i * 3, sy - i * 3, sw, sh);
+          }
+          hand.globalAlpha = 1;
+        }
+        const picture = n === page && n.full ? n.full : n.img;
+        if (sw < TINY || !picture) {
+          hand.fillStyle = n.tint;
+          hand.fillRect(sx, sy, sw, sh);
+        } else {
+          hand.drawImage(picture, sx, sy, sw, sh);
+        }
+        if (!n.dated && sw > TINY) {
+          hand.fillStyle = accent;
+          hand.fillRect(sx, sy + sh - 3, sw, 3);
+        }
+        if (n === hovering && n !== page) {
+          hand.strokeStyle = brand;
+          hand.lineWidth = 2;
+          hand.strokeRect(sx - 1, sy - 1, sw + 2, sh + 2);
+        }
+        if (sw > 150 && n !== page) {
+          hand.fillStyle = panel2;
+          hand.fillRect(sx, sy + sh - 22, sw, 22);
+          hand.fillStyle = ink;
+          hand.font = "500 12px system-ui, sans-serif";
+          hand.textBaseline = "middle";
+          const room = sw - 16;
+          let text = n.name;
+          while (hand.measureText(text).width > room && text.length > 4) text = `${text.slice(0, -5)}\u2026`;
+          hand.fillText(text, sx + 8, sy + sh - 11);
+        }
+      }
+      paintMinimap(accent, line, panel2, faint);
+      hand.restore();
+    }
+    function paintTimeRules(left, right, line, faint, ground) {
+      if (runs.length < 1) return;
+      const first = runs[0]?.t0 ?? 0;
+      const span2 = Math.max(1, (runs[runs.length - 1]?.t1 ?? first) - first);
+      const sxOf = (wx) => (wx - cam.x) * cam.k + width / 2;
+      const chipped = (text, x, y, centred = false) => {
+        const w = hand.measureText(text).width + 12;
+        const cx = centred ? x - w / 2 : x;
+        hand.fillStyle = ground;
+        hand.globalAlpha = 0.88;
+        hand.beginPath();
+        hand.roundRect(cx, y - 3, w, 18, 4);
+        hand.fill();
+        hand.globalAlpha = 1;
+        hand.fillStyle = faint;
+        hand.fillText(text, cx + 6, y);
+      };
+      hand.save();
+      hand.font = "500 11px system-ui, sans-serif";
+      hand.textBaseline = "top";
+      for (const run of runs) {
+        if (run.x1 < left || run.x0 > right) continue;
+        const x0 = sxOf(run.x0);
+        hand.strokeStyle = line;
+        hand.lineWidth = 1;
+        hand.beginPath();
+        hand.moveTo(Math.round(x0) + 0.5, 0);
+        hand.lineTo(Math.round(x0) + 0.5, height);
+        hand.stroke();
+        if (sxOf(run.x1) - x0 > 62) chipped(spelled2(run.t0, span2), x0 + 4, height - 24);
+        if (!run.gapAfter) continue;
+        const gx = sxOf(run.x1);
+        const gw = VOID_W * cam.k;
+        if (gx + gw < 0 || gx > width) continue;
+        hand.save();
+        hand.beginPath();
+        hand.rect(gx, 0, gw, height);
+        hand.clip();
+        hand.strokeStyle = line;
+        hand.lineWidth = 1;
+        for (let d = -height; d < gw + height; d += 9) {
+          hand.beginPath();
+          hand.moveTo(gx + d, height);
+          hand.lineTo(gx + d + height, 0);
+          hand.stroke();
+        }
+        hand.restore();
+        hand.strokeStyle = line;
+        hand.setLineDash([4, 4]);
+        hand.beginPath();
+        hand.moveTo(Math.round(gx) + 0.5, 0);
+        hand.lineTo(Math.round(gx) + 0.5, height);
+        hand.moveTo(Math.round(gx + gw) + 0.5, 0);
+        hand.lineTo(Math.round(gx + gw) + 0.5, height);
+        hand.stroke();
+        hand.setLineDash([]);
+        if (gw > 74) chipped(`${lasted(run.gapAfter)}, nothing`, gx + gw / 2, height / 2, true);
+      }
+      hand.restore();
+    }
+    function lasted(seconds) {
+      const days = seconds / 86400;
+      if (days >= 730) return `${Math.round(days / 365)} years`;
+      if (days >= 60) return `${Math.round(days / 30)} months`;
+      if (days >= 13) return `${Math.round(days / 7)} weeks`;
+      if (days >= 1.5) return `${Math.round(days)} days`;
+      const hours = seconds / 3600;
+      return hours >= 1.5 ? `${Math.round(hours)} hours` : `${Math.max(1, Math.round(seconds / 60))} minutes`;
+    }
+    function paintBoard(panel2, line, ink, faint, brand, accent) {
+      if (!cards.length) {
+        hand.fillStyle = faint;
+        hand.font = "500 15px system-ui, sans-serif";
+        hand.textAlign = "center";
+        hand.textBaseline = "middle";
+        hand.fillText("Nothing on the board yet \u2014 open a question and press Pin", width / 2, height / 2);
+        hand.textAlign = "left";
+        return;
+      }
+      const k = cam.k;
+      for (const card of cards) {
+        const b = card.box;
+        const sx = (b.x - cam.x) * k + width / 2;
+        const sy = (b.y - cam.y) * k + height / 2;
+        const sw = b.w * k;
+        const sh = b.h * k;
+        if (sx + sw < -40 || sx > width + 40 || sy + sh < -40 || sy > height + 40) continue;
+        const r = Math.min(14 * k, sh / 2);
+        hand.save();
+        hand.beginPath();
+        hand.roundRect(sx, sy, sw, sh, Math.max(1, r));
+        hand.fillStyle = panel2;
+        hand.fill();
+        hand.strokeStyle = card === holding?.card ? brand : line;
+        hand.lineWidth = card === holding?.card ? 2 : 1;
+        hand.stroke();
+        hand.clip();
+        const coverH = sh * 0.7;
+        if (card.covers.length) {
+          const each = sw / card.covers.length;
+          card.covers.forEach((img, i) => {
+            hand.drawImage(img, sx + i * each, sy, each, coverH);
+          });
+        } else {
+          hand.fillStyle = token(stage, "--sunken");
+          hand.fillRect(sx, sy, sw, coverH);
+        }
+        if (sw > 120) {
+          hand.fillStyle = ink;
+          hand.font = `600 ${Math.min(15, Math.max(10, 15 * k))}px system-ui, sans-serif`;
+          hand.textBaseline = "top";
+          let name = card.pin.name;
+          const room = sw - 22;
+          while (hand.measureText(name).width > room && name.length > 4) name = `${name.slice(0, -5)}\u2026`;
+          hand.fillText(name, sx + 11, sy + coverH + 9 * k);
+          hand.fillStyle = faint;
+          hand.font = `400 ${Math.min(12.5, Math.max(9, 12.5 * k))}px system-ui, sans-serif`;
+          const said3 = card.state === "failed" ? card.pin.kind === "compare" ? "one of the two is gone" : "could not answer" : card.held === null ? "counting\u2026" : card.pin.kind === "compare" && card.against ? card.against.only_left + card.against.only_right === 0 ? `the same ${card.against.both.toLocaleString()} pictures` : `${card.against.both.toLocaleString()} in both \xB7 showing the ${(card.against.only_left + card.against.only_right).toLocaleString()} that differ` : card.pin.kind === "picture" ? "one picture" : `${card.held.toLocaleString()} pictures`;
+          hand.fillText(said3, sx + 11, sy + coverH + 28 * k);
+          hand.fillStyle = brand;
+          hand.font = `600 ${Math.min(10.5, Math.max(8, 10.5 * k))}px system-ui, sans-serif`;
+          hand.fillText(
+            card.pin.kind.toUpperCase(),
+            sx + sw - 11 - hand.measureText(card.pin.kind.toUpperCase()).width,
+            sy + coverH + 10 * k
+          );
+        }
+        hand.restore();
+        if (card === hoverCard && card !== holding?.card) {
+          hand.strokeStyle = accent;
+          hand.lineWidth = 2;
+          hand.beginPath();
+          hand.roundRect(sx - 1, sy - 1, sw + 2, sh + 2, Math.max(1, r));
+          hand.stroke();
+        }
+      }
+    }
+    function paintMinimap(accent, line, panel2, faint) {
+      if (!nodes.length) return;
+      const mw = 150;
+      const mh = 34;
+      const mx = width - mw - 14;
+      const my = height - mh - 14;
+      hand.save();
+      hand.globalAlpha = 0.94;
+      hand.fillStyle = panel2;
+      hand.beginPath();
+      hand.roundRect(mx, my, mw, mh, 6);
+      hand.fill();
+      hand.strokeStyle = line;
+      hand.lineWidth = 1;
+      hand.stroke();
+      hand.clip();
+      const s = Math.min(mw / Math.max(1, bounds.w), mh / Math.max(1, bounds.h)) * 0.84;
+      const ox = mx + mw / 2 - (bounds.x + bounds.w / 2) * s;
+      const oy = my + mh / 2 - (bounds.y + bounds.h / 2) * s;
+      hand.fillStyle = faint;
+      for (const n of nodes) {
+        const b = n.box;
+        hand.fillRect(ox + b.x * s, oy + b.y * s, Math.max(1, b.w * s), Math.max(1, b.h * s));
+      }
+      hand.strokeStyle = accent;
+      hand.lineWidth = 1.5;
+      hand.strokeRect(
+        ox + (cam.x - width / 2 / cam.k) * s,
+        oy + (cam.y - height / 2 / cam.k) * s,
+        width / cam.k * s,
+        height / cam.k * s
+      );
+      hand.restore();
+    }
+    function tick() {
+      const now = performance.now();
+      let more = false;
+      if (morphAt) {
+        const t = clamp((now - morphAt) / MORPH, 0, 1);
+        const e = easeOut(t);
+        for (const n of nodes) n.box = lerpBox(n.from, mode === "time" ? n.time : n.rank, e);
+        if (t >= 1) morphAt = 0;
+        else more = true;
+      }
+      if (flight) {
+        const t = clamp((now - flight.at) / flight.ms, 0, 1);
+        const e = easeOut(t);
+        cam = {
+          x: lerp(flight.from.x, flight.to.x, e),
+          y: lerp(flight.from.y, flight.to.y, e),
+          k: flight.from.k * (flight.to.k / flight.from.k) ** e
+        };
+        if (t >= 1) flight = null;
+        else more = true;
+      }
+      settle2();
+      paint2();
+      if (more) requestAnimationFrame(tick);
+    }
+    function settle2() {
+      let found2 = null;
+      for (const n of nodes) {
+        if (n.box.h * cam.k >= height * PAGE_COVER && n.box.w * cam.k >= width * 0.4) {
+          found2 = n;
+          break;
+        }
+      }
+      if (found2 === page) return;
+      page = found2;
+      if (sheet) sheet.hidden = page === null;
+      stage.dataset.fieldPage = page ? "" : "none";
+      if (!page) return;
+      wantFull(page);
+      if (sheetName) sheetName.textContent = page.name;
+      if (sheetOpen) sheetOpen.href = `/i/${page.slug}`;
+      if (sheetWhen) {
+        const when = page.moment === null ? null : new Date(page.moment * 1e3).toLocaleString(void 0, {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+        sheetWhen.textContent = when === null ? "no time recorded" : page.dated ? when : `${when} \u2014 when the file landed. Nothing has read this one's own date yet.`;
+        sheetWhen.dataset.dated = page.dated ? "read" : "file";
+      }
+    }
+    const peekImage = findElement(stage, "[data-field-peek-image]", HTMLImageElement);
+    const peekName = findElement(stage, "[data-field-peek-name]", HTMLElement);
+    const peekWhen = findElement(stage, "[data-field-peek-when]", HTMLElement);
+    function peek(over, x, y) {
+      if (!chip) return;
+      if (!over || over === page) {
+        chip.hidden = true;
+        return;
+      }
+      chip.hidden = false;
+      if (peekImage && over.thumb && peekImage.getAttribute("src") !== over.thumb) {
+        peekImage.src = over.thumb;
+      }
+      if (peekName) peekName.textContent = over.name;
+      if (peekWhen) {
+        peekWhen.textContent = over.moment === null ? "no time recorded" : new Date(over.moment * 1e3).toLocaleString(void 0, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+        peekWhen.dataset.dated = over.dated ? "read" : "file";
+      }
+      const box = chip.getBoundingClientRect();
+      const left = x + 18 + box.width > width ? x - 18 - box.width : x + 18;
+      const top = y + 18 + box.height > height ? y - 18 - box.height : y + 18;
+      chip.style.transform = `translate(${Math.max(8, left)}px, ${Math.max(8, top)}px)`;
+    }
+    let dragging = false;
+    let moved = 0;
+    let lastX = 0;
+    let lastY = 0;
+    let hoverCard = null;
+    let holding = null;
+    function cardUnder(sx, sy, except) {
+      const p = toWorld(sx, sy);
+      for (let i = cards.length - 1; i >= 0; i--) {
+        const card = cards[i];
+        if (!card || card === except) continue;
+        const b = card.box;
+        if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return card;
+      }
+      return null;
+    }
+    function cardAt(sx, sy) {
+      const p = toWorld(sx, sy);
+      for (let i = cards.length - 1; i >= 0; i--) {
+        const card = cards[i];
+        if (!card) continue;
+        const b = card.box;
+        if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return card;
+      }
+      return null;
+    }
+    function openCard(card) {
+      window.location.href = card.pin.kind === "picture" ? `/i/${card.pin.at}` : `/field${card.pin.at ? `?${card.pin.at}` : ""}`;
+    }
+    board2.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      moved = 0;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      board2.setPointerCapture(event.pointerId);
+      board2.style.cursor = "grabbing";
+      if (mode === "board") {
+        const rect = board2.getBoundingClientRect();
+        const under = cardAt(event.clientX - rect.left, event.clientY - rect.top);
+        if (under) {
+          const p = toWorld(event.clientX - rect.left, event.clientY - rect.top);
+          holding = { card: under, dx: p.x - under.box.x, dy: p.y - under.box.y };
+          cards = [...cards.filter((c) => c !== under), under];
+        }
+      }
+      if (event.pointerType !== "mouse") {
+        const rect = board2.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        hovering = at(x, y);
+        peek(hovering, x, y);
+        draw4();
+      }
+    });
+    board2.addEventListener("pointermove", (event) => {
+      const rect = board2.getBoundingClientRect();
+      if (holding && dragging) {
+        const p = toWorld(event.clientX - rect.left, event.clientY - rect.top);
+        moved += Math.abs(event.clientX - lastX) + Math.abs(event.clientY - lastY);
+        lastX = event.clientX;
+        lastY = event.clientY;
+        holding.card.box.x = p.x - holding.dx;
+        holding.card.box.y = p.y - holding.dy;
+        hoverCard = cardUnder(event.clientX - rect.left, event.clientY - rect.top, holding.card);
+        draw4();
+        return;
+      }
+      if (mode === "board" && !dragging) {
+        const over2 = cardAt(event.clientX - rect.left, event.clientY - rect.top);
+        if (over2 !== hoverCard) {
+          hoverCard = over2;
+          board2.style.cursor = over2 ? "pointer" : "grab";
+          draw4();
+        }
+        return;
+      }
+      if (dragging) {
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        moved += Math.abs(dx) + Math.abs(dy);
+        cam.x -= dx / cam.k;
+        cam.y -= dy / cam.k;
+        anchor();
+        lastX = event.clientX;
+        lastY = event.clientY;
+        flight = null;
+        settle2();
+        refocus();
+        draw4();
+        return;
+      }
+      const over = at(event.clientX - rect.left, event.clientY - rect.top);
+      if (over !== hovering) {
+        hovering = over;
+        board2.style.cursor = over ? "pointer" : "grab";
+        draw4();
+      }
+      peek(hovering, event.clientX - rect.left, event.clientY - rect.top);
+    });
+    const release = (event) => {
+      if (!dragging) return;
+      dragging = false;
+      board2.style.cursor = hovering ? "pointer" : "grab";
+      if (event.pointerType !== "mouse") {
+        hovering = null;
+        peek(null, 0, 0);
+        draw4();
+      }
+      if (holding) {
+        const moving = holding;
+        holding = null;
+        if (moved > 6) {
+          const where = board2.getBoundingClientRect();
+          const onto = cardUnder(event.clientX - where.left, event.clientY - where.top, moving.card);
+          if (onto && onto.pin.kind !== "compare" && moving.card.pin.kind !== "compare") {
+            pin({
+              id: `pin-${Date.now().toString(36)}`,
+              kind: "compare",
+              name: `${moving.card.pin.name} vs ${onto.pin.name}`,
+              at: "",
+              against: [moving.card.pin.id, onto.pin.id],
+              x: Math.round((moving.card.pin.x + onto.pin.x) / 2),
+              y: Math.round(Math.max(moving.card.pin.y, onto.pin.y) + CARD_H + 40)
+            });
+            moving.card.box.x = moving.card.pin.x;
+            moving.card.box.y = moving.card.pin.y;
+            hoverCard = null;
+            loadBoard();
+            measure();
+            fit2();
+            tally();
+            return;
+          }
+          pin({ ...moving.card.pin, x: Math.round(moving.card.box.x), y: Math.round(moving.card.box.y) });
+          moving.card.pin = { ...moving.card.pin, x: moving.card.box.x, y: moving.card.box.y };
+          measure();
+          draw4();
+          return;
+        }
+        openCard(moving.card);
+        return;
+      }
+      if (moved > 6) return;
+      const rect = board2.getBoundingClientRect();
+      const hit = at(event.clientX - rect.left, event.clientY - rect.top);
+      if (hit) enter(hit);
+      else if (page) fit2();
+    };
+    board2.addEventListener("pointerup", release);
+    board2.addEventListener("pointercancel", () => {
+      dragging = false;
+      moved = 0;
+      board2.style.cursor = hovering ? "pointer" : "grab";
+    });
+    board2.addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const rect = board2.getBoundingClientRect();
+        const mx = event.clientX - rect.left;
+        const my = event.clientY - rect.top;
+        const before = toWorld(mx, my);
+        const by = Math.exp(-pixels(event) * (event.ctrlKey ? 0.01 : 22e-4));
+        cam.k = clamp(cam.k * by, fitScale(), 14);
+        const after = toWorld(mx, my);
+        cam.x += before.x - after.x;
+        cam.y += before.y - after.y;
+        anchor();
+        flight = null;
+        settle2();
+        refocus();
+        draw4();
+      },
+      { passive: false }
+    );
+    const shell = stage.parentElement;
+    function arrange(wanted, button2) {
+      for (const other of stage.querySelectorAll("[data-field-mode]")) {
+        other.setAttribute("aria-pressed", String(other === button2));
+      }
+      if (shell) shell.dataset.arrangement = wanted;
+      if (wanted === "grid") return;
+      if (wanted !== mode) {
+        for (const n of nodes) n.from = { ...n.box };
+        mode = wanted;
+        if (mode === "board") loadBoard();
+        if (count) {
+          if (mode === "board") {
+            const held3 = board().length;
+            count.textContent = held3 ? `${held3} on the board` : "nothing on the board yet";
+            count.hidden = false;
+          } else if (covering) {
+            count.textContent = cut ? `${nodes.length.toLocaleString()} of the pictures here \u2014 zoom in for the rest` : `${nodes.length.toLocaleString()} of ${total.toLocaleString()}`;
+          }
+        }
+        measure();
+        morphAt = mode === "board" ? 0 : performance.now();
+        stage.dataset.fieldMode = mode;
+      }
+      resize();
+      fit2();
+      tick();
+    }
+    stage.addEventListener("click", (event) => {
+      const button2 = closestFrom(event.target, "[data-field-mode]", HTMLButtonElement);
+      if (button2) {
+        const said3 = button2.dataset.fieldMode;
+        arrange(said3 === "time" ? "time" : said3 === "grid" ? "grid" : said3 === "board" ? "board" : "rank", button2);
+        return;
+      }
+      if (closestFrom(event.target, "[data-field-fit]", HTMLButtonElement)) fit2();
+      if (closestFrom(event.target, "[data-field-pin]", HTMLButtonElement)) {
+        const asked5 = question2().toString();
+        const said3 = new URLSearchParams(asked5).get("q");
+        const already = board().find((one) => one.at === asked5);
+        if (already) {
+          unpin(already.id);
+          if (mode === "board") {
+            loadBoard();
+            measure();
+            draw4();
+            tally();
+          } else say2("taken off the board");
+          return;
+        }
+        const held3 = board();
+        pin({
+          id: `pin-${Date.now().toString(36)}`,
+          kind: "query",
+          name: said3 || "The whole library",
+          at: asked5,
+          x: held3.length % 4 * (CARD_W + 40),
+          y: Math.floor(held3.length / 4) * (CARD_H + 40)
+        });
+        if (mode === "board") {
+          loadBoard();
+          measure();
+          draw4();
+          tally();
+        } else say2("on the board");
+      }
+    });
+    function tally() {
+      if (!count) return;
+      const held3 = board().length;
+      count.textContent = held3 ? `${held3} on the board` : "nothing on the board yet";
+      count.hidden = false;
+    }
+    function say2(what) {
+      if (!count) return;
+      const was = count.textContent;
+      const hidden = count.hidden;
+      count.textContent = what;
+      count.hidden = false;
+      window.setTimeout(() => {
+        count.textContent = was;
+        count.hidden = hidden;
+      }, 1800);
+    }
+    const zoomed = (by) => flyTo({ ...cam, k: clamp(cam.k * by, fitScale(), 14) }, 240);
+    register([
+      { key: "z", by: "the field: show all of them", run: () => fit2() },
+      { key: "+", by: "the field: closer", run: () => zoomed(1.6) },
+      { key: "=", by: "the field: closer", run: () => zoomed(1.6) },
+      { key: "-", by: "the field: further back", run: () => zoomed(1 / 1.6) }
+    ]);
+    if (cells) {
+      new MutationObserver(() => {
+        ingest();
+        draw4();
+      }).observe(cells, { childList: true, subtree: false });
+    }
+    new ResizeObserver(() => resize()).observe(board2);
+    let watching = null;
+    const density = () => {
+      watching?.removeEventListener("change", density);
+      watching = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      watching.addEventListener("change", density);
+      resize();
+    };
+    density();
+    stage.hidden = false;
+    if (shell) shell.dataset.arrangement = mode;
+    ingest();
+    stage.dataset.fieldMode = mode;
+    resize();
+    fit2(false);
+    void fetchAnswer();
+    if (clock) clock.hidden = true;
+  }
 
   // src/install.ts
   var standalone = () => navigator.standalone === true;
@@ -5480,6 +6852,221 @@
     });
   }
 
+  // src/panes.ts
+  var htmxOf = () => {
+    const held2 = window.htmx;
+    return held2 && typeof held2.process === "function" ? held2 : null;
+  };
+  function mountPanes(root) {
+    const found = findElement(root, "[data-panes]", HTMLElement);
+    if (!found) return;
+    const deck = found;
+    const open = [];
+    function frame(title, mode, href) {
+      const pane = document.createElement("aside");
+      pane.className = "pane";
+      pane.dataset.paneMode = mode;
+      pane.setAttribute("role", mode === "overlay" ? "dialog" : "region");
+      pane.setAttribute("aria-label", title);
+      if (mode === "overlay") pane.setAttribute("aria-modal", "true");
+      pane.innerHTML = `
+      <header class="pane-bar" data-pane-bar>
+        <b class="pane-title"></b>
+        <span class="pane-modes" role="group" aria-label="how to show this">
+          <button type="button" data-pane-mode-set="dock" title="beside the canvas">Dock</button>
+          <button type="button" data-pane-mode-set="overlay" title="over the canvas">Overlay</button>
+          <button type="button" data-pane-mode-set="window" title="as a movable window">Window</button>
+        </span>
+        <a class="pane-away" data-pane-away>Open as a page</a>
+        <button type="button" class="pane-shut" data-pane-shut aria-label="close">&times;</button>
+      </header>
+      <div class="pane-body" data-pane-body>
+        <p class="pane-waiting">fetching&hellip;</p>
+      </div>`;
+      const named2 = pane.querySelector(".pane-title");
+      if (named2) named2.textContent = title;
+      const away = pane.querySelector("[data-pane-away]");
+      if (away instanceof HTMLAnchorElement) away.href = href;
+      return pane;
+    }
+    async function show(href, title, mode) {
+      const pane = frame(title, mode, href);
+      deck.append(pane);
+      open.push(pane);
+      requestAnimationFrame(() => {
+        pane.setAttribute("data-pane-in", "");
+        settle2();
+      });
+      const body = pane.querySelector("[data-pane-body]");
+      if (!(body instanceof HTMLElement)) return;
+      try {
+        const answer = await fetch(href, { headers: { accept: "text/html" } });
+        if (!answer.ok) throw new Error(`${answer.status}`);
+        const told = new DOMParser().parseFromString(await answer.text(), "text/html");
+        const stage = told.querySelector("main.stage");
+        if (!stage) throw new Error("that surface has no stage to show");
+        body.replaceChildren(document.importNode(stage, true));
+        htmxOf()?.process(body);
+        spellDays(body);
+        const wanted = href.includes("#") ? href.slice(href.indexOf("#") + 1) : "";
+        if (wanted) {
+          const part = body.querySelector(`#${CSS.escape(wanted)}`);
+          if (part instanceof HTMLElement) part.scrollIntoView({ block: "start" });
+        }
+        offerPins(body);
+      } catch (why) {
+        body.replaceChildren(said3(why, href));
+      }
+    }
+    function said3(why, href) {
+      const told = document.createElement("p");
+      told.className = "pane-waiting";
+      told.textContent = `could not open this here \u2014 ${why instanceof Error ? why.message : "it did not answer"}. `;
+      const link = document.createElement("a");
+      link.href = href;
+      link.textContent = "open it as a page instead";
+      told.append(link);
+      return told;
+    }
+    function asPin(href) {
+      const path = href.replace(/^https?:\/\/[^/]+/, "").split(/[?#]/)[0] ?? "";
+      const slug = decodeURIComponent(path.slice(3));
+      if (!slug) return null;
+      if (path.startsWith("/p/")) return { kind: "person", at: `person=${encodeURIComponent(slug)}` };
+      if (path.startsWith("/t/")) return { kind: "album", at: `album=${encodeURIComponent(slug)}` };
+      if (path.startsWith("/f/")) return { kind: "folder", at: `folder=${encodeURIComponent(slug)}` };
+      if (path.startsWith("/i/")) return { kind: "picture", at: slug };
+      return null;
+    }
+    function named(link, kind) {
+      const own = link.querySelector('[class$="-name"]');
+      const said4 = own?.textContent?.trim();
+      if (said4) return said4;
+      const visible = [...link.childNodes].filter((one) => !(one instanceof Element && one.getAttribute("aria-hidden") === "true")).map((one) => one.textContent ?? "").join(" ");
+      const first = visible.split("\n").map((one) => one.trim()).find((one) => one.length > 0);
+      if (first && !/^[\d,]+\s+pictures?$/i.test(first)) return first;
+      return kind === "person" ? "Someone not named yet" : first ?? "";
+    }
+    function offerPins(body) {
+      const held3 = new Set(board().map((one) => one.at));
+      for (const link of body.querySelectorAll("a[href]")) {
+        if (!(link instanceof HTMLAnchorElement)) continue;
+        if (link.dataset.pinOffered !== void 0) continue;
+        const what = asPin(link.getAttribute("href") ?? "");
+        if (!what) continue;
+        link.dataset.pinOffered = "";
+        const button2 = document.createElement("button");
+        button2.type = "button";
+        button2.className = "pin-offer";
+        button2.dataset.pinAt = what.at;
+        button2.dataset.pinKind = what.kind;
+        button2.dataset.pinName = named(link, what.kind);
+        button2.textContent = held3.has(what.at) ? "on the board" : "pin";
+        button2.title = "keep this on the board";
+        link.insertAdjacentElement("afterend", button2);
+      }
+    }
+    function shut(pane) {
+      pane.removeAttribute("data-pane-in");
+      const at = open.indexOf(pane);
+      if (at >= 0) open.splice(at, 1);
+      settle2();
+      window.setTimeout(() => pane.remove(), 260);
+    }
+    function settle2() {
+      const docked = open.filter((p) => p.dataset.paneMode === "dock" && p.hasAttribute("data-pane-in"));
+      document.body.dataset.panesDocked = docked.length ? "yes" : "no";
+      document.body.dataset.panesOpen = open.length ? "yes" : "no";
+    }
+    deck.addEventListener("click", (event) => {
+      const pane = closestFrom(event.target, ".pane", HTMLElement);
+      if (!pane) return;
+      if (closestFrom(event.target, "[data-pane-shut]", HTMLButtonElement)) {
+        shut(pane);
+        return;
+      }
+      const offer = closestFrom(event.target, "[data-pin-at]", HTMLButtonElement);
+      if (offer) {
+        const at = offer.dataset.pinAt ?? "";
+        const already = board().find((one) => one.at === at);
+        if (already) {
+          unpin(already.id);
+          offer.textContent = "pin";
+        } else {
+          const count = board().length;
+          pin({
+            id: `pin-${Date.now().toString(36)}`,
+            kind: offer.dataset.pinKind ?? "person",
+            name: offer.dataset.pinName ?? at,
+            at,
+            x: count % 4 * 340,
+            y: Math.floor(count / 4) * 226
+          });
+          offer.textContent = "on the board";
+        }
+        return;
+      }
+      const wanted = closestFrom(event.target, "[data-pane-mode-set]", HTMLButtonElement);
+      if (wanted) {
+        pane.dataset.paneMode = wanted.dataset.paneModeSet ?? "overlay";
+        pane.setAttribute("role", pane.dataset.paneMode === "overlay" ? "dialog" : "region");
+        settle2();
+      }
+    });
+    document.addEventListener("click", (event) => {
+      const asked4 = closestFrom(event.target, "[data-pane-open]", HTMLElement);
+      if (!asked4) return;
+      const href = asked4.dataset.paneOpen;
+      if (!href) return;
+      if (event instanceof MouseEvent && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey)) return;
+      event.preventDefault();
+      const mode = asked4.dataset.paneMode;
+      void show(
+        href,
+        asked4.dataset.paneTitle ?? asked4.textContent?.trim() ?? "",
+        mode === "dock" ? "dock" : mode === "window" ? "window" : "overlay"
+      );
+    });
+    let held2 = null;
+    let fromX = 0;
+    let fromY = 0;
+    let atX = 0;
+    let atY = 0;
+    deck.addEventListener("pointerdown", (event) => {
+      const bar = closestFrom(event.target, "[data-pane-bar]", HTMLElement);
+      const pane = bar && closestFrom(event.target, ".pane", HTMLElement);
+      if (!bar || !pane || pane.dataset.paneMode !== "window") return;
+      if (closestFrom(event.target, "button, a", HTMLElement)) return;
+      held2 = pane;
+      fromX = event.clientX;
+      fromY = event.clientY;
+      atX = Number(pane.dataset.paneX ?? 0);
+      atY = Number(pane.dataset.paneY ?? 0);
+      bar.setPointerCapture(event.pointerId);
+    });
+    deck.addEventListener("pointermove", (event) => {
+      if (!held2) return;
+      const x = atX + event.clientX - fromX;
+      const y = atY + event.clientY - fromY;
+      held2.dataset.paneX = String(x);
+      held2.dataset.paneY = String(y);
+      held2.style.translate = `${x}px ${y}px`;
+    });
+    const drop = () => {
+      held2 = null;
+    };
+    deck.addEventListener("pointerup", drop);
+    deck.addEventListener("pointercancel", drop);
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !open.length) return;
+      const top = open[open.length - 1];
+      if (!top) return;
+      event.preventDefault();
+      shut(top);
+    });
+    settle2();
+  }
+
   // src/shortcuts.ts
   var SPELLED = {
     ArrowLeft: "\u2190",
@@ -5524,9 +7111,9 @@
         const cap = document.createElement("kbd");
         cap.textContent = key;
         term.append(cap);
-        const said2 = document.createElement("dd");
-        said2.textContent = does;
-        list.append(term, said2);
+        const said3 = document.createElement("dd");
+        said3.textContent = does;
+        list.append(term, said3);
       }
       section.append(list);
       body.append(section);
@@ -5546,5 +7133,7 @@
   mountInstall();
   mountServiceWorker();
   mountShortcuts(document);
+  mountField(document.body);
+  mountPanes(document.body);
 })();
 //# sourceMappingURL=app.js.map

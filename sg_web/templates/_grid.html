@@ -40,11 +40,20 @@
        honest fallback, never a collapsed cell. #}
     {% set w = item.width if item.width is defined else none %}
     {% set h = item.height if item.height is defined else none %}
-    {# `style` BEFORE the selection key: tests/test_a_selection_is_one_
-       answer_anchored_write.py reads this shell with a regex that
-       expects data-selection-key to be the last attribute on the tag. #}
+    {# `data-moment` is where this picture sits in time, epoch seconds.
+       Always present: the interpretation when the context job has made
+       one, the file's own mtime otherwise. `data-dated="file"` says it
+       is the second case, because mtime is when the FILE landed and not
+       when the photograph happened.
+
+       EVERY attribute here comes before the selection key:
+       tests/test_a_selection_is_one_answer_anchored_write.py reads this
+       shell with a regex expecting data-selection-key to be the last
+       attribute on the tag. #}
     <div class="cell-shell"
          style="--ar: {{ "%.4f"|format(w / h) if w and h else "1" }}"
+         {% if item.moment is defined and item.moment is not none %}data-moment="{{ item.moment }}"{% endif %}
+         {% if item.dated is defined and not item.dated %}data-dated="file"{% endif %}
          data-selection-key="{{ item.uuid }}">
       {# A sibling of the link, never inside it: nested interactive
          controls are unusable to keyboards and screen readers. #}

@@ -74,6 +74,13 @@
           title="save this view as a smart collection: it gets members, an address and a place on the shelf">make a smart collection</button>
   <button type="button" class="ask-save" data-replace-smart
           title="make this view an existing smart collection's new rule">replace a rule</button>
+  {# The same answer as a place rather than as rows. Its own address and
+     its own page, because it is a different kind of surface: it does not
+     scroll, it moves a camera, and serving that inside this header would
+     put a canvas in a box under a search bar. A link and not a `view`,
+     for the same reason -- `view` swaps what fills this page. #}
+  <a class="ask-save" data-field-link href="/field{% if qs %}?{{ qs }}{% endif %}"
+     title="every one of these on one canvas, placed in time">open as a field</a>
   {% if not q %}<a class="ask-save" data-timeline-link href="/timeline{% if qs %}?{{ qs }}{% endif %}"
           title="these pictures on the timeline">on the timeline</a>{% endif %}
   </div>

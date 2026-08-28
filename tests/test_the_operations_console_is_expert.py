@@ -1089,3 +1089,47 @@ def test_the_console_offers_the_comparison_and_renders_it(bare):
     assert "Ivan" in told.text
 
     assert client.get(f"/operations/clusterings/{left}/against/424242").status_code == 404
+
+
+def test_every_setting_the_registry_models_is_on_the_page():
+    """A setting nobody can reach is a setting that does not ship.
+
+    `db/settings.py REGISTRY` is the vocabulary -- what this application
+    can be configured to do. `sg_web/operations.py SETTING_GROUPS` is
+    what the page draws, grouped by what each row is about. They are two
+    lists of the same thing, which is two chances to disagree, so they
+    are held against each other here.
+
+    Both directions matter and they fail differently. A registry key
+    missing from the groups is a knob the application HAS and nobody can
+    turn -- it works, it is tested, it has a default, and there is no
+    entry point, which is the exact shape of an unshipped capability. A
+    grouped key missing from the registry is a control that renders and
+    then refuses every write, because `settings.put` validates against
+    the registry and raises KeyError for anything else.
+
+    Enumeration comes from the application; this test states no list of
+    its own. Adding a setting therefore fails here until it is given a
+    group, rather than shipping invisible.
+    """
+    from db import settings
+    from sg_web import operations
+
+    grouped: list[str] = [key for _, _, keys in operations.SETTING_GROUPS for key in keys]
+    registry = set(settings.REGISTRY)
+
+    unreachable = registry - set(grouped)
+    assert not unreachable, (
+        f"{sorted(unreachable)} are in the registry and on no group, so the page cannot reach them; "
+        "give each one a group in sg_web/operations.py SETTING_GROUPS"
+    )
+    invented = set(grouped) - registry
+    assert not invented, (
+        f"{sorted(invented)} are grouped but are not settings; `settings.put` refuses them, "
+        "so the control would render and then fail every write"
+    )
+    # One group each: a key in two groups draws two controls over one
+    # value, and whichever the reader does not use silently goes stale.
+    assert len(grouped) == len(set(grouped)), (
+        f"a setting is in more than one group: {sorted({k for k in grouped if grouped.count(k) > 1})}"
+    )

@@ -540,11 +540,41 @@ _PROJECTION_LOCK = threading.Lock()
 #: does not collapse them: the answer's total, its ordinals and the
 #: rail's map are all statements about MEMBERS, and a grid that quietly
 #: showed fewer would make every one of those a lie. It marks them.
+#: `moment` is where a picture sits in time, and it is NEVER NULL.
+#:
+#: Two different facts, carried as two columns because collapsing them
+#: loses the one that matters. `moment` is the interpretation -- the
+#: wall clock when one was claimed, the knowable instant otherwise, the
+#: same fragment the moment sorts and the timeline shelves order by --
+#: falling back to the file's own mtime when nothing has interpreted it
+#: yet. `dated` says WHICH of those two it is.
+#:
+#: There is no such thing as a picture with no time. A file that has not
+#: been through the context job still arrived on a day, and drawing it
+#: as undated says the library knows less than it does; drawing it at
+#: the epoch says something false. It goes at its mtime -- `file.mtime`
+#: is NOT NULL, so this column never is -- and `dated` is how a surface
+#: admits that mtime is when the FILE was written and not when the
+#: photograph happened.
+#:
+#: NOT `first_seen_at`, which this schema also keeps and which is the
+#: more CERTAIN fact: it is when this library first saw the file, and it
+#: is useless as a position. A bulk import stamps forty thousand
+#: pictures with one afternoon, so an axis built on it would draw one
+#: enormous tower on the day somebody ran the scan and call it a
+#: library. mtime is a worse fact about the file and a better guess at
+#: the picture, which is what an axis of WHEN THINGS HAPPENED wants; the
+#: schema says out loud that a copy or a sync client rewrites it
+#: (db/schema.sql, `file.btime`), and `dated` is what carries that
+#: doubt to the reader instead of swallowing it.
 NAMED = (
     "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256, f.width, f.height,"
-    " (SELECT count(*) FROM derived_dupe_group m WHERE m.group_id = dg.group_id) AS copies"
+    " (SELECT count(*) FROM derived_dupe_group m WHERE m.group_id = dg.group_id) AS copies,"
+    " COALESCE({moment}, f.mtime) AS moment,"
+    " ({moment} IS NOT NULL) AS dated"
     " FROM file f JOIN entity e ON e.id = f.id"
     " LEFT JOIN derived_dupe_group dg ON dg.file_id = f.id"
+    " LEFT JOIN derived_media_context mc ON mc.file_id = f.id AND mc.policy_version = {policy}"
     " WHERE f.id IN ({marks})"
 )
 
@@ -1212,6 +1242,197 @@ def peek(
         }
 
 
+#: How many moments one shape answer carries, however many the answer
+#: holds. A profile of a forty-thousand-picture library and one of a
+#: four-hundred-picture library are the same size on the wire.
+SHAPE_SAMPLES = 2000
+
+#: The most pictures one window answer names. A window is what is on
+#: screen; nothing that fits on a screen needs more than this.
+WINDOW_MOST = 900
+
+
+def _moments(conn, ids) -> dict[int, float]:
+    """When each of these files happened, keyed by file id.
+
+    Chunked, because an answer can hold tens of thousands of ids and one
+    statement binds a bounded number of parameters. The bound is ASKED
+    FOR rather than assumed: SQLite's own default for
+    `SQLITE_MAX_VARIABLE_NUMBER` is 32766
+    (../refs/sqlite/sqlite/src/sqliteLimit.h:189-191), it was 999 before
+    3.32, and any build may be compiled with its own. `getlimit` reports
+    what THIS build will actually accept, so the chunk is right on a
+    system nobody tested on. Measured here: 32766 (sqlite 3.47.1).
+
+    Half the limit, not all of it, so a caller that adds a parameter of
+    its own to the same statement later does not silently cross it.
+
+    Each chunk is a primary-key lookup, so the walk is linear in the
+    answer and never touches a file the answer does not hold.
+    """
+    import sqlite3
+
+    from .context import HUMAN_MOMENT, POLICY_VERSION
+
+    try:
+        room = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) // 2
+    except (AttributeError, sqlite3.NotSupportedError):
+        # A connection object that cannot report its limits: fall back to
+        # the pre-3.32 default, which every build accepts.
+        room = 499
+    step = max(1, room)
+    found: dict[int, float] = {}
+    ids = list(ids)
+    for at in range(0, len(ids), step):
+        chunk = ids[at : at + step]
+        marks = ",".join("?" for _ in chunk)
+        sql = (
+            f"SELECT f.id, COALESCE({HUMAN_MOMENT}, f.mtime) FROM file f"
+            f" LEFT JOIN derived_media_context mc"
+            f"   ON mc.file_id = f.id AND mc.policy_version = {int(POLICY_VERSION)}"
+            f" WHERE f.id IN ({marks})"
+        )
+        found.update({one: when for one, when in conn.execute(sql, chunk) if when is not None})
+    return found
+
+
+def over_time(conn, models_dir: str, query: GalleryQuery, now: float, *, actor_id: int | None = None) -> dict:
+    """The answer's SHAPE in time, at a fixed cost whatever its size.
+
+    The coarse level of detail. A surface that draws the whole answer as
+    a place -- where the bursts are, and how long the library went
+    quiet -- needs the distribution, not the pictures. Forty thousand
+    slugs and thumbnail addresses would be megabytes to say something
+    that fits in a few kilobytes, and no screen can show forty thousand
+    pictures at once anyway.
+
+    So this answers with the moments themselves, DOWNSAMPLED BY RANK:
+    every nth one from the sorted walk, plus both ends. Rank sampling
+    rather than fixed-width bins because it survives any distribution --
+    a library of one wedding and a library of fifteen years both come
+    back as `SHAPE_SAMPLES` numbers, and the caller reads density off
+    the spacing between them. A wide jump between two neighbours IS a
+    stretch with nothing in it, so the gaps arrive intact rather than
+    being averaged away by a bin that straddles them.
+
+    `stride` is how many members each sample stands for, which is what
+    lets the caller turn spacing back into a count.
+    """
+    with snapshot(conn):
+        _bound, held = _current(conn, models_dir, query, now, actor_id)
+        stamps = sorted(_moments(conn, held.ids).values())
+        stride = max(1, -(-len(stamps) // SHAPE_SAMPLES))
+        samples = stamps[::stride]
+        # Both ends always, so the axis a caller draws covers exactly
+        # what the answer covers rather than stopping short of it.
+        if stamps and samples[-1:] != stamps[-1:]:
+            samples.append(stamps[-1])
+        return {
+            "total": len(held.ids),
+            "dated": len(stamps),
+            "currency": held.currency,
+            "answer": held.answer,
+            "stride": stride,
+            "samples": samples,
+        }
+
+
+def against(
+    conn,
+    models_dir: str,
+    left: GalleryQuery,
+    right: GalleryQuery,
+    now: float,
+    *,
+    most: int = 12,
+    actor_id: int | None = None,
+) -> dict:
+    """What two questions have in common, and what only one of them holds.
+
+    Set arithmetic over two answers' MEMBERSHIPS -- exactly, on the ids
+    the projections already hold, rather than by fetching both sets of
+    pictures and comparing them in a browser. Two answers of forty
+    thousand each cost two projections and three set operations here;
+    fetching them would cost eighty thousand rows over the wire to
+    compute a number.
+
+    The two are taken under ONE snapshot, so `both + only_left` is
+    always `left` and the three numbers cannot come from two different
+    generations of the library. Two separate reads could straddle a
+    commit and report a comparison that was never true at any instant.
+
+    `shared` and the two `only` lists carry a few members each, so a
+    surface can SHOW what it is talking about rather than only counting
+    it -- a difference of six that you cannot look at is a number, not
+    an answer.
+    """
+    with snapshot(conn):
+        _bl, held_left = _current(conn, models_dir, left, now, actor_id)
+        _br, held_right = _current(conn, models_dir, right, now, actor_id)
+        a, b = set(held_left.ids), set(held_right.ids)
+        both = a & b
+        # In the LEFT answer's own order, so a comparison reads the way
+        # the answer it came from reads.
+        ordered = [one for one in held_left.ids if one in both]
+        only_a = [one for one in held_left.ids if one not in b]
+        only_b = [one for one in held_right.ids if one not in a]
+        return {
+            "left": len(a),
+            "right": len(b),
+            "both": len(both),
+            "only_left": len(only_a),
+            "only_right": len(only_b),
+            "currency": held_left.currency,
+            "shared": _named(conn, ordered[:most], 0, None, said=False),
+            "left_only": _named(conn, only_a[:most], 0, None, said=False),
+            "right_only": _named(conn, only_b[:most], 0, None, said=False),
+        }
+
+
+def window(
+    conn,
+    models_dir: str,
+    query: GalleryQuery,
+    now: float,
+    after: float,
+    before: float,
+    *,
+    most: int = WINDOW_MOST,
+    actor_id: int | None = None,
+) -> dict:
+    """The members of this answer that happened between two moments.
+
+    The fine level of detail, and the reason there is no cap on how big
+    an answer this surface can draw: a window is what is on screen, and
+    what is on screen is bounded by the screen. Zooming in narrows the
+    window, so the cost of looking closely goes DOWN.
+
+    `more` is how many fell inside and were not named. Never silently
+    dropped: a window that quietly returned the first nine hundred of
+    four thousand would be a lie about what that stretch of time holds,
+    and the caller has to be able to say "denser than this shows".
+    """
+    with snapshot(conn):
+        _bound, held = _current(conn, models_dir, query, now, actor_id)
+        ids = list(held.ids)
+        # Cut to the window, IN THE ANSWER'S OWN ORDER: the ordering
+        # contract is the answer's, and a window that reordered would
+        # hand back a different walk than the one being looked at.
+        stamps = _moments(conn, ids)
+        inside = [one for one in ids if one in stamps and after <= stamps[one] <= before]
+        take = min(max(1, most), WINDOW_MOST)
+        named = _named(conn, inside[:take], 0, held.relevance, said=False)
+        for row in named:
+            row["moment"] = stamps.get(row["id"])
+        return {
+            "currency": held.currency,
+            "answer": held.answer,
+            "held": len(inside),
+            "more": max(0, len(inside) - len(named)),
+            "items": named,
+        }
+
+
 def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
     """Where a position sits in an answer, from one projection.
 
@@ -1428,6 +1649,7 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, 
         return []
     marks = ",".join("?" for _ in ids)
     from . import derived, settings
+    from .context import HUMAN_MOMENT, POLICY_VERSION
 
     # `dict[str, object]`, stated: a member row is a heterogeneous record
     # -- ids, names, a hex uuid, a caption filled in below, a float
@@ -1451,13 +1673,18 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, 
             # How many files the dupe job put in this one's group, this
             # one included. None when no group holds it.
             "copies": row[8],
+            # Where this picture sits in time, epoch seconds, always a
+            # number: the interpretation when there is one, the file's
+            # own mtime otherwise. `dated` is which.
+            "moment": row[9],
+            "dated": bool(row[10]),
             "said": None,
             # How far this file stood above the middle of what a
             # space said, 0..1 -- None when nothing was asked of any
             # space, which is not the same claim as "nothing matched".
             "relevance": None if relevance is None else relevance.get(row[0]),
         }
-        for row in conn.execute(NAMED.format(marks=marks), list(ids))
+        for row in conn.execute(NAMED.format(marks=marks, moment=HUMAN_MOMENT, policy=int(POLICY_VERSION)), list(ids))
     }
     if said:
         for file_id, text in derived.said_first(conn, held, prefer=settings.value(conn, "caption_model")).items():
