@@ -303,7 +303,21 @@ def _servers(request, tmp_path_factory):
     at configure time whether this run drives a browser at all.
     """
     repo = pathlib.Path(__file__).resolve().parent.parent
+    # THIS WORKER's share, not the run's. `sg_browser_modules` is counted
+    # from the full collection, and every xdist worker runs its own
+    # session -- so each of them read the whole suite's browser modules as
+    # its own backlog and kept a spare booting for modules the scheduler
+    # had already given to somebody else. The pool's own docstring says
+    # "at most two servers are alive at a time", which is true per worker
+    # and false per run: at -n 4 that is eight application subprocesses,
+    # each importing forty-five modules, behind four chromiums.
+    #
+    # `--dist loadscope` hands out whole modules, so the share is the
+    # count over the worker count -- rounded up, because the remainder
+    # lands on somebody.
     wanted = getattr(request.config, "sg_browser_modules", 0)
+    workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or 1)
+    wanted = -(-wanted // workers)
     pool = _Servers(repo, lambda: tmp_path_factory.mktemp("served") / "run", wanted)
     if wanted:
         pool._begin()

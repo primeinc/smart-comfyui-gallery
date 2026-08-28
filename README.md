@@ -1,143 +1,77 @@
-# Smarter Gallery — alpha 1
+# Two rules
 
-A local gallery for a library of generated and captured media: one
-process, one SQLite file, every picture addressable by name. Scans
-folders, reads what generators and cameras wrote into files, groups
-faces, finds duplicates, searches by meaning, and tells the story of a
-session -- all as explicit jobs you start and watch.
+## 1. Do not write a test lane you have not read the fixtures for
 
-Alpha: the schema, the addresses and the jobs are the product; the
-surface is a server-rendered shell over them. Expect change.
+The suite is not a pile of independent functions. It has a shape, and the
+shape is in `tests/conftest.py` and `pytest.ini`. Changing how the suite is
+RUN — the worker count, the distribution mode, which files are selected — is
+changing that shape. Read it first.
 
-## Run
+What it costs when you don't:
 
-```
-uv sync
-uv run python -m sg_web            # http://127.0.0.1:8777
-uv run python -m sg_web --home D:/runs/two --port 8000
-uv run python -m sg_web --public   # other machines on the network too
-```
+A recipe was added that ran `pytest <files> -m slow -n 3 --dist loadfile`.
+It looked like a convenience wrapper. It was a change to the parallelism of a
+suite whose server pool (`tests/conftest.py` `_servers`) is `scope="session"`
+— which under xdist means **one pool per worker** — while the count that pool
+uses to decide how many spare application servers to boot ahead
+(`sg_browser_modules`) is taken from the **full collection**.
 
-`--public` binds every interface and prints the addresses to type on a
-phone. There is no sign-in on any of it, so anyone who can reach the
-machine can browse and change the library; the default binds this
-machine alone, deliberately, so a library never arrives on a network
-because somebody forgot a flag.
+So every worker read the whole suite's browser-module backlog as its own and
+kept booting litestar subprocesses for modules the scheduler had already
+given to somebody else. The pool's own docstring says "at most two servers
+are alive at a time". That is true per worker and false per run: at `-n 4`
+it is up to eight application subprocesses, each importing forty-five
+modules, behind four chromiums.
 
-No Node, no npm. The browser bundles are committed, because running this
-should not require a second toolchain to look at your own photographs.
-Only changing `frontend/src` needs one: `npm ci && just web build`.
+The run appeared to hang at 36%. It was oversubscription, and the fix is one
+line — the pool takes this worker's share, not the run's:
 
-A run lives wholly in its home directory (`~/.smartgallery` by default):
-the database, model weights, the thumbnail cache. Delete the directory,
-delete the run. Media is never under it -- libraries are roots you
-register. A home with no database gets one from `db/schema.sql` on
-first start (`db.connect.create`); a database an older build wrote is
-brought forward on start, one version per transaction, with a
-`gallery.vN.backup` beside it (`db/migrate.py`). A newer build's file is
-refused at start with the reason.
-
-First library:
-
-1. Open `/operations`, add a root, press **Scan**.
-2. Press the sweeps you want: **ingest** (metadata), **phash** /
-   **dupes**, **faces** then **cluster**, **embed** (semantic search,
-   downloads weights once), **annotate** (a caption per picture and per sampled moment of a video,
-   searchable and shown on its page; downloads weights once),
-   **context** then **events** (the timeline and stories). Also there:
-   **verify** (every present file's bytes against its hash), **thumbs**
-   (every missing grid thumb and preview), **embed_prompts** (every
-   prompt's vector per space -- the substrate stories and
-   `/prompts/N/neighbours` read).
-
-Every sweep is a job row; the activity surface on every page shows it
-live over `/ws/jobs`. Nothing expensive runs by itself. The ingest, phash,
-faces, embed, annotate and context sweeps queue only what is still
-missing -- a file already read, fingerprinted, looked at for faces,
-embedded, captioned or interpreted for its current bytes is not an item
-again -- and answer 204 when nothing is left (embed, one job per
-space, answers an empty list instead); `?everything=true` on the route (or
-`{"everything": true}` in the faces and annotate bodies), or the
-console's **again** button beside the sweep, redoes all of it.
-
-## Addresses
-
-```
-/g                  the gallery: one question, one ordered answer
-/i/<slug>           a picture, a video, a document
-/p/<slug>           a person           /people
-/places             everywhere a person said a picture happened; each a link into the gallery
-/t/<slug>           an album or a smart collection   /albums
-/f/<slug>           a folder           /folders
-/m/<slug> /l/<slug> /w/<slug>   a model, a LoRA, a workflow
-/timeline           the library on its human axis: one window (?start=&end=, opening on the last month), an overview
-                    with a brush and presets, every bar and session a link; stories told from sessions;
-                    any gallery question scopes it (?folder= ?person= ?f=place.id:eq:N ...)
-/stories            every story told, newest first
-/stories/renders/N  a story: frozen evidence, a plan, words the plan supports; /stories/plans/N/evolution beside it
-/search?q=          by meaning, across the configured spaces
-/operations         the console: worker, queue, every job's row and ledger, live; roots, sweeps, settings
+```python
+wanted = getattr(request.config, "sg_browser_modules", 0)
+workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or 1)
+wanted = -(-wanted // workers)
 ```
 
-Every entity address (`/g`, `/i`, `/p`, `/t`, `/f`, `/m /l /w`,
-`/timeline`, `/stories`, `/operations`) answers JSON to a machine, a
-fragment to htmx, and a page to a browser (`Vary: Accept, HX-Request`);
-the index and job routes answer JSON only. A renamed thing 301s from
-its old slug forever.
+Same three files, same `-n 3 --dist loadfile`: 4m39s and still going, before.
+**75 passed in 18.32s**, after.
 
-Writes, bytes and machine reads:
+The rules that follow from it:
+
+- **Read `tests/conftest.py` and `pytest.ini` before touching how tests run.**
+  Both files carry their reasoning in comments. They were written down so
+  nobody has to rediscover them.
+- **A wrapper is not a fix.** Deleting the recipe that surfaced this changed
+  nothing about the defect. Removing the thing that showed you a problem is
+  not repairing the problem.
+- **Do not name a cause you have not tested.** "Worker contention" was a
+  guess stated as a finding, and it sent the search in the wrong direction.
+  Reproduce it, or say you do not know yet.
+- **Measure one file alone before blaming the combination.** Each of the
+  three files here was fast on its own. That fact was available in seconds
+  and it was the whole shape of the answer.
+- **A session-scoped fixture under xdist is per worker.** Anything it counts
+  from the full collection is wrong by a factor of the worker count.
+
+## 2. Padding timeouts
+
+A timeout is not a safety margin. It is the decision about **how long a human
+sits in front of a wedged command before anything tells them.**
+
+Pad it by 20x and you have not made the run safer. You have chosen, on that
+person's behalf, that they will lose ten minutes to a command that was never
+going to finish — and they will spend those minutes watching a cursor,
+unable to tell a slow run from a dead one.
+
+Every lane in this repository is measured. Use the measurement.
 
 ```
-POST /i/<slug>/{favorite,rating,place,collections/<t>}      one picture's authored state
-POST /g/selection/{favorite,rating,place,collections/<t>}   a selection, proved against the answer it was made on (409 on a race)
-POST /albums  POST /albums/smart  PATCH /t/<slug>  PUT /t/<slug>/rule  POST /t/<slug>/convert  POST /t/<slug>/{add,remove}
-POST /jobs/<kind>  POST /jobs/N/cancel       GET /jobs  /jobs/N
-POST /stories/snapshots  /stories/plans  /stories/renders    GET the same, and /N
-POST /settings/<key>  POST /roots  POST /roots/N/scan        GET /settings  /roots
-/media/<slug>  /thumb/<slug>  /preview/<slug>  /avatar/<slug>   bytes (GET and HEAD, Range)
-/g/grid  /g/peek  /g/locate/<slug>  /timeline/density          the gallery's and the timeline's own reads
-/health  /models  /loras  /workflows  /clusterings  /ways  /dupes  /prompts/N/neighbours
-/operations/{overview,job/N,job/N/items,events,events/before}  the console's reads
+just check          7s          ->  15s
+just test           2s          ->  10s
+just test-slow      51s         ->  90s
+one test module     under 20s   ->  30s
 ```
 
-## Settings
+**Measured cost plus about half. Never a round order-of-magnitude guess.**
 
-Rows in the `setting` table, changed over `POST /settings/<key>` while
-the app runs; the vocabulary is `db/settings.py REGISTRY`
-(`models_dir`, `semantic_model`, `worker`, `faiss_gpu`,
-`dupe_threshold`, `dupe_dhash_verify`, `thumbnail_precache`,
-`ort_providers`, `face_backend`, `caption_model`). No environment variables.
-
-## Develop
-
-```
-just check          ruff, sglint, format, ty and pyrefly over the Python, tsc over the browser source, and ~/.smartgallery's version against this build (no migration step from it fails here, in a second) -- no tests
-just test           collects nothing: conftest marks the whole suite slow, so this
-                    lane is empty by construction and exits clean. `just test-slow`
-                    is the suite.
-just test-slow      every test (real libraries, real browsers), four at a time
-just check-all      the gate, both test lanes, and the real run walked
-just smoke          every surface and real pictures over ~/.smartgallery (`--home` for another run)
-just audit          sglint code rules, `--repo` hygiene, the linter self-tests -- seconds
-just serve          the app
-just bench          faces-validate, browser-report: the measured evidence behind the docs
-just faiss-verify   which faiss build the process loads
-```
-
-`sglint` is this repository's own linter for rules no stock tool holds:
-SQL built from structure only, the schema contract (STRICT, foreign
-keys, migration steps), adapters that own no semantics, and no test
-that starts a program.
-
-## Docs
-
-- `docs/ARCHITECTURE.md` -- the process, the shell, the feed, the one negotiation
-- `docs/AI_MODELS.md` -- which weights, where they live, how they arrive
-- `docs/FACE_CLUSTERING.md` -- the face pipeline and its measured thresholds
-- `docs/SIMILARITY_ENGINE.md` -- why similarity runs on FAISS over SQLite blobs
-- `docs/FAISS_GPU_WINDOWS.md` -- building the vendored GPU FAISS
-
-## License
-
-MIT. Forked from biagiomaf/smart-comfyui-gallery; the schema, the
-application and the tests here are a rewrite.
+No measurement yet means take one small step and measure it. It does not
+mean pick a big number.
