@@ -90,12 +90,21 @@ dependencies = [
 ]
 
 [dependency-groups]
-# The consumer compatibility suite's runtimes (compat/). NOT in
-# `default-groups`, so `uv sync` leaves them out and the application's
-# environment is unchanged by them; `uv sync --group compat` installs them.
-# That separation is deliberate: nothing under db/ or sg_web/ may import any
-# of this, and a group nobody syncs by accident is the cheapest way to keep
-# that true.
+# The consumer compatibility suite's runtimes (compat/). These do NOT go in
+# .venv. They go in .venv-compat, and `compat.just` is what syncs them:
+#
+#   UV_PROJECT_ENVIRONMENT=.venv-compat uv sync --group compat --group dev
+#
+# Not fastidiousness. `uv sync` removes extraneous packages, so with these in
+# the shared environment a plain `uv sync` uninstalls 36 of them and the
+# suite stops running, while `uv sync --group compat` puts 36 packages into
+# an application environment that never asked for them. Two commands that
+# destroy each other's work is not a dependency group, it is a trap -- and
+# this tree is worked on by more than one process at a time.
+#
+# `UV_PROJECT_ENVIRONMENT` with a relative path resolves against the
+# workspace root and uv creates the environment if it is absent (uv
+# concepts/projects/config.md:162-169).
 #
 # These three are pinned to COMMITS in compat/manifest.toml, and a wheel is
 # not automatically the commit it claims. `compat/harness/provenance.py`
@@ -636,9 +645,19 @@ nested-string-quote-style = "alternating"
 # (options.rs:4104), which the line above turns off.
 docstring-code-format = false
 
+# compat/ is NOT in either list, and that is an environment fact rather
+# than a preference. Its runtimes -- facexlib, diffusers, torchaudio,
+# consisid-eva-clip and thirty-odd transitive packages -- live in a
+# SEPARATE environment (.venv-compat, see compat.just), because putting
+# them in .venv made `uv sync` and `uv sync --group compat` destroy each
+# other: measured, a plain `uv sync` would uninstall 36 packages. A
+# checker run from .venv therefore cannot resolve compat/'s imports at
+# all. `just compat check` runs the same two checkers over it from the
+# environment that can.
+#
 # Two checkers over the same tree, and the SCOPE is the point: one that
 # is faster because it is checking less is not faster. Both include lists
-# below are the same nine entries, and `conftest.py` is one of them --
+# below are the same eight entries, and `conftest.py` is one of them --
 # root test infrastructure that neither tool reaches from a directory
 # list, and that nothing type checked until it was named.
 #
@@ -670,7 +689,6 @@ docstring-code-format = false
 # that platform; "all" reads none of them strictly.
 [tool.ty.src]
 include = [
-    "compat",
     "db",
     "metaparse",
     "sg_web",
@@ -752,7 +770,6 @@ missing-override-decorator = "error"
 
 [tool.pyrefly]
 project-includes = [
-    "compat",
     "db",
     "metaparse",
     "sg_web",

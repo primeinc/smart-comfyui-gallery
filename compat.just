@@ -5,31 +5,54 @@
 # supported downstream consumer can still be served without reopening the
 # source file or re-running the model.
 #
-# Four lanes, and `run` chains them. Each writes machine-generated evidence
+# Six lanes, and `run` chains them. Each writes machine-generated evidence
 # under compat/generated/ and each is red until it earns green.
 #
-# The interpreter is the project venv, not the system one: the system python
-# has no numpy, so `python -m compat.harness.run` there fails with an import
-# error rather than a verdict -- which reads like a broken suite instead of a
-# missing environment.
+# ITS OWN ENVIRONMENT, and this is the part to read before changing anything.
+# compat/ pulls facexlib, diffusers, torchaudio, consisid-eva-clip and about
+# thirty transitive packages. Those must NOT live in .venv:
 #
-# Runtimes come from a group `uv sync` does NOT install by default:
+#   `uv sync` removes extraneous packages. With the compat group installed
+#   into .venv, a plain `uv sync` uninstalls 36 of them and this suite stops
+#   running -- while `uv sync --group compat` pushes 36 packages into an
+#   application environment that never asked for them. Measured, not feared:
+#   `uv sync --dry-run` reported exactly that. Two commands that destroy each
+#   other's work is a trap, and this tree is worked on by more than one
+#   process at a time.
 #
-#   uv sync --group compat
+# So everything here runs from .venv-compat, which `just compat sync` builds.
+# `UV_PROJECT_ENVIRONMENT` with a relative path resolves against the workspace
+# root, and uv creates the environment when it is absent
+# (uv concepts/projects/config.md:162-169).
 #
-# Nothing under db/ or sg_web/ may import any of it, which is why the group is
-# separate and why compat/ lives outside the application import graph.
+# The dev group is synced alongside, because `check` runs the project's own
+# ruff, ty and pyrefly over compat/ and they must be the versions pyproject
+# pins rather than whatever is nearest.
+#
+# `set windows-shell` is repeated here on purpose: each module uses its own
+# settings (just README.md:3649-3650), so the root justfile's shell does not
+# reach this file. Recipes here run from the directory containing this file,
+# which is the repository root (just README.md:3687-3688), so every path
+# below is repo-relative.
 
-python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
+set windows-shell := ["bash", "-cu"]
 
-# Every lane in order: pins, producer, cases, matrices, attack. Stops at the first red
-run: pins producer cases matrices attack
+export UV_PROJECT_ENVIRONMENT := ".venv-compat"
+
+python := if os_family() == 'windows' { './.venv-compat/Scripts/python.exe' } else { './.venv-compat/bin/python' }
+
+# Build or refresh compat's own environment, leaving .venv untouched
+sync:
+    uv sync --group compat --group dev
+
+# Every lane in order. Stops at the first red
+run: sync pins producer cases matrices attack
 
 # Three independent layers, and none excuses the others: a clone at the right
 # commit says nothing about what the interpreter will import, and neither says
 # anything about which model files computed the numbers.
 
-# Clones, installed wheels and weight files against what the manifest pins
+# Clones, installed wheel bytes and weight files against what the manifest pins
 pins:
     {{ python }} compat/harness/provenance.py
 
@@ -59,9 +82,10 @@ matrices:
     {{ python }} -m compat.harness.matrices
 
 # A gate that has never gone red is not known to work. This corrupts pins,
-# blob digests, weight paths and the evidence itself, and asserts the checks
-# notice. An attack the gate does NOT see is a red result: every green ever
-# reported for that class was uninformative.
+# blob digests, weight paths and the evidence itself and asserts the checks
+# notice, then re-runs the whole executor and asserts what it writes is
+# byte-identical. An attack the gate does NOT see is a red result: every green
+# ever reported for that class was uninformative.
 
 # Attack the suite and prove its gates can fail
 attack:
@@ -80,13 +104,25 @@ corpus:
 fixtures:
     {{ python }} -m compat.primitives.build
 
-# Project-wide on purpose: `pyrefly check compat/` reports clean on code that
-# `pyrefly check` rejects, because a targeted run does not read the project
-# configuration. Measured, not assumed -- it happened here.
+# The same gates `just check` applies to the application, run over compat/
+# from the environment that can resolve its imports.
+#
+# compat/ is deliberately absent from [tool.ty.src] and [tool.pyrefly]
+# project-includes, so the project-wide run neither checks it nor fails on
+# imports .venv cannot see. compat/ty.toml and compat/pyrefly.toml carry the
+# root's rules at compat's scope and point both tools at .venv-compat.
+#
+# Both are invoked with an EXPLICIT config, never a bare path. Passing
+# `compat/` to the root project fails silently and in the worst possible way:
+# `src.include` filters command-line paths, so ty printed "No python files
+# found under the given path(s)" and then "All checks passed!" -- a green over
+# zero files. A planted type error survived it. That is the exact shape of
+# false pass this suite exists to refuse, found in its own gate, and both
+# checkers are now verified against a planted error rather than trusted.
 
-# Every gate this tree holds compat/ to, run project-wide
+# ruff, ty and pyrefly over compat/, from compat's own environment
 check:
     {{ python }} -m ruff format --check compat/
     {{ python }} -m ruff check compat/
-    {{ python }} -m pyrefly check
-    {{ python }} -m ty check
+    {{ python }} -m ty check --config-file compat/ty.toml compat
+    {{ python }} -m pyrefly check -c compat/pyrefly.toml

@@ -705,7 +705,7 @@
   },
   "runtimes": [
     {
-      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\utils\\face_restoration_helper.py",
+      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\utils\\face_restoration_helper.py",
       "installed_sha256": "0a2387b0faa3729d7a13176b4e53cab4ad6ed2c92ec75ea24b5d59aaeabb69bc",
       "matches": true,
       "note": null,
@@ -715,7 +715,7 @@
       "pinned_sha256": "0a2387b0faa3729d7a13176b4e53cab4ad6ed2c92ec75ea24b5d59aaeabb69bc"
     },
     {
-      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\diffusers\\pipelines\\consisid\\consisid_utils.py",
+      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\diffusers\\pipelines\\consisid\\consisid_utils.py",
       "installed_sha256": "7ae159fa6608d339f66df1427d6af638beb1b430db9ce6528fe57223d80baed6",
       "matches": true,
       "note": null,
@@ -725,7 +725,7 @@
       "pinned_sha256": "7ae159fa6608d339f66df1427d6af638beb1b430db9ce6528fe57223d80baed6"
     },
     {
-      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\insightface\\utils\\face_align.py",
+      "installed_file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\insightface\\utils\\face_align.py",
       "installed_sha256": "a8b34ddd06716f5ca7e7501415cbd3789ccbce18db9e557b35e537695290d922",
       "matches": true,
       "note": null,

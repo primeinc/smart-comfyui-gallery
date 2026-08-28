@@ -26,6 +26,10 @@ venv/
 .venv/
 env/
 ENV/
+# The compatibility suite's own environment. Separate from .venv because
+# `uv sync` prunes: with compat's runtimes in the shared environment, a plain
+# `uv sync` uninstalls 36 packages and the suite stops running. See compat.just.
+.venv-compat/
 
 # Database
 *.db
