@@ -1,16 +1,10 @@
-/* Evolution: how one picture became another, and what the machine
-   claims about the chain. Tokens are gallery.css's.
+/* Evolution: how one picture became another, and what the machine claims
+   about the chain.
 
-   This file used to hold its own palette -- #fc6, #6cf, #c77, #888,
-   #222, #444, #666, #1a1a1a -- and its own meanings for them, so the
-   page rendered in colours no other page used and answered to nothing
-   when the theme moved. It also carried no focus state of any kind on
-   controls that are all keyboard-reachable.
-
-   The blue is gone rather than re-tokened. It was carrying "inferred"
-   and "paired" as if those were a second brand colour; they are not
-   claims the safelight makes, so they step DOWN into ink instead of
-   sideways into a new hue. Asserted is accent. Inferred is quiet. */
+   Every token is gallery.css's, so the page moves when the theme does.
+   Confidence is said in ink, not in hue: what the machine ASSERTS takes
+   the accent, what it INFERS steps down into quieter ink. A second
+   colour for "inferred" would read as a second brand. */
 
 .evolution {
   padding-right: var(--s4);

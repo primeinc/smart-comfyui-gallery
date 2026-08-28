@@ -5,18 +5,11 @@
    one :root now. Pretty beside raw, everywhere: a label in the body
    face, the machine's own spelling in mono under it. */
 
-/* The console measures ITSELF.
-   Every breakpoint in here read the viewport, which stopped being the
-   console's width the moment the shell became a 200px rail: at a 1180px
-   window this panel gets 980 and still believed it was wide. The split
-   stayed two-column in a box that could not hold it, and the ledger --
-   382px of fixed columns before the message gets any -- squeezed its
-   message column to nothing and truncated every row to `job 89 · item
-   3727 ·` with the event itself gone.
-
-   A container query asks the right question. It is also correct for the
-   viewer's hidden rail, for a future collapsed one, and for anybody
-   reading this in a window the author never tried. */
+/* Breakpoints here are container queries, not viewport ones: the shell
+   takes a 200px rail, so at a 1180px window the console gets 980 and the
+   viewport's width answers the wrong question. The ledger spends 382px
+   on fixed columns before the message gets any, so a console that thinks
+   it is wider than it is truncates every row. */
 .operations {
   max-width: none;
   container-type: inline-size;

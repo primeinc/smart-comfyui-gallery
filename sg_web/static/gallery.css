@@ -429,17 +429,15 @@ p {
   color: var(--danger);
 }
 
-/* --- the grid: justified rows, not a waffle iron ----------------------
-   Every cell used to be `aspect-ratio: 1` with `object-fit: cover`: a
-   fixed lattice of identical squares that cropped a panorama and a
-   portrait to the same shape and so told the reader they were the same
-   kind of thing. This library is generation sweeps and photographs
-   together; the proportion IS information.
+/* --- the grid: justified rows ------------------------------------------
+   Rows of a fixed height. Each cell is as wide as its own picture wants
+   to be at that height (--ar, from the file's stored width and height),
+   then grown to flush the row.
 
-   Rows of a fixed height, each cell as wide as its own picture wants to
-   be at that height (--ar from the file's stored width/height), grown
-   to flush the row. Gaps are 3px rather than 10: pictures next to
-   pictures, with the grid getting out of the way. */
+   A square lattice would crop a panorama and a portrait to one shape and
+   say they are the same kind of thing. In a library of generation sweeps
+   and photographs together, the proportion is information. Gaps are 3px
+   so the grid stays out of the way. */
 .grid {
   display: flex;
   flex-wrap: wrap;
@@ -599,12 +597,10 @@ p {
   color: var(--accent);
 }
 
-/* "page 1 of 63 · 3748 results · next" under an infinite scroll is a
-   control from a page that no longer exists. It cannot be deleted --
-   frontend/src/endless.ts observes it as the sentinel that asks for the
-   next page, and it is the whole browsing path with no JavaScript -- so
-   it steps back instead: quiet once the loader has said it is mounted,
-   and still exactly where it was for a reader who has no loader. */
+/* The pager stays even under an infinite scroll: endless.ts observes it
+   as the sentinel that asks for the next page, and it is the whole
+   browsing path with no JavaScript. It goes quiet once the loader says
+   it has mounted, and stays put for a reader who has no loader. */
 [data-endless] .pager {
   padding: var(--s5) 0 var(--s6);
   font-size: var(--t-micro);
@@ -736,18 +732,13 @@ p {
   position: absolute;
   inset: 0;
   display: grid;
-  /* the inspector is a COLUMN that is zero wide until it is open: the
-     stage grows back into the space when it closes, with no reflow of
-     anything else.
+  /* Two columns: the stage, and an inspector that is zero wide until it
+     opens. Closing it gives the width back and reflows nothing else.
 
-     The chrome and the filmstrip used to be ROWS -- a 60px bar and a
-     105px strip, both in flow, taking 165px of height off the one thing
-     this screen exists for. The picture is fitted to that height, so the
-     cost was paid in width too: a 740px picture in a 1440px window with
-     350px of dead ground down each side. They overlay now and the stage
-     is the whole viewer. The chrome was already drawn as an overlay --
-     it carries its own gradient scrim and its own resting fade; it was
-     simply occupying a row as well. */
+     The chrome and the filmstrip overlay the stage rather than taking
+     rows of their own. A row each costs 165px of height, and the picture
+     is fitted to that height, so it costs width too. Both already carry
+     their own scrim. */
   grid-template-columns: 1fr 0;
   grid-template-rows: 1fr;
   grid-template-areas: "stage inspector";
