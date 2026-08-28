@@ -10,18 +10,32 @@ seam and what reaches it is asserted.
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import time
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, derived, naming, runner, settings
-from sg_web.app import build_app
 from sglint import policy
-from tests.staging import fresh_schema
+from tests.staging import fresh_schema, hosting
 from vision import captions, weights
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "captions") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application per module instead of one boot per test; every
+    test registers its own root and the restore hands the next one a
+    virgin library."""
+    _world.restore()
+    return _world.client
 
 
 class FakeCaptioner:
@@ -83,13 +97,13 @@ def test_submit_skips_pictures_the_model_already_captioned_for_these_bytes(tmp_p
     assert runner.submit_annotate(conn, 4.0, models_dir="M") is not None, "new bytes, no caption for them"
 
 
-def test_a_caption_model_that_is_no_repository_is_refused_at_submit(tmp_path):
+def test_a_caption_model_that_is_no_repository_is_refused_at_submit(tmp_path, served):
     conn = fresh_schema()
     _one_picture(conn, tmp_path / "lib")
     settings.put(conn, "caption_model", "blip")
     with pytest.raises(ValueError, match="repository id"):
         runner.submit_annotate(conn, 0.0, models_dir="M")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         held = connect.connect(client.app.state.db_path)
         try:
             settings.put(held, "caption_model", "blip")
@@ -207,13 +221,13 @@ def test_the_annotation_table_is_no_longer_reserved():
     assert "derived_annotation" not in policy.DERIVED_RESERVED
 
 
-def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatch):
+def test_the_caption_reaches_the_media_page_through_the_app(tmp_path, monkeypatch, served):
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (20, 12), (10, 200, 40)).save(root / "green.png")
     monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: FakeCaptioner(say="a green field"))
     monkeypatch.setattr(runner, "_CAPTIONERS", {})
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)
@@ -336,7 +350,7 @@ def test_a_clip_is_captioned_whole_and_at_its_sampled_moments(tmp_path, monkeypa
     assert len(derived.said_about(conn, file_id)) == 1 + len(moments)
 
 
-def test_a_moments_caption_is_a_link_into_the_clip(tmp_path, monkeypatch):
+def test_a_moments_caption_is_a_link_into_the_clip(tmp_path, monkeypatch, served):
     """On the page a moment's caption carries the second it describes,
     and the page's script plays the clip from there."""
     root = tmp_path / "lib"
@@ -344,7 +358,7 @@ def test_a_moments_caption_is_a_link_into_the_clip(tmp_path, monkeypatch):
     _clip(root / "walk.mp4")
     monkeypatch.setattr(captions, "captioner_for", lambda *a, **k: FakeCaptioner(say="a grey walk"))
     monkeypatch.setattr(runner, "_CAPTIONERS", {})
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)

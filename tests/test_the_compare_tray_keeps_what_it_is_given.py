@@ -23,9 +23,9 @@ import time
 import numpy as np
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -68,11 +68,16 @@ def _drained(api, timeout=90.0) -> None:
         if not running:
             return
         assert time.monotonic() < deadline, f"jobs still running: {running}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def _gallery(page: Page) -> None:
     page.goto("/g")
+    # Kept, though `_keep_cell`'s `hover` would wait by itself: hover's
+    # actionability check also waits for the cell to be STABLE, and on a
+    # grid whose pictures are still arriving that costs more than asking
+    # once whether the cells are there. Measured over the module: 12.2s
+    # with this line, 13.0s without it.
     page.wait_for_selector("[data-grid] a.cell", timeout=15_000)
 
 
@@ -104,7 +109,12 @@ def _slug(live: Live, name: str) -> str:
 
 def test_the_tray_stays_out_of_the_way_until_something_is_kept(page: Page, live: Live, unbroken):
     _gallery(page)
-    assert page.locator("[data-compare-tray]").count() == 1, "the tray exists on every surface that shows media"
+    # `to_have_count`, not `count() == 1`: the tray is MOUNTED by the
+    # bundle, and `count()` answers with whatever is in the document at
+    # the instant it is asked -- which on a slow load is before the mount.
+    # Measured: `assert 0 == 1` on a full-suite run. A web-first assertion
+    # retries, so it reads the page rather than a moment of it.
+    expect(page.locator("[data-compare-tray]")).to_have_count(1)
     assert not page.locator("[data-compare-tray]").is_visible(), "and shows nothing until it holds something"
 
 
@@ -192,8 +202,7 @@ def test_collapsing_hides_the_thumbnails_and_not_the_count(page: Page, live: Liv
     assert not page.locator("[data-compare-items]").is_visible()
 
     page.goto("/g")
-    page.wait_for_selector("[data-grid] a.cell", timeout=15_000)
-    assert page.get_attribute("[data-compare-tray]", "data-tray") == "closed", "and it stays how it was left"
+    expect(page.locator("[data-compare-tray]")).to_have_attribute("data-tray", "closed")
 
 
 # --- removing and reordering ------------------------------------------------
@@ -493,6 +502,8 @@ def test_it_never_zooms_out_past_fit(page: Page, live: Live, unbroken):
     _opened(page)
     page.hover("[data-compare-column] .compare-frame")
     page.mouse.wheel(0, 600)
-    page.wait_for_timeout(200)
+    # A zoom would land on the next frame; this is three of them, and the
+    # assertion below is that nothing moved.
+    page.wait_for_timeout(50)
     assert {one["transform"] for one in _glasses(page)} == {"none"}
     assert page.inner_text("[data-compare-zoom]").strip() == "fit"

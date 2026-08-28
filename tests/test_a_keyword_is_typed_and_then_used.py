@@ -18,9 +18,11 @@ the library already calls things is offered as the box is entered.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from PIL import Image
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Error, Page, expect
 
 from tests.conftest import Live
 
@@ -45,10 +47,49 @@ def prepare(api, root) -> None:
 # SHARED. Every assertion below is about a word this test typed, never
 # about how many keywords exist -- an order-dependent count here would be
 # a test that passes alone and fails in the suite.
+#: The pictures' own addresses, asked once for the whole module.
+#:
+#: Every test here reached a picture by loading the grid and clicking a
+#: cell -- TWO page loads to arrive at one picture, eight times over. The
+#: addresses are a fact about the library this module wrote, and it does
+#: not change between tests, so the first test discovers them and the
+#: rest go straight there.
+_ADDRESSES: list[str] = []
+
+
+def _cell_addresses(page: Page, timeout: float = 15.0) -> list[str]:
+    """Every cell's address, read across a reload the page may do.
+
+    This surface reloads itself -- `/g/locate/{slug}` erroring, or the
+    walked answer having really moved, both end in `location.reload()`
+    (frontend/src/authored.ts:113-127). Both are the product being
+    right; the test simply cannot assume the document it is reading
+    outlives the read.
+
+    The retry has to be on the READ. It was on an `expect` in front of
+    it, which retries across a navigation and so proved a cell was
+    attached at SOME instant -- never that it was still there at the
+    instant of the one-shot `evaluate_all` after it. The reload landing
+    in that gap failed as "Execution context was destroyed, most likely
+    because of a navigation", about one run in eight.
+    """
+    ended = time.monotonic() + timeout
+    while True:
+        expect(page.locator("[data-grid] a.cell").first).to_be_attached()
+        try:
+            return page.locator("[data-grid] a.cell").evaluate_all(
+                "cells => cells.map(one => one.getAttribute('href'))"
+            )
+        except Error as destroyed:
+            if "destroyed" not in str(destroyed) or time.monotonic() > ended:
+                raise
+
+
 def _open(page: Page, nth: int = 0) -> None:
-    page.goto("/g?sort=oldest")
-    page.wait_for_selector("[data-grid] a.cell", timeout=15_000)
-    page.locator("[data-grid] a.cell").nth(nth).click()
+    if not _ADDRESSES:
+        page.goto("/g?sort=oldest")
+        _ADDRESSES.extend(_cell_addresses(page))
+    page.goto(_ADDRESSES[nth])
     expect(page.locator("[data-authored] [data-tag-input]").last).to_be_visible()
 
 

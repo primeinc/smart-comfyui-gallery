@@ -57,6 +57,8 @@ type LiveReport = components["schemas"]["LiveReport"];
   let selectedEvent: number | null = null;
   let socket: WebSocket | null = null;
   let retry = 0;
+  //: the pending backoff reconnect, so the operator can overtake it
+  let resuming = 0;
   let lastFrameAt: number | null = null;
   const filter = { type: "", severity: "", job: "" };
   let view: ReadableEvent[] = []; // the events that pass the filter, ascending
@@ -608,7 +610,7 @@ type LiveReport = components["schemas"]["LiveReport"];
       );
       retry += 1;
       // resume from the newest id held, so nothing repeats and nothing is lost
-      window.setTimeout(() => connect(lastId), Math.min(4000, 250 * 2 ** Math.min(retry, 4)));
+      resuming = window.setTimeout(() => connect(lastId), Math.min(4000, 250 * 2 ** Math.min(retry, 4)));
     };
     live.onerror = () => live.close();
   }
@@ -647,8 +649,22 @@ type LiveReport = components["schemas"]["LiveReport"];
 
   // An operator's reconnect: close the socket; the close handler resumes
   // from the last id held, so nothing is repeated and nothing is lost.
+  //
+  // A closed socket is the case the button EXISTS for. It used to be the
+  // one case it did nothing: `readyState <= 1` is open or connecting, so
+  // pressing reconnect while the transport was down -- the only state an
+  // operator would press it in -- fell through, and the console sat out
+  // the rest of a backoff that reaches four seconds. So a dead socket
+  // overtakes the pending resume instead: the wait is the recovery being
+  // patient on its own, and a person asking is not that.
   requireElement(root, "[data-transport-reconnect]", HTMLButtonElement).addEventListener("click", () => {
-    if (socket && socket.readyState <= 1) socket.close();
+    if (socket && socket.readyState <= 1) {
+      socket.close();
+      return;
+    }
+    window.clearTimeout(resuming);
+    retry = 0;
+    connect(lastId);
   });
 
   window.setInterval(() => {

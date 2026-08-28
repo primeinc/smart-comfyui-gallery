@@ -26,30 +26,34 @@ just corrected, and left standing it haunts the filter menu forever.
 from __future__ import annotations
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import authored, connect, derived
-from sg_web.app import build_app
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
 
-@pytest.fixture
-def library(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _three(root):
     for i in range(3):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        conn = connect.connect(client.app.state.db_path)
-        slugs = [
-            slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")
-        ]
-        yield client, conn, slugs
-        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_word_you_wrote_on_a_picture", _three) as stage:
+        yield stage
+
+
+@pytest.fixture
+def library(_world):
+    """One scanned library for the module; every test writes keywords and
+    the restore takes them back off again."""
+    _world.restore()
+    conn = _world.conn()
+    slugs = [slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")]
+    yield _world.client, conn, slugs
+    connect.close(conn)
 
 
 def _tag(client, slug: str, name: str, value: bool = True):

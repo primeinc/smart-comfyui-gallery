@@ -472,8 +472,17 @@ CONNECTION_KEPT: frozenset[str] = frozenset(
         # The Stage's data_version monitor: an idle reader whose whole
         # purpose is outliving each test to see other connections'
         # commits, so a restore nothing wrote through is skipped.
-        # Stage.close_monitor owns its end, at module teardown.
         "tests/staging.py:_data_version",
+        # The restore's SOURCE: the frozen template, read-only. Same
+        # bytes for every restore in the module, so re-opening it per
+        # test buys nothing and costs a connection's PRAGMAs on the
+        # hot path. Re-opened after a rebuild writes a new template.
+        "tests/staging.py:_from_template",
+        # The restore's DESTINATION. Held for the same reason, and it
+        # is between transactions whenever a test can see it, so it
+        # takes no lock the application's own connections would meet.
+        "tests/staging.py:_into_db",
+        # All three end in Stage.close_held, at module teardown.
     }
 )
 

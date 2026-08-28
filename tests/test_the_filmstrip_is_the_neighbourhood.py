@@ -18,9 +18,9 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -44,7 +44,7 @@ def prepare(api, root) -> None:
         deadline = time.monotonic() + 60
         while api.get(f"/jobs/{swept['precache']}").json()["state"] not in ("done", "failed", "cancelled"):
             assert time.monotonic() < deadline
-            time.sleep(0.05)
+            time.sleep(POLL)
 
 
 #: The walk this module asks for: oldest first, five to a page.
@@ -66,9 +66,30 @@ def _at(api, ordinal: int) -> str:
     raise AssertionError(f"no member at ordinal {ordinal}: {[r['ordinal'] for r in listed]}")
 
 
+#: Fifteen wherever it sits -- centred, or slid against either end.
+WIDE = 15
+
+
 def _open(page: Page, live: Live, ordinal: int) -> None:
+    """Opened, and settled on the picture that was asked for.
+
+    Through `expect`, which RETRIES until the condition holds, rather
+    than a read that answers once: "when using assertions such as
+    `isVisible()` the test won't wait a single second, it will just check
+    the locator is there and return immediately"
+    (microsoft/playwright docs/src/best-practices-js.md:174-188). Waiting
+    only for the current marker to exist and then reading the row is that
+    same one-shot read wearing a wait, and it failed one run in three.
+    """
     page.goto(f"/i/{_at(live.api, ordinal)}?sort=oldest&size=5")
-    page.wait_for_selector("[data-filmstrip-item][aria-current='true']", timeout=15_000)
+    expect(page.locator("[data-filmstrip-item]")).to_have_count(WIDE)
+    expect(page.locator("[data-filmstrip-item][aria-current='true']")).to_have_attribute("data-ordinal", str(ordinal))
+    # The strip is server-rendered, so its cells exist BEFORE the script
+    # that wires the keys and the clicks has run -- and an arrow pressed
+    # in that window goes nowhere. `data-zoom` is written by the viewer's
+    # first paint (frontend/src/viewer.ts:195), so carrying it is the
+    # page saying mountViewer finished.
+    expect(page.locator("[data-viewer][data-zoom]")).to_have_count(1)
 
 
 def test_the_window_is_a_slice_of_the_answer_not_of_a_page(page: Page, live: Live, unbroken):
@@ -81,12 +102,6 @@ def test_the_window_is_a_slice_of_the_answer_not_of_a_page(page: Page, live: Liv
     _open(page, live, 11)
     held = _ordinals(page)
     assert held == list(range(4, 19)), f"a fifteen-wide window centred on 11: {held}"
-    assert (
-        page.evaluate(
-            "() => Number(document.querySelector(\"[data-filmstrip-item][aria-current='true']\").dataset.ordinal)"
-        )
-        == 11
-    )
 
 
 def test_the_current_picture_is_where_the_eye_expects_it(page: Page, live: Live, unbroken):
@@ -120,12 +135,10 @@ def test_an_edge_of_the_answer_slides_the_window_rather_than_padding_it(page: Pa
     """Near the start the strip stays FULL and the current item sits near
     the left. Fifteen cells are fifteen pictures, never seven blanks."""
     _open(page, live, 1)
-    assert _ordinals(page) == list(range(1, 16))
-    assert page.get_attribute("[data-filmstrip-item][aria-current='true']", "data-ordinal") == "1"
+    assert _ordinals(page) == list(range(1, WIDE + 1))
 
     _open(page, live, MANY)
-    assert _ordinals(page) == list(range(MANY - 14, MANY + 1))
-    assert page.get_attribute("[data-filmstrip-item][aria-current='true']", "data-ordinal") == str(MANY)
+    assert _ordinals(page) == list(range(MANY - WIDE + 1, MANY + 1))
 
 
 def test_walking_moves_the_window_with_you(page: Page, live: Live, unbroken):
@@ -134,8 +147,6 @@ def test_walking_moves_the_window_with_you(page: Page, live: Live, unbroken):
     _open(page, live, 11)
     assert _ordinals(page) == list(range(4, 19))
     page.keyboard.press("ArrowRight")
-    page.wait_for_function(
-        "() => document.querySelector(\"[data-filmstrip-item][aria-current='true']\").dataset.ordinal === '12'",
-        timeout=15_000,
-    )
+    expect(page.locator("[data-filmstrip-item][aria-current='true']")).to_have_attribute("data-ordinal", "12")
+    expect(page.locator("[data-filmstrip-item]")).to_have_count(WIDE)
     assert _ordinals(page) == list(range(5, 20))

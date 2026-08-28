@@ -13,6 +13,7 @@ answering zero rows as if the rule had run.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -21,6 +22,22 @@ from PIL import Image
 
 from db import collection_rules, collections, connect
 from sg_web.app import build_app
+from tests.staging import hosting
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "bounded") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application per module for the tests that mutate their own
+    worlds; the restore hands each a virgin library."""
+    _world.restore()
+    return _world.client
+
 
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 AS_MACHINE = {"accept": "application/json"}
@@ -259,7 +276,7 @@ def test_the_albums_index_shows_the_hierarchy_as_authored(placed_on_disk):
     assert {row["slug"] for row in flat} == {"keep", "inner", "rules"}, "the machine list stays flat and complete"
 
 
-def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch):
+def test_the_albums_tree_is_one_statement_and_one_snapshot(monkeypatch, served):
     """The whole shelf is ONE SELECT, nested in Python: no query per
     node (the N+1 the review caught), and single-statement atomicity is
     what makes the rendered tree one generation -- a reparent committed
@@ -268,8 +285,7 @@ def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch
 
     from db import pages
 
-    burrow, _ = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         for name in ("Keep", "Drift"):
             client.post("/albums", json={"name": name})
         conn = connect.connect(client.app.state.db_path)
@@ -313,15 +329,15 @@ def test_the_albums_tree_is_one_statement_and_one_snapshot(tmp_path, monkeypatch
 
 
 @pytest.mark.slow
-def test_a_browsing_get_records_nothing_and_the_operational_one_commits(tmp_path):
+def test_a_browsing_get_records_nothing_and_the_operational_one_commits(tmp_path, served):
     """/folders observes; /roots records. After the disk changes, the
     browsing GET must answer with fresh reachability while writing
     nothing -- and the operational GET must persist what it saw, not
     hold the writer lane for a rollback."""
     import shutil
 
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+    _, root = _library(tmp_path)
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
 
@@ -340,7 +356,7 @@ def test_a_browsing_get_records_nothing_and_the_operational_one_commits(tmp_path
         assert recorded() == 0, "the operational route observed offline but did not persist it"
 
 
-def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypatch):
+def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypatch, served):
     """The CollectionView invariant under fire: kind is NOT immutable --
     an empty collection legally converts to smart -- so the static/smart
     decision must be made under the SAME snapshot the card is read from.
@@ -349,8 +365,8 @@ def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypat
     static header over a refused body, and never a 500."""
     from db import resultset
 
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+    _, root = _library(tmp_path)
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         assert client.post("/albums", json={"name": "Turncoat"}).json()["slug"] == "turncoat"
@@ -380,15 +396,15 @@ def test_a_kind_converted_mid_assembly_cannot_mix_the_answer(tmp_path, monkeypat
         assert (after["kind"], after["gallery"]) == ("smart", None)
 
 
-def test_a_missing_folder_is_a_state_not_a_404_and_not_merely_empty(tmp_path):
+def test_a_missing_folder_is_a_state_not_a_404_and_not_merely_empty(tmp_path, served):
     """Presence has three values and the address outlives them all: a
     reachable folder is present, an unplugged root is offline, a
     directory gone from where it was last seen is missing -- and only
     an address nothing lives at is a 404."""
     import shutil
 
-    burrow, root = _library(tmp_path)
-    with TestClient(app=build_app(str(burrow), worker=False)) as client:
+    _, root = _library(tmp_path)
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         assert client.get("/f/deep", headers=AS_MACHINE).json()["state"] == "present"

@@ -18,14 +18,29 @@ when a collection STARTED rather than when it finished.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 from db import jobs, scheduling
-from tests.staging import HOUR, NOW, fresh_schema
+from tests.staging import HOUR, NOW, fresh_schema, hosting
 
 pytestmark = pytest.mark.slow
 
 NIGHTLY = 24.0
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "test_something_runs_without_being_asked") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application for the three served claims here."""
+    _world.restore()
+    return _world.client
 
 
 @pytest.fixture
@@ -142,16 +157,13 @@ def test_one_row_per_collection(db):
 # --- and the runner is the only thing that starts one ------------------------
 
 
-def test_the_runner_starts_what_is_due_and_stamps_it(tmp_path):
+def test_the_runner_starts_what_is_due_and_stamps_it(tmp_path, served):
     """`run_schedules` is called on the worker's own turn rather than by
     a timer of its own: a second scheduler is a second thing that can be
     running while nobody thinks anything is."""
-    from litestar.testing import TestClient
-
     from db import connect, runner
-    from sg_web.app import build_app
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             scheduling.put(conn, "catch up", NIGHTLY, NOW)
@@ -174,16 +186,13 @@ def test_the_runner_starts_what_is_due_and_stamps_it(tmp_path):
     assert stamped == NOW
 
 
-def test_the_console_shows_it_and_can_set_it(tmp_path):
+def test_the_console_shows_it_and_can_set_it(served):
     """Set where the sweeps are, in hours. A cron expression is a small
     language, and a small language wants a parser, a validator and a way
     to say what it will do next."""
-    from litestar.testing import TestClient
-
     from db import connect
-    from sg_web.app import build_app
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         page = client.get("/operations", headers={"accept": "text/html"}).text
         assert 'data-schedule="catch up"' in page
         assert "never set" in page, "an unscheduled collection does not say so"
@@ -210,11 +219,7 @@ def test_the_console_shows_it_and_can_set_it(tmp_path):
             connect.close(conn)
 
 
-def test_the_console_refuses_a_collection_it_cannot_run(tmp_path):
-    from litestar.testing import TestClient
-
-    from sg_web.app import build_app
-
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+def test_the_console_refuses_a_collection_it_cannot_run(served):
+    with contextlib.nullcontext(served) as client:
         told = client.post("/operations/schedules/nonsense", data={"every_hours": "12", "enabled": "true"})
         assert told.status_code == 400, told.text

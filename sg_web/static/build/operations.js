@@ -568,6 +568,7 @@
     let selectedEvent = null;
     let socket = null;
     let retry = 0;
+    let resuming = 0;
     let lastFrameAt = null;
     const filter = { type: "", severity: "", job: "" };
     let view = [];
@@ -1037,7 +1038,7 @@
           unreadable ? `unreadable frame; resuming from #${lastId}` : "disconnected"
         );
         retry += 1;
-        window.setTimeout(() => connect(lastId), Math.min(4e3, 250 * 2 ** Math.min(retry, 4)));
+        resuming = window.setTimeout(() => connect(lastId), Math.min(4e3, 250 * 2 ** Math.min(retry, 4)));
       };
       live.onerror = () => live.close();
     }
@@ -1073,7 +1074,13 @@
       if (settles(frame.type)) refreshOverviewSoon();
     }
     requireElement(root, "[data-transport-reconnect]", HTMLButtonElement).addEventListener("click", () => {
-      if (socket && socket.readyState <= 1) socket.close();
+      if (socket && socket.readyState <= 1) {
+        socket.close();
+        return;
+      }
+      window.clearTimeout(resuming);
+      retry = 0;
+      connect(lastId);
     });
     window.setInterval(() => {
       transportLast.textContent = String(lastId);

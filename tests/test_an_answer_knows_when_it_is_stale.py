@@ -37,7 +37,7 @@ import uuid
 import pytest
 
 from db import build, connect, resultset
-from tests.staging import NOW
+from tests.staging import NOW, fresh_db
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 
@@ -63,8 +63,7 @@ def library(tmp_path):
     """A real file: currency reads a monitor connection, and an
     in-memory database has no second connection to be current against."""
     path = tmp_path / "gallery.db"
-    build.build(path)
-    conn = connect.connect(str(path))
+    conn = fresh_db(path)
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/x','library',0)")
     conn.execute("INSERT INTO entity(id,uuid,kind,slug) VALUES(1,?,'folder','x')", (uuid.uuid4().bytes,))
     conn.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(1,1,NULL,'x',0)")

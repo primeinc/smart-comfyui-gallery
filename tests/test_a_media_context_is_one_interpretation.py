@@ -293,16 +293,29 @@ def test_a_changed_source_claim_deletes_the_interpretation(interpreted):
 
     # The FILESYSTEM seam: the file's times change on disk; the rescan
     # that records the new claim deletes the old interpretation.
-    os.utime(root / "gen_1.png", (NOW + 60 * HOUR, NOW + 60 * HOUR))
+    moved = root / "gen_1.png"
+    was = moved.stat()
+    os.utime(moved, (NOW + 60 * HOUR, NOW + 60 * HOUR))
     client.post("/roots/1/scan")
-    conn = _raw(client)
     try:
-        gone = conn.execute(
-            "SELECT count(*) FROM derived_media_context mc JOIN file f ON f.id = mc.file_id WHERE f.name = 'gen_1.png'"
-        ).fetchone()[0]
-        assert gone == 0, "a moved clock left its old interpretation standing"
+        conn = _raw(client)
+        try:
+            gone = conn.execute(
+                "SELECT count(*) FROM derived_media_context mc JOIN file f ON f.id = mc.file_id"
+                " WHERE f.name = 'gen_1.png'"
+            ).fetchone()[0]
+            assert gone == 0, "a moved clock left its old interpretation standing"
+        finally:
+            connect.close(conn)
     finally:
-        connect.close(conn)
+        # The clock goes back, because `Stage.restore` compares the
+        # library by (size, mtime) and rebuilds the whole world -- a
+        # fresh application, library, scan and interpretation -- when it
+        # differs. Left moved, this one line cost the NEXT test 0.28s
+        # against the 0.01s a restore costs. `utime` rewrites no bytes,
+        # so the file keeps its identity and the restored snapshot still
+        # describes it.
+        os.utime(moved, ns=(was.st_atime_ns, was.st_mtime_ns))
 
 
 # --- the typed facet registry -----------------------------------------------

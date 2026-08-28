@@ -71,12 +71,12 @@
         });
       });
     });
+    const wasControlled = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (!refreshing) {
-        refreshing = true;
-        location.reload();
-      }
+      if (!wasControlled || refreshing) return;
+      refreshing = true;
+      location.reload();
     });
   }
 

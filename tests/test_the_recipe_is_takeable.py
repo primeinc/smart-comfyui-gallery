@@ -25,7 +25,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 from playwright.sync_api import Page
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -71,7 +71,7 @@ def _drained(api, timeout=60.0) -> None:
         if not running:
             return
         assert time.monotonic() < deadline, f"jobs still running: {running}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def _address(api, name: str) -> str:
@@ -104,16 +104,30 @@ def _clipboard(page: Page) -> str:
     return page.evaluate("() => navigator.clipboard.readText()")
 
 
+#: Parked on the clipboard before a copy, so the value read back after
+#: it is known to be that press and not the one before it.
+UNCOPIED = "nothing-copied-yet"
+
+
 def _copy(page: Page, selector: str) -> str:
     """Press a copy button and read what it put on the clipboard.
 
-    The button says `data-done` for a moment and then stops. Waiting for
-    it to be CLEAR before clicking is what makes a second copy in the same
-    test a real wait rather than a no-op that reads the previous answer.
+    The sentinel is what makes a second copy in the same test a real
+    wait rather than a no-op reading the previous answer. The button's
+    own `data-done` says the same thing a moment later, but it stays lit
+    for 1200ms (frontend/src/recipe.ts `copied`), so waiting for it to
+    clear before pressing again bought that flash on every copy after
+    the first. `copied` has no guard on the flag -- a press during it
+    writes like any other -- and the clipboard is the thing being
+    claimed about anyway.
     """
-    page.wait_for_function(f"() => !document.querySelector({selector!r}).dataset.done", timeout=5_000)
+    page.evaluate("(idle) => navigator.clipboard.writeText(idle)", UNCOPIED)
     page.click(selector)
-    page.wait_for_function(f"() => document.querySelector({selector!r}).dataset.done === 'true'", timeout=5_000)
+    page.wait_for_function(
+        "(idle) => navigator.clipboard.readText().then(text => text !== idle)",
+        arg=UNCOPIED,
+        timeout=5_000,
+    )
     return _clipboard(page)
 
 

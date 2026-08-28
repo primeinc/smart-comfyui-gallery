@@ -58,7 +58,7 @@ from db import (
 )
 from sg_web import console, home, redaction
 from sg_web.presenting import VARIES, wants_json
-from sg_web.submitting import submitted
+from sg_web.submitting import nudge, submitted
 from sg_web.wire import Wire
 
 _logger = logging.getLogger(__name__)
@@ -269,7 +269,9 @@ def _page_context(state: State) -> dict:
 
 @get("/", sync_to_thread=True)
 def operations_page(state: State) -> Template:
-    return Template(template_name="operations.html", context=_page_context(state), headers=VARIES)
+    return Template(
+        media_type=MediaType.HTML, template_name="operations.html", context=_page_context(state), headers=VARIES
+    )
 
 
 @get("/overview", sync_to_thread=True)
@@ -1198,6 +1200,7 @@ def job_inspector(state: State, request: Request, job_id: FromPath[int]) -> Temp
     if wants_json(request):
         return Response(detail, headers=VARIES)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_job.html",
         context={"job": detail.model_dump(mode="json")},
         headers=VARIES,
@@ -1250,6 +1253,7 @@ def job_items(
     if wants_json(request):
         return Response(page, headers=VARIES)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_items.html",
         context={
             "items": page.model_dump(mode="json")["items"],
@@ -1348,7 +1352,12 @@ def launch(state: State, kind: FromPath[str], everything: FromQuery[bool] = Fals
         connect.close(conn)
     queued = ", ".join(f"#{job['id']}" for job in told)
     notice = f"{label}: queued {queued}" if told else f"{label}: nothing to do"
-    return Template(template_name="_operations_notice.html", context={"notice": notice, "error": None}, headers=VARIES)
+    return Template(
+        media_type=MediaType.HTML,
+        template_name="_operations_notice.html",
+        context={"notice": notice, "error": None},
+        headers=VARIES,
+    )
 
 
 @dataclasses.dataclass
@@ -1376,6 +1385,7 @@ def add_root(state: State, data: URLEncodedBody[RootForm]) -> Template:
     finally:
         connect.close(conn)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_roots.html",
         context={"roots": roots, "notice": f"registered {cleaned}", "behind": behind},
         headers=VARIES,
@@ -1412,6 +1422,7 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
         + (f"; thumbnails queued as job #{precache}" if precache is not None else "")
     )
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_roots.html",
         context={"roots": roots, "notice": notice, "behind": behind},
         headers=VARIES,
@@ -1437,7 +1448,13 @@ def change_setting(state: State, key: FromPath[str], data: URLEncodedBody[Settin
         rows = settings.snapshot(conn)
     finally:
         connect.close(conn)
+    # The operator's own switch: worker=on makes queued work runnable now,
+    # and the loop otherwise sleeps out IDLE_WAIT before looking
+    # (sg_web/worker.py) with the page watching a job that does not move.
+    if key == "worker":
+        nudge(state)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_settings.html",
         context={"settings": rows, "notice": f"{key} = {data.value}"},
         headers=VARIES,
@@ -1454,6 +1471,7 @@ def choose_primary(state: State) -> Template:
     finally:
         connect.close(conn)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_clusterings.html",
         context={"clusterings": runs, "primary": _primary(runs), "notice": f"primary run: {chosen}"},
         headers=VARIES,
@@ -1538,7 +1556,12 @@ def stop_collection(state: State, collection: FromPath[str]) -> Template:
         notice = f"{collection}: stopped {len(stopped)} queued" + (
             f", asked {running} running to stop" if running else ""
         )
-    return Template(template_name="_operations_notice.html", context={"notice": notice, "error": None}, headers=VARIES)
+    return Template(
+        media_type=MediaType.HTML,
+        template_name="_operations_notice.html",
+        context={"notice": notice, "error": None},
+        headers=VARIES,
+    )
 
 
 @post("/schedules/{collection:str}", sync_to_thread=True)
@@ -1568,6 +1591,7 @@ def set_schedule(state: State, collection: FromPath[str], data: URLEncodedBody[S
         connect.close(conn)
     said = f"every {hours:g}h" if on else "off"
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_schedules.html",
         context={"schedules": rows, "runnable": scheduling.RUNNABLE, "notice": f"{collection}: {said}"},
         headers=VARIES,
@@ -1613,6 +1637,7 @@ def compare_clusterings(state: State, left: FromPath[int], right: FromPath[int])
     finally:
         connect.close(conn)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_compare.html",
         context={"left": runs[left], "right": runs[right], "held": held},
         headers=VARIES,
@@ -1732,12 +1757,17 @@ def export_verdicts(state: State, include: FromQuery[str] = "") -> Response[list
     under (tests/test_the_shell_mounts_every_surface.py `_links`).
     """
     wanted = tuple(one.strip() for one in include.split(",") if one.strip())
+    # Refused before the connection: what was asked for is answerable from
+    # the argument, and a request that is going to be told no should not
+    # open a database to hear it. `exported` checks again, because a
+    # caller that reaches it another way is owed the same refusal.
+    try:
+        verdicts.withheld_by(wanted)
+    except ValueError as refusal:
+        raise ClientException(str(refusal)) from refusal
     conn = connect.connect(state.db_path)
     try:
-        try:
-            told = [VerdictRow(**row) for row in verdicts.exported(conn, include=wanted)]
-        except ValueError as refusal:
-            raise ClientException(str(refusal)) from refusal
+        told = [VerdictRow(**row) for row in verdicts.exported(conn, include=wanted)]
     finally:
         connect.close(conn)
     return Response(
@@ -1757,6 +1787,7 @@ def refused(request: Request, exc: HTTPException) -> Template:
     per_exception_handlers.py: a Router-level handler overrides the
     app's JSON one for this layer only)."""
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_notice.html",
         context={"error": exc.detail, "notice": None},
         status_code=exc.status_code,
@@ -1779,6 +1810,7 @@ def busy(request: Request, exc: sqlite3.OperationalError) -> Template:
     if getattr(exc, "sqlite_errorname", "") not in runner.BUSY:
         return failed(request, exc)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_notice.html",
         context={"error": "the library is busy writing; nothing was started -- try again in a moment", "notice": None},
         status_code=HTTP_503_SERVICE_UNAVAILABLE,
@@ -1791,6 +1823,7 @@ def failed(request: Request, exc: Exception) -> Template:
     the 500 it is, never swallowed into a blank notice."""
     _logger.error("operations request %s %s failed", request.method, request.url.path, exc_info=exc)
     return Template(
+        media_type=MediaType.HTML,
         template_name="_operations_notice.html",
         context={"error": f"internal error: {exc}", "notice": None},
         status_code=HTTP_500_INTERNAL_SERVER_ERROR,

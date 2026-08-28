@@ -10,9 +10,9 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import FloatRect, Page
+from playwright.sync_api import FloatRect, Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 from tests.staging import HOUR, JUNE_10
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser_context_args(viewport={"width": 1200, "height": 800})]
@@ -84,7 +84,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def _window(page: Page) -> tuple[float, float]:
@@ -108,10 +108,21 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
     assert start > extent["start"], "which is not the whole forty-day library"
     page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
     assert "too many" not in page.inner_text("[data-surface]")
-    assert page.locator("[data-overview] [data-brush]").count() == 1
-    assert page.locator("[data-zoom] a[data-preset]").count() == 5
+    expect(page.locator("[data-overview] [data-brush]")).to_have_count(1)
+    expect(page.locator("[data-zoom] a[data-preset]")).to_have_count(5)
 
     # the brush: a new window drawn across the left half of the overview
+    #
+    # Every sample settled FIRST. `box` is geometry, and the drag below is
+    # aimed with it -- so a thumbnail that arrives between the measurement
+    # and the mouse moves the brush out from under the coordinates, the
+    # drag lands on nothing, and the wait for it times out rather than
+    # saying what went wrong. Measured: line 122, ten seconds, under four
+    # workers.
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('[data-samples] .surface-sample img')].every(i => i.complete)",
+        timeout=10_000,
+    )
     box = overview_box(page)
     y = box["y"] + box["height"] / 2
     page.mouse.move(box["x"] + 2, y)
@@ -138,7 +149,7 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
         timeout=10_000,
     )
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
-    assert page.locator('[data-zoom] a[data-preset="all"][data-current]').count() == 1
+    expect(page.locator('[data-zoom] a[data-preset="all"][data-current]')).to_have_count(1)
     assert page.locator("[data-samples] .surface-sample img").count() >= 1, "thumbnails at every window"
 
 

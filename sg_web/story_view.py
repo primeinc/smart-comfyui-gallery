@@ -332,6 +332,7 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
     # instead of rendering "You introduced ."; autoescape, because frozen
     # evidence is evidence, not trusted markup).
     return Template(
+        media_type=MediaType.HTML,
         template_name="story.html",
         context={
             "story": story,
@@ -852,6 +853,7 @@ def plan_evolution(
     # to parse back out: the explorer asks this route for it, by Accept,
     # and is given the one contract OpenAPI describes.
     return Template(
+        media_type=MediaType.HTML,
         template_name="evolution.html",
         context={"view": document.model_dump(mode="json"), "plan_id": plan_id},
         headers=VARIES,

@@ -34,9 +34,9 @@ import numpy as np
 import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -96,7 +96,7 @@ def _drained(api, timeout=90.0) -> None:
         if not running:
             return
         assert time.monotonic() < deadline, f"jobs still running: {running}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def _analyze(page: Page, question: str = "") -> None:
@@ -133,10 +133,14 @@ def test_switching_presentation_does_not_change_the_answer(page: Page, live: Liv
     """The claim the whole design rests on. `view` never reaches the
     GalleryQuery, so the membership and the total are untouched."""
     page.goto("/g?f=has.generation%3Aeq%3A1")
-    page.wait_for_selector("[data-grid]", timeout=15_000)
+    # Through `expect`, which RETRIES across a navigation. This surface
+    # settles by asking `/g/locate/{slug}` and reloads itself when that
+    # answers with an error (frontend/src/authored.ts:113-121), so the
+    # first read after a `goto` can meet a document being replaced and a
+    # one-shot `evaluate` dies on it with "Execution context was
+    # destroyed". The reads below are safe because this one absorbed it.
+    expect(page.locator("[data-grid] a.cell")).to_have_count(len(MADE))
     grid_total = _total(page)
-    cells = page.evaluate("() => document.querySelectorAll('[data-grid] a.cell').length")
-    assert cells == len(MADE)
 
     page.click('[data-view="analyze"]')
     page.wait_for_selector("[data-analyze]", timeout=15_000)

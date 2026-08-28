@@ -21,14 +21,13 @@ the picture back would be inventing derived state nothing produced.
 
 from __future__ import annotations
 
-import os
 import pathlib
 import time as clock
 
 import numpy as np
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from tests.conftest import Live
 
@@ -43,12 +42,18 @@ def write_library(root: pathlib.Path) -> None:
         Image.new("RGB", (48, 36), (40 * i, 90, 140)).save(root / f"p{i}.png")
 
 
-def prepare(api, root) -> dict:
+def prepare(api, root, where: pathlib.Path) -> dict:
     """Scan through the routes, then name one person in every picture.
 
     The naming is written straight to the database rather than run
     through a detector: what this file is about is the correction, and a
     real face model would make it a test about face models.
+
+    Takes the home, which is why it is spelled with three parameters
+    (tests/conftest.py `_prepared`): the run's database is not reachable
+    through the routes, and `SG_TEST_HOME` is not a way to find it -- the
+    harness boots the next module's server while this one's tests run,
+    and re-points that variable while it does.
     """
     from db import authored, connect, derived, naming
     from sg_web import home
@@ -56,7 +61,7 @@ def prepare(api, root) -> dict:
     made = api.post("/roots", json={"path": str(root)}).json()
     api.post(f"/roots/{made['id']}/scan")
 
-    conn = connect.connect(home.db_path(pathlib.Path(os.environ["SG_TEST_HOME"])))
+    conn = connect.connect(home.db_path(where))
     try:
         who = authored.person(conn, "Hannah", clock.time())
         run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
@@ -104,7 +109,7 @@ def test_every_picture_carries_the_correction(page: Page, live: Live):
     page.goto(f"/p/{held['person']}")
     page.wait_for_selector("[data-person-pictures]", timeout=10_000)
     assert _shells(page) == FILES
-    assert page.locator("[data-person-not-here]").count() == FILES
+    expect(page.locator("[data-person-not-here]")).to_have_count(FILES)
 
 
 def test_saying_it_takes_that_picture_off_the_person(page: Page, live: Live):
@@ -136,8 +141,7 @@ def test_undo_says_what_it_actually_undoes(page: Page, live: Live):
     held = live.prepared
     assert isinstance(held, dict)
     page.goto(f"/p/{held['person']}")
-    page.wait_for_selector("[data-person-not-here]", timeout=10_000)
-
+    # No wait before the click: `click` waits for the button itself.
     page.locator("[data-person-not-here]").first.click()
     page.wait_for_selector("[data-person-denied]", timeout=10_000)
     page.locator("[data-person-denied] button").first.click()
@@ -146,4 +150,4 @@ def test_undo_says_what_it_actually_undoes(page: Page, live: Live):
     said = page.locator("[data-person-withdrawn]").inner_text()
     assert "withdrawn" in said, said
     assert "clustering" in said, "it does not say when the picture could come back"
-    assert page.locator("[data-person-withdrawn] a").count() == 1, "no way back to the picture itself"
+    expect(page.locator("[data-person-withdrawn] a")).to_have_count(1)

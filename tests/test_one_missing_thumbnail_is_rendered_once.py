@@ -23,18 +23,58 @@ that a stopwatch said so.
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import threading
+import time
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 import sg_web.app as app_module
 from db import connect
-from sg_web.app import build_app
+from tests.staging import hosting
 
 pytestmark = pytest.mark.slow
+
+
+def _queued(many: int, timeout: float = 10.0) -> None:
+    """Hold until `many` askers are at one render gate.
+
+    `_rendered_once` counts an asker (`wanted`) the moment it reaches
+    the gate, under `_RENDERS_LOCK` and BEFORE it blocks on the gate's
+    own lock -- so "the others are queued behind this render" is a fact
+    to observe, and observing it is the module's rule (see the module
+    docstring) reaching a place a Barrier cannot: the waiters never
+    enter the renderer, so there is nothing there for them to meet at.
+
+    This ends the instant they have arrived, and says so if they never
+    do. The interval it replaced could only ever prove that a tenth of
+    a second had been long enough on this machine.
+    """
+    ended = time.monotonic() + timeout
+    while time.monotonic() < ended:
+        with app_module._RENDERS_LOCK:
+            standing = max((gate.wanted for gate in app_module._RENDERS.values()), default=0)
+        if standing >= many:
+            return
+        time.sleep(0.001)
+    raise AssertionError(f"only {standing} of {many} askers ever reached the gate")
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "test_one_missing_thumbnail_is_rendered_once") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application for the module. The restore empties the thumbnail
+    cache, which is exactly the state every test here starts from, and
+    puts the library back to none -- so each test's own root is root 1."""
+    _world.restore()
+    return _world.client
 
 
 def _library(tmp_path: pathlib.Path, pictures: int):
@@ -45,9 +85,11 @@ def _library(tmp_path: pathlib.Path, pictures: int):
     return root
 
 
-def _served(tmp_path: pathlib.Path, pictures: int):
+def _served(client, tmp_path: pathlib.Path, pictures: int):
+    """This test's own library, scanned, under the module's application."""
     root = _library(tmp_path, pictures)
-    client = TestClient(app=build_app(str(tmp_path / "run"), worker=False))
+    made = client.post("/roots", json={"path": str(root)}).json()
+    client.post(f"/roots/{made['id']}/scan")
     return client, root
 
 
@@ -61,26 +103,22 @@ def _asset_urls(client) -> list[str]:
     return [f"/thumbs/{sha[:2]}/{sha}.webp" for sha in shas]
 
 
-def test_four_cells_wanting_one_picture_render_it_once(tmp_path, monkeypatch):
+def test_four_cells_wanting_one_picture_render_it_once(tmp_path, served, monkeypatch):
     """The defect. Four askers, one render, and all four still served."""
-    client, root = _served(tmp_path, 1)
+    client, _root = _served(served, tmp_path, 1)
     renders: list[float] = []
     real = app_module._render_asset
 
     def counted(state, sha, variant, target):
         renders.append(0.0)
-        # long enough that the other three are certainly queued behind the
-        # gate; if it were somehow not, they would find the file already
-        # rendered and the count would still be one -- slowness cannot
-        # make this fail, only make it prove less
-        threading.Event().wait(0.5)
+        # Held until the other three are AT the gate, not for a spell in
+        # which they probably got there. Four askers, one of them here.
+        _queued(4)
         return real(state, sha, variant, target)
 
     monkeypatch.setattr(app_module, "_render_asset", counted)
 
-    with client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
+    with contextlib.nullcontext(client):
         url = _asset_urls(client)[0]
 
         together = threading.Barrier(4)
@@ -100,7 +138,7 @@ def test_four_cells_wanting_one_picture_render_it_once(tmp_path, monkeypatch):
     assert len(renders) == 1, f"one missing thumbnail was rendered {len(renders)} times"
 
 
-def test_two_different_pictures_are_not_made_to_queue(tmp_path, monkeypatch):
+def test_two_different_pictures_are_not_made_to_queue(tmp_path, served, monkeypatch):
     """The other half, and what a single global lock would break.
 
     Coalescing must be per FILE. A lock over all rendering would also
@@ -110,7 +148,7 @@ def test_two_different_pictures_are_not_made_to_queue(tmp_path, monkeypatch):
     asserted by making them meet, which they cannot do if one is waiting
     for the other.
     """
-    client, root = _served(tmp_path, 2)
+    client, _root = _served(served, tmp_path, 2)
     met = threading.Barrier(2)
     failed_to_meet: list[str] = []
     real = app_module._render_asset
@@ -124,9 +162,7 @@ def test_two_different_pictures_are_not_made_to_queue(tmp_path, monkeypatch):
 
     monkeypatch.setattr(app_module, "_render_asset", rendezvous)
 
-    with client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
+    with contextlib.nullcontext(client):
         urls = _asset_urls(client)
         assert len(urls) == 2
         assert urls[0] != urls[1], "both cells wanted the same bytes; that is the other test"
@@ -146,41 +182,35 @@ def test_two_different_pictures_are_not_made_to_queue(tmp_path, monkeypatch):
     assert answers == {0: 200, 1: 200}
 
 
-def test_the_gate_is_let_go_of(tmp_path):
+def test_the_gate_is_let_go_of(tmp_path, served):
     """It holds what is rendering NOW, not everything ever asked for."""
-    client, root = _served(tmp_path, 2)
-    with client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        for url in _asset_urls(client):
-            assert client.get(url).status_code == 200
+    client, _root = _served(served, tmp_path, 2)
+    for url in _asset_urls(client):
+        assert client.get(url).status_code == 200
     assert app_module._RENDERS == {}, "a gate outlived the render it was for"
 
 
-def test_a_gate_is_let_go_of_even_when_the_render_fails(tmp_path, monkeypatch):
+def test_a_gate_is_let_go_of_even_when_the_render_fails(tmp_path, served, monkeypatch):
     """A raised render must not leave the file permanently gated: the
     next asker has to be able to try, not block for ever."""
-    client, root = _served(tmp_path, 1)
+    client, _root = _served(served, tmp_path, 1)
 
     def refuses(state, sha, variant, target):
         raise ValueError("nothing decodable here")
 
     monkeypatch.setattr(app_module, "_render_asset", refuses)
 
-    with client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        url = _asset_urls(client)[0]
-        assert client.get(url).status_code == 404
-        assert client.get(url).status_code == 404, "the second ask did not even reach the renderer"
+    url = _asset_urls(client)[0]
+    assert client.get(url).status_code == 404
+    assert client.get(url).status_code == 404, "the second ask did not even reach the renderer"
 
     assert app_module._RENDERS == {}, "a failed render kept its gate"
 
 
-def test_the_slug_route_coalesces_too(tmp_path, monkeypatch):
+def test_the_slug_route_coalesces_too(tmp_path, served, monkeypatch):
     """`/thumb/<slug>` renders on a miss by its own path, and a person
     following a link hits it the same way a grid hits the asset URL."""
-    client, root = _served(tmp_path, 1)
+    client, _root = _served(served, tmp_path, 1)
     renders: list[str] = []
     from vision import derive
 
@@ -188,14 +218,12 @@ def test_the_slug_route_coalesces_too(tmp_path, monkeypatch):
 
     def counted(cache, sha, path, kind, orientation, variant):
         renders.append(sha)
-        threading.Event().wait(0.5)
+        _queued(3)  # the same gate, observed the same way: three askers
         return real(cache, sha, path, kind, orientation, variant)
 
     monkeypatch.setattr(derive, "put_one", counted)
 
-    with client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
+    with contextlib.nullcontext(client):
         conn = connect.connect(client.app.state.db_path)
         try:
             slug = conn.execute("SELECT slug FROM entity WHERE kind = 'file'").fetchone()[0]

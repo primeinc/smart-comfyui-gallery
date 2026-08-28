@@ -12,9 +12,9 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 from tests.staging import JUNE_10 as _JUNE_10
 
 pytestmark = pytest.mark.slow
@@ -50,7 +50,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, live: Live):
@@ -60,7 +60,11 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, li
     assert page.get_attribute("[data-surface]", "data-window-start") == f"{JUNE_10}.0"
     page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
     page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
-    assert page.locator("[data-sessions] .session-strip img").count() >= 1
+    # The strip's pictures arrive after the session it belongs to, so a
+    # `count()` taken the moment the session appears reads zero -- measured,
+    # `assert 0 >= 1`, on a full-suite run. `not_to_have_count(0)` retries,
+    # which is the same claim made of the page rather than of an instant.
+    expect(page.locator("[data-sessions] .session-strip img")).not_to_have_count(0)
     bar_at = page.get_attribute("[data-strip] [data-bin-window]", "data-bin-at")
     assert bar_at is not None
     page.click("[data-strip] [data-bin-window]")
@@ -169,16 +173,16 @@ def test_a_page_of_dates_stays_alive_under_people_js(page: Page, live: Live):
         '<body><time data-epoch="1686355200">1686355200</time><time data-epoch="1686441600">x</time>'
         f'<script src="{live.url}/static/build/people.js"></script></body>'
     )
-    page.wait_for_timeout(500)
-    assert page.evaluate("[...document.querySelectorAll('time')].map(t => t.textContent)") == [
-        "2023-06-10",
-        "2023-06-11",
-    ]
+    # Waited for the spelling, not for a guess at how long spelling takes.
+    # The bug this catches -- a watcher that re-spells what it just spelled
+    # -- pins the main thread, so it still fails here: a pinned thread
+    # never satisfies a retrying read either. It just costs milliseconds
+    # when the page is well instead of the 700ms two fixed pauses cost.
+    expect(page.locator("time")).to_have_text(["2023-06-10", "2023-06-11"])
     page.evaluate(
         "const t = document.createElement('time'); t.dataset.epoch = '1686528000'; document.body.appendChild(t)"
     )
-    page.wait_for_timeout(200)
-    assert page.evaluate("document.body.lastChild.textContent") == "2023-06-12", "a later date is spelled too"
+    expect(page.locator("time").last).to_have_text("2023-06-12")
 
 
 def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, live: Live):
@@ -220,6 +224,15 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
         server.on_message(from_server)
 
     page.route_web_socket("**/ws/jobs", route)
+    # The page's own clock, so the reconnect is OBSERVED rather than
+    # waited out. `feed.onclose` re-opens after RECONNECT_MS
+    # (frontend/src/timeline.ts:128, 2000) -- a real delay for a real
+    # browser, and two seconds of a test watching a timer it already
+    # believes in. What is under test is that the second connection's
+    # SNAPSHOT resynchronises the page, never how long the gap before it
+    # is. The only other timer this page arms is `liveTimer`, which a
+    # drag drives (timeline.ts:293) and nothing here drags.
+    page.clock.install()
     page.goto(f"/timeline?start={JUNE_10}&end={JUNE_10 + 86400}")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
     # mark the surface on screen; a re-read replaces the node with a fresh
@@ -229,10 +242,30 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
     job_id = api.post("/jobs/events").json()["id"]
     assert _settled(api, job_id) == "done"
 
-    # the reconnect backs off two seconds, so this waits longer than that
-    page.wait_for_function(
-        "() => document.querySelector('[data-surface]')?.dataset.stale === undefined", timeout=30_000
-    )
+    # The socket must be SHUT before the clock is moved: `run_for` fires
+    # the timers that exist when it runs, and the reconnect timer is
+    # armed by `onclose`. Advancing first left nothing to advance, the
+    # page went on to wait the real two seconds, and the test took 2.47s
+    # instead of 0.18s -- one run in five. `sockets["lost"]` is set in
+    # the route handler on the same line that closes it, so it is the
+    # fact to wait on rather than a guess at when the delta lands.
+    # Waited through Playwright, not through `time.sleep`. The route
+    # handler runs on the sync API's dispatcher, and that only turns
+    # while the test is inside a Playwright call -- a bare sleep loop
+    # holds the thread, `sockets["lost"]` is never set, and this waited
+    # out its own deadline every time (15.1s, eight runs for eight).
+    ended = time.monotonic() + 15
+    while sockets["lost"] is None:
+        assert time.monotonic() < ended, "the terminal delta never arrived to be withheld"
+        page.wait_for_timeout(20)
+    # Past the backoff, in one step. The socket then opens for real and
+    # its snapshot arrives over the network, which no clock touches.
+    page.clock.run_for(2100)  # milliseconds; `run_for` takes a number or "mm:ss"
+    # `expect` and not `wait_for_function`: the installed clock stubs
+    # `requestAnimationFrame`, which is what an in-page poll runs on, so
+    # a `wait_for_function` here would be waiting on a clock this test
+    # has stopped. `expect` retries from the driver instead.
+    expect(page.locator("[data-surface][data-stale]")).to_have_count(0, timeout=30_000)
     assert sockets["lost"] == job_id, "the terminal delta was never withheld; the test proved nothing"
     assert sockets["n"] >= 2, "the page never reconnected"
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)

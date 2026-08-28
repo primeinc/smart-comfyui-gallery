@@ -27,8 +27,8 @@ import uuid
 
 import pytest
 
-from db import catalog, resultset
-from tests.staging import NOW, fresh_schema
+from db import catalog, connect, resultset
+from tests.staging import NOW, fresh_schema, keep
 
 pytestmark = pytest.mark.slow
 
@@ -42,13 +42,23 @@ def _file(conn, at: int) -> int:
     return at
 
 
-@pytest.fixture
-def library():
-    """Twelve pictures carrying the awkward shapes on purpose.
+@pytest.fixture(scope="module")
+def _stocked():
+    """Twelve pictures carrying the awkward shapes on purpose, built ONCE.
 
     Every kind of uselessness a real library has: a key every file
     shares one value of, a key whose every file has its own value, a
     positional family, and a camera's plumbing.
+
+    Ninety inserts, in front of twenty-one tests whose calls answer in
+    0.00 s -- so the inserts WERE the tests. `Connection.backup` of this
+    database is a fraction of a millisecond against the ~7 ms to write
+    it again, which is the bargain `fresh_schema` already makes for the
+    schema itself (tests/staging.py).
+
+    Copied rather than shared because four tests here write to it, one
+    of them `DELETE FROM file_param`. `keep` marks it as outliving the
+    test that happened to build it, so conftest does not close it.
     """
     conn = fresh_schema()
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,'C:/x','library',0)")
@@ -76,6 +86,15 @@ def library():
             for slot in range(3):
                 param(at, "generation", f"used_wildcards.{slot}", f"w{slot}-{at % 3}")
     conn.commit()
+    return keep(conn)
+
+
+@pytest.fixture
+def library(_stocked):
+    """The stocked library, copied for this test to do as it likes with."""
+    conn = connect.memory()
+    _stocked.backup(conn)
+    conn.execute("PRAGMA foreign_keys=ON")
     yield conn
     conn.close()
 

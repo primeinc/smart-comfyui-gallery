@@ -48,6 +48,21 @@ from tests.staging import HOUR, NOW, Stage, staged
 from vision import semantic
 from vision.faiss_index import SpaceSpec
 
+
+@pytest.fixture
+def pinned_identity(monkeypatch):
+    """Deterministic entity uuids while a test stages its fixture, so
+    the staged database's logical content -- and `migrated`'s cache key
+    -- is the same every run."""
+    import itertools
+    import uuid
+
+    from db import scan
+
+    counter = itertools.count(1)
+    monkeypatch.setattr(scan.uuid, "uuid4", lambda: uuid.UUID(int=next(counter)))
+
+
 MIN = 60.0
 
 
@@ -753,7 +768,7 @@ def _a_v17_database(path) -> None:
     schemas.seed(path, 17)
 
 
-def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
+def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path, pinned_identity):
     """A v17 database with prompts on `generation` and the generator's
     `original_*` parameters comes across with every prompt id intact,
     the roles filled, the originals interned, the FTS index whole, and
@@ -764,7 +779,11 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
     _a_v17_database(path)
     conn = connect.connect(str(path))
     try:
-        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
+        # The uuid stated, not the schema's randomblob(16): the staged
+        # fixture is `migrated`'s cache key, which a random blob drifts.
+        root_id = conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('C:/x', 'library', 0, ?)", (b"\x04" * 16,)
+        ).lastrowid
         folder = scan.mint(conn, "folder", "x")
         conn.execute(
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (folder, root_id)
@@ -794,6 +813,10 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path):
     # exact tail is "how many steps exist above 17", a number every
     # future migration changes and which broke this assertion the first
     # time one did.
+    # Live, not `migrated`: this staged v17 content drifts across runs
+    # by something uuid-pinning and stated root uuids do not cover, so
+    # the cache never hit and its keying was pure overhead. The drift's
+    # source is unidentified; a dump diff of two runs would name it.
     stepped = migrate.migrate(path)
     assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
@@ -1018,14 +1041,18 @@ def test_a_space_selector_is_exact_and_ambiguity_is_refused(library):
         connect.close(conn)
 
 
-def test_the_migration_carries_the_unsampler_prompt(tmp_path):
+def test_the_migration_carries_the_unsampler_prompt(tmp_path, pinned_identity):
     from db import scan
 
     path = tmp_path / "old.db"
     _a_v17_database(path)
     conn = connect.connect(str(path))
     try:
-        root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('C:/x', 'library', 0)").lastrowid
+        # The uuid stated, not the schema's randomblob(16): the staged
+        # fixture is `migrated`'s cache key, which a random blob drifts.
+        root_id = conn.execute(
+            "INSERT INTO root(path, kind, created_at, uuid) VALUES('C:/x', 'library', 0, ?)", (b"\x04" * 16,)
+        ).lastrowid
         folder = scan.mint(conn, "folder", "x")
         conn.execute(
             "INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (folder, root_id)
@@ -1054,6 +1081,7 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path):
     # exact tail is "how many steps exist above 17", a number every
     # future migration changes and which broke this assertion the first
     # time one did.
+    # Live for the same reason as the sibling above.
     stepped = migrate.migrate(path)
     assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))

@@ -30,6 +30,7 @@ requirement are what make this one a measurement instead of an excuse.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -37,6 +38,7 @@ import pathlib
 import pytest
 
 from tests import needs
+from tests.staging import corpus_measurement
 
 pytestmark = pytest.mark.slow
 
@@ -63,10 +65,19 @@ def measured() -> dict:
     Reading `needs.lock.json` would test whatever the last run happened to
     write, which is the failure this file exists to prevent: a stale number
     that agrees with itself.
+
+    Re-measuring is ~140 s -- every reader over every corpus file -- and
+    the answer is a constant of (corpus, readers, measurer). So it is
+    cached on exactly those three: `corpus_measurement` keys on the
+    corpus's own listing and on the bytes of every module under db/,
+    metaparse/ and vision/, and the name carries this measurer's digest.
+    Move any of them and the number is measured again. That is the
+    property `needs.lock.json` lacks, not the caching.
     """
     if not CORPUS.is_dir():
         pytest.skip(f"no corpus at {CORPUS}; `just corpus all` writes one")
-    return needs.measure(CORPUS)
+    measurer = hashlib.sha256(pathlib.Path(needs.__file__).read_bytes()).hexdigest()[:12]
+    return json.loads(corpus_measurement(CORPUS, f"corpus-needs-{measurer}", lambda: json.dumps(needs.measure(CORPUS))))
 
 
 #: Every state that is not "the application read a real file and produced

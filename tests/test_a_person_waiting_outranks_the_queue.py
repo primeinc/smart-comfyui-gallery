@@ -46,7 +46,9 @@ def test_the_queue_holds_off_while_somebody_is_waiting():
         worker.start()
         # It is held, not slow: given a person waiting, it cannot start
         # at all, so a slow machine cannot turn this green by accident.
-        assert not began.wait(0.4), "a speculative render started while a person was waiting"
+        # A BROKEN gate fires within scheduler latency (single-digit ms);
+        # 100ms is margin over noise, not part of the claim.
+        assert not began.wait(0.1), "a speculative render started while a person was waiting"
 
     assert began.wait(timeout=10), "the queue never resumed after the person was served"
     released.set()
@@ -85,7 +87,8 @@ def test_two_people_are_both_served_before_the_queue_resumes():
         worker = threading.Thread(target=lambda: (derive.stand_aside(), began.set()), daemon=True)
         worker.start()
         first.__exit__(None, None, None)
-        assert not began.wait(0.4), "the queue resumed while somebody was still waiting"
+        # 100ms of margin over scheduler noise; a broken count fires in ms.
+        assert not began.wait(0.1), "the queue resumed while somebody was still waiting"
     finally:
         second.__exit__(None, None, None)
     assert began.wait(timeout=10)
@@ -104,7 +107,9 @@ def test_a_marker_that_leaks_costs_a_pause_and_not_the_queue():
         began = threading.Event()
 
         def speculative():
-            derive.stand_aside(patience=0.2)
+            # The patience is the test's own dial: 50ms proves "renders
+            # anyway once patience runs out" exactly as 200ms did.
+            derive.stand_aside(patience=0.05)
             began.set()
 
         worker = threading.Thread(target=speculative, daemon=True)

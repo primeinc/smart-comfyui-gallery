@@ -19,11 +19,10 @@ import re
 import time
 
 import pytest
-from litestar.testing import TestClient
-from PIL import Image
+from PIL import ExifTags, Image
 
 from db import connect, runner
-from sg_web.app import build_app
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
@@ -44,10 +43,7 @@ def _drain(client) -> None:
         connect.close(conn)
 
 
-@pytest.fixture
-def shown(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _library(root) -> None:
     # Wider than the opening window, and clustered at the end. A library
     # that fits INSIDE the last thirty days makes `all` current and hides
     # the case one of these tests is about; a few old pictures and a
@@ -58,14 +54,52 @@ def shown(tmp_path):
         path = root / f"p{i}.png"
         Image.new("RGB", (32, 24), (10 * i, 90, 140)).save(path)
         os.utime(path, (when + day * 86_400, when + day * 86_400))
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        _drain(client)
-        for job in ("/jobs/ingest", "/jobs/context"):
-            client.post(job)
-            _drain(client)
-        yield client
+
+    # One picture whose NAME claims a date its EXIF contradicts, so the
+    # surface has something contested to count and the line that counts
+    # it is not skipped past. TWO CLAIMS are what it takes: an mtime that
+    # disagrees is filesystem dissent, which cannot demote a claim and
+    # never reads as a conflict (tests/corpus.py `_name_for`).
+    #
+    # The EXIF stamp is a LOCAL wall clock with no zone, which is what a
+    # camera writes: spelling it in UTC on a machine that is not UTC
+    # makes EVERY photograph disagree by the offset, and the one that
+    # disagrees on purpose stops being visible among them
+    # (tests/corpus.py `_exif_for`).
+    named = datetime.datetime.fromtimestamp(when, datetime.UTC)
+    muddled = root / f"IMG_{named:%Y%m%d}_{named:%H%M%S}.png"
+    said = datetime.datetime.fromtimestamp(when - 400 * 86_400, datetime.UTC).astimezone()
+    exif = Image.Exif()
+    exif.get_ifd(ExifTags.IFD.Exif)[ExifTags.Base.DateTimeOriginal] = said.strftime("%Y:%m:%d %H:%M:%S")
+    Image.new("RGB", (32, 24), (200, 40, 40)).save(muddled, exif=exif)
+    os.utime(muddled, (when, when))
+
+
+def _dated(stage) -> None:
+    """The jobs that give the pictures their moments, once."""
+    _drain(stage.client)
+    for job in ("/jobs/ingest", "/jobs/context"):
+        stage.client.post(job)
+        _drain(stage.client)
+
+
+@pytest.fixture(scope="module")
+def _shown_stage(tmp_path_factory):
+    with staged(tmp_path_factory, "the_timeline_says_what_it_is_showing", _library, _dated) as stage:
+        yield stage
+
+
+@pytest.fixture
+def shown(_shown_stage):
+    """The dated library, restored between tests.
+
+    Every test here reads a rendered timeline and changes nothing, but
+    each was paying for six pictures, an application, a scan and two
+    drained job queues -- a third of a second of setup for a read that
+    costs a tenth.
+    """
+    _shown_stage.restore()
+    return _shown_stage.client
 
 
 def _scope_line(client, qs: str) -> str:

@@ -23,9 +23,9 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -69,9 +69,14 @@ def test_the_button_is_on_the_folder_it_would_read(page: Page, live: Live, unbro
     """Where the problem is visible. The whole-library sweep already
     exists on the operations page; this is the one somebody runs."""
     page.goto("/f/album")
-    page.wait_for_selector("[data-folder-reread]", timeout=10_000)
-    assert page.get_attribute("[data-folder-reread]", "data-folder-reread") == "album"
-    assert str(INSIDE) in page.inner_text("[data-folder-reread]")
+    # Two retrying assertions rather than a wait and two one-shot reads:
+    # `expect` waits for the element itself, so the `wait_for_selector`
+    # was a round trip spent arriving somewhere the next line goes
+    # anyway -- and a read that answers once races the render it is
+    # reading.
+    button = page.locator("[data-folder-reread]")
+    expect(button).to_have_attribute("data-folder-reread", "album")
+    expect(button).to_contain_text(str(INSIDE))
 
 
 def test_it_says_where_it_got_to_without_leaving_the_page(page: Page, live: Live, unbroken):
@@ -79,15 +84,20 @@ def test_it_says_where_it_got_to_without_leaving_the_page(page: Page, live: Live
     three is done in a second, and "watch it in operations" asks them to
     go and look for something that already finished."""
     page.goto("/f/album")
-    page.wait_for_selector("[data-folder-reread]", timeout=10_000)
+    button = page.locator("[data-folder-reread]")
+    expect(button).to_be_visible()
     was = page.url
-    page.click("[data-folder-reread]")
+    button.click()
+    # `wait_for_function`, NOT `expect(...).to_have_text`. The evaluation
+    # runs on every animation frame, so it sees the words within ~16ms of
+    # them being written; `expect` polls on a ~100ms timer and answers
+    # late. Measured, both ways: 0.57s here against 0.93s.
     page.wait_for_function(
         "() => /read \\d+ again/.test(document.querySelector('[data-folder-reread]').textContent)",
         timeout=30_000,
     )
     assert page.url == was, "it navigated away to report"
-    assert page.locator("[data-folder-reread]").is_disabled()
+    expect(button).to_be_disabled()
 
 
 def test_a_folder_with_nothing_to_do_says_so_rather_than_looking_broken(page: Page, live: Live, unbroken):
@@ -97,12 +107,12 @@ def test_a_folder_with_nothing_to_do_says_so_rather_than_looking_broken(page: Pa
     deadline = time.monotonic() + 60
     while [one for one in live.api.get("/jobs").json() if one["state"] in ("queued", "running")]:
         assert time.monotonic() < deadline
-        time.sleep(0.05)
+        time.sleep(POLL)
     assert live.api.post("/jobs/ingest").status_code in (200, 201, 204)
     deadline = time.monotonic() + 60
     while [one for one in live.api.get("/jobs").json() if one["state"] in ("queued", "running")]:
         assert time.monotonic() < deadline
-        time.sleep(0.05)
+        time.sleep(POLL)
 
     # everything is read now, so the UNBOUNDED freshness sweep has no
     # items -- which is the 204 the button has to render as words

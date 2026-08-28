@@ -8,27 +8,23 @@ table directly, because the semantics under test are the runner's.
 
 from __future__ import annotations
 
-import pathlib
-
 import numpy as np
 import pytest
 
-from db import connect, jobs, runner, scan
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
-
-
-@pytest.fixture(scope="module")
-def ddl():
-    return SCHEMA.read_text(encoding="utf-8")
+from db import jobs, runner, scan
+from tests.staging import fresh_schema
 
 
 @pytest.fixture
-def db(ddl):
-    conn = connect.memory()
-    conn.executescript(ddl)
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+def db():
+    """The schema, from the per-process master rather than the DDL.
+
+    `executescript` of the whole schema is ~11 ms and a backup from a
+    master built once is ~0.5 ms (tests/staging.py `fresh_schema`, whose
+    measurements these are). Thirty tests here start from exactly this,
+    in front of calls that answer in a hundredth of a second.
+    """
+    return fresh_schema()
 
 
 class Counter:

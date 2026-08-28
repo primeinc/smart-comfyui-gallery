@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Error, Page
 
 from tests.conftest import Live
 
@@ -39,6 +39,19 @@ def write_library(root) -> None:
 
 
 def prepare(api, root) -> None:
+    """The scan, and the work it queued, FINISHED before any page loads.
+
+    A cell points at the content-addressed `/thumbs/<shard>/<sha>.webp`
+    only once the scan has hashed its file; until then it points at
+    `/thumb/<slug>`, which the `**/thumbs/**` route below does not
+    match. So a page rendered mid-scan draws real pictures, no thumbnail
+    request is ever intercepted, and the two tests that fail every
+    thumbnail wait ten seconds for a label that cannot appear.
+
+    It failed two runs in three the moment the harness stopped booting a
+    spare server underneath these tests: that background work was the
+    only thing keeping the page slower than the scan.
+    """
     made = api.post("/roots", json={"path": str(root)}).json()
     api.post(f"/roots/{made['id']}/scan")
 
@@ -49,6 +62,39 @@ def _cells(page: Page) -> int:
 
 def _broken_labels(page: Page) -> list[str]:
     return page.evaluate("() => [...document.querySelectorAll('[data-broken-picture]')].map(s => s.textContent.trim())")
+
+
+def _await_broken(page: Page, many: int, timeout: float = 10_000) -> None:
+    """Hold until `many` cells have degraded, and SAY WHAT THE PAGE HELD
+    if they never do.
+
+    A bare `wait_for_selector` here reports "timeout waiting for
+    [data-broken-picture]" and nothing else, which is the same message
+    whether the route never fired, the cells addressed `/thumb/<slug>`
+    because a file was not hashed yet, or the grid drew no cells at all.
+    Those are three different bugs and the timeout could not tell them
+    apart -- so this one asks the page.
+    """
+    try:
+        page.wait_for_function(
+            f"() => document.querySelectorAll('[data-broken-picture]').length >= {many}", timeout=timeout
+        )
+    except Error as never:
+        try:
+            held = page.evaluate("""() => ({
+                url: location.pathname + location.search,
+                cells: [...document.querySelectorAll('[data-grid] a.cell')].map(a => a.getAttribute('href')),
+                images: [...document.querySelectorAll('[data-grid] a.cell img')].map(i => ({
+                    src: i.getAttribute('src'), complete: i.complete, width: i.naturalWidth })),
+                broken: document.querySelectorAll('[data-broken-picture]').length,
+            })""")
+        except Error as gone:  # the document was replaced under the question
+            held = f"unreadable: {gone}"
+        raise AssertionError(
+            f"{many} cells never degraded. The page held: {held}. "
+            "An `src` under /thumb/ rather than /thumbs/ means the row was not hashed when this rendered, "
+            "and the route never saw the request."
+        ) from never
 
 
 @pytest.mark.expects_broken
@@ -124,7 +170,18 @@ def test_it_catches_a_picture_that_arrives_later(page: Page, live: Live):
     exist yet: an endless grid, a swapped fragment, a remounted strip."""
     page.route("**/thumbs/**", lambda route: route.fulfill(status=404, body=""))
     page.goto("/g")
-    page.wait_for_selector("[data-broken-picture]", timeout=10_000)
+    # Settled first, and settled means EVERY cell has degraded -- the same
+    # sequence the two tests above use, and the reason they pass where
+    # this one did not. `goto` returns on the document, not on the page:
+    # /g renders and then navigates again, so a bare wait for the first
+    # broken label could be satisfied against a document about to be
+    # replaced. The appended image then went with it and the count never
+    # moved, reported as "Execution context was destroyed, most likely
+    # because of a navigation" about one run in three. Waiting for all
+    # FILES means every thumbnail request has already been answered, so
+    # nothing is left in flight to navigate behind this.
+    page.wait_for_selector("[data-grid] a.cell", timeout=10_000)
+    _await_broken(page, FILES)
     was = len(_broken_labels(page))
 
     page.evaluate("""() => {

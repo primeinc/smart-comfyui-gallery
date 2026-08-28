@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from tests.conftest import Live
 
@@ -63,7 +63,6 @@ def no_native_box(page: Page) -> list[str]:
 def test_no_surface_opens_a_native_box(page: Page, live: Live, no_native_box: list[str]):
     """The whole point, asserted where it can see every path at once."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     page.click("[data-save-smart]")
     page.wait_for_selector("dialog.ask-box[open]", timeout=10_000)
     page.keyboard.press("Escape")
@@ -75,7 +74,6 @@ def test_no_surface_opens_a_native_box(page: Page, live: Live, no_native_box: li
 
 def test_naming_a_view_is_a_labelled_field_and_a_named_button(page: Page, live: Live):
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     page.click("[data-save-smart]")
     box = page.locator("dialog.ask-box[open]")
     box.wait_for(timeout=10_000)
@@ -95,7 +93,6 @@ def test_escape_saves_nothing(page: Page, live: Live):
     """Dismissal is a real answer, and the browser's own Escape is it."""
     before = len(live.api.get("/albums", headers={"accept": "application/json"}).json())
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     page.click("[data-save-smart]")
     page.wait_for_selector("dialog.ask-box[open]", timeout=10_000)
     page.keyboard.type("never saved")
@@ -113,7 +110,6 @@ def test_enter_in_the_field_saves(page: Page, live: Live):
     moved after it by the stylesheet. Written the obvious way round,
     Enter would have cancelled."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     page.click("[data-save-smart]")
     page.wait_for_selector("dialog.ask-box[open]", timeout=10_000)
     page.keyboard.type("Entered")
@@ -129,7 +125,6 @@ def test_replacing_a_rule_offers_the_collections_by_name(page: Page, live: Live)
     type one back. Names are what somebody chose; the slug is how the
     application spells it, and belongs underneath as an aside."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     page.click("[data-save-smart]")
     page.wait_for_selector("dialog.ask-box[open]", timeout=10_000)
     page.keyboard.type("First question")
@@ -138,12 +133,13 @@ def test_replacing_a_rule_offers_the_collections_by_name(page: Page, live: Live)
     slug = page.url.rsplit("/t/", 1)[1].split("?", 1)[0]
 
     page.goto("/g?kind=image")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     page.click("[data-replace-smart]")
     box = page.locator("dialog.ask-box[open]")
     box.wait_for(timeout=10_000)
     choice = box.locator(f'.ask-choice[value="{slug}"]')
-    assert choice.count() == 1, box.inner_text()
+    # `to_have_count`, not `count() ==`: the choices are drawn when the
+    # dialog opens, and `count()` answers about the instant it is asked.
+    expect(choice).to_have_count(1)
     assert "First question" in choice.inner_text(), "the collection is offered by its slug, not its name"
     # One click IS the choice: there is no select-then-confirm step, so a
     # choice nobody made cannot be submitted.

@@ -44,28 +44,39 @@ def _page(tmp_path) -> str:
         return client.get("/operations", headers={"accept": "text/html"}).text
 
 
-def test_the_console_says_how_fast_each_measured_job_went(tmp_path):
+@pytest.fixture(scope="module")
+def rendered(tmp_path_factory) -> str:
+    """The console over an empty library, rendered ONCE.
+
+    The panel these four read is drawn from `benchmarks/results`, which
+    is the repository's -- not the library's -- so four tests asking the
+    same question of the same files booted four applications to be told
+    the same page."""
+    return _page(tmp_path_factory.mktemp("throughput"))
+
+
+def test_the_console_says_how_fast_each_measured_job_went(rendered):
     """The entry: throughput is something you look at rather than
     something you run."""
-    page = _page(tmp_path)
+    page = rendered
     assert "data-operations-measured" in page
     for kind in ("scan", "embed", "annotate"):
         assert f'data-measured="{kind}"' in page, f"{kind} was measured and is not shown"
 
 
-def test_a_rate_is_shown_with_the_day_it_was_recorded(tmp_path):
+def test_a_rate_is_shown_with_the_day_it_was_recorded(rendered):
     """These files carry no timestamp of their own, so the mtime is the
     only honest answer to "when". A rate without one is a claim about
     code that has moved since."""
-    page = _page(tmp_path)
+    page = rendered
     assert "data-measured-at" in page
     assert "recorded" in page
     assert "not observed now" in page, "the panel does not say these are recordings"
 
 
-def test_it_says_where_the_time_went(tmp_path):
+def test_it_says_where_the_time_went(rendered):
     """The rate alone says a job is slow; the phases say which part."""
-    page = _page(tmp_path)
+    page = rendered
     assert "data-measured-phase" in page
     told = operations._recorded()
     biggest = max(told, key=lambda one: len(one.phases))
@@ -73,11 +84,11 @@ def test_it_says_where_the_time_went(tmp_path):
     assert 0 < biggest.phases[0].share <= 1
 
 
-def test_no_filesystem_path_reaches_the_page(tmp_path):
+def test_no_filesystem_path_reaches_the_page(rendered):
     """Four of the twenty-three result documents hold real paths from
     the machine that ran them. None of the three shown do, and this is
     the assertion that notices if a later benchmark starts."""
-    page = _page(tmp_path)
+    page = rendered
     # ONE backslash: the page renders decoded values, so a Windows path
     # arrives as `C:\ComfyUI`. The doubled form is what JSON SOURCE holds
     # and matches nothing here -- checked, because a probe that cannot

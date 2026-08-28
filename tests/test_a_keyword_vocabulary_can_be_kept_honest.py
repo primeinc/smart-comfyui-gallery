@@ -30,6 +30,7 @@ picture word is exactly the row somebody came to fix.
 
 from __future__ import annotations
 
+import contextlib
 import re
 
 import pytest
@@ -40,6 +41,7 @@ from playwright.sync_api import Page, expect
 from db import connect
 from sg_web.app import build_app
 from tests.conftest import Live
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
@@ -95,25 +97,40 @@ def _wearing(live: Live, word: str, *at: int) -> None:
 # --- the vocabulary, without a browser --------------------------------------
 
 
-@pytest.fixture
-def shelf(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _small_library(root) -> None:
     for i in range(4):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        conn = connect.connect(client.app.state.db_path, read_only=True)
-        slugs = [
-            slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")
-        ]
-        connect.close(conn)
-        # p0: Beaches. p1: BOTH -- the row a fold would collide on.
-        # p2: beach. p3: Sunset.
-        for at, word in ((0, "Beaches"), (1, "beach"), (1, "Beaches"), (2, "beach"), (3, "Sunset")):
-            assert client.post(f"/i/{slugs[at]}/tags", json={"name": word}).status_code in (200, 201)
-        yield client
+
+
+def _typed(stage) -> None:
+    """The year of typing this page exists to fix, once."""
+    client = stage.client
+    conn = connect.connect(client.app.state.db_path, read_only=True)
+    slugs = [slug for (slug,) in conn.execute("SELECT e.slug FROM file f JOIN entity e ON e.id = f.id ORDER BY f.name")]
+    connect.close(conn)
+    # p0: Beaches. p1: BOTH -- the row a fold would collide on.
+    # p2: beach. p3: Sunset.
+    for at, word in ((0, "Beaches"), (1, "beach"), (1, "Beaches"), (2, "beach"), (3, "Sunset")):
+        assert client.post(f"/i/{slugs[at]}/tags", json={"name": word}).status_code in (200, 201)
+
+
+@pytest.fixture(scope="module")
+def _shelf_stage(tmp_path_factory):
+    with staged(tmp_path_factory, "keyword_vocabulary", _small_library, _typed) as stage:
+        yield stage
+
+
+@pytest.fixture
+def shelf(_shelf_stage):
+    """One world with the typing already done, restored between tests.
+
+    Every test here renames or forgets a word, so none can inherit
+    another's shelf -- but building four pictures, an application, a scan
+    and five taggings per test spent a quarter of a second to answer a
+    question that costs a hundredth. The snapshot isolates identically.
+    """
+    _shelf_stage.restore()
+    return _shelf_stage.client
 
 
 def _listed(client) -> list[dict]:
@@ -198,6 +215,33 @@ def test_a_library_with_no_keywords_says_so_rather_than_failing(tmp_path):
 
 
 # --- the page a person meets ------------------------------------------------
+
+
+@pytest.fixture
+def page(_shared_context):
+    """A page of this module's OWN, overriding the shared one.
+
+    `test_agreeing_takes_it_off_every_picture` fails on the module's
+    shared page and passes on this one: the confirmation it agrees to is
+    never accepted, so the row it waits to see go stays, and the module
+    goes red after five seconds against a test that is not the broken
+    one. The test before it is the one that installs a dialog handler
+    answering NO.
+
+    What carries over is not the handler itself -- taking it off between
+    tests was tried in `conftest` and changed nothing, and Playwright's
+    own bookkeeping says it should have worked
+    (`_connection.py:245`, `pyee/base.py:282`). So the mechanism is page
+    state this does not name yet, and the honest fix is a page that
+    cannot carry anything rather than a guess about what it carried.
+
+    ~40 ms per test, on four tests.
+    """
+    page = _shared_context.new_page()
+    yield page
+    with contextlib.suppress(Exception):
+        page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+    page.close()
 
 
 def test_the_shelf_is_reachable_without_knowing_it_exists(live: Live, page: Page):

@@ -412,7 +412,7 @@ def test_the_shipped_steps_take_a_v1_database_to_the_current_build(tmp_path):
     it asserted it about was today's build wearing a lower number.
     """
     path = v1_database(tmp_path)
-    assert migrated(path) == list(range(2, connect.USER_VERSION + 1))
+    assert migrated(path, name="v1-chain") == list(range(2, connect.USER_VERSION + 1))
 
     conn = connect.connect(path)
     try:
@@ -837,7 +837,7 @@ def test_a_v3_library_keeps_its_embeddings_and_they_still_answer(tmp_path, pinne
         ro.close()
     assert len(before) == 2
 
-    assert migrated(path) == list(range(4, connect.USER_VERSION + 1))
+    assert migrated(path, name="v3-embeddings") == list(range(4, connect.USER_VERSION + 1))
     assert build.drift(path) == [], "the migrated file differs from a fresh build"
 
     conn = connect.connect(path)
@@ -915,7 +915,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
     from db import scan, when
 
     path, _files, _spec, _sid = v3_database_with_embeddings(tmp_path)
-    migrated(path, target=20)
+    migrated(path, target=20, name="zoned-to-v20")
     conn = connect.connect(path)
     try:
         root_id = conn.execute(
@@ -940,7 +940,7 @@ def test_a_zoned_camera_time_keeps_its_wall_clock_and_its_instant_across_v21(tmp
         conn.commit()
     finally:
         connect.close(conn)
-    assert migrated(path) == list(range(21, connect.USER_VERSION + 1))
+    assert migrated(path, name="zoned-chain") == list(range(21, connect.USER_VERSION + 1))
     conn = connect.connect(path)
     try:
         captured_at, tz, iso = conn.execute("SELECT captured_at, tz_offset_min, iso FROM capture").fetchone()
@@ -979,7 +979,7 @@ def test_v26_backfills_a_pass_for_every_file_with_faces(tmp_path, pinned_identit
     derived.record_faces(conn, file_id, "m", "1", "a" * 64, NOW, faces)
     conn.close()
 
-    assert migrated(path) == list(range(26, connect.USER_VERSION + 1))
+    assert migrated(path, name="v26-faces") == list(range(26, connect.USER_VERSION + 1))
     assert build.drift(path) == []
     ro = connect.connect(path, read_only=True)
     try:

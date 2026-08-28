@@ -1,18 +1,37 @@
-"""The application over a library it builds itself, one per test.
+"""The application over a library each test builds itself.
 
 Each test here needs a library of its own shape -- duplicates, failures,
-redirected homes -- so each builds one; the shared world lives in
-test_the_app_serves_the_schema.py.
+redirected homes -- so each writes one and registers it as root 1. The
+APPLICATION is shared: booting it is ~200 ms and none of these claims is
+about a fresh process. The two that ARE -- the shutdown ordering, and the
+run contained in one directory -- build their own.
 """
 
 from __future__ import annotations
+
+import contextlib
 
 import pytest
 from litestar.testing import TestClient
 
 from db import connect, library, naming, scan
 from sg_web.app import build_app
-from tests.staging import settled
+from tests.staging import hosting, settled
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "test_the_app_runs_its_own_library", worker=True) as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """The application, with the previous test's library forgotten. Every
+    test here settles its own jobs, so no turn is in flight when the
+    restore swaps the database back."""
+    _world.restore()
+    return _world.client
 
 
 def scene(sky, ground, feature):
@@ -55,7 +74,7 @@ MEADOW = (
 #: test about being SPOKEN to on the feed keeps its own socket below.
 
 
-def test_the_recipe_axis_is_produced_and_served(tmp_path):
+def test_the_recipe_axis_is_produced_and_served(tmp_path, served):
     """Ingestion is a job the application offers, and what it reads
     becomes addressable: the model has a page counting pictures, the LoRA
     knows what it is used with, the picture page carries its whole
@@ -76,7 +95,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         )
         Image.new("RGB", (16, 16), (30, 40, 60)).save(root / name, pnginfo=info)
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
         job = client.post("/jobs/ingest").json()
@@ -148,7 +167,7 @@ def test_the_recipe_axis_is_produced_and_served(tmp_path):
         assert client.get("/f/nowhere").status_code == 404
 
 
-def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
+def test_ingest_failures_land_on_items_not_on_the_library(tmp_path, served):
     """An unreadable file is a FAILED item, and the recipe it already
     contributed survives: ingest retracts before it re-reads, so a rotten
     re-read must roll back rather than commit the destruction and report
@@ -167,7 +186,7 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
     Image.new("RGB", (16, 16), (1, 2, 3)).save(root / "good.png", pnginfo=info)
     (root / "gone.png").write_bytes(b"\x89PNG-pretend")
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
 
@@ -195,7 +214,7 @@ def test_ingest_failures_land_on_items_not_on_the_library(tmp_path):
         assert after["creation"]["checkpoint"] == before["creation"]["checkpoint"]
 
 
-def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
+def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path, served):
     """The backfill for libraries that never ran detection: POST
     /jobs/phash computes phash64/dhash64 for every present picture, and
     a resized re-encode lands within a few bits of its original --
@@ -208,7 +227,7 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
     picture.save(root / "castle.png")
     picture.resize((32, 32)).save(root / "castle_half.jpg", quality=80)
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 2
         job = client.post("/jobs/phash").json()
@@ -231,11 +250,14 @@ def test_perceptual_hashing_is_a_job_the_application_offers(tmp_path):
         assert apart <= 6, f"the same picture resized measured {apart} bits apart"
 
 
-def test_a_scan_queues_the_thumbnails_of_what_it_found(tmp_path):
+def test_a_scan_queues_the_thumbnails_of_what_it_found(tmp_path, served):
     """New pictures are thumbnailed by the worker the moment a walk
     finds them, so the rail's hover never pays a first decode of the
     original; a walk that finds nothing new, and a cache already full,
     queue nothing."""
+    import pathlib
+
+    from sg_web import home as run_home
     from vision import thumbs
 
     root = tmp_path / "lib"
@@ -243,14 +265,14 @@ def test_a_scan_queues_the_thumbnails_of_what_it_found(tmp_path):
     scene(*CASTLE).save(root / "castle.png")
     scene(*MEADOW).save(root / "meadow.png")
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         swept = client.post(f"/roots/{made['id']}/scan").json()
         assert swept["added"] == 2
         job = client.get(f"/jobs/{swept['precache']}").json()
         assert (job["kind"], job["total"]) == ("hash", 2)
         assert settled(client, job["id"]) == "done"
-        cache = tmp_path / "run" / "thumbs"
+        cache = run_home.thumbs_dir(pathlib.Path(client.app.state.home))
         conn = connect.connect(client.app.state.db_path)
         shas = [row[0] for row in conn.execute("SELECT content_sha256 FROM file")]
         conn.close()
@@ -260,7 +282,7 @@ def test_a_scan_queues_the_thumbnails_of_what_it_found(tmp_path):
         assert client.post("/jobs/thumbs").status_code == 204
 
 
-def test_copies_of_copies_collapse_into_pictures(tmp_path):
+def test_copies_of_copies_collapse_into_pictures(tmp_path, served):
     """The dedupe story end to end, over HTTP: hash the pixels, group
     them through the FAISS binary index, and the copies collapse -- one
     group per picture, the largest body picked as its best face, every
@@ -273,7 +295,7 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
     picture.save(root / "castle_web.webp", quality=75)
     scene(*MEADOW).save(root / "meadow.png")
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         assert client.post(f"/roots/{made['id']}/scan").json()["added"] == 4
 
@@ -306,7 +328,7 @@ def test_copies_of_copies_collapse_into_pictures(tmp_path):
         client.post("/settings/dupe_threshold", json={"value": "4"})
 
 
-def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path):
+def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path, served):
     """The representative policy reads pixel dimensions, but only ingest
     persists them -- and /jobs/dupes explicitly runs from /jobs/phash
     alone. The canonical member of a duplicate group must be the same
@@ -317,7 +339,7 @@ def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path):
     picture.save(root / "castle.png")
     picture.resize((48, 48)).save(root / "castle_small.jpg", quality=80)
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
 
@@ -340,7 +362,7 @@ def test_the_dupe_representative_does_not_depend_on_job_order(tmp_path):
         assert after == before, "the representative changed because a metadata job ran"
 
 
-def test_resolution_beats_bytes_for_the_dupe_representative(tmp_path):
+def test_resolution_beats_bytes_for_the_dupe_representative(tmp_path, served):
     """Bytes measure compression, not fidelity: a heavily compressed
     high-resolution body must outrank a low-resolution one padded fat --
     byte size is a tiebreak WITHIN a resolution, never a substitute."""
@@ -357,7 +379,7 @@ def test_resolution_beats_bytes_for_the_dupe_representative(tmp_path):
         "the fixture only proves the rule if the low-resolution file really is the byte-heavier one"
     )
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
 
@@ -393,10 +415,10 @@ def test_a_whole_run_is_contained_in_one_redirectable_directory(tmp_path):
     assert (burrow / "gallery.db").exists(), "the run did not live in its home"
 
 
-def test_settings_are_rows_changed_while_the_application_runs(tmp_path):
+def test_settings_are_rows_changed_while_the_application_runs(tmp_path, served):
     """Configuration is settings rows, not environment variables: listed,
     changed and validated over requests, effective without a restart."""
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         listed = {row["key"]: row for row in client.get("/settings").json()}
         assert listed["faiss_gpu"]["value"] == "on"
         assert "off" in listed["faiss_gpu"]["choices"]
@@ -410,11 +432,11 @@ def test_settings_are_rows_changed_while_the_application_runs(tmp_path):
         assert client.post("/settings/not_a_setting", json={"value": "x"}).status_code == 400
 
 
-def test_a_bodyless_or_pathless_root_request_is_a_400_not_a_500(tmp_path):
+def test_a_bodyless_or_pathless_root_request_is_a_400_not_a_500(tmp_path, served):
     """The body is typed, so a missing or mistyped `path` is refused by
     the signature model with a 400 -- never a KeyError escaping as 500
     from a write route."""
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         assert client.post("/roots", json={}).status_code == 400
         assert client.post("/roots", json={"kind": "library"}).status_code == 400
         assert client.post("/roots", json={"path": 123}).status_code == 400
@@ -435,7 +457,17 @@ def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, 
 
     root = tmp_path / "lib"
     root.mkdir()
-    for n in range(300):
+    # Forty, not three hundred. What this needs is that the app tears
+    # down WHILE the worker is draining, and teardown is the next
+    # statement after the submit -- microseconds later. The drain has to
+    # outlast that, not last a particular time: at ~7 ms an item (the
+    # per-item commit, which is what a verify item costs here) forty
+    # spans about a quarter second and three hundred spanned two, and
+    # the test waits out the whole of it twice -- once as the worker is
+    # interrupted, once as the second app finishes what was left.
+    # Both numbers land teardown solidly mid-drain; only one of them
+    # costs two seconds to say so.
+    for n in range(40):
         (root / f"frame_{n:03}.png").write_bytes(b"\x89PNG-" + f"{n:03}".encode() * 64)
     burrow = tmp_path / "run"
     burrow.mkdir()
@@ -477,7 +509,7 @@ def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, 
         assert told["state"] == "done", "the interrupted job was not picked back up"
 
 
-def test_media_roots_are_rows_managed_through_the_application(tmp_path):
+def test_media_roots_are_rows_managed_through_the_application(tmp_path, served):
     """Any number of media directories, anywhere, registered and scanned
     over requests -- the pictures never live inside the run's home."""
     box_one = tmp_path / "comfy-output"
@@ -486,7 +518,7 @@ def test_media_roots_are_rows_managed_through_the_application(tmp_path):
         box.mkdir()
         (box / "shot.png").write_bytes(b"\x89PNG-" + box.name.encode())
 
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
+    with contextlib.nullcontext(served) as client:
         first = client.post("/roots", json={"path": str(box_one)}).json()
         second = client.post("/roots", json={"path": str(box_two)}).json()
         assert first["id"] != second["id"]

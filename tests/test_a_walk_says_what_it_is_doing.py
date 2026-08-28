@@ -24,11 +24,10 @@ import json
 import pathlib
 
 import pytest
-from litestar.testing import TestClient
-from PIL import Image
 
 from db import connect
-from sg_web.app import WALK_EVERY, build_app
+from sg_web.app import WALK_EVERY
+from tests.staging import hosting
 
 #: Enough files that the walk must report more than once, whatever the
 #: cadence: the point is a count that MOVES, and a single report at the
@@ -36,22 +35,41 @@ from sg_web.app import WALK_EVERY, build_app
 MANY = WALK_EVERY * 3 + 40
 
 
-@pytest.fixture
-def scanned(tmp_path):
-    root = tmp_path / "pics"
-    (root / "deeper").mkdir(parents=True)
-    for i in range(MANY):
-        # a nested folder as well as a flat one: reporting per DIRECTORY
-        # looks thriftier and says nothing, because a library is often
-        # one flat folder
-        where = root if i % 3 else root / "deeper"
-        Image.new("RGB", (16, 12), (i % 251, (i * 7) % 251, (i * 13) % 251)).save(where / f"p{i:05d}.png")
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    """One library and one scan for the whole module: writing several
+    hundred pictures and reading every byte of them is what this file is
+    about, and doing it seven times says nothing seven times.
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        answer = client.post(f"/roots/{made['id']}/scan")
+    Snapshotted AFTER the scan, so the restore between tests puts back
+    the walked world rather than the empty one -- the second-scan test is
+    the only one that writes, and it gets its own first rescan."""
+    with hosting(tmp_path_factory, "test_a_walk_says_what_it_is_doing") as stage:
+        (stage.root / "deeper").mkdir(parents=True, exist_ok=True)
+        for i in range(MANY):
+            # a nested folder as well as a flat one: reporting per DIRECTORY
+            # looks thriftier and says nothing, because a library is often
+            # one flat folder
+            where = stage.root if i % 3 else stage.root / "deeper"
+            # Bytes, not an encoded picture. A walk stats and HASHES; it
+            # never decodes, and nothing in this module looks at a pixel
+            # -- so `Image.new(...).save(...)` was paying an encoder per
+            # file, MANY times, to produce input no test reads as an
+            # image. Distinct per file, because the walk's whole subject
+            # is telling them apart by content.
+            where.joinpath(f"p{i:05d}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + f"{i:05d}".encode() * 8)
+        made = stage.client.post("/roots", json={"path": str(stage.root)}).json()
+        answer = stage.client.post(f"/roots/{made['id']}/scan")
         assert answer.status_code == 201, answer.text
-        yield client, answer.json(), tmp_path / "run" / "gallery.db"
+        stage.held["told"] = answer.json()
+        stage.snapshot()
+        yield stage
+
+
+@pytest.fixture
+def scanned(_world):
+    _world.restore()
+    return _world.client, _world.held["told"], _world.db
 
 
 def _events(db: pathlib.Path, kind: str = "walk") -> list[dict]:

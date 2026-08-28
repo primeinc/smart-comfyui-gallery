@@ -51,6 +51,20 @@ class Finding:
 # --- the tree ---------------------------------------------------------------------------------
 
 
+#: A file's TEXT is deliberately not cached on (mtime, size) the way its
+#: tree is, and the reads through this module stay uncached.
+#:
+#: The stamp is not enough to tell two versions apart. A control writes a
+#: file, runs a rule, rewrites it and runs the rule again -- and
+#: `test_the_vocabulary_and_handler_rules_hold_and_can_fail` does exactly
+#: that with `SAYS = {'a': 1, 'b': 2}` and `SAYS = {'a': 1, 'c': 3}`,
+#: which are the same LENGTH inside one clock tick. A stamped cache hands
+#: back the first, the rule finds nothing wrong with source it never saw,
+#: and the control that exists to prove the rule can fail passes while
+#: proving nothing. Measured: it was tried, and that test caught it.
+#:
+#: The saving was 0.08s. `walked` below is where the real one is, and it
+#: is keyed on the tree OBJECT, so it cannot go stale.
 @functools.cache
 def _parsed_as_of(source: pathlib.Path, _stamp: tuple[int, int]) -> ast.Module:
     return ast.parse(source.read_text(encoding="utf-8"))
@@ -63,8 +77,78 @@ def parsed(source: pathlib.Path) -> ast.Module:
     return _parsed_as_of(source, (held.st_mtime_ns, held.st_size))
 
 
+#: Walked trees, keyed on the tree itself.
+#:
+#: `ast.AST` hashes by identity, so the dict holds each tree alive for as
+#: long as it holds its walk -- which is what makes this sound. Keying on
+#: `id()` alone would not be: a control's tree is built from text and can
+#: be collected, and the next tree along can be handed the same id.
+_WALKED: dict[ast.AST, tuple[ast.AST, ...]] = {}
+
+
+def walked(tree: ast.AST) -> tuple[ast.AST, ...]:
+    """Every node of `tree`, walked once and kept.
+
+    Thirty-odd rules read the same two hundred and fifty modules, and
+    each was walking every one of them from the top. `ast.walk` is a
+    breadth-first generator over a deque, so that is a full traversal
+    and a fresh deque per rule per file; this is one traversal per file,
+    iterated as a tuple thereafter.
+    """
+    held = _WALKED.get(tree)
+    if held is None:
+        held = tuple(ast.walk(tree))
+        _WALKED[tree] = held
+    return held
+
+
+#: The Call nodes of each tree, filtered once. Same keying, same reason.
+_CALLS: dict[ast.AST, tuple[ast.Call, ...]] = {}
+
+
+def calls(tree: ast.AST) -> tuple[ast.Call, ...]:
+    """Every call in `tree`, filtered once and kept.
+
+    Eleven places ask a tree for its calls -- the spawn sweep, the SQL
+    sweep, the statement rules, the route rules -- and each was walking
+    every node of the file to find them. A module is mostly not calls, so
+    that is a thousand `isinstance` checks each to reach a few dozen
+    nodes, once per rule that asks.
+
+    In document order, because it is a filter of `walked` and rules
+    report the FIRST offence they meet.
+    """
+    held = _CALLS.get(tree)
+    if held is None:
+        held = tuple(node for node in walked(tree) if isinstance(node, ast.Call))
+        _CALLS[tree] = held
+    return held
+
+
+#: The functions of each tree, filtered once. Same keying, same reason.
+_FUNCTIONS: dict[ast.AST, tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]] = {}
+
+
+def functions(tree: ast.AST) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+    """Every function in `tree`, async ones included, in document order.
+
+    Six rules ask a tree for its functions, and the connection-lifetime
+    sweep asks it of EVERY source in the repository -- each time walking
+    the whole file to find the handful of nodes that are functions.
+    """
+    held = _FUNCTIONS.get(tree)
+    if held is None:
+        held = tuple(node for node in walked(tree) if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef))
+        _FUNCTIONS[tree] = held
+    return held
+
+
 def _code_only(source: pathlib.Path, held: str) -> str:
     """`held` with COMMENTS and DOCSTRINGS blanked, offsets preserved.
+
+    A pure function of the text, so it is cached on the text: several
+    rules read the same module, and blanking it is a tokenize pass plus
+    a rewrite of every character in the file.
 
     A ban says what a module must not DO, and a comment is prose ABOUT
     what it does. `db/evolution.py` may not DELETE, and a comment saying
@@ -84,7 +168,12 @@ def _code_only(source: pathlib.Path, held: str) -> str:
     Blanked with SPACES rather than removed, so a finding's line number
     still points at the line it came from.
     """
-    if source.suffix != ".py":
+    return _blanked(source.suffix, held)
+
+
+@functools.cache
+def _blanked(suffix: str, held: str) -> str:
+    if suffix != ".py":
         return held
     import io as _io
     import tokenize
@@ -112,7 +201,10 @@ def _code_only(source: pathlib.Path, held: str) -> str:
         # already fails on. The ban falls back to the whole text rather
         # than silently checking nothing.
         return held
-    for node in ast.walk(parsed(source)):
+    # The text's own tree, not `parsed(source)`: this function answers for
+    # the text it was handed, and a file rewritten inside one clock tick at
+    # the same length would hand back the previous one.
+    for node in ast.walk(ast.parse(held)):
         if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         first = node.body[0] if node.body else None
@@ -183,13 +275,13 @@ _SPAWNERS = frozenset({"run", "call", "check_call", "check_output", "Popen"})
 
 def spawn_calls(tree: ast.AST) -> list[ast.Call]:
     """Every subprocess.<spawner>(...) call node in `tree`."""
-    calls = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _SPAWNERS:
+    found = []
+    for node in calls(tree):
+        if isinstance(node.func, ast.Attribute) and node.func.attr in _SPAWNERS:
             root = node.func.value
             if isinstance(root, ast.Name) and root.id == "subprocess":
-                calls.append(node)
-    return calls
+                found.append(node)
+    return found
 
 
 def spawner_name(call: ast.Call) -> str:
@@ -287,8 +379,8 @@ def rule_tests_run_things(
     for source in sorted(tests.rglob("*.py")):
         if source.name in skip:
             continue
-        for node in ast.walk(parsed(source)):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        for node in calls(parsed(source)):
+            if not isinstance(node.func, ast.Attribute):
                 continue
             named = node.func.attr
             owner = node.func.value.id if isinstance(node.func.value, ast.Name) else ""
@@ -323,7 +415,7 @@ SQL_SHAPED = re.compile(
 def sql_interpolations(tree: ast.AST) -> list[tuple[str, int, int]]:
     """[(slot, line, col)] for every interpolation in a SQL-shaped f-string."""
     found = []
-    for node in ast.walk(tree):
+    for node in walked(tree):
         if not isinstance(node, ast.JoinedStr):
             continue
         literal = "".join(
@@ -492,10 +584,23 @@ def rule_connection_lifetime(
     excused = policy.CONNECTION_KEPT if kept is None else kept
     held = [on_disk(one) for one in every_source()] if sources is None else list(sources)
     found: list[Finding] = []
+    #: Which files an excusal names. A module with no `connect` in it is
+    #: skipped below, and that skip must not take the stale-excusal
+    #: report with it: an entry naming a function that stopped opening
+    #: anything is exactly what that report exists to find.
+    excused_in = {one.rsplit(":", 1)[0] for one in excused}
     for source in held:
-        for fn in ast.walk(source.tree):
-            if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
+        # Nothing here binds the name `connect`, so nothing here can open
+        # one: `_opened_here` matches `connect.<attr>(...)`, which is an
+        # ast.Name node. Read off the module's own walk, which `walked`
+        # has already built for the other rules -- against `_closed_here`
+        # and `_opened_here` each walking every function in the file.
+        # This rule was 0.587s of the 1.09s every rule costs together.
+        if str(source.relative) not in excused_in and not any(
+            isinstance(node, ast.Name) and node.id == "connect" for node in walked(source.tree)
+        ):
+            continue
+        for fn in functions(source.tree):
             dropped = [] if _closed_here(fn) else [c for n, c in _opened_here(fn) if not _handed_onward(fn, n)]
             if f"{source.relative}:{fn.name}" in excused:
                 if not dropped:
@@ -529,27 +634,23 @@ def rule_connection_lifetime(
 
 def _called_attrs(tree: ast.AST) -> dict[str, tuple[int, int]]:
     found: dict[str, tuple[int, int]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+    for node in calls(tree):
+        if isinstance(node.func, ast.Attribute):
             found.setdefault(node.func.attr, (node.lineno, node.col_offset))
     return found
 
 
 def _called_qualified(tree: ast.AST) -> dict[str, tuple[int, int]]:
     found: dict[str, tuple[int, int]] = {}
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-        ):
+    for node in calls(tree):
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
             found.setdefault(f"{node.func.value.id}.{node.func.attr}", (node.lineno, node.col_offset))
     return found
 
 
 def _db_vocabulary(tree: ast.AST) -> dict[str, tuple[int, int]]:
     found: dict[str, tuple[int, int]] = {}
-    for node in ast.walk(tree):
+    for node in walked(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "db":
             for alias in node.names:
                 found.setdefault(alias.name, (node.lineno, node.col_offset))
@@ -632,7 +733,7 @@ def rule_adapters(
         path = root / relative
         imported = {
             alias.name
-            for node in ast.walk(parsed(path))
+            for node in walked(parsed(path))
             if isinstance(node, ast.ImportFrom) and node.module == module
             for alias in node.names
         }
@@ -641,7 +742,7 @@ def rule_adapters(
     bodies: dict[str, str] = {}
     for relative in policy.ONE_TO_MANY_MODULES:
         tree = parsed(root / relative)
-        bodies |= {node.name: ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        bodies |= {node.name: ast.unparse(node) for node in walked(tree) if isinstance(node, ast.FunctionDef)}
     for one, many in policy.ONE_DELEGATES_TO_MANY:
         where = root / policy.ONE_TO_MANY_MODULES[0]
         if one not in bodies or many not in bodies[one]:
@@ -650,8 +751,8 @@ def rule_adapters(
             found.append(Finding(where, 1, 0, "SG404", f"{many} no longer writes with executemany"))
     for relative in policy.LITERAL_STATEMENTS_ONLY:
         path = root / relative
-        for node in ast.walk(parsed(path)):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "execute":
+        for node in calls(parsed(path)):
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "execute":
                 statement = node.args[0] if node.args else None
                 if not isinstance(statement, ast.Constant):
                     found.append(
@@ -694,7 +795,7 @@ def rule_adapters(
             scopes: list[list[ast.stmt]] = (
                 [tree.body]
                 if not owner
-                else [node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == owner]
+                else [node.body for node in walked(tree) if isinstance(node, ast.ClassDef) and node.name == owner]
             )
             wanted = [
                 fn
@@ -861,7 +962,7 @@ def unwired(tables: set[str], root: pathlib.Path = REPO_ROOT) -> dict[str, str]:
     db/derived.py can reach."""
     derived_source = (root / "db" / "derived.py").read_text(encoding="utf-8")
     module = ast.parse(derived_source)
-    functions = [node for node in ast.walk(module) if isinstance(node, ast.FunctionDef)]
+    functions = [node for node in walked(module) if isinstance(node, ast.FunctionDef)]
     named = {node.name for node in functions}
     writers: dict[str, set[str]] = {}
     callers: dict[str, set[str]] = {}
@@ -947,7 +1048,7 @@ def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
     #: `X = A | B | C` at module level, by the names it joins.
     aliases: dict[str, set[str]] = {}
     for source in sources:
-        for node in ast.walk(source.tree):
+        for node in walked(source.tree):
             if isinstance(node, ast.ClassDef):
                 held = {base.id for base in node.bases if isinstance(base, ast.Name)}
                 # `class X(RootModel[Annotated[A | B, ...]])` is how a
@@ -1021,9 +1122,7 @@ def rule_request_contracts(
     excused = policy.REQUEST_CONTRACT_RESERVED if reserved is None else reserved
     found: list[Finding] = []
     for source in held:
-        for node in ast.walk(source.tree):
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
+        for node in functions(source.tree):
             routed = any(
                 isinstance(one, ast.Call) and isinstance(one.func, ast.Name) and one.func.id in _BODY_ROUTES
                 for one in node.decorator_list
@@ -1181,9 +1280,7 @@ def rule_response_contracts(
     excused = policy.RESPONSE_CONTRACT_RESERVED if reserved is None else reserved
     found: list[Finding] = []
     for source in held:
-        for node in ast.walk(source.tree):
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
+        for node in functions(source.tree):
             if not any(
                 isinstance(one, ast.Call) and isinstance(one.func, ast.Name) and one.func.id in _ROUTES
                 for one in node.decorator_list

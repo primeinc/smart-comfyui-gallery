@@ -1394,6 +1394,12 @@ def change_setting(state: State, key: FromPath[str], data: SettingChange) -> dic
         except (KeyError, ValueError) as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
+        # Switching the worker on makes queued work runnable now. Without
+        # the nudge the loop does not look again until IDLE_WAIT expires
+        # (sg_web/worker.py), so the switch reads as one that does nothing
+        # for a second -- the same reason a cancel nudges below.
+        if key == "worker":
+            _nudge(state)
         return {"key": key, "value": settings.value(conn, key)}
     finally:
         connect.close(conn)
@@ -1808,6 +1814,32 @@ def _told_whole(request: Request, exc: Exception) -> Response:
     return create_debug_response(request, exc)
 
 
+def _bytecode_dir() -> pathlib.Path | None:
+    """Where compiled templates are kept, or None to compile every time.
+
+    Beside the templates, because the point is to be shared: one home
+    per run and a fresh home per test module would each start cold, and
+    a cache nothing reuses is only a slower compile. Keyed by template
+    source, so several runs of different versions share it safely.
+
+    Not the system temp directory -- asked for nothing Jinja returns
+    `gettempdir()` unguarded on Windows, where the POSIX branch beside
+    it builds a 0700 per-uid directory (pallets/jinja@3.1.6
+    src/jinja2/bccache.py:221-231). Bytecode is code: this reads it back
+    and runs it, so it is not left anywhere another user can write.
+
+    None when the directory cannot be made -- an installed tree may be
+    read-only, and a cache is an optimisation that must never be the
+    reason an application will not boot.
+    """
+    where = pathlib.Path(__file__).resolve().parent / ".template-cache"
+    try:
+        where.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    return where
+
+
 def _template_engine() -> JinjaTemplateEngine:
     """The ONE Jinja environment every page renders with.
 
@@ -1823,12 +1855,24 @@ def _template_engine() -> JinjaTemplateEngine:
     Module's global is registered here, before any template loads
     (pallets/jinja@3.1.6 docs/api.rst "The Global Namespace").
     """
-    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+    from jinja2 import Environment, FileSystemBytecodeCache, FileSystemLoader, StrictUndefined
 
+    cache = _bytecode_dir()
     environment = Environment(
         loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
         undefined=StrictUndefined,
         autoescape=True,
+        # Compiled templates, kept between processes. A template is
+        # compiled on first render, and the gallery's first page was
+        # 0.13s of which ~0.04 was that -- paid once per process, so by
+        # every served run's boot and by every test process that renders
+        # a page. A bucket is keyed on sha1(name|filename) and carries
+        # sha1(source), so editing a template resets it, and `bc_magic`
+        # carries the Python version, so an interpreter upgrade does too
+        # (pallets/jinja@3.1.6 src/jinja2/bccache.py:35-43, 65-82,
+        # 152-181). Nothing stale can be loaded; the worst case is a
+        # miss and the compile that would have happened anyway.
+        bytecode_cache=FileSystemBytecodeCache(str(cache)) if cache else None,
     )
     # every stylesheet and script URL carries the newest mtime under
     # static/: a browser that cached yesterday's timeline.js fetches

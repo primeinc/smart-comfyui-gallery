@@ -24,7 +24,7 @@ from PIL.PngImagePlugin import PngInfo
 
 from db import authored, collections, connect, context, ingest, lineage, naming, pages, scan
 from tests import staging
-from tests.staging import NOW
+from tests.staging import NOW, staged
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
@@ -629,6 +629,17 @@ def test_moving_the_files_behind_the_apps_back_disturbs_no_page(library):
         == "moved"
     ), "the file did not follow its bytes"
 
+    # Put the tree back. `library` compares the master's listing and
+    # rebuilds the whole thing when it differs, so a move left standing
+    # is a rebuild the NEXT test pays for. A rename keeps the file, so
+    # moving them home restores the listing exactly. Not a `finally`: if
+    # an assertion above failed the world really is unknown, and the
+    # rebuild is what should happen.
+    (root / "portraits").mkdir()
+    for path in sorted((root / "moved").iterdir()):
+        path.rename(root / "portraits" / path.name)
+    (root / "moved").rmdir()
+
 
 def test_identical_files_are_never_guessed_between_on_a_move(library):
     """Two byte-identical pictures cannot be told apart, so a move of both
@@ -655,6 +666,15 @@ def test_identical_files_are_never_guessed_between_on_a_move(library):
     assert result.ambiguous == 2, f"a coin was tossed instead of declining: {result}"
     assert result.missing == 2, "the originals were not left as missing"
     assert conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0] == 14
+
+    # Every file above is one this test made, so taking them away leaves
+    # the master's listing as it found it -- and the next test restores
+    # rather than rebuilding the library from nothing. Same reason as
+    # the move test above.
+    for name in ("a.png", "b.png"):
+        (root / "twins2" / name).unlink()
+    (root / "twins2").rmdir()
+    (root / "twins").rmdir()
 
 
 # --- the pages db.pages ships that nothing was asking for -------------------
@@ -859,7 +879,47 @@ def _slugs(page: str) -> list[str]:
     return re.findall(r'a class="cell" href="/i/([^"?]+)', page)
 
 
-def test_a_joined_column_sorts_without_narrowing_the_answer(tmp_path):
+def _three_with_one_generated(root) -> None:
+    from PIL import Image
+
+    for i in range(3):
+        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
+
+
+def _one_sampler(stage) -> None:
+    """Exactly one of the three is a generated picture -- the shape both
+    claims below are about: a joined column that most rows lack."""
+    from db import connect
+
+    conn = stage.conn()
+    try:
+        last = conn.execute("SELECT id FROM file ORDER BY name DESC LIMIT 1").fetchone()[0]
+        conn.execute(
+            "INSERT INTO generation(file_id, tool, detection, sampler, steps, parser, parsed_at)"
+            " VALUES(?, 'test', 'marker', 'euler', 20, 'test', 0)",
+            (last,),
+        )
+        conn.commit()
+        stage.held["named"] = conn.execute("SELECT slug FROM entity WHERE id = ?", (last,)).fetchone()[0]
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _sorted_world(tmp_path_factory):
+    with staged(tmp_path_factory, "answerable-sorts", _three_with_one_generated, _one_sampler) as stage:
+        yield stage
+
+
+@pytest.fixture
+def sorted_over(_sorted_world):
+    """One library for both column-sort claims: three pictures, one of
+    them generated. They booted an application each for the same shape."""
+    _sorted_world.restore()
+    return _sorted_world.client, _sorted_world.held["named"]
+
+
+def test_a_joined_column_sorts_without_narrowing_the_answer(sorted_over):
     """The decision this needed, and it is a product one.
 
     A photograph has no sampler. Sorting by sampler over a library of
@@ -873,75 +933,23 @@ def test_a_joined_column_sorts_without_narrowing_the_answer(tmp_path):
     So they order last and say so by position, exactly as the moment
     sorts already do for a file nothing has interpreted.
     """
-    from litestar.testing import TestClient
-    from PIL import Image
+    client, named = sorted_over
+    every = _total(client.get("/g", headers={"accept": "text/html"}).text)
+    assert every == 3, "the control"
 
-    from db import connect
-    from sg_web.app import build_app
-
-    root = tmp_path / "lib"
-    root.mkdir()
-    for i in range(3):
-        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            # exactly one of them is a generated picture
-            one = conn.execute("SELECT id FROM file ORDER BY name LIMIT 1").fetchone()[0]
-            conn.execute(
-                "INSERT INTO generation(file_id, tool, detection, sampler, steps, parser, parsed_at)"
-                " VALUES(?, 'test', 'marker', 'euler', 20, 'test', 0)",
-                (one,),
-            )
-            conn.commit()
-        finally:
-            connect.close(conn)
-
-        every = _total(client.get("/g", headers={"accept": "text/html"}).text)
-        assert every == 3, "the control"
-
-        for sort in ("sampler", "sampler-desc", "steps", "seed", "iso", "camera", "checkpoint", "rating"):
-            answered = client.get("/g", params={"sort": sort}, headers={"accept": "text/html"})
-            assert answered.status_code == 200, f"{sort}: {answered.text[:400]}"
-            assert _total(answered.text) == every, f"sorting by {sort} narrowed the answer"
+    for sort in ("sampler", "sampler-desc", "steps", "seed", "iso", "camera", "checkpoint", "rating"):
+        answered = client.get("/g", params={"sort": sort}, headers={"accept": "text/html"})
+        assert answered.status_code == 200, f"{sort}: {answered.text[:400]}"
+        assert _total(answered.text) == every, f"sorting by {sort} narrowed the answer"
+    assert named, "the world names the one generated file"
 
 
-def test_the_one_that_has_it_comes_first(tmp_path):
+def test_the_one_that_has_it_comes_first(sorted_over):
     """And the ordering is real, not merely accepted. The file with a
     sampler leads ascending; the ones without follow."""
-    from litestar.testing import TestClient
-    from PIL import Image
-
-    from db import connect
-    from sg_web.app import build_app
-
-    root = tmp_path / "lib"
-    root.mkdir()
-    for i in range(3):
-        Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"q{i}.png")
-
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            last = conn.execute("SELECT id FROM file ORDER BY name DESC LIMIT 1").fetchone()[0]
-            conn.execute(
-                "INSERT INTO generation(file_id, tool, detection, sampler, steps, parser, parsed_at)"
-                " VALUES(?, 'test', 'marker', 'euler', 20, 'test', 0)",
-                (last,),
-            )
-            conn.commit()
-            named = conn.execute("SELECT slug FROM entity WHERE id = ?", (last,)).fetchone()[0]
-        finally:
-            connect.close(conn)
-
-        answered = client.get("/g", params={"sort": "sampler"}, headers={"accept": "text/html"})
-        assert _slugs(answered.text)[0] == named, "the only file with a sampler did not lead a sort by sampler"
+    client, named = sorted_over
+    answered = client.get("/g", params={"sort": "sampler"}, headers={"accept": "text/html"})
+    assert _slugs(answered.text)[0] == named, "the only file with a sampler did not lead a sort by sampler"
 
 
 def test_every_column_the_table_draws_is_a_sortable_heading(tmp_path):

@@ -28,11 +28,9 @@ import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from db import connect, ingest, resultset, scan
+from db import ingest, resultset, scan
 from metaparse import containers
-from tests.staging import NOW
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
+from tests.staging import NOW, fresh_schema
 
 #: A ComfyUI API graph, in the shape its `prompt` tag carries: node id ->
 #: {class_type, inputs}. Small, and enough for the adapter to recognise.
@@ -118,19 +116,28 @@ def test_a_file_that_is_not_a_container_is_refused_quietly(tmp_path):
 # --- through ingest, into the query vocabulary ------------------------------
 
 
-@pytest.fixture
-def library(tmp_path):
-    root = tmp_path / "pics"
+@pytest.fixture(scope="module")
+def _shot(tmp_path_factory):
+    """Two clips and a still, encoded once.
+
+    Read-only: every test here ingests FROM these into a database of its
+    own and writes nothing back, so encoding two mp4s per test paid for
+    the same bytes four times.
+    """
+    root = tmp_path_factory.mktemp("clips") / "pics"
     root.mkdir()
     _clip(root / "boat.mp4", {"prompt": json.dumps(GRAPH), "workflow": json.dumps(WORKFLOW)})
     _clip(root / "handheld.mp4")
     info = PngInfo()
     info.add_text("prompt", json.dumps(GRAPH))
     Image.new("RGB", (32, 24), (80, 20, 20)).save(root / "still.png", pnginfo=info)
+    return root
 
-    conn = connect.memory()
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+
+@pytest.fixture
+def library(_shot):
+    root = _shot
+    conn = fresh_schema()
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
     scan.scan(conn, 1, root, NOW)
     for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():

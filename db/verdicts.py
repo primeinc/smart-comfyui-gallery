@@ -83,6 +83,22 @@ EXPORT = (
 )
 
 
+def withheld_by(include: tuple[str, ...]) -> tuple[str, ...]:
+    """Which `BY_REQUEST` fields carry a null, refusing anything else.
+
+    Separate from `exported` because it answers from the argument alone.
+    A request refused for what it asked for has no business opening a
+    database: the refusal is the same either way, and a caller that asks
+    for `path` should not pay a connection to be told no.
+    """
+    unknown = [one for one in include if one not in BY_REQUEST]
+    if unknown:
+        raise ValueError(
+            f"an export adds {', '.join(BY_REQUEST)} by name and nothing else, not {', '.join(sorted(unknown))}"
+        )
+    return tuple(one for one in BY_REQUEST if one not in include)
+
+
 def exported(conn, *, include: tuple[str, ...] = ()) -> list[dict]:
     """Every verdict, as an eval set that carries no pictures.
 
@@ -92,12 +108,7 @@ def exported(conn, *, include: tuple[str, ...] = ()) -> list[dict]:
     asked for would hand them a file they believe holds something it
     does not.
     """
-    unknown = [one for one in include if one not in BY_REQUEST]
-    if unknown:
-        raise ValueError(
-            f"an export adds {', '.join(BY_REQUEST)} by name and nothing else, not {', '.join(sorted(unknown))}"
-        )
-    withheld = tuple(one for one in BY_REQUEST if one not in include)
+    withheld = withheld_by(include)
     cursor = conn.execute(EXPORT)
     columns = [c[0] for c in cursor.description]
     return [{k: (None if k in withheld else v) for k, v in zip(columns, row, strict=True)} for row in cursor]

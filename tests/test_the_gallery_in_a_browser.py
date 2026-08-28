@@ -9,9 +9,9 @@ import time
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -38,7 +38,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live, unbroken):
@@ -48,7 +48,11 @@ def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live, unbr
 
     page.goto("/g")
     page.wait_for_selector("[data-grid] a.cell img", timeout=10_000)
-    assert page.locator("[data-grid] a.cell").count() == FILES
+    # `to_have_count`, not `count() ==`: the first cell having an image
+    # does not mean the last cell exists yet, and `count()` answers about
+    # the instant it is asked rather than about the page. A web-first
+    # assertion retries. Measured: this line, under four workers.
+    expect(page.locator("[data-grid] a.cell")).to_have_count(FILES)
     # every thumbnail really loaded: natural size, not a broken image
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('[data-grid] a.cell img')).every(i => i.complete)",
@@ -87,7 +91,8 @@ def test_a_picture_can_be_clicked_walked_and_closed(page: Page, live: Live, unbr
     assert page.url.rstrip("/").endswith("/g") or "/g?" in page.url
 
     page.goto(first_href)
-    page.wait_for_selector("main", timeout=10_000)
+    # No wait for `main` first: the poll below runs until a picture has
+    # loaded, which cannot happen before the page it is on exists.
     page.wait_for_function(
         "() => Array.from(document.images).some(i => i.complete && i.naturalWidth > 0)", timeout=10_000
     )

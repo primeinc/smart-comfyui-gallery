@@ -14,13 +14,15 @@ nobody can quietly fix one of them.
 
 from __future__ import annotations
 
+import contextlib
 import time
 
 import pytest
 from PIL import Image
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as Timeout
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -54,7 +56,7 @@ def _settled(api, job_id, timeout=60.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 def _drained(api, timeout=60.0) -> None:
@@ -64,17 +66,27 @@ def _drained(api, timeout=60.0) -> None:
         if not running:
             return
         assert time.monotonic() < deadline, f"jobs still running: {running}"
-        time.sleep(0.05)
+        time.sleep(POLL)
+
+
+#: name -> slug, asked once. The library is written before the module's
+#: first test and `live` is module-scoped (tests/conftest.py:84), so this
+#: mapping cannot change under it -- and every one of the sixty tests
+#: here opens a picture, so asking per open was fifty-nine round trips
+#: for an answer already known.
+_SLUGS: dict[str, str] = {}
 
 
 def _address(api, name: str) -> str:
     """The library's own answer, by name. `/g/grid` is a fragment whatever
     the Accept says; peek is the typed listing of the same ordering."""
-    listed = api.get("/g/peek", params={"page": 1, "count": 9}).json()["items"]
-    for row in listed:
-        if row["name"] == name:
-            return row["slug"]
-    raise AssertionError(f"no picture called {name} among {[r['name'] for r in listed]}")
+    if not _SLUGS:
+        _SLUGS.update(
+            {row["name"]: row["slug"] for row in api.get("/g/peek", params={"page": 1, "count": 9}).json()["items"]}
+        )
+    if name not in _SLUGS:
+        raise AssertionError(f"no picture called {name} among {sorted(_SLUGS)}")
+    return _SLUGS[name]
 
 
 # --- the two containers, opened the two ways --------------------------------
@@ -106,6 +118,13 @@ def _painted(page: Page) -> None:
 
 
 OPENERS = [("page", _open_page), ("overlay", _open_overlay)]
+
+#: The viewer's gesture boundary: how long the wheel must be still before
+#: the next gesture may step (frontend/src/viewer.ts:378 QUIET_MS). Every
+#: wait around a flick is derived from it rather than guessed, because a
+#: guessed number stops discriminating the moment the viewer's own changes
+#: -- a test sleeping 600ms says nothing about a boundary raised to 700.
+QUIET_MS = 260
 
 
 def _box(page: Page):
@@ -139,6 +158,28 @@ def _walk(page: Page) -> dict:
 #: `visibility`, not display: the strip keeps its space so hiding it
 #: cannot resize the stage the zoom is measured against.
 _STRIP_SEEN = "document.querySelector('[data-filmstrip]').checkVisibility({visibilityProperty: true})"
+
+
+def _until(page: Page, expression: str, arg=None, timeout: int = 5_000) -> None:
+    """Wait for `expression`, and say nothing if it never comes.
+
+    Swallowing the timeout is the point. Waiting for the thing you are
+    about to assert would turn a real failure into a stack trace about
+    waiting, and the numbers that say WHY -- the box, the width -- never
+    get printed. This falls through to the assert instead.
+
+    What it replaces is a fixed sleep, which is wrong twice over: on
+    this machine it waits hundreds of milliseconds past a layout that
+    took one frame, and on a slower one it is a flake nobody can
+    reproduce.
+    """
+    with contextlib.suppress(Timeout):
+        page.wait_for_function(expression, arg=arg, timeout=timeout)
+
+
+def _a_frame(page: Page) -> None:
+    """One animation frame: the event loop has turned."""
+    page.evaluate("() => new Promise(requestAnimationFrame)")
 
 
 def _strip_shown(page: Page) -> None:
@@ -243,7 +284,11 @@ def test_dragging_across_the_filmstrip_leaves_the_photograph_alone(page: Page, l
     page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2, steps=8)
     page.mouse.up()
     page.mouse.wheel(0, -300)
-    page.wait_for_timeout(150)
+    # A wheel the viewer acts on repaints synchronously -- `zoomAbout`
+    # ends in `paint()`, which writes `data-zoom` before the handler
+    # returns (frontend/src/viewer.ts). One frame is the whole window in
+    # which this could have gone wrong.
+    _a_frame(page)
 
     assert _zoom(page) == held, f"{where}: a wheel over the strip zoomed the picture"
     assert _box(page) == before, f"{where}: dragging the strip moved the picture"
@@ -545,7 +590,12 @@ def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, op
     page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
     forward = 300 if "next" in walk else -300
     page.keyboard.down("Alt")
-    for _ in range(10):
+    # FIVE, not ten. What discriminates is the stream's SPAN against the
+    # boundary, not its length: paced at 90ms these span 450ms, so a
+    # cooldown counted from the step expires at 260ms with three events
+    # still to come and walks its second picture -- which is the bug.
+    # Ten spanned 900ms and caught the same thing twice as slowly.
+    for _ in range(5):
         page.mouse.wheel(0, forward)
         if pace_ms:
             page.wait_for_timeout(pace_ms)
@@ -553,7 +603,9 @@ def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, op
     page.wait_for_function("(before) => location.pathname !== before", arg=was, timeout=15_000)
     landed = page.evaluate("() => location.pathname")
 
-    page.wait_for_timeout(600)  # long enough for a second step to land
+    # Past the boundary with room for the step to be SEEN. A broken
+    # boundary fires AT it, so the failure lands well inside this.
+    page.wait_for_timeout(QUIET_MS + 140)
     assert page.evaluate("() => location.pathname") == landed, (
         f"{where}: a {pace_ms}ms-paced flick walked more than one picture ({was} -> {landed} -> onwards)"
     )
@@ -633,7 +685,13 @@ def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live
     """
     open_it(page, live, "b_small.png")
     _actual(page)
-    page.wait_for_timeout(400)  # every chance to promote, before denying it did
+    # Painted, not slept. `promote()` decides SYNCHRONOUSLY inside the
+    # zoom it is called from (frontend/src/viewer.ts:216-219, called at
+    # 253 and 270), and nothing calls it again without another gesture --
+    # so once the picture is on screen the decision has been made and
+    # declined. A fixed wait was both slower and weaker: it would pass
+    # just as happily on a viewer that never decided at all.
+    _painted(page)
     assert page.get_attribute("[data-stage]", "data-quality") == "preview", where
     assert "/preview/" in (page.get_attribute("img[data-stage-media]", "src") or ""), (
         f"{where}: promoted a {SMALL[0]}px source to bytes smaller than the preview it already had"
@@ -683,16 +741,25 @@ def test_actual_pixels_stay_actual_when_the_stage_changes_size(page: Page, live:
             " * (window.devicePixelRatio || 1)"
         )
 
+    def relaid_out() -> None:
+        """Back to 1:1, however long the reflow takes."""
+        _until(
+            page,
+            "wanted => Math.abs(document.querySelector('img[data-stage-media]')"
+            ".getBoundingClientRect().width * (window.devicePixelRatio || 1) - wanted) < 2",
+            BIG[0],
+        )
+
     assert abs(device_pixels() - BIG[0]) < 2, where
 
     page.keyboard.press("i")  # the inspector takes a column from the stage
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.inspector === 'open'")
-    page.wait_for_timeout(200)
+    relaid_out()
     assert abs(device_pixels() - BIG[0]) < 2, f"{where}: opening the inspector broke 1:1"
     assert page.get_attribute("[data-stage]", "data-framing") == "actual", f"{where}: it stopped calling itself actual"
 
     page.set_viewport_size({"width": 700, "height": 620})  # and the sheet layout
-    page.wait_for_timeout(300)
+    relaid_out()
     assert abs(device_pixels() - BIG[0]) < 2, f"{where}: resizing the window broke 1:1"
 
 
@@ -759,7 +826,12 @@ def test_the_inspector_docks_wide_and_sheets_narrow(page: Page, live: Live, wher
     )
 
     page.set_viewport_size({"width": 620, "height": 900})
-    page.wait_for_timeout(150)  # one layout pass
+    _until(
+        page,
+        "() => { const p = document.querySelector('[data-inspector-panel]').getBoundingClientRect();"
+        " const s = document.querySelector('[data-stage]').getBoundingClientRect();"
+        " return p.width > 0 && p.top >= s.bottom - 1; }",
+    )
     narrow = _placement(page)
     assert narrow["panel"]["width"] > 0, f"{where}: the inspector stays open across the reflow: {narrow}"
     assert narrow["panel"]["top"] >= narrow["stage"]["bottom"] - 1, (
@@ -776,7 +848,12 @@ def test_lights_out_is_a_decision_a_mouse_move_does_not_undo(page: Page, live: L
     page.keyboard.press("l")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'focus'")
     page.mouse.move(300, 300)
-    page.wait_for_timeout(200)
+    # One frame, not two hundred milliseconds. `wake()` returns on its
+    # first line when the chrome is `focus` (frontend/src/viewer.ts:301),
+    # so a move either cancels it synchronously or never -- and the only
+    # timer in there sets `resting`, which cannot touch `focus`. There is
+    # no later moment for a fixed wait to catch.
+    _a_frame(page)
     assert page.get_attribute("[data-viewer]", "data-chrome") == "focus", f"{where}: a mouse move cancelled focus"
     page.keyboard.press("l")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'visible'")

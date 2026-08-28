@@ -19,7 +19,7 @@ import pytest
 from PIL import Image
 from playwright.sync_api import Page
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -50,7 +50,7 @@ def _settled(api, job_id, timeout=30.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 @pytest.fixture

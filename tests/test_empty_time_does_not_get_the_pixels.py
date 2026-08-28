@@ -37,6 +37,7 @@ import pytest
 
 from db import when
 from sg_web import projecting
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
@@ -238,28 +239,33 @@ def _drained(client) -> None:
         connect.close(conn)
 
 
-@pytest.fixture
-def sparse(tmp_path):
+def _sparse_library(root) -> None:
     """One scanned photograph in 2004 and an afternoon's work this year
     -- the library shape that made the timeline spend nine tenths of
     itself on nothing."""
-    from litestar.testing import TestClient
-
-    from sg_web.app import build_app
-
-    root = tmp_path / "lib"
-    root.mkdir()
     _dated(root, "scanned.png", datetime.datetime(2004, 3, 1, 12, tzinfo=datetime.UTC).timestamp())
     for i in range(6):
         _dated(root, f"today_{i:02d}.png", datetime.datetime(2026, 8, 20, 10 + i, tzinfo=datetime.UTC).timestamp())
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        _drained(client)
-        for job in ("/jobs/ingest", "/jobs/context"):
-            client.post(job)
-            _drained(client)
-        yield client
+
+
+def _interpreted(stage) -> None:
+    _drained(stage.client)
+    for job in ("/jobs/ingest", "/jobs/context"):
+        stage.client.post(job)
+        _drained(stage.client)
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with staged(tmp_path_factory, "test_empty_time_does_not_get_the_pixels", _sparse_library, _interpreted) as stage:
+        yield stage
+
+
+@pytest.fixture
+def sparse(_world):
+    """The sparse library, built once: the five claims over it only read."""
+    _world.restore()
+    return _world.client
 
 
 WHOLE = "start=1078099200&end=1787270400"  # 2004-03-01 to 2026-08-21

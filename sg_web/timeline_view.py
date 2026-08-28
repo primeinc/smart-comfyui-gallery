@@ -2071,6 +2071,7 @@ def timeline(
     drawn = surface.model_dump(mode="json")
     template = "_timeline_surface.html" if request.headers.get("hx-request") == "true" else "timeline.html"
     return Template(
+        media_type=MediaType.HTML,
         template_name=template,
         context={"surface": drawn, "chips": chips},
         headers=VARIES,

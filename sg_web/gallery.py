@@ -19,7 +19,7 @@ import pathlib
 import time
 from typing import Literal
 
-from litestar import get
+from litestar import MediaType, get
 from litestar.datastructures import State
 from litestar.exceptions import ClientException, HTTPException, NotFoundException
 from litestar.params import FromPath, FromQuery
@@ -459,7 +459,9 @@ def gallery(
         facets=f,
         depth=depth,
     )
-    return Template(template_name="gallery.html", context=_grid_context(state, query, page, view))
+    return Template(
+        media_type=MediaType.HTML, template_name="gallery.html", context=_grid_context(state, query, page, view)
+    )
 
 
 @get("/g/grid", sync_to_thread=True)
@@ -494,7 +496,7 @@ def grid_fragment(
         facets=f,
         depth=depth,
     )
-    return Template(template_name="_grid.html", context=_grid_context(state, query, page))
+    return Template(media_type=MediaType.HTML, template_name="_grid.html", context=_grid_context(state, query, page))
 
 
 class FilterOption(Wire):

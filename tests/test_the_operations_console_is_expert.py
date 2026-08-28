@@ -22,7 +22,7 @@ from PIL import Image
 from db import connect, inspecting, jobs, ledger, runner
 from sg_web import console
 from sg_web.app import build_app
-from tests.staging import NOW, fresh_schema
+from tests.staging import NOW, fresh_schema, hosting
 
 
 @pytest.fixture
@@ -386,6 +386,23 @@ def served(tmp_path_factory):
         yield client
 
 
+@pytest.fixture(scope="module")
+def _bare_stage(tmp_path_factory):
+    """One application over an EMPTY home, for the tests that bring their
+    own library. Each was building its own -- 0.31s of interpreter and
+    migrations, measured -- to register a root and read it back."""
+    with hosting(tmp_path_factory, "console_bare") as stage:
+        yield stage
+
+
+@pytest.fixture
+def bare(_bare_stage):
+    """That application with nothing in it: the snapshot is restored, so
+    `/roots` numbers from 1 again and no test inherits another's library."""
+    _bare_stage.restore()
+    return _bare_stage.client
+
+
 def _turn(client, job_id: int) -> dict:
     """Worker turns, speaking on the app's channels, until `job_id` is
     settled -- the queue holds other jobs (the scan's thumbnail job), and
@@ -569,7 +586,7 @@ def test_the_shell_counts_what_is_running(served):
     assert _turn(client, job_id)["state"] == "done"
 
 
-def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
+def test_every_job_kind_has_words_beside_its_raw_name(bare, tmp_path):
     """The console shows what a job does AND the schema's name for it.
     A kind the schema admits but the console cannot word is a row that
     reads as its identifier. The vocabulary is read from db/jobs.py, the
@@ -582,37 +599,40 @@ def test_every_job_kind_has_words_beside_its_raw_name(tmp_path):
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "one.png")
-    with TestClient(app=build_app(str(tmp_path / "run"))) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        fingerprint = client.post("/operations/jobs/phash").text
-        dupes = client.post("/operations/jobs/dupes").text
-        assert "queued #" in fingerprint
-        assert "queued #" in dupes
-        matrix = client.get("/operations/overview").json()["matrix"]
-        told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
-        # The claim is that the MODE is told apart -- these are two acts
-        # behind one kind. The count comes from the row and so depends
-        # on the library, which is why this asserts the shape rather
-        # than a sentence: a test that pinned "fingerprint every
-        # picture" is what kept the line a constant.
-        assert told[("hash", "perceptual")].startswith("fingerprint ")
-        assert "group perceptual copies" in told[("hash", "groups")]
-        assert told[("hash", "perceptual")] != told[("hash", "groups")]
-        page = client.get("/operations", headers={"accept": "text/html"}).text
-        assert "fingerprint " in page
-        assert '<code class="raw">hash</code>' in page
-        one = next(row["id"] for row in matrix if row.get("derive") == "perceptual")
-        detail = client.get(f"/operations/job/{one}", headers={"accept": "application/json"}).json()
-        # The inspector reads the same line as the matrix -- one library,
-        # one job, one description, whichever surface asks.
-        assert detail["what"] == told[("hash", "perceptual")]
-        assert detail["what"].startswith("fingerprint ")
-        inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
-        assert detail["what"] in inspector
+    # No worker: every claim below is about how the console WORDS these
+    # two jobs, and a running one fingerprints and groups the library to
+    # tell it nothing it did not already know from the queued rows.
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    fingerprint = client.post("/operations/jobs/phash").text
+    dupes = client.post("/operations/jobs/dupes").text
+    assert "queued #" in fingerprint
+    assert "queued #" in dupes
+    matrix = client.get("/operations/overview").json()["matrix"]
+    told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
+    # The claim is that the MODE is told apart -- these are two acts
+    # behind one kind. The count comes from the row and so depends
+    # on the library, which is why this asserts the shape rather
+    # than a sentence: a test that pinned "fingerprint every
+    # picture" is what kept the line a constant.
+    assert told[("hash", "perceptual")].startswith("fingerprint ")
+    assert "group perceptual copies" in told[("hash", "groups")]
+    assert told[("hash", "perceptual")] != told[("hash", "groups")]
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert "fingerprint " in page
+    assert '<code class="raw">hash</code>' in page
+    one = next(row["id"] for row in matrix if row.get("derive") == "perceptual")
+    detail = client.get(f"/operations/job/{one}", headers={"accept": "application/json"}).json()
+    # The inspector reads the same line as the matrix -- one library,
+    # one job, one description, whichever surface asks.
+    assert detail["what"] == told[("hash", "perceptual")]
+    assert detail["what"].startswith("fingerprint ")
+    inspector = client.get(f"/operations/job/{one}", headers={"accept": "text/html"}).text
+    assert detail["what"] in inspector
 
 
-def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
+def test_the_console_says_what_each_sweep_still_has_to_do(bare, tmp_path):
     """Coverage beside the buttons: present files, and per missing-only
     sweep how many it would still queue -- counted the way the sweep
     counts, so the number beside the button and the job it queues agree.
@@ -621,38 +641,38 @@ def test_the_console_says_what_each_sweep_still_has_to_do(tmp_path):
     root.mkdir()
     for i in range(2):
         Image.new("RGB", (8, 8), (1, 2, 3 + i)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            while runner.run_next(conn, "test-worker", time.time()) is not None:  # the scan's precache job
-                conn.commit()
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        while runner.run_next(conn, "test-worker", time.time()) is not None:  # the scan's precache job
             conn.commit()
-        finally:
-            connect.close(conn)
-        told = client.get("/operations/overview").json()["overview"]["coverage"]
-        assert told["files"] == 2
-        assert told["missing"] == {"annotate": 2, "context": 2, "embed": 2, "faces": 2, "ingest": 2, "phash": 2}
-        assert list(told["embed_spaces"].values()) == [2], "one configured space, nothing minted: every picture"
-        page = client.get("/operations", headers={"accept": "text/html"}).text
-        assert re.search(r'data-missing="phash"[^>]*>2 missing', page)
-        assert re.search(r'data-missing="ingest"[^>]*>2 missing', page)
-        assert 'data-missing="verify"' not in page, "verify reads everything by design; no count"
+        conn.commit()
+    finally:
+        connect.close(conn)
+    told = client.get("/operations/overview").json()["overview"]["coverage"]
+    assert told["files"] == 2
+    assert told["missing"] == {"annotate": 2, "context": 2, "embed": 2, "faces": 2, "ingest": 2, "phash": 2}
+    assert list(told["embed_spaces"].values()) == [2], "one configured space, nothing minted: every picture"
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert re.search(r'data-missing="phash"[^>]*>2 missing', page)
+    assert re.search(r'data-missing="ingest"[^>]*>2 missing', page)
+    assert 'data-missing="verify"' not in page, "verify reads everything by design; no count"
 
-        assert client.post("/jobs/phash").status_code == 201
-        assert client.post("/jobs/ingest").status_code == 201
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            while runner.run_next(conn, "test-worker", time.time()) is not None:
-                conn.commit()
+    assert client.post("/jobs/phash").status_code == 201
+    assert client.post("/jobs/ingest").status_code == 201
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        while runner.run_next(conn, "test-worker", time.time()) is not None:
             conn.commit()
-        finally:
-            connect.close(conn)
-        after = client.get("/operations/overview").json()["overview"]["coverage"]["missing"]
-        assert (after["phash"], after["ingest"]) == (0, 0)
-        assert after["context"] == 2, "untouched sweeps keep their count"
-        assert client.post("/jobs/phash").status_code == 204, "the count beside the button and the job agree"
+        conn.commit()
+    finally:
+        connect.close(conn)
+    after = client.get("/operations/overview").json()["overview"]["coverage"]["missing"]
+    assert (after["phash"], after["ingest"]) == (0, 0)
+    assert after["context"] == 2, "untouched sweeps keep their count"
+    assert client.post("/jobs/phash").status_code == 204, "the count beside the button and the job agree"
 
 
 def test_the_activity_surface_words_the_hash_kinds_mode_too():
@@ -684,17 +704,19 @@ def test_a_phase_speaks_on_the_delta_feed_while_it_is_true(db):
     assert doing[-1] == ("done", None), "a terminal delta clears the line"
 
 
-def test_the_activity_row_renders_the_doing_line_only_while_there_is_one(tmp_path):
+def test_the_activity_row_renders_the_doing_line_only_while_there_is_one(served):
+    """On the module's application, not one of its own: this asks what a
+    delta RENDERS to, so all it needs is the template engine. Building a
+    whole application for that cost more than the assertion."""
     from sg_web import activity
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        engine = client.app.template_engine
-        delta = {"job": 5, "kind": "embed", "state": "running", "done": 0, "total": 1, "doing": "clustering"}
-        row = activity.render_delta(engine, delta, {5})
-        assert "job-doing" in row
-        assert "clustering" in row
-        settled = activity.render_delta(engine, {**delta, "state": "done", "doing": None}, {5})
-        assert "job-doing" not in settled
+    engine = served.app.template_engine
+    delta = {"job": 5, "kind": "embed", "state": "running", "done": 0, "total": 1, "doing": "clustering"}
+    row = activity.render_delta(engine, delta, {5})
+    assert "job-doing" in row
+    assert "clustering" in row
+    settled = activity.render_delta(engine, {**delta, "state": "done", "doing": None}, {5})
+    assert "job-doing" not in settled
 
 
 def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
@@ -708,7 +730,7 @@ def test_no_count_sits_beside_a_sweep_that_would_be_refused(tmp_path):
     assert "annotate" in inspecting.coverage(conn)["missing"]
 
 
-def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(tmp_path):
+def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(bare, tmp_path):
     """`/operations/events/before` is the tape's "earlier" button: paging
     down from the newest id reaches every persisted event once, and
     meets `/operations/events?after=` coming up -- never sampled."""
@@ -716,40 +738,40 @@ def test_the_tape_pages_backwards_through_the_route_without_a_gap_or_a_repeat(tm
     root.mkdir()
     for i in range(3):
         Image.new("RGB", (8, 8), (1, 2, 3 + i)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        client.post("/jobs/ingest")
-        client.post("/jobs/context")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            while runner.run_next(conn, "test-worker", time.time()) is not None:
-                conn.commit()
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    client.post("/roots/1/scan")
+    client.post("/jobs/ingest")
+    client.post("/jobs/context")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        while runner.run_next(conn, "test-worker", time.time()) is not None:
             conn.commit()
-            produced = ledger.count(conn)
-        finally:
-            connect.close(conn)
-        assert produced > 6
-        forward: list[int] = []
-        after = 0
-        while True:
-            page = client.get("/operations/events", params={"after": after, "limit": 3}).json()
-            forward.extend(e["id"] for e in page["events"])
-            if page.get("next_after") is None or not page["events"]:
-                break
-            after = page["next_after"]
-        assert len(forward) == produced
-        backward: list[int] = []
-        before = forward[-1] + 1
-        while True:
-            page = client.get("/operations/events/before", params={"before": before, "limit": 3}).json()
-            if not page["events"]:
-                break
-            ids = [e["id"] for e in page["events"]]
-            assert ids == sorted(ids), "a page is ascending"
-            backward = ids + backward
-            before = ids[0]
-        assert backward == forward, "backwards reaches every event once and meets the forward walk"
+        conn.commit()
+        produced = ledger.count(conn)
+    finally:
+        connect.close(conn)
+    assert produced > 6
+    forward: list[int] = []
+    after = 0
+    while True:
+        page = client.get("/operations/events", params={"after": after, "limit": 3}).json()
+        forward.extend(e["id"] for e in page["events"])
+        if page.get("next_after") is None or not page["events"]:
+            break
+        after = page["next_after"]
+    assert len(forward) == produced
+    backward: list[int] = []
+    before = forward[-1] + 1
+    while True:
+        page = client.get("/operations/events/before", params={"before": before, "limit": 3}).json()
+        if not page["events"]:
+            break
+        ids = [e["id"] for e in page["events"]]
+        assert ids == sorted(ids), "a page is ascending"
+        backward = ids + backward
+        before = ids[0]
+    assert backward == forward, "backwards reaches every event once and meets the forward walk"
 
 
 # --- saying what THIS job is, not what its kind is --------------------------
@@ -1042,28 +1064,28 @@ def test_the_comparison_says_how_many_it_did_not_show(db):
     assert held["total"] == 2, "the total must survive the limit"
 
 
-def test_the_console_offers_the_comparison_and_renders_it(tmp_path):
+def test_the_console_offers_the_comparison_and_renders_it(bare):
     """Reachable from the panel where the threshold is changed, against
     the run the site is actually showing."""
     from db import connect, derived
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            left, right, _hannah, _ivan, _files = _two_runs(conn)
-            derived.make_primary(conn, left)
-            conn.commit()
-        finally:
-            connect.close(conn)
+    client = bare
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        left, right, _hannah, _ivan, _files = _two_runs(conn)
+        derived.make_primary(conn, left)
+        conn.commit()
+    finally:
+        connect.close(conn)
 
-        page = client.get("/operations", headers={"accept": "text/html"}).text
-        assert f'data-compare-run="{right}"' in page, "no way to compare from the panel"
-        assert f'data-compare-run="{left}"' not in page, "the primary has nothing to be compared against"
+    page = client.get("/operations", headers={"accept": "text/html"}).text
+    assert f'data-compare-run="{right}"' in page, "no way to compare from the panel"
+    assert f'data-compare-run="{left}"' not in page, "the primary has nothing to be compared against"
 
-        told = client.get(f"/operations/clusterings/{left}/against/{right}", headers={"accept": "text/html"})
-        assert told.status_code == 200, told.text
-        assert 'data-compare-total="2"' in told.text
-        assert "Hannah" in told.text
-        assert "Ivan" in told.text
+    told = client.get(f"/operations/clusterings/{left}/against/{right}", headers={"accept": "text/html"})
+    assert told.status_code == 200, told.text
+    assert 'data-compare-total="2"' in told.text
+    assert "Hannah" in told.text
+    assert "Ivan" in told.text
 
-        assert client.get(f"/operations/clusterings/{left}/against/424242").status_code == 404
+    assert client.get(f"/operations/clusterings/{left}/against/424242").status_code == 404

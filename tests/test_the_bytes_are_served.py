@@ -8,15 +8,14 @@ avatar is the face their cluster actually points at.
 
 from __future__ import annotations
 
+import os
 import pathlib
 
 import numpy as np
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, derived, ingest, library, naming, scan
-from sg_web.app import build_app
 from tests.staging import Stage, staged
 from vision import decode
 
@@ -54,6 +53,12 @@ def _slug_of(conn, name: str) -> str:
 
 
 def _media(root: pathlib.Path) -> None:
+    # Two pictures of one "face": a red rectangle on blue, so a crop of
+    # the asserted region is red where the whole picture is blue.
+    canvas = Image.new("RGB", (800, 600), (0, 0, 255))
+    canvas.paste(Image.new("RGB", (200, 150), (255, 0, 0)), (200, 150))
+    canvas.save(root / "ana_1.png")
+    canvas.save(root / "ana_2.png")
     Image.new("RGB", (900, 400), (200, 30, 30)).save(root / "wide.png")
     turned = Image.new("RGB", (600, 400), (30, 30, 200))
     tag = Image.Exif()
@@ -248,9 +253,20 @@ def test_head_answers_what_get_would_say_without_the_body(served):
     assert client.head("/media/no-such-thing").status_code == 404
 
 
-def test_a_thumbnail_renders_once_and_serves_from_cache(served):
+def test_a_thumbnail_renders_once_and_serves_from_cache(served, request):
     client, slugs, root = served
     slug = slugs["wide.png"]
+    # The rewrite below is the claim; leaving it there is a library the
+    # next test's restore cannot put back, and it rebuilds the whole
+    # world instead. The file is written in place, so its bytes and its
+    # stamp go back and the listing is the one the world snapshotted.
+    was, stamped = (root / "wide.png").read_bytes(), (root / "wide.png").stat()
+
+    def put_back() -> None:
+        (root / "wide.png").write_bytes(was)
+        os.utime(root / "wide.png", ns=(stamped.st_atime_ns, stamped.st_mtime_ns))
+
+    request.addfinalizer(put_back)
     first = client.get(f"/thumb/{slug}")
     assert first.status_code == 200
     assert first.headers["content-type"].startswith("image/webp")
@@ -299,17 +315,17 @@ def test_what_has_no_picture_says_so(served):
     assert client.get(f"/thumb/{slugs['voice.wav']}").status_code == 404
 
 
-def test_an_avatar_is_the_face_the_cluster_points_at(tmp_path):
-    def write(root):
-        canvas = Image.new("RGB", (800, 600), (0, 0, 255))
-        canvas.paste(Image.new("RGB", (200, 150), (255, 0, 0)), (200, 150))
-        canvas.save(root / "ana_1.png")
-        canvas.save(root / "ana_2.png")
-
-    conn, burrow, _ = _library(tmp_path, write)
+def test_an_avatar_is_the_face_the_cluster_points_at(served):
+    """The two `ana_*.png` in this module's library are the face; every
+    other picture here is one nothing was ever detected in."""
+    client, _slugs, _ = served
+    conn = connect.connect(client.app.state.db_path)
     rng = np.random.default_rng(9)
     vector = rng.standard_normal(32).astype(np.float32)
-    sha_by_id = dict(conn.execute("SELECT id, content_sha256 FROM file"))
+    sha_by_id = dict(
+        conn.execute("SELECT id, content_sha256 FROM file WHERE name LIKE 'ana_%'"),
+    )
+    assert len(sha_by_id) == 2
     for file_id, sha in sha_by_id.items():
         derived.record_faces(
             conn,
@@ -334,13 +350,12 @@ def test_an_avatar_is_the_face_the_cluster_points_at(tmp_path):
     conn.execute("INSERT INTO person(id,name,created_at) VALUES(?, 'Ana', 0)", (person_id,))
     conn.execute("UPDATE derived_face_cluster SET person_id = ? WHERE id = ?", (person_id, made[0]))
     conn.commit()
-    conn.close()
+    connect.close(conn)
 
-    with TestClient(app=build_app(str(burrow))) as client:
-        answer = client.get("/avatar/ana")
-        assert answer.status_code == 200
-        avatar = decode.open_bytes(answer.content)
-        assert avatar.size == (256, 256)
-        centre = _rgb(avatar, (128, 128))
-        assert centre[0] > centre[2], "the avatar is not the asserted face"
-        assert client.get("/avatar/nobody").status_code == 404
+    answer = client.get("/avatar/ana")
+    assert answer.status_code == 200
+    avatar = decode.open_bytes(answer.content)
+    assert avatar.size == (256, 256)
+    centre = _rgb(avatar, (128, 128))
+    assert centre[0] > centre[2], "the avatar is not the asserted face"
+    assert client.get("/avatar/nobody").status_code == 404

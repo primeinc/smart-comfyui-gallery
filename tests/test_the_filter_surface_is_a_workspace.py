@@ -29,9 +29,9 @@ import numpy as np
 import pytest
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 
 pytestmark = pytest.mark.slow
 
@@ -92,7 +92,7 @@ def _drained(api, timeout=90.0) -> None:
         if not running:
             return
         assert time.monotonic() < deadline, f"jobs still running: {running}"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 # --- reading the surface ----------------------------------------------------
@@ -148,6 +148,10 @@ def _pick(page: Page, key: str, label: str) -> None:
         f'[data-filter="{key}"] [data-option="{label}"] .filter-option, '
         f'[data-filter="{key}"] [data-label="{label}"] .filter-option'
     )
+    # Not a no-op, though `[data-grid]` is there before the click as well:
+    # choosing a value REPLACES the grid, so this waits for the new one.
+    # Removing it fails `test_a_dimensions_own_list_still_offers_what_it
+    # _would_give`, which then reads the grid it just replaced.
     page.wait_for_selector("[data-grid]", timeout=15_000)
 
 
@@ -296,8 +300,10 @@ def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Li
     asked, cells, chips = page.url, _cells(page), sorted(_chips(page))
 
     page.reload()
-    page.wait_for_selector("[data-grid]", timeout=15_000)
-    assert (_cells(page), sorted(_chips(page))) == (cells, chips)
+    # The same retrying read, for the same reason: a reload the test asked
+    # for can be followed by one the surface asks for itself.
+    expect(page.locator("[data-grid] a.cell")).to_have_count(cells)
+    assert sorted(_chips(page)) == chips
 
     # a different browsing context entirely: the link is the question
     fresh = page.context.browser.new_context(base_url=live.url) if page.context.browser else None
@@ -305,12 +311,26 @@ def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Li
     try:
         other = fresh.new_page()
         other.goto(asked)
-        other.wait_for_selector("[data-grid]", timeout=15_000)
-        assert other.evaluate("() => document.querySelectorAll('[data-grid] a.cell').length") == cells
-        theirs = other.evaluate(
-            "() => [...document.querySelectorAll('[data-chip-edit]')].map(c => c.textContent.trim())"
+        # Through `expect`, which RETRIES across a navigation. This surface
+        # settles by asking `/g/locate/{slug}` and reloads itself when that
+        # answers with an error (frontend/src/authored.ts:113-121), so the
+        # first read after a `goto` can meet a document that is being
+        # replaced -- and a one-shot `evaluate` dies on it with "Execution
+        # context was destroyed" while a locator re-reads whatever replaced
+        # it. Measured: this line, one full-suite run in two or three.
+        expect(other.locator("[data-grid] a.cell")).to_have_count(cells)
+        # The chips read as a WAIT, not as an evaluate-then-assert. One
+        # `expect` above absorbs one reload; this surface can ask for a
+        # second, and the raw read below it died on exactly that
+        # (measured, line 318, under six workers). `wait_for_function` is
+        # the same claim -- these chips, sorted -- made of the page
+        # instead of of an instant, and it re-runs after a navigation.
+        other.wait_for_function(
+            "(want) => [...document.querySelectorAll('[data-chip-edit]')]"
+            ".map(c => c.textContent.trim()).sort().join('|') === want",
+            arg="|".join(chips),
+            timeout=15_000,
         )
-        assert sorted(theirs) == chips
     finally:
         fresh.close()
 

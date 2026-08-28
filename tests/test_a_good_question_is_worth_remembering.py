@@ -21,25 +21,38 @@ navigated.
 from __future__ import annotations
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, views
-from sg_web.app import build_app
+from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
 
-@pytest.fixture
-def gallery(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _library(root) -> None:
     for i in range(3):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        yield client
+
+
+@pytest.fixture(scope="module")
+def _stage(tmp_path_factory):
+    with staged(tmp_path_factory, "test_a_good_question_is_worth_remembering", _library) as stage:
+        yield stage
+
+
+@pytest.fixture
+def gallery(_stage):
+    """One world, restored between tests.
+
+    Every test here REMEMBERS a question, and several count what is
+    remembered, so they cannot share a world that keeps its writes. They
+    were each building their own -- three pictures, an application, a
+    root and a scan -- which is a fifth of a second of setup to answer a
+    question that costs a hundredth. The snapshot restores in a
+    millisecond and isolates exactly the same.
+    """
+    _stage.restore()
+    return _stage.client
 
 
 def _remembered(client) -> list[dict]:

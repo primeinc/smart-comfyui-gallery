@@ -53,46 +53,62 @@ def _library(root: pathlib.Path) -> None:
         os.utime(path, (NOW, NOW))
 
 
-def _moments_of(span: float):
-    """Interpret the library, then spread its moments evenly back over
-    `span` from NOW, the newest at NOW. No grouping: a file session
-    groups by when the files arrived, which is one moment here, and
-    this is about where the pictures sit, not how they group."""
+def _interpreted(stage) -> None:
+    """Read the library and run the context job.
 
-    def interpret(stage) -> None:
-        client, root = stage.client, stage.root
-        conn = stage.conn()
-        try:
-            chains = context._folder_names(conn)
-            for name, file_id, folder_id in conn.execute("SELECT f.name, f.id, f.folder_id FROM file f").fetchall():
-                sub = root.joinpath(*chains[folder_id][1:]) if len(chains[folder_id]) > 1 else root
-                ingest.one(conn, file_id, sub / name, NOW)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        _drain(client)
-        conn = stage.conn()
-        try:
-            ids = [row[0] for row in conn.execute("SELECT file_id FROM derived_media_context ORDER BY file_id")]
-            assert len(ids) == PICTURES
-            for i, file_id in enumerate(ids):
-                at = NOW - span + (span * i) / (PICTURES - 1)
-                conn.execute(
-                    "UPDATE derived_media_context SET local_at = NULL, instant_at = ? WHERE file_id = ?", (at, file_id)
-                )
-            conn.commit()
-        finally:
-            connect.close(conn)
+    Span-independent, and the expensive half: the same nine pictures are
+    ingested and interpreted identically whatever span the test then
+    imposes. It is the snapshot every span starts from.
+    """
+    client, root = stage.client, stage.root
+    conn = stage.conn()
+    try:
+        chains = context._folder_names(conn)
+        for name, file_id, folder_id in conn.execute("SELECT f.name, f.id, f.folder_id FROM file f").fetchall():
+            sub = root.joinpath(*chains[folder_id][1:]) if len(chains[folder_id]) > 1 else root
+            ingest.one(conn, file_id, sub / name, NOW)
+        conn.commit()
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    _drain(client)
 
-    return interpret
+
+def _spread(stage, span: float) -> None:
+    """Spread the interpreted moments evenly back over `span` from NOW,
+    the newest at NOW. No grouping: a file session groups by when the
+    files arrived, which is one moment here, and this is about where the
+    pictures sit, not how they group.
+
+    This is ALL that differs between the spans -- nine UPDATEs -- so it
+    is what each test does, over a restored snapshot, rather than a
+    reason to build a seventh application.
+    """
+    conn = stage.conn()
+    try:
+        ids = [row[0] for row in conn.execute("SELECT file_id FROM derived_media_context ORDER BY file_id")]
+        assert len(ids) == PICTURES
+        for i, file_id in enumerate(ids):
+            at = NOW - span + (span * i) / (PICTURES - 1)
+            conn.execute(
+                "UPDATE derived_media_context SET local_at = NULL, instant_at = ? WHERE file_id = ?", (at, file_id)
+            )
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _span_stage(tmp_path_factory):
+    with staged(tmp_path_factory, "the_timeline_draws_any_span", _library, _interpreted) as stage:
+        yield stage
 
 
 @pytest.fixture(params=list(SPANS), ids=list(SPANS))
-def spanned(request, tmp_path_factory):
-    name = f"span-{request.param.replace(' ', '-')}"
-    with staged(tmp_path_factory, name, _library, _moments_of(SPANS[request.param])) as stage:
-        yield stage.client, SPANS[request.param]
+def spanned(request, _span_stage):
+    _span_stage.restore()
+    _spread(_span_stage, SPANS[request.param])
+    return _span_stage.client, SPANS[request.param]
 
 
 def _json(client, **params):

@@ -97,7 +97,6 @@ def test_an_empty_box_answers_what_is_worth_asking(page: Page, live: Live, unbro
     """Somebody with an empty box has the question "what CAN I filter
     by", and the honest answer is a list, not a placeholder."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _open_filters(page)
     page.click("[data-filter-find-input]")
     page.wait_for_selector("[data-filter-found]:not([hidden]) [data-field]", timeout=10_000)
@@ -115,7 +114,6 @@ def test_typing_a_word_finds_a_field_nobody_told_you_about(page: Page, live: Liv
     not made to scroll past it.
     """
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "sniff")
     found = _rows(page)
     assert any(one["param"] == "SniffedFormat" for one in found), found
@@ -126,7 +124,6 @@ def test_the_two_halves_of_the_vocabulary_are_one_list(page: Page, live: Live, u
     Nothing in a row says which it is -- that distinction is ours, and
     it decides which control opens, not what a person reads."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     # A broad letter, on purpose: this is where the tail used to lose.
     # There are forty-one curated dimensions and thirty rows, so ranked
     # purely by match quality the list filled with names and the long
@@ -142,7 +139,6 @@ def test_choosing_a_named_field_lands_on_its_own_control(page: Page, live: Live,
     own control, which already knows its operators and counts its own
     values. The alternative is a second, poorer copy of the drawer."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "rating")
     page.click('[data-filter-found] [data-field="rating_min"]')
     page.wait_for_function(
@@ -180,7 +176,6 @@ def test_choosing_a_discovered_key_offers_its_values(page: Page, live: Live, unb
     text box, and the values were something you had to arrive knowing.
     """
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "sniff")
     page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
     _values_ready(page)
@@ -202,7 +197,6 @@ def test_a_value_is_counted_against_the_answer_on_screen(page: Page, live: Live,
     tests/test_the_application_teaches_its_own_vocabulary.py.
     """
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "sniff")
     page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
     _values_ready(page)
@@ -215,7 +209,6 @@ def test_the_text_box_survives_as_the_way_past_the_list(page: Page, live: Live, 
     by design, and somebody who knows exactly what they want should not
     have to find it in a list first."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "sniff")
     page.click('[data-filter-found] [data-field][data-param="SniffedFormat"]')
     _values_ready(page)
@@ -227,7 +220,6 @@ def test_the_field_found_by_typing_actually_filters(page: Page, live: Live, unbr
     """End to end and the only claim that matters: a person who knew
     nothing of the schema arrives at the right media."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     assert int(page.get_attribute("[data-grid]", "data-total") or 0) == WHOLE
 
     _find(page, "sniff")
@@ -251,7 +243,6 @@ def test_the_list_is_walkable_from_the_keyboard(page: Page, live: Live, unbroken
     list -- and Escape shuts the LIST, not the drawer: it means undo the
     smallest thing I am doing."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _find(page, "rating")
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Escape")
@@ -262,7 +253,6 @@ def test_the_list_is_walkable_from_the_keyboard(page: Page, live: Live, unbroken
 def test_a_word_nothing_answers_to_says_so(page: Page, live: Live, unbroken):
     """An empty list that says nothing reads as a broken box."""
     page.goto("/g")
-    page.wait_for_selector("[data-grid]", timeout=10_000)
     _open_filters(page)
     box = page.locator("[data-filter-find-input]")
     box.click()

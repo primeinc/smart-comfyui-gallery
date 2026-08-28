@@ -28,37 +28,52 @@ from __future__ import annotations
 import pathlib
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect
-from sg_web.app import build_app
+from tests.staging import hosting
 
 
-@pytest.fixture
-def served(tmp_path):
-    """Two roots, one of them carrying a person's work: a rating, a
-    favourite, a comment, a place, an album membership."""
-    keep = tmp_path / "keep"
-    drop = tmp_path / "drop"
-    # DISTINCT pixels across the two roots, not merely distinct names.
-    # `resolve_scan` reconciles by content across the whole library on
-    # purpose -- a file dragged from one drive to another is a move --
-    # so two roots holding byte-identical pictures are one set of files
-    # that appears to migrate, and the second scan re-attributed every
-    # row from the first root. That is the scanner being right; a
-    # fixture that trips it is measuring the wrong thing.
-    made = 0
-    for where, count in ((keep, 2), (drop, 3)):
-        where.mkdir()
-        for i in range(count):
-            made += 1
-            Image.new("RGB", (24, 18), (made * 17 % 251, made * 53 % 251, made * 97 % 251)).save(
-                where / f"{where.name}{i}.png"
-            )
+@pytest.fixture(scope="module")
+def _host(tmp_path_factory):
+    """One booted application, two roots, and the person's work on one of
+    them -- registered, scanned and SNAPSHOTTED ONCE.
 
-    app = build_app(str(tmp_path / "run"))
-    with TestClient(app=app) as client:
+    The scans are what this used to cost. Two `/roots` posts and two
+    sweeps per test is a tenth of a second of setup in front of tests
+    that answer in a hundredth, and every one of them was rebuilding the
+    identical library. Snapshotting after the scan (the shape
+    tests/test_a_walk_says_what_it_is_doing.py uses) hands each test the
+    scanned world back instead.
+
+    The media sits BESIDE the home rather than under `stage.root`, which
+    `restore` watches for changes: these directories are the subject
+    here -- forgetting a root deliberately leaves its files, and a test
+    re-adds them -- so they must outlive a restore rather than read as a
+    changed library and provoke a rebuild.
+    """
+    import re
+
+    with hosting(tmp_path_factory, "a_root_can_be_forgotten", worker=True) as stage:
+        keep = stage.home.parent / "keep"
+        drop = stage.home.parent / "drop"
+        # DISTINCT pixels across the two roots, not merely distinct names.
+        # `resolve_scan` reconciles by content across the whole library on
+        # purpose -- a file dragged from one drive to another is a move --
+        # so two roots holding byte-identical pictures are one set of files
+        # that appears to migrate, and the second scan re-attributed every
+        # row from the first root. That is the scanner being right; a
+        # fixture that trips it is measuring the wrong thing.
+        drawn = 0
+        for where, count in ((keep, 2), (drop, 3)):
+            where.mkdir()
+            for i in range(count):
+                drawn += 1
+                Image.new("RGB", (24, 18), (drawn * 17 % 251, drawn * 53 % 251, drawn * 97 % 251)).save(
+                    where / f"{where.name}{i}.png"
+                )
+
+        client = stage.client
         made = {}
         for where in (keep, drop):
             root = client.post("/roots", json={"path": str(where)}).json()
@@ -66,8 +81,6 @@ def served(tmp_path):
             made[where.name] = root["id"]
 
         slugs = client.get("/g", params={"size": 100}).text
-        import re
-
         named = dict(re.findall(r'data-slug="([^"]+)"[^>]*>\s*<img[^>]*alt="([^"]*)"', slugs))
         target = next(slug for slug, name in named.items() if name.startswith("drop"))
 
@@ -76,7 +89,18 @@ def served(tmp_path):
         album = client.post("/albums", json={"name": "Keepers"}).json()
         assert client.post(f"/t/{album['slug']}/add", json={"file": target}).status_code == 201
 
-        yield client, made, keep, drop, target
+        stage.held = {"made": made, "keep": keep, "drop": drop, "target": target}
+        stage.snapshot()
+        yield stage
+
+
+@pytest.fixture
+def served(_host):
+    """Two roots, one of them carrying a person's work: a rating, a
+    favourite, a comment, a place, an album membership."""
+    _host.restore()
+    held = _host.held
+    return _host.client, held["made"], held["keep"], held["drop"], held["target"]
 
 
 #: What `library.add_root` writes into a directory to give it a durable
@@ -198,11 +222,14 @@ def test_the_album_survives_losing_its_member(served):
 # --- the cascade is real, so the count has to be ----------------------------
 
 
-def test_the_counts_are_what_actually_goes(served, tmp_path):
+def test_the_counts_are_what_actually_goes(served):
     """The cost is a promise about a cascade nobody can see. Counted
     against the database itself, before and after."""
     client, made, _keep, drop, _target = served
-    db = tmp_path / "run" / "gallery.db"
+    # Asked of the application rather than rebuilt from a tmp path: where
+    # its home lives is the harness's business, and a test that spells
+    # the file itself is one that breaks when the home moves.
+    db = client.app.state.db_path
     conn = connect.connect(str(db), read_only=True)
     try:
         was = {

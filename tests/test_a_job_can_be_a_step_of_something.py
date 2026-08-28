@@ -22,12 +22,30 @@ collection runs to completion.
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 
 import pytest
 
 from db import jobs
-from tests.staging import NOW, fresh_schema
+from tests.staging import NOW, fresh_schema, hosting
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "job-steps") as stage:
+        yield stage
+
+
+@pytest.fixture
+def console(_world):
+    """One application per module instead of one boot per test (sixteen
+    boots at ~200ms were most of this file). The restore hands each test
+    a virgin library; the `with ... as client:` shape stays through
+    nullcontext -- the world is the module's, the lease per-test."""
+    _world.restore()
+    return _world.client
+
 
 pytestmark = pytest.mark.slow
 
@@ -150,21 +168,19 @@ def test_the_collection_is_a_name_the_steps_share(db):
     assert held == 3
 
 
-def test_the_catch_up_recipe_queues_the_chain_in_order(tmp_path):
+def test_the_catch_up_recipe_queues_the_chain_in_order(tmp_path, console):
     """End to end, through the route: one ask, and every step gated on
     the one before it."""
-    from litestar.testing import TestClient
     from PIL import Image
 
     from db import connect
-    from sg_web.app import build_app
 
     root = tmp_path / "lib"
     root.mkdir()
     for i in range(2):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(console) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
 
@@ -192,7 +208,7 @@ def test_the_catch_up_recipe_queues_the_chain_in_order(tmp_path):
             connect.close(conn)
 
 
-def test_a_step_that_knows_it_has_nothing_to_do_is_simply_absent(tmp_path):
+def test_a_step_that_knows_it_has_nothing_to_do_is_simply_absent(tmp_path, console):
     """The chain closes over the hole rather than gating on it.
 
     A submitter that can tell in advance it has nothing to do returns no
@@ -205,12 +221,9 @@ def test_a_step_that_knows_it_has_nothing_to_do_is_simply_absent(tmp_path):
     `done` having done nothing. That is why `steps` is rarely empty and
     why this asserts the SHAPE of the chain rather than its length.
     """
-    from litestar.testing import TestClient
-
     from db import connect
-    from sg_web.app import build_app
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(console) as client:
         told = client.post("/jobs/catch-up")
         assert told.status_code in (200, 201), told.text
         body = told.json()
@@ -233,15 +246,7 @@ def test_a_step_that_knows_it_has_nothing_to_do_is_simply_absent(tmp_path):
 # --- and the console stops showing eight rows for one act --------------------
 
 
-def _console(tmp_path):
-    from litestar.testing import TestClient
-
-    from sg_web.app import build_app
-
-    return TestClient(app=build_app(str(tmp_path / "run"), worker=False))
-
-
-def test_the_console_folds_a_collection_into_one_row(tmp_path):
+def test_the_console_folds_a_collection_into_one_row(tmp_path, console):
     """The half a person sees.
 
     Eight rows where somebody asked for one thing. Each honest, none the
@@ -250,7 +255,7 @@ def test_the_console_folds_a_collection_into_one_row(tmp_path):
     """
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             made = _chain(conn, "scan", "embed", "cluster_faces")
@@ -273,14 +278,14 @@ def test_the_console_folds_a_collection_into_one_row(tmp_path):
         assert alone in seen
 
 
-def test_a_failed_step_makes_the_whole_collection_read_failed(tmp_path):
+def test_a_failed_step_makes_the_whole_collection_read_failed(tmp_path, console):
     """One failed step means the collection did not do what it was asked,
     whatever the others managed. Saying "running" while the rest of the
     chain drains would be the console agreeing with the queue instead of
     with the person."""
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             first, _second = _chain(conn, "scan", "embed")
@@ -295,13 +300,13 @@ def test_a_failed_step_makes_the_whole_collection_read_failed(tmp_path):
         assert folded["failed"] == first, "the row somebody needs is not named"
 
 
-def test_the_fold_shows_the_steps_rather_than_hiding_them(tmp_path):
+def test_the_fold_shows_the_steps_rather_than_hiding_them(tmp_path, console):
     """Collapsing is not the same as hiding. The page carries every step
     under the fold, and the one that failed is reachable without going
     anywhere else."""
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             first, second = _chain(conn, "scan", "embed")
@@ -316,12 +321,12 @@ def test_the_fold_shows_the_steps_rather_than_hiding_them(tmp_path):
         assert page.count('data-matrix-job="') == 2, "a step was rendered twice, folded and loose"
 
 
-def test_a_job_that_is_nobodys_step_is_untouched(tmp_path):
+def test_a_job_that_is_nobodys_step_is_untouched(tmp_path, console):
     """The control. Every job submitted on its own renders exactly as it
     did before collections existed."""
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             alone = jobs.submit(conn, "annotate", NOW)
@@ -335,7 +340,7 @@ def test_a_job_that_is_nobodys_step_is_untouched(tmp_path):
         assert f'data-matrix-job="{alone}"' in page
 
 
-def test_the_console_offers_it_first_and_pressing_it_queues_the_chain(tmp_path):
+def test_the_console_offers_it_first_and_pressing_it_queues_the_chain(tmp_path, console):
     """The button, and where it is.
 
     Twelve sweeps, each honest, each needing somebody to already know
@@ -344,7 +349,7 @@ def test_the_console_offers_it_first_and_pressing_it_queues_the_chain(tmp_path):
     """
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         page = client.get("/operations", headers={"accept": "text/html"}).text
         assert 'data-launch="catch_up"' in page, "the console cannot start a catch-up"
         assert "data-launch-primary" in page
@@ -369,17 +374,17 @@ def test_the_console_offers_it_first_and_pressing_it_queues_the_chain(tmp_path):
             assert after == before, "the button queued the steps ungated"
 
 
-def test_an_unknown_sweep_name_is_still_refused(tmp_path):
+def test_an_unknown_sweep_name_is_still_refused(tmp_path, console):
     """The control: adding a launcher did not turn the name into
     something the route accepts anything for."""
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         assert client.post("/operations/jobs/catch-up").status_code == 404, "the underscore name is the one that works"
 
 
 # --- a step decides what to do when it RUNS ----------------------------------
 
 
-def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path):
+def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path, console):
     """The flaw putting the steps in order does not fix by itself.
 
     `cluster_faces` used to enumerate embedding spaces at SUBMIT time.
@@ -396,7 +401,7 @@ def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path):
 
     from db import connect, derived, runner, scan
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             # a library with a file and no faces at all, then the chain
@@ -448,7 +453,7 @@ def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path):
     assert runs == 1, "the step settled done having clustered a space that existed by the time it ran"
 
 
-def test_a_walk_can_be_queued_and_a_worker_claims_it(tmp_path):
+def test_a_walk_can_be_queued_and_a_worker_claims_it(tmp_path, console):
     """The walk becomes a job somebody does not have to be present for.
 
     `POST /roots/{id}/scan` walks inline and is its own worker, which is
@@ -465,7 +470,7 @@ def test_a_walk_can_be_queued_and_a_worker_claims_it(tmp_path):
     root.mkdir()
     Image.new("RGB", (16, 12), (30, 90, 140)).save(root / "one.png")
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         client.post("/roots", json={"path": str(root)})
         conn = connect.connect(client.app.state.db_path)
         try:
@@ -489,12 +494,12 @@ def test_a_walk_can_be_queued_and_a_worker_claims_it(tmp_path):
     assert after == 1, "the walk found nothing it was queued to find"
 
 
-def test_walking_a_library_with_no_roots_is_nothing_to_do(tmp_path):
+def test_walking_a_library_with_no_roots_is_nothing_to_do(tmp_path, console):
     """Not an error. A library nobody has pointed at a folder yet is a
     normal state, and the chain has to be able to say so."""
     from db import connect, runner
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             assert runner.submit_walk(conn, NOW) is None
@@ -502,7 +507,7 @@ def test_walking_a_library_with_no_roots_is_nothing_to_do(tmp_path):
             connect.close(conn)
 
 
-def test_a_catch_up_reads_the_files_its_own_walk_finds(tmp_path):
+def test_a_catch_up_reads_the_files_its_own_walk_finds(tmp_path, console):
     """The whole chain, over a library that grew after it was queued.
 
     This is what the walk at the head is FOR, and what makes it safe to
@@ -522,7 +527,7 @@ def test_a_catch_up_reads_the_files_its_own_walk_finds(tmp_path):
     root = tmp_path / "lib"
     root.mkdir()
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         client.post("/roots", json={"path": str(root)})
 
         # The files appear AFTER the root is registered and BEFORE the
@@ -562,7 +567,7 @@ def test_a_catch_up_reads_the_files_its_own_walk_finds(tmp_path):
 # --- and a collection can be stopped as one thing ----------------------------
 
 
-def test_stopping_a_collection_ends_what_is_queued_and_asks_what_is_running(tmp_path):
+def test_stopping_a_collection_ends_what_is_queued_and_asks_what_is_running(tmp_path, console):
     """Two states, and only one of them can stop itself.
 
     A running step is ASKED: something is holding it and writing under
@@ -574,7 +579,7 @@ def test_stopping_a_collection_ends_what_is_queued_and_asks_what_is_running(tmp_
     """
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             first, second, third = _chain(conn, "scan", "embed", "cluster_faces")
@@ -599,12 +604,12 @@ def test_stopping_a_collection_ends_what_is_queued_and_asks_what_is_running(tmp_
     assert rows[third] == "cancelled"
 
 
-def test_stopping_leaves_other_collections_and_loose_jobs_alone(tmp_path):
+def test_stopping_leaves_other_collections_and_loose_jobs_alone(tmp_path, console):
     """The unit is the collection. Stopping one is not stopping
     everything queued."""
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             _chain(conn, "scan", "embed")
@@ -626,21 +631,21 @@ def test_stopping_leaves_other_collections_and_loose_jobs_alone(tmp_path):
     assert rows[other] == "queued", "stopping one collection stopped another"
 
 
-def test_stopping_a_collection_that_is_not_going_says_so(tmp_path):
+def test_stopping_a_collection_that_is_not_going_says_so(tmp_path, console):
     """Not an error, and not silence. Pressing stop on something already
     finished is a thing people do."""
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         told = client.post("/operations/collections/catch up/stop", headers={"accept": "text/html"})
         assert told.status_code in (200, 201), told.text
         assert "nothing running" in told.text
 
 
-def test_the_fold_offers_stop_only_while_there_is_something_to_stop(tmp_path):
+def test_the_fold_offers_stop_only_while_there_is_something_to_stop(tmp_path, console):
     """A settled collection has no stop button: an affordance that does
     nothing teaches somebody it does nothing."""
     from db import connect
 
-    with _console(tmp_path) as client:
+    with contextlib.nullcontext(console) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             made = _chain(conn, "scan", "embed")

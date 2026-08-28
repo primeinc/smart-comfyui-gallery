@@ -1732,22 +1732,28 @@
     said.textContent = kind === "audio" ? "audio" : "doc";
     return said;
   }
+  function degrade(broken) {
+    const src = broken.getAttribute("src") ?? "";
+    if (!src.startsWith("/thumbs/") && !src.startsWith("/thumb/") && !src.startsWith("/preview/")) return;
+    if (!broken.isConnected) return;
+    const holder = broken.closest("[data-kind]");
+    const kind = holder instanceof HTMLElement ? holder.dataset.kind : void 0;
+    broken.replaceWith(label(kind));
+  }
   function mountPictures() {
     document.addEventListener(
       "error",
       (event) => {
         const broken = event.target;
         if (!(broken instanceof HTMLImageElement)) return;
-        const src = broken.getAttribute("src") ?? "";
-        if (!src.startsWith("/thumbs/") && !src.startsWith("/thumb/") && !src.startsWith("/preview/")) return;
-        if (!broken.isConnected) return;
-        const holder = broken.closest("[data-kind]");
-        const kind = holder instanceof HTMLElement ? holder.dataset.kind : void 0;
-        broken.replaceWith(label(kind));
+        degrade(broken);
       },
       // The capture phase, because `error` on an <img> does not bubble.
       true
     );
+    for (const picture of document.querySelectorAll("img")) {
+      if (picture.complete && picture.naturalWidth === 0) degrade(picture);
+    }
   }
 
   // src/pictures-mount.ts

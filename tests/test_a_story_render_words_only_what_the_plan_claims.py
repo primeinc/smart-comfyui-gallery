@@ -522,8 +522,9 @@ def test_a_thousand_members_are_a_plan_and_a_render_not_a_grammar_error():
     plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, sha)
     assert "member-1000" in plan["phases"][-1]["member_refs"]
     assert planning.validate_plan(plan, document, sha) == []
-    render = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, planning.identity(plan)[1])
-    assert rendering.violations(render, plan, document, sha, planning.identity(plan)[1]) == []
+    plan_sha = planning.identity(plan)[1]
+    render = rendering.TemplateStoryRenderer("memory").render(document, plan, sha, plan_sha)
+    assert rendering.violations(render, plan, document, sha, plan_sha) == []
 
 
 def test_identities_same_request_one_document_policy_coexists(monkeypatch):

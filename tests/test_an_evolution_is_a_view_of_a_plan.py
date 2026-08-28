@@ -416,47 +416,6 @@ def test_unsequenced_plans_have_no_transitions_and_lead_with_families(planned):
     assert 'data-tab="families" class="on"' in html
 
 
-def test_the_view_is_immune_to_the_live_library_moving_on(planned):
-    """The relation changes, a file is replaced, a file is gone: the view
-    over the frozen plan reads frozen hashes and frozen bytes only --
-    the replacement's vector is never substituted, and what cannot be
-    measured says why."""
-    client, root, _names, _snap, made = planned
-    before = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
-    conn = connect.connect(client.app.state.db_path)
-    try:
-        other = ingest.prompt(conn, "something else entirely", NOW)
-        conn.execute("UPDATE generation_prompt SET prompt_id = ? WHERE role = 'effective'", (other,))
-        conn.commit()
-    finally:
-        connect.close(conn)
-    assert client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json() == before
-
-    # replace gen_1's bytes and re-embed: the frozen member's vector is gone, not swapped
-    info = PngInfo()
-    info.add_text("parameters", json.dumps({"sui_image_params": {"prompt": "a replacement"}}))
-    Image.new("RGB", (12, 12), (250, 250, 250)).save(root / "gen_1.png", pnginfo=info)
-    client.post("/roots/1/scan")
-    client.post("/jobs/embed")
-    _drain(client)
-    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
-    second = view["members"][1]
-    assert second["media"]["content_sha256"] == before["members"][1]["media"]["content_sha256"], "frozen bytes named"
-    assert second["metrics"]["text_image_cosine"] is None
-    assert "frozen bytes" in second["metrics"]["text_image_cosine_unavailable"]
-    assert view["transitions"][0]["visual_cosine"] is None
-    assert view["transitions"][0]["prompt_cosine"] == before["transitions"][0]["prompt_cosine"], (
-        "the prompt vector is by frozen text hash and untouched"
-    )
-    assert view["members"][0]["metrics"] == before["members"][0]["metrics"]
-
-    # the file is deleted: the member keeps its frozen identity, loses its link
-    (root / "gen_2.png").unlink()
-    client.post("/roots/1/scan")
-    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
-    assert view["members"][2]["media"]["name"] == "gen_2.png"
-
-
 def test_no_space_yields_reasons_not_numbers(planned):
     client, _root, _names, _snap, made = planned
     conn = connect.connect(client.app.state.db_path)
@@ -593,3 +552,52 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     assert view["members"][0]["media"]["page"] == f"/i/{view['members'][0]['media']['slug']}"
     assert view["links"]["gallery_day"].startswith("/g?f=context.local_day%3Aeq%3A"), "spelled by the Facet Interface"
     assert view["links"]["search"].startswith("/search")
+
+
+# LAST on purpose. This is the only test here that changes the library on
+# disk -- it replaces one file's bytes and deletes another -- and
+# `Stage.restore` compares the library's (size, mtime) listing before
+# anything else. A file that is gone cannot be put back as the same file,
+# so the mismatch sends the next test down the rebuild path: a whole
+# fresh application, library, scan and plan, measured at 0.41s against
+# the 0.01s a restore costs. Run in the middle of the file that is a
+# rebuild somebody pays for; run last, nothing comes after it to pay.
+def test_the_view_is_immune_to_the_live_library_moving_on(planned):
+    """The relation changes, a file is replaced, a file is gone: the view
+    over the frozen plan reads frozen hashes and frozen bytes only --
+    the replacement's vector is never substituted, and what cannot be
+    measured says why."""
+    client, root, _names, _snap, made = planned
+    before = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        other = ingest.prompt(conn, "something else entirely", NOW)
+        conn.execute("UPDATE generation_prompt SET prompt_id = ? WHERE role = 'effective'", (other,))
+        conn.commit()
+    finally:
+        connect.close(conn)
+    assert client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json() == before
+
+    # replace gen_1's bytes and re-embed: the frozen member's vector is gone, not swapped
+    info = PngInfo()
+    info.add_text("parameters", json.dumps({"sui_image_params": {"prompt": "a replacement"}}))
+    Image.new("RGB", (12, 12), (250, 250, 250)).save(root / "gen_1.png", pnginfo=info)
+    client.post("/roots/1/scan")
+    client.post("/jobs/embed")
+    _drain(client)
+    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
+    second = view["members"][1]
+    assert second["media"]["content_sha256"] == before["members"][1]["media"]["content_sha256"], "frozen bytes named"
+    assert second["metrics"]["text_image_cosine"] is None
+    assert "frozen bytes" in second["metrics"]["text_image_cosine_unavailable"]
+    assert view["transitions"][0]["visual_cosine"] is None
+    assert view["transitions"][0]["prompt_cosine"] == before["transitions"][0]["prompt_cosine"], (
+        "the prompt vector is by frozen text hash and untouched"
+    )
+    assert view["members"][0]["metrics"] == before["members"][0]["metrics"]
+
+    # the file is deleted: the member keeps its frozen identity, loses its link
+    (root / "gen_2.png").unlink()
+    client.post("/roots/1/scan")
+    view = client.get(f"/stories/plans/{made.id}/evolution", headers={"accept": "application/json"}).json()
+    assert view["members"][2]["media"]["name"] == "gen_2.png"

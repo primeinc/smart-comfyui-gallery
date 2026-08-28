@@ -32,7 +32,7 @@ from PIL import Image
 from playwright.sync_api import Page
 
 from db import facets
-from tests.conftest import Live
+from tests.conftest import POLL, Live
 from vision import thumbs
 
 pytestmark = pytest.mark.slow
@@ -148,7 +148,7 @@ def prepare(api, root) -> None:
     deadline = time.monotonic() + 90
     while [job for job in api.get("/jobs").json() if job["state"] in ("queued", "running")]:
         assert time.monotonic() < deadline, "jobs never drained"
-        time.sleep(0.05)
+        time.sleep(POLL)
 
 
 #: Oldest first, so the walk is WRITTEN's order.

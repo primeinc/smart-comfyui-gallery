@@ -11,17 +11,16 @@ from __future__ import annotations
 
 import pytest
 
-from db import connect, places
-from db.build import build
+from db import places
+from tests.staging import fresh_schema
 
 
 @pytest.fixture
-def db(tmp_path):
-    path = tmp_path / "gallery.db"
-    build(path)
-    conn = connect.connect(path)
-    yield conn
-    connect.close(conn)
+def db():
+    # The claims here are about `places.place`'s own transaction shape,
+    # which :memory: carries exactly as a file does -- and the schema
+    # master copy costs 0.5ms where `build()` to disk cost ~60ms.
+    return fresh_schema()
 
 
 def test_a_place_is_a_full_entity_citizen(db):

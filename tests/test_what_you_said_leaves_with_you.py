@@ -23,25 +23,23 @@ read -- are untouched.
 from __future__ import annotations
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import authored, collections, connect, derived
-from sg_web.app import build_app
+from tests.staging import hosting, staged
 
 pytestmark = pytest.mark.slow
 
 
-@pytest.fixture
-def said(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
+def _library(root) -> None:
     for i in range(4):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        conn = connect.connect(client.app.state.db_path)
+
+
+def _what_was_said(stage) -> None:
+    """Everything a person told this library, written once."""
+    conn = connect.connect(stage.client.app.state.db_path)
+    try:
         ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
         who = int(
             conn.execute(
@@ -69,8 +67,49 @@ def said(tmp_path):
         )
         # p2 and p3: nobody has said anything at all
         conn.commit()
-        yield client, conn, ids
+    finally:
         connect.close(conn)
+
+
+@pytest.fixture(scope="module")
+def _said_stage(tmp_path_factory):
+    with staged(tmp_path_factory, "what_you_said_leaves_with_you", _library, _what_was_said) as stage:
+        yield stage
+
+
+@pytest.fixture(scope="module")
+def _bare_stage(tmp_path_factory):
+    """A library nobody has said anything about -- no root, no scan.
+
+    A second world rather than a variation of the first: what these two
+    tests are about is the state BEFORE anything exists, and a stage
+    that had been given a library and then emptied is not that state.
+    """
+    with hosting(tmp_path_factory, "what_you_said_untouched") as stage:
+        yield stage
+
+
+@pytest.fixture
+def untouched(_bare_stage):
+    _bare_stage.restore()
+    return _bare_stage.client
+
+
+@pytest.fixture
+def said(_said_stage):
+    """The world with everything already said, restored between tests.
+
+    Four pictures, an application, a scan and a page of INSERTs cost a
+    fifth of a second per test to answer questions that cost a
+    hundredth. The snapshot holds the same rows and gives each test a
+    clean one.
+    """
+    _said_stage.restore()
+    client = _said_stage.client
+    conn = connect.connect(client.app.state.db_path)
+    ids = [one for (one,) in conn.execute("SELECT id FROM file ORDER BY name")]
+    yield client, conn, ids
+    connect.close(conn)
 
 
 def _slug(client, file_id: int) -> str:
@@ -185,16 +224,15 @@ def test_it_says_the_names_because_they_are_yours(said):
     assert "p0.png" in body
 
 
-def test_an_untouched_library_exports_an_empty_document(tmp_path):
+def test_an_untouched_library_exports_an_empty_document(untouched):
     """Nothing said yet is a real state, and the answer is a document
     with nothing in it rather than a refusal."""
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        told = client.get("/operations/export/authored.json")
-        assert told.status_code == 200
-        assert told.json() == {"people": [], "collections": [], "pictures": []}
+    told = untouched.get("/operations/export/authored.json")
+    assert told.status_code == 200
+    assert told.json() == {"people": [], "collections": [], "pictures": []}
 
 
-def test_both_exports_are_offered_before_anything_has_been_judged(tmp_path):
+def test_both_exports_are_offered_before_anything_has_been_judged(untouched):
     """The defect this test found when it was written.
 
     Both links first went inside the verdict panel, which only renders
@@ -203,8 +241,7 @@ def test_both_exports_are_offered_before_anything_has_been_judged(tmp_path):
     likely to be deciding whether they trust this with their pictures.
     They live in their own section now.
     """
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        page = client.get("/operations", headers={"accept": "text/html"}).text
+    page = untouched.get("/operations", headers={"accept": "text/html"}).text
     assert "data-operations-export" in page
     assert "data-export-authored" in page
     assert "data-export-verdicts" in page, "the verdict export was hidden until a verdict existed"

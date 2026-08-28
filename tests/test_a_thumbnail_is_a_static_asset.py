@@ -32,12 +32,11 @@ import re
 
 import pytest
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 from db import connect, ingest, resultset, scan
-from tests.staging import NOW
+from tests.staging import NOW, Stage, fresh_schema, staged
 from vision import thumbs
-
-SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 _HEX64 = re.compile(r"^/thumbs/([0-9a-f]{2})/([0-9a-f]{64})(\.preview)?\.webp$")
 
@@ -102,9 +101,7 @@ def library(tmp_path):
     root.mkdir()
     for i in range(4):
         Image.new("RGB", (600, 400), (20 + i * 40, 90, 140)).save(root / f"p{i}.png")
-    conn = connect.memory()
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = fresh_schema()
     conn.execute("INSERT INTO root(id,path,kind,created_at) VALUES(1,?,'library',0)", (str(root),))
     scan.scan(conn, 1, root, NOW)
     for file_id, name in conn.execute("SELECT id, name FROM file").fetchall():
@@ -129,37 +126,62 @@ def test_the_answer_carries_the_content_hash(library):
 # --- served: the claims a unit test cannot see ------------------------------
 
 
-@pytest.fixture
-def served(tmp_path):
-    """The real application over a real library, with the derivatives
-    rendered -- which is the steady state a person browses in.
-
-    Which includes the human context. Without it `derived_media_context`
-    is empty and the timeline draws nothing at all -- and a test that
-    then finds no `<img>` reads exactly like a surface pointing at the
-    wrong address, rather than like a fixture that never built the thing
-    the surface is made of."""
-    import time as clock
-
-    from litestar.testing import TestClient
-
-    from sg_web.app import build_app
-
-    root = tmp_path / "pics"
-    root.mkdir()
+def _pictures(root: pathlib.Path) -> None:
     for i in range(6):
         Image.new("RGB", (900, 600), (30 + i * 30, 100, 150)).save(root / f"s{i}.png")
+    # One GENERATED picture, so the artifact shelf has a model card with a
+    # sample to draw. Without it `/models` is empty and the test about it
+    # skips, which reads like a pass and proves nothing.
+    told = PngInfo()
+    told.add_text(
+        "parameters",
+        "a tin lighthouse at dusk\nNegative prompt: blurry\n"
+        "Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 12345, Size: 900x600, "
+        "Model hash: 0123456789ab, Model: dreamshaper_8",
+    )
+    Image.new("RGB", (900, 600), (210, 130, 70)).save(root / "gen.png", pnginfo=told)
 
-    app = build_app(str(tmp_path / "run"))
-    with TestClient(app=app) as client:
-        made = client.post("/roots", json={"path": str(root)}).json()
-        client.post(f"/roots/{made['id']}/scan")
-        client.post("/jobs/ingest")
-        _drained(client, clock)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drained(client, clock)
-        yield client, root
+
+def _interpreted(stage: Stage) -> None:
+    """The human context too. Without it `derived_media_context` is empty
+    and the timeline draws nothing at all -- and a test that then finds
+    no `<img>` reads exactly like a surface pointing at the wrong
+    address, rather than like a world that never built the thing the
+    surface is made of."""
+    import time as clock
+
+    stage.client.post("/jobs/ingest")
+    _drained(stage.client, clock)
+    stage.client.post("/jobs/context")
+    stage.client.post("/jobs/events")
+    _drained(stage.client, clock)
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with staged(
+        tmp_path_factory,
+        "test_a_thumbnail_is_a_static_asset",
+        _pictures,
+        _interpreted,
+        worker=True,
+        # The rendered derivatives ARE the steady state these tests read;
+        # emptying the cache between them buys a re-render of six webps
+        # per test and proves nothing. The one test about a miss deletes
+        # its own entry.
+        keep_thumbs=True,
+    ) as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """The real application over a real library, with the derivatives
+    rendered -- which is the steady state a person browses in. Built once
+    for the module: every test here reads that steady state, and the
+    restore between them puts back whatever one of them moved."""
+    _world.restore()
+    return _world.client, _world.root
 
 
 def _drained(client, clock, timeout: float = 300.0) -> None:
@@ -304,7 +326,7 @@ def test_every_surface_that_draws_a_picture_points_at_the_asset(served):
     step, and this is the check that no surface quietly stops taking it.
     """
     client, _ = served
-    folder = _pictures_on(client, "/f/pics")
+    folder = _pictures_on(client, "/f/lib")
     assert folder, "the folder page drew no pictures"
     for src in folder:
         assert _HEX64.match(src) is not None, f"the folder page points at {src}"
@@ -355,7 +377,7 @@ def test_the_artifact_shelf_costs_no_connections(served, monkeypatch):
 def test_a_folder_page_of_thumbnails_costs_no_connections(served, monkeypatch):
     """The number, on a surface other than the grid."""
     client, _ = served
-    sources = _pictures_on(client, "/f/pics")
+    sources = _pictures_on(client, "/f/lib")
     assert len(sources) >= 6
     for src in sources:
         client.get(src)  # warm, so this measures delivery

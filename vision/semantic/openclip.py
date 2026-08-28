@@ -103,6 +103,77 @@ def immutable(checkpoint: str) -> bool:
     return bool(checkpoint)
 
 
+def _record_path(models_dir: str):
+    import pathlib
+
+    return pathlib.Path(models_dir) / "provisioned.json"
+
+
+def _read_record(models_dir: str) -> dict:
+    import json
+
+    try:
+        return json.loads(_record_path(models_dir).read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def record_provision(models_dir: str, model: str, checkpoint: str, repo: str, names: tuple[str, ...]) -> None:
+    """The (repo, file) coordinates a checkpoint resolved to, written by
+    the code that just loaded it -- the one moment those coordinates
+    exist without asking open_clip, whose import is torch's. The record
+    is what lets the serving guard refuse an unprovisioned model in
+    milliseconds instead of paying nine seconds of ML import to say no."""
+    import json
+
+    held = _read_record(models_dir)
+    held[f"{model}/{checkpoint}"] = {"repo": repo, "names": list(names)}
+    path = _record_path(models_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(held, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def provisioned(models_dir: str, model: str, checkpoint: str) -> str | None:
+    """The recorded weight file, if this pair was ever provisioned here
+    and its bytes still sit in a cache -- answered from the record and
+    the hub cache alone, no ML import anywhere on the path."""
+    from vision.weights import hub_cached
+
+    held = _read_record(models_dir).get(f"{model}/{checkpoint}")
+    if held is None:
+        return None
+    for name in held["names"]:
+        found = hub_cached(held["repo"], name, models_dir)
+        if found is not None:
+            return found
+    return None
+
+
+def _unprovisioned(models_dir: str, model: str, checkpoint: str) -> LookupError:
+    return LookupError(
+        f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
+    )
+
+
+def _hub_names(model: str, checkpoint: str) -> tuple[str, tuple[str, ...]] | None:
+    """The hub repo and candidate file names open_clip gives this tag,
+    or None for a tag that is not hub-hosted. Imports open_clip."""
+    import os
+
+    from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
+    from open_clip.pretrained import get_pretrained_cfg
+
+    hf_hub = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "")
+    if not hf_hub:
+        return None
+    repo, filename = os.path.split(hf_hub)
+    if not filename:
+        return repo, (HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME)
+    if filename.endswith((".bin", ".pth")):
+        return repo, (filename[:-4] + ".safetensors", filename)  # safetensors preferred, as upstream prefers it
+    return repo, (filename,)
+
+
 def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | None:
     """The exact weight file this checkpoint resolves to in the local
     cache, or None -- answered WITHOUT any network access.
@@ -121,23 +192,12 @@ def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | No
     which is how the first version of this guard downloaded 600MB
     while claiming it would not.
     """
-    import os
-
-    from open_clip.constants import HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME
-    from open_clip.pretrained import get_pretrained_cfg
-
     from vision.weights import hub_cached
 
-    hf_hub = (get_pretrained_cfg(model, checkpoint) or {}).get("hf_hub", "")
-    if not hf_hub:
+    named = _hub_names(model, checkpoint)
+    if named is None:
         return None
-    repo, filename = os.path.split(hf_hub)
-    if not filename:
-        names = (HF_SAFE_WEIGHTS_NAME, HF_WEIGHTS_NAME)
-    elif filename.endswith((".bin", ".pth")):
-        names = (filename[:-4] + ".safetensors", filename)  # safetensors preferred, as upstream prefers it
-    else:
-        names = (filename,)
+    repo, names = named
     for name in names:
         found = hub_cached(repo, name, models_dir)  # models_dir, then the machine's shared HF cache
         if found is not None:
@@ -164,9 +224,7 @@ class ClipBackend:
             # structurally incapable of it -- a local weight file is the
             # only thing it will hand to open_clip.
             if offline:
-                raise LookupError(
-                    f"{model}/{checkpoint} is not provisioned under {models_dir}; run /jobs/embed once to download it"
-                )
+                raise _unprovisioned(models_dir, model, checkpoint)
             loaded, _train_tf, preprocess = open_clip.create_model_and_transforms(
                 model, pretrained=checkpoint, cache_dir=models_dir
             )
@@ -202,6 +260,12 @@ class ClipBackend:
         loaded.eval()  # models construct in train mode; see module docstring
         self.model = loaded.to(self.device)
         self.dimensions = int(self.encode_query("probe").shape[0])
+        # This load proved the weights exist; write the coordinates down
+        # so the next unprovisioned refusal never has to import anything
+        # to know them (see `provisioned`).
+        named = _hub_names(model, checkpoint)
+        if named is not None:
+            record_provision(models_dir, model, checkpoint, named[0], named[1])
 
     @property
     def model_id(self) -> str:
@@ -315,5 +379,12 @@ def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *
     key = (str(models_dir), model, checkpoint)
     with _LOCK:
         if key not in _LOADED:
+            # The offline refusal must not cost torch's import: without
+            # this record check the 400 for an unprovisioned model paid
+            # ~9s of open_clip+torch just to say no (measured in
+            # test_search_never_downloads_a_model). ClipBackend keeps its
+            # own guard for the path that really loads.
+            if offline and provisioned(models_dir, model, checkpoint) is None:
+                raise _unprovisioned(models_dir, model, checkpoint)
             _LOADED[key] = ClipBackend(str(models_dir), model, checkpoint, offline=offline)
         return _LOADED[key]

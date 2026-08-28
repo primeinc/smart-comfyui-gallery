@@ -256,8 +256,11 @@ def test_membership_writes_settle_by_answer_identity(chosen):
 
 
 def _second_writer_can_begin(db_path) -> bool:
+    # The held case waits this out in full before refusing, so the window
+    # is pure margin: the lane is held for the whole mutation, orders of
+    # magnitude longer than a scheduler hiccup.
     other = connect.connect(db_path)
-    other.execute("PRAGMA busy_timeout=100")
+    other.execute("PRAGMA busy_timeout=20")
     try:
         other.execute("BEGIN IMMEDIATE")
         other.rollback()

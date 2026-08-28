@@ -33,10 +33,11 @@ edited -- a historical record that gets corrected is not one.
 from __future__ import annotations
 
 import functools
+import hashlib
+import os
 import pathlib
 import shutil
 import sqlite3
-import tempfile
 
 from db.connect import close, connect
 
@@ -49,9 +50,26 @@ _MASTERS: dict[int, pathlib.Path] = {}
 
 
 @functools.cache
-def _master_dir() -> tempfile.TemporaryDirectory:
-    """The masters' home for this process; the finalizer removes it."""
-    return tempfile.TemporaryDirectory(prefix="sg-schema-masters-")
+def _master_dir() -> pathlib.Path:
+    """The masters' home, kept ACROSS processes under `.pytest_cache`.
+
+    A per-process temporary directory made this cache miss every time:
+    the eight tests that seed here ask for eight DIFFERENT versions, one
+    each, so within a run the dict is written and never read. Measured
+    cold, one per version: 0.104s for v1 and 0.033-0.043s for v3, v4,
+    v7, v25, v26, v29 -- 0.33s of a 2.69s module spent executing
+    historical schemas that are byte-for-byte the same on every run.
+    From the file, the same seven cost 0.007s.
+
+    Safe to keep because the key is the vendored file's own bytes and
+    those files are a historical record that is never edited: a schema
+    corrected in place gets a new digest and a new master. Under
+    `.pytest_cache` beside the corpus snapshots, so `just clean` and
+    pytest's own `--cache-clear` both reach it.
+    """
+    where = pathlib.Path(__file__).resolve().parent.parent / ".pytest_cache" / "schema-masters"
+    where.mkdir(parents=True, exist_ok=True)
+    return where
 
 
 #: What `_prove` treats as a version that does not carry to today, rather
@@ -82,23 +100,36 @@ def seed(path, version: int) -> None:
     The stamp is checked rather than assumed: a vendored file that does
     not stamp the version its name claims would hand every fixture built
     from it a quiet lie, which is the failure this whole module exists
-    to stop.
+    to stop. Checked when the master is built, which is per CONTENT --
+    the cached file's name carries the digest of the SQL it was built
+    from, so an edited schema is a different master and is checked
+    again.
     """
     master = _MASTERS.get(version)
     if master is None:
-        master = pathlib.Path(_master_dir().name) / f"v{version:02d}.db"
-        # Through db.connect, the way `build.build` writes a fresh one: a raw
-        # sqlite3.connect leaves the schema's foreign keys inert, and a
-        # fixture whose keys were never on is not the database it claims.
-        conn = connect(master)
-        try:
-            conn.executescript(sql(version))
-            conn.commit()
-            stamped = conn.execute("PRAGMA user_version").fetchone()[0]
-            if stamped != version:
-                raise AssertionError(f"tests/schemas/v{version:02d}.sql stamps user_version={stamped}")
-        finally:
-            close(conn)
+        source = sql(version)
+        digest = hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
+        master = _master_dir() / f"v{version:02d}-{digest}.db"
+        if not master.exists():
+            # Built beside the name it will take and moved onto it, so a
+            # run that dies mid-executescript leaves no half-written file
+            # for the next one to copy as a database. `os.replace` is
+            # atomic within a directory, and two processes racing on the
+            # same version write identical bytes either way.
+            building = master.with_name(f"{master.stem}.{os.getpid()}.building")
+            # Through db.connect, the way `build.build` writes a fresh one: a raw
+            # sqlite3.connect leaves the schema's foreign keys inert, and a
+            # fixture whose keys were never on is not the database it claims.
+            conn = connect(building)
+            try:
+                conn.executescript(source)
+                conn.commit()
+                stamped = conn.execute("PRAGMA user_version").fetchone()[0]
+                if stamped != version:
+                    raise AssertionError(f"tests/schemas/v{version:02d}.sql stamps user_version={stamped}")
+            finally:
+                close(conn)
+            os.replace(building, master)
         _MASTERS[version] = master
     shutil.copy(master, path)
 

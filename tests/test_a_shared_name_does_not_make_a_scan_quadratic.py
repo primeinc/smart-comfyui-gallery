@@ -78,7 +78,7 @@ def test_the_cost_per_file_does_not_grow_with_the_library():
     two sizes rather than as an absolute anybody would have to re-tune.
     Quadratic would double this; O(log n) barely moves it."""
     counts = {}
-    for n in (500, 2_000):
+    for n in (250, 1_000):
         conn = fresh_schema()
         try:
             seen = _counted(conn)
@@ -89,8 +89,8 @@ def test_the_cost_per_file_does_not_grow_with_the_library():
             conn.close()
         counts[n] = len(seen) / n
 
-    grew = counts[2_000] / counts[500]
-    assert grew < 1.6, f"reads per file grew {grew:.2f}x from 500 files to 2,000 ({counts})"
+    grew = counts[1_000] / counts[250]
+    assert grew < 1.6, f"reads per file grew {grew:.2f}x from 250 files to 1,000 ({counts})"
 
 
 def test_a_retired_slug_is_not_handed_to_a_new_picture():

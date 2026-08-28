@@ -23,6 +23,7 @@ they have seen everything -- over a slideshow that repeats all night.
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 import pytest
@@ -33,7 +34,48 @@ from tests.conftest import Live
 
 pytestmark = pytest.mark.slow
 
+
+@pytest.fixture
+def page(_shared_context):
+    """A page of this module's OWN, overriding the shared one.
+
+    `_arrange` below states the workspace through `add_init_script`, and
+    Playwright has no way to take an init script off again: on a page
+    that outlives the test, every earlier arrangement keeps running on
+    every later navigation. `test_the_setting_changes_the_arrows_on_the
+    _open_picture` reads the DEFAULT workspace and found `wrap` already
+    on, written by the test before it.
+
+    So this module buys a fresh page per test, and pays ~40 ms for it.
+    Nothing else in the suite installs an init script (grep says so), so
+    nothing else pays.
+
+    The workspace is cleared as well, because storage belongs to the
+    CONTEXT and the context is the module's: a fresh page inherits the
+    `wrap` the test before it ticked.
+    """
+    page = _shared_context.new_page()
+    yield page
+    with contextlib.suppress(Exception):
+        page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+    page.close()
+
+
 FILES = 4
+
+#: The dwell these tests run the slideshow at, in seconds.
+#:
+#: The claim is that it steps ON ITS OWN, not that it waits a particular
+#: length of time -- so the dwell is margin, and a second of it per step
+#: is four seconds of a test watching a timer it already believes in.
+#: `viewer.ts` honours any positive value (`every()`, :581), and half a
+#: second is still more than twice what a step costs: each one is a
+#: remount measured at ~200 ms in this same module.
+#: 0.35, not 0.5. Still comfortably clear of the ~200ms a step costs --
+#: the margin is what stops a slow remount reading as a missed step -- and
+#: the whole module measured 12.0s at 0.5 against 10.6s and 11.0s at this,
+#: green both times. Below this the margin stops being one.
+STEP = 0.35
 
 
 def write_library(root) -> None:
@@ -59,6 +101,21 @@ def _ordinal(page: Page) -> int:
     return int(page.inner_text(".viewer-ordinal").split("/")[0].strip())
 
 
+def _open_last_but_one(page: Page) -> None:
+    """Opened one step from the end of the answer.
+
+    What happens AT the end is not a claim about the four steps before
+    it, and walking them costs a dwell each -- so the tests about the end
+    start beside it. `_open_first` stays where the claim really is about
+    stepping from the beginning.
+    """
+    page.goto("/g?sort=oldest")
+    page.wait_for_selector("[data-grid] a.cell", timeout=10_000)
+    page.locator("[data-grid] a.cell").nth(FILES - 2).click()
+    page.wait_for_selector("[data-viewer]", timeout=10_000)
+    assert _ordinal(page) == FILES - 1, "the walk did not open beside its end"
+
+
 def _arrange(page: Page, **said) -> None:
     """Write the workspace before any script reads it.
 
@@ -72,7 +129,7 @@ def _arrange(page: Page, **said) -> None:
 
 
 def test_playing_walks_without_anybody_touching_it(page: Page, live: Live):
-    _arrange(page, showEvery=1)
+    _arrange(page, showEvery=STEP)
     _open_first(page)
     assert _ordinal(page) == 1
     page.click("[data-show-play]")
@@ -92,7 +149,7 @@ def test_it_survives_the_remount_that_each_step_is(page: Page, live: Live):
     module would take exactly one step and stop. Two steps is the proof
     that the second mount picked the walk up.
     """
-    _arrange(page, showEvery=1)
+    _arrange(page, showEvery=STEP)
     _open_first(page)
     page.click("[data-show-play]")
     page.wait_for_function(
@@ -103,8 +160,8 @@ def test_it_survives_the_remount_that_each_step_is(page: Page, live: Live):
 
 
 def test_without_loop_it_stops_at_the_end_and_stays_there(page: Page, live: Live):
-    _arrange(page, showEvery=1, loop=False)
-    _open_first(page)
+    _arrange(page, showEvery=STEP, loop=False)
+    _open_last_but_one(page)
     page.click("[data-show-play]")
     page.wait_for_function(
         f"() => document.querySelector('.viewer-ordinal').textContent.trim().startsWith('{FILES}')", timeout=20_000
@@ -117,8 +174,8 @@ def test_without_loop_it_stops_at_the_end_and_stays_there(page: Page, live: Live
 
 
 def test_with_loop_the_end_is_the_start_again(page: Page, live: Live):
-    _arrange(page, showEvery=1, loop=True)
-    _open_first(page)
+    _arrange(page, showEvery=STEP, loop=True)
+    _open_last_but_one(page)
     page.click("[data-show-play]")
     page.wait_for_function(
         f"() => document.querySelector('.viewer-ordinal').textContent.trim().startsWith('{FILES}')", timeout=20_000

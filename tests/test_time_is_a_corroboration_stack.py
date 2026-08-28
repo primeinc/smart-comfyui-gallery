@@ -19,13 +19,30 @@ import os
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 from db import connect, context, ingest, planning, runner, stories, when
-from sg_web.app import build_app
-from tests.staging import DAY, HOUR, NOW
+from tests.staging import DAY, HOUR, NOW, hosting
+
+
+@pytest.fixture(scope="module")
+def _bare_stage(tmp_path_factory):
+    """One application over an EMPTY home, for the tests that bring their
+    own library. Building one costs 0.31s of imports and a migration,
+    measured -- and three tests here were each paying it to register a
+    root and read the occurrences back."""
+    with hosting(tmp_path_factory, "corroboration_bare") as stage:
+        yield stage
+
+
+@pytest.fixture
+def bare(_bare_stage):
+    """That application with nothing in it: restored between tests, so
+    `/roots` numbers from 1 again and no library outlives its test."""
+    _bare_stage.restore()
+    return _bare_stage.client
+
 
 MIN = 60.0
 JULY_18 = 1_784_332_800.0  # 2026-07-18 00:00 as a wall clock
@@ -251,7 +268,7 @@ def _drain(client) -> None:
 
 
 @pytest.mark.slow
-def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_the_second(tmp_path):
+def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_the_second(bare, tmp_path):
     """Five Swarm stills named 0947001.., finishing 65 s apart, whose
     metadata says only the DAY: the occurrences are minute-fine claims
     with second-fine estimates beside them, the session grouper accepts
@@ -262,63 +279,52 @@ def test_a_real_swarm_run_becomes_a_minute_precision_session_with_estimates_to_t
     for i in range(5):
         start = JULY_18 + 9 * HOUR + (47 + i) * MIN
         _swarm(root, f"09{47 + i:02d}", 1, f"a lighthouse variant {i}", start + 65, 64.3)
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            for name, file_id in conn.execute("SELECT name, id FROM file").fetchall():
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.commit()
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            rows = conn.execute(
-                "SELECT basis, time_precision, supports, conflicts, certainty, estimated_at - local_at"
-                " FROM derived_media_occurrence WHERE kind = 'generation' ORDER BY local_at"
-            ).fetchall()
-            agreed = '["embedded_day", "mtime_finish_consistent", "btime_after_generation", "host_zone_assumed"]'
-            assert [r[:5] for r in rows] == [("filename", "minute", agreed, None, 0.9)] * 5
-            assert all(abs(r[5] - 0.7) < 0.01 for r in rows), "each request estimated 0.7 s into its minute"
-            timeline = conn.execute(
-                "SELECT mc.time_precision, mc.local_at - o.local_at, mc.time_supports FROM derived_media_context mc"
-                " JOIN derived_media_occurrence o ON o.file_id = mc.file_id AND o.kind = 'generation'"
-            ).fetchall()
-            assert all(
-                p == "second" and abs(d - 0.7) < 0.01 and '"estimate_inside_claim"' in s for p, d, s in timeline
-            ), "the human timeline reads the refined second; the occurrence keeps the minute claim"
-            sessions = conn.execute(
-                "SELECT (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) FROM derived_event e"
-                " WHERE e.kind = 'generation_session'"
-            ).fetchall()
-            assert sessions == [(5,)], "one session of five, at minute precision"
-            state = context.state(conn)
-            assert state is not None
-            assert state[1] == context.POLICY_VERSION
-            event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
-            snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
-            conn.commit()
-            document = stories.load_snapshot(conn, snap.id)
-            member = document["members"][0]["occurrence"]
-            assert member["precision"] == "minute"
-            assert member["supports"] == [
-                "embedded_day",
-                "mtime_finish_consistent",
-                "btime_after_generation",
-                "host_zone_assumed",
-            ]
-            assert member["conflicts"] == []
-            assert member["source_order"] == 1
-            assert member["estimated_at"] is not None
-            assert member["finished_at"] is not None
-            plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, snap.sha256)
-            assert plan["subject"]["sequenced"] is True, "minute precision sequences"
-        finally:
-            connect.close(conn)
+    client = bare
+    _library(tmp_path, client, root)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        rows = conn.execute(
+            "SELECT basis, time_precision, supports, conflicts, certainty, estimated_at - local_at"
+            " FROM derived_media_occurrence WHERE kind = 'generation' ORDER BY local_at"
+        ).fetchall()
+        agreed = '["embedded_day", "mtime_finish_consistent", "btime_after_generation", "host_zone_assumed"]'
+        assert [r[:5] for r in rows] == [("filename", "minute", agreed, None, 0.9)] * 5
+        assert all(abs(r[5] - 0.7) < 0.01 for r in rows), "each request estimated 0.7 s into its minute"
+        timeline = conn.execute(
+            "SELECT mc.time_precision, mc.local_at - o.local_at, mc.time_supports FROM derived_media_context mc"
+            " JOIN derived_media_occurrence o ON o.file_id = mc.file_id AND o.kind = 'generation'"
+        ).fetchall()
+        assert all(p == "second" and abs(d - 0.7) < 0.01 and '"estimate_inside_claim"' in s for p, d, s in timeline), (
+            "the human timeline reads the refined second; the occurrence keeps the minute claim"
+        )
+        sessions = conn.execute(
+            "SELECT (SELECT count(*) FROM derived_event_file ef WHERE ef.event_id = e.id) FROM derived_event e"
+            " WHERE e.kind = 'generation_session'"
+        ).fetchall()
+        assert sessions == [(5,)], "one session of five, at minute precision"
+        state = context.state(conn)
+        assert state is not None
+        assert state[1] == context.POLICY_VERSION
+        event_id = conn.execute("SELECT id FROM derived_event WHERE kind = 'generation_session'").fetchone()[0]
+        snap = stories.snapshot_event(conn, event_id, NOW + 30 * HOUR)
+        conn.commit()
+        document = stories.load_snapshot(conn, snap.id)
+        member = document["members"][0]["occurrence"]
+        assert member["precision"] == "minute"
+        assert member["supports"] == [
+            "embedded_day",
+            "mtime_finish_consistent",
+            "btime_after_generation",
+            "host_zone_assumed",
+        ]
+        assert member["conflicts"] == []
+        assert member["source_order"] == 1
+        assert member["estimated_at"] is not None
+        assert member["finished_at"] is not None
+        plan = planning.GenerationHistoryPlanner(planning.LexicalPromptSimilarity()).plan(document, snap.sha256)
+        assert plan["subject"]["sequenced"] is True, "minute precision sequences"
+    finally:
+        connect.close(conn)
 
 
 def _library(tmp_path, client, root) -> None:
@@ -336,7 +342,7 @@ def _library(tmp_path, client, root) -> None:
     _drain(client)
 
 
-def test_the_generators_own_order_inside_a_minute_survives_shuffled_file_ids(tmp_path):
+def test_the_generators_own_order_inside_a_minute_survives_shuffled_file_ids(bare, tmp_path):
     """Three requests inside 09:47, counters 001/002/003, deliberately
     scanned so that file ids run the other way: the session's members
     stay in the generator's order, and the counter never changes the
@@ -344,48 +350,48 @@ def test_the_generators_own_order_inside_a_minute_survives_shuffled_file_ids(tmp
     root = tmp_path / "lib"
     root.mkdir()
     start = JULY_18 + 9 * HOUR + 47 * MIN
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        client.post("/roots", json={"path": str(root)})
-        # the files arrive one scan at a time, last request first, so
-        # that file ids run against the generator's counter
-        for counter in (3, 2, 1):
-            _swarm(root, "0947", counter, f"variant {counter}", start + 20 * counter, 18.0)
-            client.post("/roots/1/scan")
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            rows = conn.execute("SELECT id, name FROM file ORDER BY id").fetchall()
-            assert [r[1][:7] for r in rows] == ["0947003", "0947002", "0947001"], "the control: ids run the other way"
-            for file_id, name in rows:
-                ingest.one(conn, file_id, root / name, NOW)
-            conn.commit()
-            ids = {name[:7]: file_id for file_id, name in rows}
-        finally:
-            connect.close(conn)
-        client.post("/jobs/context")
-        client.post("/jobs/events")
-        _drain(client)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            occurrences = conn.execute(
-                "SELECT f.name, o.local_at, o.source_order FROM derived_media_occurrence o"
-                " JOIN file f ON f.id = o.file_id WHERE o.kind = 'generation' ORDER BY o.source_order"
-            ).fetchall()
-            assert [(r[0][:7], r[1], r[2]) for r in occurrences] == [
-                ("0947001", start, 1),
-                ("0947002", start, 2),
-                ("0947003", start, 3),
-            ], "one claimed minute, three orders"
-            members = conn.execute(
-                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
-                " JOIN derived_event e ON e.id = ef.event_id WHERE e.kind = 'generation_session' ORDER BY ef.ordinal"
-            ).fetchall()
-            assert [m[0][:7] for m in members] == ["0947001", "0947002", "0947003"]
-            assert ids["0947001"] > ids["0947003"], "the control: file ids ran the other way"
-        finally:
-            connect.close(conn)
+    client = bare
+    client.post("/roots", json={"path": str(root)})
+    # the files arrive one scan at a time, last request first, so
+    # that file ids run against the generator's counter
+    for counter in (3, 2, 1):
+        _swarm(root, "0947", counter, f"variant {counter}", start + 20 * counter, 18.0)
+        client.post("/roots/1/scan")
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        rows = conn.execute("SELECT id, name FROM file ORDER BY id").fetchall()
+        assert [r[1][:7] for r in rows] == ["0947003", "0947002", "0947001"], "the control: ids run the other way"
+        for file_id, name in rows:
+            ingest.one(conn, file_id, root / name, NOW)
+        conn.commit()
+        ids = {name[:7]: file_id for file_id, name in rows}
+    finally:
+        connect.close(conn)
+    client.post("/jobs/context")
+    client.post("/jobs/events")
+    _drain(client)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        occurrences = conn.execute(
+            "SELECT f.name, o.local_at, o.source_order FROM derived_media_occurrence o"
+            " JOIN file f ON f.id = o.file_id WHERE o.kind = 'generation' ORDER BY o.source_order"
+        ).fetchall()
+        assert [(r[0][:7], r[1], r[2]) for r in occurrences] == [
+            ("0947001", start, 1),
+            ("0947002", start, 2),
+            ("0947003", start, 3),
+        ], "one claimed minute, three orders"
+        members = conn.execute(
+            "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+            " JOIN derived_event e ON e.id = ef.event_id WHERE e.kind = 'generation_session' ORDER BY ef.ordinal"
+        ).fetchall()
+        assert [m[0][:7] for m in members] == ["0947001", "0947002", "0947003"]
+        assert ids["0947001"] > ids["0947003"], "the control: file ids ran the other way"
+    finally:
+        connect.close(conn)
 
 
-def test_a_claim_the_generator_disputes_with_itself_is_recorded_and_never_sequenced(tmp_path):
+def test_a_claim_the_generator_disputes_with_itself_is_recorded_and_never_sequenced(bare, tmp_path):
     """A stamped name whose embedded day contradicts it: the conflict
     is frozen on the occurrence, the stamp stands as the claim, and
     the session grouper leaves the file out rather than lending a
@@ -396,22 +402,22 @@ def test_a_claim_the_generator_disputes_with_itself_is_recorded_and_never_sequen
     for i in range(3):
         _swarm(root, "0947", i + 1, f"clean {i}", start + 20 * (i + 1), 18.0)
     _swarm(root, "", 9, "disputed", start + 90, 18.0, name="20260718T094730009-aaaaaaaa-qwen.png", day="2026-07-19")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
-        _library(tmp_path, client, root)
-        conn = connect.connect(client.app.state.db_path)
-        try:
-            disputed = conn.execute(
-                "SELECT o.time_precision, o.local_at, o.conflicts FROM derived_media_occurrence o"
-                " JOIN file f ON f.id = o.file_id WHERE f.name LIKE '20260718T%' AND o.kind = 'generation'"
-            ).fetchone()
-            assert disputed[0] == "second"
-            assert disputed[1] == start + 30, "the stamp stands"
-            assert json.loads(disputed[2])[0].startswith("generator: ")
-            members = conn.execute(
-                "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
-                " JOIN derived_event e ON e.id = ef.event_id WHERE e.kind = 'generation_session'"
-            ).fetchall()
-            assert len(members) == 3
-            assert not any(m[0].startswith("20260718T") for m in members), "recorded, not sequenced"
-        finally:
-            connect.close(conn)
+    client = bare
+    _library(tmp_path, client, root)
+    conn = connect.connect(client.app.state.db_path)
+    try:
+        disputed = conn.execute(
+            "SELECT o.time_precision, o.local_at, o.conflicts FROM derived_media_occurrence o"
+            " JOIN file f ON f.id = o.file_id WHERE f.name LIKE '20260718T%' AND o.kind = 'generation'"
+        ).fetchone()
+        assert disputed[0] == "second"
+        assert disputed[1] == start + 30, "the stamp stands"
+        assert json.loads(disputed[2])[0].startswith("generator: ")
+        members = conn.execute(
+            "SELECT f.name FROM derived_event_file ef JOIN file f ON f.id = ef.file_id"
+            " JOIN derived_event e ON e.id = ef.event_id WHERE e.kind = 'generation_session'"
+        ).fetchall()
+        assert len(members) == 3
+        assert not any(m[0].startswith("20260718T") for m in members), "recorded, not sequenced"
+    finally:
+        connect.close(conn)

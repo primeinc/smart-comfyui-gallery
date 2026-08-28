@@ -17,17 +17,21 @@ import pathlib
 import pytest
 
 from db import connect, scan
-from tests.staging import NOW
+from tests.staging import NOW, fresh_schema
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 
 @pytest.fixture
 def library(tmp_path):
-    """An empty database and an empty directory, wired to each other."""
-    conn = connect.memory()
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA foreign_keys=ON")
+    """An empty database and an empty directory, wired to each other.
+
+    The schema comes from the per-process master: reading the DDL and
+    running `executescript` is ~11 ms and a backup is ~0.5 ms
+    (tests/staging.py `fresh_schema`, whose measurements these are), and
+    twenty tests here started by re-reading the same file.
+    """
+    conn = fresh_schema()
     root = tmp_path / "library"
     root.mkdir()
     conn.execute(

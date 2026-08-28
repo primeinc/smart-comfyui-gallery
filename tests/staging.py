@@ -32,17 +32,57 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import hashlib
+import os
 import pathlib
+import shutil
 import sqlite3
+import tempfile
+import typing
 from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 
-from litestar.testing import TestClient
-
 from db import connect, when
-from sg_web.app import build_app
+
+#: The application and the client that drives it are imported by the two
+#: functions that build a world, not here.
+#:
+#: `tests/conftest.py` imports this module, so every module in the suite
+#: pays whatever this line does -- and importing `sg_web.app` and
+#: `litestar.testing` is 0.6s of the 0.95s that conftest import costs.
+#: Ninety of these modules never stage anything and were paying it to
+#: reach a function they do not call. The world builders pay the same
+#: total; it simply lands inside the fixture that wanted an application.
+#: Every other mention here is an annotation, and
+#: `from __future__ import annotations` leaves those as strings.
+#:
+#: Measured on the wall clock, which is where this lives -- pytest's own
+#: "passed in Xs" does not count a conftest import at all, so it showed
+#: none of it: test_a_table_column_orders_the_answer 2366ms -> 1537ms,
+#: test_metaparse 2428ms -> 1744ms, test_schema_contract 3378ms ->
+#: 2573ms. Modules that DO stage are unchanged (3004 -> 3036, 6631 ->
+#: 6720); they pay the same import, only inside the fixture that wanted
+#: it, where it is at least visible.
+if typing.TYPE_CHECKING:
+    from litestar.testing import TestClient
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
+
+#: How often a wait-for-work loop asks again, in seconds.
+#:
+#: GRANULARITY, not a margin. Every loop that uses it ends the moment the
+#: row it is watching is terminal, so the interval is only ever overshoot
+#: past work that has ALREADY finished -- and a test that drains several
+#: jobs pays it once per job. It was 0.05 in fourteen hand-written copies
+#: of the same loop and 0.02 here; at 0.01, measured twice each,
+#: `test_a_per_item_failure_shows_its_exact_recorded_error` went 1.15s ->
+#: 0.67s/0.72s and `test_the_end_of_the_answer_is_the_end` 1.15s ->
+#: 0.77s/0.77s.
+#:
+#: Not smaller: each turn is a real request against the run being waited
+#: on, so the poll competes with the server it is watching. A hundredth
+#: is a few percent of one thread; a thousandth would be spinning on it.
+POLL = 0.01
 
 #: The suite's fixed clock. It was declared, identically, in 38 test
 #: modules; a fixture clock is one fact about the whole suite.
@@ -111,6 +151,85 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     return conn
 
 
+@functools.cache
+def _built_master() -> pathlib.Path:
+    """One built database, on disk, closed -- kept ACROSS processes.
+
+    `build.build` writes the schema, stamps the version and runs
+    whatever else a fresh database needs; doing that is 67.7 ms
+    (measured) and copying the closed file it produced is 1.6 ms. It was
+    a per-process temporary, so every module that stages a world paid
+    the 67.7 ms again -- and the suite is read one module at a time.
+
+    Named for what determines it, and nothing else. `build.build` is
+    `connect(path)`, `executescript(schema_sql())`, and a check that the
+    DDL's own PRAGMAs match this build (db/build.py:130-166), so the
+    artifact is a function of `db/schema.sql` and `db/connect.py` --
+    the DDL, the pragmas that connection applies, and the USER_VERSION
+    and APPLICATION_ID it is checked against. Either file changing is a
+    different digest and a fresh build, which is also what re-runs that
+    check.
+
+    Under `.pytest_cache` beside the other cross-run masters, so
+    `--cache-clear` reaches it.
+    """
+    from db import build
+
+    stamp = hashlib.sha256()
+    here = pathlib.Path(__file__).resolve().parent.parent
+    for one in ("db/schema.sql", "db/connect.py"):
+        stamp.update((here / one).read_bytes())
+    where = here / ".pytest_cache" / "built-master"
+    where.mkdir(parents=True, exist_ok=True)
+    master = where / f"master-{stamp.hexdigest()[:16]}.db"
+    if not master.exists():
+        # Built under a name of its own and moved on: `build.build`
+        # refuses to overwrite a database holding rows, and a run that
+        # dies mid-executescript must not leave a half-written file for
+        # the next one to copy as a database.
+        building = where / f"{master.stem}.{os.getpid()}.building"
+        build.build(building)
+        os.replace(building, master)
+    return master
+
+
+def seeded(home: pathlib.Path) -> pathlib.Path:
+    """The home's database put there by COPY, before `build_app` looks.
+
+    `build_app` creates a database it does not find with `connect.create`
+    -- `connect(path)` and then executescript of the whole DDL, ~60 ms.
+    `db.build.build`, which `_built_master` runs, IS that executescript
+    plus a check that the DDL's own stamps match this build: same
+    objects, same pragmas, no extra rows, which is why `fresh_db`
+    already hands these copies out as real databases. Copying is ~2 ms.
+
+    Worth it from the SECOND world in a process: the master costs one
+    `build` to make, so a module that stages one world pays exactly what
+    it saves (measured: 0.41s -> 0.42s on a single-world module) and one
+    that stages three stops paying twice.
+
+    `build_app` then takes its other branch and calls `migrate.migrate`,
+    which reads a current `user_version` and has nothing to do; the
+    create branch keeps its coverage from every test that boots an
+    application over a genuinely empty home.
+    """
+    home.mkdir(parents=True, exist_ok=True)
+    where = home / "gallery.db"
+    shutil.copy(_built_master(), where)
+    return where
+
+
+def fresh_db(path) -> sqlite3.Connection:
+    """A REAL FILE holding the current schema, foreign keys on.
+
+    For the claims :memory: cannot carry -- anything reading
+    `PRAGMA data_version`, taking a second connection, or proving what a
+    restore does -- where `fresh_schema` would be the wrong shape rather
+    than merely a faster one."""
+    shutil.copy(_built_master(), path)
+    return connect.connect(str(path))
+
+
 def settled(client: TestClient, job_id: int, timeout: float = 120.0) -> str:
     """ONE job's terminal state, read off its row. The feed carries every
     job's deltas, so a reader that takes the first terminal state it
@@ -128,7 +247,7 @@ def settled(client: TestClient, job_id: int, timeout: float = 120.0) -> str:
         if state in ("done", "failed", "cancelled"):
             return state
         assert time.monotonic() < deadline, f"job {job_id} still {state} after {timeout}s"
-        time.sleep(0.02)
+        time.sleep(POLL)
 
 
 def _snapshot_dir() -> pathlib.Path:
@@ -138,26 +257,59 @@ def _snapshot_dir() -> pathlib.Path:
     return cache_dir
 
 
+def _scanned(root: pathlib.Path) -> list[tuple[pathlib.Path, tuple[int, int]]]:
+    """(path, (size, mtime_ns)) for every regular file under `root`.
+
+    Through `os.scandir`, which on Windows carries the size and the times
+    out of the directory read itself -- `rglob` then `stat()` throws that
+    away and pays a syscall per file, which over a corpus of thousands is
+    most of the cache probe it exists to make cheap."""
+    found: list[tuple[pathlib.Path, tuple[int, int]]] = []
+    stack = [root]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(pathlib.Path(entry.path))
+                    elif entry.is_file(follow_symlinks=False):
+                        held = entry.stat()
+                        found.append((pathlib.Path(entry.path), (held.st_size, held.st_mtime_ns)))
+        except OSError:  # vanished, or never readable
+            continue
+    return found
+
+
+@functools.cache
 def _corpus_key(corpus: pathlib.Path) -> str:
     """The honest cache key: the corpus listing (name, size, mtime) AND
     the exact bytes of every module of db/, metaparse/ and vision/,
     enumerated through the import system (pkgutil + find_spec, nothing
     executed) -- which is what those packages ARE to any derivation over
     the corpus. Any edit rekeys; a stale constant can never vouch for
-    new code."""
+    new code.
+
+    Cached per process for the same reason `_code_key` is: walking the
+    sourced corpus is ~1 s, no test writes into it, and probing three
+    cached constants was costing three walks to save none."""
     import hashlib
 
     from db import library
 
     key = hashlib.sha256()
-    for entry in sorted(corpus.rglob("*")):
-        # The root marker is the APPLICATION's writing -- registering
-        # the corpus as a root re-stamps it on every build, and keying
-        # on it made every run see a "changed corpus" and rebuild the
-        # 11-second constant forever.
-        if entry.is_file() and entry.name != library.MARKER:
-            stat = entry.stat()
-            key.update(f"{entry.relative_to(corpus)}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+    if corpus.is_file():
+        # A single frozen file is a corpus of one.
+        held = corpus.stat()
+        key.update(f"{corpus.name}|{held.st_size}|{held.st_mtime_ns}\n".encode())
+    else:
+        for path, held in sorted(_scanned(corpus)):
+            # The root marker is the APPLICATION's writing -- registering
+            # the corpus as a root re-stamps it on every build, and keying
+            # on it made every run see a "changed corpus" and rebuild the
+            # 11-second constant forever.
+            if path.name == library.MARKER:
+                continue
+            key.update(f"{path.relative_to(corpus)}|{held[0]}|{held[1]}\n".encode())
     key.update(_code_key().encode())
     return key.hexdigest()[:16]
 
@@ -209,7 +361,30 @@ def corpus_measurement(corpus: pathlib.Path, name: str, measure: Callable[[], st
     return text
 
 
-def migrated(path: pathlib.Path, target: int | None = None) -> list[int]:
+def cached_capture(path: pathlib.Path, *, video: bool = False):
+    """`capture.read(path)` (or `read_video`), cached across runs keyed
+    on the file's identity and the reader packages' exact bytes -- one
+    real maker-note parse per (bytes, code), the same contract the reach
+    trace and the decode sweep already carry. Binaries ride as hex;
+    params come back as the tuples the dataclass holds."""
+    import dataclasses
+    import json
+
+    from db import capture
+
+    def measure() -> str:
+        read = capture.read_video if video else capture.read
+        held = dataclasses.asdict(read(path))
+        held["binaries"] = [[slot, blob.hex()] for slot, blob in held["binaries"]]
+        return json.dumps(held)
+
+    told = json.loads(corpus_measurement(path, f"capture-{'clip-' if video else ''}{path.stem}", measure))
+    told["binaries"] = [(slot, bytes.fromhex(blob)) for slot, blob in told["binaries"]]
+    told["params"] = [tuple(one) for one in told["params"]]
+    return capture.Capture(**told)
+
+
+def migrated(path: pathlib.Path, target: int | None = None, *, name: str = "step") -> list[int]:
     """`migrate.migrate(path)`, cached across runs.
 
     Replaying thirty shipped steps over an unchanged fixture with
@@ -243,13 +418,17 @@ def migrated(path: pathlib.Path, target: int | None = None) -> list[int]:
         src.close()
     key.update(str(target).encode())
     key.update(_code_key().encode())
-    stem = f"migrated-{key.hexdigest()[:16]}"
+    stem = f"migrated-{name}-{key.hexdigest()[:16]}"
     held_db = _snapshot_dir() / f"{stem}.db"
     held_steps = _snapshot_dir() / f"{stem}.json"
     if held_db.exists() and held_steps.exists():
         print(f"migration snapshot HIT {held_db.name}")
         shutil.copyfile(held_db, path)
         return json.loads(held_steps.read_text(encoding="utf-8"))
+    # One snapshot per site: a drifting key would otherwise grow orphans
+    # forever, and the count of evictions is the drift made visible.
+    for stale in _snapshot_dir().glob(f"migrated-{name}-*"):
+        stale.unlink()
     print(f"migration snapshot BUILD {held_db.name}")
     applied = migrate.migrate(path) if target is None else migrate.migrate(path, target=target)
     shutil.copyfile(path, held_db)
@@ -280,7 +459,6 @@ def corpus_snapshot(corpus: pathlib.Path, build: Callable[[pathlib.Path], pathli
     the database path; the snapshot is a copy of that file.
     """
     import shutil
-    import tempfile
 
     cache_dir = _snapshot_dir()
     target = cache_dir / f"{corpus.name}-{_corpus_key(corpus)}.db"
@@ -341,9 +519,19 @@ class Holding:
 
 
 def _listing(root: pathlib.Path) -> dict[pathlib.Path, tuple[int, int]]:
-    return {
-        p.relative_to(root): (p.stat().st_size, p.stat().st_mtime_ns) for p in sorted(root.rglob("*")) if p.is_file()
-    }
+    """The library as it stands, by size and mtime.
+
+    Through `_scanned`, which reads sizes and times out of the directory
+    enumeration rather than paying a `stat()` per file -- the same
+    saving, for the same reason, as the corpus probe above. This one is
+    paid harder: EVERY test in a staged module walks the library here,
+    so a hundred-test module walked it a hundred times.
+
+    Unsorted, because the answer is a dict and nothing reads it in order;
+    `sorted()` over the paths was ordering a thing that is then thrown
+    away.
+    """
+    return {path.relative_to(root): held for path, held in _scanned(root)}
 
 
 @dataclass
@@ -358,6 +546,10 @@ class Stage:
     template: pathlib.Path
     library: dict[pathlib.Path, tuple[int, int]]
     held: dict = field(default_factory=dict)
+    #: Whether `restore` empties the thumbnail cache. A module with a
+    #: test about first renders needs it gone; one whose tests only read
+    #: the steady state pays a re-render per test for nothing.
+    wipes_thumbs: bool = True
     rebuilds: int = 0
     _rebuild: Callable[[], Stage] | None = None
     #: An idle reader whose only job is `PRAGMA data_version`: the value
@@ -366,6 +558,16 @@ class Stage:
     #: through the app's connections, never this one. It must never
     #: write -- its own changes are the one thing the pragma omits.
     _monitor: sqlite3.Connection | None = None
+    #: The snapshot, held open READ-ONLY as the backup's source. It is
+    #: the same bytes for every restore in the module, and opening it
+    #: again per test is a second connection's worth of PRAGMAs on the
+    #: hot path -- a hundred-test module pays that a hundred times.
+    #: Re-opened after a rebuild, which writes a new template.
+    _frozen: sqlite3.Connection | None = None
+    #: The backup's DESTINATION, held open for the same reason. It is
+    #: not in a transaction between restores, so it holds no lock and
+    #: the application's own connections write as they always did.
+    _into: sqlite3.Connection | None = None
     _seen_version: int | None = None
 
     def _data_version(self) -> int:
@@ -373,13 +575,35 @@ class Stage:
             self._monitor = connect.connect(self.db, read_only=True)
         return self._monitor.execute("PRAGMA data_version").fetchone()[0]
 
-    def close_monitor(self) -> None:
-        if self._monitor is not None:
-            self._monitor.close()
-            self._monitor = None
+    def _from_template(self) -> sqlite3.Connection:
+        if self._frozen is None:
+            self._frozen = connect.connect(self.template, read_only=True)
+        return self._frozen
+
+    def _into_db(self) -> sqlite3.Connection:
+        if self._into is None:
+            self._into = connect.connect(self.db)
+        return self._into
+
+    def close_held(self) -> None:
+        """End every connection the Stage keeps across tests.
+
+        Three of them, all for the same reason: opening one costs a
+        round of PRAGMAs, and a hundred-test module would pay that a
+        hundred times per connection. They belong to the module, so
+        this is the module's teardown.
+        """
+        for held in (self._monitor, self._frozen, self._into):
+            if held is not None:
+                held.close()
+        self._monitor = self._frozen = self._into = None
 
     def snapshot(self) -> None:
         """Freeze the database and the library's identity as they are."""
+        # The held reader is on the template about to be replaced.
+        if self._frozen is not None:
+            self._frozen.close()
+            self._frozen = None
         src = connect.connect(self.db)
         try:
             with contextlib.suppress(FileNotFoundError):
@@ -400,13 +624,19 @@ class Stage:
         The thumbnail cache is content-keyed and safe to delete whole
         (sg_web/home.py), and a test about first renders needs it gone."""
         thumbs = self.home / "thumbs"
-        if thumbs.exists():
-            for cached in thumbs.rglob("*"):
-                if cached.is_file():
-                    cached.unlink()
+        if self.wipes_thumbs:
+            # Through `_scanned`, which already knows which entries are
+            # files from the directory read. `rglob` then `is_file()` asks
+            # the filesystem again per entry, and this runs before every
+            # test in the module -- over a cache that grows as the module
+            # renders more of them. It also needs no `exists()` first:
+            # scandir on a directory that is not there is the same
+            # OSError it already steps over.
+            for cached, _held in _scanned(thumbs):
+                cached.unlink(missing_ok=True)
         if _listing(self.root) != self.library:
             assert self._rebuild is not None
-            self.close_monitor()
+            self.close_held()
             fresh = self._rebuild()
             self.__dict__.update(fresh.__dict__)
             self.rebuilds += 1
@@ -420,20 +650,94 @@ class Stage:
         # leaked still holds the -wal open on Windows, and the backup
         # writes the destination through its own pager with such
         # connections present (sqlite3.rst: backup into a live database).
-        src = connect.connect(self.template, read_only=True)
-        try:
-            dst = connect.connect(self.db)
-            try:
-                src.backup(dst)
-            finally:
-                connect.close(dst)
-        finally:
-            src.close()
+        self._from_template().backup(self._into_db())
         # The backup itself is another connection's write; rebase on it.
         self._seen_version = self._data_version()
 
     def conn(self) -> sqlite3.Connection:
         return connect.connect(self.db)
+
+
+def _rebuilt_none(name: str, stage: Stage, allowed: int) -> None:
+    """A staged module that rebuilt its world paid for it, silently.
+
+    `restore` compares the library by (size, mtime) and, when it differs,
+    throws the whole world away: a fresh application, library, scan and
+    setup. That is the right answer -- a file that is gone cannot be put
+    back as the same file -- but the 0.3s lands on the SETUP of whichever
+    test happens to run next, not on the test that moved the file. It
+    reads as an innocent test being slow, which is why three modules
+    carried one unnoticed.
+
+    So the count is asserted rather than merely kept. A test that changes
+    the library on disk has three honest endings, and the message names
+    them: put the file back (`os.utime` restores a stamp and `os.replace`
+    a name, neither rewriting bytes, so identity survives), remove what
+    it added, or run last so nothing follows it to pay.
+
+    `rebuilds` on `staged`/`hosting` is the fourth ending, for the case
+    where none of those is available: a test that REMOVES a file cannot
+    put it back -- the identity a rescan reads is not in the bytes -- and
+    moving it last is only free when its position is not part of what it
+    proves. `test_events_are_grouping_hypotheses` is both: the departure
+    test deletes, and it fails when moved, because the tests around it
+    are a sequence about one library shrinking. So that module declares
+    its one rebuild rather than hiding it, and the number still has to be
+    exact -- a second one is a regression this catches.
+    """
+    if stage.rebuilds != allowed:
+        raise AssertionError(
+            f"the staged world for {name!r} was rebuilt {stage.rebuilds} time(s), not the {allowed} it declares:"
+            " a test changed the library on disk and left it changed, so the NEXT test paid a whole fresh"
+            " application, library and scan in its setup. Put the library back at the end of that test, move"
+            " the test last, or -- if it deletes and its position is load-bearing -- pass `rebuilds=` and say why."
+        )
+
+
+@contextlib.contextmanager
+def hosting(tmp_path_factory, name: str, *, worker: bool = False, rebuilds: int = 0) -> Generator[Stage]:
+    """A module-scoped application over an EMPTY home: no root, no
+    library. For modules whose tests each register their own root over
+    their own tmp files -- one boot per module instead of one per test,
+    a restore between tests, and `/roots` numbering starts at 1 for
+    every test because the snapshot holds none."""
+    from litestar.testing import TestClient
+
+    from sg_web.app import build_app
+
+    opened: list[TestClient] = []
+    built: list[Stage] = []
+
+    def build() -> Stage:
+        base = tmp_path_factory.mktemp(name)
+        home = base / "run"
+        seeded(home)
+        client = TestClient(app=build_app(str(home), worker=worker))
+        client.__enter__()
+        opened.append(client)
+        stage = Stage(
+            client=client,
+            home=home,
+            root=base / "lib",
+            db=pathlib.Path(client.app.state.db_path),
+            template=base / "template.db",
+            library={},
+        )
+        stage._rebuild = build
+        stage.root.mkdir(exist_ok=True)
+        stage.snapshot()
+        built.append(stage)
+        return stage
+
+    first = build()
+    try:
+        yield first
+    finally:
+        for stage in built:
+            stage.close_held()
+        for client in reversed(opened):
+            client.__exit__(None, None, None)
+        _rebuilt_none(name, first, rebuilds)
 
 
 @contextlib.contextmanager
@@ -444,10 +748,16 @@ def staged(
     setup: Callable[[Stage], None] | None = None,
     *,
     worker: bool = False,
+    keep_thumbs: bool = False,
+    rebuilds: int = 0,
 ) -> Generator[Stage]:
     """A module-scoped world. `write_library(root)` puts the media on
     disk; `setup(stage)` does the module's once-only preparation through
     the client or a connection; the result is snapshotted and yielded."""
+    from litestar.testing import TestClient
+
+    from sg_web.app import build_app
+
     opened: list[TestClient] = []
     built: list[Stage] = []
 
@@ -457,6 +767,7 @@ def staged(
         root.mkdir()
         write_library(root)
         home = base / "run"
+        seeded(home)
         client = TestClient(app=build_app(str(home), worker=worker))
         client.__enter__()
         opened.append(client)
@@ -467,6 +778,7 @@ def staged(
             db=pathlib.Path(client.app.state.db_path),
             template=base / "template.db",
             library={},
+            wipes_thumbs=not keep_thumbs,
         )
         stage._rebuild = build
         client.post("/roots", json={"path": str(root)})
@@ -483,10 +795,12 @@ def staged(
         built.append(stage)
         return stage
 
+    first = build()
     try:
-        yield build()
+        yield first
     finally:
         for stage in built:
-            stage.close_monitor()
+            stage.close_held()
         for client in reversed(opened):
             client.__exit__(None, None, None)
+        _rebuilt_none(name, first, rebuilds)

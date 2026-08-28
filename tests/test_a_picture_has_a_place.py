@@ -10,15 +10,33 @@ opens a gallery link through the `place.id` facet.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
-from litestar.testing import TestClient
 from PIL import Image
 
 from db import connect, runner
-from sg_web.app import build_app
-from tests.staging import HOUR, JUNE_10
+from tests.staging import HOUR, JUNE_10, hosting
 
 AS_MACHINE = {"accept": "application/json"}
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "places") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application per module instead of one boot per test (ten
+    boots at ~170ms were this file's floor). Every test still registers
+    its own root over its own tmp files; the restore hands the next one
+    a virgin library, so `/roots/1` stays true in each. Tests keep their
+    `with ... as client:` shape through nullcontext -- the world is the
+    module's; only the lease is per-test."""
+    _world.restore()
+    return _world.client
 
 
 def _drain(client) -> None:
@@ -53,12 +71,12 @@ def _slugs(client) -> list[str]:
         connect.close(conn)
 
 
-def test_a_person_says_where_and_the_library_holds_it(tmp_path):
+def test_a_person_says_where_and_the_library_holds_it(tmp_path, served):
     root = tmp_path / "lib"
     root.mkdir()
     for i in range(3):
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         client.post("/jobs/ingest")
@@ -160,7 +178,7 @@ def test_a_person_says_where_and_the_library_holds_it(tmp_path):
         assert client.post(f"/i/{c}/place", json={"name": "Mars", "kind": "planet"}).status_code == 400
 
 
-def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
+def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path, served):
     """A session's place is the one place its placed members agree on;
     members nobody placed do not veto, two places do."""
     import os
@@ -172,7 +190,7 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
         path = root / f"Screenshot 2023-06-10 at 14.{i * 5:02d}.00.png"
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(path)
         os.utime(path, (at + i * 300, at + i * 300))
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         client.post("/jobs/ingest")
@@ -217,11 +235,11 @@ def test_a_session_is_somewhere_when_its_placed_members_agree(tmp_path):
         assert 'data-total="2"' in link
 
 
-def test_the_lightbox_says_where_too(tmp_path):
+def test_the_lightbox_says_where_too(tmp_path, served):
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         [slug] = _slugs(client)
@@ -234,7 +252,7 @@ def test_the_lightbox_says_where_too(tmp_path):
         assert ">Porto</button>" in part
 
 
-def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
+def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path, served):
     """`/timeline?folder=lib`, `?kind=image`, `?person=...`: the same
     question the gallery answers, as the surface's scope; its links are
     that question plus a moment; a rule-defined album is refused and a
@@ -243,7 +261,7 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
     (root / "deep").mkdir(parents=True)
     for i in range(3):
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / (f"p{i}.png" if i < 2 else "deep/p2.png"))
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         client.post("/jobs/ingest")
@@ -281,7 +299,7 @@ def test_the_timeline_takes_any_gallery_question_as_its_scope(tmp_path):
         assert "data-folder-timeline" in client.get("/f/deep", headers={"accept": "text/html"}).text
 
 
-def test_a_place_can_be_within_another(tmp_path):
+def test_a_place_can_be_within_another(tmp_path, served):
     """ "Lisbon within Portugal": the parent is found or minted the same
     way, a bare Lisbon said later to be within Portugal gains the parent
     rather than a twin, the page spells the chain, the shelf says
@@ -290,7 +308,7 @@ def test_a_place_can_be_within_another(tmp_path):
     root.mkdir()
     for i in range(2):
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         a, b = _slugs(client)
@@ -339,7 +357,7 @@ def test_two_lisbons_cannot_be_minted(tmp_path):
     assert conn.execute("SELECT count(*) FROM place WHERE name = 'Lisbon'").fetchone()[0] == 1
 
 
-def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
+def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch, served):
     """The bulk write re-interprets every selected file in ONE pass -- one
     read of the folder tree -- not one rebuild per file inside the
     writer lane."""
@@ -357,7 +375,7 @@ def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
     root.mkdir()
     for i in range(4):
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         page = client.get("/g", params={"folder": "lib"}).text
@@ -379,7 +397,7 @@ def test_placing_a_selection_re_interprets_in_one_pass(tmp_path, monkeypatch):
             assert client.get(f"/i/{slug}", headers=AS_MACHINE).json()["where"]["name"] == "Porto"
 
 
-def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
+def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path, served):
     """The links this product grew carry facets; the bulk writes and the
     picture page must prove and walk THAT question, or a selection made
     on a place's link 409s forever and a picture opened from it walks
@@ -390,7 +408,7 @@ def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
     root.mkdir()
     for i in range(3):
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         client.post("/jobs/ingest")
@@ -424,11 +442,11 @@ def test_a_faceted_gallery_can_be_curated_and_walked(tmp_path):
         assert "place.id" in walked["context"]["qs"]
 
 
-def test_a_sweep_takes_its_weights_from_the_setting_never_the_body(tmp_path):
+def test_a_sweep_takes_its_weights_from_the_setting_never_the_body(tmp_path, served):
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         for route in ("/jobs/faces", "/jobs/annotate"):
@@ -450,11 +468,11 @@ def test_a_sweep_takes_its_weights_from_the_setting_never_the_body(tmp_path):
         assert all("somewhere" not in one for one in dirs), dirs
 
 
-def test_a_place_within_itself_is_refused_not_a_500(tmp_path):
+def test_a_place_within_itself_is_refused_not_a_500(tmp_path, served):
     root = tmp_path / "lib"
     root.mkdir()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(root / "p.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         (a,) = _slugs(client)
@@ -475,12 +493,12 @@ def test_a_place_within_itself_is_refused_not_a_500(tmp_path):
         assert sorted(p["name"] for p in shelf) == ["Lisbon", "Portugal"], "a refusal mints nothing"
 
 
-def test_a_bare_mention_of_two_placed_twins_is_ambiguous(tmp_path):
+def test_a_bare_mention_of_two_placed_twins_is_ambiguous(tmp_path, served):
     root = tmp_path / "lib"
     root.mkdir()
     for i in range(2):
         Image.new("RGB", (8, 8), (30 * i, 40, 50)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         client.post("/roots", json={"path": str(root)})
         client.post("/roots/1/scan")
         a, b = _slugs(client)

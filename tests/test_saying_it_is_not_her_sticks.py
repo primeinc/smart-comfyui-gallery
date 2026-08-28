@@ -23,17 +23,33 @@ on, and the test that pins it is the one that re-runs the clustering.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 
 import numpy as np
 import pytest
 
 from db import authored, derived
-from tests.staging import NOW, fresh_schema
+from tests.staging import NOW, fresh_schema, hosting
 
 pytestmark = pytest.mark.slow
 
 MODEL = ("m", "1")
+
+
+@pytest.fixture(scope="module")
+def _world(tmp_path_factory):
+    with hosting(tmp_path_factory, "test_saying_it_is_not_her_sticks") as stage:
+        yield stage
+
+
+@pytest.fixture
+def served(_world):
+    """One application for every served claim in this file. Each test
+    writes its own pictures and registers them as root 1 over a restored
+    empty home."""
+    _world.restore()
+    return _world.client
 
 
 @pytest.fixture
@@ -262,23 +278,21 @@ def test_denying_a_FACE_refuses_the_cluster_that_holds_it(library):
 # --- and it is sayable from the page ----------------------------------------
 
 
-def test_the_page_offers_the_correction_beside_the_name(tmp_path):
+def test_the_page_offers_the_correction_beside_the_name(tmp_path, served):
     """The button, and where it is. This is where somebody is already
     looking at "Hannah" over a picture that is not Hannah -- the value
     of a denial is that it is said once and holds, so it must not be a
     page you have to go and find."""
     import time as clock
 
-    from litestar.testing import TestClient
     from PIL import Image
 
     from db import connect, naming
-    from sg_web.app import build_app
 
     root = tmp_path / "pics"
     root.mkdir()
     Image.new("RGB", (16, 12), (30, 90, 140)).save(root / "one.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)
@@ -327,7 +341,7 @@ def test_the_page_offers_the_correction_beside_the_name(tmp_path):
         assert f'data-person-deny="{person_slug[1]}"' not in again, "the name is still on the picture"
 
 
-def test_the_persons_own_page_offers_it_over_every_picture(tmp_path):
+def test_the_persons_own_page_offers_it_over_every_picture(tmp_path, served):
     """And it is sayable from the page where the wrong picture is SEEN.
 
     The claim has been makeable since it existed, and reachable from
@@ -342,17 +356,15 @@ def test_the_persons_own_page_offers_it_over_every_picture(tmp_path):
     """
     import time as clock
 
-    from litestar.testing import TestClient
     from PIL import Image
 
     from db import connect, naming
-    from sg_web.app import build_app
 
     root = tmp_path / "pics"
     root.mkdir()
     for i in range(3):
         Image.new("RGB", (16, 12), (30 * i, 90, 140)).save(root / f"p{i}.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)
@@ -401,7 +413,7 @@ def test_the_persons_own_page_offers_it_over_every_picture(tmp_path):
             assert f'data-person-picture="{slug}"' in again, "denying one picture took the others too"
 
 
-def test_withdrawing_does_not_put_the_name_back_by_itself(tmp_path):
+def test_withdrawing_does_not_put_the_name_back_by_itself(tmp_path, served):
     """What undo undoes, exactly -- because the page says so and the page
     must be right.
 
@@ -414,16 +426,14 @@ def test_withdrawing_does_not_put_the_name_back_by_itself(tmp_path):
     """
     import time as clock
 
-    from litestar.testing import TestClient
     from PIL import Image
 
     from db import connect, naming
-    from sg_web.app import build_app
 
     root = tmp_path / "pics"
     root.mkdir()
     Image.new("RGB", (16, 12), (30, 90, 140)).save(root / "one.png")
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)
@@ -683,17 +693,14 @@ def test_a_person_cannot_be_merged_into_themselves(library):
         authored.merge_people(library, who, who, 1, NOW)
 
 
-def test_the_person_page_offers_it(tmp_path):
+def test_the_person_page_offers_it(tmp_path, served):
     """Where the split is NOTICED: standing on one of them, looking at
     half their pictures."""
     import time as clock
 
-    from litestar.testing import TestClient
-
     from db import connect, naming
-    from sg_web.app import build_app
 
-    with TestClient(app=build_app(str(tmp_path / "run"), worker=False)) as client:
+    with contextlib.nullcontext(served) as client:
         conn = connect.connect(client.app.state.db_path)
         try:
             who = authored.person(conn, "Hannah", clock.time())
@@ -710,22 +717,19 @@ def test_the_person_page_offers_it(tmp_path):
 # --- and the work a fresh clustering leaves behind --------------------------
 
 
-def _served(tmp_path, howmany: int = 2):
-    """A served library with `howmany` pictures in it."""
-    from litestar.testing import TestClient
+def _served(client, tmp_path, howmany: int = 2):
+    """A library with `howmany` pictures in it, under the module's
+    application."""
     from PIL import Image
-
-    from sg_web.app import build_app
 
     root = tmp_path / "lib"
     root.mkdir()
     for i in range(howmany):
         Image.new("RGB", (16, 12), (10 * i, 90, 140)).save(root / f"p{i}.png")
-    client = TestClient(app=build_app(str(tmp_path / "run"), worker=False))
     return client, root
 
 
-def test_the_people_page_puts_the_unnamed_first_and_names_them_in_place(tmp_path):
+def test_the_people_page_puts_the_unnamed_first_and_names_them_in_place(tmp_path, served):
     """Who is this?
 
     A run mints one placeholder person per group nobody has named, and
@@ -740,8 +744,8 @@ def test_the_people_page_puts_the_unnamed_first_and_names_them_in_place(tmp_path
 
     from db import connect, naming
 
-    client, root = _served(tmp_path)
-    with client:
+    client, root = _served(served, tmp_path)
+    with contextlib.nullcontext(client):
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)
@@ -773,7 +777,7 @@ def test_the_people_page_puts_the_unnamed_first_and_names_them_in_place(tmp_path
         assert f'data-rename="{unnamed[1]}"' in page
 
 
-def test_a_person_with_no_clustered_face_is_not_pointed_at(tmp_path):
+def test_a_person_with_no_clustered_face_is_not_pointed_at(tmp_path, served):
     """`/avatar/<slug>` answers 404 for somebody no run found a face
     for, which is a normal state -- so the index asks before it points
     rather than drawing a broken image on every card."""
@@ -781,8 +785,8 @@ def test_a_person_with_no_clustered_face_is_not_pointed_at(tmp_path):
 
     from db import connect
 
-    client, root = _served(tmp_path, 1)
-    with client:
+    client, root = _served(served, tmp_path, 1)
+    with contextlib.nullcontext(client):
         made = client.post("/roots", json={"path": str(root)}).json()
         client.post(f"/roots/{made['id']}/scan")
         conn = connect.connect(client.app.state.db_path)

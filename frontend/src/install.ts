@@ -115,11 +115,28 @@ export function mountServiceWorker(): void {
       });
     });
   });
+  // Reload only when a NEW version took over, never when the first one
+  // arrives. The same distinction the notice above draws, and for the
+  // same reason: `sw.js` calls `clients.claim()` on activate
+  // (static/sw.js), so the very first visit fires `controllerchange`
+  // with nothing to swap -- the page already holds exactly what the new
+  // worker would serve. Reloading there is a whole second page load
+  // handed to every first-time visitor.
+  //
+  // Read BEFORE the listener, because by the time it fires the
+  // controller is the new one either way; what tells an update from a
+  // first claim is whether there was one to begin with.
+  //
+  // It also put a navigation under the browser suite. One `goto` was
+  // two main-frame navigations with service workers allowed and one
+  // with them blocked (measured), landing at whatever moment activation
+  // finished -- which is what "Execution context was destroyed, most
+  // likely because of a navigation" reads like from a test.
+  const wasControlled = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!refreshing) {
-      refreshing = true;
-      location.reload();
-    }
+    if (!wasControlled || refreshing) return;
+    refreshing = true;
+    location.reload();
   });
 }

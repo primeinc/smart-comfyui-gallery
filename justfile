@@ -62,6 +62,15 @@ prove:
 # .testmondata makes the first run a full one that seeds the database.
 # Selection is a slice, not the proof: this never writes .proven-tree;
 # `just prove` is the only writer.
+#
+# `-p pytest-testmon` is what turns the plugin back on: pytest.ini blocks
+# it for every other run, because loading it costs ~99 ms of the ~950 ms
+# a single-module run spends before its first test, and this is the ONE
+# lane that uses it. An explicit `-p` overrides the `-p no:` in addopts
+# -- verified rather than assumed: with both flags the run prints the
+# same `testmon: changed files: ..., unchanged files: 3` header it
+# prints with the plugin loaded normally, so selection is really
+# running and not a flag being parsed and ignored.
 [doc('Pre-push gate: skip a proven tree, else run the affected slice of the suite')]
 [script]
 prove-push: web::build
@@ -71,7 +80,7 @@ prove-push: web::build
         echo "tree already proven by 'just prove'; nothing to re-derive"
         exit 0
     fi
-    {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile --testmon --testmon-forceselect
+    {{ python }} -m pytest tests/ -m slow -n 4 --dist loadfile -p pytest-testmon --testmon --testmon-forceselect
 
 # The PWA's rasters, drawn from the mark: icons, the iOS splash set,
 # and the install-sheet screenshots photographed off the real app over
