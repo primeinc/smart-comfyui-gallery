@@ -5,8 +5,22 @@
    one :root now. Pretty beside raw, everywhere: a label in the body
    face, the machine's own spelling in mono under it. */
 
+/* The console measures ITSELF.
+   Every breakpoint in here read the viewport, which stopped being the
+   console's width the moment the shell became a 200px rail: at a 1180px
+   window this panel gets 980 and still believed it was wide. The split
+   stayed two-column in a box that could not hold it, and the ledger --
+   382px of fixed columns before the message gets any -- squeezed its
+   message column to nothing and truncated every row to `job 89 · item
+   3727 ·` with the event itself gone.
+
+   A container query asks the right question. It is also correct for the
+   viewer's hidden rail, for a future collapsed one, and for anybody
+   reading this in a window the author never tried. */
 .operations {
   max-width: none;
+  container-type: inline-size;
+  container-name: console;
 }
 .console-head {
   display: flex;
@@ -118,7 +132,7 @@
   gap: 16px;
   align-items: start;
 }
-@media (max-width: 980px) {
+@container console (max-width: 980px) {
   .console-split {
     grid-template-columns: 1fr;
   }
@@ -507,7 +521,7 @@
   grid-template-columns: 1fr minmax(260px, 360px);
   gap: 10px;
 }
-@media (max-width: 980px) {
+@container console (max-width: 980px) {
   .tape-body {
     grid-template-columns: 1fr;
   }
@@ -539,9 +553,15 @@
   padding: 0;
   will-change: transform;
 }
+/* minmax(0, N), not N. Fixed tracks do not shrink: 382px of them in a
+   340px tape left the message column at zero, so every row read
+   `#1121404 09:04:08.76 phase.finished job 89 · item 3727 ·` and
+   stopped -- the four things the reader already knows, and none of the
+   one thing they came for. The identifiers give way first now, and the
+   message keeps what is left. */
 .tape-row {
   display: grid;
-  grid-template-columns: 72px 96px 150px 64px 1fr;
+  grid-template-columns: minmax(0, 72px) minmax(0, 96px) minmax(0, 150px) minmax(0, 64px) minmax(6em, 1fr);
   gap: 0 12px;
   align-items: baseline;
   height: 24px;
@@ -552,12 +572,36 @@
   cursor: pointer;
   border-left: 3px solid transparent;
 }
+/* Under a narrow console the identifiers go, and the event stays.
+   Five columns cannot share 350px: shrinking them all gave
+   `#993 08:56:… job.do… job 5 … done · 36…`, which is five things
+   ellipsised into nothing rather than one thing said. The id, the job
+   and the type are all on the RAW panel the moment a row is selected --
+   and the message text already restates the type in words. */
+@container console (max-width: 620px) {
+  .tape-row {
+    grid-template-columns: minmax(0, 92px) minmax(6em, 1fr);
+    gap: 0 var(--s2);
+  }
+  .tape-id,
+  .tape-type,
+  .tape-job {
+    display: none;
+  }
+}
+
 .tape-row:hover,
 .tape-row[aria-selected="true"] {
   background: color-mix(in srgb, var(--panel) 80%, var(--accent));
 }
 .tape-row[data-severity="warning"] {
   border-left-color: var(--warn);
+}
+/* Every cell clips. A shrinking track whose content will not fold spills
+   over the one beside it, which is how a ledger row turns into a smear. */
+.tape-row > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tape-text {
   overflow: hidden;
