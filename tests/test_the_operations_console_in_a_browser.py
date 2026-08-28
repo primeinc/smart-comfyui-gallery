@@ -86,6 +86,16 @@ def test_a_job_appears_moves_and_settles_without_a_reload(console: Page, live: L
     assert types[-1] == "job.done"
     console.click(f'[data-matrix-job="{job_id}"]')
     console.wait_for_selector(f'[data-inspect-job="{job_id}"][data-state="done"]', timeout=10_000)
+    # Lifecycle, execution and recovery sit behind a fold now -- they are
+    # forensics, read when something is wrong, and they were drawn at the
+    # weight of the progress figure. It opens by itself on a failure, an
+    # expired lease or a cancellation; this job is none of those, and a
+    # closed <details> is not in innerText. Opened rather than asserted
+    # around: what this checks is that the inspector CARRIES every
+    # contract field, not which of them are visible on arrival.
+    console.evaluate(
+        "() => { const d = document.querySelector('[data-inspector-body] .inspect-fine'); if (d) d.open = true; }"
+    )
     body = console.inner_text("[data-inspector-body]")
     for word in ("attempt", "fence", "owner", "heartbeat", "lease", "checkpoint", "cancellation", "payload"):
         assert word in body, word

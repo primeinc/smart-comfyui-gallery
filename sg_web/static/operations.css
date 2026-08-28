@@ -65,8 +65,15 @@
 .small {
   font-size: var(--t-small);
 }
+/* The console keeps two conditions apart and must not spend one colour
+   on both: --warn is the accent, and it means IN BETWEEN -- a cancel
+   requested and not yet settled. --danger means it failed. A failure
+   drawn in the cancelling colour is the console contradicting itself. */
 .warn {
   color: var(--warn);
+}
+.bad {
+  color: var(--danger);
 }
 
 /* --- health strip --------------------------------------------------- */
@@ -444,8 +451,11 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* Was --warn, which this console uses for `cancelling`. The matrix row,
+   the matrix badge and the inspector badge all draw a failure in
+   --danger; this one place drew it amber. */
 .items-state[data-state="failed"] {
-  color: var(--warn);
+  color: var(--danger);
 }
 .items-page + .items-page {
   margin-top: 4px;
@@ -806,4 +816,29 @@ body:not(:has(.ops-panel:target)) .ops-tabs [data-ops-tab="run"] {
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--s3);
+}
+
+/* --- the fine detail --------------------------------------------------
+   Lifecycle, execution and recovery are forensics: attempt, owner,
+   fence, heartbeat, lease, checkpoint. They are what you read when
+   something has gone wrong, and they were drawn at exactly the weight
+   of `3,165 / 3,259` -- nine equal panels in one auto-fit grid, with the
+   two facts a person opens a job for (is it moving, what is it doing)
+   somewhere among them.
+
+   Folded, and open by itself when there IS something wrong. */
+.inspect-fine {
+  grid-column: 1 / -1;
+}
+.inspect-fine > summary {
+  padding: var(--s2) 0;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+.inspect-fine > summary:hover {
+  color: var(--ink);
+}
+.inspect-fine[open] > summary {
+  margin-bottom: var(--s2);
 }

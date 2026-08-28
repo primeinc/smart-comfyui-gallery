@@ -804,7 +804,8 @@
       );
       say("[data-queue-state]", `${o.queue.queued} queued \xB7 ${o.queue.running} running`);
       const oldest = o.queue.oldest_queued_age != null ? `${Math.round(o.queue.oldest_queued_age)}s` : "\u2014";
-      say("[data-queue-raw]", `oldest queued ${oldest} \xB7 settled 24h ${JSON.stringify(o.queue.settled_24h)}`);
+      const settled = Object.entries(o.queue.settled_24h).map(([state, n]) => `${n} ${state}`).join(", ") || "nothing";
+      say("[data-queue-raw]", `oldest queued ${oldest} \xB7 settled 24h ${settled}`);
       say("[data-ledger-state]", `${o.ledger.events.toLocaleString()} events`);
       say("[data-ledger-raw]", `head #${o.ledger.last_id} \xB7 job_event \xB7 never sampled`);
       say("[data-coverage-files]", String(o.coverage.files));

@@ -327,7 +327,15 @@ type LiveReport = components["schemas"]["LiveReport"];
     );
     say("[data-queue-state]", `${o.queue.queued} queued · ${o.queue.running} running`);
     const oldest = o.queue.oldest_queued_age != null ? `${Math.round(o.queue.oldest_queued_age)}s` : "—";
-    say("[data-queue-raw]", `oldest queued ${oldest} · settled 24h ${JSON.stringify(o.queue.settled_24h)}`);
+    // `settled 24h {"done":6}` was a JSON dict rendered to a person.
+    // The health strip is the one thing on this page a reader glances
+    // at rather than studies, and a glance does not parse an object
+    // literal. Same words the server renders on the cold page.
+    const settled =
+      Object.entries(o.queue.settled_24h)
+        .map(([state, n]) => `${n} ${state}`)
+        .join(", ") || "nothing";
+    say("[data-queue-raw]", `oldest queued ${oldest} · settled 24h ${settled}`);
     say("[data-ledger-state]", `${o.ledger.events.toLocaleString()} events`);
     say("[data-ledger-raw]", `head #${o.ledger.last_id} · job_event · never sampled`);
     say("[data-coverage-files]", String(o.coverage.files));

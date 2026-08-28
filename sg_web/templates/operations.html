@@ -47,7 +47,7 @@
       <div class="health-cell" data-health-queue>
         <span class="k">queue</span>
         <span class="v" data-queue-state>{{ overview.queue.queued }} queued · {{ overview.queue.running }} running</span>
-        <code class="raw" data-queue-raw>oldest queued {{ "%.0fs" | format(overview.queue.oldest_queued_age) if overview.queue.oldest_queued_age is not none else "—" }} · settled 24h {{ overview.queue.settled_24h | tojson }}</code>
+        <code class="raw" data-queue-raw>oldest queued {{ "%.0fs" | format(overview.queue.oldest_queued_age) if overview.queue.oldest_queued_age is not none else "—" }} · settled 24h {% for state, n in overview.queue.settled_24h.items() %}{{ n }} {{ state }}{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}</code>
       </div>
       <div class="health-cell" data-health-ledger>
         <span class="k">ledger</span>
