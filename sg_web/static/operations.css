@@ -741,7 +741,7 @@
   padding-right: var(--s2);
   background: transparent;
   border-color: transparent;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 .operations-launch .operations-again:hover {
   background: var(--accent-wash);

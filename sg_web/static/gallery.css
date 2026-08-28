@@ -16,9 +16,17 @@
 
   /* Ink, four tiers. Two was never enough to carry hierarchy, so the
      11/12/13px register had to do it alone and could not.
-     Ratios quoted against --panel-high, the worst case.
+     Ratios against --panel-high, the worst ground.
        ink        12.10:1   ink-2       7.79:1
-       ink-muted   5.17:1   ink-faint   3.56:1  (disabled only) */
+       ink-muted   5.17:1   ink-faint   3.56:1
+
+     ink-faint is under WCAG AA at every size and is NOT for text a
+     person reads. It is for disabled controls, a dot's fill, and a cell
+     that says a thing is unavailable. It had reached the library's file
+     count, the pager, the worker's state, the `again` button and the
+     dates on every card -- content, at 3.9:1 on --panel. Those are
+     ink-muted, which clears AA on both grounds (5.63:1 on --panel,
+     6.24:1 on --ground). */
   --ink: #e8e6df;
   --ink-2: #bdbab1;
   --ink-muted: #9a978d;
@@ -570,7 +578,7 @@ p {
 [data-endless] .pager {
   padding: var(--s5) 0 var(--s6);
   font-size: var(--t-micro);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 [data-endless] .pager a {
   color: var(--ink-muted);
@@ -1251,7 +1259,7 @@ p {
   padding-block: 2px;
 }
 .panel-fine > summary {
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 .panel-fine + .panel-fine {
   border-top-color: transparent;
@@ -1796,13 +1804,13 @@ p {
   font-size: var(--t-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 /* The span it covers, on its own line: it answers a different question
    from the count and reads as noise beside it. */
 .shelf-seen {
   display: block;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 /* One shot fills the frame; several tile it, which is what a model or a
    LoRA needs — no single picture is the thing that made it. */
@@ -1824,7 +1832,7 @@ p {
   font-size: var(--t-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   border: 1px dashed var(--line-strong);
   background: none;
 }
@@ -2328,7 +2336,7 @@ p {
   gap: 2px;
   padding: var(--s1);
   border-radius: var(--radius-sm);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   font-size: var(--t-micro);
   text-decoration: none;
   font-variant-numeric: tabular-nums;
@@ -3920,7 +3928,7 @@ body {
   width: 100%;
   padding-left: calc(15px + var(--s3));
   font-size: var(--t-micro);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
 .shell-machine .dot {
@@ -3940,7 +3948,7 @@ body {
 .shell-held {
   margin: 0;
   font-size: var(--t-micro);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
