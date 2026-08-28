@@ -2225,6 +2225,7 @@ p {
   color: var(--danger);
 }
 
+/* --- the grid cell: what it carries, and picking it ------------------------ */
 .cell-shell {
   position: relative;
 }
@@ -2395,6 +2396,7 @@ p {
 /* Recurring terms: a cloud of ways to narrow, each carrying the count
    of FILES that asked for it. Quieter than the prompt panel above,
    because it is a reading of a convention rather than an identity. */
+/* --- terms: what a word in the question resolved to ------------------------ */
 .term-uses {
   display: flex;
   flex-wrap: wrap;
@@ -2496,6 +2498,7 @@ p {
 /* Duplicate review. Read-only by design, so it is a reading surface:
    the copies, and beside each one what it is FILED under, which is the
    thing that would be lost if the wrong copy went. */
+/* --- duplicates: a group, its copies, and disagreeing with it -------------- */
 .dupe-groups {
   list-style: none;
   margin: 0;
@@ -2640,6 +2643,7 @@ p {
   border-radius: 4px;
 }
 
+/* --- curating an answer: acting on many at once ---------------------------- */
 .curate {
   position: fixed;
   bottom: 14px;
@@ -2687,6 +2691,7 @@ p {
 }
 
 /* the story page: frozen words beside the pictures they are about */
+/* --- a story: its lead, its words, its evidence ---------------------------- */
 .story {
   max-width: 900px;
   margin: 0 auto;
@@ -2883,9 +2888,10 @@ p {
   color: var(--ink-muted);
 }
 
-/* the timeline surface: one axis, one rule beneath it, the window's
-   pictures where they happened. The one display element is the date
-   imprint -- amber tabular figures in a DIN, a film camera's corner stamp. */
+/* --- the timeline surface: the axis and what rides it ------------------
+   One axis, one rule beneath it, the window's pictures where they
+   happened. The one display element is the date imprint: amber tabular
+   figures in a DIN, a film camera's corner stamp. */
 .surface {
   --imprint: #e9a43c;
   --stamp: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif;
@@ -3259,6 +3265,7 @@ p {
 /* the lead is shown WHOLE at its own ratio, never cropped to a band of
    nothing: the preview (1440px) sits centred at up to 420px tall, and the
    same picture, blurred, fills the card behind it */
+/* --- a session, as a card in the river ------------------------------------- */
 .session-lead {
   position: relative;
   display: grid;
@@ -3373,6 +3380,7 @@ p {
   --scrubber: 60px;
   padding-right: calc(var(--scrubber) + 16px);
 }
+/* --- the scrubber: the whole library at the right edge --------------------- */
 .scrubber {
   position: fixed;
   top: 64px;
@@ -3536,6 +3544,7 @@ p {
   font-size: var(--t-body);
   padding: 12px 0;
 }
+/* --- the river of days ----------------------------------------------------- */
 .river-cap {
   display: grid;
   grid-template-columns: 112px 1fr;
@@ -3598,6 +3607,7 @@ p {
   min-width: 0;
 }
 /* the calendar: month sheets, each day its own first picture */
+/* --- the calendar: month sheets and year rows ------------------------------ */
 .calendar {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
@@ -3733,6 +3743,7 @@ p {
    done to it on the right. They were stacked paragraphs -- a link, a
    button and a place list, each on its own line and related to the
    others by nothing but document order. */
+/* --- the detail page: what a thing is, and what can be done to it ---------- */
 .detail-lines {
   display: flex;
   align-items: baseline;
