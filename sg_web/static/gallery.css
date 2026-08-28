@@ -414,7 +414,21 @@ p {
   }
 }
 
-.cell-shell {
+.cell {
+  position: relative;
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+/* The row's item is EITHER the gallery's shell -- which carries a
+   checkbox beside the link -- or, on the album, folder and artifact
+   pages, a bare `.cell` anchor straight in the grid. Both are flex items
+   here. Naming only the shell made those pages lay their images out at
+   full resolution: no height, no basis, thirty-six originals down the
+   page, and a document Chromium refused to screenshot. */
+.cell-shell,
+.grid > .cell {
   position: relative;
   height: var(--row);
   /* basis = the width this picture occupies at the row height; grow
@@ -428,15 +442,9 @@ p {
 /* The final row has nothing to justify against, so it keeps its
    pictures at their true width instead of stretching two files across
    the whole measure. */
-.cell-shell:last-child {
+.cell-shell:last-child,
+.grid > .cell:last-child {
   flex-grow: 0;
-}
-
-.cell {
-  position: relative;
-  display: block;
-  height: 100%;
-  width: 100%;
 }
 
 .cell img {
@@ -1325,11 +1333,17 @@ p {
 }
 
 .detail {
-  padding: 16px;
+  padding: var(--s4);
   max-width: 1100px;
   margin: 0 auto;
   display: grid;
-  gap: 16px;
+  gap: var(--s4);
+}
+/* 1100px is a measure for reading. A folder, an album or an artifact
+   whose body is a wall of pictures is not reading, and the cap left
+   eighty-five pixels of nothing down each side of the grid. */
+.detail:has(> .grid) {
+  max-width: none;
 }
 .detail-media img,
 .detail-media video {
@@ -3370,7 +3384,12 @@ p {
   color: var(--ink-muted);
   padding: 0 0 4px 4px;
 }
-.cell {
+/* Scoped to the sheet. Written as a bare `.cell` this was a second,
+   global definition of the grid's cell -- squaring every picture in the
+   application from a rule about a calendar's day squares, which a
+   justified grid then had to out-specify to lay a row out. A month grid
+   IS squares; a gallery is not. */
+.sheet .cell {
   position: relative;
   aspect-ratio: 1;
   background: var(--panel);
@@ -3378,7 +3397,7 @@ p {
   overflow: hidden;
   display: block;
 }
-.cell.void {
+.sheet .cell.void {
   background: transparent;
 }
 .cell img {
@@ -3465,11 +3484,28 @@ p {
   color: var(--ink-muted);
   font-size: 0.85rem;
 }
+/* One row under the crumbs: what this thing IS on the left, what can be
+   done to it on the right. They were stacked paragraphs -- a link, a
+   button and a place list, each on its own line and related to the
+   others by nothing but document order. */
+.detail-lines {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+.detail-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
 .places-line {
   color: var(--ink-muted);
-  font-size: 0.85rem;
+  font-size: var(--t-small);
   margin: 0;
-  padding: 0 16px 8px;
+  padding: 0;
 }
 .place-card {
   display: grid;

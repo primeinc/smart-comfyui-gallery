@@ -92,7 +92,10 @@
     {% elif album.gallery["items"] %}
     <div class="grid">
       {% for pic in album.gallery["items"] %}
-      <a class="cell" href="/i/{{ pic.slug }}?{{ album.gallery.qs }}" data-slug="{{ pic.slug }}">
+      {# The picture's own proportion, so this grid justifies its rows
+         the way the gallery's does instead of squaring every file. #}
+      <a class="cell" style="--ar: {{ "%.4f"|format(pic.width / pic.height) if pic.width and pic.height else "1" }}"
+         href="/i/{{ pic.slug }}?{{ album.gallery.qs }}" data-slug="{{ pic.slug }}">
         {% if pic.thumb %}<img src="{{ pic.thumb }}" alt="{{ pic.name }}" loading="lazy">{% else %}<span class="cell-kind" aria-hidden="true">{{ "audio" if pic.kind == "audio" else "doc" }}</span>{% endif %}
         <span class="cell-name">{{ pic.name }}</span>
       </a>
