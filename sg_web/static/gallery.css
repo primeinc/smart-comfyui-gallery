@@ -180,18 +180,29 @@ p {
   }
 }
 
-/* --- controls: one ladder, three jobs -------------------------------
-   Before this there was a single treatment -- an amber outline -- doing
-   every job at once: 19 identical pills in operations' sweeps block
-   where one of them is "bring the library up to date, in order" and
-   another is "again", and 421 of them on the people page. An accent
-   spent on everything says nothing. */
+/* --- controls: one ladder ---------------------------------------------
+   Four rungs, and they are ALTERNATIVES. Wearing two -- `btn btn-quiet`
+   -- gives the quiet colours over the ordinary one's border, which reads
+   as a text input. One rung per button.
+
+     btn-primary  the one thing this screen is for; at most one per group
+     btn          the ordinary verb
+     btn-quiet    available, not advertised
+     btn-danger   the act that cannot be taken back
+     link         a verb inside a sentence, no box at all
+
+   An accent spent on everything says nothing, which is what a single
+   amber outline on every control was doing. */
 .btn,
 .btn-primary,
 .btn-quiet,
 .btn-danger {
   display: inline-flex;
   align-items: center;
+  /* Content-width, never the container's: as a child of a column flex or
+     a grid these stretched to full width and stopped reading as buttons. */
+  align-self: start;
+  justify-self: start;
   gap: var(--s2);
   padding: 6px 10px;
   min-height: 30px;
@@ -251,6 +262,25 @@ p {
 .btn-danger:hover {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
   border-color: var(--danger);
+}
+
+/* A verb inside a sentence: "dismiss" in a notice, "what changed against
+   the primary" in a run's row. It sits in running text, so it takes the
+   line's own size and baseline and wears no box at all. Without a rule it
+   was a raw OS button in the middle of a paragraph. */
+.link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link:hover {
+  text-decoration-thickness: 2px;
 }
 
 .btn:disabled,
