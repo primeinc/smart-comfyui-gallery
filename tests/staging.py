@@ -683,12 +683,21 @@ def _rebuilt_none(name: str, stage: Stage, allowed: int) -> None:
     proves. `test_events_are_grouping_hypotheses` is both: the departure
     test deletes, and it fails when moved, because the tests around it
     are a sequence about one library shrinking. So that module declares
-    its one rebuild rather than hiding it, and the number still has to be
-    exact -- a second one is a regression this catches.
+    its one rebuild rather than hiding it.
+
+    A BUDGET, not a count. The declared number is what the module may
+    spend, and spending less is not a defect: the rebuild is caused by
+    one test in the module, so any run that selects a subset without it
+    rebuilds fewer times than the module declares. `prove-push` selects
+    exactly that way -- pytest-testmon by measured coverage -- and an
+    equality check turned a passing test into a failed push, in
+    teardown, naming a library nobody had touched. `-k` and `--lf` reach
+    it the same way. What this exists to catch is a rebuild nobody
+    declared, and `>` still catches every one of them.
     """
-    if stage.rebuilds != allowed:
+    if stage.rebuilds > allowed:
         raise AssertionError(
-            f"the staged world for {name!r} was rebuilt {stage.rebuilds} time(s), not the {allowed} it declares:"
+            f"the staged world for {name!r} was rebuilt {stage.rebuilds} time(s), over the {allowed} it declares:"
             " a test changed the library on disk and left it changed, so the NEXT test paid a whole fresh"
             " application, library and scan in its setup. Put the library back at the end of that test, move"
             " the test last, or -- if it deletes and its position is load-bearing -- pass `rebuilds=` and say why."
