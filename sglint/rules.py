@@ -1722,9 +1722,7 @@ RULES = (
     rule_producers,
     rule_request_contracts,
     rule_response_contracts,
-    # rule_comment_blocks is NOT here yet. It reports 825 findings on this
-    # tree, and a rule wired in while it cannot pass blocks every commit.
-    # It joins RULES in the commit that clears the last one.
+    rule_comment_blocks,
 )
 
 
