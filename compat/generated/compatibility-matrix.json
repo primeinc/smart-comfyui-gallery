@@ -4,27 +4,35 @@
       "at_pin": true,
       "commit": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
       "consumer": "anystory",
-      "consumer_cases": 11,
+      "consumer_cases": 7,
       "derivable_or_unused": [],
-      "necessary": [
-        "subject_mask",
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/junjiehe96/AnyStory.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "subject_mask",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_bbox_rectangle"
         },
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "mask_from_face_bbox"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "subject_mask",
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 11
+        "PASS": 7
       }
     },
     {
@@ -33,21 +41,24 @@
       "consumer": "consisid",
       "consumer_cases": 4,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/huggingface/diffusers.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
           "swap": "arcface_footprint_only"
         },
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "generous_patch_substituted"
+          "swap": "generous_patch"
         }
+      ],
+      "untested": [
+        "whole_reference_image"
       ],
       "verdicts": {
         "PASS": 4
@@ -59,14 +70,26 @@
       "consumer": "id_lora",
       "consumer_cases": 1,
       "derivable_or_unused": [],
-      "necessary": [
-        "audio_sample_rate",
-        "audio_waveform"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/Comfy-Org/ComfyUI.git",
       "status": "REPRODUCED",
-      "substitutions": [],
+      "substitutions": [
+        {
+          "primitive": "audio_sample_rate",
+          "serves": false,
+          "swap": "vae_rate_assumed"
+        },
+        {
+          "primitive": "audio_waveform",
+          "serves": false,
+          "swap": "pcm_16_bit"
+        }
+      ],
+      "untested": [
+        "audio_sample_rate",
+        "audio_waveform"
+      ],
       "verdicts": {
         "PASS": 1
       }
@@ -77,17 +100,19 @@
       "consumer": "id_v2v",
       "consumer_cases": 12,
       "derivable_or_unused": [],
-      "necessary": [
-        "source_video_bytes"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/Eyeline-Labs/ID-V2V.git",
-      "status": "REPRODUCED",
+      "status": "PARTIAL",
       "substitutions": [
         {
+          "primitive": "source_video_bytes",
           "serves": false,
-          "swap": "face_row_substituted"
+          "swap": "face_row"
         }
+      ],
+      "untested": [
+        "source_video_bytes"
       ],
       "verdicts": {
         "PASS": 3,
@@ -98,290 +123,493 @@
       "at_pin": true,
       "commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
       "consumer": "infiniteyou",
-      "consumer_cases": 24,
+      "consumer_cases": 18,
       "derivable_or_unused": [
         "reference_pixels"
       ],
-      "necessary": [
+      "necessary": [],
+      "primitive_cases": 0,
+      "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
+        },
+        {
+          "primitive": "frame_dimensions",
+          "serves": false,
+          "swap": "preview_dimensions"
+        },
+        {
+          "primitive": "kps_source_px",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "patch_origin",
+          "serves": false,
+          "swap": "origin_at_zero"
+        },
+        {
+          "primitive": "source_region_pixels",
+          "serves": false,
+          "swap": "webp_encoded"
+        }
+      ],
+      "untested": [
         "embedding_raw",
         "frame_dimensions",
         "kps_source_px",
         "patch_origin",
         "source_region_pixels"
       ],
-      "primitive_cases": 0,
-      "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git",
-      "status": "REPRODUCED",
-      "substitutions": [
-        {
-          "serves": false,
-          "swap": "stored_glintr100_substituted"
-        }
-      ],
       "verdicts": {
-        "PASS": 24
+        "PASS": 18
       }
     },
     {
       "at_pin": true,
       "commit": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
       "consumer": "instantcharacter",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/Tencent-Hunyuan/InstantCharacter.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
       "consumer": "instantid",
-      "consumer_cases": 16,
+      "consumer_cases": 10,
       "derivable_or_unused": [
         "reference_pixels"
       ],
-      "necessary": [
-        "embedding_raw",
-        "frame_dimensions",
-        "kps_source_px"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/cubiq/ComfyUI_InstantID.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
-          "swap": "stored_glintr100_substituted"
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
+        },
+        {
+          "primitive": "frame_dimensions",
+          "serves": false,
+          "swap": "preview_dimensions"
+        },
+        {
+          "primitive": "kps_source_px",
+          "serves": false,
+          "swap": "half_precision"
         }
       ],
+      "untested": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px"
+      ],
       "verdicts": {
-        "PASS": 16
+        "PASS": 10
       }
     },
     {
       "at_pin": true,
       "commit": "2145b67f9607da6234702063692330185f374486",
       "consumer": "instantid_upstream",
-      "consumer_cases": 16,
+      "consumer_cases": 12,
       "derivable_or_unused": [
         "reference_pixels"
       ],
-      "necessary": [
-        "embedding_raw",
-        "frame_dimensions",
-        "kps_source_px"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/instantX-research/InstantID.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
-          "swap": "stored_glintr100_substituted"
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
+        },
+        {
+          "primitive": "frame_dimensions",
+          "serves": false,
+          "swap": "preview_dimensions"
+        },
+        {
+          "primitive": "kps_source_px",
+          "serves": false,
+          "swap": "half_precision"
         }
       ],
+      "untested": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px"
+      ],
       "verdicts": {
-        "PASS": 16
+        "PASS": 12
       }
     },
     {
       "at_pin": true,
       "commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
       "consumer": "ipadapter_faceid",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "embedding_raw"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
-      "status": "REPRODUCED",
+      "status": "PARTIAL",
       "substitutions": [
         {
+          "primitive": "embedding_raw",
           "serves": false,
-          "swap": "stored_glintr100_substituted"
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
         }
       ],
+      "untested": [
+        "embedding_raw"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 5,
+        "UNSUPPORTED": 1
       }
     },
     {
       "at_pin": true,
       "commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
       "consumer": "ipadapter_faceid_plus",
-      "consumer_cases": 32,
+      "consumer_cases": 24,
       "derivable_or_unused": [],
-      "necessary": [
+      "necessary": [],
+      "primitive_cases": 0,
+      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
+      "status": "PARTIAL",
+      "substitutions": [
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
+        },
+        {
+          "primitive": "kps_source_px",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "patch_origin",
+          "serves": false,
+          "swap": "origin_at_zero"
+        },
+        {
+          "primitive": "source_region_pixels",
+          "serves": false,
+          "swap": "webp_encoded"
+        }
+      ],
+      "untested": [
         "embedding_raw",
         "kps_source_px",
         "patch_origin",
         "source_region_pixels"
       ],
-      "primitive_cases": 20,
-      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
-      "status": "REPRODUCED",
-      "substitutions": [
-        {
-          "serves": false,
-          "swap": "stored_glintr100_substituted"
-        }
-      ],
       "verdicts": {
-        "PASS": 32
+        "PASS": 20,
+        "UNSUPPORTED": 4
       }
     },
     {
       "at_pin": true,
       "commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
       "consumer": "ipadapter_upstream",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "embedding_raw"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
-      "status": "REPRODUCED",
+      "status": "PARTIAL",
       "substitutions": [
         {
+          "primitive": "embedding_raw",
           "serves": false,
-          "swap": "stored_glintr100_substituted"
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
         }
       ],
+      "untested": [
+        "embedding_raw"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 5,
+        "UNSUPPORTED": 1
       }
     },
     {
       "at_pin": true,
       "commit": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
       "consumer": "omnigen2",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/VectorSpaceLab/OmniGen2.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
       "consumer": "photomaker_v2",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "embedding_raw"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/TencentARC/PhotoMaker.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "embedding_raw",
           "serves": false,
-          "swap": "stored_glintr100_substituted"
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
         }
       ],
+      "untested": [
+        "embedding_raw"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "93e0c4c226b87b23c0009d671978bad0e77289ff",
       "consumer": "pulid_comfyui",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "embedding_raw"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/cubiq/PuLID_ComfyUI.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
-          "swap": "stored_glintr100_substituted"
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
         }
       ],
+      "untested": [
+        "embedding_raw"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
       "consumer": "pulid_upstream",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "embedding_raw"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/ToTheBeginning/PuLID.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
-          "swap": "stored_glintr100_substituted"
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
         }
       ],
+      "untested": [
+        "embedding_raw"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
       "consumer": "qwen_image_edit_2509",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/QwenLM/Qwen-Image.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
       "consumer": "reactor",
-      "consumer_cases": 12,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
-      "necessary": [
+      "necessary": [],
+      "primitive_cases": 0,
+      "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "primitive": "age",
+          "serves": false,
+          "swap": "decade_bucket"
+        },
+        {
+          "primitive": "age",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "bbox",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "det_score",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "embedding_raw",
+          "serves": false,
+          "swap": "stored_glintr100"
+        },
+        {
+          "primitive": "gender",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "kps",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "landmark_2d_106",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "landmark_3d_68",
+          "serves": false,
+          "swap": "half_precision"
+        }
+      ],
+      "untested": [
         "age",
         "bbox",
         "det_score",
@@ -392,129 +620,166 @@
         "landmark_2d_106",
         "landmark_3d_68"
       ],
-      "primitive_cases": 0,
-      "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git",
-      "status": "REPRODUCED",
-      "substitutions": [
-        {
-          "serves": false,
-          "swap": "stored_glintr100_substituted"
-        }
-      ],
       "verdicts": {
-        "PASS": 12
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "aada3dc32990ae82061857ebe911b2c15621571a",
       "consumer": "umo",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/bytedance/UMO.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
       "consumer": "uniportrait",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
+      "necessary": [],
+      "primitive_cases": 0,
+      "repo": "https://github.com/junjiehe96/UniPortrait.git",
+      "status": "PARTIAL",
+      "substitutions": [
+        {
+          "primitive": "kps_source_px",
+          "serves": false,
+          "swap": "half_precision"
+        },
+        {
+          "primitive": "patch_origin",
+          "serves": false,
+          "swap": "origin_at_zero"
+        },
+        {
+          "primitive": "source_region_pixels",
+          "serves": false,
+          "swap": "webp_encoded"
+        }
+      ],
+      "untested": [
         "kps_source_px",
         "patch_origin",
         "source_region_pixels"
       ],
-      "primitive_cases": 0,
-      "repo": "https://github.com/junjiehe96/UniPortrait.git",
-      "status": "REPRODUCED",
-      "substitutions": [],
       "verdicts": {
-        "PASS": 8
+        "PASS": 5,
+        "UNSUPPORTED": 1
       }
     },
     {
       "at_pin": true,
       "commit": "a563432dcfb4caf98df4368facb8102bf97d376c",
       "consumer": "uno",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/bytedance/UNO.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
       "consumer": "uso",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/bytedance/USO.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     },
     {
       "at_pin": true,
       "commit": "65e2581aac0faffe4607881a10cc486186f6499d",
       "consumer": "xverse",
-      "consumer_cases": 8,
+      "consumer_cases": 6,
       "derivable_or_unused": [],
-      "necessary": [
-        "whole_reference_image"
-      ],
+      "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/bytedance/XVerse.git",
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch_substituted"
+          "swap": "face_patch"
+        },
+        {
+          "primitive": "whole_reference_image",
+          "serves": false,
+          "swap": "preview_derivative"
         }
       ],
+      "untested": [
+        "whole_reference_image"
+      ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 6
       }
     }
   ],
   "generated_from": {
-    "cases": 357,
+    "cases": 299,
     "producer_heads": {
       "detection": "SCRFD",
       "genderage": "Attribute",
@@ -642,22 +907,107 @@
   },
   "primitives": [
     {
-      "breaks": 84,
-      "cases": 84,
+      "breaks": 0,
+      "cases": 12,
       "consumers": [
-        "infiniteyou",
-        "instantid",
-        "instantid_upstream",
-        "ipadapter_faceid_plus",
-        "uniportrait"
+        "reactor"
       ],
-      "primitive": "kps_source_px",
+      "inconclusive": 4,
+      "primitive": "age",
+      "substitute_fails": 4,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
       "survives": 0,
-      "verdict": "NECESSARY"
+      "verdict": "UNPROVEN"
     },
     {
-      "breaks": 80,
-      "cases": 80,
+      "breaks": 0,
+      "cases": 32,
+      "consumers": [
+        "embedding_spaces"
+      ],
+      "inconclusive": 12,
+      "primitive": "aligned_crop_112",
+      "substitute_fails": 20,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 2,
+      "consumers": [
+        "id_lora"
+      ],
+      "inconclusive": 1,
+      "primitive": "audio_sample_rate",
+      "substitute_fails": 1,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 2,
+      "consumers": [
+        "id_lora"
+      ],
+      "inconclusive": 1,
+      "primitive": "audio_waveform",
+      "substitute_fails": 1,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "inconclusive": 4,
+      "primitive": "bbox",
+      "substitute_fails": 4,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "inconclusive": 4,
+      "primitive": "det_score",
+      "substitute_fails": 4,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 20,
+      "consumers": [
+        "insightface_producer",
+        "reactor"
+      ],
+      "inconclusive": 10,
+      "primitive": "embedding",
+      "substitute_fails": 10,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 162,
       "consumers": [
         "infiniteyou",
         "instantid",
@@ -670,13 +1020,229 @@
         "pulid_upstream",
         "reactor"
       ],
+      "inconclusive": 54,
       "primitive": "embedding_raw",
+      "substitute_fails": 85,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
       "survives": 0,
-      "verdict": "NECESSARY"
+      "verdict": "UNPROVEN"
     },
     {
-      "breaks": 71,
-      "cases": 71,
+      "breaks": 0,
+      "cases": 66,
+      "consumers": [
+        "face_selection"
+      ],
+      "inconclusive": 33,
+      "primitive": "face_rows",
+      "substitute_fails": 33,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 34,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
+      ],
+      "inconclusive": 17,
+      "primitive": "frame_dimensions",
+      "substitute_fails": 14,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "inconclusive": 4,
+      "primitive": "gender",
+      "substitute_fails": 0,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "inconclusive": 4,
+      "primitive": "kps",
+      "substitute_fails": 4,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 126,
+      "consumers": [
+        "aligned_crop",
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "inconclusive": 63,
+      "primitive": "kps_source_px",
+      "substitute_fails": 59,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "inconclusive": 4,
+      "primitive": "landmark_2d_106",
+      "substitute_fails": 4,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 20,
+      "consumers": [
+        "insightface_producer",
+        "reactor"
+      ],
+      "inconclusive": 10,
+      "primitive": "landmark_3d_68",
+      "substitute_fails": 10,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 92,
+      "consumers": [
+        "aligned_crop",
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "inconclusive": 46,
+      "primitive": "patch_origin",
+      "substitute_fails": 46,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 17,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
+      ],
+      "inconclusive": 0,
+      "primitive": "reference_pixels",
+      "substitute_fails": 0,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 17,
+      "verdict": "NOT NECESSARY"
+    },
+    {
+      "breaks": 0,
+      "cases": 36,
+      "consumers": [
+        "reference_sets"
+      ],
+      "inconclusive": 12,
+      "primitive": "reference_vectors",
+      "substitute_fails": 17,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 3,
+      "survives": 0,
+      "verdict": "CHEAPER VALUE SERVES SOMETIMES"
+    },
+    {
+      "breaks": 0,
+      "cases": 66,
+      "consumers": [
+        "face_selection"
+      ],
+      "inconclusive": 33,
+      "primitive": "selection_rule",
+      "substitute_fails": 33,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 97,
+      "consumers": [
+        "aligned_crop",
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "inconclusive": 46,
+      "primitive": "source_region_pixels",
+      "substitute_fails": 51,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 6,
+      "consumers": [
+        "id_v2v"
+      ],
+      "inconclusive": 3,
+      "primitive": "source_video_bytes",
+      "substitute_fails": 3,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 6,
+      "consumers": [
+        "anystory"
+      ],
+      "inconclusive": 3,
+      "primitive": "subject_mask",
+      "substitute_fails": 3,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 153,
       "consumers": [
         "anystory",
         "consisid",
@@ -688,227 +1254,20 @@
         "uso",
         "xverse"
       ],
+      "inconclusive": 53,
       "primitive": "whole_reference_image",
+      "substitute_fails": 100,
+      "substitute_fails_at_a_tolerance": 0,
+      "substitute_serves": 0,
       "survives": 0,
-      "verdict": "NECESSARY"
-    },
+      "verdict": "UNPROVEN"
+    }
+  ],
+  "skipped": [
     {
-      "breaks": 60,
-      "cases": 60,
-      "consumers": [
-        "infiniteyou",
-        "ipadapter_faceid_plus",
-        "uniportrait"
-      ],
-      "primitive": "patch_origin",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 60,
-      "cases": 60,
-      "consumers": [
-        "infiniteyou",
-        "ipadapter_faceid_plus",
-        "uniportrait"
-      ],
-      "primitive": "source_region_pixels",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 24,
-      "cases": 24,
-      "consumers": [
-        "infiniteyou",
-        "instantid",
-        "instantid_upstream"
-      ],
-      "primitive": "frame_dimensions",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 14,
-      "cases": 14,
-      "consumers": [
-        "gallery_storage",
-        "insightface_producer",
-        "reactor"
-      ],
-      "primitive": "embedding",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 14,
-      "cases": 14,
-      "consumers": [
-        "gallery_storage",
-        "insightface_producer",
-        "reactor"
-      ],
-      "primitive": "landmark_3d_68",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 12,
-      "cases": 12,
-      "consumers": [
-        "embedding_spaces"
-      ],
-      "primitive": "aligned_crop_112",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 12,
-      "cases": 12,
-      "consumers": [
-        "reference_sets"
-      ],
-      "primitive": "reference_vectors",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 8,
-      "cases": 8,
-      "consumers": [
-        "gallery_storage",
-        "reactor"
-      ],
-      "primitive": "age",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 8,
-      "cases": 8,
-      "consumers": [
-        "gallery_storage",
-        "reactor"
-      ],
-      "primitive": "bbox",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 8,
-      "cases": 8,
-      "consumers": [
-        "gallery_storage",
-        "reactor"
-      ],
-      "primitive": "det_score",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 8,
-      "cases": 8,
-      "consumers": [
-        "gallery_storage",
-        "reactor"
-      ],
-      "primitive": "gender",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 8,
-      "cases": 8,
-      "consumers": [
-        "gallery_storage",
-        "reactor"
-      ],
-      "primitive": "kps",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 8,
-      "cases": 8,
-      "consumers": [
-        "gallery_storage",
-        "reactor"
-      ],
-      "primitive": "landmark_2d_106",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 5,
-      "cases": 5,
-      "consumers": [
-        "ipadapter_faceid_plus"
-      ],
-      "primitive": "derive_256_from_336",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 4,
-      "cases": 4,
-      "consumers": [
-        "gallery_storage"
-      ],
-      "primitive": "pose",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 3,
-      "cases": 3,
-      "consumers": [
-        "id_v2v"
-      ],
-      "primitive": "source_video_bytes",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 3,
-      "cases": 3,
-      "consumers": [
-        "anystory"
-      ],
-      "primitive": "subject_mask",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 1,
-      "cases": 1,
-      "consumers": [
-        "id_lora"
-      ],
-      "primitive": "audio_sample_rate",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 1,
-      "cases": 1,
-      "consumers": [
-        "id_lora"
-      ],
-      "primitive": "audio_waveform",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 0,
-      "cases": 24,
-      "consumers": [
-        "infiniteyou",
-        "instantid",
-        "instantid_upstream"
-      ],
-      "primitive": "reference_pixels",
-      "survives": 24,
-      "verdict": "NOT NECESSARY"
+      "consumer_id": "face_selection",
+      "what": "Group(asset_id='1854865030', path='C:\\\\ComfyUI\\\\output\\\\sample-datasets\\\\people_detection\\\\files\\\\medium\\\\1854865030.jpg', sha256='02a5a86a7f6a61dfbb02f1ed956ada43fe7144194210755116047635c186932f', bytes=509635, released_people=2, age_ranges=('60s', '60s'), description='Senior couple hikers talking in snow-covered winter nature.')",
+      "why": "could not be detected on: 1854865030: the detector found 1 face(s); the dataset releases 2 people. A photograph the detector does not see two faces in cannot separate `first` from `largest_bbox_area`"
     }
   ],
   "storage": [
@@ -1014,8 +1373,47 @@
   ],
   "totals": {
     "bytes_per_observation": 3804,
+    "contradicted": 0,
     "declared": 22,
+    "diverged": 0,
     "not_exercised": 0,
-    "reproduced": 22
-  }
+    "partial": 5,
+    "primitives_unproven": 21,
+    "primitives_unproven_names": [
+      "age",
+      "aligned_crop_112",
+      "audio_sample_rate",
+      "audio_waveform",
+      "bbox",
+      "det_score",
+      "embedding",
+      "embedding_raw",
+      "face_rows",
+      "frame_dimensions",
+      "gender",
+      "kps",
+      "kps_source_px",
+      "landmark_2d_106",
+      "landmark_3d_68",
+      "patch_origin",
+      "selection_rule",
+      "source_region_pixels",
+      "source_video_bytes",
+      "subject_mask",
+      "whole_reference_image"
+    ],
+    "reproduced": 17,
+    "skipped_inputs": 1,
+    "unrepresented_failures": 19,
+    "unsupported": 0
+  },
+  "unrepresented": [
+    {
+      "cases": 19,
+      "lane": "gallery_storage",
+      "verdicts": {
+        "FAIL": 19
+      }
+    }
+  ]
 }

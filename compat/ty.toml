@@ -7,7 +7,8 @@
 # project-wide run neither checks this directory nor fails on it.
 #
 # This file is what checks it instead, and `just compat check` invokes it as
-# `ty check --project compat`. Passing `compat/` as a path to the root project
+# `ty check --config-file compat/ty.toml compat`, which is what compat.just
+# runs. Passing `compat/` as a path to the root project
 # does NOT work and fails in the worst way: `src.include` filters paths given
 # on the command line, so ty reported "WARN No python files found under the
 # given path(s)" followed by "All checks passed!" -- a green over zero files.

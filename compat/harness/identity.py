@@ -6,19 +6,26 @@ can change a case's outcome, and `run.py` writes it into the evidence. A
 mismatch between the recorded digest and the current one means the evidence
 answers a question nobody asked any more.
 
-Six inputs, and dropping any one of them makes the digest a decoration:
+Seven inputs, and dropping any one of them makes the digest a decoration:
 
-    fixtures      every fixture sha256 the suite is holding
+    manifest      the manifest bytes, so a threshold edit is visible
     repos         every pinned repo and its FULL commit
     weights       every model file's sha256
     runtime       interpreter, platform, and the package versions that run
-    manifest      the manifest bytes, so a threshold edit is visible
-    runners       the source of every runner and preprocessor
+    sources       the source of every runner and preprocessor
+    application   the source of the application code the storage lane RUNS
+    corpus        every corpus photograph, by content
 
-`runners` is the one that closes the hole the others leave open. A runner
-edited in place changes what a case DOES while every pin, fixture and weight
-stays identical, so without hashing our own source the suite would keep
-serving a green it can no longer earn.
+`sources` closes the hole the pins leave open: a runner edited in place
+changes what a case DOES while every pin and weight stays identical.
+
+`application` and `corpus` close the two it leaves open in turn. The storage
+lane executes `vision.faces` and `db.*` through `storage/gallery_v45.py`, so
+an edit there changes the headline answer with nothing else moving; and
+`corpus/loaded.shots()` selects four photographs by min-sha256 per bucket, so
+adding one to the tree changes which four every baseline was computed from.
+Both were outside the digest, and the staleness lane reported "evidence is
+current" across either.
 """
 
 from __future__ import annotations
@@ -35,6 +42,12 @@ ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 #: Every directory whose source decides what a case computes. `harness` is
 #: included: the executor's own comparison and verdict logic is as
 #: answer-changing as any runner's.
+#: The application packages `compat/storage/gallery_v45.py` executes. Hashed
+#: whole rather than by its four import lines, because those modules import
+#: others in turn and a digest covering the entry points but not what they
+#: call has a hole in exactly the shape of the next refactor.
+APP_DIRS: Final[tuple[str, ...]] = ("vision", "db")
+
 SOURCE_DIRS: Final[tuple[str, ...]] = (
     "assertions",
     "consumers",
@@ -54,7 +67,15 @@ def sha256_of(data: bytes) -> str:
 
 #: The inputs the digest is taken over. Named once so `identity` and any
 #: checker that rebuilds a digest cannot disagree about the input set.
-PARTS: Final[tuple[str, ...]] = ("manifest", "repos", "weights", "runtime", "sources")
+PARTS: Final[tuple[str, ...]] = (
+    "manifest",
+    "repos",
+    "weights",
+    "runtime",
+    "sources",
+    "application",
+    "corpus",
+)
 
 
 def digest_of(parts: dict[str, Any]) -> str:
@@ -75,11 +96,58 @@ def source_digests() -> dict[str, str]:
         folder = ROOT / name
         if not folder.is_dir():
             continue
-        for path in sorted(folder.rglob("*.py")):
+        # *.json as well as *.py: a checked-in fixture or table under a source
+        # directory decides what a case computes exactly as much as the code
+        # that reads it, and a glob that only saw code would not notice it move.
+        for path in sorted(one for pattern in ("*.py", "*.json") for one in folder.rglob(pattern)):
             if "__pycache__" in path.parts:
                 continue
             out[path.relative_to(ROOT).as_posix()] = sha256_of(path.read_bytes())
     return out
+
+
+def application_digests() -> dict[str, str]:
+    """sha256 per application source file the compat suite executes.
+
+    `compat/storage/gallery_v45.py` is the only lane that reaches out of
+    `compat/`, and it reaches into the code under test. Without this the one
+    question the suite exists to answer could change with no input moving.
+    """
+    repo = ROOT.parent
+    out: dict[str, str] = {}
+    for name in APP_DIRS:
+        folder = repo / name
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
+    return out
+
+
+#: Memoised per process: the scan streams a sha256 over every KYC image, and
+#: the tree it reads is one this suite never writes.
+_corpus: dict[str, dict[str, str]] = {}
+
+
+def corpus_digests() -> dict[str, str]:
+    """Every corpus photograph, by absolute path and content.
+
+    The WHOLE scan, not the four shots a run uses: `loaded.shots()` chooses by
+    min-sha256 within each (identity, role) bucket, so a photograph added to a
+    bucket can displace the one every baseline was computed from without being
+    used itself.
+
+    Absent corpus records an empty mapping rather than raising -- the case
+    lanes already report UNSUPPORTED for that, and an identity that could not
+    be computed is not the place to find out.
+    """
+    if "held" not in _corpus:
+        from compat.corpus import index as corpus
+
+        _corpus["held"] = {one.path: one.sha256 for one in corpus.scan_kyc()} if corpus.KYC.is_dir() else {}
+    return _corpus["held"]
 
 
 def manifest_digest() -> str:
@@ -111,15 +179,6 @@ def weight_digests() -> dict[str, str]:
     return out
 
 
-def fixture_digests() -> dict[str, str]:
-    """Every fixture the generated evidence is holding, by case name."""
-    cases = ROOT / "generated" / "cases.json"
-    if not cases.is_file():
-        return {}
-    held: dict[str, Any] = json.loads(cases.read_text(encoding="utf-8"))
-    return {row["case"]: row["fixture_sha256"] for row in held.get("results", [])}
-
-
 def identity() -> dict[str, Any]:
     """Every answer-changing input, and one digest over all of them."""
     parts: dict[str, Any] = {
@@ -128,6 +187,8 @@ def identity() -> dict[str, Any]:
         "weights": weight_digests(),
         "runtime": provenance.runtime_identity(),
         "sources": source_digests(),
+        "application": application_digests(),
+        "corpus": corpus_digests(),
     }
     return {**parts, "digest": digest_of(parts)}
 
@@ -143,7 +204,7 @@ def compare_to(recorded: dict[str, Any]) -> list[str]:
         return []
 
     drift: list[str] = [key + " changed" for key in ("manifest", "runtime") if recorded.get(key) != now[key]]
-    for key in ("repos", "weights", "sources"):
+    for key in ("repos", "weights", "sources", "application", "corpus"):
         was: dict[str, str] = recorded.get(key) or {}
         has: dict[str, str] = now[key]
         drift.extend(
@@ -161,6 +222,8 @@ def main() -> int:
     print(f"  repos    : {len(now['repos'])} pinned")
     print(f"  weights  : {len(now['weights'])} files")
     print(f"  sources  : {len(now['sources'])} files")
+    print(f"  app code : {len(now['application'])} files")
+    print(f"  corpus   : {len(now['corpus'])} photographs")
 
     cases = ROOT / "generated" / "cases.json"
     if not cases.is_file():

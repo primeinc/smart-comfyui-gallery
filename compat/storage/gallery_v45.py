@@ -108,7 +108,15 @@ def _pixels(points: Any, width: int, height: int) -> npt.NDArray[np.float32]:
     float64 multiply, cast once at the end: a float32 multiply would add an
     error to the one being measured.
     """
-    values = np.asarray(points, dtype=np.float64)
+    # `np.array`, not `np.asarray`: this multiplies IN PLACE, and asarray
+    # returns its input unchanged when the dtype already matches. The blob
+    # used to be float32, so the float64 request always forced a conversion
+    # and produced a writable array by accident; at v46 it is already float64
+    # and `np.frombuffer` hands back a READ-ONLY view of the sqlite buffer.
+    # Every one of the 36 storage cases then failed with "output array is
+    # read-only" and the lane reported 0 FAIL, exit 0 -- a population that
+    # vanished and read as clean.
+    values = np.array(points, dtype=np.float64, copy=True)
     values[..., 0] *= width
     values[..., 1] *= height
     return values.astype(np.float32)
@@ -136,13 +144,27 @@ def load(conn: sqlite3.Connection, file_id: int) -> Observation:
     held["bbox"] = _pixels(corners, width, height).reshape(-1)
 
     if landmarks:
-        held["kps"] = _pixels(np.frombuffer(landmarks, dtype=np.float32).reshape(-1, 2), width, height)
+        # float64, matching what `db/detect.py` now writes. The blob held
+        # normalized coordinates at float32, which cost 2.4e-4 source pixels
+        # on the largest corpus frame -- measured by this lane, and the reason
+        # the schema moved to v46.
+        held["kps"] = _pixels(np.frombuffer(landmarks, dtype=np.float64).reshape(-1, 2), width, height)
     if embedding:
         held["embedding"] = np.frombuffer(embedding, dtype=np.float32).copy()
     if det_score is not None:
-        # SQLite REAL is 8-byte IEEE; this returns float64 whatever was
-        # written. Not narrowed to match the producer.
-        held["det_score"] = np.asarray(det_score)
+        # NARROWED back to the producer's width. SQLite REAL is 8-byte IEEE
+        # and returns float64 whatever was written, so a float32 measurement
+        # comes back wider than it went in -- the VALUE is exact either way
+        # (this lane measured the difference at 0.0), but the dtype is part of
+        # what a consumer receives: ReActor's `save_face_model` builds
+        # `torch.tensor(face["det_score"])`, and a float64 there produces a
+        # different tensor from upstream's.
+        #
+        # Leaving it wide was a choice this file made and then described as a
+        # storage divergence. It is not one: the store knows the column holds
+        # a float32 measurement, so returning it as one is what reading the
+        # value back means.
+        held["det_score"] = np.asarray(det_score, dtype=np.float32)
     if age is not None:
         held["age"] = np.asarray(int(age), dtype=np.int64)
     if sex is not None:

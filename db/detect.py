@@ -103,7 +103,14 @@ def harvest(
         if found.landmarks:
             import numpy as np
 
-            record["landmarks"] = np.asarray(found.landmarks, dtype=np.float32).tobytes()
+            # float64, not float32. The blob holds NORMALIZED coordinates,
+            # so reading one back multiplies by the frame size -- and a
+            # float32 normalized value carries a half-ulp of 6e-8, which on a
+            # 6528 px frame is 3.9e-4 source pixels the producer measured and
+            # the store then threw away. Measured at up to 2.4e-4 px by
+            # `compat/consumers/gallery_storage.py`. Ten doubles per face is
+            # 80 bytes against 40; the precision is worth more than 40 bytes.
+            record["landmarks"] = np.asarray(found.landmarks, dtype=np.float64).tobytes()
         # EVERYTHING the backend said, then promotions out of it. Not an
         # allowlist: this copied `age` and `sex` and dropped pose and two
         # dense landmark sets on the line that read them, so three columns

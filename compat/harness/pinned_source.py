@@ -114,6 +114,47 @@ def find_node(tree: ast.Module, symbol: str) -> ast.stmt:
     return found
 
 
+def source_segment(text: str, node: ast.AST) -> str | None:
+    """One symbol's source, decorators included.
+
+    `ast.get_source_segment` slices from `node.lineno`, which for a decorated
+    definition is the `def`/`class` line -- `decorator_list` entries carry
+    their own, earlier, linenos (CPython Doc/library/ast.rst, class FunctionDef;
+    confirmed by execution: decorator lineno 3 against FunctionDef lineno 4).
+    Every decorator is therefore dropped, silently, and the loaded object
+    behaves differently from the pinned one. `@torch.inference_mode()` was
+    being removed from two of the symbols this suite executes.
+
+    EVERY line is outdented by `col_offset`, not just the first.
+    `get_source_segment` trims only the first line, which is sound when the
+    `def` IS the first line: the body is then merely over-indented relative to
+    a `def` at column 0, and Python accepts that. With a decorator above it,
+    trimming one line puts `@decorator` at column 0 and `def` at column 4 --
+    an IndentationError. Outdenting the whole block keeps the relative
+    structure and produces a loadable module.
+    """
+    decorators = list(getattr(node, "decorator_list", ()) or ())
+    if not decorators:
+        return ast.get_source_segment(text, node)
+
+    end = getattr(node, "end_lineno", None)
+    col = getattr(node, "col_offset", None)
+    if end is None or col is None:
+        return None
+    start = min(one.lineno for one in decorators)
+    lines = text.splitlines(keepends=True)[start - 1 : end]
+    if not lines:
+        return None
+    return "".join(_outdent(one, col) for one in lines)
+
+
+def _outdent(line: str, col: int) -> str:
+    """One line with up to `col` leading spaces removed, blanks untouched."""
+    if not col or not line.strip():
+        return line
+    return line[col:] if line[:col].strip() == "" else line.lstrip()
+
+
 def subscript_keys(repo: Path, commit: str, path: str, symbol: str, on: str) -> tuple[str, ...]:
     """Every constant string `on` is subscripted with inside `symbol`.
 
@@ -146,13 +187,20 @@ def subscript_keys(repo: Path, commit: str, path: str, symbol: str, on: str) -> 
 def symbol_source(repo: Path, commit: str, path: str, symbol: str) -> tuple[str, str]:
     """The exact source text of one symbol, and the whole blob's digest.
 
-    The digest covers the WHOLE blob rather than the extracted segment, so it
-    is the same number `provenance.py` records and the same one a reviewer
-    gets from `git show`. The segment carries its own digest separately.
+    The digest covers the WHOLE blob rather than the extracted segment, over
+    the blob with CRLF normalised to LF -- the same normalisation
+    `provenance.py:496-497` applies, so the two lanes report one number for
+    one file. It is NOT what `git show <commit>:<path> | sha256sum` prints for
+    a blob committed with CRLF; normalising is deliberate, so the number does
+    not move with a checkout's eol settings, and saying which number it is
+    matters more than it being the convenient one.
+
+    The segment carries its own digest separately, and that one is taken over
+    the text INCLUDING decorators -- see `source_segment`.
     """
     blob = _blob(repo, commit, path)
     text = blob.decode("utf-8", errors="surrogateescape")
-    segment = ast.get_source_segment(text, find_node(ast.parse(text), symbol))
+    segment = source_segment(text, find_node(ast.parse(text), symbol))
     if segment is None:
         raise LookupError(f"{symbol!r} was located but its source segment could not be recovered")
     return segment, hashlib.sha256(blob.replace(b"\r\n", b"\n")).hexdigest()
@@ -174,7 +222,12 @@ def load_symbol(repo: Path, commit: str, path: str, symbol: str, namespace: dict
     supplied = sorted(namespace)
 
     SCRATCH.mkdir(parents=True, exist_ok=True)
-    stem = f"{Path(path).stem}__{symbol.replace('.', '_')}__{commit[:12]}"
+    # The full path is folded in, not just its stem. Two files named `utils.py`
+    # in different directories of one commit produced the same scratch name,
+    # and the second load overwrote the first -- so the bytes on disk this
+    # docstring offers for comparison could belong to the other symbol.
+    where_from = hashlib.sha256(path.encode("utf-8")).hexdigest()[:8]
+    stem = f"{Path(path).stem}__{symbol.replace('.', '_')}__{commit[:12]}__{where_from}"
     where = SCRATCH / f"{stem}.py"
     # newline="" so the bytes on disk are the bytes that were hashed: Windows
     # would otherwise translate every \n and the file would no longer match.

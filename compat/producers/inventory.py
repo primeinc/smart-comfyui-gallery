@@ -26,6 +26,14 @@ GENERATED: Path = HERE.parent / "generated"
 
 #: Images per identity, per capture role. Two of each covers the role axis for
 #: every identity without turning an inventory into a benchmark.
+#:
+#: DELIBERATELY A WIDER SLICE than `corpus.loaded.CORPUS_IMAGES`, and the one
+#: place in the suite where that is right. This lane answers "which keys does
+#: the producer ever emit", and a key that appears on one face in twenty is
+#: still a key the store must have room for -- so it wants every identity and
+#: both roles, where the case lanes want the SAME four photographs the union's
+#: byte totals were measured on. The slice is recorded in the artifact so the
+#: difference is a fact a reader can see rather than one they have to notice.
 PER_ROLE: int = 2
 
 
@@ -62,6 +70,17 @@ def run(per_role: int = PER_ROLE) -> dict[str, Any]:
     worst_normed = max((face.normed_max_abs_diff or 0.0) for face in faces) if faces else 0.0
 
     return {
+        # The photographs this inventory actually saw, by content. Three lanes
+        # select a corpus slice and two of them now share one selector; this
+        # one does not, on purpose, and an artifact that does not say which
+        # images it read cannot be compared with one that does.
+        "corpus_slice": {
+            "per_role": per_role,
+            "images": len(chosen),
+            "identities": sorted({one.identity for one in chosen}),
+            "sha256": sorted(one.sha256 for one in chosen),
+            "selector": "compat.producers.inventory.sample: per_role per (identity, role), ordered by sha256",
+        },
         "producer": {
             "pack": producer.PACK,
             "root": str(producer.MODELS_ROOT),

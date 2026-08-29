@@ -22,6 +22,11 @@ from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
+#: Every git call here is bounded. `pinned_source.py:44` and
+#: `provenance.py:44` already were, with the reason: a hang turns a red
+#: gate into a run that never finishes, which reports nothing at all.
+GIT_SECONDS: Final[float] = 60.0
+
 #: Where run-time-downloaded vendor inputs are cached. Beside the repository,
 #: never inside it: these are third-party media under their own licences.
 FETCHED: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures"
@@ -285,7 +290,15 @@ SAMPLES: Final[tuple[VendorSample, ...]] = (
 
 @dataclass
 class Resolved:
-    """One fixture, hashed from the clone's own bytes at the pinned commit."""
+    """One fixture, hashed from the clone's own bytes at the pinned commit.
+
+    `present` carried two different meanings and one name. For a committed
+    blob it meant "git handed the bytes back"; for a cached URL it meant "the
+    bytes match the digest the manifest declares". `conformance.py` consumed
+    one boolean for both, so a cached download that failed its digest and a
+    file that is simply absent were the same row. `origin` names which kind of
+    row this is and `matches_expected` carries the second question separately.
+    """
 
     consumer_id: str
     entrypoint: str
@@ -293,13 +306,26 @@ class Resolved:
     role: str
     path: str
     present: bool
+    """The bytes are available AND are the ones the pin or the manifest names.
+    A row is usable if and only if this is true, whichever `origin` it has."""
+
+    origin: str = "git_blob"
+    """`git_blob` -- read out of the clone at the pinned commit, where the blob
+    IS the expectation. `url_cache` -- fetched by hand into `FETCHED`, where
+    the manifest's declared digest is the expectation."""
+
+    matches_expected: bool | None = None
+    """For a `url_cache` row, whether the cached bytes hash to the declared
+    digest. None for a `git_blob` row, which has no separate expectation to
+    compare against."""
+
     sha256: str = ""
     bytes: int = 0
 
 
 def _blob(repo: Path, commit: str, path: str) -> bytes | None:
     argv: list[str] = ["git", "-C", str(repo), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False)
+    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
     return done.stdout if done.returncode == 0 else None
 
 
@@ -331,8 +357,13 @@ def resolve() -> dict[str, Any]:
                     role=sample.role,
                     path=path,
                     present=blob is not None,
-                    sha256=hashlib.sha256(blob).hexdigest() if blob else "",
-                    bytes=len(blob) if blob else 0,
+                    origin="git_blob",
+                    # `if blob` is False for a zero-byte committed file, so an
+                    # empty blob recorded present=True with an EMPTY digest --
+                    # and `conformance.py` deduplicates on the digest, so every
+                    # such row collapsed into one.
+                    sha256=hashlib.sha256(blob).hexdigest() if blob is not None else "",
+                    bytes=len(blob) if blob is not None else 0,
                 )
             )
         for url, expected in sample.urls:
@@ -349,8 +380,10 @@ def resolve() -> dict[str, Any]:
                     role=sample.role,
                     path=str(cached),
                     present=actual == expected,
+                    origin="url_cache",
+                    matches_expected=actual == expected,
                     sha256=actual,
-                    bytes=len(got) if got else 0,
+                    bytes=len(got) if got is not None else 0,
                 )
             )
 

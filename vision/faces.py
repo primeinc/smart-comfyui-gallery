@@ -469,10 +469,24 @@ class InsightFaceBackend(FaceBackend):
             if face.gender is not None and face.age is not None:
                 attributes["age"] = int(face.age)
                 attributes["sex"] = sex_word(face.sex)
+            # NOT ROUNDED. These were `round(x, 5)` on the normalized
+            # coordinate and `round(deg, 2)` on the pose, which is a lossy
+            # transform with nothing on the other side of the trade: half of
+            # one unit in the 5th decimal is 5e-6 of the frame, and on a
+            # 6528 px photograph that discards up to 0.033 source pixels
+            # before anything has been asked of the value.
+            #
+            # Measured, by `compat/consumers/gallery_storage.py`: it cost
+            # `landmark_2d_106` up to 0.0322 px, `landmark_3d_68` up to
+            # 0.0320, and `pose` up to 0.0034 degrees, on every face this
+            # application has ever stored. A normalized float64 round trip is
+            # exact for a float32 source, so keeping the full value costs
+            # some JSON width and conserves the producer's measurement
+            # outright.
             lmk106 = face.get("landmark_2d_106")
             if lmk106 is not None:
                 attributes["landmark_2d_106"] = [
-                    [round(_clamp01(float(px) / w), 5), round(_clamp01(float(py) / h), 5)] for px, py in lmk106
+                    [_clamp01(float(px) / w), _clamp01(float(py) / h)] for px, py in lmk106
                 ]
             lmk68 = face.get("landmark_3d_68")
             if lmk68 is not None:
@@ -480,15 +494,14 @@ class InsightFaceBackend(FaceBackend):
                 # the model's pixel-scaled depth units (no image norm
                 # exists for depth) — recorded as-is.
                 attributes["landmark_3d_68"] = [
-                    [round(_clamp01(float(px) / w), 5), round(_clamp01(float(py) / h), 5), round(float(pz), 2)]
-                    for px, py, pz in lmk68
+                    [_clamp01(float(px) / w), _clamp01(float(py) / h), float(pz)] for px, py, pz in lmk68
                 ]
             pose = face.get("pose")
             if pose is not None:
                 attributes["pose"] = {
-                    "pitch": round(float(pose[0]), 2),
-                    "yaw": round(float(pose[1]), 2),
-                    "roll": round(float(pose[2]), 2),
+                    "pitch": float(pose[0]),
+                    "yaw": float(pose[1]),
+                    "roll": float(pose[2]),
                 }
             detections.append(
                 FaceDetection(

@@ -1512,6 +1512,338 @@
       "pinned_sha256": "a8b34ddd06716f5ca7e7501415cbd3789ccbce18db9e557b35e537695290d922"
     }
   ],
+  "vendor_weights": [
+    {
+      "bytes": 1398992729,
+      "consumer": "anystory",
+      "file": "anystory/anystory_flux.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 1398992729,
+      "recorded_sha256": "c4814b0f82ac58f5b9729676c3f7eaedec0eccf98c00b02637f155716140a835",
+      "sha256": "c4814b0f82ac58f5b9729676c3f7eaedec0eccf98c00b02637f155716140a835",
+      "source": "?"
+    },
+    {
+      "bytes": 109497761,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/detection_Resnet50_Final.pth",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 109497761,
+      "recorded_sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 856461210,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 856461210,
+      "recorded_sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05",
+      "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 143607619,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/models/antelopev2/1k3d68.onnx",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 143607619,
+      "recorded_sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 5030888,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/models/antelopev2/2d106det.onnx",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 5030888,
+      "recorded_sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 1322532,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/models/antelopev2/genderage.onnx",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 1322532,
+      "recorded_sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 260665334,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/models/antelopev2/glintr100.onnx",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 260665334,
+      "recorded_sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 16923827,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 16923827,
+      "recorded_sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 53289463,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/parsing_bisenet.pth",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 53289463,
+      "recorded_sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 85331193,
+      "consumer": "consisid",
+      "file": "consisid/face_encoder/parsing_parsenet.pth",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 85331193,
+      "recorded_sha256": "3d558d8d0e42c20224f13cf5a29c79eba2d59913419f945545d8cf7b72920de2",
+      "sha256": "3d558d8d0e42c20224f13cf5a29c79eba2d59913419f945545d8cf7b72920de2",
+      "source": "BestWishYsh/ConsisID-preview"
+    },
+    {
+      "bytes": 338413026,
+      "consumer": "infiniteyou",
+      "file": "infiniteyou/infu_flux_v1.0/aes_stage2/image_proj_model.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 338413026,
+      "recorded_sha256": "f85518431d7367de30b9558a939c003462a7e331e8c8b929146916dc27e471d6",
+      "sha256": "f85518431d7367de30b9558a939c003462a7e331e8c8b929146916dc27e471d6",
+      "source": "ByteDance/InfiniteYou"
+    },
+    {
+      "bytes": 1691134141,
+      "consumer": "instantid",
+      "file": "instantid/ip-adapter.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 1691134141,
+      "recorded_sha256": "02b3618e36d803784166660520098089a81388e61a93ef8002aa79a5b1c546e1",
+      "sha256": "02b3618e36d803784166660520098089a81388e61a93ef8002aa79a5b1c546e1",
+      "source": "InstantX/InstantID"
+    },
+    {
+      "bytes": 156558509,
+      "consumer": "ipadapter",
+      "file": "ipadapter/ip-adapter-faceid-plusv2_sd15.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 156558509,
+      "recorded_sha256": "26d0d86a1d60d6cc811d3b8862178b461e1eeb651e6fe2b72ba17aa95411e313",
+      "sha256": "26d0d86a1d60d6cc811d3b8862178b461e1eeb651e6fe2b72ba17aa95411e313",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter"
+    },
+    {
+      "bytes": 64586623,
+      "consumer": "ipadapter",
+      "file": "ipadapter/ip-adapter-faceid-portrait-v11_sd15.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 64586623,
+      "recorded_sha256": "a48cb4f89ed18e02c6000f65aa9efec452e87eaed4a1bc9fcf4a460c8d0e3bc6",
+      "sha256": "a48cb4f89ed18e02c6000f65aa9efec452e87eaed4a1bc9fcf4a460c8d0e3bc6",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter"
+    },
+    {
+      "bytes": 96740574,
+      "consumer": "ipadapter",
+      "file": "ipadapter/ip-adapter-faceid_sd15.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 96740574,
+      "recorded_sha256": "201344e22e6f55849cf07ca7a6e53d8c3b001327c66cb9710d69fd5da48a8da7",
+      "sha256": "201344e22e6f55849cf07ca7a6e53d8c3b001327c66cb9710d69fd5da48a8da7",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter"
+    },
+    {
+      "bytes": 2528373448,
+      "consumer": "ipadapter",
+      "file": "ipadapter/models/image_encoder/model.safetensors",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 2528373448,
+      "recorded_sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter"
+    },
+    {
+      "bytes": 3758596,
+      "consumer": "mediapipe",
+      "file": "mediapipe/face_landmarker.task",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 3758596,
+      "recorded_sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "source": "storage.googleapis.com/mediapipe-models"
+    },
+    {
+      "bytes": 934103417,
+      "consumer": "photomaker",
+      "file": "photomaker/photomaker-v1.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 934103417,
+      "recorded_sha256": "529d503fa378bfb3a74e3384ab2064d7269d59f0638324555d22067c31e275bc",
+      "sha256": "529d503fa378bfb3a74e3384ab2064d7269d59f0638324555d22067c31e275bc",
+      "source": "TencentARC/PhotoMaker + PhotoMaker-V2"
+    },
+    {
+      "bytes": 1799993138,
+      "consumer": "photomaker",
+      "file": "photomaker/photomaker-v2.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 1799993138,
+      "recorded_sha256": "0eeac57d7e09b95cee670a18e0d939ff303dd6f76d317c950bf584c6c9bdb8f5",
+      "sha256": "0eeac57d7e09b95cee670a18e0d939ff303dd6f76d317c950bf584c6c9bdb8f5",
+      "source": "TencentARC/PhotoMaker + PhotoMaker-V2"
+    },
+    {
+      "bytes": 984405232,
+      "consumer": "pulid",
+      "file": "pulid/pulid_v1.1.safetensors",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 984405232,
+      "recorded_sha256": "4cb8ceec1078e0165399b88332ab3c5971619111b8e1730e6bae64144aabae41",
+      "sha256": "4cb8ceec1078e0165399b88332ab3c5971619111b8e1730e6bae64144aabae41",
+      "source": "guozinan/PuLID"
+    },
+    {
+      "bytes": 1582858505,
+      "consumer": "pulid",
+      "file": "pulid/pulid_v1.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 1582858505,
+      "recorded_sha256": "245d05d8f11cd030d52562282332f912a2d5001b111873a40214163f33ab3f5d",
+      "sha256": "245d05d8f11cd030d52562282332f912a2d5001b111873a40214163f33ab3f5d",
+      "source": "guozinan/PuLID"
+    },
+    {
+      "bytes": 288621354,
+      "consumer": "reactor",
+      "file": "reactor/models/buffalo_l.zip",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 288621354,
+      "recorded_sha256": "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f",
+      "sha256": "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f",
+      "source": "datasets/Gourieff/ReActor"
+    },
+    {
+      "bytes": 554253681,
+      "consumer": "reactor",
+      "file": "reactor/models/inswapper_128.onnx",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 554253681,
+      "recorded_sha256": "e4a3f08c753cb72d04e10aa0f7dbe3deebbf39567d4ead6dce08e98aa49e16af",
+      "sha256": "e4a3f08c753cb72d04e10aa0f7dbe3deebbf39567d4ead6dce08e98aa49e16af",
+      "source": "datasets/Gourieff/ReActor"
+    },
+    {
+      "bytes": 261202954,
+      "consumer": "uniportrait",
+      "file": "uniportrait/glint360k_curricular_face_r101_backbone.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 261202954,
+      "recorded_sha256": "aa54ae6dc9f7ac6e262809f1a81d6108e221952bf836aee4cb677ef19246c6ec",
+      "sha256": "aa54ae6dc9f7ac6e262809f1a81d6108e221952bf836aee4cb677ef19246c6ec",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter"
+    },
+    {
+      "bytes": 2528373448,
+      "consumer": "uniportrait",
+      "file": "uniportrait/models/image_encoder/model.safetensors",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 2528373448,
+      "recorded_sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter"
+    },
+    {
+      "bytes": 44642825,
+      "consumer": "uniportrait",
+      "file": "uniportrait/models/ip-adapter_sd15.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 44642825,
+      "recorded_sha256": "68e1df30d760f280e578c302f1e73b37ea08654eff16a31153588047affe0058",
+      "sha256": "68e1df30d760f280e578c302f1e73b37ea08654eff16a31153588047affe0058",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter"
+    },
+    {
+      "bytes": 223921488,
+      "consumer": "uniportrait",
+      "file": "uniportrait/uniportrait-faceid_sd15.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 223921488,
+      "recorded_sha256": "8b79a4f39b37bc59cbc4e5d90681a33394965b3dc3ecfb0195cfe095b2bf61e4",
+      "sha256": "8b79a4f39b37bc59cbc4e5d90681a33394965b3dc3ecfb0195cfe095b2bf61e4",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter"
+    },
+    {
+      "bytes": 226451570,
+      "consumer": "uniportrait",
+      "file": "uniportrait/uniportrait-router_sd15.bin",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 226451570,
+      "recorded_sha256": "99f502791c138d90cde6512ba8cea994a4aa3244c9e5c4703bd8a6e6ab449908",
+      "sha256": "99f502791c138d90cde6512ba8cea994a4aa3244c9e5c4703bd8a6e6ab449908",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter"
+    },
+    {
+      "bytes": 560,
+      "consumer": "ipadapter",
+      "file": "ipadapter/models/image_encoder/config.json",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 560,
+      "recorded_sha256": "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1",
+      "sha256": "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1",
+      "source": "h94/IP-Adapter models/image_encoder"
+    },
+    {
+      "bytes": 560,
+      "consumer": "uniportrait",
+      "file": "uniportrait/models/image_encoder/config.json",
+      "matches": true,
+      "present": true,
+      "recorded_bytes": 560,
+      "recorded_sha256": "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1",
+      "sha256": "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1",
+      "source": "h94/IP-Adapter models/image_encoder"
+    }
+  ],
   "weights": [
     {
       "bytes": 260665334,

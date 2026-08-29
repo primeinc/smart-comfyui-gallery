@@ -4,12 +4,30 @@ Seven of the population never detect a face at all. They accept a reference
 image and condition on it, so the storage question flips: instead of asking
 which measurements survive, it asks whether the picture itself has to.
 
-The answer is the point of these cases, and it is a negative one. Every case
-here carries an ablation that substitutes the FACE PATCH -- the bounded region
-the arcface family is proven to reproduce from -- for the whole image. That
-ablation is expected to break, and when it does it establishes something no
-amount of face evidence could: a durable store holding only face regions
-cannot serve this half of the population at all.
+WHAT THE REPLAY IS ALLOWED TO SEE
+--------------------------------
+The retained picture is not the decoded frame. It is that frame after a
+lossless full-resolution encode and a decode back through this application's
+own reader (`compat/storage/derivatives.lossless`), because a store holds
+bytes and not objects -- and because a replay handed the same array the
+baseline was computed from can only ever reproduce itself, which is a fact
+about `numpy.copy` and not about storage. The encoded size is recorded, so the
+answer can state what the minimum state COSTS.
+
+Two substitutions carry the finding, and both are things this application can
+already produce:
+
+    face_patch_substituted
+                the bounded region the arcface family is proven to reproduce
+                from. The most a face-only store could ever offer.
+    preview_derivative_substituted
+                what the derived-image cache returns TODAY -- `vision/thumbs`
+                `preview`, longest side 1440, WebP at quality 82. The most the
+                store can serve without reopening the source file.
+
+Both are expected to break, and when they do they establish something no
+amount of face evidence could: neither a face-only store nor this
+application's existing derivatives can serve this half of the population.
 
 Vendor preprocessing is theirs, not ours:
 
@@ -65,6 +83,7 @@ from compat.contracts.case import (
 from compat.corpus.loaded import Shot, our_face, shots
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
+from compat.storage import derivatives
 
 #: The face size used when substituting a patch for the whole picture. 336 is
 #: the largest crop any face-native consumer asks for, so the substitution is
@@ -88,7 +107,19 @@ class WholeSetup:
     vae_scale_factor: int
     long_size_single: int
     exif_transpose: bool
-    mask_mode: str
+
+
+def _required(setup: dict[str, Any], consumer_id: str, field: str) -> str:
+    """A vendor_setup field that changes what the baseline computes.
+
+    Absent is an error, not a default. A default here is indistinguishable
+    from a declaration, so a row nobody has finished reading compares a bare
+    array against a resample the consumer really performs -- and passes.
+    """
+    held = setup.get(field)
+    if held is None:
+        raise KeyError(f"{consumer_id}: vendor_setup declares no {field!r}, and it decides what the baseline computes")
+    return str(held)
 
 
 def whole_setups() -> dict[str, WholeSetup]:
@@ -103,15 +134,23 @@ def whole_setups() -> dict[str, WholeSetup]:
             commit=row["commit"],
             repo=row["repo"],
             cited=tuple(setup.get("cited", [])),
-            preprocess=setup.get("preprocess", "rgb_only"),
+            # `preprocess` decides what the baseline computes, so it is
+            # REQUIRED rather than defaulted. This module's own docstring
+            # records a consumer that "was recorded as `rgb_only` until the
+            # pinned source was read" -- three times -- and the default that
+            # produced that reading is the one that used to sit here: an
+            # omitted field and a declared `rgb_only` were the same input.
+            preprocess=_required(setup, row["id"], "preprocess"),
             preprocess_path=str(setup.get("preprocess_path") or "uno/flux/pipeline.py"),
-            max_pixels=int(setup.get("max_pixels") or 1024 * 1024),
-            max_side_length=int(setup.get("max_side_length") or 1024),
-            vae_scale_factor=int(setup.get("vae_scale_factor") or 16),
+            # `or` would turn a DECLARED 0 into 1 MP silently. `.get(k, d)`
+            # only defaults when the key is absent, which is the difference
+            # between "upstream imposes no cap" and "nobody looked yet".
+            max_pixels=int(setup.get("max_pixels", 1024 * 1024)),
+            max_side_length=int(setup.get("max_side_length", 1024)),
+            vae_scale_factor=int(setup.get("vae_scale_factor", 16)),
             preprocess_from=str(setup.get("preprocess_from") or row["id"]),
             long_size_single=int(setup.get("long_size_single", 0)),
             exif_transpose=bool(setup.get("exif_transpose", False)),
-            mask_mode=setup.get("mask_mode", ""),
         )
     return out
 
@@ -212,6 +251,8 @@ class WholeReferenceRunner:
         self.setup = setup
         self.consumer_id = setup.consumer_id
         self._shots = {one.label: one for one in (found if found is not None else shots())}
+        self._durables: dict[str, tuple[UInt8Array, int]] = {}
+        self._previews: dict[str, tuple[UInt8Array, int]] = {}
 
     def cases(self) -> tuple[Case, ...]:
         return tuple(
@@ -229,9 +270,19 @@ class WholeReferenceRunner:
                     Ablation(primitive="whole_reference_image", expect_breaks=True),
                     # The finding. A face patch is the most a face-only store
                     # could ever offer, and it must fail here.
-                    Ablation(primitive="face_patch_substituted", expect_breaks=True, kind="substitution"),
+                    Ablation(
+                        primitive="whole_reference_image", swap="face_patch", expect_breaks=True, kind="substitution"
+                    ),
+                    # And the store's EXISTING durable artifact, which is what
+                    # "without reopening the source" means for a picture.
+                    Ablation(
+                        primitive="whole_reference_image",
+                        swap="preview_derivative",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
                 ),
-                measurements=("bytes_whole_against_face_patch",),
+                measurements=("bytes_whole_against_face_patch", "bytes_to_retain_the_picture"),
                 note=f"vendor setup at {self.setup.commit[:12]}; cited {'; '.join(self.setup.cited)}",
             )
             for label in self._shots
@@ -246,8 +297,25 @@ class WholeReferenceRunner:
         box = analytic_footprint(kps, SUBSTITUTE_CROP, shot.frame_wh)
         return shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy()
 
+    def _durable(self, shot: Shot) -> tuple[UInt8Array, int]:
+        """The picture off a lossless artifact, memoised per shot.
+
+        One encode per picture rather than one per case: seven consumers ask
+        the same question of the same frame, and a 36 MB frame encodes in
+        about a second.
+        """
+        if shot.label not in self._durables:
+            self._durables[shot.label] = derivatives.lossless(shot.frame)
+        return self._durables[shot.label]
+
+    def _preview(self, shot: Shot) -> tuple[UInt8Array, int]:
+        if shot.label not in self._previews:
+            self._previews[shot.label] = derivatives.preview(shot.frame)
+        return self._previews[shot.label]
+
     def retained_for(self, case: Case) -> RetainedState:
-        return RetainedState(whole_reference_image=self._shot(case).frame.copy())
+        pixels, _size = self._durable(self._shot(case))
+        return RetainedState(whole_reference_image=pixels)
 
     def baseline(self, case: Case) -> Artifact:
         shot = self._shot(case)
@@ -257,15 +325,32 @@ class WholeReferenceRunner:
         pixels = retained.pixels("whole_reference_image")
         return _artifact(case.boundary, vendor_preprocess(self.setup, pixels))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        if primitive == "face_patch_substituted":
-            return retained.replacing("whole_reference_image", self._face_patch(self._shot(case)))
-        return retained.without(primitive)
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        shot = self._shot(case)
+        if ablation.swap == "face_patch":
+            return retained.replacing("whole_reference_image", self._face_patch(shot))
+        if ablation.swap == "preview_derivative":
+            return retained.replacing("whole_reference_image", self._preview(shot)[0])
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
+        shot = self._shot(case)
+        if name == "bytes_to_retain_the_picture":
+            _pixels, lossless_bytes = self._durable(shot)
+            _preview_pixels, preview_bytes = self._preview(shot)
+            return Measurement(
+                name=name,
+                unit="bytes",
+                value=float(lossless_bytes),
+                basis="PNG at full resolution against the vision/thumbs preview this application already keeps",
+                detail=(
+                    f"{lossless_bytes:,} B lossless at {shot.frame.shape[1]}x{shot.frame.shape[0]} "
+                    f"against {preview_bytes:,} B for the existing preview -- "
+                    f"{lossless_bytes / preview_bytes:.0f}x, and the preview does not reproduce"
+                ),
+            )
         if name != "bytes_whole_against_face_patch":
             raise KeyError(f"{self.consumer_id} has no measurement called {name!r}")
-        shot = self._shot(case)
         whole = retained.pixels("whole_reference_image")
         patch = self._face_patch(shot)
         ratio = whole.nbytes / patch.nbytes if patch.nbytes else 0.0

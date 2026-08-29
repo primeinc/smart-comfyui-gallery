@@ -9,7 +9,7 @@ Seven attacks, each on a different load-bearing claim:
     pin_mutated          change a pinned commit -> provenance must FAIL
     blob_mutated         change a recorded blob digest -> must FAIL
     weight_moved         point a weight row at an absent file -> must FAIL
-    necessary_removed    drop a primitive an ablation says is required ->
+    necessary_removed    a primitive an ablation says is required ->
                          that case must stop reproducing
     population_shrunk    delete a consumer's cases -> the matrix must report
                          it NOT EXERCISED rather than omitting it
@@ -32,6 +32,7 @@ this suite has ever reported for that class was uninformative.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -159,28 +160,44 @@ def attack_blob_mutated(where: Path, repo_root: Path) -> Attack:
 
 
 def attack_necessary_removed(where: Path) -> Attack:
-    """Drop a primitive the evidence calls necessary; its case must go red.
+    """Something, somewhere, must be shown necessary. Otherwise nothing is.
 
-    Read out of the evidence rather than named here: whichever primitive the
-    ablations actually found necessary is the one attacked, so this keeps
-    working when the storage contract changes.
+    The property is unchanged and the evidence for it moved. This counted
+    REMOVALS that broke, which was right while a removal was the necessity
+    test -- and every removal in this suite now ends INCONCLUSIVE, because
+    taking away the one key a replay indexes shows only that the replay
+    indexes it. Necessity is established by SUBSTITUTION instead: the same
+    value offered in a cheaper storable form, with the consumer's own boundary
+    measured under it.
+
+    So both are counted, and they are counted SEPARATELY -- a suite where only
+    removals broke and a suite where only substitutions did are different
+    suites, and one number would hide which one this is.
     """
     out = Attack(
         name="necessary_removed",
-        targets="a primitive whose ablation broke the replay",
+        targets="a primitive whose removal or degradation broke the replay",
         expected="the case that needs it stops reproducing",
     )
     evidence = json.loads((where / "generated" / "cases.json").read_text(encoding="utf-8"))
-    found = [
-        (result["case"], ablation["primitive"], ablation["detail"])
-        for result in evidence["results"]
-        for ablation in result["ablations"]
-        if ablation.get("kind", "removal") == "removal" and ablation["observed_break"]
-    ]
-    out.detected = bool(found)
-    if found:
-        case, primitive, detail = found[0]
-        out.observed = f"{len(found)} recorded removals broke their replay, e.g. {case} without {primitive}"
+    removals: list[tuple[str, str, str]] = []
+    swaps: list[tuple[str, str, str]] = []
+    for result in evidence["results"]:
+        for ablation in result["ablations"]:
+            if not ablation["observed_break"]:
+                continue
+            if ablation.get("kind", "removal") == "removal":
+                removals.append((result["case"], ablation["primitive"], ablation["detail"]))
+            else:
+                swaps.append((result["case"], f"{ablation['primitive']} <- {ablation['swap']}", ablation["detail"]))
+
+    out.detected = bool(removals or swaps)
+    if out.detected:
+        case, primitive, detail = (removals or swaps)[0]
+        out.observed = (
+            f"{len(removals)} removal(s) and {len(swaps)} substitution(s) broke their replay, "
+            f"e.g. {case} on {primitive}"
+        )
         out.notes.append(f"{primitive}: {detail[:120]}")
     else:
         out.observed = "NO recorded ablation broke anything -- nothing in this suite is shown to be necessary"
@@ -223,7 +240,8 @@ def attack_evidence_not_reproducible() -> Attack:
     rewrite it with fresh wall clocks, so "the evidence is unchanged" was
     never checkable and a diff between two runs was pure noise.
 
-    Re-runs the case executor in-process and compares the serialisation it
+    Re-runs the case executor in-process, with `COMPAT_CACHE=0` so the
+    producer and the decoder actually run, and compares the serialisation it
     would write against the serialisation on disk. A difference here means
     something in the pipeline is not deterministic, and every byte-exact
     claim this suite makes rests on that not being true.
@@ -236,7 +254,25 @@ def attack_evidence_not_reproducible() -> Attack:
         expected="a second run serialises to the same bytes as the first",
     )
     on_disk = (GENERATED / "cases.json").read_text(encoding="utf-8")
-    fresh = case_runner.run_all()
+
+    # The rebuild runs with the persistent store OFF. `corpus/cache.py` holds
+    # decoded frames and the producer's faces across processes, so a rebuild
+    # that could read it would be handed the first run's own answers back and
+    # would re-execute neither cv2.imdecode nor the ONNX pass -- the two parts
+    # of this pipeline most able to be non-deterministic, and the two this
+    # attack exists to watch. Cache-off against a file written cache-on is
+    # also the stronger comparison: it asserts the producer is deterministic
+    # AND that the store did not change what it produced.
+    was = os.environ.get("COMPAT_CACHE")
+    os.environ["COMPAT_CACHE"] = "0"
+    try:
+        fresh = case_runner.run_all()
+    finally:
+        if was is None:
+            os.environ.pop("COMPAT_CACHE", None)
+        else:
+            os.environ["COMPAT_CACHE"] = was
+
     fresh.pop("seconds_by_case", None)
     rebuilt = json.dumps(fresh, indent=2, sort_keys=True, default=str) + chr(10)
 
@@ -264,11 +300,43 @@ def attack_positive_control(repo_root: Path) -> Attack:
     )
     result = provenance.verify_all(provenance.load_manifest(), repo_root)
     built = matrices.build(matrices.Evidence.load())
-    out.detected = bool(result["provenance_ok"]) and built["totals"]["not_exercised"] == 0
+    # Through `matrices.blocking`, the same function the matrix lane gates on.
+    # This used to test `not_exercised == 0` on its own, which meant it could
+    # not fail while that lane passed, and it silently kept testing one
+    # condition after the lane grew four more.
+    bad = matrices.blocking(built)
+    out.detected = bool(result["provenance_ok"]) and not bad
     out.observed = (
         f"provenance {'PASS' if result['provenance_ok'] else 'FAIL'}; "
-        f"{built['totals']['reproduced']}/{built['totals']['declared']} reproduced, "
-        f"{built['totals']['not_exercised']} not exercised"
+        f"{built['totals']['reproduced']}/{built['totals']['declared']} reproduced; "
+        f"blocking totals: {bad or 'none'}"
+    )
+    return out
+
+
+def attack_producer_inventory_stale() -> Attack:
+    """The recorded producer inventory must name every key the pass emits.
+
+    `gallery_storage.unlisted_keys()` exists for exactly this and had no
+    caller anywhere in the tree. Its docstring says a non-empty result means
+    `generated/producer_inventory.json` is stale against the live pass -- and
+    `storage/contract.emitted_keys()` reads that file to decide which keys the
+    storage lane builds cases for, so a producer that gained a key would be
+    measured as though it had not.
+    """
+    from compat.consumers.gallery_storage import unlisted_keys
+
+    out = Attack(
+        name="producer_inventory_stale",
+        targets="generated/producer_inventory.json against the live producer",
+        expected="every key the pass emits is named in the recorded inventory",
+    )
+    missing = sorted(unlisted_keys())
+    out.detected = not missing
+    out.observed = (
+        "the recorded inventory names every key the pass emitted"
+        if not missing
+        else f"the live pass emits {len(missing)} key(s) the inventory does not name: {missing}"
     )
     return out
 
@@ -289,6 +357,7 @@ def run_all() -> list[Attack]:
         finally:
             shutil.rmtree(where, ignore_errors=True)
     attacks.append(attack_evidence_not_reproducible())
+    attacks.append(attack_producer_inventory_stale())
     attacks.append(attack_positive_control(repo_root))
     return attacks
 

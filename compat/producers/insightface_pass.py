@@ -25,6 +25,7 @@ inventory that does not say which models produced it is a list of numbers.
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,10 +34,18 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from compat.assertions.arrays import digest
+
 #: The provisioned pack root. `FaceAnalysis(root=...)` appends `models/<name>`,
 #: so this is the directory ABOVE `models/`, exactly as `vision/weights.py`
 #: resolves it for the application.
-MODELS_ROOT: Path = Path("C:/ComfyUI/output/.AImodels/insightface")
+#: Overridable, because it is machine-local. `compat/primitives/build.py`
+#: states that "every machine produces byte-identical bytes, which is what
+#: lets a baseline hash recorded here mean anything on another machine" -- and
+#: this literal was duplicated into three modules, so on any other machine
+#: four vendors became UNSUPPORTED rather than erroring. One constant, one
+#: env var, and the resolved path is recorded in the evidence either way.
+MODELS_ROOT: Path = Path(os.environ.get("COMPAT_INSIGHTFACE_ROOT", "C:/ComfyUI/output/.AImodels/insightface"))
 PACK: str = "antelopev2"
 
 #: CPU only, deliberately. A CUDA reduction order is not fixed across driver
@@ -90,12 +99,10 @@ class ImageReport:
     seconds: float = 0.0
 
 
-def digest_array(values: npt.NDArray[np.generic]) -> str:
-    hasher = hashlib.sha256()
-    hasher.update(str(values.dtype).encode("ascii"))
-    hasher.update(repr(values.shape).encode("ascii"))
-    hasher.update(np.ascontiguousarray(values).tobytes())
-    return hasher.hexdigest()
+#: The suite's one array digest. Four byte-identical copies of it lived
+#: in four modules; `compat/assertions/arrays.py` holds the definition
+#: and this is the name this module has always exported.
+digest_array = digest
 
 
 #: One prepared pack per (root, pack), because five ONNX sessions take about

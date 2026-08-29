@@ -51,15 +51,22 @@ import numpy.typing as npt
 
 from compat.assertions.arrays import compare
 from compat.assertions.minimize import Rect, minimum_extent
-from compat.contracts.case import Ablation, Artifact, Case, Fixture, Measurement, RetainedState, Tier
+from compat.contracts.case import Ablation, Artifact, Case, Fixture, Measurement, RetainedState, Tier, note_skip
 from compat.corpus import index as corpus
 from compat.primitives import build
+from compat.storage import derivatives, precision
 
 #: Sizes the pinned consumers ask `norm_crop` for: 112 InfiniteYou,
 #: 224/256/336 IPAdapter FaceID Plus by variant.
 SIZES: Final[tuple[int, ...]] = (112, 224, 256, 336)
 
-CONSUMER_ID: Final[str] = "ipadapter_faceid_plus"
+#: This lane is `norm_crop` at four sizes over real geometry, not one vendor.
+#: It answered to `ipadapter_faceid_plus` -- a manifest consumer that has its
+#: own `FaceFamilyRunner` -- so two different runners' rows aggregated under
+#: one name, `sharded.merge`'s cross-shard duplicate check could not separate
+#: them, and `sharded.SHARDS` listed a lane called `aligned_crop` that matched
+#: no runner at all and put this one in the model-heavy shard instead.
+CONSUMER_ID: Final[str] = "aligned_crop"
 
 #: Corpus images used for real geometry. Two identities and both capture
 #: paths: an ID document and a selfie went through different optics, and a
@@ -207,9 +214,11 @@ def corpus_geometry(limit: int = CORPUS_IMAGES) -> list[Geometry]:
         frame, sha = producer.decode(Path(one.path))
         faces = app.get(frame)
         if not faces:
+            note_skip(CONSUMER_ID, one.path, "our producer found no face in this photograph")
             continue
         best = max(faces, key=lambda face: float(face.det_score))
         if best.kps is None:
+            note_skip(CONSUMER_ID, one.path, "the detected face carries no keypoints")
             continue
         out.append(
             Geometry(
@@ -246,9 +255,47 @@ class AlignedCropRunner:
                     Ablation(primitive="source_region_pixels", expect_breaks=True),
                     Ablation(primitive="kps_source_px", expect_breaks=True),
                     Ablation(primitive="patch_origin", expect_breaks=True),
+                    # The store kept the patch and forgot where it came
+                    # from; and the store kept the region through its own
+                    # WebP encoder. Both are things a schema can actually
+                    # do, and neither is a key the runner merely indexes.
+                    Ablation(
+                        primitive="patch_origin",
+                        swap="origin_at_zero",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
+                    Ablation(
+                        primitive="source_region_pixels",
+                        swap="webp_encoded",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
+                    # Width, not presence. A removal shows only that the
+                    # replay indexes the key; halving the float asks how
+                    # wide the column must be, and answers differently
+                    # for a coordinate than for a whole picture.
+                    Ablation(
+                        primitive="kps_source_px",
+                        swap="half_precision",
+                        expect_breaks=precision.narrows(geometry.kps),
+                        kind="substitution",
+                    ),
                 ]
                 if size == 256:
-                    ablations.append(Ablation(primitive="derive_256_from_336", expect_breaks=True))
+                    ablations.append(
+                        Ablation(
+                            # The retained key under question is the source
+                            # region: can a 256 crop come off the 336 one
+                            # instead of off the source? `aligned_crop_256`
+                            # named an output, not a column, so it reached
+                            # `answer.json` as durable state with no size.
+                            primitive="source_region_pixels",
+                            swap="downscaled_from_336",
+                            expect_breaks=True,
+                            kind="substitution",
+                        )
+                    )
                 out.append(
                     Case(
                         name=f"aligned_crop_{size}_{label}",
@@ -333,11 +380,19 @@ class AlignedCropRunner:
         # possible; patch-local keypoints cannot recover it.
         return _artifact(case.boundary, warp(patch, shifted_to(estimate_norm(kps, size), origin), size))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         """Retained state with one primitive removed or degraded."""
-        if primitive == "derive_256_from_336":
+        if ablation.swap == "downscaled_from_336":
             return retained.replacing("derive_256_from_336", True)
-        return retained.without(primitive)
+        if ablation.swap == "origin_at_zero":
+            return retained.replacing("patch_origin", (0, 0))
+        if ablation.swap == "webp_encoded":
+            return retained.replacing(
+                "source_region_pixels", derivatives.encoded(retained.pixels("source_region_pixels"))[0]
+            )
+        if ablation.swap == "half_precision":
+            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
+        return retained.without(ablation.primitive)
 
     def _reestimation_divergence(
         self, case: Case, retained: RetainedState, size: int, geometry: Geometry
@@ -415,7 +470,13 @@ class AlignedCropRunner:
             )
             try:
                 produced = self.replay(case, trial)
-            except (ValueError, TypeError, KeyError, cv2.error):
+            except cv2.error:
+                # The ONE failure that legitimately means "this extent is too
+                # small": the warp could not be performed on it. Every other
+                # exception is a bug in the probe, and returning False for it
+                # told the search this extent does not reproduce -- inflating
+                # the reported `minimum_patch_extent` by however far the bug
+                # reached, with nothing in the evidence saying so.
                 return False
             if produced.values is None:
                 return False

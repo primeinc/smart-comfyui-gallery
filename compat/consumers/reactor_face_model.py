@@ -31,6 +31,8 @@ container differed.
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,7 +43,9 @@ import numpy.typing as npt
 
 from compat.consumers.producer_derivations import Observation, observations, pose_from_landmarks
 from compat.contracts.case import Ablation, Artifact, Case, Measurement, RetainedState, Tier
+from compat.corpus.loaded import best_face
 from compat.producers import insightface_pass as producer
+from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "reactor"
 
@@ -180,7 +184,11 @@ def full_observations(limit: int = 4) -> list[FullObservation]:
         faces = app.get(frame)
         if not faces:
             continue
-        best = max(faces, key=lambda face: float(face.det_score))
+        # `loaded.best_face`, not highest det_score. Two rules for "our
+        # producer's face" named different people on any multi-face
+        # photograph, and this lane's must-retain evidence sat beside the
+        # storage lane's as though they described one subject.
+        best = best_face(faces)
         lmk106 = best.get("landmark_2d_106")
         if lmk106 is None or best.gender is None or best.age is None:
             continue
@@ -208,6 +216,10 @@ class ReactorFaceModelRunner:
             one.base.label: one for one in (found if found is not None else full_observations())
         }
         self._scratch = Path(tempfile.mkdtemp(prefix="compat_reactor_"))
+        # Removed when the interpreter exits. `tempfile.mkdtemp` has no
+        # owner, and one runner per consumer per run left a directory
+        # behind every time the suite ran.
+        atexit.register(shutil.rmtree, self._scratch, True)
 
     def cases(self) -> tuple[Case, ...]:
         return tuple(
@@ -224,18 +236,57 @@ class ReactorFaceModelRunner:
                 # Every retained key gets its own ablation. `pose` gets none:
                 # it is NOT retained, and the case reproducing at all is the
                 # evidence that deriving it was sufficient.
-                ablations=tuple(Ablation(primitive=one, expect_breaks=True) for one in retained_keys()),
+                ablations=self._ablations(label),
                 measurements=("keys_upstream_returns",),
                 note="upstream writes and upstream reads; the comparison is the file it produced",
             )
             for label in self._by_label
         )
 
+    def _ablations(self, label: str) -> tuple[Ablation, ...]:
+        """One presence question and one WIDTH question per key.
+
+        A removal shows only that the replay indexes the key --
+        `save_face_model` subscripts all of them, so every removal
+        ends the same way and separates nothing. The width question
+        does separate, where it separates at all: `expect_breaks` is
+        read off whether narrowing actually MOVES this value, not off a
+        typed-out list and not off its dtype alone -- a float whose
+        every element is exact in binary16 is unchanged by the swap and
+        `run_ablation` records that as INCONCLUSIVE.
+        """
+        held = self._state(self._by_label[label])
+        return (
+            *(Ablation(primitive=one, expect_breaks=True) for one in retained_keys()),
+            *(
+                Ablation(
+                    primitive=one,
+                    swap="half_precision",
+                    expect_breaks=precision.narrows(held.array(one)),
+                    kind="substitution",
+                )
+                for one in retained_keys()
+            ),
+            # `precision.half` cannot degrade an integer, so `age` and
+            # `gender` had a removal that proved nothing and a width
+            # question that was a no-op. A decade bucket IS a storable
+            # form of an age -- coarser and cheaper, and the one a
+            # privacy-minded schema would reach for first.
+            Ablation(
+                primitive="age",
+                swap="decade_bucket",
+                expect_breaks=True,
+                kind="substitution",
+            ),
+        )
+
     def _found(self, case: Case) -> FullObservation:
         return self._by_label[case.boundary.partition("|")[2]]
 
     def retained_for(self, case: Case) -> RetainedState:
-        found = self._found(case)
+        return self._state(self._found(case))
+
+    def _state(self, found: FullObservation) -> RetainedState:
         return RetainedState(
             bbox=found.bbox.copy(),
             kps=found.kps.copy(),
@@ -294,8 +345,13 @@ class ReactorFaceModelRunner:
         blob = save_through_upstream(ordered, self._scratch / f"{case.name}_replay.safetensors")
         return self._artifact(case.boundary, blob)
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        return retained.without(primitive)
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "decade_bucket":
+            held = retained.integers("age")
+            return retained.replacing("age", (np.rint(held / 10.0) * 10).astype(held.dtype))
+        if ablation.swap == "half_precision":
+            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """What upstream's reader actually hands a ReActor node back."""

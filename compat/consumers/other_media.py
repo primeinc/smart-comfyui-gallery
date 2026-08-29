@@ -1,9 +1,16 @@
-"""The two consumers whose identity is not carried by a photograph.
+"""The consumer whose identity is carried by a voice, not a photograph.
 
-They are in this population for one reason: to stop the storage design being
-written as though every identity fact lives on a face row. One conditions on a
-voice, the other on a video, and neither can be served by anything the face
-lane produces however complete that lane becomes.
+It is in this population for one reason: to stop the storage design being
+written as though every identity fact lives on a face row. It conditions on a
+recording, and nothing the face lane produces can serve it however complete
+that lane becomes.
+
+`id_v2v` used to live here too, and this module carried a 147-line
+`IdV2VVideoRunner` that `all_runners` never instantiated -- dead, leaking a
+`tempfile.mkdtemp` per construction, and described in this docstring as though
+it ran. Its boundary is the three VACE condition streams rather than the
+decoded source, so it belongs to `compat/consumers/control_stream.py`, and the
+dead copy is gone.
 
     id_lora   LTXVReferenceAudio.execute, ComfyUI@a9ab2b62dac1
               nodes_lt.py:881-893. Reads `reference_audio["waveform"]` and
@@ -13,12 +20,6 @@ lane produces however complete that lane becomes.
               rate -- storing them would freeze one model's opinion of a voice
               the way storing an aligned crop would freeze one model's opinion
               of a face. The durable artifact is the waveform.
-
-    id_v2v    scripts/preprocess.sh, ID-V2V@33dd047835cf
-              Reads `<SAMPLE_DIR>/source.mp4`, runs SAM3 person segmentation,
-              and writes `orig_pixel.mp4` -- foreground on grey. The control
-              stream is derived from the source video frame by frame and is
-              keyed to the media, not to any face in it.
 
 The boundary in both cases stops before the model, the same rule every image
 consumer here follows: the resampled waveform for one, the decoded frame stack
@@ -36,14 +37,11 @@ boundary set short of the model.
 
 from __future__ import annotations
 
-import hashlib
-import tempfile
-from pathlib import Path
 from typing import Any, Final
 
 import numpy as np
-import numpy.typing as npt
 
+from compat.assertions.arrays import digest
 from compat.contracts.case import (
     Ablation,
     Artifact,
@@ -55,6 +53,7 @@ from compat.contracts.case import (
     Tier,
     UInt8Array,
 )
+from compat.storage import precision
 
 #: nodes_lt.py:884. What the node falls back to when the VAE does not say.
 VAE_SAMPLE_RATE: Final[int] = 44100
@@ -112,14 +111,6 @@ def resampled(clip: Float32Array, source_rate: int, target_rate: int) -> Float32
     return np.asarray(out.squeeze(0).numpy(), dtype=np.float32)
 
 
-def digest(values: npt.NDArray[np.generic]) -> str:
-    hasher = hashlib.sha256()
-    hasher.update(str(values.dtype).encode("ascii"))
-    hasher.update(repr(values.shape).encode("ascii"))
-    hasher.update(np.ascontiguousarray(values).tobytes())
-    return hasher.hexdigest()
-
-
 def _artifact(name: str, values: Float32Array | UInt8Array) -> Artifact:
     return Artifact(
         name=name,
@@ -159,11 +150,30 @@ class IdLoraAudioRunner:
                 retained=("audio_waveform", "audio_sample_rate"),
                 ablations=(
                     Ablation(primitive="audio_waveform", expect_breaks=True),
+                    # Every codec this application could keep is
+                    # integer PCM, so the storable question for a
+                    # float waveform is whether 16-bit serves.
+                    Ablation(
+                        primitive="audio_waveform",
+                        swap="pcm_16_bit",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
                     # The rate is not decoration. Without it the node cannot
                     # know whether to resample, and a clip replayed at the
                     # wrong rate is the same voice at the wrong pitch -- which
                     # nothing downstream would flag.
                     Ablation(primitive="audio_sample_rate", expect_breaks=True),
+                    # The rate the VAE wants, offered as though it were the
+                    # rate the clip was captured at. A store that kept the
+                    # waveform and the WRONG rate is the same voice at the
+                    # wrong pitch, and that is what this measures.
+                    Ablation(
+                        primitive="audio_sample_rate",
+                        swap="vae_rate_assumed",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
                 ),
                 measurements=("waveform_against_latent_cost",),
                 note="boundary is the resampled waveform, the last deterministic artifact before the audio VAE",
@@ -181,8 +191,12 @@ class IdLoraAudioRunner:
         rate = int(retained.number("audio_sample_rate"))
         return _artifact(case.boundary, resampled(clip, rate, VAE_SAMPLE_RATE))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        return retained.without(primitive)
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "vae_rate_assumed":
+            return retained.replacing("audio_sample_rate", float(VAE_SAMPLE_RATE))
+        if ablation.swap == "pcm_16_bit":
+            return retained.replacing("audio_waveform", precision.quantised(retained.points("audio_waveform")))
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """What the waveform costs, and why the tokens are not an alternative."""
@@ -205,157 +219,5 @@ class IdLoraAudioRunner:
         )
 
 
-class IdV2VVideoRunner:
-    """The source video is durable; the control stream is derived from it."""
-
-    consumer_id: str = "id_v2v"
-
-    def __init__(self) -> None:
-        self._scratch = Path(tempfile.mkdtemp(prefix="compat_idv2v_"))
-        self._path = self._scratch / "source.mp4"
-        self._write_source()
-        self._fixture = Fixture(
-            name="deterministic_source_mp4",
-            path=str(self._path),
-            sha256=hashlib.sha256(self._path.read_bytes()).hexdigest(),
-            kind="synthetic_video",
-            note=f"seed {SEED}, {VIDEO_FRAMES} frames at {VIDEO_WIDTH}x{VIDEO_HEIGHT}, mpeg4 yuv420p",
-        )
-
-    def _frames(self) -> list[UInt8Array]:
-        """Frames with motion, so a decoder that dropped or reordered shows.
-
-        A static clip would let a decoder returning frame zero twelve times
-        reproduce perfectly, which is precisely the failure a video case is
-        supposed to be able to see.
-        """
-        rng = np.random.default_rng(SEED)
-        base = rng.integers(0, 200, size=(VIDEO_HEIGHT, VIDEO_WIDTH, 3), dtype=np.uint8)
-        out: list[UInt8Array] = []
-        for index in range(VIDEO_FRAMES):
-            frame = base.copy()
-            x = (index * 11) % (VIDEO_WIDTH - 20)
-            frame[20:60, x : x + 20] = np.array([255, 40, 40], dtype=np.uint8)
-            out.append(np.asarray(frame, dtype=np.uint8))
-        return out
-
-    def _write_source(self) -> None:
-        """Encode the fixture, following PyAV's own numpy example.
-
-        `examples/numpy/generate_video.py`: add_stream, set width/height/
-        pix_fmt, mux each packet `stream.encode(frame)` yields, then flush with
-        a bare `stream.encode()`. Skipping the flush leaves the tail of the
-        clip unwritten, which would silently shorten the fixture.
-        """
-        import av
-
-        with av.open(str(self._path), mode="w") as container:
-            stream = container.add_stream("mpeg4", rate=VIDEO_FPS)
-            stream.width = VIDEO_WIDTH
-            stream.height = VIDEO_HEIGHT
-            stream.pix_fmt = "yuv420p"
-            for frame in self._frames():
-                for packet in stream.encode(av.VideoFrame.from_ndarray(frame, format="rgb24")):
-                    container.mux(packet)
-            for packet in stream.encode():
-                container.mux(packet)
-
-    def decode(self, blob: bytes) -> UInt8Array:
-        """Every frame the source carries, as one stacked array.
-
-        Decoded from BYTES rather than from a path, because that is the claim
-        under test: the durable artifact is the media itself, and a replay that
-        reached for a filename would be leaning on the source file still being
-        there -- which is the thing the whole suite is trying not to assume.
-        """
-        import io
-
-        import av
-
-        frames: list[UInt8Array] = []
-        try:
-            # `mode="r"` explicitly: PyAV's stubs overload on it
-            # (av/container/core.pyi:108-119), and without it the return type
-            # is the InputContainer|OutputContainer union, which has no
-            # `decode`. Stating the mode is also just true.
-            with av.open(io.BytesIO(blob), mode="r") as container:
-                frames.extend(
-                    np.asarray(frame.to_ndarray(format="rgb24"), dtype=np.uint8) for frame in container.decode(video=0)
-                )
-        except av.FFmpegError as problem:
-            # Translated for the MESSAGE, not for the catch: PyAV's
-            # `FFmpegError` already subclasses `ValueError`, so the executor
-            # would record this as a break either way. What it would record is
-            # `InvalidDataError: [Errno 1094995529] Invalid data found`, which
-            # says nothing about what was asked. The ablation that lands here
-            # is the one offering a face row where video bytes belong, and the
-            # evidence should say so.
-            raise ValueError(f"these bytes are not decodable video: {type(problem).__name__}: {problem}") from problem
-        if not frames:
-            raise ValueError("no frames decoded from the retained bytes")
-        return np.asarray(np.stack(frames), dtype=np.uint8)
-
-    def cases(self) -> tuple[Case, ...]:
-        return (
-            Case(
-                name="id_v2v_source_frames",
-                consumer_id=self.consumer_id,
-                tier=Tier.CONSUMER,
-                fixture=self._fixture,
-                boundary="decoded_source_frames",
-                exact_bytes=True,
-                rtol=0.0,
-                atol=0.0,
-                retained=("source_video_bytes",),
-                ablations=(
-                    Ablation(primitive="source_video_bytes", expect_breaks=True),
-                    # A face row is the whole of what the face lane can offer.
-                    # It does not decode into frames, and that is the point.
-                    Ablation(primitive="face_row_substituted", expect_breaks=True, kind="substitution"),
-                ),
-                measurements=("frames_and_bytes",),
-                note="boundary is the decoded frame stack, before SAM3; the control stream is derived per frame",
-            ),
-        )
-
-    def retained_for(self, case: Case) -> RetainedState:
-        return RetainedState(source_video_bytes=np.frombuffer(self._path.read_bytes(), dtype=np.uint8))
-
-    def baseline(self, case: Case) -> Artifact:
-        return _artifact(case.boundary, self.decode(self._path.read_bytes()))
-
-    def replay(self, case: Case, retained: RetainedState) -> Artifact:
-        return _artifact(case.boundary, self.decode(retained.pixels("source_video_bytes").tobytes()))
-
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        if primitive == "face_row_substituted":
-            # A 512-d embedding plus five keypoints: the whole of what a face
-            # row carries, offered where the video bytes were.
-            rng = np.random.default_rng(SEED)
-            row = rng.standard_normal(512 + 10).astype(np.float32)
-            return retained.replacing("source_video_bytes", np.frombuffer(row.tobytes(), dtype=np.uint8))
-        return retained.without(primitive)
-
-    def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
-        if name != "frames_and_bytes":
-            raise KeyError(f"{self.consumer_id} has no measurement called {name!r}")
-        blob = retained.pixels("source_video_bytes")
-        frames = self.decode(blob.tobytes())
-        return Measurement(
-            name=name,
-            unit="bytes",
-            value=float(blob.nbytes),
-            basis="the encoded source against the frame stack SAM3 would be handed",
-            detail=(
-                f"source {blob.nbytes:,} B decodes to {frames.shape} = {frames.nbytes:,} B of frames "
-                f"({frames.nbytes / blob.nbytes:.1f}x). The control stream (orig_pixel.mp4) is derived "
-                f"per frame from this and is not durable state"
-            ),
-        )
-
-
 def all_runners() -> list[Any]:
-    # id_v2v moved to compat/consumers/control_stream.py: its boundary is the
-    # three VACE condition streams, not the decoded source, and its fixtures
-    # are the vendor's own test_samples rather than a generated clip.
     return [IdLoraAudioRunner()]

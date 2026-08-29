@@ -59,10 +59,13 @@ from compat.contracts.case import (
 from compat.corpus.loaded import Shot, our_face, shots, vendor_face
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
+from compat.storage import derivatives, precision
 
 #: Where the packs live. Same root the application resolves through
 #: `vision/weights.py`, so the suite and the product read the same files.
-PACK_ROOT: Final[Path] = Path("C:/ComfyUI/output/.AImodels/insightface")
+#: The same root `producers/insightface_pass.py` resolves, not a second
+#: copy of the literal: three modules held it and only one was overridable.
+PACK_ROOT: Final[Path] = producer.MODELS_ROOT
 
 
 @dataclass(frozen=True)
@@ -407,12 +410,31 @@ def embedding_ablations(setup: VendorSetup) -> tuple[Ablation, ...]:
     so the ablation is declared NOT to break. For PhotoMaker (w600k_r50) and
     InfiniteYou (facexlib arcface) it must break -- and if it ever does not,
     the two-spaces finding is wrong and one vector would suffice after all.
+
+    The expectation is DERIVED FROM `embedding_model`, which is also what the
+    experiment runs, so it cannot detect a wrong value: declare glintr100 for
+    a consumer that really uses w600k_r50 and both sides of the comparison run
+    glintr100, nothing breaks, and the expectation agrees. That is why every
+    embedding case now carries `stored_vector_agreement` -- the cosine between
+    the two vectors actually in the retained state. A break must be
+    accompanied by vectors that genuinely differ, and `answer.py` reports the
+    pair as UNCORROBORATED when it is not.
     """
     return (
         Ablation(primitive="embedding_raw", expect_breaks=True),
         Ablation(
-            primitive="stored_glintr100_substituted",
+            primitive="embedding_raw",
+            swap="stored_glintr100",
             expect_breaks=setup.embedding_model != "glintr100",
+            kind="substitution",
+        ),
+        # Width beside identity: a store that keeps the right
+        # model's vector at half the width is a different, cheaper
+        # answer, and nothing here had measured it.
+        Ablation(
+            primitive="embedding_raw",
+            swap="half_precision",
+            expect_breaks=True,
             kind="substitution",
         ),
     )
@@ -423,6 +445,28 @@ def crop_ablations() -> tuple[Ablation, ...]:
         Ablation(primitive="source_region_pixels", expect_breaks=True),
         Ablation(primitive="kps_source_px", expect_breaks=True),
         Ablation(primitive="patch_origin", expect_breaks=True),
+        # The store kept the patch and forgot where it came from. Zero is
+        # what a schema with no origin column can offer, and the crop is
+        # warped from keypoints expressed relative to it.
+        Ablation(
+            primitive="patch_origin",
+            swap="origin_at_zero",
+            expect_breaks=True,
+            kind="substitution",
+        ),
+        # The region as this application's own encoder keeps it.
+        Ablation(
+            primitive="source_region_pixels",
+            swap="webp_encoded",
+            expect_breaks=True,
+            kind="substitution",
+        ),
+        Ablation(
+            primitive="kps_source_px",
+            swap="half_precision",
+            expect_breaks=True,
+            kind="substitution",
+        ),
     )
 
 
@@ -430,6 +474,23 @@ def kps_ablations() -> tuple[Ablation, ...]:
     return (
         Ablation(primitive="kps_source_px", expect_breaks=True),
         Ablation(primitive="frame_dimensions", expect_breaks=True),
+        # The size of the picture the STORE keeps rather than the size of
+        # the one the detector saw. `vision/thumbs` caps its largest raster
+        # variant at 1440, so a schema that recorded the derivative's
+        # geometry would record this -- and `draw_kps` renders onto a canvas
+        # of exactly these dimensions.
+        Ablation(
+            primitive="frame_dimensions",
+            swap="preview_dimensions",
+            expect_breaks=True,
+            kind="substitution",
+        ),
+        Ablation(
+            primitive="kps_source_px",
+            swap="half_precision",
+            expect_breaks=True,
+            kind="substitution",
+        ),
         # Inverted on purpose: this one must NOT break. `draw_kps` reads the
         # reference image for its shape only, so substituting the pixels has
         # to leave the output identical -- and if it ever does not, the claim
@@ -456,7 +517,15 @@ class FaceFamilyRunner:
         out: list[Case] = []
         for label in self._shots:
             if self.setup.embedding in {"raw", "normed"}:
-                out.append(self._case(label, "embedding", ("embedding_raw",), embedding_ablations(self.setup)))
+                out.append(
+                    self._case(
+                        label,
+                        "embedding",
+                        ("embedding_raw",),
+                        embedding_ablations(self.setup),
+                        measurements=("stored_vector_agreement",),
+                    )
+                )
             out.extend(
                 self._case(
                     label,
@@ -607,7 +676,7 @@ class FaceFamilyRunner:
         kps = retained.points("kps_source_px")
         return _artifact(case.boundary, warp(patch, shifted_to(estimate_norm(kps, size), origin), size))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         """One primitive removed, or -- for `reference_pixels` -- replaced.
 
         `reference_pixels` is not in the retained state at all, which is the
@@ -616,13 +685,61 @@ class FaceFamilyRunner:
         and is declared `expect_breaks=False`. It passes only because the
         replay genuinely does not consult pixels.
         """
-        if primitive == "reference_pixels":
+        if ablation.primitive == "reference_pixels" and not ablation.swap:
             return retained
-        if primitive == "stored_glintr100_substituted":
+        if ablation.swap == "stored_glintr100":
             return retained.replacing("embedding_raw", retained.points("stored_glintr100"))
-        return retained.without(primitive)
+        if ablation.swap == "origin_at_zero":
+            return retained.replacing("patch_origin", (0, 0))
+        if ablation.swap == "webp_encoded":
+            return retained.replacing(
+                "source_region_pixels", derivatives.encoded(retained.pixels("source_region_pixels"))[0]
+            )
+        if ablation.swap == "preview_dimensions":
+            from vision import thumbs
+
+            width, height = retained.pair("frame_dimensions")
+            edge = thumbs.EDGES["preview"]
+            scale = min(1.0, edge / max(width, height))
+            return retained.replacing("frame_dimensions", (max(1, round(width * scale)), max(1, round(height * scale))))
+        if ablation.swap == "half_precision":
+            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
+        return retained.without(ablation.primitive)
+
+    def _stored_vector_agreement(self, case: Case, retained: RetainedState) -> Measurement:
+        """Cosine between the vector this consumer wants and the one we store.
+
+        The number the substitution verdict should rest on. Both vectors are
+        already in the retained state -- `embedding_raw` is what this
+        consumer's own model produced, `stored_glintr100` is the gallery's
+        row -- so measuring them costs one dot product and turns a claim
+        derived from a manifest field into one derived from two arrays.
+
+        Recorded whether or not the models are declared to differ: a consumer
+        declared to share glintr100 whose vectors nonetheless disagree is the
+        finding that the declaration is wrong, and it cannot be seen without
+        the number.
+        """
+        _kind, shot = self._parts(case)
+        mine = retained.points("embedding_raw").reshape(-1)
+        stored = retained.points("stored_glintr100").reshape(-1)
+        left = float(np.linalg.norm(mine))
+        right = float(np.linalg.norm(stored))
+        agreement = float(np.dot(mine, stored) / (left * right)) if left and right else 0.0
+        return Measurement(
+            name="stored_vector_agreement",
+            unit="cosine",
+            value=agreement,
+            basis=f"{self.setup.embedding_model} against the stored glintr100 vector, same norm_crop@112",
+            detail=(
+                f"{shot.label}: declared {self.setup.embedding_model}, cosine {agreement:+.4f} "
+                f"(|mine|={left:.3f}, |stored|={right:.3f})"
+            ),
+        )
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
+        if name == "stored_vector_agreement":
+            return self._stored_vector_agreement(case, retained)
         if name != "reference_pixels_unused":
             raise KeyError(f"{self.consumer_id} has no measurement called {name!r}")
 

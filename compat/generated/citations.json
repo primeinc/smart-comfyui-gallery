@@ -331,6 +331,36 @@
       "verdict": "OK"
     },
     {
+      "consumer_id": "infiniteyou",
+      "detail": "anchored on image_proj_num_tokens",
+      "field": "acceptance_expected",
+      "first": 59,
+      "last": 59,
+      "path": "nodes.py",
+      "text": "nodes.py:59 image_proj_num_tokens: ([8, 16], )",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "infiniteyou",
+      "detail": "anchored on image_proj_num_tokens",
+      "field": "acceptance_expected",
+      "first": 117,
+      "last": 126,
+      "path": "nodes.py",
+      "text": "nodes.py:117-126 Resampler(num_queries=image_proj_num_tokens, output_dim=4096)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "infiniteyou",
+      "detail": "anchored on Parameter",
+      "field": "acceptance_expected",
+      "first": 97,
+      "last": 97,
+      "path": "resampler.py",
+      "text": "resampler.py:97 self.latents = nn.Parameter(torch.randn(1, num_queries, dim))",
+      "verdict": "OK"
+    },
+    {
       "consumer_id": "uniportrait",
       "detail": "process_faceid_image defined at line 79",
       "field": "entrypoint",
@@ -358,6 +388,16 @@
       "last": 103,
       "path": "gradio_app.py",
       "text": "gradio_app.py:69-103 pad_np_bgr_image/process_faceid_image",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uniportrait",
+      "detail": "anchored on UniPortraitFaceIDResampler",
+      "field": "acceptance_expected",
+      "first": 82,
+      "last": 88,
+      "path": "uniportrait/uniportrait_pipeline.py",
+      "text": "uniportrait/uniportrait_pipeline.py:82-88 UniPortraitFaceIDResampler(num_tokens=16, output_dim=cross_attention_dim)",
       "verdict": "OK"
     },
     {
@@ -418,6 +458,26 @@
       "last": 110,
       "path": "src/diffusers/pipelines/consisid/consisid_utils.py",
       "text": "src/diffusers/pipelines/consisid/consisid_utils.py::process_face_embeddings",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "consisid",
+      "detail": "anchored on Size",
+      "field": "acceptance_expected",
+      "first": 210,
+      "last": 212,
+      "path": "src/diffusers/pipelines/consisid/consisid_utils.py",
+      "text": "src/diffusers/pipelines/consisid/consisid_utils.py:210-212 id_cond = torch.cat([id_ante_embedding, id_cond_vit], dim=-1) -> torch.Size([1, 1280])",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "consisid",
+      "detail": "anchored on Size",
+      "field": "acceptance_expected",
+      "first": 219,
+      "last": 219,
+      "path": "src/diffusers/pipelines/consisid/consisid_utils.py",
+      "text": "src/diffusers/pipelines/consisid/consisid_utils.py:219 return comment repeats torch.Size([1, 1280])",
       "verdict": "OK"
     },
     {
@@ -501,6 +561,36 @@
       "verdict": "OK"
     },
     {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on load_ip_adapter_instantid",
+      "field": "acceptance_expected",
+      "first": 158,
+      "last": 158,
+      "path": "pipeline_stable_diffusion_xl_instantid.py",
+      "text": "pipeline_stable_diffusion_xl_instantid.py:158 load_ip_adapter_instantid(..., num_tokens=16)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on num_tokens",
+      "field": "acceptance_expected",
+      "first": 162,
+      "last": 162,
+      "path": "pipeline_stable_diffusion_xl_instantid.py",
+      "text": "pipeline_stable_diffusion_xl_instantid.py:162 set_image_proj_model(..., num_tokens=16)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on cross_attention_dim",
+      "field": "acceptance_expected",
+      "first": 169,
+      "last": 171,
+      "path": "pipeline_stable_diffusion_xl_instantid.py",
+      "text": "pipeline_stable_diffusion_xl_instantid.py:169-171 Resampler(num_queries=num_tokens, output_dim=cross_attention_dim)",
+      "verdict": "OK"
+    },
+    {
       "consumer_id": "ipadapter_upstream",
       "detail": "get_image_embeds defined at line 183",
       "field": "entrypoint",
@@ -531,6 +621,26 @@
       "verdict": "OK"
     },
     {
+      "consumer_id": "ipadapter_upstream",
+      "detail": "anchored on init__",
+      "field": "acceptance_expected",
+      "first": 121,
+      "last": 121,
+      "path": "ip_adapter/ip_adapter_faceid.py",
+      "text": "ip_adapter/ip_adapter_faceid.py:121 def __init__(..., num_tokens=4, ...)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_upstream",
+      "detail": "anchored on ProjModel",
+      "field": "acceptance_expected",
+      "first": 136,
+      "last": 141,
+      "path": "ip_adapter/ip_adapter_faceid.py",
+      "text": "ip_adapter/ip_adapter_faceid.py:136-141 MLPProjModel(cross_attention_dim=..., id_embeddings_dim=512, num_tokens=self.num_tokens)",
+      "verdict": "OK"
+    },
+    {
       "consumer_id": "pulid_upstream",
       "detail": "get_id_embedding defined at line 144",
       "field": "entrypoint",
@@ -558,6 +668,46 @@
       "last": 157,
       "path": "pulid/pipeline.py",
       "text": "pulid/pipeline.py:144-157 get_id_embedding",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "anchored on context_dim",
+      "field": "acceptance_expected",
+      "first": 6,
+      "last": 6,
+      "path": "pulid/encoders.py",
+      "text": "pulid/encoders.py:6 IDEncoder(width=1280, context_dim=2048, num_token=5)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "anchored on context_dim",
+      "field": "acceptance_expected",
+      "first": 54,
+      "last": 54,
+      "path": "pulid/encoders.py",
+      "text": "pulid/encoders.py:54 x.reshape(-1, self.num_token, self.context_dim)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "anchored on hidden_states",
+      "field": "acceptance_expected",
+      "first": 62,
+      "last": 64,
+      "path": "pulid/encoders.py",
+      "text": "pulid/encoders.py:62-64 cat(five hidden states, dim=1) then cat([x, hidden_states], dim=1)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "anchored on id_embedding",
+      "field": "acceptance_expected",
+      "first": 214,
+      "last": 214,
+      "path": "pulid/pipeline.py",
+      "text": "pulid/pipeline.py:214 cat((uncond_id_embedding, id_embedding), dim=0)",
       "verdict": "OK"
     },
     {
@@ -993,6 +1143,6 @@
   ],
   "clean": true,
   "counts": {
-    "OK": 99
+    "OK": 114
   }
 }

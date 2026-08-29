@@ -3840,3 +3840,56 @@ def _an_expensive_pass_is_recorded_whole(conn: sqlite3.Connection) -> None:
     make the last one.
     """
     conn.execute("ALTER TABLE derived_face_instance ADD COLUMN attributes TEXT")
+
+
+@step(45)
+def _a_measurement_is_kept_at_the_width_it_was_measured(conn: sqlite3.Connection) -> None:
+    """v45 -> v46: stop narrowing what the detector measured.
+
+    Three lossy transforms sat between the producer and the row, each
+    deliberate and none of them paid for:
+
+        landmarks           NORMALIZED coordinates in a float32 blob. Reading
+                            one back multiplies by the frame size, and a
+                            float32 value in [0, 1] carries a half-ulp of
+                            2**-24 -- on a 6528 px frame, 3.9e-4 source pixels
+                            discarded before anything asked for the value.
+        landmark_2d_106     `round(x, 5)` on the normalized coordinate
+        landmark_3d_68      the same, plus `round(z, 2)` on the depth
+        pose                `round(deg, 2)` on all three angles
+
+    Not argued -- MEASURED, by `compat/consumers/gallery_storage.py`, which
+    compares what the producer emitted against what this application's own
+    write path gives back at rtol=0 and atol=0. It found 19 keys that do not
+    survive: `kps` to 2.4e-4 px, `landmark_2d_106` to 0.0322 px,
+    `landmark_3d_68` to 0.0320, `pose` to 0.0034 degrees. Every one is this
+    code narrowing a value nothing asked it to narrow.
+
+    WHAT THIS STEP CAN AND CANNOT DO
+    --------------------------------
+    The blob is convertible: float32 normalized coordinates widen to float64
+    exactly, so every stored row is rewritten here and reads back at the
+    precision the next detection will write at.
+
+    The ROUNDED values are not. `round(x, 5)` destroyed the digits; there is
+    nothing in the row to recover them from. Those columns keep what they
+    have until a faces pass looks at the original bytes again
+    (`POST /jobs/faces` with `{"everything": true}`), which is the same
+    re-read v45 was written to make the last one -- and this time the values
+    it writes will be the values the detector produced.
+    """
+    import numpy as np
+
+    rows = conn.execute("SELECT id, landmarks FROM derived_face_instance WHERE landmarks IS NOT NULL").fetchall()
+    for face_id, blob in rows:
+        held = bytes(blob)
+        # Converted unconditionally. `user_version` is what says these bytes
+        # are float32 -- that is the whole job of a schema version -- and the
+        # step runs once, inside the transaction `migrate` opens, before the
+        # pragma advances. A byte-length guard cannot second-guess it anyway:
+        # five float32 pairs and five float64 pairs are 40 and 80 bytes, both
+        # divisible by 8, so width discriminates nothing.
+        conn.execute(
+            "UPDATE derived_face_instance SET landmarks = ? WHERE id = ?",
+            (np.frombuffer(held, dtype=np.float32).astype(np.float64).tobytes(), face_id),
+        )

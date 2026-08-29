@@ -36,13 +36,17 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 #: Where the sample datasets live on this machine. The production face
 #: benchmark names the same root; this is not a second source of truth, it is
 #: the same one, and a run records the path it actually used.
-DATASETS: Path = Path("C:/ComfyUI/output/sample-datasets")
+#: Overridable for the same reason the model root is: it is a fact about
+#: this machine, and a hardcoded drive letter makes the corpus lanes
+#: unrunnable anywhere else rather than reporting that it is absent.
+DATASETS: Path = Path(os.environ.get("COMPAT_DATASETS", "C:/ComfyUI/output/sample-datasets"))
 
 #: The labelled identity set. Seven folders, one per person.
 KYC: Path = DATASETS / "caucasian-people-kyc-photo-dataset"
@@ -176,13 +180,27 @@ def main() -> int:
 
     index = build()
     out = Path(__file__).resolve().parent / "kyc.json"
+    body = json.dumps(index, indent=2, sort_keys=True) + "\n"
+
+    # Regenerated and DIFFED against the committed copy, not merely
+    # overwritten. No module reads this file -- `loaded.shots()` scans the
+    # corpus live -- so writing it and moving on made the lane produce a
+    # decoration. Read as a drift check it says something: either the
+    # committed index and the corpus on this machine agree, or they do not and
+    # every baseline recorded against the old one describes other photographs.
+    was = out.read_text(encoding="utf-8") if out.is_file() else ""
+    moved = bool(was) and was != body
+
     with out.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(json.dumps(index, indent=2, sort_keys=True))
-        handle.write("\n")
+        handle.write(body)
 
     print(json.dumps(index["summary"], indent=2, sort_keys=True))
     print(f"\nlicence: {LICENCE} (not vendored)")
     print(f"wrote {out}")
+    if moved:
+        print("\n!! the corpus on this machine does not match the committed index.")
+        print("   Evidence recorded against the old one describes different photographs.")
+        return 1
     return 0
 
 

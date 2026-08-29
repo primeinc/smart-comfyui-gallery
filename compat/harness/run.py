@@ -25,7 +25,7 @@ import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Final, Protocol, runtime_checkable
 
 from compat.assertions.arrays import Comparison, compare
 from compat.contracts.case import (
@@ -34,10 +34,14 @@ from compat.contracts.case import (
     Case,
     CaseResult,
     Measurement,
+    MissingPrimitive,
     Registry,
     RetainedState,
     Tier,
     Verdict,
+)
+from compat.contracts.case import (
+    skipped as case_skips,
 )
 from compat.harness import identity as evidence_identity
 from compat.harness import provenance
@@ -46,11 +50,11 @@ ROOT: Path = Path(__file__).resolve().parent.parent
 
 
 class Runner(Protocol):
-    """What `run.py` needs from a consumer file.
+    """What `run.py` needs from a consumer file to run one case.
 
-    Wider than `ConsumerRunner` by two methods: the executor has to be able to
-    build the retained state and to ablate it, and only the consumer knows what
-    removing one of its primitives means.
+    Wider than `ConsumerRunner` by one method: the executor has to be able to
+    build the retained state, and only the consumer knows what its own durable
+    record contains.
     """
 
     consumer_id: str
@@ -59,8 +63,24 @@ class Runner(Protocol):
     def retained_for(self, case: Case) -> RetainedState: ...
     def baseline(self, case: Case) -> Artifact: ...
     def replay(self, case: Case, retained: RetainedState) -> Artifact: ...
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState: ...
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement: ...
+
+
+@runtime_checkable
+class Ablating(Runner, Protocol):
+    """A runner that also knows what degrading one of its primitives means.
+
+    Split from `Runner` so that declaring no ablations is a fact the type
+    system carries. `gallery_storage` measures conservation -- the producer's
+    value against what the store gave back -- and has no necessity question to
+    ask; requiring it to supply an `ablate` it never uses is how a lane ends
+    up with a method whose only purpose is to satisfy a protocol.
+
+    A case that declares ablations over a runner that is not `Ablating` is a
+    contradiction, and `run_case` says so rather than skipping it.
+    """
+
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState: ...
 
 
 def _values_of(artifact: Artifact) -> Any:
@@ -69,8 +89,21 @@ def _values_of(artifact: Artifact) -> Any:
     return artifact.values
 
 
+def _inconclusive(declared: Ablation, why: str) -> Ablation:
+    """One ablation that could not answer, carrying the reason."""
+    return Ablation(
+        primitive=declared.primitive,
+        expect_breaks=declared.expect_breaks,
+        kind=declared.kind,
+        swap=declared.swap,
+        observed_break=None,
+        verdict=Verdict.INCONCLUSIVE,
+        detail=f"INCONCLUSIVE: {why}",
+    )
+
+
 def run_ablation(
-    runner: Runner, case: Case, retained: RetainedState, declared: Ablation, against: Artifact
+    runner: Ablating, case: Case, retained: RetainedState, declared: Ablation, against: Artifact
 ) -> Ablation:
     """One primitive removed, and whether that actually broke anything.
 
@@ -81,8 +114,39 @@ def run_ablation(
     compared against the one the case's own verdict used, and if a baseline
     ever stopped being invariant nothing here would notice.
     """
+    broke: bool | None
     try:
-        degraded = runner.ablate(case, retained, declared.primitive)
+        # Building the substitute is the HARNESS's work, not the consumer's.
+        # A raise here says the runner could not construct the degraded state;
+        # it says nothing about whether the consumer needs the value. `age`
+        # reached `answer.json` as durable state on
+        # "TypeError: 'age' is int64, not an array" -- this module's own type
+        # error, recorded as proof the substitution broke the consumer.
+        degraded = runner.ablate(case, retained, declared)
+    except MissingPrimitive as problem:
+        return _inconclusive(
+            declared,
+            f"{problem}. The replay indexes this key; it was not shown to need the value.",
+        )
+    except (KeyError, TypeError, ValueError, IndexError) as problem:
+        return _inconclusive(
+            declared,
+            f"the runner could not build the {declared.swap or declared.primitive!r} state: "
+            f"{type(problem).__name__}: {problem}",
+        )
+
+    try:
+        if declared.kind == "substitution" and degraded.same_as(retained):
+            # The substitute WAS the original. Nothing was degraded, so the
+            # replay would reproduce whatever the state carried and the
+            # outcome is a property of the two values being equal. Recorded as
+            # the absence of a result, the same as a removal the replay merely
+            # indexes.
+            return _inconclusive(
+                declared,
+                f"the {declared.swap!r} substitute is identical to the retained {declared.primitive!r}; "
+                f"no degradation was applied and nothing could be observed",
+            )
         produced = runner.replay(case, degraded)
         result: Comparison = compare(
             _values_of(against),
@@ -92,20 +156,37 @@ def run_ablation(
             atol=case.atol,
         )
         broke = not result.equal
-        detail = result.detail
+        # The METHOD as well as the detail, the way `run_case` records its own
+        # comparison. Without it a substitution that "broke" because the two
+        # arrays are different SIZES is indistinguishable in the evidence from
+        # one that broke on content -- and `whole_reference`'s
+        # `whole_reference_image` swapped for `face_patch` is exactly that: a
+        # (4032, 3024, 3) baseline against a (948, 948, 3) replay, published
+        # as "a face-only store cannot serve this half of the population".
+        detail = f"{result.method}: {result.detail}"
+    except MissingPrimitive as problem:
+        # NOT a break. The replay dereferenced the key that was just removed,
+        # which happens for every key -- including one nothing needs -- so it
+        # separates no hypothesis from any other.
+        broke = None
+        detail = f"INCONCLUSIVE: {problem}. The replay indexes this key; it was not shown to need the value."
     except (KeyError, TypeError, ValueError, IndexError) as problem:
-        # The replay could not proceed without the primitive. That IS the
-        # break, and the exception is the evidence for it.
+        # Raised by the REPLAY: the consumer got far enough to use the
+        # degraded value and could not.
         broke = True
         detail = f"{type(problem).__name__}: {problem}"
 
-    # CONTRADICTED is reserved for the case that matters: we claimed a
-    # primitive was required, removed it, and nothing broke.
-    verdict = Verdict.REPRODUCED if broke == declared.expect_breaks else Verdict.CONTRADICTED
+    if broke is None:
+        verdict = Verdict.INCONCLUSIVE
+    else:
+        # CONTRADICTED is reserved for the case that matters: we claimed a
+        # primitive was required, removed it, and nothing broke.
+        verdict = Verdict.REPRODUCED if broke == declared.expect_breaks else Verdict.CONTRADICTED
     return Ablation(
         primitive=declared.primitive,
         expect_breaks=declared.expect_breaks,
         kind=declared.kind,
+        swap=declared.swap,
         observed_break=broke,
         verdict=verdict,
         detail=detail,
@@ -133,7 +214,13 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
         baseline = runner.baseline(case)
         retained = runner.retained_for(case)
         replayed = runner.replay(case, retained)
-    except (KeyError, TypeError, ValueError, IndexError, OSError) as problem:
+    except (KeyError, TypeError, ValueError, IndexError, OSError, NotImplementedError) as problem:
+        # NotImplementedError included deliberately. A lane that declares a
+        # boundary it has no derivation for is UNSUPPORTED in the precise
+        # sense this verdict means -- it could not run HERE -- and saying so
+        # is better than the alternative `control_stream` had, which was to
+        # raise ValueError with an absent-weight message for a case that would
+        # not have run with the weight either.
         return CaseResult(
             case=case.name,
             consumer_id=case.consumer_id,
@@ -152,7 +239,13 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
         atol=case.atol,
     )
 
-    ablations = tuple(run_ablation(runner, case, retained, one, baseline) for one in case.ablations)
+    if case.ablations and not isinstance(runner, Ablating):
+        raise TypeError(f"{case.name} declares {len(case.ablations)} ablations; {type(runner).__name__} cannot ablate")
+    ablations = (
+        tuple(run_ablation(runner, case, retained, one, baseline) for one in case.ablations)
+        if isinstance(runner, Ablating)
+        else ()
+    )
     measurements = tuple(run_measurement(runner, case, retained, one) for one in case.measurements)
 
     # A case whose replay matches but whose necessity claim is contradicted is
@@ -172,6 +265,7 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
         replay=Artifact(replayed.name, replayed.dtype, replayed.shape, replayed.sha256),
         comparison=f"{result.method}: {result.detail}",
         max_abs_diff=result.max_abs_diff,
+        retained_bytes=retained.sizes(),
         ablations=ablations,
         measurements=measurements,
         seconds=time.perf_counter() - began,
@@ -244,25 +338,112 @@ def _without_seconds(out: dict[str, Any]) -> dict[str, Any]:
     not special-case it, minus timings for the same reason the whole run drops
     them: two identical runs must serialise to identical bytes.
     """
+    # `seconds_by_case` is MOVED, not dropped. It cannot live in the evidence
+    # -- two identical runs would serialise differently and no byte-exactness
+    # claim would be checkable -- but `sharded.main` writes it beside the
+    # evidence as `timings.json`, and stripping it here left that file
+    # unwritten by the only lane that runs the cases.
     return {key: value for key, value in out.items() if key != "seconds_by_case"}
 
 
 def runners(only: str = "") -> tuple[Runner, ...]:
     """Every runner, or just the ones whose `consumer_id` matches `only`.
 
-    Constructed LAZILY per selection rather than all at once. Sixteen lanes
-    now load model packs in their constructors -- two insightface packs, the
+    Sixteen lanes load model packs when they RUN -- two insightface packs, the
     face family per vendor setup, three recognition models, facexlib, torch --
-    and building every one of them in a single process exhausted memory and
-    the run died with no traceback partway through model loading.
+    and running every one of them in a single process exhausted memory and
+    died with no traceback partway through model loading. Selecting is
+    therefore an operational need, not a convenience: a lane that cannot be
+    run on its own cannot be debugged either.
 
-    Selecting is therefore an operational need, not a convenience: a lane that
-    cannot be run on its own cannot be debugged either.
+    The construction itself is NOT selective: `build_runners()` builds them
+    all and this filters afterwards. Constructors are cheap -- they hold a
+    setup and a shot list -- so that costs little, but it is not the "lazily
+    per selection" this docstring used to claim, and one visible consequence
+    was six shards each recording the same skipped photograph.
     """
     if not only:
         return build_runners()
     wanted = {one.strip() for one in only.split(",") if one.strip()}
-    return tuple(one for one in build_runners() if one.consumer_id in wanted)
+    built = build_runners()
+    # A name matching no runner used to select nothing and run zero cases,
+    # printing a clean verdict table over an empty population. A shard whose
+    # lane list drifted from the registry therefore reported no failures
+    # rather than reporting that it ran nothing.
+    unknown = sorted(wanted - {one.consumer_id for one in built})
+    if unknown:
+        raise KeyError(
+            f"no runner answers to {unknown}; the registry holds {sorted({one.consumer_id for one in built})}"
+        )
+    return tuple(one for one in built if one.consumer_id in wanted)
+
+
+#: Every key an evidence file carries, whichever entrypoint wrote it.
+#:
+#: Two functions serialise this suite's evidence -- `run_all` in one process
+#: and `sharded.merge` across six -- and `attack.evidence_not_reproducible`
+#: compares their BYTES. A key on one side only can therefore never match, and
+#: the attack reports "the pipeline is not deterministic" for what is really a
+#: shape difference. That has happened twice: once when `shards_failed` was
+#: added to the merge alone, and again when `shards_exited_over_findings` was.
+#:
+#: Naming the set once and checking both against it makes the third time
+#: impossible: `evidence_shape` raises at the point of divergence rather than
+#: leaving a gate to misattribute it hours later.
+EVIDENCE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "runtime",
+        "identity",
+        "cases",
+        "results",
+        "skipped",
+        "duplicated_cases",
+        "shards_failed",
+        "shards_exited_over_findings",
+        "population",
+        "verdicts",
+    }
+)
+
+
+def evidence_shape(out: dict[str, Any], who: str) -> dict[str, Any]:
+    """One evidence dict, checked against the shape both writers must share."""
+    held = set(out) - {"seconds_by_case"}
+    if held != EVIDENCE_KEYS:
+        raise KeyError(
+            f"{who} emits {sorted(held ^ EVIDENCE_KEYS)} that the other evidence writer does not. "
+            f"Both must serialise the same keys or `attack.evidence_not_reproducible` compares two shapes."
+        )
+    return out
+
+
+def blocking_failures(results: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Every DIVERGED case. There is no list of ones that do not count.
+
+    This used to read `manifest.toml` `[[storage_divergence]]` and accept a
+    divergence that named a mechanism and stayed under a bound, on the
+    reasoning that the schema could not change until this suite closed and so
+    a red gate here could never be satisfied.
+
+    The reasoning was wrong twice. The instruction was not to redesign the
+    schema UNTIL the suite reached its closure condition, which is a sequence
+    and not a prohibition -- and nobody authorised turning nineteen measured
+    failures into a declaration. A suite that answers what a store must retain
+    cannot also hold a list of the ways its store is allowed to be wrong.
+
+    The five divergences that list named are fixed at the source instead:
+    `vision/faces.py` no longer rounds landmarks or pose, `db/detect.py`
+    writes the landmark blob at float64, `compat/storage/gallery_v45.py`
+    returns `det_score` at the producer's width, and `db/migrate.py` steps
+    v45 to v46 to widen what is already stored.
+    """
+    out: dict[str, list[str]] = {"diverged": [], "unsupported": []}
+    for row in results:
+        if row["verdict"] == Verdict.DIVERGED.value:
+            out["diverged"].append(f"{row['case']}: {row.get('comparison', '')[:100]}")
+        elif row["verdict"] == Verdict.UNSUPPORTED.value:
+            out["unsupported"].append(f"{row['case']}: {row.get('unsupported_reason', '')[:100]}")
+    return {why: names for why, names in out.items() if names}
 
 
 def canonical(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -311,12 +492,28 @@ def run_all(only: str = "") -> dict[str, Any]:
     }
     covered = at_tier[Tier.CONSUMER]
 
-    return {
+    out: dict[str, Any] = {
         "runtime": provenance.runtime_identity(),
         # Every answer-changing input, so a runner edited under unchanged pins
         # makes the evidence provably stale rather than silently wrong.
         "identity": evidence_identity.identity(),
         "cases": len(registry),
+        # Inputs a lane declined to build a case from, with the reason. A
+        # bare `continue` used to shrink the population with no record at six
+        # sites; carrying them here is what makes the shrink visible in the
+        # artifact rather than only in the difference between two case counts
+        # nobody compared.
+        "skipped": [asdict(one) for one in case_skips()],
+        # Always present, always empty here. `sharded.merge` emits this key
+        # and this executor did not, so `attack.evidence_not_reproducible` --
+        # which rebuilds through THIS function and compares against the file
+        # the SHARDED lane wrote -- was comparing two different shapes and
+        # could never report a match. A single-process run has no failed
+        # shards; saying so costs nothing and makes the two serialisations
+        # comparable.
+        "shards_failed": [],
+        "shards_exited_over_findings": [],
+        "duplicated_cases": [],
         # Timing is stripped from the EVIDENCE and reported beside it. It is a
         # property of the machine, not of the observation, and leaving it in
         # made the evidence non-reproducible by construction: two identical
@@ -340,6 +537,7 @@ def run_all(only: str = "") -> dict[str, Any]:
         },
         "verdicts": {one.value: sum(1 for result in results if result.verdict is one) for one in Verdict},
     }
+    return evidence_shape(out, "run_all")
 
 
 def report(out: dict[str, Any]) -> None:
@@ -364,6 +562,12 @@ def report(out: dict[str, Any]) -> None:
     print(f"covered at CONSUMER tier: {len(pop['consumer_tier_covered'])}  {pop['consumer_tier_covered']}")
     print(f"primitive tier only     : {len(pop['primitive_tier_only'])}  {pop['primitive_tier_only']}")
     print(f"NOT exercised           : {len(pop['unexercised'])}")
+    # `corpus.loaded.statistics()` had no caller, and `corpus.cache.note()`
+    # accumulated hit/miss counts only it consumed -- so the store's own
+    # accounting was written every run and read by nobody.
+    from compat.corpus import loaded as corpus_loaded
+
+    print(f"corpus memo             : {corpus_loaded.statistics()}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -395,7 +599,16 @@ def main(argv: list[str] | None = None) -> int:
                 handle.write(json.dumps(_without_seconds(out), indent=2, sort_keys=True, default=str))
                 handle.write("\n")
             print(f"wrote partial {partial_to}")
-        return 0 if out["verdicts"][Verdict.DIVERGED.value] == 0 else 1
+            # The wall clock, beside the partial rather than inside it. The
+            # partials are committed evidence and must serialise identically
+            # across two runs; the timings are a fact about the machine. They
+            # were simply discarded, which is why `generated/timings.json` was
+            # never written by the lane that actually runs the cases.
+            beside = partial_to.with_suffix(".timings.json")
+            with beside.open("w", encoding="utf-8", newline="") as handle:
+                handle.write(json.dumps(out.get("seconds_by_case") or {}, indent=2, sort_keys=True))
+                handle.write("\n")
+        return 0 if not blocking_failures(out["results"]) else 1
 
     # Timings leave the evidence and land beside it, so two identical runs
     # produce byte-identical cases.json and a diff of that file means
@@ -414,7 +627,15 @@ def main(argv: list[str] | None = None) -> int:
     # The suite is green only when every case reproduced AND every consumer in
     # the frozen population was exercised. One unexercised consumer is a red
     # gate, not a footnote.
-    clean = out["verdicts"][Verdict.DIVERGED.value] == 0 and out["verdicts"][Verdict.CONTRADICTED.value] == 0
+    blocking = blocking_failures(out["results"])
+    if blocking:
+        print("\nDIVERGED -- the store did not give back what the producer emitted:")
+        for why, names in blocking.items():
+            print(f"    {why}:")
+            for one in names:
+                print(f"        {one}")
+
+    clean = not blocking and out["verdicts"][Verdict.CONTRADICTED.value] == 0
     complete = not out["population"]["unexercised"]
     print(f"\ncases: {'clean' if clean else 'NOT clean'}   population: {'complete' if complete else 'INCOMPLETE'}")
     return 0 if (clean and complete) else 1

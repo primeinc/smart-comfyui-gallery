@@ -47,6 +47,7 @@ from compat.contracts.case import (
     Tier,
 )
 from compat.corpus.loaded import Shot, our_face, shots
+from compat.storage import derivatives
 
 CONSUMER_ID: Final[str] = "embedding_spaces"
 
@@ -113,12 +114,36 @@ class EmbeddingSpaceRunner:
         out: list[Case] = []
         for shot in self._shots.values():
             for space in SPACES:
-                ablations = [Ablation(primitive="aligned_crop_112", expect_breaks=True)]
+                ablations = [
+                    Ablation(primitive="aligned_crop_112", expect_breaks=True),
+                    # The crop as this application's own encoder keeps it.
+                    # `vision/thumbs` writes every raster variant as WebP at
+                    # quality 82, the avatar crop included, so a store that
+                    # kept the aligned crop would keep exactly these bytes.
+                    Ablation(
+                        primitive="aligned_crop_112",
+                        swap="webp_encoded",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
+                ]
                 if space != STORED:
                     # The claim under test, per space: the gallery's stored
                     # glintr100 vector cannot stand in for this model's.
                     ablations.append(
-                        Ablation(primitive="glintr100_substituted", expect_breaks=True, kind="substitution")
+                        Ablation(
+                            # The primitive is the RETAINED key, which is the
+                            # crop; the swap is the vector offered instead of
+                            # keeping it. `substituted_vector` named neither --
+                            # nothing retains it, so `answer.json` listed it
+                            # beside `kps` as a column and could not price it.
+                            # It survives below only as the state key the
+                            # replay reads, which is a mechanism, not a claim.
+                            primitive="aligned_crop_112",
+                            swap="stored_glintr100",
+                            expect_breaks=True,
+                            kind="substitution",
+                        )
                     )
                 out.append(
                     Case(
@@ -161,11 +186,13 @@ class EmbeddingSpaceRunner:
             return self._artifact(case.boundary, retained.points("substituted_vector"))
         return self._artifact(case.boundary, embed_with(space, retained.pixels("aligned_crop_112")))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        if primitive == "glintr100_substituted":
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "webp_encoded":
+            return retained.replacing("aligned_crop_112", derivatives.encoded(retained.pixels("aligned_crop_112"))[0])
+        if ablation.swap == "stored_glintr100":
             _, shot = self._parts(case)
             return retained.replacing("substituted_vector", self.vector(STORED, shot))
-        return retained.without(primitive)
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """How close this space is to the one the gallery stores."""

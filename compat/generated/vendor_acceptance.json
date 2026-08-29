@@ -61,7 +61,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/huggingface/diffusers.git",
-      "seconds": 9.23274820000006,
+      "seconds": 27.012485799998103,
       "weights": [
         {
           "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
@@ -159,7 +159,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/instantX-research/InstantID.git",
-      "seconds": 3.839143299999705,
+      "seconds": 7.88837280000007,
       "weights": [
         {
           "file": "ip-adapter.bin",
@@ -211,7 +211,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/ToTheBeginning/PuLID.git",
-      "seconds": 9.247975800000859,
+      "seconds": 19.263271700001496,
       "weights": [
         {
           "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
@@ -290,7 +290,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git",
-      "seconds": 3.870324999999866,
+      "seconds": 9.514941200002795,
       "weights": [
         {
           "file": "image_proj_model.bin",
@@ -480,7 +480,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git",
-      "seconds": 4.573752800000875,
+      "seconds": 13.526306600004318,
       "weights": [
         {
           "file": "models/buffalo_l/det_10g.onnx",
@@ -575,7 +575,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
-      "seconds": 2.4547770000008313,
+      "seconds": 5.211256399998092,
       "weights": [
         {
           "file": "ip-adapter-faceid_sd15.bin",
@@ -677,7 +677,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/junjiehe96/UniPortrait.git",
-      "seconds": 5.716175300000032,
+      "seconds": 8.97396750000189,
       "weights": [
         {
           "file": "glint360k_curricular_face_r101_backbone.bin",
@@ -763,7 +763,8 @@
         "observed_embedding": {
           "dims": 512,
           "kind": "raw",
-          "l2_norm": 22.64125503519944
+          "l2_norm": 22.047657390508956,
+          "references": 4
         },
         "observed_pack": {
           "files": {
@@ -796,7 +797,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/TencentARC/PhotoMaker.git",
-      "seconds": 0.989192600000024,
+      "seconds": 1.4858553000012762,
       "weights": [
         {
           "file": "models/buffalo_l/det_10g.onnx",
@@ -819,6 +820,83 @@
           "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
         }
       ]
+    }
+  ],
+  "against_upstream": [
+    {
+      "agrees": true,
+      "cited": [
+        "models/consisid_utils.py:192-194 id_cond = cat(id_ante_embedding, id_cond_vit) -> torch.Size([1, 1280])",
+        "models/consisid_utils.py:200 return comment repeats torch.Size([1, 1280])"
+      ],
+      "consumer_id": "consisid",
+      "detail": "id_cond [1, 1280] against upstream's [1, 1280]",
+      "stated": true
+    },
+    {
+      "agrees": true,
+      "cited": [
+        "nodes.py:59 image_proj_num_tokens: ([8, 16], )",
+        "nodes.py:117-126 Resampler(num_queries=image_proj_num_tokens, output_dim=4096)",
+        "resampler.py:97 self.latents = nn.Parameter(torch.randn(1, num_queries, dim))"
+      ],
+      "consumer_id": "infiniteyou",
+      "detail": "id_cond [1, 8, 4096] carries 8 tokens, upstream declares 8",
+      "stated": true
+    },
+    {
+      "agrees": true,
+      "cited": [
+        "pipeline_stable_diffusion_xl_instantid.py:158 load_ip_adapter_instantid(..., num_tokens=16)",
+        "pipeline_stable_diffusion_xl_instantid.py:162 set_image_proj_model(..., num_tokens=16)",
+        "pipeline_stable_diffusion_xl_instantid.py:169-171 Resampler(num_queries=num_tokens, output_dim=cross_attention_dim)"
+      ],
+      "consumer_id": "instantid_upstream",
+      "detail": "id_cond [2, 16, 2048] carries 16 tokens, upstream declares 16",
+      "stated": true
+    },
+    {
+      "agrees": true,
+      "cited": [
+        "ip_adapter/ip_adapter_faceid.py:121 def __init__(..., num_tokens=4, ...)",
+        "ip_adapter/ip_adapter_faceid.py:136-141 MLPProjModel(cross_attention_dim=..., id_embeddings_dim=512, num_tokens=self.num_tokens)"
+      ],
+      "consumer_id": "ipadapter_upstream",
+      "detail": "id_cond [1, 4, 768] carries 4 tokens, upstream declares 4",
+      "stated": true
+    },
+    {
+      "agrees": null,
+      "consumer_id": "photomaker_v2",
+      "detail": "upstream states no expected boundary at the pinned commit",
+      "stated": false
+    },
+    {
+      "agrees": true,
+      "cited": [
+        "pulid/encoders.py:6 IDEncoder(width=1280, context_dim=2048, num_token=5)",
+        "pulid/encoders.py:54 x.reshape(-1, self.num_token, self.context_dim)",
+        "pulid/encoders.py:62-64 cat(five hidden states, dim=1) then cat([x, hidden_states], dim=1)",
+        "pulid/pipeline.py:214 cat((uncond_id_embedding, id_embedding), dim=0)"
+      ],
+      "consumer_id": "pulid_upstream",
+      "detail": "id_cond [2, 10, 2048] carries 10 tokens, upstream declares 10",
+      "stated": true
+    },
+    {
+      "agrees": null,
+      "consumer_id": "reactor",
+      "detail": "upstream states no expected boundary at the pinned commit",
+      "stated": false
+    },
+    {
+      "agrees": true,
+      "cited": [
+        "uniportrait/uniportrait_pipeline.py:82-88 UniPortraitFaceIDResampler(num_tokens=16, output_dim=cross_attention_dim)"
+      ],
+      "consumer_id": "uniportrait",
+      "detail": "id_cond [1, 16, 768] carries 16 tokens, upstream declares 16",
+      "stated": true
     }
   ],
   "declared_against_observed": [
@@ -939,12 +1017,13 @@
       "agrees": true,
       "consumer_id": "photomaker_v2",
       "declared": "raw",
-      "detail": "L2 norm 22.641255 over 512 dims",
+      "detail": "L2 norm 22.047657 over 512 dims",
       "field": "embedding",
       "observed": "raw"
     }
   ],
   "determinism": {
+    "not_run": [],
     "runs": 2,
     "stable": true,
     "unstable": [],
@@ -954,6 +1033,7 @@
           "f9a41c54e777a3279cd4a7c84bcb85915c14bdb659b51cb1cfbc1c8d45a33d5d",
           "f9a41c54e777a3279cd4a7c84bcb85915c14bdb659b51cb1cfbc1c8d45a33d5d"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
@@ -962,6 +1042,7 @@
           "f586345e112e219e15ac04d0952017db89755a462a28b71f12a1cab92802893a",
           "f586345e112e219e15ac04d0952017db89755a462a28b71f12a1cab92802893a"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
@@ -970,6 +1051,7 @@
           "1b49b4ec5ffd8725c6830fdcf563f2be8be6b253e933f7ba208316eb425ec0ed",
           "1b49b4ec5ffd8725c6830fdcf563f2be8be6b253e933f7ba208316eb425ec0ed"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
@@ -978,14 +1060,16 @@
           "8ca2a2f2acfe64b91bb56503116a0f1e625008a1bd32474c54992002d79c156b",
           "8ca2a2f2acfe64b91bb56503116a0f1e625008a1bd32474c54992002d79c156b"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
       "photomaker_v2": {
         "digests": [
-          "6b7fb0c1220395a6b1bf6d96836ce30e6a3bec105fe8abc732a25d26b4438201",
-          "6b7fb0c1220395a6b1bf6d96836ce30e6a3bec105fe8abc732a25d26b4438201"
+          "558fb65ab05dc63d5f55dd33c2594a98d5c4bf5159198d95f7a337a3f5da7e44",
+          "558fb65ab05dc63d5f55dd33c2594a98d5c4bf5159198d95f7a337a3f5da7e44"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
@@ -994,6 +1078,7 @@
           "010cc3a80b587c86571d4c59924b0c51bfd3982f014e558dc8dfabc2e2c8589e",
           "010cc3a80b587c86571d4c59924b0c51bfd3982f014e558dc8dfabc2e2c8589e"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
@@ -1002,6 +1087,7 @@
           "ee784ad800bedc80c5007b87a6de932612a5cd85c4452e42b6bae1ec7c3cb3ae",
           "ee784ad800bedc80c5007b87a6de932612a5cd85c4452e42b6bae1ec7c3cb3ae"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       },
@@ -1010,6 +1096,7 @@
           "2a2495d93c1d4d9f8a6ac28d6b8d496d58eeb1d328732d1cf179bba65adc11eb",
           "2a2495d93c1d4d9f8a6ac28d6b8d496d58eeb1d328732d1cf179bba65adc11eb"
         ],
+        "not_run": false,
         "reason": "",
         "stable": true
       }
@@ -1057,7 +1144,7 @@
       "uso",
       "xverse"
     ],
-    "vendor_accepted": [
+    "ran_without_raising": [
       "consisid",
       "infiniteyou",
       "instantid_upstream",
@@ -1066,6 +1153,19 @@
       "pulid_upstream",
       "reactor",
       "uniportrait"
+    ],
+    "reproduced_wrong_boundary": [],
+    "vendor_accepted": [
+      "consisid",
+      "infiniteyou",
+      "instantid_upstream",
+      "ipadapter_upstream",
+      "pulid_upstream",
+      "uniportrait"
+    ],
+    "vendor_baseline_unavailable": [
+      "photomaker_v2",
+      "reactor"
     ]
   },
   "runtime": {

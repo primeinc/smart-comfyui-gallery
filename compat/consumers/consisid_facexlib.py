@@ -216,8 +216,18 @@ class ConsisIDRunner:
                     # patch twice that size is the most generous face-shaped
                     # state a store could offer. Neither reproduces, because
                     # facexlib re-detects and lands different landmarks.
-                    Ablation(primitive="arcface_footprint_only", expect_breaks=True, kind="substitution"),
-                    Ablation(primitive="generous_patch_substituted", expect_breaks=True, kind="substitution"),
+                    Ablation(
+                        primitive="whole_reference_image",
+                        swap="arcface_footprint_only",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
+                    Ablation(
+                        primitive="whole_reference_image",
+                        swap="generous_patch",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
                 ),
                 measurements=("patch_divergence",),
                 note="facexlib retinaface_resnet50 re-detects; whether a patch suffices is measured, not derived",
@@ -271,13 +281,13 @@ class ConsisIDRunner:
         pixels = retained.pixels("whole_reference_image")
         return _artifact(case.boundary, align_through_facexlib(resize_numpy_image_long(pixels)))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        margins = {"arcface_footprint_only": 1.0, "generous_patch_substituted": START_MARGIN}
-        if primitive in margins:
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        margins = {"arcface_footprint_only": 1.0, "generous_patch": START_MARGIN}
+        if ablation.swap in margins:
             shot = self._shot(case)
-            box = self._footprint(shot, margins[primitive])
+            box = self._footprint(shot, margins[ablation.swap])
             return retained.replacing("whole_reference_image", shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy())
-        return retained.without(primitive)
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """How far each face-shaped retention strategy lands from the truth.
@@ -308,9 +318,14 @@ class ConsisIDRunner:
             ):
                 try:
                     produced = align_through_facexlib(pixels).astype(np.int64)
-                except (ValueError, TypeError, IndexError):
-                    reports.append(f"{label}/{how}: facexlib found NO face")
-                    worst_fraction = 1.0
+                except (ValueError, TypeError, IndexError) as problem:
+                    # The exception is reported, not interpreted. All three of
+                    # these arrive when facexlib finds no face AND when this
+                    # probe slices wrongly, so calling every one of them "no
+                    # face" attributed a bug in the measurement to the vendor
+                    # -- and pinning `worst_fraction` to 1.0 published that
+                    # attribution as the lane's worst observation.
+                    reports.append(f"{label}/{how}: NOT MEASURED -- {type(problem).__name__}: {problem}")
                     continue
                 differing = int(np.count_nonzero(wanted != produced))
                 fraction = differing / wanted.size

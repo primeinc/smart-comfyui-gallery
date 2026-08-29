@@ -23,6 +23,7 @@ version = 1
 recorded_at = "2026-08-28"
 refs_root = "../refs"          # relative to the repository root
 
+
 [equivalence]
 # Default comparison for tensor boundaries. A runner may NARROW this; widening
 # it requires an `equivalence` block on the runner naming the first stage at
@@ -745,10 +746,9 @@ entrypoint = "InstantID.py::extractFeatures"
 also_read = ["InstantID.py::ApplyInstantID.apply_instantid"]
 dependencies = ["insightface"]
 boundary = ["id_embedding", "pose_control_image"]
-retained = ["raw_embedding", "kps_source_px", "frame_dimensions"]
+retained = ["embedding_raw", "kps_source_px", "frame_dimensions"]
 rebuilt = ["pose_control_image"]
 claim = "no source pixels required: draw_kps uses the reference image ONLY for its size"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -777,10 +777,9 @@ commit = "a0f451a5113cf9becb0847b92884cb10cbdec0ef"
 entrypoint = "IPAdapterPlus.py::ipadapter_execute"
 dependencies = ["insightface"]
 boundary = ["face_cond_embeds"]
-retained = ["raw_embedding"]
+retained = ["embedding_raw"]
 rebuilt = ["unit_embedding"]
 claim = "unit is derivable from raw; raw is NOT derivable from unit -- the norm carries quality"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -821,10 +820,9 @@ commit = "a0f451a5113cf9becb0847b92884cb10cbdec0ef"
 entrypoint = "IPAdapterPlus.py::ipadapter_execute"
 dependencies = ["insightface"]
 boundary = ["face_cond_embeds", "aligned_crop_224", "aligned_crop_256", "aligned_crop_336"]
-retained = ["source_region_pixels", "kps_source_px", "frame_dimensions"]
+retained = ["embedding_raw", "frame_dimensions", "kps_source_px", "patch_origin", "source_region_pixels"]
 rebuilt = ["aligned_crop_224", "aligned_crop_256", "aligned_crop_336"]
 claim = "one source patch regenerates all three sizes; a 336 crop downscaled to 256 does NOT -- 256 is the 128-family with x += 16"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -865,10 +863,9 @@ commit = "93e0c4c226b87b23c0009d671978bad0e77289ff"
 entrypoint = "pulid.py::ApplyPulid.apply_pulid"
 dependencies = ["insightface", "facexlib"]
 boundary = ["iface_embeds", "cropped_face", "id_cond_vit"]
-retained = ["source_region_pixels", "frame_dimensions", "raw_embedding"]
+retained = ["source_region_pixels", "frame_dimensions", "embedding_raw"]
 rebuilt = ["facexlib_landmarks_5", "facexlib_crop", "eva_clip_features"]
 risk = "facexlib runs its OWN detector over pixels, so the retained patch must be large enough for retinaface to find the same face. Not analytically derivable: needs four-sided ablation."
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -918,11 +915,10 @@ entrypoint = "reactor_utils.py::save_face_model"
 verifier = "reactor_utils.py::load_face_model"
 dependencies = ["insightface"]
 boundary = ["face_model_safetensors"]
-retained = ["native_face_observation"]
+retained = ["age", "bbox", "det_score", "embedding", "embedding_raw", "gender", "kps", "landmark_2d_106", "landmark_3d_68"]
 rebuilt = ["face_model_safetensors"]
 claim = "nine keys: bbox kps det_score landmark_3d_68 pose landmark_2d_106 embedding gender age. The pipeline retains three. No pixels required."
 note = "the only consumer with a first-party LOADER, so its assertion is upstream's own code accepting our bytes"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -981,10 +977,9 @@ entrypoint = "nodes.py::ExtractIDEmbedding.extract_id_embedding"
 also_read = ["utils.py::extract_arcface_bgr_embedding", "nodes.py::ExtractFacePoseImage.extract_face_pose"]
 dependencies = ["insightface", "facexlib"]
 boundary = ["arcface_embedding", "pose_control_image"]
-retained = ["source_region_pixels", "kps_source_px", "frame_dimensions"]
+retained = ["embedding_raw", "frame_dimensions", "kps_source_px", "patch_origin", "source_region_pixels"]
 rebuilt = ["aligned_crop_112", "arcface_embedding", "pose_control_image"]
 claim = "uses facexlib's arcface over norm_crop@112, NOT glintr100 -- the stored embedding cannot serve this consumer at all"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1020,6 +1015,18 @@ pose_image_resize = "lanczos_shorter_side_then_centre_pad_white"
 # detection, so a masked multi-ID run detects different keypoints.
 pose_mask_multiplied_before_detect = true
 combine = "none"
+[consumers.acceptance_expected]
+# nodes.py:59 offers image_proj_num_tokens as [8, 16] and the lane takes the
+# first; :122 passes it to Resampler as num_queries, and resampler.py:97
+# makes that the latent count the forward returns.
+key = "id_cond"
+tokens = 8
+cited = [
+  "nodes.py:59 image_proj_num_tokens: ([8, 16], )",
+  "nodes.py:117-126 Resampler(num_queries=image_proj_num_tokens, output_dim=4096)",
+  "resampler.py:97 self.latents = nn.Parameter(torch.randn(1, num_queries, dim))",
+]
+
 
 [[consumers]]
 id = "uniportrait"
@@ -1030,11 +1037,10 @@ entrypoint = "gradio_app.py::process_faceid_image"
 also_read = ["uniportrait/uniportrait_pipeline.py::UniPortraitPipeline.get_single_faceid_embeds"]
 dependencies = ["insightface"]
 boundary = ["aligned_crop_224", "faceid_prompt_embeds"]
-retained = ["source_region_pixels", "kps_source_px", "frame_dimensions"]
+retained = ["frame_dimensions", "kps_source_px", "patch_origin", "source_region_pixels"]
 rebuilt = ["aligned_crop_224"]
 claim = "consumes NO embedding: FaceAnalysis(allowed_modules=['detection']). N crops become 49 spatial tokens each, concatenated."
 note = "pads by 1.25 with grey and retries when detection fails"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1052,6 +1058,15 @@ embedding = "none"                # allowed_modules is detection only: no vector
 crop_sizes = [224]
 kps_render = "none"
 combine = "concat_tokens"
+[consumers.acceptance_expected]
+# uniportrait/uniportrait_pipeline.py:85 UniPortraitFaceIDResampler(num_tokens=16),
+# :88 output_dim = the pipeline's own cross_attention_dim.
+key = "id_cond"
+tokens = 16
+cited = [
+  "uniportrait/uniportrait_pipeline.py:82-88 UniPortraitFaceIDResampler(num_tokens=16, output_dim=cross_attention_dim)",
+]
+
 
 [[consumers]]
 id = "photomaker_v2"
@@ -1061,10 +1076,9 @@ commit = "060b4fcb10b76a4554edf565d6106b7e36c968f0"
 entrypoint = "inference_scripts/inference_pmv2_ip_adapter.py::__main__"
 dependencies = ["insightface"]
 boundary = ["id_embeds", "input_id_images"]
-retained = ["raw_embedding_per_image", "whole_reference_image"]
+retained = ["embedding_raw", "whole_reference_image"]
 rebuilt = ["id_embeds_stack"]
 claim = "needs BOTH the vector and the framed image for every reference; torch.stack, never averaged"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1121,7 +1135,7 @@ entrypoint = "src/diffusers/pipelines/consisid/consisid_utils.py::process_face_e
 entrypoint_in = "diffusers"
 dependencies = ["insightface", "facexlib", "diffusers"]
 boundary = ["id_cond", "id_vit_hidden", "face_kps", "parsed_face_image"]
-retained = ["source_region_pixels", "frame_dimensions", "raw_embedding"]
+retained = ["embedding_raw", "frame_dimensions", "source_region_pixels", "whole_reference_image"]
 rebuilt = ["facexlib_crop_512", "parsed_face_image", "eva_clip_336", "id_cond"]
 claim = "id_cond = cat(ante_512, eva_clip_768) = 1280; largest pixel requirement in the population at 512x512"
 note = "the whole image is pre-resized to long-edge 1024 BEFORE detection"
@@ -1133,7 +1147,18 @@ note = "the whole image is pre-resized to long-edge 1024 BEFORE detection"
 checkpoints = ["BestWishYsh/ConsisID-preview", "BestWishYsh/ConsisID-1.5"]
 recommended_dtype = "torch.bfloat16"
 acceptance_dtype = "torch.float16"
-status = "unproven"
+[consumers.acceptance_expected]
+# Upstream states the width in its own source, twice: models/consisid_utils.py
+# :192-194 "torch.Size([1, 512]), torch.Size([1, 768]) -> torch.Size([1, 1280])"
+# and :200 repeats it on the return. A literal, so the whole shape is the
+# expectation rather than one axis of it.
+key = "id_cond"
+shape = [1, 1280]
+cited = [
+  "src/diffusers/pipelines/consisid/consisid_utils.py:210-212 id_cond = torch.cat([id_ante_embedding, id_cond_vit], dim=-1) -> torch.Size([1, 1280])",
+  "src/diffusers/pipelines/consisid/consisid_utils.py:219 return comment repeats torch.Size([1, 1280])",
+]
+
 
 [[consumers]]
 id = "instantid_upstream"
@@ -1144,9 +1169,8 @@ entrypoint = "infer.py::__main__"
 also_read = ["pipeline_stable_diffusion_xl_instantid.py::draw_kps"]
 dependencies = ["insightface"]
 boundary = ["face_emb", "face_kps_image"]
-retained = ["raw_embedding", "kps_source_px", "frame_dimensions"]
+retained = ["embedding_raw", "kps_source_px", "frame_dimensions"]
 rebuilt = ["face_kps_image"]
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1173,6 +1197,18 @@ kps_render = "draw_kps_pil"       # upstream's draw_kps takes a PIL image: w, h 
 # retained with them.
 kps_render_canvas = "post_resize"
 combine = "none"
+[consumers.acceptance_expected]
+# pipeline_stable_diffusion_xl_instantid.py:158 and :162 both declare
+# num_tokens=16, and :169 passes it as the Resampler's num_queries. The lane
+# runs cond and uncond together, so the batch axis is 2.
+key = "id_cond"
+tokens = 16
+cited = [
+  "pipeline_stable_diffusion_xl_instantid.py:158 load_ip_adapter_instantid(..., num_tokens=16)",
+  "pipeline_stable_diffusion_xl_instantid.py:162 set_image_proj_model(..., num_tokens=16)",
+  "pipeline_stable_diffusion_xl_instantid.py:169-171 Resampler(num_queries=num_tokens, output_dim=cross_attention_dim)",
+]
+
 
 [[consumers]]
 id = "ipadapter_upstream"
@@ -1182,10 +1218,9 @@ commit = "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2"
 entrypoint = "ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds"
 dependencies = ["insightface"]
 boundary = ["image_prompt_embeds"]
-retained = ["raw_embedding"]
+retained = ["embedding_raw"]
 rebuilt = ["unit_embedding", "image_prompt_embeds"]
 claim = "generate() takes faceid_embeds and NO image -- vector-only, proven by the signature"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1202,6 +1237,18 @@ embedding = "normed"
 crop_sizes = []
 kps_render = "none"
 combine = "none"
+[consumers.acceptance_expected]
+# ip_adapter/ip_adapter_faceid.py:121 IPAdapterFaceID(num_tokens=4); :136-141
+# builds MLPProjModel with that token count and the pipeline's own
+# cross_attention_dim, so the token axis is upstream's and the width is the
+# base model's.
+key = "id_cond"
+tokens = 4
+cited = [
+  "ip_adapter/ip_adapter_faceid.py:121 def __init__(..., num_tokens=4, ...)",
+  "ip_adapter/ip_adapter_faceid.py:136-141 MLPProjModel(cross_attention_dim=..., id_embeddings_dim=512, num_tokens=self.num_tokens)",
+]
+
 
 [[consumers]]
 id = "pulid_upstream"
@@ -1211,9 +1258,8 @@ commit = "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa"
 entrypoint = "pulid/pipeline.py::PuLIDPipeline.get_id_embedding"
 dependencies = ["insightface", "facexlib"]
 boundary = ["id_ante_embedding", "id_cond_vit"]
-retained = ["raw_embedding", "source_region_pixels"]
+retained = ["embedding_raw", "source_region_pixels"]
 rebuilt = ["facexlib_crop", "eva_clip_features"]
-status = "unproven"
 
 [consumers.vendor_setup]
 cited = ["pulid/pipeline.py:87-92 FaceAnalysis + handler_ante", "pulid/pipeline.py:144-157 get_id_embedding"]
@@ -1266,6 +1312,21 @@ v1_1 = { pipeline = "pulid/pipeline_v1_1.py", encoder = "IDFormer", weight = "pu
 # compat/consumers/reference_sets.py. Recorded as an untested declared
 # semantic rather than left out.
 unmeasured = ["v1_1 reference-set combine"]
+[consumers.acceptance_expected]
+# pulid/encoders.py:6 IDEncoder(num_token=5, context_dim=2048); :54 reshapes
+# the body to [-1, 5, 2048]; :62 concatenates five per-layer hidden states on
+# dim=1; :64 returns cat([x, hidden_states], dim=1) -> 10 tokens. The lane
+# runs cond and uncond, and pipeline.py:214 concatenates them on dim=0.
+# The token axis is upstream's constant; the width is the checkpoint's.
+key = "id_cond"
+tokens = 10
+cited = [
+  "pulid/encoders.py:6 IDEncoder(width=1280, context_dim=2048, num_token=5)",
+  "pulid/encoders.py:54 x.reshape(-1, self.num_token, self.context_dim)",
+  "pulid/encoders.py:62-64 cat(five hidden states, dim=1) then cat([x, hidden_states], dim=1)",
+  "pulid/pipeline.py:214 cat((uncond_id_embedding, id_embedding), dim=0)",
+]
+
 
 [[consumers]]
 id = "umo"
@@ -1277,7 +1338,6 @@ dependencies = ["insightface", "facexlib"]
 boundary = ["reference_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1308,7 +1368,6 @@ boundary = ["reference_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
 constraint = "long side 512 single-subject, 320 multi-subject (README:146)"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1331,7 +1390,6 @@ boundary = ["reference_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
 constraint = "framing is load-bearing: half-body close-ups for half-body prompts, full-body when framing shifts (README:117). A face crop cannot substitute -- the ablation must show it."
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1364,7 +1422,6 @@ boundary = ["reference_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
 constraint = ">512x512, person large in frame; max_pixels default 1024*1024"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1415,7 +1472,6 @@ entrypoint = "pipeline.py::InstantCharacterFluxPipeline.__call__"
 boundary = ["subject_image"]
 retained = ["whole_reference_image"]
 rebuilt = []
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1454,7 +1510,6 @@ boundary = ["reference_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
 constraint = "1 to 3 images"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1484,7 +1539,6 @@ boundary = ["subject_images", "subject_masks"]
 retained = ["whole_reference_image", "subject_mask"]
 rebuilt = []
 claim = "masks are mode L, one per subject, supplied as separate files"
-status = "unproven"
 
 
 [consumers.vendor_setup]
@@ -1510,7 +1564,6 @@ boundary = ["input_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
 note = "eval/tools/face_utils/face.py loose_warp_face(scale=1.3, 512) is the identity METRIC, not a generation input."
-status = "unproven"
 
 # --- temporal and audio -----------------------------------------------------
 
@@ -1556,7 +1609,7 @@ also_read = [
   "checkpoints/README.md",
 ]
 boundary = ["orig_pixel_mp4", "david_normal_mp4", "depth_mp4"]
-retained = ["source_video", "control_stream"]
+retained = ["source_video_bytes"]
 rebuilt = []
 # CONFIRMED against README.md:190-193 (the variants table) and README.md:201,
 # which states the two checkpoints are "different, non-interchangeable weights
@@ -1570,7 +1623,6 @@ rebuilt = []
 # derived is required.
 control_modes = ["orig_pixel_from_sam3", "orig_pixel_plus_normals_plus_depth", "raw_source_video_relighting"]
 claim = "Two non-interchangeable checkpoints. idv2v.pth consumes ONE VACE condition, orig_pixel.mp4 from SAM3. idv2v_with_normal_depth.pth consumes THREE: orig_pixel.mp4, david_normal.mp4 (DAViD), depth.mp4 (DepthAnything-V2). Each stream is per-frame and keyed to the source media, not to a face."
-status = "unproven"
 
 # Which producer writes each stream, and under which variant. Named per
 # stream because the retention question is per stream: re-deriving depth
@@ -1606,4 +1658,3 @@ constraint = "~5s; resampled to audio_vae.audio_sample_rate, default 44100"
 reference_seconds_recommended = 5
 vae_audio_sample_rate_default = 44100
 claim = "the latents are the consumer's VAE output and must NOT be stored -- the durable artifact is the waveform, exactly as pixels are durable and crops are not"
-status = "unproven"

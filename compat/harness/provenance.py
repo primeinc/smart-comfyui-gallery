@@ -32,7 +32,7 @@ import sys
 import tomllib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 HERE: Path = Path(__file__).resolve().parent
 ROOT: Path = HERE.parent
@@ -375,6 +375,49 @@ def _weight_root(row: dict[str, Any]) -> Path:
     return Path(row["root"])
 
 
+#: Where the vendors' own checkpoints live. The same root
+#: `compat/vendor/acceptance.py` loads them from, named here so provenance can
+#: check the files that lane executes against.
+VENDOR_ROOT: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures"
+
+
+def vendor_weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """The vendors' own checkpoints, by content, against what was recorded.
+
+    30 rows carried a sha256 and a byte count and no code read any of them.
+    The acceptance lane loads exactly these files and reports `ran = True`
+    when the call did not raise, so a checkpoint swapped for another of the
+    same shape would have produced a different boundary under an unchanged
+    stamp.
+
+    ABSENT is reported and is not a failure -- most of these are the reason a
+    consumer is `not_attempted` on this machine. PRESENT with the wrong digest
+    is a failure.
+    """
+    out: list[dict[str, Any]] = []
+    for row in manifest.get("vendor_weights", []):
+        where = VENDOR_ROOT / row["file"]
+        found = where.is_file()
+        measured = digest_file(where) if found else None
+        size = where.stat().st_size if found else None
+        recorded = str(row.get("sha256") or "")
+        out.append(
+            {
+                "consumer": row.get("consumer", "?"),
+                "file": row["file"],
+                "source": row.get("source", ""),
+                "present": found,
+                "sha256": measured,
+                "recorded_sha256": recorded,
+                "bytes": size,
+                "recorded_bytes": row.get("bytes"),
+                # None when there is nothing to compare: the file is not here.
+                "matches": None if not found else (measured == recorded and size == row.get("bytes")),
+            }
+        )
+    return out
+
+
 def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """The model files themselves, by content.
 
@@ -415,7 +458,16 @@ def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def runtime_identity() -> dict[str, Any]:
-    """What ran this. Evidence from another machine is a different claim."""
+    """What ran this. Evidence from another machine is a different claim.
+
+    `platform.platform()` carries the Windows BUILD number, so an OS update
+    moves this string and every recorded run reads as taken elsewhere. That is
+    deliberate and it is the coarse answer, not an oversight: the evidence
+    here is byte-exactness of ONNX Runtime output, and which kernel that
+    picks is a function of the driver and the OS underneath it. A digest that
+    survived an OS update would be claiming those bytes are portable across a
+    boundary nothing here has tested them across.
+    """
     return {
         "python": sys.version.split()[0],
         "implementation": platform.python_implementation(),
@@ -541,9 +593,8 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
 
     runtimes: list[RuntimeProof] = verify_runtimes(manifest, refs_root)
     weights: list[dict[str, Any]] = weight_identity(manifest)
+    vendor_weights: list[dict[str, Any]] = vendor_weight_identity(manifest)
 
-    unclassified: list[str] = [one["id"] for one in consumers if one.get("status") == "unclassified"]
-    unproven: list[str] = [one["id"] for one in consumers if one.get("status") == "unproven"]
     unread: list[str] = [one["id"] for one in consumers if one.get("source_unread")]
 
     return {
@@ -556,19 +607,22 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
         "weights": weights,
         "population": {
             "total": len(consumers),
-            "unclassified": unclassified,
-            "unproven": unproven,
             "source_unread": unread,
         },
-        # Both halves, and neither excuses the other: a clone at the right
-        # commit says nothing about what the interpreter will import.
-        # Three halves, and none excuses the others: a clone at the right
-        # commit says nothing about what the interpreter imports, and
-        # neither says anything about which weights computed the numbers.
+        # Four checks, and none excuses the others: a clone at the right commit
+        # says nothing about what the interpreter imports; neither says
+        # anything about which of OUR weights computed the numbers; and none of
+        # the three says anything about the VENDOR's own checkpoints, which is
+        # what the acceptance lane loads.
+        "vendor_weights": vendor_weights,
         "provenance_ok": (
             all(one.ok for one in proofs)
             and all(one.matches for one in runtimes)
             and all(one["present"] for one in weights)
+            # A vendor checkpoint that IS here and does not match what was
+            # recorded for it. Absent ones are not a failure: they are why
+            # most of these consumers are not attempted on this machine.
+            and all(one["matches"] is not False for one in vendor_weights)
             # A weight whose measured digest contradicts the digest its vendor
             # PUBLISHES is not our copy of their file. That is a harder
             # failure than absence: the run would proceed and be wrong.
@@ -620,8 +674,6 @@ def report(out: dict[str, Any]) -> None:
 
     pop: dict[str, Any] = out["population"]
     print(f"\npopulation: {pop['total']} consumers")
-    print(f"  unclassified : {len(pop['unclassified'])}  {pop['unclassified']}")
-    print(f"  unproven     : {len(pop['unproven'])}")
     print(f"  source unread: {len(pop['source_unread'])}  {pop['source_unread']}")
     print(f"\nprovenance: {'PASS' if out['provenance_ok'] else 'FAIL'}")
 

@@ -34,14 +34,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 import numpy as np
 import numpy.typing as npt
 
-from compat.contracts.case import Ablation, Artifact, Case, Fixture, Measurement, RetainedState, Tier
+from compat.contracts.case import Ablation, Artifact, Case, Fixture, Measurement, RetainedState, Tier, note_skip
 from compat.corpus import index as corpus
 from compat.producers import insightface_pass as producer
+from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "insightface_producer"
 
@@ -123,11 +124,13 @@ def observations(limit: int = CORPUS_IMAGES) -> list[Observation]:
         frame, sha = producer.decode(Path(one.path))
         faces = app.get(frame)
         if not faces:
+            note_skip(CONSUMER_ID, one.path, "our producer found no face in this photograph")
             continue
         best = max(faces, key=lambda face: float(face.det_score))
         landmarks = best.get("landmark_3d_68")
         pose = best.get("pose")
         if landmarks is None or pose is None:
+            note_skip(CONSUMER_ID, one.path, "the 1k3d68 head produced no landmarks or no pose")
             continue
         height, width = frame.shape[:2]
         out.append(
@@ -185,7 +188,20 @@ class ProducerDerivationRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("landmark_3d_68",),
-                    ablations=(Ablation(primitive="landmark_3d_68", expect_breaks=True),),
+                    ablations=(
+                        Ablation(primitive="landmark_3d_68", expect_breaks=True),
+                        # Not a removal. Removing the only key the replay
+                        # indexes shows the replay indexes it. Offering the
+                        # same value in the narrowest storable float asks the
+                        # question the schema has: how wide must the column
+                        # be.
+                        Ablation(
+                            primitive="landmark_3d_68",
+                            swap="half_precision",
+                            expect_breaks=True,
+                            kind="substitution",
+                        ),
+                    ),
                     measurements=("pose_error_through_todays_storage",),
                     note="upstream's own estimate_affine_matrix_3d23d/P2sRt/matrix2angle, no pixels",
                 )
@@ -201,7 +217,15 @@ class ProducerDerivationRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("embedding",),
-                    ablations=(Ablation(primitive="embedding", expect_breaks=True),),
+                    ablations=(
+                        Ablation(primitive="embedding", expect_breaks=True),
+                        Ablation(
+                            primitive="embedding",
+                            swap="half_precision",
+                            expect_breaks=True,
+                            kind="substitution",
+                        ),
+                    ),
                     measurements=("norm_is_not_recoverable",),
                     note="Face.normed_embedding is a property; the norm it divides away is not in the result",
                 )
@@ -232,8 +256,10 @@ class ProducerDerivationRunner:
         raw = retained.points("embedding")
         return _artifact(case.boundary, (raw / np.linalg.norm(raw)).astype(np.float32))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        return retained.without(primitive)
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "half_precision":
+            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         _kind, found = self._parts(case)
@@ -275,8 +301,3 @@ class ProducerDerivationRunner:
             )
 
         raise KeyError(f"{self.consumer_id} has no measurement called {name!r}")
-
-
-def loaded_heads() -> dict[str, Any]:
-    """Which heads produced the numbers, recorded with the evidence."""
-    return producer.loaded_models(producer.analysis())

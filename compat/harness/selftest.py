@@ -9,6 +9,8 @@ blobs, weights and evidence bytes; these cover the mechanisms added since:
     changed_weight              mutate a weight digest   -> identity drift
     changed_manifest            mutate the manifest      -> identity drift
     changed_runner_source       edit a runner's bytes    -> identity drift
+    changed_application_source  edit vision/ or db/      -> identity drift
+    changed_corpus              re-hash a photograph     -> identity drift
     dropped_persisted_primitive remove a stored value    -> replay breaks
     changed_selection_rule      swap first/largest       -> different face
     changed_reference_order     reverse a stacked set    -> different artifact
@@ -18,15 +20,50 @@ blobs, weights and evidence bytes; these cover the mechanisms added since:
     vendor_round_trip_lossless  plant one lost key       -> aggregate goes red
     vendor_boundary_repeats     plant a second digest    -> stability goes red
     vendor_pack_declaration_checked  contradict the declared pack -> disagreement
+    cache_never_crosses_identity     entry under another identity -> not served
+    cache_preserves_every_value_type round-trip a Face            -> types survive
 
 The positive control is not decoration. Every other row asserts a mutation IS
 seen; without a row asserting an unmutated tree is seen as clean, a detector
 that returned "changed" unconditionally would pass every one of them.
+
+WHAT EACH ROW ACTUALLY EXERCISES
+--------------------------------
+Stated because it was not, and the difference decides what a green here is
+worth.
+
+    through the production function
+        missing_consumer                 matrices.build
+        dropped_persisted_primitive      RetainedState._require + run_ablation
+        vendor_pack_declaration_checked  acceptance.declared_against_observed
+        changed_selection_rule           the selection rules themselves
+        changed_reference_order          reference_sets.combine
+        cache_never_crosses_identity     corpus.cache read and write paths
+        cache_preserves_every_value_type the same, over a real Face
+        changed_vendor_fixture           re-reads the bytes and re-hashes them
+
+    through `evidence.compare_to`, over a mutated copy of `identity()`
+        positive_control, changed_pin, changed_weight, changed_manifest,
+        changed_runner_source, changed_application_source, changed_corpus,
+        stale_evidence
+        -- the drift checker is real; no file is touched and no lane is run.
+
+    over the RECORDED ARTIFACT only, re-implementing the aggregation
+        vendor_acceptance_not_faked, vendor_round_trip_lossless,
+        vendor_boundary_repeats
+        -- these assert the artifact is internally consistent. They do NOT
+        call `acceptance.py`'s aggregation, so a hardcoded aggregate would
+        pass them. `determinism` now re-runs each vendor in a fresh
+        interpreter, which a selftest cannot afford to call; the honest
+        position is that these three are artifact checks and are labelled as
+        such rather than counted as gate coverage.
 """
 
 from __future__ import annotations
 
 import copy
+import dataclasses
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -48,10 +85,16 @@ class Attack:
     mechanism: str
     detected: bool
     detail: str
+    applicable: bool = True
+    """False when the attack cannot be mounted HERE -- the cache is off, a
+    corpus is absent -- as opposed to mounted and missed. `ok` passes an
+    inapplicable row, because a suite whose selftest reds when its own cache
+    is disabled cannot be run cache-free, and cache-free is the control
+    condition `attack.evidence_not_reproducible` now depends on."""
 
     @property
     def ok(self) -> bool:
-        return self.detected
+        return self.detected or not self.applicable
 
 
 def _tampered(mutate: Callable[[dict[str, Any]], None]) -> tuple[bool, str]:
@@ -147,25 +190,130 @@ def missing_consumer() -> Attack:
     if not covered:
         return Attack("missing_consumer", "no consumer-tier coverage", False, "nothing to drop")
     dropped = min(covered)
-    left = declared - (covered - {dropped})
+    # Through `matrices.build`, not through set arithmetic. The old row
+    # computed `declared - (covered - {dropped})` and asserted it non-empty,
+    # which holds for any non-empty `covered` and never called the code that
+    # decides whether a missing consumer is visible.
+    from compat.harness import matrices
+
+    thinned = copy.deepcopy(held)
+    thinned["results"] = [one for one in thinned["results"] if one["consumer_id"] != dropped]
+    thinned["population"]["consumer_tier_covered"] = sorted(covered - {dropped})
+    thinned["population"]["unexercised"] = sorted(declared - (covered - {dropped}))
+    generated = ROOT / "generated"
+    built = matrices.build(
+        matrices.Evidence(
+            cases=thinned,
+            provenance=json.loads((generated / "provenance.json").read_text(encoding="utf-8")),
+            producer=json.loads((generated / "producer_inventory.json").read_text(encoding="utf-8")),
+            union={},
+        )
+    )
+    row = next((one for one in built["consumers"] if one["consumer"] == dropped), None)
+    seen = row is not None and row["status"] == "NOT EXERCISED" and built["totals"]["not_exercised"] > 0
     return Attack(
         "missing_consumer",
-        f"{dropped} removed from consumer-tier coverage",
-        bool(left),
-        f"unexercised would become {sorted(left)}",
+        f"{dropped} dropped, then rebuilt through matrices.build",
+        seen,
+        f"{dropped} reads {row['status'] if row else 'ABSENT FROM THE TABLE'}; "
+        f"not_exercised={built['totals']['not_exercised']}",
     )
 
 
 def dropped_persisted_primitive() -> Attack:
-    """Remove one value from a retained state; the replay must break."""
-    from compat.contracts.case import RetainedState
+    """A replay that merely INDEXES a removed key must not read as necessity.
 
-    without = RetainedState(kps=np.zeros((5, 2), dtype=np.float32)).without("kps")
+    The old row asserted that a dict raises on a missing key. That is a
+    property of dicts, and asserting it is how 22 of 23 primitives came to
+    report `survives: 0`: `run_ablation` caught the KeyError and recorded it
+    as a break, so `answer.json` listed pose, age, gender, bbox, det_score,
+    kps and landmark_2d_106 as durable state on the strength of a dict lookup.
+
+    The assertion that matters now is the one that replaced it: `_require`
+    raises the typed `MissingPrimitive`, and `run_ablation` turns THAT into
+    INCONCLUSIVE rather than into evidence. Both halves are checked, because a
+    typed exception nobody special-cases is the same bug with a longer name.
+    """
+    from compat.contracts.case import (
+        Ablation,
+        Artifact,
+        Case,
+        Fixture,
+        Measurement,
+        MissingPrimitive,
+        RetainedState,
+        Tier,
+        Verdict,
+    )
+    from compat.harness.run import run_ablation
+
+    kps = np.zeros((5, 2), dtype=np.float32)
+    typed = False
     try:
-        without.points("kps")
-    except KeyError as problem:
-        return Attack("dropped_persisted_primitive", "kps removed from retained state", True, str(problem))
-    return Attack("dropped_persisted_primitive", "kps removed from retained state", False, "replay read it anyway")
+        RetainedState(kps=kps).without("kps").points("kps")
+    except MissingPrimitive:
+        typed = True
+    except KeyError:
+        typed = False
+
+    def art(values: np.ndarray) -> Artifact:
+        return Artifact(name="out", dtype=str(values.dtype), shape=values.shape, sha256="x", values=values)
+
+    class IndexesTheKey:
+        """The shape found in twelve consumer modules, reduced to its essence.
+
+        Every member of `Ablating` is present because the executor's own
+        protocol is what this row is testing against; a stub that satisfied
+        only the two methods it uses would be checked against a weaker
+        contract than a real runner is.
+        """
+
+        consumer_id = "selftest"
+
+        def cases(self) -> tuple[Case, ...]:
+            return ()
+
+        def retained_for(self, case: Case) -> RetainedState:
+            del case
+            return RetainedState(kps=kps)
+
+        def baseline(self, case: Case) -> Artifact:
+            del case
+            return art(kps)
+
+        def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
+            del case, retained
+            raise KeyError(name)
+
+        def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+            del case
+            return retained.without(ablation.primitive)
+
+        def replay(self, case: Case, retained: RetainedState) -> Artifact:
+            del case
+            return art(retained.points("kps"))
+
+    case = Case(
+        name="selftest_indexing",
+        consumer_id="selftest",
+        tier=Tier.PRIMITIVE,
+        boundary="out",
+        fixture=Fixture(name="selftest", path="", sha256="0" * 64, kind="synthetic"),
+        exact_bytes=True,
+        rtol=0.0,
+        atol=0.0,
+    )
+    recorded = run_ablation(
+        IndexesTheKey(), case, RetainedState(kps=kps), Ablation(primitive="kps", expect_breaks=True), art(kps)
+    )
+    inconclusive = recorded.observed_break is None and recorded.verdict is Verdict.INCONCLUSIVE
+    return Attack(
+        "dropped_persisted_primitive",
+        "a replay that only indexes the removed key, through run_ablation",
+        typed and inconclusive,
+        f"MissingPrimitive raised={typed}; recorded observed_break={recorded.observed_break} "
+        f"verdict={recorded.verdict}",
+    )
 
 
 def changed_selection_rule() -> Attack:
@@ -230,11 +378,30 @@ def changed_vendor_fixture() -> Attack:
     if not present:
         return Attack("changed_vendor_fixture", "no resolved fixtures", False, "nothing to corrupt")
     one = present[0]
+    # Re-hashed for real. The old row asserted `sha256 != "0" * 64`, which
+    # swaps nothing and re-hashes nothing, under a header promising
+    # "same path, other bytes -> different sha256". This fetches the bytes the
+    # index points at -- through the same reader the conformance lane uses, so
+    # a blob-only fixture works too -- checks the recorded digest against them,
+    # then flips one byte and requires the digest to move.
+    from compat.vendor import conformance
+
+    blob = conformance._read(one)
+    if blob is None:
+        return Attack(
+            "changed_vendor_fixture",
+            f"{one['path']} could not be re-read",
+            False,
+            "neither on disk nor at the pinned commit on this machine",
+            applicable=False,
+        )
+    matches = hashlib.sha256(blob).hexdigest() == one["sha256"]
+    moved = hashlib.sha256(bytes([blob[0] ^ 0xFF]) + blob[1:]).hexdigest() != one["sha256"]
     return Attack(
         "changed_vendor_fixture",
-        f"{one['path']} re-hashed as zeros",
-        one["sha256"] != "0" * 64,
-        f"recorded {one['sha256'][:16]}; a swap at the same path changes it",
+        f"{one['path']} re-hashed, then one byte flipped",
+        matches and moved,
+        f"recorded digest matches the bytes={matches}; one flipped byte moves it={moved}",
     )
 
 
@@ -244,20 +411,27 @@ def vendor_acceptance_not_faked() -> Attack:
     The layer this checks is the one most worth faking: `ran` is the only
     thing separating "the vendor's own entrypoint produced this" from "our
     adapter produced something and we called it a reference".
+
+    Over the RECORDED rows. `vendor_accepted` used to be "ran and produced a
+    boundary", which this could only check for internal consistency with the
+    field beside it. It is now "reproduced the shape upstream declares", so an
+    accepted vendor must carry an `against_upstream` row that AGREES -- and a
+    vendor that ran without such a row is VENDOR_BASELINE_UNAVAILABLE and must
+    not appear in the accepted set.
     """
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
         return Attack("vendor_acceptance_not_faked", "no vendor_acceptance.json", False, "run the acceptance lane")
     out: dict[str, Any] = json.loads(held.read_text(encoding="utf-8"))
     accepted = set(out["population"]["vendor_accepted"])
-    ran = {one["consumer_id"] for one in out["acceptance"] if one["ran"] and one["boundary"]}
-    # Accepted must be exactly those that ran AND produced a boundary.
-    consistent = accepted == ran
+    agreed = {one["consumer_id"] for one in out["against_upstream"] if one["agrees"] is True}
+    unstated = {one["consumer_id"] for one in out["against_upstream"] if not one["stated"]}
+    consistent = accepted == agreed and not (accepted & unstated)
     return Attack(
         "vendor_acceptance_not_faked",
-        "vendor_accepted must equal the set that actually ran and produced a boundary",
+        "vendor_accepted must equal the set whose boundary matched upstream's declared one",
         consistent,
-        f"accepted {sorted(accepted)}; ran-with-boundary {sorted(ran)}",
+        f"accepted {sorted(accepted)}; agreed-with-upstream {sorted(agreed)}; no upstream statement {sorted(unstated)}",
     )
 
 
@@ -269,6 +443,10 @@ def vendor_round_trip_lossless() -> Attack:
     about. `every_key_survives` is the aggregate that would be quoted; this
     plants a lost key into the recorded per-key flags and asserts the
     aggregate follows, so a hardcoded True cannot survive.
+
+    Over the RECORDED rows, not through `acceptance.py`'s aggregation: a
+    hardcoded aggregate would pass this. It asserts the artifact is
+    internally consistent, which is weaker than exercising the gate.
     """
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
@@ -301,6 +479,10 @@ def vendor_boundary_repeats() -> Attack:
     same fixture, weights and code under onnxruntime's EXHAUSTIVE convolution
     search -- so the aggregate is asserted to follow a planted disagreement
     rather than trusted.
+
+    Over the RECORDED rows. `determinism` now re-runs every vendor in a
+    fresh interpreter, so calling it here would cost eight model loads;
+    this checks the artifact it wrote rather than the function.
     """
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
@@ -331,34 +513,228 @@ def vendor_pack_declaration_checked() -> Attack:
     `pack`: with the wrong pack it expects no break and observes none. Both
     checks are satisfied by a well-formed claim rather than a true one.
 
-    `acceptance.observed_pack` reads the model files off the live analyser,
-    so the comparison is manifest-versus-run. This plants a contradicting
-    declaration into the recorded rows and asserts the agreement flips.
+    Run through `acceptance.declared_against_observed` itself. The earlier
+    version copied a recorded row, flipped its `declared` field and asserted
+    `planted["declared"] == planted["observed"]` was False -- a tautology by
+    construction that never called the function it claimed to exercise. The
+    rows are rehydrated into `Acceptance` objects and the production
+    aggregation decides, so a change to how `pack` is compared is caught here
+    rather than agreed with.
     """
+    from compat.vendor.acceptance import Acceptance, declared_against_observed
+
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
-        return Attack("vendor_pack_declaration_checked", "no vendor_acceptance.json", False, "run the acceptance lane")
+        return Attack(
+            "vendor_pack_declaration_checked",
+            "no vendor_acceptance.json",
+            False,
+            "run the acceptance lane first",
+            applicable=False,
+        )
     out: dict[str, Any] = json.loads(held.read_text(encoding="utf-8"))
-    rows = [one for one in out.get("declared_against_observed", []) if one.get("agrees") is not None]
-    if not rows:
+    fields = {one.name for one in dataclasses.fields(Acceptance)}
+    rows = [Acceptance(**{k: v for k, v in one.items() if k in fields}) for one in out.get("acceptance", [])]
+    observed = [
+        one for one in declared_against_observed(rows) if one.get("field") is None and one["agrees"] is not None
+    ]
+    if not observed:
         return Attack(
             "vendor_pack_declaration_checked",
             "no acceptance observed a pack",
             False,
             "nothing to contradict; the gate is unexercised",
+            applicable=False,
         )
+    clean = all(one["agrees"] for one in observed)
 
-    clean = all(one["agrees"] for one in rows)
-    victim = min(rows, key=lambda one: one["consumer_id"])
-    planted = copy.deepcopy(victim)
-    planted["declared"] = "buffalo_l" if planted["observed"] != "buffalo_l" else "antelopev2"
-    after = planted["declared"] == planted["observed"]
+    # Contradict the RUN, then re-run the production comparison. The pack is
+    # planted into the boundary the analyser reported, which is the side the
+    # function reads as fact.
+    victim = min((one for one in rows if one.boundary.get("observed_pack")), key=lambda one: one.consumer_id)
+    planted = copy.deepcopy(rows)
+    for one in planted:
+        if one.consumer_id != victim.consumer_id:
+            continue
+        was = one.boundary["observed_pack"]["pack"]
+        one.boundary["observed_pack"] = {
+            **was_dict(was, one),
+            "pack": "buffalo_l" if was != "buffalo_l" else "antelopev2",
+        }
+    after = declared_against_observed(planted)
+    caught = any(one["consumer_id"] == victim.consumer_id and one["agrees"] is False for one in after)
     return Attack(
         "vendor_pack_declaration_checked",
-        f"{victim['consumer_id']}: declared pack replaced with {planted['declared']!r}",
-        clean and not after,
-        f"{len(rows)} packs observed; all agree={clean}; with one contradicted={after}",
+        f"{victim.consumer_id}: the pack the run reported replaced, through declared_against_observed",
+        clean and caught,
+        f"{len(observed)} packs observed, all agree={clean}; with one contradicted the function reports "
+        f"disagreement={caught}",
     )
+
+
+def was_dict(pack: str, row: Any) -> dict[str, Any]:
+    """The observed-pack record, with its other fields kept."""
+    held = dict(row.boundary.get("observed_pack") or {})
+    held.setdefault("pack", pack)
+    held.setdefault("modules", {})
+    return held
+
+
+def cache_never_crosses_identity() -> Attack:
+    """An entry written under another identity must never be served.
+
+    This is the only property that makes a persistent memo safe here. The
+    store is namespaced by `identity()["digest"]`, which covers the manifest,
+    every pinned commit, every weight sha256, the runtime and the sha256 of
+    every compat source file -- so an entry computed before any of that moved
+    lives in a directory the current run does not look in.
+
+    Asserted both ways. A store that returned None unconditionally would pass
+    the negative half and be useless, so the positive half runs too.
+    """
+    from compat.corpus import cache
+
+    if not cache.enabled():
+        return Attack(
+            "cache_never_crosses_identity",
+            "COMPAT_CACHE=0",
+            False,
+            "the store is off, so there is nothing to attack",
+            applicable=False,
+        )
+
+    sha = "c0" * 32
+    frame = np.arange(24, dtype=np.uint8).reshape(2, 4, 3)
+    mine = cache.slot("frame", f"{sha}.npy")
+    foreign = cache.CACHE_ROOT / ("f" * 64) / "frame" / f"{sha}.npy"
+    try:
+        foreign.parent.mkdir(parents=True, exist_ok=True)
+        with foreign.open("wb") as handle:
+            np.save(handle, frame, allow_pickle=False)
+        crossed = cache.frame_get(sha) is not None
+
+        cache.frame_put(sha, frame)
+        held = cache.frame_get(sha)
+        served = held is not None and np.array_equal(held, frame)
+    finally:
+        mine.unlink(missing_ok=True)
+        foreign.unlink(missing_ok=True)
+
+    return Attack(
+        "cache_never_crosses_identity",
+        "one entry under a foreign identity digest, one under this run's",
+        not crossed and served,
+        f"foreign entry served={crossed} (must be False); own entry served={served} (must be True)",
+    )
+
+
+def cache_preserves_every_value_type() -> Attack:
+    """A held face must come back with every value's TYPE, not just its bytes.
+
+    `producers/insightface_pass._describe` branches on `isinstance(value,
+    np.ndarray)` before it looks at anything else, so an np.float32 returning
+    as a 0-d array would be inventoried as an ndarray of 4 bytes where the
+    producer reported a float of 8. The storage evidence is a byte-cost table
+    over those fields: a cache that lost the distinction would not be slow,
+    it would be wrong.
+
+    An unreadable entry is checked in the same pass. It must read as a miss,
+    because a store that can raise can fail a run it was only meant to speed
+    up.
+    """
+    from insightface.app.common import Face
+
+    from compat.corpus import cache
+
+    if not cache.enabled():
+        return Attack(
+            "cache_preserves_every_value_type",
+            "COMPAT_CACHE=0",
+            False,
+            "the store is off, so there is nothing to attack",
+            applicable=False,
+        )
+
+    sha = "c1" * 32
+    face = Face(
+        bbox=np.array([1.5, 2.5, 3.5, 4.5], dtype=np.float32),
+        det_score=np.float32(0.87),
+        embedding=np.arange(512, dtype=np.float32),
+        gender=1,
+        age=34,
+        label="x",
+    )
+    body, kinds_at = cache.slot("ours", f"{sha}.npz"), cache.slot("ours", f"{sha}.json")
+    try:
+        cache.face_put(sha, face)
+        back = cache.face_get(sha)
+        kept = back is not None and all(
+            type(face[key]) is type(back[key])
+            and (np.array_equal(face[key], back[key]) if isinstance(face[key], np.ndarray) else face[key] == back[key])
+            for key in face
+        )
+        # The same entry, truncated. A reader must return None rather than
+        # raise: the caller can always recompute.
+        body.write_bytes(b"PK not a zip")
+        survived = cache.face_get(sha) is None
+    finally:
+        body.unlink(missing_ok=True)
+        kinds_at.unlink(missing_ok=True)
+
+    return Attack(
+        "cache_preserves_every_value_type",
+        "round-trip a Face of arrays, an np.float32, two ints and a str; then truncate it",
+        kept and survived,
+        f"types and bytes preserved={kept}; a corrupt entry read as a miss={survived}",
+    )
+
+
+def changed_application_source() -> Attack:
+    """The storage lane runs `vision.faces` and `db.*`; editing them must drift.
+
+    `storage/gallery_v45.py` is the only lane that reaches out of `compat/`,
+    and it reaches into the code under test. Until the identity covered them,
+    an edit to `vision/faces.py` changed the headline answer with every pin,
+    weight and compat source unmoved, and the staleness lane reported
+    "evidence is current".
+    """
+    if not evidence.identity()["application"]:
+        return Attack(
+            "changed_application_source",
+            "no application sources digested",
+            False,
+            "vision/ and db/ were not found beside compat/",
+            applicable=False,
+        )
+
+    def mutate(held: dict[str, Any]) -> None:
+        held["application"][min(held["application"])] = "0" * 64
+
+    seen, detail = _tampered(mutate)
+    return Attack("changed_application_source", "one application source digest altered", seen, detail)
+
+
+def changed_corpus() -> Attack:
+    """A corpus photograph swapped must invalidate the evidence.
+
+    `corpus/loaded.shots()` selects four by min-sha256 within each
+    (identity, role) bucket, so adding or editing one changes WHICH
+    photographs every baseline was computed from.
+    """
+    if not evidence.identity()["corpus"]:
+        return Attack(
+            "changed_corpus",
+            "no corpus digested",
+            False,
+            "the KYC corpus is not on this machine",
+            applicable=False,
+        )
+
+    def mutate(held: dict[str, Any]) -> None:
+        held["corpus"][min(held["corpus"])] = "0" * 64
+
+    seen, detail = _tampered(mutate)
+    return Attack("changed_corpus", "one corpus photograph re-hashed", seen, detail)
 
 
 def every_attack() -> tuple[Attack, ...]:
@@ -378,6 +754,10 @@ def every_attack() -> tuple[Attack, ...]:
         vendor_round_trip_lossless(),
         vendor_boundary_repeats(),
         vendor_pack_declaration_checked(),
+        changed_application_source(),
+        changed_corpus(),
+        cache_never_crosses_identity(),
+        cache_preserves_every_value_type(),
     )
 
 

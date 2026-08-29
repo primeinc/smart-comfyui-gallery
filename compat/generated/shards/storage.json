@@ -1,8 +1,180 @@
 {
   "cases": 48,
+  "duplicated_cases": [],
   "identity": {
-    "digest": "b717ed229da86b9ceef2f5a9c7681e748e177c306dfe56ddefa4a0a609a0af97",
-    "manifest": "26e3d3fb2ddb7dfbd29e850703340a91aa2698efade623f7ffe26b37365ddf34",
+    "application": {
+      "db/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "db/analysis.py": "b6dc7d6ba2d6311f2f51207a86f8ba1ab380d40ea1c6c2e69acdceb0cac86d9b",
+      "db/authored.py": "4d038e88511129a3bd48f9d7c3052e43ca9e3592142c3ba639547f08a7ffdf77",
+      "db/build.py": "8812409a39d9073055dc96affd0dbb6c49b9476b6ed3b888e2be6fd27f62bdf3",
+      "db/capture.py": "776b7c470fa406438718164dfc717eee7244bc890c9f9610f997e5eafa562d8f",
+      "db/catalog.py": "1332f06e89956a769376abe22b26a652a7daf71e880040e5a8886e0d970c1798",
+      "db/collection_rules.py": "2ec297b0b6d435d1bf0289505e184be142f8555aa71b3c9fd52c7b6adefb9e37",
+      "db/collections.py": "8f6be1fd679533ccf95bc4d543cdb8d2d78caf49b75d577cca371bec7d3736e1",
+      "db/connect.py": "1fa32402cb1c673461ae57a756b4445875aef98980b90aa64111209111b01910",
+      "db/context.py": "744d1f01ee25a09931860478a7335f2e8d725541b9f2c65783a84844bb60655d",
+      "db/derived.py": "50b3c388ce992fb8afe0b9e61b123645ace9c2b981ca4c01b375753cd95b80a3",
+      "db/detect.py": "08d6b2b6804e7ae68dbe8cfd03d716f5da657d02f4dfcc90077414f8397141b5",
+      "db/discovery.py": "904fbd4260fb5efa52ccbfa002e73e876807985fe496fc35afd19c4dc41e8347",
+      "db/events.py": "61230c39b8bf176b6df17ca97e7788d8a5eec020fd40dba53eeff83bfbe63e64",
+      "db/evolution.py": "06f33ff27acc74dd4ddfcc82f6167c64a0eaba0296c7a8640942c0c63e5a7203",
+      "db/exif_labels.py": "c1b73b0e982be15a19e8214a65b11c5063455d3b7eda214f6385f455fd3f9395",
+      "db/facets.py": "4caada65ee386ab7d9e18294d8a512ec1f2e7e1f19c2fa1a6e8a28932eb12b24",
+      "db/graph.py": "b313dead1870caf78b5ab380bd55ff5a1e9f56b095ffe45db27b07a7182380d7",
+      "db/grouping.py": "7fedc5bfa56ac5f8f0670edc68f5f59e8f7f3068c2453014ac546c13c6e49ec4",
+      "db/ingest.py": "794d851ed758567a407759ca73d49697cf15b48e4ffc37bfece95c317eea829b",
+      "db/inspecting.py": "8cfecdb4e33e872408e5853d4f3de4d1ebbd0de3c4042efc6b6dce83ece73746",
+      "db/jobs.py": "05401344d511c75139c4d0ff3719d6ffee15eedd0f55c25633f7f47254498a24",
+      "db/ledger.py": "b78f8462334977c1e1dc466a6d411236756ce80649c6f48f435222f435f7b898",
+      "db/library.py": "99d66631931ebb2327881391cb1af1cbcb3e4f8586aeea34ac1ef211901a985e",
+      "db/lineage.py": "a2b2021126a88df68990ee1f5eed2cfe98ae599b92aa9e267d60733215d849c3",
+      "db/migrate.py": "fa3d6110d85d5d21c477d511ee1d7bc4c3e8870884e591eae619848ff700f465",
+      "db/naming.py": "1465bf01ea0c061556fd43dbfd5410a0f2d4963c8af663f546713019bb3dd5e4",
+      "db/oriented.py": "5656403a550e11f5aaa24ddf2423047350c1a50339b19d813554672994c31739",
+      "db/pages.py": "feb9501b7f1dfd2d5fa29e71e133b54675d0f9888345c67c2ab0a64083f0d966",
+      "db/places.py": "191e66c7a949e59c3ca429a8be58af11f7fd3f6d8cc4ae65a750e3376bd54fc1",
+      "db/planning.py": "5ef2c85d1724edf2b2bc5efa64e94df90304996e63bc5ebf4a767d7565fb2ba1",
+      "db/probe.py": "0480f82e1a21d8a9bcc836dafb17ffc3fe285352c74f385ccb17fb9d87873100",
+      "db/prompt_sections.py": "906e03e91ed3569c7f2c61c0b7bbe2bb166bf09066970c1808097fe094d8611e",
+      "db/prompts.py": "6428fa14c8f9dcf045f50066442891d70dafa09cdbfe83fa6f75155f41012994",
+      "db/rendering.py": "a6110c5798359b0d94956c53f42227e4f9acd003a17885f8b37bc46e912fc28f",
+      "db/resultset.py": "03d9272d163785b8d9e93d949a459d76fc609fe8d751e1f0b0a9f4ffe15c459b",
+      "db/retrieval.py": "d699416eca45a9739bc080a48e297f40e3c55e626ebbd9c24ccbd02e8da867b5",
+      "db/runner.py": "17741ca60b032d43eb81e00264a4d019d0a773669f9670edfbbfedbb01394f8d",
+      "db/sample.py": "a1b707ae004d90fd58bf8ac973831e36d2948aad90681f34ad1ed736d5cf9fb6",
+      "db/scan.py": "9918e927cb89544bed2d699a90366be228f6fdbf0ca3cf7148b9d176f307d47b",
+      "db/scheduling.py": "7c527c829b59abcf60f3eb3bd7183dfb8f20d7be0e7faa545415af4a749e6a51",
+      "db/settings.py": "50c48103d01ec1f6441f983179948b1e49929197f560e8ddc10d80805a70e4f2",
+      "db/similarity.py": "b79ded54bd496667d7804e5d5c73d1999bcbd4d5b5a5ce9e5369bc66aa31c356",
+      "db/stories.py": "cb1f279e4c4068cf35c5bef0baf813136b8e78d2c2ca1f10c064bf9b8797d959",
+      "db/verdicts.py": "2a5e5fd447c430e31b8b4cc96d658394f90a9fb09402b8754f4295754a2de018",
+      "db/views.py": "380af36f3b8651cce9dfe66dc06f70c1aa64b671d49fa99fd9a53ad0f1662151",
+      "db/vocabulary.py": "c07b7b6e56544e14ded77869f7986e9e9163ae53852e6504e53bbbcd4aae501a",
+      "db/when.py": "7fc553204e3234e8a8db331dae70e42aa74522085435d45b145c35c48414d2a1",
+      "vision/__init__.py": "e15d5ffa596a2a41d9765e795ef603b2801e1170caa9cb87e66320079ca3d406",
+      "vision/captions.py": "d0d9f275d4518ab2900bdffb86f88bd4e9260ea201f3979a5732af0fb02b0c01",
+      "vision/decode.py": "7968c198094fa2ac933da2b12ce34c022f8c4ae01bfe2cd03edf505858a3fb44",
+      "vision/derive.py": "a885c928faebf3077c34c2610f39754173616d5b3dadad2878aac7f67a586116",
+      "vision/dupes.py": "a04f0a548dabc8c66022dcf593518bdb73b660ec47ec923120decfac3bc9b6c5",
+      "vision/faces.py": "eb6ad344126e3bf653dd7c95cc7f8341452dd7d45e824b1dc100ced04c9b7b21",
+      "vision/faiss_index.py": "fa28fc66324e70b26ff736a78ae12364b4c3f39932254d5af49c6c5243c3c593",
+      "vision/faiss_runtime.py": "8f0eda4de24f0355e6a7d117fac459fb611ba311d91aad529e7c42e22d9b3ab9",
+      "vision/semantic/__init__.py": "bfd78e0409d53e52d648e65f688a35be11f302be281a4d5ebd8c0cbad7f2c4de",
+      "vision/semantic/openclip.py": "b0353384628a66d3a531b99d50a3ff8615e0751b750ae7a9a703ffd2ccf1ca74",
+      "vision/semantic/qwen_vl.py": "6b6f47b5e31fb1b3d54215df79ab70209da1d1f9636b52d6af52c320f140dd5b",
+      "vision/sniff.py": "e4feaaa835be75d3ba2e03fbb70ebb1d17920384d9293fc7b00a0352b6fbf272",
+      "vision/thumbs.py": "81774027e70958dfce8e26090279f71855582d963e4c450c032634d559ee5980",
+      "vision/weights.py": "888e2638db6111bd9ebacb187c25864c3cb4862f89692f86ab435cb642f75f39"
+    },
+    "corpus": {
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_1.jpg": "fb197f235ae684d9f5a9f600a480475d0eafb946fcfbd306a40239ff0a3eefe6",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\ID_2.jpg": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_1.jpg": "eed4b5c3e9a93d0fbcc76ccbe8272b510caa381f2f783b1e4c90e1586805b59a",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_10.jpg": "ab931f77e3f4b6d31e68a98de4c60a242535d2eb8728d2fa5366c85f2722b438",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_11.jpg": "7bca017ce80d212f840bb6105cafa46240ddaf4d9b8061e736a5c5e37a7aaebd",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_12.jpg": "694356d5024b185db2fac138fc8a6c7980e453ea6c83670529cf66596bd8ab47",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_13.jpg": "a455cbbb7aee1dd532cb9dea24b9d2374eeaf4de7913aab3d24cd0bb06fe96b3",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_2.jpg": "e444e188bfe0009ce7f130070720fa2ac0b860a79639fd4858753adb30ae143a",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_3.jpg": "4a7ce0cb76dc4a5fb9f495b86b1f79cf05b94789597b2c94c0bf653d83f517b7",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_4.jpg": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_5.jpg": "a2c9e5f8da2cba389d6ea459ed34ce871531a4cfa2a2e4e61843253fa7c60417",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_6.jpg": "f419136c972c19ed70fb476fb01b055a19f82cca016cce189f5f0cb35dd60635",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_7.jpg": "786b890ad1ed1628c14ac277f3b2cb1165b8dbc331a6a8a830a123ac388e63b3",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_8.jpg": "5b9beda2104cc3549049afc2b400fdaac0b3449e834b196d50c33506bb45d0ff",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_9.jpg": "aa984917c6ea81ed7a5c4d09705b54790444837df82134f11689fd83553233a4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_1.jpg": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\ID_2.jpg": "f14f0c7b547477dc0804f7bb1e0fadae297934938439d5643b763f62ab4adb02",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_1.jpg": "4f96680fab3b37037169bbd1ed4126b67f8e75f1fd582425b72ce98326fea40b",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_10.jpg": "d7c5bf47b95b7a5c7b5473222c00397ee8b8c53b3c00441a16b6d7a34ed3dfd5",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_11.jpg": "67071c3c86b17b616783dd7a6e8423a12925ee3aac6e3298df9f7aa5045a212a",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_12.jpg": "dae408d4b17b3b70806abb64bd7e804cfddc420cb483bef8b207bd9e2483e7c6",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_13.jpg": "aa306df50e79c260f45f352156e5539ffcb7403f11773ed5ad210675901917ef",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_2.jpg": "854b00294ffceb03e3c2d577a6b4720255885659962b33ce6505f7f08f1b451b",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_3.jpg": "c035c11e6ec2d0249725625a328878d21a13316882d5788d5a09d8910c2974bf",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_4.jpg": "90487dd9841999280c9c6332c928c70aa5816751976bc98d26f9c99f5c560ba4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_5.jpg": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_6.jpg": "a3a507001efd8f4e13196c9f012d92b45c0a7066c4ab7fec3a3227e5d40cb4b1",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_7.jpg": "faf15189998fa4f4229d6cd3341a5f249b50b9921dee43a0b2a3dc0bbe99b31f",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_8.jpg": "cb9776f7616a3a6eda27d8d46213f6f28aa3149d5aa26de53edb78949af608b8",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\2\\Selfie_9.jpg": "f81cd931f0e29f2ba82729724a5753812ad7bdb8a067f63efddbd1a3710ffdf8",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_1.jpg": "fe9915cd9e674f4a8d801ebf8f566ea1f1e5f3e595391423d23d03e7d285acbc",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\ID_2.jpg": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_1.jpg": "386e164ce4db726f8b57967c83b49e020165be197a9cbc679d91636413d3ac58",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_10.jpg": "393b7464ee6ec145dce52979fe1d9f9c9794a241238f8231d5934bfaf62e283f",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_11.jpg": "dc392a9bdf1fe4938a8ae44f3897869c6fef7e25f17ebd22b3f30a19d191828c",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_12.jpg": "733274d62e35a25326844b26ef3995689ec53546287f9dee38c50907f97749c6",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_13.jpg": "66c3b5737ab65217c8badd61a123f9285e4645742bb327691b4207e8214c01ba",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_2.jpg": "d64d253be4e16ac8bd5573d45fd843bdb6aa1a92a4af9ea44cf41ca2d9c80208",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_3.jpg": "28b17b45b7518ee7cdbecd46b04edb58ba30c57e82c204404e8ef66e84e05aed",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_4.jpg": "576c78e58f7c2dc0c5d8b7baf26d93b3d4874acae4a9c843671a00b876575e29",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_5.jpg": "92ba1527a8f9f84f16eb6df049084f95190b9b5065b3cd54bcdc00c9c09ade90",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_6.jpg": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_7.jpg": "9c76c9fbf2981dbdfbacf68762fa12aa4c36c50772ab64957f0bab8b01d526c3",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_8.jpg": "b49152c5ff9d9c4897c47cdcf8921fe3bf4c6820428107ab7909649f45d909e2",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\3\\Selfie_9.jpg": "48fa261ce555f3a571b47e5b2503963099c502aed04d9bc1f9d9295d3f96b6a4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_1.jpg": "95a5c76bd2402cefd0849d09249764da6b500038e47df29687549ad8cab0a94e",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\ID_2.jpg": "395f6b43d6f60b51c0182ff7341453ffce3058cd5d10f18221287843968a7d2a",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_1.jpg": "ece1deab55a05eac7cb9a3394cabd0079a282ebd4d708ed556e96e5f470d9a3d",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_10.jpg": "6f9186061a00c9ab5252eeda95e1ccc1939fc1b3a0b603dafce5091b28597f9d",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_11.jpg": "b78a6c70b0ae724278d1539c11f515e00ad6e22e0dfab5ddd07f7ba2e90a1ddc",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_12.jpg": "079e94f7952579f7676ffab8e2f43dfe9ca15434f4c52203d02a8babe3f35053",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_13.jpg": "aa5e4e2abdc6da50df2b7760c74578e9a68ac6a564afdc3358a056a835cdaa83",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_2.jpg": "735bd97587db97c1f92109a43a1f1ec7e10f7929ff38b91572abfeac58b7547c",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_3.jpg": "a8b89f672ab25a1147e38ae330d18f7e95c218f1fb5a676f378848dce243c24c",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_4.jpg": "6262235f757fc67f20149539a49c3fdfb59513688c71c2164f0ebd4f2cf376d9",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_5.jpg": "bd5b21d79ae9b1a8727832e0ca196ad41b3b0a17361751af1f2729d2e6e73f4a",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_6.jpg": "c7d6170beb919785b0f307c94233e3839b9849ec35ef055e60a31548226847dc",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_7.jpg": "c28917f71530974f18c1fa5ddc381698b79f14083ab65a6a49442ed4a2a23b29",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_8.jpg": "5921403529b9cf5e1defb5a2840b8ca5ef0f0f4a83c92aab0516d6fbecdf36cc",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\4\\Selfie_9.jpg": "76106831bd8c272f540e963c8cf55c8fdc5838c94a37f0131dd1770fabf67551",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_1.jpg": "942a86cdc40eff42a6808b30a4dd88c681c26e649952bbc30ea39fde84e3fb92",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\ID_2.jpg": "ec476d963f46ca35b697d6c3ce1764d407c5813a64d287b6f1c1200d0f8da870",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_1.jpg": "279af91c1fcff4874a847cc05f050a0a913bbc7d58fc60f318111991108eb430",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_10.jpg": "1d280a2945e3edee5f9b786dfb0a095f9c5b7342b4ee13581c999c91bfb70a8a",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_11.jpg": "5ab087c6b6081ebd03a78e1d4dea1f84f3ee3ed0347edc1372ed170520a1e680",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_12.jpg": "95b0e05400589db45420fe2029508b1573cfcd4e1c28eb5165d8a9c4383d71a8",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_13.jpg": "9b66406f71ce0d0c812876b71bbf44e25f03e8d66bed406fd3620809f9c95776",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_2.jpg": "f2ed8f95ecf8fba320013c3c84206e912a4461186cc40cc015d59075b0cc97eb",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_3.jpg": "8f1b601f69dc9bb52b3b2daff49867e3f3a3a6b5e4fc762c3442b7e878f682a8",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_4.jpg": "f22dbfb7d77466a8c74c763d2e97854c18285104d8cecf40224c026b81060575",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_5.jpg": "0f4f50ebbfc628676c04a667f221f9ff9f42dafbed7a738e24c3ffdb3d8a3ed4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_6.jpg": "565d34e94b366b28e221eed54dee48a5d6d67812df830a6ed3eddf4e27b9190f",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_7.jpg": "f93bba9d4fd13e853434a8baf99d9a045d813694f3d72952d7725f7d856b8191",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_8.jpg": "6c2478004179f78ab10de54dfb9be0f2365ca26ccbf9ce763eb8005605f823d4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\5\\Selfie_9.jpg": "03d845f448d6f8e73d2837dd73fd519f9104c979081b3e17ae6d28486fcf6ee7",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_1.jpg": "241d9d238c8c545995c5e1e2cf707b4701abdcb20c660f13e6a6d7aa07a7a154",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\ID_2.jpg": "d54b857141de35f4a214f96c27efa78b24b68066e0f758f9b20626edbfdd97c4",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_1.jpg": "817c338734c791a9b38c25d3eb8c6eae2024be1dfc36e124011d6eead64c69fb",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_10.jpg": "323e0ebb29d2d376d3a7705ebb7067e4ceca784c6d4af47b5250ffa05409e422",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_11.jpg": "59e1a6a3b1aeaa1e56be6c70408f99fdc1e4463e393d5c266202a303c77a8e9b",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_12.jpg": "120f14390283089226f25d589555ef880b8e284757d733157ceb5edb6e4863e3",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_13.jpg": "f64c4b6638a03e431a59570fa2b16a0599a99441890028734f13619171c534b1",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_2.jpg": "91e84ef8519af4cca00602bb0dc388036b84670ba043821ad44d8c4d175160be",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_3.jpg": "57a1c28fcf74b4e1d02487d7ab1a8172dba10ab94065e011e59f9ed162af59da",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_4.jpg": "3b9edd3c127ea06db1cfa4bca1e7a065bc6da38b22f1cceb8c8203d9a56ea2b2",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_5.jpg": "78280d958e23ef863176ed4a71f1134ca39a0039e18496d19fefb086840ad952",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_6.jpg": "299fe0cc6700b05e7da00b4961053f7dc6bd2cb44336bdbb636e971651366ed9",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_7.jpg": "2ea85419488e52050603e599f54eb886783496abfa555988daae703cc9c77ab6",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_8.jpg": "5e097f03044f284c75f375621ee057dcdbbd88ae59565082038539a62a3eea97",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\6\\Selfie_9.jpg": "754f481f0acbe54a28370865d41513ab1648f04ff4b3514f95207f0a9b804496",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_1.jpg": "1becc6271525ee1ca858a479b74206017371b240dfe87011a9cb0c1058c7f4ae",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\ID_2.jpg": "4691e0b470202724bd1511739339d6e8f8c2a84332c50e1a941607e90c6f96b3",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_1.jpg": "8949f1967e185d7ce0f273c2eb3d6760319957cb7f49e9e69150ffafff7723d7",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_10.jpg": "97ead461ef57e4be0538fb72a5721b333faf2936a6a16c1b7cec12c7c2bb2d00",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_11.jpg": "b4a86b76747e17579cf296cb7a23dd689e711ac7be7bc030444ce97a9e424911",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_12.jpg": "9473b8b1ee188d347214add9686216b0bf51cb3ed9e290b911a4f4a8fbbaa9fe",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_13.jpg": "2dc1b4e0824db259d03efe5a71f3f2050f20ea530a1f52ee665ea18cb000d36e",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_2.jpg": "4212d1c1c69428ee58f3bdbf78e917f3ddcc80fd4e8f3014f7f2ff6af818b07d",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_3.jpg": "5aabed0924797111a14227b47ce5bfcfb806cce6d01199e2d5169de86c359d0c",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_4.jpg": "c4117c515b753e25ae3a20c250844889627c6a18120f2f61eed54a44f3413ab7",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_5.jpg": "ad6e906ba8c12947fd370fa328e8e9076f22b5717de833bdb271ca0ff7e63b7d",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_6.jpg": "36da6f92e75bd568d19691ef8b6a769975b7b1d82f900ad781bbc0b9451166d6",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_7.jpg": "de68305c8aa8a7d4384f8d892571d0552a8681555fe32da45d50e97f34d625d7",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_8.jpg": "52cec87f14e7aeaf0eeacc52f25e3a8a42260291a233bed3d188491e5213e169",
+      "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_9.jpg": "7c36358199af2f2994ccdb763dde64ebad361327920544d48d7fff3f92e13bc7"
+    },
+    "digest": "9854a4fa93008588508d521131f4e66274abee880d1f7ebcea6723c68aafcc2a",
+    "manifest": "73cb937af5edb8bfe1ac60b08baf5eeffba81b21efb969b3eb3431a464e2241e",
     "repos": {
       "consumer:anystory": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
       "consumer:consisid": "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e",
@@ -114,53 +286,58 @@
     },
     "sources": {
       "assertions/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "assertions/arrays.py": "ade0d8fcb437e6aa51be997bb610e3325e02263bd98e8afe757bd31c50eb98e5",
+      "assertions/arrays.py": "23bd8a6beca17a696822ce7c12edcd59499de0401fcd7303df4735f41beea78f",
       "assertions/minimize.py": "33753282d1971557d6e91405cd127c0a5b05afd446fe945dda4515746360a4d4",
       "consumers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "consumers/aligned_crop.py": "c5b63435a97b99baeb627757778cf7a0a7c2e12a030bdec93789477e47b4b928",
-      "consumers/consisid_facexlib.py": "baef577c4e1af40cccacaacc3b9cf9b3ccef040cd61dc9e386f8826b50bffb04",
-      "consumers/control_stream.py": "64bbe8aeb5d1826f54a8c35dfaebc904c3aa2b263a1921b2a8d1f5ae7eda4d4b",
-      "consumers/embedding_spaces.py": "295e9edc1de473b478cdc606a292e1bf78b7065a4e21c9bbe1220a374a78befc",
-      "consumers/face_family.py": "af9c531f6a98c91a1538217e3f3122431f310a1e7cf9f4675189f93021614276",
-      "consumers/face_selection.py": "90dc25127087c1f05a329d65a538e34d5bbfc2db6202a2b136a28573852acf0d",
-      "consumers/gallery_storage.py": "26e2a47d01a6f4f83baf85cfc405ad72685d9e7168b4d565c73131dba1a9c289",
-      "consumers/masked_reference.py": "f904ca59c6b2358498c3a2e9473df3ee5b085d96c832a4b055df5cebf099d465",
-      "consumers/other_media.py": "14690c27586b5f9c533002e81336bff500c590dbf3dd634e30b698b26caa4101",
-      "consumers/producer_derivations.py": "ce0abd229df42ad6c607e6e7d4d2d081f5768401b3c9fb3f9b031b10ca1627d8",
-      "consumers/reactor_face_model.py": "192e992f05b51f57c7baa2058951ef661a690e78952737dfbb13ec7491f265a7",
-      "consumers/reference_sets.py": "6250d8e46c2a7bc301cece064e119352e8978fc4101790c76200bfafe06078ec",
-      "consumers/whole_reference.py": "08de876d920895b18e67c687196bb98884280c78e3735058ceda9a6c2ebdc5af",
+      "consumers/aligned_crop.py": "d1aaf84d571288d8edf433cc1e78584ba45409b8c5c4902082be8829e097d1f1",
+      "consumers/consisid_facexlib.py": "3ecae5f9ef83dcde229cb4b8ea312066df6ab7945e8297d5f4b8441efde093c2",
+      "consumers/control_stream.py": "e542ef8718b7f452e40d06808afdb005694b4b49cbdd466543b892669dd30fab",
+      "consumers/embedding_spaces.py": "5ec0436dce88d47e66105744bde0544667f36b11a8cb380af3f344f92209bbe5",
+      "consumers/face_family.py": "fb02865a0fed2556f85e76e771f2f92dc04d374017ef659d1438ea459a9da331",
+      "consumers/face_selection.py": "1b22be82ab2a49f8755ef108ad7e8b1469986d808b4444894468f4ab8467a039",
+      "consumers/gallery_storage.py": "c823537d68215540f74ab8b6220ba6a268e5543fc40c85c1613ecae9fa08e99e",
+      "consumers/masked_reference.py": "584a35c6e151e5117e29adac2d992c1f0cbc56d2729b402132fa595f9df59a2e",
+      "consumers/other_media.py": "f321f32c4efd178cc92012fd05fa37f0f1e3cc67426503c9eaf8871418016a0e",
+      "consumers/producer_derivations.py": "9d09d0458c230dfc030b6c1949e853c23daf791ded193030003380cd38e1e7f8",
+      "consumers/reactor_face_model.py": "a5239f1a882ff4b10b41a4f5e7916f888750b6b6b8cd31ad471595c0f2ddb790",
+      "consumers/reference_sets.py": "9f6174c931ca8f01ffa211196bcc5d0dce03d2ff9be46898ed5534b1ecb8ea3c",
+      "consumers/whole_reference.py": "c7edaa2ae4cbea13081ebbb73d667832a96473fa2affef9805ab79567468155b",
       "contracts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "contracts/case.py": "87cd405b3d3c3609a38eaa0e13d2b1b3c57407adea05ac5457bd95a35cf055a9",
+      "contracts/case.py": "1a8c660dada242a768ec533d34b42fd662bf613fcfbd44e7c5152b63dc9ff1c2",
       "corpus/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "corpus/groups.py": "7dcff3dfe625e5e70688e7c0c8440c3d49313f9aab72e731ad3ad69cdcb5b2fd",
-      "corpus/index.py": "830432a744a626b4f7fd8e97d88241a8a29cfc4b22ffee7cc2c4bea4e373e9f2",
-      "corpus/loaded.py": "e6c21fc83f7a79112668d71b42c5d934577d8ea45b798f82903c226b00c323f4",
+      "corpus/cache.py": "a9005fb53768167942f2622f97d515952262c28ea32fad4dd06c2cf510b2e3b8",
+      "corpus/groups.py": "6830804559c7959c0bbd11e0fe1078362a8ca7bbc70ff2d658ae6df2d0919f15",
+      "corpus/index.py": "b84cae442d2ae12a7209f18d787aba53a7221e34b6efe0d463c26bdebf0cc478",
+      "corpus/kyc.json": "2ab07f40d84c55e9b93273810b6f7e28aaf55c965f82705e396195cd1847cc19",
+      "corpus/loaded.py": "899b42e1b120c4bb44aa76e186afc3e0c4f73e6bd886566bd831f3d25384b6df",
       "harness/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "harness/answer.py": "5b8ac74fb73245e45de387ddfd3e63992f03c083006ed933fdb52aa223d5978d",
-      "harness/attack.py": "bf02bec54c64ca3864b7590d7179d8283497b534ed7f8abc7da1dd13ec147b6f",
-      "harness/citations.py": "fef869c2472692d3ea01ed2dca5563881981e0a65a9d381895193370427bf214",
-      "harness/identity.py": "2754b7c8a7357fa599738480dee303f9cc2d9ae66bf4830f49af92251cb6bdb8",
-      "harness/matrices.py": "37f45d00cecb84a5642aefeddfffaae34b7d2711d8aa920778bad483367acfb9",
-      "harness/pinned_source.py": "19726ef0c60c5ff613aa75fb20514ce1c9b07336c031872f2d4d3da46faecde2",
-      "harness/provenance.py": "34521665454a322ee9d14cc30f2b76f9b64e7a30cfa4469216056d46e46b6a4f",
-      "harness/run.py": "fa7e3eb373ebdbe320066faff03d0adc80ed79ff471a2b2101111772a97cd0f7",
-      "harness/selftest.py": "e10b2f26aa41eb34fc63f9d07788abe735da655f54a32d5149335b3939c740ee",
-      "harness/sharded.py": "0fab2e8225e5471eb5f23bd7b66545233744f57b9eed419ae5c248955821f815",
+      "harness/answer.py": "3173a03afd54ba03f4b4e6aff119bad8fa2cb8dd3a21f14f39bfcbc4fc13a411",
+      "harness/attack.py": "066e017105e29a9a53244564a2a50a7edbe6ad2255ea60e4e53791e52a822e0e",
+      "harness/citations.py": "a15fb2d55d0afeb4c2580a5b6d5f1d6732aeb3512f7212a2525f63d57b1e961e",
+      "harness/identity.py": "e5575871d6a31c33164da2c5460fab7ebf40091a654ee5d5bb30305bfbbded5a",
+      "harness/matrices.py": "0cc2564a95f24b4da1e27c1eafa233e481984d1c2df325263409351b2a5a70fb",
+      "harness/pinned_source.py": "bea1547f290f71a56e8e4850b20a6442d5b2ce6a3d90158fd754d9270f5d6f9c",
+      "harness/provenance.py": "2cf8ccc9e9b39b336f5050f972edcf27c40b683d94ff24a7d8dc7e61ab49b3ec",
+      "harness/run.py": "02b001f1f2306be94d4254535dbac47726b51ca177ba8cacb5ce5e23bc2a35ff",
+      "harness/selftest.py": "08760ce7d6f363ca271a9300579d437aff9e19d875761bec65e92b5e8e0a53be",
+      "harness/sharded.py": "1fe27d8a138c5e0240f856a1f93bebc5f688959df6e8a845d03f67e631e4dd8c",
       "primitives/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "primitives/build.py": "21998299538186d094c10f5737a448cafa9102671bce76b19d714daca55b262a",
+      "primitives/build.py": "6c72ba9c07117c47b55627f5765cf7b7fc7ae662135427a311085f74f763c403",
+      "primitives/fixtures.json": "1444067a86b2595fb3dadf3b7823187b7f3a3877f27fdeaf91b71b372fa7a43c",
       "producers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "producers/insightface_pass.py": "e44fe57a8e4d196986d93692eb27d29a2e5a64dbbe7422036458ee870641d368",
-      "producers/inventory.py": "1d7bf42e974659e05fd45a82716992ec12ab42866921a49694405ccc0797b219",
-      "producers/registry.py": "823f5c00e6abfaa1818be4a3fdadda1dfe8aa3b9d012b586c73a17b133f18231",
-      "producers/union.py": "e7d6e7b051a0c0dbd0aa4f60a330cfa8976e5b0446e5a90210d38c9a500c4b8d",
+      "producers/insightface_pass.py": "bbfd7413d0c6dfc35d692963064fd99de7fd6bd84555ffe1e00dd6bae62c4f9c",
+      "producers/inventory.py": "eab7bb60e24366b2455b46ae4bd69b4ac18ac887f3f73b4f0ca301af2e942e16",
+      "producers/registry.py": "cbae70fa87e1d37abfeb0ccc8c1897c81a11f2fed8865c609e44b78820f8bcbf",
+      "producers/union.py": "182e40fb632ca187e481ada43eb24c2a70ae35bfdb67ca47d8c233f3d4f5c4c8",
       "storage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "storage/contract.py": "181c7f23d3d7e57c21e46e1f638b41fdb2d94441f46063c600e8d8765c3e9223",
+      "storage/contract.py": "0408cf9626b1fd8ec3059979e5ae34d7ab5db03ee5fe9b43d3548a6cab09b463",
+      "storage/derivatives.py": "4b2e7722973e14a7181b12c3140cb7c998181cab3881d376d981bab6ca316274",
       "storage/gallery_v45.py": "ecd96f1ae1f19ca368dd099daf8be046d2d3077e39dfde02be635a8f42e863af",
+      "storage/precision.py": "8205921c83d0d0dd0dc50e7fa806ac61c592e278f37e4e4eee2c4a87e046d7c1",
       "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "vendor/acceptance.py": "f1b194149e7a24ff23fcfd31dd48bd038b40bc91724baf5b138c0b515699d389",
-      "vendor/conformance.py": "cf9ccdb4b42e69916657312bf8fafebd6fee30589706892f9e1355dfb06db7a8",
-      "vendor/fixtures.py": "ebf1928c7cf2cbd23c98e9909bd01f9f543aafb974148be4f1575d9ce4f3966c"
+      "vendor/acceptance.py": "852cc3520c892aef30722628eaaa5b2b44c7a8f3e907b93e3fc7f28aed5efe4c",
+      "vendor/conformance.py": "a5fde3fbd11117d1f16f0e3c63e20a3f6928435197b5340794c3b91838314425",
+      "vendor/fixtures.py": "5fb1625c84205bfc7b7e57d051d7e269daf5f0b460c7e14ab69dc894c90ab195"
     },
     "weights": {
       "antelopev2/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
@@ -238,19 +415,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 3.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.028901971876621246",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.1959466002881527",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -286,6 +474,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -294,19 +485,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 3.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.021189801394939423",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.3304576259106398",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -342,6 +544,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -350,19 +555,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 3.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0324490200728178",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.8659220188856125",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -398,6 +614,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -406,19 +625,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 3.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.025021318346261978",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.0679511222988367",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -454,6 +684,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -462,11 +695,21 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
+          "observed_break": null,
+          "primitive": "aligned_crop_112",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.9688886404037476",
+          "expect_breaks": true,
+          "kind": "substitution",
           "observed_break": true,
           "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
           "verdict": "PASS"
         }
       ],
@@ -502,6 +745,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -510,11 +756,21 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
+          "observed_break": null,
+          "primitive": "aligned_crop_112",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.7761180996894836",
+          "expect_breaks": true,
+          "kind": "substitution",
           "observed_break": true,
           "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
           "verdict": "PASS"
         }
       ],
@@ -550,6 +806,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -558,11 +817,21 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
+          "observed_break": null,
+          "primitive": "aligned_crop_112",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 1.127032071352005",
+          "expect_breaks": true,
+          "kind": "substitution",
           "observed_break": true,
           "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
           "verdict": "PASS"
         }
       ],
@@ -598,6 +867,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -606,11 +878,21 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
+          "observed_break": null,
+          "primitive": "aligned_crop_112",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.5866345316171646",
+          "expect_breaks": true,
+          "kind": "substitution",
           "observed_break": true,
           "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
           "verdict": "PASS"
         }
       ],
@@ -646,6 +928,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -654,19 +939,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 4.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.749470442533493",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 4.798434495925903",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -702,6 +998,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -710,19 +1009,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 4.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.7723759263753891",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 4.948025703430176",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -758,6 +1068,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -766,19 +1079,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 4.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.95577672123909",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 4.2315757274627686",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -814,6 +1138,9 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
@@ -822,19 +1149,30 @@
       "__test__": false,
       "ablations": [
         {
-          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
-          "observed_break": true,
+          "observed_break": null,
           "primitive": "aligned_crop_112",
-          "verdict": "PASS"
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "512 of 512 elements differ, worst 3.0",
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 0.6495007872581482",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "glintr100_substituted",
+          "primitive": "aligned_crop_112",
+          "swap": "webp_encoded",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.551276206970215",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "swap": "stored_glintr100",
           "verdict": "PASS"
         }
       ],
@@ -870,22 +1208,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "aligned_crop_112": 37632
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "age",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|age|1_id_document",
@@ -914,22 +1246,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "age": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "age",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|age|1_selfie",
@@ -958,22 +1284,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "age": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "age",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|age|2_id_document",
@@ -1002,22 +1322,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "age": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "age",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|age|2_selfie",
@@ -1046,22 +1360,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "age": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "bbox",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|bbox|1_id_document",
@@ -1094,22 +1402,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "bbox": 16
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "bbox",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|bbox|1_selfie",
@@ -1142,22 +1444,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "bbox": 16
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "bbox",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|bbox|2_id_document",
@@ -1190,22 +1486,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "bbox": 16
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "bbox",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|bbox|2_selfie",
@@ -1238,22 +1528,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "bbox": 16
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "det_score",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|det_score|1_id_document",
@@ -1262,10 +1546,10 @@
         "values": null
       },
       "case": "store_gallery_v45_det_score_1_id_document",
-      "comparison": "dtype: baseline float32 against replay float64",
+      "comparison": "dtype: baseline float32 against replay float64, values differ by at most 0.0",
       "consumer_id": "gallery_storage",
       "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": null,
+      "max_abs_diff": 0.0,
       "measurements": [
         {
           "basis": "dtype and shape returned by the candidate's read path",
@@ -1282,22 +1566,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "det_score": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "det_score",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|det_score|1_selfie",
@@ -1306,10 +1584,10 @@
         "values": null
       },
       "case": "store_gallery_v45_det_score_1_selfie",
-      "comparison": "dtype: baseline float32 against replay float64",
+      "comparison": "dtype: baseline float32 against replay float64, values differ by at most 0.0",
       "consumer_id": "gallery_storage",
       "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": null,
+      "max_abs_diff": 0.0,
       "measurements": [
         {
           "basis": "dtype and shape returned by the candidate's read path",
@@ -1326,22 +1604,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "det_score": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "det_score",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|det_score|2_id_document",
@@ -1350,10 +1622,10 @@
         "values": null
       },
       "case": "store_gallery_v45_det_score_2_id_document",
-      "comparison": "dtype: baseline float32 against replay float64",
+      "comparison": "dtype: baseline float32 against replay float64, values differ by at most 0.0",
       "consumer_id": "gallery_storage",
       "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": null,
+      "max_abs_diff": 0.0,
       "measurements": [
         {
           "basis": "dtype and shape returned by the candidate's read path",
@@ -1370,22 +1642,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "det_score": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "det_score",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|det_score|2_selfie",
@@ -1394,10 +1660,10 @@
         "values": null
       },
       "case": "store_gallery_v45_det_score_2_selfie",
-      "comparison": "dtype: baseline float32 against replay float64",
+      "comparison": "dtype: baseline float32 against replay float64, values differ by at most 0.0",
       "consumer_id": "gallery_storage",
       "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": null,
+      "max_abs_diff": 0.0,
       "measurements": [
         {
           "basis": "dtype and shape returned by the candidate's read path",
@@ -1414,22 +1680,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "det_score": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "embedding",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|embedding|1_id_document",
@@ -1462,22 +1722,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "embedding": 2048
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "embedding",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|embedding|1_selfie",
@@ -1510,22 +1764,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "embedding": 2048
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "embedding",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|embedding|2_id_document",
@@ -1558,22 +1806,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "embedding": 2048
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "embedding",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|embedding|2_selfie",
@@ -1606,22 +1848,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "embedding": 2048
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "gender",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|gender|1_id_document",
@@ -1650,22 +1886,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "gender": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "gender",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|gender|1_selfie",
@@ -1694,22 +1924,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "gender": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "gender",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|gender|2_id_document",
@@ -1738,22 +1962,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "gender": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "gender",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "int64",
         "name": "gallery_v45|gender|2_selfie",
@@ -1782,22 +2000,16 @@
         "shape": [],
         "values": null
       },
+      "retained_bytes": {
+        "gender": 8
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "kps",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|kps|1_id_document",
@@ -1832,22 +2044,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "kps": 40
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "kps",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|kps|1_selfie",
@@ -1882,22 +2088,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "kps": 40
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "kps",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|kps|2_id_document",
@@ -1932,22 +2132,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "kps": 40
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "kps",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|kps|2_selfie",
@@ -1982,22 +2176,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "kps": 40
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_2d_106",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_2d_106|1_id_document",
@@ -2032,22 +2220,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_2d_106": 848
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_2d_106",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_2d_106|1_selfie",
@@ -2082,22 +2264,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_2d_106": 848
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_2d_106",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_2d_106|2_id_document",
@@ -2132,22 +2308,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_2d_106": 848
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_2d_106",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_2d_106|2_selfie",
@@ -2182,22 +2352,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_2d_106": 848
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_3d_68",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_3d_68|1_id_document",
@@ -2232,22 +2396,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_3d_68": 816
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_3d_68",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_3d_68|1_selfie",
@@ -2282,22 +2440,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_3d_68": 816
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_3d_68",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_3d_68|2_id_document",
@@ -2332,22 +2484,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_3d_68": 816
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "landmark_3d_68",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|landmark_3d_68|2_selfie",
@@ -2382,22 +2528,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "landmark_3d_68": 816
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "pose",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|pose|1_id_document",
@@ -2430,22 +2570,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "pose": 12
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "pose",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|pose|1_selfie",
@@ -2478,22 +2612,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "pose": 12
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "pose",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|pose|2_id_document",
@@ -2526,22 +2654,16 @@
         ],
         "values": null
       },
+      "retained_bytes": {
+        "pose": 12
+      },
       "tier": "primitive",
       "unsupported_reason": "",
       "verdict": "FAIL"
     },
     {
       "__test__": false,
-      "ablations": [
-        {
-          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": true,
-          "primitive": "pose",
-          "verdict": "PASS"
-        }
-      ],
+      "ablations": [],
       "baseline": {
         "dtype": "float32",
         "name": "gallery_v45|pose|2_selfie",
@@ -2573,6 +2695,9 @@
           3
         ],
         "values": null
+      },
+      "retained_bytes": {
+        "pose": 12
       },
       "tier": "primitive",
       "unsupported_reason": "",
@@ -2628,9 +2753,19 @@
     "platform": "Windows-11-10.0.26200-SP0",
     "python": "3.13.5"
   },
+  "shards_exited_over_findings": [],
+  "shards_failed": [],
+  "skipped": [
+    {
+      "consumer_id": "face_selection",
+      "what": "Group(asset_id='1854865030', path='C:\\\\ComfyUI\\\\output\\\\sample-datasets\\\\people_detection\\\\files\\\\medium\\\\1854865030.jpg', sha256='02a5a86a7f6a61dfbb02f1ed956ada43fe7144194210755116047635c186932f', bytes=509635, released_people=2, age_ranges=('60s', '60s'), description='Senior couple hikers talking in snow-covered winter nature.')",
+      "why": "could not be detected on: 1854865030: the detector found 1 face(s); the dataset releases 2 people. A photograph the detector does not see two faces in cannot separate `first` from `largest_bbox_area`"
+    }
+  ],
   "verdicts": {
     "CONTRADICTED": 0,
     "FAIL": 19,
+    "INCONCLUSIVE": 0,
     "PASS": 29,
     "UNSUPPORTED": 0,
     "VENDOR_BASELINE_UNAVAILABLE": 0

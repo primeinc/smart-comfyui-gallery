@@ -1,7 +1,9 @@
 {
   "photographs": [
     "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-    "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87"
+    "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+    "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+    "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382"
   ],
   "population": {
     "bytes_per_face_union": 10352,
@@ -12,7 +14,7 @@
   },
   "producers": [
     {
-      "faces": 2,
+      "faces": 4,
       "identity": {
         "insightface": "1.0.1",
         "onnxruntime": "1.29.0"
@@ -84,7 +86,7 @@
       "reason": ""
     },
     {
-      "faces": 2,
+      "faces": 4,
       "identity": {
         "insightface": "1.0.1",
         "onnxruntime": "1.29.0"
@@ -156,7 +158,7 @@
       "reason": ""
     },
     {
-      "faces": 14,
+      "faces": 38,
       "identity": {
         "face_alignment": "1.5.0",
         "torch": "2.13.0+cu132"
@@ -184,7 +186,7 @@
       "reason": ""
     },
     {
-      "faces": 2,
+      "faces": 4,
       "identity": {
         "bundle_sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
         "mediapipe": "1.0.1"

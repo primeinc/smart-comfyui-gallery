@@ -128,14 +128,3 @@ def scan(least: int = 2) -> list[Group]:
             )
         )
     return sorted(out, key=lambda one: one.sha256)
-
-
-def summarise(groups: list[Group]) -> dict[str, object]:
-    by_count: dict[int, int] = defaultdict(int)
-    for one in groups:
-        by_count[one.released_people] += 1
-    return {
-        "photographs": len(groups),
-        "by_released_people": dict(sorted(by_count.items())),
-        "distinct_content": len({one.sha256 for one in groups}),
-    }

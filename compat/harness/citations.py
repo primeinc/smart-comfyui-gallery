@@ -276,7 +276,18 @@ def survey() -> dict[str, Any]:
         entry = consumer.get("entrypoint")
         if entry:
             rows.append(check_entrypoint(consumer["id"], entry, clone, commit))
-        for field, cited in (("consumer", consumer.get("cited", [])), ("vendor_setup", setup.get("cited", []))):
+        # `acceptance_expected.cited` is resolved with the other two. It was
+        # the newest citation surface and the only one no lane checked, and it
+        # is what the vendor acceptance verdict is measured against. consisid
+        # cited `models/consisid_utils.py:192-194`, a path absent from the
+        # pinned diffusers commit; the code it names is at
+        # src/diffusers/pipelines/consisid/consisid_utils.py:210-212.
+        expected = consumer.get("acceptance_expected") or {}
+        for field, cited in (
+            ("consumer", consumer.get("cited", [])),
+            ("vendor_setup", setup.get("cited", [])),
+            ("acceptance_expected", expected.get("cited", [])),
+        ):
             rows.extend(check(consumer["id"], field, one, clone, commit) for one in cited)
 
     counts: dict[str, int] = {}
@@ -298,6 +309,7 @@ def main() -> int:
         print(f"   {row['detail']}")
 
     print(f"\ncitations: {out['counts']}")
+
     generated = ROOT / "generated"
     generated.mkdir(parents=True, exist_ok=True)
     target = generated / "citations.json"

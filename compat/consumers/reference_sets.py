@@ -15,7 +15,6 @@ FIXTURES ARE THE VENDORS' OWN, per-identity folders at the pinned commits:
     TencentARC/PhotoMaker@060b4fcb10b7
         examples/newton_man/            4 images, one man
         examples/scarletthead_woman/    4 images, one woman
-        examples/lenna_woman/           1 image
 
 Two identities is what makes the negative control possible; four images per
 identity is what makes A,A distinguishable from A.
@@ -55,9 +54,11 @@ from compat.contracts.case import (
     Measurement,
     RetainedState,
     Tier,
+    note_skip,
 )
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
+from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "reference_sets"
 
@@ -127,6 +128,10 @@ def references() -> dict[str, list[Reference]]:
             argv: list[str] = ["git", "-C", str(root), "cat-file", "blob", f"{commit}:{path}"]
             done = subprocess.run(argv, capture_output=True, check=False, timeout=60)
             if done.returncode != 0:
+                # A missing blob silently shrank an identity, and `_slots`
+                # then raised IndexError, which `run_case` recorded as
+                # UNSUPPORTED -- an absent-runtime verdict for an absent file.
+                note_skip(CONSUMER_ID, path, f"not at {commit[:12]}: {done.stderr.decode('utf-8', 'replace')[:120]}")
                 continue
             target = cache / Path(path).name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -167,25 +172,38 @@ def combine(vectors: list[Float32Array], how: str) -> Float32Array:
 
 
 def _reversal_observable(how: str, arrangement: str) -> bool:
-    """Whether reversing THIS set can change THIS combiner's output.
+    """Whether reversing THIS set is CLAIMED to change THIS combiner's output.
 
-    Measured, not assumed. Three cases where the naive rule "a stack is
-    ordered, a mean is not" gives the wrong expectation, all observed on the
-    vendor's own reference images:
+    A stated rule, not a measurement. It was documented as "Measured, not
+    assumed" while taking two strings, touching no vector and never calling
+    `combine` -- and `measure` computed the real answer two screens down and
+    put it in a detail string.
+
+    It stays a rule on purpose. Deriving the expectation from the same vectors
+    the ablation then runs on would make the case unfalsifiable, which is the
+    defect `face_family.embedding_ablations` has. So the rule predicts, the
+    measurement observes, and `answer.corroboration` reds when they disagree.
+
+    Three cases where the naive "a stack is ordered, a mean is not" gives the
+    wrong prediction:
 
     N == 1          reversal is the identity, so a stack cannot notice it.
     all-equal set   `duplicate_AA` reverses to itself elementwise, so no
                     combiner can notice. A stack of duplicates carries no
                     order information at all.
     mean, N >= 3    float32 addition is commutative but NOT associative:
-                    (a+b)+c and (c+b)+a differ in the last bits. Observed as
-                    119 of 512 elements differing with a worst absolute
-                    difference of 0.0 -- a difference below the printed
-                    precision but present in the bytes, which is what an
-                    exact_bytes case compares. So a mean IS order-sensitive
-                    from three references up, and storing "the centroid"
-                    is not well defined unless the summation order is fixed
-                    too.
+                    (a+b)+c and (c+b)+a differ in the last bits, which is what
+                    an exact_bytes case compares. So a mean IS order-sensitive
+                    from three references up, and storing "the centroid" is
+                    not well defined unless the summation order is fixed too.
+
+                    This row previously cited "119 of 512 elements differing
+                    with a worst absolute difference of 0.0 -- below the
+                    printed precision but present in the bytes". The 0.0 was
+                    not precision: `arrays.py` widened float32 through int64
+                    and truncated every difference under 1 to zero. The claim
+                    holds; the number quoted for it was destroyed, and is
+                    re-derivable now that the comparator widens by kind.
     """
     slots = ARRANGEMENTS[arrangement]
     if len(slots) < 2 or len(set(slots)) == 1:
@@ -264,15 +282,26 @@ class ReferenceSetRunner:
                     retained=("reference_vectors",),
                     ablations=(
                         Ablation(primitive="reference_vectors", expect_breaks=True),
+                        # Width, not presence. Removing the only
+                        # key the replay indexes shows it is
+                        # indexed; halving it asks how wide the
+                        # column has to be.
+                        Ablation(
+                            primitive="reference_vectors",
+                            swap="half_precision",
+                            expect_breaks=True,
+                            kind="substitution",
+                        ),
                         # Whether reversal is observable at all depends on the
                         # combiner AND the set: see `_reversal_observable`.
                         Ablation(
-                            primitive="order_reversed",
+                            primitive="reference_vectors",
+                            swap="order_reversed",
                             expect_breaks=_reversal_observable(how, arrangement),
                             kind="substitution",
                         ),
                     ),
-                    measurements=("set_semantics",),
+                    measurements=("set_semantics", "reversal_observed"),
                     note=f"{how} over {len(ARRANGEMENTS[arrangement])} vendor references",
                 )
                 for arrangement in ARRANGEMENTS
@@ -296,14 +325,44 @@ class ReferenceSetRunner:
         held = np.asarray(retained.array("reference_vectors"), dtype=np.float32)
         return self._artifact(case.boundary, combine(list(held), how))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        if primitive == "order_reversed":
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "half_precision":
+            return retained.replacing("reference_vectors", precision.half(retained.array("reference_vectors")))
+        if ablation.swap == "order_reversed":
             held = np.asarray(retained.array("reference_vectors"), dtype=np.float32)
             return retained.replacing("reference_vectors", held[::-1].copy())
-        return retained.without(primitive)
+        return retained.without(ablation.primitive)
+
+    def _reversal_observed(self, case: Case, retained: RetainedState) -> Measurement:
+        """Whether reversing this set ACTUALLY changed this combiner's output.
+
+        The fact `_reversal_observable` predicts. Recorded as a number so a
+        gate can read it: 1.0 observable, 0.0 not. It was already being
+        computed inside `set_semantics` and spent on a detail string, so the
+        suite held the measurement that would have falsified its own truth
+        table and never compared the two.
+        """
+        how, arrangement = self._parts(case)
+        held = np.asarray(retained.array("reference_vectors"), dtype=np.float32)
+        folded = combine(list(held), how)
+        reversed_fold = combine(list(held[::-1]), how)
+        ordered = not np.array_equal(folded, reversed_fold)
+        return Measurement(
+            name="reversal_observed",
+            unit="bool",
+            value=1.0 if ordered else 0.0,
+            basis=f"{how} over {arrangement} against the same set reversed, compared bytewise",
+            detail=(
+                f"{arrangement} through {how}: reversing the set "
+                f"{'changes' if ordered else 'does not change'} the combined artifact "
+                f"(rule predicted {_reversal_observable(how, arrangement)})"
+            ),
+        )
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """What this arrangement costs, and whether the combiner kept its shape."""
+        if name == "reversal_observed":
+            return self._reversal_observed(case, retained)
         if name != "set_semantics":
             raise KeyError(f"{CONSUMER_ID} has no measurement called {name!r}")
         how, arrangement = self._parts(case)

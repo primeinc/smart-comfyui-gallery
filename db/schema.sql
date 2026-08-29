@@ -2545,7 +2545,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 45;
+PRAGMA user_version   = 46;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

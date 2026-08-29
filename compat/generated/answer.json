@@ -1,10 +1,250 @@
 {
+  "declared_against_derived": {
+    "agrees": true,
+    "declared_but_not_exercised": {
+      "consisid": [
+        "embedding_raw",
+        "frame_dimensions",
+        "source_region_pixels"
+      ],
+      "ipadapter_faceid_plus": [
+        "frame_dimensions"
+      ],
+      "photomaker_v2": [
+        "whole_reference_image"
+      ],
+      "pulid_comfyui": [
+        "frame_dimensions",
+        "source_region_pixels"
+      ],
+      "pulid_upstream": [
+        "source_region_pixels"
+      ],
+      "uniportrait": [
+        "frame_dimensions"
+      ]
+    },
+    "declared_by_consumer": {
+      "anystory": [
+        "subject_mask",
+        "whole_reference_image"
+      ],
+      "consisid": [
+        "embedding_raw",
+        "frame_dimensions",
+        "source_region_pixels",
+        "whole_reference_image"
+      ],
+      "id_lora": [
+        "audio_sample_rate",
+        "audio_waveform"
+      ],
+      "id_v2v": [
+        "source_video_bytes"
+      ],
+      "infiniteyou": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "instantcharacter": [
+        "whole_reference_image"
+      ],
+      "instantid": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px"
+      ],
+      "instantid_upstream": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px"
+      ],
+      "ipadapter_faceid": [
+        "embedding_raw"
+      ],
+      "ipadapter_faceid_plus": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "ipadapter_upstream": [
+        "embedding_raw"
+      ],
+      "omnigen2": [
+        "whole_reference_image"
+      ],
+      "photomaker_v2": [
+        "embedding_raw",
+        "whole_reference_image"
+      ],
+      "pulid_comfyui": [
+        "embedding_raw",
+        "frame_dimensions",
+        "source_region_pixels"
+      ],
+      "pulid_upstream": [
+        "embedding_raw",
+        "source_region_pixels"
+      ],
+      "qwen_image_edit_2509": [
+        "whole_reference_image"
+      ],
+      "reactor": [
+        "age",
+        "bbox",
+        "det_score",
+        "embedding",
+        "embedding_raw",
+        "gender",
+        "kps",
+        "landmark_2d_106",
+        "landmark_3d_68"
+      ],
+      "umo": [
+        "whole_reference_image"
+      ],
+      "uniportrait": [
+        "frame_dimensions",
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "uno": [
+        "whole_reference_image"
+      ],
+      "uso": [
+        "whole_reference_image"
+      ],
+      "xverse": [
+        "whole_reference_image"
+      ]
+    },
+    "exercised_but_not_declared": {},
+    "exercised_by_consumer": {
+      "aligned_crop": [
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "anystory": [
+        "subject_mask",
+        "whole_reference_image"
+      ],
+      "consisid": [
+        "whole_reference_image"
+      ],
+      "embedding_spaces": [
+        "aligned_crop_112"
+      ],
+      "face_selection": [
+        "face_rows",
+        "selection_rule"
+      ],
+      "id_lora": [
+        "audio_sample_rate",
+        "audio_waveform"
+      ],
+      "id_v2v": [
+        "source_video_bytes"
+      ],
+      "infiniteyou": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px",
+        "patch_origin",
+        "reference_pixels",
+        "source_region_pixels"
+      ],
+      "insightface_producer": [
+        "embedding",
+        "landmark_3d_68"
+      ],
+      "instantcharacter": [
+        "whole_reference_image"
+      ],
+      "instantid": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px",
+        "reference_pixels"
+      ],
+      "instantid_upstream": [
+        "embedding_raw",
+        "frame_dimensions",
+        "kps_source_px",
+        "reference_pixels"
+      ],
+      "ipadapter_faceid": [
+        "embedding_raw"
+      ],
+      "ipadapter_faceid_plus": [
+        "embedding_raw",
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "ipadapter_upstream": [
+        "embedding_raw"
+      ],
+      "omnigen2": [
+        "whole_reference_image"
+      ],
+      "photomaker_v2": [
+        "embedding_raw"
+      ],
+      "pulid_comfyui": [
+        "embedding_raw"
+      ],
+      "pulid_upstream": [
+        "embedding_raw"
+      ],
+      "qwen_image_edit_2509": [
+        "whole_reference_image"
+      ],
+      "reactor": [
+        "age",
+        "bbox",
+        "det_score",
+        "embedding",
+        "embedding_raw",
+        "gender",
+        "kps",
+        "landmark_2d_106",
+        "landmark_3d_68"
+      ],
+      "reference_sets": [
+        "reference_vectors"
+      ],
+      "umo": [
+        "whole_reference_image"
+      ],
+      "uniportrait": [
+        "kps_source_px",
+        "patch_origin",
+        "source_region_pixels"
+      ],
+      "uno": [
+        "whole_reference_image"
+      ],
+      "uso": [
+        "whole_reference_image"
+      ],
+      "xverse": [
+        "whole_reference_image"
+      ]
+    }
+  },
   "derivable": [
     {
       "bytes_per_face": 0,
       "consumers": [
-        "instantid",
         "infiniteyou",
+        "instantid",
         "instantid_upstream"
       ],
       "name": "reference_pixels",
@@ -16,7 +256,7 @@
     }
   ],
   "derived_from": {
-    "cases": 357,
+    "cases": 299,
     "producers_ran": 4,
     "union_bytes_per_face": 10352,
     "union_keys": 13,
@@ -25,28 +265,10 @@
       "infiniteyou",
       "instantid_upstream",
       "ipadapter_upstream",
-      "photomaker_v2",
       "pulid_upstream",
-      "reactor",
       "uniportrait"
     ]
   },
-  "lane_internal": [
-    {
-      "bytes_per_face": 0,
-      "consumers": [
-        "ipadapter_faceid_plus"
-      ],
-      "name": "derive_256_from_336",
-      "note": "",
-      "proof": [
-        "aligned_crop_256_synthetic: 192133 of 196608 elements differ, worst 58.0",
-        "aligned_crop_256_1_id_document: 191524 of 196608 elements differ, worst 187.0",
-        "aligned_crop_256_1_selfie: 192509 of 196608 elements differ, worst 178.0"
-      ],
-      "verdict": "NECESSARY"
-    }
-  ],
   "lossy_today": [
     {
       "bytes_per_face": 4,
@@ -55,11 +277,11 @@
         "insightface/buffalo_l"
       ],
       "name": "det_score",
-      "note": "stored, but not returned unchanged",
+      "note": "returned in a wider dtype, value preserved: not a loss",
       "proof": [
-        "worst 0 (dtype)"
+        "dtype: every value survived exactly; only the dtype changed"
       ],
-      "verdict": "LOSSY"
+      "verdict": "WIDENED"
     },
     {
       "bytes_per_face": 40,
@@ -70,7 +292,7 @@
       "name": "kps",
       "note": "stored, but not returned unchanged",
       "proof": [
-        "worst 0.000244141 (allclose rtol=0.0 atol=0.0)"
+        "allclose rtol=0.0 atol=0.0: worst 0.000244141"
       ],
       "verdict": "LOSSY"
     },
@@ -83,7 +305,7 @@
       "name": "landmark_2d_106",
       "note": "stored, but not returned unchanged",
       "proof": [
-        "worst 0.0322266 (allclose rtol=0.0 atol=0.0)"
+        "allclose rtol=0.0 atol=0.0: worst 0.0322266"
       ],
       "verdict": "LOSSY"
     },
@@ -97,7 +319,7 @@
       "name": "landmark_3d_68",
       "note": "stored, but not returned unchanged",
       "proof": [
-        "worst 0.0319824 (allclose rtol=0.0 atol=0.0)"
+        "allclose rtol=0.0 atol=0.0: worst 0.0319824"
       ],
       "verdict": "LOSSY"
     },
@@ -110,383 +332,680 @@
       "name": "pose",
       "note": "stored, but not returned unchanged",
       "proof": [
-        "worst 0.00339532 (allclose rtol=0.0 atol=0.0)"
+        "allclose rtol=0.0 atol=0.0: worst 0.00339532"
       ],
       "verdict": "LOSSY"
     }
   ],
   "must_retain": [
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 8,
       "consumers": [
-        "reactor",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "age",
-      "note": "",
+      "note": "no cheaper form served: decade_bucket",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'age', which the retained state does",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'age', which the retained state does",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'age', which the retained state does"
+        "reactor_face_model_1_id_document: TypeError: 'age' is int64, not an array",
+        "reactor_face_model_1_selfie: TypeError: 'age' is int64, not an array",
+        "reactor_face_model_2_id_document: TypeError: 'age' is int64, not an array"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 37632,
       "consumers": [
         "embedding_spaces"
       ],
       "name": "aligned_crop_112",
-      "note": "",
+      "note": "no cheaper form served: stored_glintr100, webp_encoded",
       "proof": [
-        "space_glintr100_1_id_document: KeyError: \"replay needs 'aligned_crop_112', which the retain",
-        "space_w600k_r50_1_id_document: KeyError: \"replay needs 'aligned_crop_112', which the retain",
-        "space_facexlib_arcface_1_id_document: KeyError: \"replay needs 'aligned_crop_112', which the retain"
+        "space_facexlib_arcface_1_id_document: exact_bytes: 512 of 512 elements differ, worst 0.02890197187",
+        "space_facexlib_arcface_1_selfie: exact_bytes: 512 of 512 elements differ, worst 0.02118980139",
+        "space_facexlib_arcface_2_id_document: exact_bytes: 512 of 512 elements differ, worst 0.03244902007"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 8,
       "consumers": [
         "id_lora"
       ],
       "name": "audio_sample_rate",
-      "note": "",
+      "note": "no cheaper form served: vae_rate_assumed",
       "proof": [
-        "id_lora_reference_waveform: KeyError: \"replay needs 'audio_sample_rate', which the retai"
+        "id_lora_reference_waveform: shape: baseline (2, 220500) against replay (2, 80000)"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 640000,
       "consumers": [
         "id_lora"
       ],
       "name": "audio_waveform",
-      "note": "",
+      "note": "no cheaper form served: pcm_16_bit",
       "proof": [
-        "id_lora_reference_waveform: KeyError: \"replay needs 'audio_waveform', which the retained"
+        "id_lora_reference_waveform: exact_bytes: 440587 of 441000 elements differ, worst 2.50637"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 16,
       "consumers": [
-        "reactor",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "bbox",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'bbox', which the retained state doe",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'bbox', which the retained state doe",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'bbox', which the retained state doe"
+        "reactor_face_model_1_id_document: exact_bytes: 8 of 4392 elements differ, worst 225.0",
+        "reactor_face_model_1_selfie: exact_bytes: 8 of 4392 elements differ, worst 178.0",
+        "reactor_face_model_2_id_document: exact_bytes: 7 of 4392 elements differ, worst 240.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 4,
       "consumers": [
-        "reactor",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "det_score",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'det_score', which the retained stat",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'det_score', which the retained stat",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'det_score', which the retained stat"
+        "reactor_face_model_1_id_document: exact_bytes: 2 of 4392 elements differ, worst 204.0",
+        "reactor_face_model_1_selfie: exact_bytes: 3 of 4392 elements differ, worst 250.0",
+        "reactor_face_model_2_id_document: exact_bytes: 2 of 4392 elements differ, worst 38.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 2048,
       "consumers": [
-        "reactor",
         "insightface_producer",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "embedding",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'embedding', which the retained stat",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'embedding', which the retained stat",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'embedding', which the retained stat"
+        "normed_embedding_from_embedding_1_id_document: exact_bytes: 512 of 512 elements differ, worst 3.74093651771",
+        "normed_embedding_from_embedding_1_selfie: exact_bytes: 511 of 512 elements differ, worst 3.87281179428",
+        "normed_embedding_from_embedding_2_id_document: exact_bytes: 511 of 512 elements differ, worst 4.39882278442"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 2048,
       "consumers": [
+        "infiniteyou",
         "instantid",
+        "instantid_upstream",
         "ipadapter_faceid",
         "ipadapter_faceid_plus",
-        "pulid_comfyui",
-        "reactor",
-        "infiniteyou",
-        "photomaker_v2",
-        "instantid_upstream",
         "ipadapter_upstream",
-        "pulid_upstream"
+        "photomaker_v2",
+        "pulid_comfyui",
+        "pulid_upstream",
+        "reactor"
       ],
       "name": "embedding_raw",
-      "note": "",
+      "note": "no cheaper form served: half_precision, stored_glintr100",
       "proof": [
-        "instantid_embedding_1_id_document: KeyError: \"replay needs 'embedding_raw', which the retained ",
-        "instantid_embedding_1_selfie: KeyError: \"replay needs 'embedding_raw', which the retained ",
-        "instantid_embedding_2_id_document: KeyError: \"replay needs 'embedding_raw', which the retained "
+        "infiniteyou_embedding_1_id_document: exact_bytes: 512 of 512 elements differ, worst 3.19594660028",
+        "infiniteyou_embedding_1_selfie: exact_bytes: 512 of 512 elements differ, worst 3.33045762591",
+        "infiniteyou_embedding_2_id_document: exact_bytes: 512 of 512 elements differ, worst 3.86592201888"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 240,
       "consumers": [
-        "instantid",
+        "face_selection"
+      ],
+      "name": "face_rows",
+      "note": "no cheaper form served: integer_pixels",
+      "proof": [
+        "select_first_ipadapter_faceid_1649731234: exact_bytes: 4 of 4 elements differ, worst 0.468353271484375",
+        "select_first_ipadapter_faceid_1717292131: exact_bytes: 4 of 4 elements differ, worst 0.455780029296875",
+        "select_first_ipadapter_faceid_1922908529: exact_bytes: 4 of 4 elements differ, worst 0.4326171875"
+      ],
+      "verdict": "NECESSARY AT THIS WIDTH"
+    },
+    {
+      "bytes_per_face": 16,
+      "consumers": [
         "infiniteyou",
+        "instantid",
         "instantid_upstream"
       ],
       "name": "frame_dimensions",
-      "note": "",
+      "note": "no cheaper form served: preview_dimensions",
       "proof": [
-        "instantid_kps_render_1_id_document: KeyError: \"replay needs 'frame_dimensions', which the retain",
-        "instantid_kps_render_1_selfie: KeyError: \"replay needs 'frame_dimensions', which the retain",
-        "instantid_kps_render_2_id_document: KeyError: \"replay needs 'frame_dimensions', which the retain"
+        "infiniteyou_kps_render_1_id_document: shape: baseline (4032, 3024, 3) against replay (1440, 1080, ",
+        "infiniteyou_kps_render_1_selfie: shape: baseline (3088, 2316, 3) against replay (1440, 1080, ",
+        "infiniteyou_kps_render_2_id_document: shape: baseline (4000, 3000, 3) against replay (1440, 1080, "
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 40,
       "consumers": [
-        "reactor",
-        "gallery_storage"
-      ],
-      "name": "gender",
-      "note": "",
-      "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'gender', which the retained state d",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'gender', which the retained state d",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'gender', which the retained state d"
-      ],
-      "verdict": "NECESSARY"
-    },
-    {
-      "bytes_per_face": 0,
-      "consumers": [
-        "reactor",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "kps",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'kps', which the retained state does",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'kps', which the retained state does",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'kps', which the retained state does"
+        "reactor_face_model_1_id_document: exact_bytes: 21 of 4392 elements differ, worst 250.0",
+        "reactor_face_model_1_selfie: exact_bytes: 20 of 4392 elements differ, worst 245.0",
+        "reactor_face_model_2_id_document: exact_bytes: 21 of 4392 elements differ, worst 244.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 40,
       "consumers": [
-        "ipadapter_faceid_plus",
-        "instantid",
+        "aligned_crop",
         "infiniteyou",
-        "uniportrait",
-        "instantid_upstream"
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid_plus",
+        "uniportrait"
       ],
       "name": "kps_source_px",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "aligned_crop_112_synthetic: KeyError: \"replay needs 'kps_source_px', which the retained ",
-        "aligned_crop_224_synthetic: KeyError: \"replay needs 'kps_source_px', which the retained ",
-        "aligned_crop_256_synthetic: KeyError: \"replay needs 'kps_source_px', which the retained "
+        "aligned_crop_112_1_id_document: exact_bytes: 26065 of 37632 elements differ, worst 15.0",
+        "aligned_crop_112_1_selfie: exact_bytes: 25713 of 37632 elements differ, worst 89.0",
+        "aligned_crop_112_2_id_document: exact_bytes: 12071 of 37632 elements differ, worst 7.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 848,
       "consumers": [
-        "reactor",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "landmark_2d_106",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'landmark_2d_106', which the retaine",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'landmark_2d_106', which the retaine",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'landmark_2d_106', which the retaine"
+        "reactor_face_model_1_id_document: exact_bytes: 439 of 4392 elements differ, worst 254.0",
+        "reactor_face_model_1_selfie: exact_bytes: 431 of 4392 elements differ, worst 255.0",
+        "reactor_face_model_2_id_document: exact_bytes: 435 of 4392 elements differ, worst 255.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 816,
       "consumers": [
-        "reactor",
         "insightface_producer",
-        "gallery_storage"
+        "reactor"
       ],
       "name": "landmark_3d_68",
-      "note": "",
+      "note": "no cheaper form served: half_precision",
       "proof": [
-        "reactor_face_model_1_id_document: KeyError: \"replay needs 'landmark_3d_68', which the retained",
-        "reactor_face_model_1_selfie: KeyError: \"replay needs 'landmark_3d_68', which the retained",
-        "reactor_face_model_2_id_document: KeyError: \"replay needs 'landmark_3d_68', which the retained"
+        "pose_from_landmark_3d_68_1_id_document: exact_bytes: 3 of 3 elements differ, worst 0.021513938903808",
+        "pose_from_landmark_3d_68_1_selfie: exact_bytes: 3 of 3 elements differ, worst 0.007311344146728",
+        "pose_from_landmark_3d_68_2_id_document: exact_bytes: 3 of 3 elements differ, worst 0.036199569702148"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 16,
       "consumers": [
-        "ipadapter_faceid_plus",
+        "aligned_crop",
         "infiniteyou",
+        "ipadapter_faceid_plus",
         "uniportrait"
       ],
       "name": "patch_origin",
-      "note": "",
+      "note": "no cheaper form served: origin_at_zero",
       "proof": [
-        "aligned_crop_112_synthetic: KeyError: \"replay needs 'patch_origin', which the retained s",
-        "aligned_crop_224_synthetic: KeyError: \"replay needs 'patch_origin', which the retained s",
-        "aligned_crop_256_synthetic: KeyError: \"replay needs 'patch_origin', which the retained s"
+        "aligned_crop_112_1_id_document: exact_bytes: 37632 of 37632 elements differ, worst 225.0",
+        "aligned_crop_112_1_selfie: exact_bytes: 37456 of 37632 elements differ, worst 208.0",
+        "aligned_crop_112_2_id_document: exact_bytes: 37632 of 37632 elements differ, worst 192.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
-      "consumers": [
-        "gallery_storage"
-      ],
-      "name": "pose",
-      "note": "",
-      "proof": [
-        "store_gallery_v45_pose_1_id_document: KeyError: \"replay needs 'pose', which the retained state doe",
-        "store_gallery_v45_pose_1_selfie: KeyError: \"replay needs 'pose', which the retained state doe",
-        "store_gallery_v45_pose_2_id_document: KeyError: \"replay needs 'pose', which the retained state doe"
-      ],
-      "verdict": "NECESSARY"
-    },
-    {
-      "bytes_per_face": 0,
+      "bytes_per_face": 6144,
       "consumers": [
         "reference_sets"
       ],
       "name": "reference_vectors",
-      "note": "",
+      "note": "no cheaper form served: half_precision, order_reversed",
       "proof": [
-        "refset_stack_single_A: KeyError: \"replay needs 'reference_vectors', which the retai",
-        "refset_stack_pair_AB: KeyError: \"replay needs 'reference_vectors', which the retai",
-        "refset_stack_pair_BA: KeyError: \"replay needs 'reference_vectors', which the retai"
+        "refset_mean_duplicate_AA: exact_bytes: 511 of 512 elements differ, worst 0.00096273422",
+        "refset_mean_mixed_AX: exact_bytes: 512 of 512 elements differ, worst 0.00070643424",
+        "refset_mean_pair_AB: exact_bytes: 512 of 512 elements differ, worst 0.00071382522"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 17,
       "consumers": [
-        "ipadapter_faceid_plus",
+        "face_selection"
+      ],
+      "name": "selection_rule",
+      "note": "no cheaper form served: other_selection_rule",
+      "proof": [
+        "select_first_ipadapter_faceid_1649731234: exact_bytes: 4 of 4 elements differ, worst 348.2083435058594",
+        "select_first_ipadapter_faceid_1717292131: exact_bytes: 4 of 4 elements differ, worst 434.1570434570312",
+        "select_first_ipadapter_faceid_1922908529: exact_bytes: 4 of 4 elements differ, worst 401.6455764770508"
+      ],
+      "verdict": "NECESSARY AT THIS WIDTH"
+    },
+    {
+      "bytes_per_face": 43571163,
+      "consumers": [
+        "aligned_crop",
         "infiniteyou",
+        "ipadapter_faceid_plus",
         "uniportrait"
       ],
       "name": "source_region_pixels",
-      "note": "",
+      "note": "no cheaper form served: downscaled_from_336, webp_encoded",
       "proof": [
-        "aligned_crop_112_synthetic: KeyError: \"replay needs 'source_region_pixels', which the re",
-        "aligned_crop_224_synthetic: KeyError: \"replay needs 'source_region_pixels', which the re",
-        "aligned_crop_256_synthetic: KeyError: \"replay needs 'source_region_pixels', which the re"
+        "aligned_crop_112_1_id_document: exact_bytes: 31095 of 37632 elements differ, worst 13.0",
+        "aligned_crop_112_1_selfie: exact_bytes: 31116 of 37632 elements differ, worst 15.0",
+        "aligned_crop_112_2_id_document: exact_bytes: 29337 of 37632 elements differ, worst 12.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 10395202,
       "consumers": [
         "id_v2v"
       ],
       "name": "source_video_bytes",
-      "note": "",
+      "note": "no cheaper form served: face_row",
       "proof": [
-        "id_v2v_source_frames_cover_eyes: KeyError: \"replay needs 'source_video_bytes', which the reta",
-        "id_v2v_source_frames_woman_dancing: KeyError: \"replay needs 'source_video_bytes', which the reta",
-        "id_v2v_source_frames_woman_phone: KeyError: \"replay needs 'source_video_bytes', which the reta"
+        "id_v2v_source_frames_cover_eyes: ValueError: these bytes are not decodable video: InvalidData",
+        "id_v2v_source_frames_woman_dancing: ValueError: these bytes are not decodable video: InvalidData",
+        "id_v2v_source_frames_woman_phone: ValueError: these bytes are not decodable video: InvalidData"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 946200,
       "consumers": [
         "anystory"
       ],
       "name": "subject_mask",
-      "note": "",
+      "note": "no cheaper form served: face_bbox_rectangle",
       "proof": [
-        "anystory_masked_subject_single: KeyError: \"replay needs 'subject_mask', which the retained s",
-        "anystory_masked_subject_multi_1: KeyError: \"replay needs 'subject_mask', which the retained s",
-        "anystory_masked_subject_multi_2: KeyError: \"replay needs 'subject_mask', which the retained s"
+        "anystory_masked_subject_multi_1: exact_bytes: 599575 of 3784800 elements differ, worst 255.0",
+        "anystory_masked_subject_multi_2: exact_bytes: 42721 of 883600 elements differ, worst 255.0",
+        "anystory_masked_subject_single: exact_bytes: 63695 of 645072 elements differ, worst 255.0"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 95883264,
       "consumers": [
+        "anystory",
+        "consisid",
+        "instantcharacter",
+        "omnigen2",
+        "qwen_image_edit_2509",
         "umo",
         "uno",
         "uso",
-        "omnigen2",
-        "instantcharacter",
-        "qwen_image_edit_2509",
-        "xverse",
-        "anystory",
-        "consisid"
+        "xverse"
       ],
       "name": "whole_reference_image",
-      "note": "",
+      "note": "no cheaper form served: arcface_footprint_only, face_patch, generous_patch, preview_derivative",
       "proof": [
-        "umo_reference_1_id_document: KeyError: \"replay needs 'whole_reference_image', which the r",
-        "umo_reference_1_selfie: KeyError: \"replay needs 'whole_reference_image', which the r",
-        "umo_reference_2_id_document: KeyError: \"replay needs 'whole_reference_image', which the r"
+        "anystory_reference_1_id_document: shape: baseline (4032, 3024, 3) against replay (948, 948, 3)",
+        "anystory_reference_1_selfie: shape: baseline (3088, 2316, 3) against replay (1426, 1426, ",
+        "anystory_reference_2_id_document: shape: baseline (4000, 3000, 3) against replay (763, 763, 3)"
       ],
-      "verdict": "NECESSARY"
+      "verdict": "NECESSARY AT THIS WIDTH"
     }
   ],
   "question": "the minimum canonical evidence this application must durably retain after one expensive observation pass, so every supported consumer is served without reopening the source media or re-running the producer",
   "substitutes_that_fail": [
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 8,
       "consumers": [
-        "consisid"
+        "reactor"
       ],
-      "name": "arcface_footprint_only",
+      "name": "age <- decade_bucket",
       "note": "",
       "proof": [
-        "consisid_align_face_1_id_document: 770526 of 786432 elements differ, worst 171.0",
-        "consisid_align_face_1_selfie: 771685 of 786432 elements differ, worst 195.0",
-        "consisid_align_face_2_id_document: 733580 of 786432 elements differ, worst 111.0"
+        "reactor_face_model_1_id_document: TypeError: 'age' is int64, not an array",
+        "reactor_face_model_1_selfie: TypeError: 'age' is int64, not an array",
+        "reactor_face_model_2_id_document: TypeError: 'age' is int64, not an array"
       ],
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 37632,
       "consumers": [
-        "umo",
-        "uno",
-        "uso",
-        "omnigen2",
-        "instantcharacter",
-        "qwen_image_edit_2509",
-        "xverse",
-        "anystory"
+        "embedding_spaces"
       ],
-      "name": "face_patch_substituted",
+      "name": "aligned_crop_112 <- stored_glintr100",
       "note": "",
       "proof": [
-        "umo_reference_1_id_document: baseline (4032, 3024, 3) against replay (948, 948, 3)",
-        "umo_reference_1_selfie: baseline (3088, 2316, 3) against replay (1426, 1426, 3)",
-        "umo_reference_2_id_document: baseline (4000, 3000, 3) against replay (763, 763, 3)"
+        "space_facexlib_arcface_1_id_document: exact_bytes: 512 of 512 elements differ, worst 3.19594660028",
+        "space_facexlib_arcface_1_selfie: exact_bytes: 512 of 512 elements differ, worst 3.33045762591",
+        "space_facexlib_arcface_2_id_document: exact_bytes: 512 of 512 elements differ, worst 3.86592201888"
       ],
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 37632,
+      "consumers": [
+        "embedding_spaces"
+      ],
+      "name": "aligned_crop_112 <- webp_encoded",
+      "note": "",
+      "proof": [
+        "space_facexlib_arcface_1_id_document: exact_bytes: 512 of 512 elements differ, worst 0.02890197187",
+        "space_facexlib_arcface_1_selfie: exact_bytes: 512 of 512 elements differ, worst 0.02118980139",
+        "space_facexlib_arcface_2_id_document: exact_bytes: 512 of 512 elements differ, worst 0.03244902007"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 8,
+      "consumers": [
+        "id_lora"
+      ],
+      "name": "audio_sample_rate <- vae_rate_assumed",
+      "note": "",
+      "proof": [
+        "id_lora_reference_waveform: shape: baseline (2, 220500) against replay (2, 80000)"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 640000,
+      "consumers": [
+        "id_lora"
+      ],
+      "name": "audio_waveform <- pcm_16_bit",
+      "note": "",
+      "proof": [
+        "id_lora_reference_waveform: exact_bytes: 440587 of 441000 elements differ, worst 2.50637"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 16,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "bbox <- half_precision",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: exact_bytes: 8 of 4392 elements differ, worst 225.0",
+        "reactor_face_model_1_selfie: exact_bytes: 8 of 4392 elements differ, worst 178.0",
+        "reactor_face_model_2_id_document: exact_bytes: 7 of 4392 elements differ, worst 240.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 4,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "det_score <- half_precision",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: exact_bytes: 2 of 4392 elements differ, worst 204.0",
+        "reactor_face_model_1_selfie: exact_bytes: 3 of 4392 elements differ, worst 250.0",
+        "reactor_face_model_2_id_document: exact_bytes: 2 of 4392 elements differ, worst 38.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 2048,
+      "consumers": [
+        "insightface_producer",
+        "reactor"
+      ],
+      "name": "embedding <- half_precision",
+      "note": "",
+      "proof": [
+        "normed_embedding_from_embedding_1_id_document: exact_bytes: 512 of 512 elements differ, worst 3.74093651771",
+        "normed_embedding_from_embedding_1_selfie: exact_bytes: 511 of 512 elements differ, worst 3.87281179428",
+        "normed_embedding_from_embedding_2_id_document: exact_bytes: 511 of 512 elements differ, worst 4.39882278442"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 2048,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid",
+        "ipadapter_faceid_plus",
+        "ipadapter_upstream",
+        "photomaker_v2",
+        "pulid_comfyui",
+        "pulid_upstream",
+        "reactor"
+      ],
+      "name": "embedding_raw <- half_precision",
+      "note": "",
+      "proof": [
+        "infiniteyou_embedding_1_id_document: exact_bytes: 512 of 512 elements differ, worst 3.82661819458",
+        "infiniteyou_embedding_1_selfie: exact_bytes: 512 of 512 elements differ, worst 6.05285167694",
+        "infiniteyou_embedding_2_id_document: exact_bytes: 512 of 512 elements differ, worst 3.00332903861"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 2048,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid",
+        "ipadapter_faceid_plus",
+        "ipadapter_upstream",
+        "photomaker_v2",
+        "pulid_comfyui",
+        "pulid_upstream",
+        "reactor"
+      ],
+      "name": "embedding_raw <- stored_glintr100",
+      "note": "",
+      "proof": [
+        "infiniteyou_embedding_1_id_document: exact_bytes: 512 of 512 elements differ, worst 3.19594660028",
+        "infiniteyou_embedding_1_selfie: exact_bytes: 512 of 512 elements differ, worst 3.33045762591",
+        "infiniteyou_embedding_2_id_document: exact_bytes: 512 of 512 elements differ, worst 3.86592201888"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 240,
+      "consumers": [
+        "face_selection"
+      ],
+      "name": "face_rows <- integer_pixels",
+      "note": "",
+      "proof": [
+        "select_first_ipadapter_faceid_1649731234: exact_bytes: 4 of 4 elements differ, worst 0.468353271484375",
+        "select_first_ipadapter_faceid_1717292131: exact_bytes: 4 of 4 elements differ, worst 0.455780029296875",
+        "select_first_ipadapter_faceid_1922908529: exact_bytes: 4 of 4 elements differ, worst 0.4326171875"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 16,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
+      ],
+      "name": "frame_dimensions <- preview_dimensions",
+      "note": "",
+      "proof": [
+        "infiniteyou_kps_render_1_id_document: shape: baseline (4032, 3024, 3) against replay (1440, 1080, ",
+        "infiniteyou_kps_render_1_selfie: shape: baseline (3088, 2316, 3) against replay (1440, 1080, ",
+        "infiniteyou_kps_render_2_id_document: shape: baseline (4000, 3000, 3) against replay (1440, 1080, "
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 40,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "kps <- half_precision",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: exact_bytes: 21 of 4392 elements differ, worst 250.0",
+        "reactor_face_model_1_selfie: exact_bytes: 20 of 4392 elements differ, worst 245.0",
+        "reactor_face_model_2_id_document: exact_bytes: 21 of 4392 elements differ, worst 244.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 40,
+      "consumers": [
+        "aligned_crop",
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "name": "kps_source_px <- half_precision",
+      "note": "",
+      "proof": [
+        "aligned_crop_112_1_id_document: exact_bytes: 26065 of 37632 elements differ, worst 15.0",
+        "aligned_crop_112_1_selfie: exact_bytes: 25713 of 37632 elements differ, worst 89.0",
+        "aligned_crop_112_2_id_document: exact_bytes: 12071 of 37632 elements differ, worst 7.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 848,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "landmark_2d_106 <- half_precision",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: exact_bytes: 439 of 4392 elements differ, worst 254.0",
+        "reactor_face_model_1_selfie: exact_bytes: 431 of 4392 elements differ, worst 255.0",
+        "reactor_face_model_2_id_document: exact_bytes: 435 of 4392 elements differ, worst 255.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 816,
+      "consumers": [
+        "insightface_producer",
+        "reactor"
+      ],
+      "name": "landmark_3d_68 <- half_precision",
+      "note": "",
+      "proof": [
+        "pose_from_landmark_3d_68_1_id_document: exact_bytes: 3 of 3 elements differ, worst 0.021513938903808",
+        "pose_from_landmark_3d_68_1_selfie: exact_bytes: 3 of 3 elements differ, worst 0.007311344146728",
+        "pose_from_landmark_3d_68_2_id_document: exact_bytes: 3 of 3 elements differ, worst 0.036199569702148"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 16,
+      "consumers": [
+        "aligned_crop",
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "name": "patch_origin <- origin_at_zero",
+      "note": "",
+      "proof": [
+        "aligned_crop_112_1_id_document: exact_bytes: 37632 of 37632 elements differ, worst 225.0",
+        "aligned_crop_112_1_selfie: exact_bytes: 37456 of 37632 elements differ, worst 208.0",
+        "aligned_crop_112_2_id_document: exact_bytes: 37632 of 37632 elements differ, worst 192.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 6144,
+      "consumers": [
+        "reference_sets"
+      ],
+      "name": "reference_vectors <- half_precision",
+      "note": "",
+      "proof": [
+        "refset_mean_duplicate_AA: exact_bytes: 511 of 512 elements differ, worst 0.00096273422",
+        "refset_mean_mixed_AX: exact_bytes: 512 of 512 elements differ, worst 0.00070643424",
+        "refset_mean_pair_AB: exact_bytes: 512 of 512 elements differ, worst 0.00071382522"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 6144,
+      "consumers": [
+        "reference_sets"
+      ],
+      "name": "reference_vectors <- order_reversed",
+      "note": "fails on some arrangements and serves on others; see per-case evidence",
+      "proof": [
+        "refset_mean_triple_ABC: exact_bytes: 119 of 512 elements differ, worst 2.38418579101",
+        "refset_stack_mixed_AX: exact_bytes: 1024 of 1024 elements differ, worst 5.509456872",
+        "refset_stack_pair_AB: exact_bytes: 1024 of 1024 elements differ, worst 3.970764398"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 17,
+      "consumers": [
+        "face_selection"
+      ],
+      "name": "selection_rule <- other_selection_rule",
+      "note": "",
+      "proof": [
+        "select_first_ipadapter_faceid_1649731234: exact_bytes: 4 of 4 elements differ, worst 348.2083435058594",
+        "select_first_ipadapter_faceid_1717292131: exact_bytes: 4 of 4 elements differ, worst 434.1570434570312",
+        "select_first_ipadapter_faceid_1922908529: exact_bytes: 4 of 4 elements differ, worst 401.6455764770508"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 43571163,
+      "consumers": [
+        "aligned_crop"
+      ],
+      "name": "source_region_pixels <- downscaled_from_336",
+      "note": "",
+      "proof": [
+        "aligned_crop_256_1_id_document: exact_bytes: 191524 of 196608 elements differ, worst 187.0",
+        "aligned_crop_256_1_selfie: exact_bytes: 192509 of 196608 elements differ, worst 178.0",
+        "aligned_crop_256_2_id_document: exact_bytes: 190087 of 196608 elements differ, worst 145.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 43571163,
+      "consumers": [
+        "aligned_crop",
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "name": "source_region_pixels <- webp_encoded",
+      "note": "",
+      "proof": [
+        "aligned_crop_112_1_id_document: exact_bytes: 31095 of 37632 elements differ, worst 13.0",
+        "aligned_crop_112_1_selfie: exact_bytes: 31116 of 37632 elements differ, worst 15.0",
+        "aligned_crop_112_2_id_document: exact_bytes: 29337 of 37632 elements differ, worst 12.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 10395202,
       "consumers": [
         "id_v2v"
       ],
-      "name": "face_row_substituted",
+      "name": "source_video_bytes <- face_row",
       "note": "",
       "proof": [
         "id_v2v_source_frames_cover_eyes: ValueError: these bytes are not decodable video: InvalidData",
@@ -496,100 +1015,560 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 0,
-      "consumers": [
-        "consisid"
-      ],
-      "name": "generous_patch_substituted",
-      "note": "",
-      "proof": [
-        "consisid_align_face_1_id_document: 707096 of 786432 elements differ, worst 76.0",
-        "consisid_align_face_1_selfie: 736955 of 786432 elements differ, worst 241.0",
-        "consisid_align_face_2_id_document: 726351 of 786432 elements differ, worst 126.0"
-      ],
-      "verdict": "SUBSTITUTE_FAILS"
-    },
-    {
-      "bytes_per_face": 0,
-      "consumers": [
-        "embedding_spaces"
-      ],
-      "name": "glintr100_substituted",
-      "note": "",
-      "proof": [
-        "space_w600k_r50_1_id_document: 512 of 512 elements differ, worst 4.0",
-        "space_facexlib_arcface_1_id_document: 512 of 512 elements differ, worst 3.0",
-        "space_w600k_r50_1_selfie: 512 of 512 elements differ, worst 4.0"
-      ],
-      "verdict": "SUBSTITUTE_FAILS"
-    },
-    {
-      "bytes_per_face": 0,
+      "bytes_per_face": 946200,
       "consumers": [
         "anystory"
       ],
-      "name": "mask_from_face_bbox",
+      "name": "subject_mask <- face_bbox_rectangle",
       "note": "",
       "proof": [
-        "anystory_masked_subject_single: 63695 of 645072 elements differ, worst 255.0",
-        "anystory_masked_subject_multi_1: 599575 of 3784800 elements differ, worst 255.0",
-        "anystory_masked_subject_multi_2: 42721 of 883600 elements differ, worst 255.0"
+        "anystory_masked_subject_multi_1: exact_bytes: 599575 of 3784800 elements differ, worst 255.0",
+        "anystory_masked_subject_multi_2: exact_bytes: 42721 of 883600 elements differ, worst 255.0",
+        "anystory_masked_subject_single: exact_bytes: 63695 of 645072 elements differ, worst 255.0"
       ],
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 95883264,
       "consumers": [
-        "reference_sets"
+        "consisid"
       ],
-      "name": "order_reversed",
-      "note": "fails on some arrangements and serves on others; see per-case evidence",
-      "proof": [
-        "refset_stack_pair_AB: 1024 of 1024 elements differ, worst 3.0",
-        "refset_stack_pair_BA: 1024 of 1024 elements differ, worst 3.0",
-        "refset_stack_triple_ABC: 1024 of 1536 elements differ, worst 3.0"
-      ],
-      "verdict": "SUBSTITUTE_FAILS"
-    },
-    {
-      "bytes_per_face": 0,
-      "consumers": [
-        "face_selection"
-      ],
-      "name": "selection_rule_mutated",
+      "name": "whole_reference_image <- arcface_footprint_only",
       "note": "",
       "proof": [
-        "select_first_ipadapter_faceid_1717292131: 4 of 4 elements differ, worst 434.0",
-        "select_first_ipadapter_faceid_plus_1717292131: 4 of 4 elements differ, worst 434.0",
-        "select_first_ipadapter_upstream_1717292131: 4 of 4 elements differ, worst 434.0"
+        "consisid_align_face_1_id_document: exact_bytes: 770526 of 786432 elements differ, worst 171.0",
+        "consisid_align_face_1_selfie: exact_bytes: 771685 of 786432 elements differ, worst 195.0",
+        "consisid_align_face_2_id_document: exact_bytes: 733580 of 786432 elements differ, worst 111.0"
       ],
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 0,
+      "bytes_per_face": 95883264,
       "consumers": [
-        "instantid",
-        "ipadapter_faceid",
-        "ipadapter_faceid_plus",
-        "pulid_comfyui",
-        "reactor",
-        "infiniteyou",
-        "photomaker_v2",
-        "instantid_upstream",
-        "ipadapter_upstream",
-        "pulid_upstream"
+        "anystory",
+        "instantcharacter",
+        "omnigen2",
+        "qwen_image_edit_2509",
+        "umo",
+        "uno",
+        "uso",
+        "xverse"
       ],
-      "name": "stored_glintr100_substituted",
-      "note": "fails on some arrangements and serves on others; see per-case evidence",
+      "name": "whole_reference_image <- face_patch",
+      "note": "",
       "proof": [
-        "ipadapter_faceid_embedding_1_id_document: 512 of 512 elements differ, worst 0.0",
-        "ipadapter_faceid_embedding_1_selfie: 512 of 512 elements differ, worst 0.0",
-        "ipadapter_faceid_embedding_2_id_document: 512 of 512 elements differ, worst 0.0"
+        "anystory_reference_1_id_document: shape: baseline (4032, 3024, 3) against replay (948, 948, 3)",
+        "anystory_reference_1_selfie: shape: baseline (3088, 2316, 3) against replay (1426, 1426, ",
+        "anystory_reference_2_id_document: shape: baseline (4000, 3000, 3) against replay (763, 763, 3)"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 95883264,
+      "consumers": [
+        "consisid"
+      ],
+      "name": "whole_reference_image <- generous_patch",
+      "note": "",
+      "proof": [
+        "consisid_align_face_1_id_document: exact_bytes: 707096 of 786432 elements differ, worst 76.0",
+        "consisid_align_face_1_selfie: exact_bytes: 736955 of 786432 elements differ, worst 241.0",
+        "consisid_align_face_2_id_document: exact_bytes: 726351 of 786432 elements differ, worst 126.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 95883264,
+      "consumers": [
+        "anystory",
+        "instantcharacter",
+        "omnigen2",
+        "qwen_image_edit_2509",
+        "umo",
+        "uno",
+        "uso",
+        "xverse"
+      ],
+      "name": "whole_reference_image <- preview_derivative",
+      "note": "",
+      "proof": [
+        "anystory_reference_1_id_document: shape: baseline (4032, 3024, 3) against replay (1440, 1080, ",
+        "anystory_reference_1_selfie: shape: baseline (3088, 2316, 3) against replay (1440, 1080, ",
+        "anystory_reference_2_id_document: shape: baseline (4000, 3000, 3) against replay (1440, 1080, "
       ],
       "verdict": "SUBSTITUTE_FAILS"
     }
   ],
   "substitutes_that_serve": [],
+  "substitution_corroboration": [
+    {
+      "case": "infiniteyou_embedding_1_id_document",
+      "consumer_id": "infiniteyou",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.016875,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "infiniteyou_embedding_1_selfie",
+      "consumer_id": "infiniteyou",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.023249,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "infiniteyou_embedding_2_id_document",
+      "consumer_id": "infiniteyou",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.056542,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "infiniteyou_embedding_2_selfie",
+      "consumer_id": "infiniteyou",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.053789,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "infiniteyou_embedding_vendor_infiniteyou_man",
+      "consumer_id": "infiniteyou",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.066323,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "infiniteyou_embedding_vendor_infiniteyou_woman",
+      "consumer_id": "infiniteyou",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.061916,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_embedding_1_id_document",
+      "consumer_id": "ipadapter_faceid",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030595,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_embedding_1_selfie",
+      "consumer_id": "ipadapter_faceid",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.021804,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_embedding_2_id_document",
+      "consumer_id": "ipadapter_faceid",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030166,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_embedding_2_selfie",
+      "consumer_id": "ipadapter_faceid",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.053755,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_embedding_vendor_ipadapter_faceid_ai_face2",
+      "consumer_id": "ipadapter_faceid",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.057761,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_plus_embedding_1_id_document",
+      "consumer_id": "ipadapter_faceid_plus",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030595,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_plus_embedding_1_selfie",
+      "consumer_id": "ipadapter_faceid_plus",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.021804,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_plus_embedding_2_id_document",
+      "consumer_id": "ipadapter_faceid_plus",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030166,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_plus_embedding_2_selfie",
+      "consumer_id": "ipadapter_faceid_plus",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.053755,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_plus_embedding_vendor_ipadapter_faceid_plus_ai_face2",
+      "consumer_id": "ipadapter_faceid_plus",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.057761,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_upstream_embedding_1_id_document",
+      "consumer_id": "ipadapter_upstream",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030595,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_upstream_embedding_1_selfie",
+      "consumer_id": "ipadapter_upstream",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.021804,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_upstream_embedding_2_id_document",
+      "consumer_id": "ipadapter_upstream",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030166,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_upstream_embedding_2_selfie",
+      "consumer_id": "ipadapter_upstream",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.053755,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_upstream_embedding_vendor_ipadapter_upstream_ai_face2",
+      "consumer_id": "ipadapter_upstream",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": -0.057761,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "photomaker_v2_embedding_1_id_document",
+      "consumer_id": "photomaker_v2",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030595,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "photomaker_v2_embedding_1_selfie",
+      "consumer_id": "photomaker_v2",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.021804,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "photomaker_v2_embedding_2_id_document",
+      "consumer_id": "photomaker_v2",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030166,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "photomaker_v2_embedding_2_selfie",
+      "consumer_id": "photomaker_v2",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.053755,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "photomaker_v2_embedding_vendor_photomaker_v2_newton_0",
+      "consumer_id": "photomaker_v2",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.024945,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "photomaker_v2_embedding_vendor_photomaker_v2_newton_1",
+      "consumer_id": "photomaker_v2",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.046008,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "reactor_embedding_1_id_document",
+      "consumer_id": "reactor",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030595,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "reactor_embedding_1_selfie",
+      "consumer_id": "reactor",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.021804,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "reactor_embedding_2_id_document",
+      "consumer_id": "reactor",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.030166,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "reactor_embedding_2_selfie",
+      "consumer_id": "reactor",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.053755,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "refset_mean_mixed_AX",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": false,
+      "measured": 0.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": false,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_mean_pair_AB",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": false,
+      "measured": 0.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": false,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_mean_pair_BA",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": false,
+      "measured": 0.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": false,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_mean_triple_ABC",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 1.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": true,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_stack_mixed_AX",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 1.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": true,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_stack_pair_AB",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 1.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": true,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_stack_pair_BA",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 1.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": true,
+      "swap": "order_reversed"
+    },
+    {
+      "case": "refset_stack_triple_ABC",
+      "consumer_id": "reference_sets",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 1.0,
+      "measurement": "reversal_observed",
+      "primitive": "reference_vectors",
+      "substitution_broke": true,
+      "swap": "order_reversed"
+    }
+  ],
+  "unproven": [
+    {
+      "bytes_per_face": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "age <- half_precision",
+      "note": "no case answered: every substitution ended INCONCLUSIVE",
+      "proof": [
+        "the substitute reproduced the baseline in every case that ran"
+      ],
+      "verdict": "UNPROVEN"
+    },
+    {
+      "bytes_per_face": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "gender",
+      "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
+      "proof": [
+        "no removal of this primitive produced a measurable difference"
+      ],
+      "verdict": "UNPROVEN"
+    },
+    {
+      "bytes_per_face": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "name": "gender <- half_precision",
+      "note": "no case answered: every substitution ended INCONCLUSIVE",
+      "proof": [
+        "the substitute reproduced the baseline in every case that ran"
+      ],
+      "verdict": "UNPROVEN"
+    }
+  ],
   "unretainable_today": [
     {
       "bytes_per_face": 5736,

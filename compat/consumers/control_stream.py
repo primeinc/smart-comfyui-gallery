@@ -209,7 +209,12 @@ class IdV2VControlStreamRunner:
                     retained=("source_video_bytes",),
                     ablations=(
                         Ablation(primitive="source_video_bytes", expect_breaks=True),
-                        Ablation(primitive="face_row_substituted", expect_breaks=True, kind="substitution"),
+                        Ablation(
+                            primitive="source_video_bytes",
+                            swap="face_row",
+                            expect_breaks=True,
+                            kind="substitution",
+                        ),
                     ),
                     measurements=("frames_and_bytes",),
                     note=(
@@ -237,30 +242,45 @@ class IdV2VControlStreamRunner:
                 )
         return tuple(out)
 
-    def _require(self, stream: str) -> Path:
+    def _unavailable(self, stream: str, label: str) -> NotImplementedError:
+        """Why this stream cannot be compared, with both facts and in order.
+
+        The checkpoint check used to come first and raise on its own, so an
+        absent weight was recorded as the reason -- and the nine UNSUPPORTED
+        rows in `cases.json` read as "install SAM3 / DepthAnything / DAVID and
+        these will run". They will not: the line after the check raised
+        unconditionally, for every stream but `decoded_source_frames`, whether
+        or not the weight was there.
+
+        So the unimplemented derivation is stated first, because it is the
+        binding reason, and the checkpoint's presence is stated after it as
+        the fact it is.
+        """
+        producer, relative, _ = STREAMS[stream]
         checkpoint = checkpoint_of(stream)
-        if checkpoint is None:
-            producer, relative, _ = STREAMS[stream]
-            raise ValueError(
-                f"{stream} needs the {producer} weight at ${CHECKPOINT_ROOT}/{relative}, which is not on this "
-                f"machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a "
-                f"{producer} pass over every frame, which is the cost the retention question is about"
-            )
-        return checkpoint
+        where = (
+            f"the {producer} weight IS present at {relative}"
+            if checkpoint is not None
+            else f"the {producer} weight at ${CHECKPOINT_ROOT}/{relative} is also absent"
+        )
+        return NotImplementedError(
+            f"{stream} has no derivation in this suite: nothing here runs {producer} over {label}, "
+            f"so there is no derived stream to retain and none to compare against. Installing a weight "
+            f"would not make this case run. ({where}.) Re-deriving this stream is a {producer} pass over "
+            f"every frame, which is the cost the retention question is about."
+        )
 
     def retained_for(self, case: Case) -> RetainedState:
         kind, clip = self._parts(case)
         if kind == "decoded_source_frames":
             return RetainedState(source_video_bytes=np.frombuffer(clip.path.read_bytes(), dtype=np.uint8))
-        self._require(kind)
-        raise ValueError(f"{kind}: producer present but no stream has been derived for {clip.label}")
+        raise self._unavailable(kind, clip.label)
 
     def baseline(self, case: Case) -> Artifact:
         kind, clip = self._parts(case)
         if kind == "decoded_source_frames":
             return _artifact(case.boundary, decode(clip.path.read_bytes()))
-        self._require(kind)
-        raise ValueError(f"{kind}: no derived stream to compare against for {clip.label}")
+        raise self._unavailable(kind, clip.label)
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
         kind, _ = self._parts(case)
@@ -268,15 +288,15 @@ class IdV2VControlStreamRunner:
             return _artifact(case.boundary, decode(retained.pixels("source_video_bytes").tobytes()))
         return _artifact(case.boundary, retained.pixels(kind))
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         del case
-        if primitive == "face_row_substituted":
+        if ablation.swap == "face_row":
             # A 512-d embedding plus five keypoints: the whole of what a face
             # row carries, offered where video bytes belong.
             rng = np.random.default_rng(20260828)
             row = rng.standard_normal(512 + 10).astype(np.float32)
             return retained.replacing("source_video_bytes", np.frombuffer(row.tobytes(), dtype=np.uint8))
-        return retained.without(primitive)
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         kind, clip = self._parts(case)

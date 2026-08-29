@@ -69,6 +69,24 @@ class Evidence:
         )
 
 
+def swap_of(ablation: dict[str, Any]) -> str:
+    """The swap a substitution names, or a readable refusal.
+
+    NOT `.get("swap", "")`. An empty default would silently merge every
+    substitution in a consumer into one row keyed on the empty string, which
+    is the aggregation bug the field was added to remove. Evidence written
+    before the field exists is evidence under a different contract and says so
+    instead of being read as though it were current.
+    """
+    held = ablation.get("swap")
+    if not held:
+        raise KeyError(
+            f"the substitution of {ablation.get('primitive')!r} carries no `swap`. "
+            f"This evidence predates `Ablation.swap`; re-run `just compat cases`."
+        )
+    return str(held)
+
+
 def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
     """One row per DECLARED consumer, exercised or not.
 
@@ -96,17 +114,39 @@ def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
         pin = pins.get(consumer, {})
 
         # Removals answer necessity. Substitutions answer "does the cheaper
-        # thing serve", which is a different question about a different value
-        # -- counting them together lists `face_patch_substituted` as though
-        # it were a column the database keeps.
+        # thing serve", which is a different question -- counting them
+        # together listed `face_patch_substituted` as though it were a column
+        # the database keeps. An ablation now names the primitive it touches
+        # and, for a substitution, the `swap` that replaced it.
         necessary: list[str] = []
         derivable: list[str] = []
+        untested: list[str] = []
         substitutions: list[dict[str, Any]] = []
         for result in results:
             for ablation in result["ablations"]:
                 if ablation.get("kind") == "substitution":
-                    if not any(one["swap"] == ablation["primitive"] for one in substitutions):
-                        substitutions.append({"swap": ablation["primitive"], "serves": not ablation["observed_break"]})
+                    # Keyed on the PAIR. Deduping on the swap alone let one
+                    # consumer's `serves` be decided by whichever case
+                    # iterated first, and two primitives replaced by the same
+                    # cheaper value collapsed into one row.
+                    key = (ablation["primitive"], swap_of(ablation))
+                    if not any((one["primitive"], one["swap"]) == key for one in substitutions):
+                        substitutions.append(
+                            {
+                                "primitive": ablation["primitive"],
+                                "swap": swap_of(ablation),
+                                "serves": ablation["observed_break"] is False,
+                            }
+                        )
+                    continue
+                # None is INCONCLUSIVE, and belongs in neither column: the
+                # ablation showed the runner indexes the key, not that the
+                # consumer needs the value. Listing it as `necessary` is how
+                # every primitive came to read NECESSARY; listing it as
+                # `derivable` would be the same error facing the other way.
+                if ablation["observed_break"] is None:
+                    if ablation["primitive"] not in untested:
+                        untested.append(ablation["primitive"])
                     continue
                 target = necessary if ablation["observed_break"] else derivable
                 if ablation["primitive"] not in target:
@@ -124,22 +164,65 @@ def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
                 "status": _status(results, verdicts),
                 "necessary": sorted(necessary),
                 "derivable_or_unused": sorted(one for one in derivable if one not in necessary),
-                "substitutions": sorted(substitutions, key=lambda one: one["swap"]),
+                "untested": sorted(one for one in untested if one not in necessary and one not in derivable),
+                "substitutions": sorted(substitutions, key=lambda one: (one["primitive"], one["swap"])),
             }
         )
     return rows
 
 
 def _status(results: list[dict[str, Any]], verdicts: Counter[str]) -> str:
+    """One consumer's standing, and never better than its worst case.
+
+    PARTIAL exists because `id_v2v` ran 3 of its 12 cases and published as
+    REPRODUCED: the old rule only said UNSUPPORTED when there was no PASS at
+    all, so a single passing case promoted a consumer over nine that could not
+    run. "Reproduced" has to mean every case reproduced, or the word is doing
+    no work in the one table a person reads.
+    """
     if not results:
         return "NOT EXERCISED"
     if verdicts.get("FAIL"):
         return "DIVERGED"
     if verdicts.get("CONTRADICTED"):
         return "CONTRADICTED"
-    if verdicts.get("UNSUPPORTED") and not verdicts.get("PASS"):
-        return "UNSUPPORTED"
+    if verdicts.get("UNSUPPORTED"):
+        return "UNSUPPORTED" if not verdicts.get("PASS") else "PARTIAL"
     return "REPRODUCED"
+
+
+def unrepresented(evidence: Evidence) -> list[dict[str, Any]]:
+    """Failing cases belonging to no DECLARED consumer, so no row shows them.
+
+    `consumer_rows` iterates the manifest population, which is right -- a
+    consumer nothing ran must not vanish. The cost is that a lane which is not
+    a manifest consumer has no row at all, and `gallery_storage` is exactly
+    that: a primitive-tier lane holding all 19 of this suite's failures. The
+    matrix published "22 of 22 reproduced" beside them.
+
+    Counted here and gated in `main`, so the table cannot read complete while
+    evidence it does not display is red.
+
+    `run.blocking_failures` is the single definition of which cases are a
+    failure, and this reads it rather than keeping a second opinion.
+    """
+    from compat.harness.run import blocking_failures
+
+    unaccounted = {
+        one.split(":", 1)[0] for names in blocking_failures(evidence.cases["results"]).values() for one in names
+    }
+    declared = set(evidence.cases["population"]["declared"])
+    held: dict[str, Counter[str]] = defaultdict(Counter)
+    for result in evidence.cases["results"]:
+        if result["consumer_id"] in declared or result["verdict"] not in {"FAIL", "CONTRADICTED"}:
+            continue
+        # CONTRADICTED is always unaccounted for: nothing may declare that a
+        # necessity claim is allowed to be wrong.
+        if result["verdict"] == "CONTRADICTED" or result["case"] in unaccounted:
+            held[result["consumer_id"]][result["verdict"]] += 1
+    return [
+        {"lane": lane, "verdicts": dict(counts), "cases": sum(counts.values())} for lane, counts in sorted(held.items())
+    ]
 
 
 def primitive_rows(evidence: Evidence) -> list[dict[str, Any]]:
@@ -152,15 +235,52 @@ def primitive_rows(evidence: Evidence) -> list[dict[str, Any]]:
     seen: dict[str, dict[str, Any]] = {}
     for result in evidence.cases["results"]:
         for ablation in result["ablations"]:
-            if ablation.get("kind") == "substitution":
-                continue
             row = seen.setdefault(
                 ablation["primitive"],
-                {"primitive": ablation["primitive"], "breaks": 0, "survives": 0, "consumers": set(), "cases": 0},
+                {
+                    "primitive": ablation["primitive"],
+                    "breaks": 0,
+                    "survives": 0,
+                    "inconclusive": 0,
+                    "substitute_fails": 0,
+                    "substitute_serves": 0,
+                    "substitute_fails_at_a_tolerance": 0,
+                    "consumers": set(),
+                    "cases": 0,
+                },
             )
             row["cases"] += 1
             row["consumers"].add(result["consumer_id"])
-            row["breaks" if ablation["observed_break"] else "survives"] += 1
+            broke = ablation["observed_break"]
+            if ablation.get("kind") == "substitution":
+                # Substitutions used to be skipped outright, because the
+                # `primitive` field held the SWAP's name and counting them
+                # listed `face_patch_substituted` beside `kps`. It now holds
+                # the primitive that was degraded, so this is evidence about
+                # THIS primitive and discarding it threw away the only
+                # evidence most of them have.
+                if broke is not None:
+                    row["substitute_fails" if broke else "substitute_serves"] += 1
+                    # HOW it broke. `exact_bytes` and `shape` cannot answer
+                    # the question the verdict claims to answer: the swap
+                    # changed a bit (`precision.narrows` guarantees that
+                    # before the case runs) or changed a size, and a
+                    # deterministic function on changed bits emits changed
+                    # bits. Measured: 418 of the breaks are `exact_bytes`, 79
+                    # are `shape`, 0 are at any tolerance.
+                    # `compare` names the method it used. Only `allclose`
+                    # weighed the difference against a number somebody chose;
+                    # `exact_bytes` and `shape` are fixed before the consumer
+                    # runs, and a break recorded as `TypeError` or
+                    # `ValueError` is an exception, not a measurement.
+                    method = str(ablation.get("detail", "")).split(":")[0]
+                    if broke and method.startswith("allclose"):
+                        row["substitute_fails_at_a_tolerance"] += 1
+                continue
+            # `broke is None` is INCONCLUSIVE and had to be split out: the old
+            # expression put it in `survives`, because None is falsy, which
+            # would have read as positive evidence the primitive is derivable.
+            row["inconclusive" if broke is None else ("breaks" if broke else "survives")] += 1
 
     out: list[dict[str, Any]] = []
     for row in seen.values():
@@ -169,16 +289,60 @@ def primitive_rows(evidence: Evidence) -> list[dict[str, Any]]:
             {
                 **row,
                 "consumers": consumers,
-                "verdict": "NECESSARY" if row["breaks"] and not row["survives"] else _mixed(row),
+                "verdict": _primitive_verdict(row),
             }
         )
     return sorted(out, key=lambda one: (-one["breaks"], one["primitive"]))
 
 
-def _mixed(row: dict[str, Any]) -> str:
-    if not row["breaks"]:
+def _primitive_verdict(row: dict[str, Any]) -> str:
+    """What the ablations actually established about one primitive.
+
+    UNPROVEN is the verdict that was missing. Every removal in this suite
+    ended in `MissingPrimitive` -- the replay indexing the key it had just
+    been denied -- and the old rule read that as `breaks`, so all 22 exercised
+    primitives reported NECESSARY over `survives: 0`. A claim that cannot come
+    out the other way is not a finding.
+
+    Removals are read first because they answer the sharper question. When
+    they answer nothing, a SUBSTITUTION still can, and for most primitives
+    here it is the only evidence there is: removing the one key a replay
+    indexes proves the replay indexes it, while offering the same value in the
+    narrowest storable float and watching the consumer diverge proves the
+    store must keep it AT THAT WIDTH. That is a stronger claim than the
+    removal was ever able to make, and reading it as UNPROVEN threw it away.
+    """
+    if row["breaks"] and not row["survives"]:
+        return "NECESSARY" if not row["inconclusive"] else "NECESSARY WHERE TESTED"
+    if row["breaks"]:
+        return "NECESSARY FOR SOME"
+    if row["survives"]:
         return "NOT NECESSARY"
-    return "NECESSARY FOR SOME"
+    # No removal answered. Fall through to what the substitutions established.
+    if row.get("substitute_fails") and not row.get("substitute_serves"):
+        # Only a substitution compared at a stated tolerance establishes this.
+        # At `exact_bytes` the answer is fixed before the consumer runs, and a
+        # claim that cannot come out the other way is not a finding -- the
+        # rule this function was written to enforce, applied to itself.
+        if not row.get("substitute_fails_at_a_tolerance"):
+            return "UNPROVEN"
+        return "NECESSARY AT THIS WIDTH"
+    if row.get("substitute_fails"):
+        return "CHEAPER VALUE SERVES SOMETIMES"
+    if row.get("substitute_serves"):
+        return "CHEAPER VALUE SERVES"
+    return "UNPROVEN"
+
+
+def unproven_primitives(evidence: Evidence) -> list[str]:
+    """Primitives no ablation established anything about.
+
+    Every one of them reds this lane. A primitive nothing proved is an
+    experiment that has not been built, and there is no declaration that
+    excuses one.
+    """
+    rows = primitive_rows(evidence)
+    return sorted({one["primitive"] for one in rows if one["verdict"] == "UNPROVEN"})
 
 
 def storage_rows(evidence: Evidence) -> list[dict[str, Any]]:
@@ -214,10 +378,28 @@ def build(evidence: Evidence) -> dict[str, Any]:
         "consumers": consumers,
         "primitives": primitive_rows(evidence),
         "storage": storage_rows(evidence),
+        # Failures with no row above. Displayed and gated, because a total
+        # computed only over the rows a table happens to hold is a pass rate
+        # over a population that table chose.
+        "unrepresented": unrepresented(evidence),
+        # Inputs no case was built from. Displayed because a `continue` that
+        # nothing reports is how a pass rate comes to be computed over
+        # whatever survived. Not blocking: a photograph our producer finds no
+        # face in is a fact about the photograph, and the reason is recorded
+        # beside it so a reader can tell that from a decode failure.
+        "skipped": list(evidence.cases.get("skipped", [])),
         "totals": {
             "declared": len(consumers),
             "reproduced": sum(1 for one in consumers if one["status"] == "REPRODUCED"),
             "not_exercised": sum(1 for one in consumers if one["status"] == "NOT EXERCISED"),
+            "diverged": sum(1 for one in consumers if one["status"] == "DIVERGED"),
+            "contradicted": sum(1 for one in consumers if one["status"] == "CONTRADICTED"),
+            "partial": sum(1 for one in consumers if one["status"] == "PARTIAL"),
+            "unsupported": sum(1 for one in consumers if one["status"] == "UNSUPPORTED"),
+            "unrepresented_failures": sum(one["cases"] for one in unrepresented(evidence)),
+            "primitives_unproven": len(unproven_primitives(evidence)),
+            "primitives_unproven_names": unproven_primitives(evidence),
+            "skipped_inputs": len(evidence.cases.get("skipped", [])),
             "bytes_per_observation": sum(one["bytes_per_face"] for one in storage_rows(evidence)),
         },
     }
@@ -234,7 +416,14 @@ def as_markdown(out: dict[str, Any]) -> str:
         f"- cases executed: **{out['generated_from']['cases']}**",
         f"- provenance: **{'PASS' if out['generated_from']['provenance_ok'] else 'FAIL'}**",
         f"- consumers reproduced: **{out['totals']['reproduced']} of {out['totals']['declared']}**",
-        f"- not exercised: **{out['totals']['not_exercised']}**",
+        (
+            f"- diverged: **{out['totals']['diverged']}**"
+            f" / partial: **{out['totals']['partial']}**"
+            f" / unsupported: **{out['totals']['unsupported']}**"
+            f" / not exercised: **{out['totals']['not_exercised']}**"
+        ),
+        f"- failing cases with no row below: **{out['totals']['unrepresented_failures']}**",
+        f"- inputs skipped before a case was built: **{out['totals']['skipped_inputs']}**",
         "",
         "## Consumers",
         "",
@@ -252,13 +441,13 @@ def as_markdown(out: dict[str, Any]) -> str:
         "",
         "## Primitives",
         "",
-        "| primitive | verdict | breaks | survives | consumers |",
-        "| --- | --- | --- | --- | --- |",
+        "| primitive | verdict | breaks | survives | untested | consumers |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for row in out["primitives"]:
         lines.append(
             f"| `{row['primitive']}` | {row['verdict']} | {row['breaks']} | {row['survives']} "
-            f"| {len(row['consumers'])} |"
+            f"| {row['inconclusive']} | {len(row['consumers'])} |"
         )
 
     lines += [
@@ -268,12 +457,44 @@ def as_markdown(out: dict[str, Any]) -> str:
         "Not necessity claims. Each asks whether a value the store ALREADY holds",
         "can stand in for the one a consumer actually wants.",
         "",
-        "| consumer | swap | does it serve? |",
-        "| --- | --- | --- |",
+        "| consumer | primitive | replaced by | does it serve? |",
+        "| --- | --- | --- | --- |",
     ]
     for row in out["consumers"]:
         for swap in row["substitutions"]:
-            lines.append(f"| `{row['consumer']}` | `{swap['swap']}` | {'yes' if swap['serves'] else '**no**'} |")
+            lines.append(
+                f"| `{row['consumer']}` | `{swap['primitive']}` | `{swap['swap']}` | "
+                f"{'yes' if swap['serves'] else '**no**'} |"
+            )
+
+    if out["unrepresented"]:
+        lines += [
+            "",
+            "## Failures with no consumer row",
+            "",
+            "Lanes that are not declared consumers in the manifest, so the table",
+            "above has no row for them. Counted in the totals and gated in `main`.",
+            "",
+            "| lane | cases | verdicts |",
+            "| --- | --- | --- |",
+        ]
+        for row in out["unrepresented"]:
+            spread = ", ".join(f"{name} {count}" for name, count in sorted(row["verdicts"].items()))
+            lines.append(f"| `{row['lane']}` | {row['cases']} | {spread} |")
+
+    if out["skipped"]:
+        lines += [
+            "",
+            "## Skipped inputs",
+            "",
+            "Inputs a lane declined to build a case from. Recorded so the population",
+            "cannot shrink without saying so.",
+            "",
+            "| lane | input | reason |",
+            "| --- | --- | --- |",
+        ]
+        for row in out["skipped"]:
+            lines.append(f"| `{row['consumer_id']}` | `{row['what']}` | {row['why']} |")
 
     lines += [
         "",
@@ -296,19 +517,45 @@ def report(out: dict[str, Any]) -> None:
     print(f"{'consumer':<24} {'status':<15} {'cases':>6}  necessary primitives")
     for row in out["consumers"]:
         print(f"{row['consumer']:<24} {row['status']:<15} {row['consumer_cases']:>6}  {', '.join(row['necessary'])}")
-    print(f"\n{'substitution':<32} {'consumer':<24} serves?")
+    print(f"\n{'primitive -> swap':<48} {'consumer':<24} serves?")
     for row in out["consumers"]:
         for swap in row["substitutions"]:
-            print(f"{swap['swap']:<32} {row['consumer']:<24} {'yes' if swap['serves'] else 'NO'}")
-    print(f"\n{'primitive (removals only)':<32} {'verdict':<20} {'breaks':>7} {'survives':>9}")
+            pair = f"{swap['primitive']} -> {swap['swap']}"
+            print(f"{pair:<48} {row['consumer']:<24} {'yes' if swap['serves'] else 'NO'}")
+    print(f"\n{'primitive (removals only)':<32} {'verdict':<24} {'breaks':>7} {'survives':>9} {'untested':>9}")
     for row in out["primitives"]:
-        print(f"{row['primitive']:<32} {row['verdict']:<20} {row['breaks']:>7} {row['survives']:>9}")
+        print(
+            f"{row['primitive']:<32} {row['verdict']:<24} "
+            f"{row['breaks']:>7} {row['survives']:>9} {row['inconclusive']:>9}"
+        )
     totals = out["totals"]
     print(
         f"\nreproduced {totals['reproduced']}/{totals['declared']}   "
         f"not exercised {totals['not_exercised']}   "
         f"{totals['bytes_per_observation']:,} B per observation"
     )
+
+
+#: Totals that must be zero for the matrix to be clean. Named once so the
+#: gate and `attack.attack_positive_control` cannot disagree about what clean
+#: means -- the control used to re-implement `not_exercised == 0` on its own
+#: and therefore could not fail while the gate passed, nor notice the four
+#: conditions the gate later gained.
+BLOCKING: tuple[str, ...] = (
+    "not_exercised",
+    "diverged",
+    "contradicted",
+    "unrepresented_failures",
+    # A primitive whose every ablation was INCONCLUSIVE is published in
+    # `answer.json` as durable state on no evidence at all.
+    "primitives_unproven",
+)
+
+
+def blocking(out: dict[str, Any]) -> dict[str, int]:
+    """Which blocking totals are non-zero, and by how much."""
+    totals = out["totals"]
+    return {name: totals[name] for name in BLOCKING if totals.get(name)}
 
 
 def main() -> int:
@@ -325,10 +572,22 @@ def main() -> int:
             handle.write(body)
         print(f"wrote {GENERATED / name}")
 
-    # Red while the population is incomplete, exactly like the case runner.
-    # A matrix that reports green over 19 of 22 is the failure this file
-    # exists to prevent.
-    return 0 if out["totals"]["not_exercised"] == 0 else 1
+    # Red on the same conditions the case runner reds on, and on failures this
+    # table has no row for. Gating only on `not_exercised` is how
+    # `compatibility-matrix.md` came to publish "22 of 22 reproduced" beside a
+    # cases.json holding 19 FAIL: every one of those failures belonged to a
+    # lane with no row, so no total moved and the lane exited 0.
+    if out["skipped"]:
+        print(f"\nskipped inputs ({len(out['skipped'])}):")
+        for row in out["skipped"]:
+            print(f"    {row['consumer_id']:<24} {row['what'][:60]:<60} {row['why'][:60]}")
+
+    bad = blocking(out)
+    if bad:
+        print("\nmatrix NOT clean: " + ", ".join(f"{name}={count}" for name, count in bad.items()))
+        return 1
+    print("\nmatrix clean")
+    return 0
 
 
 if __name__ == "__main__":

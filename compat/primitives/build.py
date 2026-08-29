@@ -26,12 +26,13 @@ renderings would be measuring a decode path the producer never takes.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
+
+from compat.assertions.arrays import digest
 
 HERE: Path = Path(__file__).resolve().parent
 
@@ -81,20 +82,6 @@ def frame() -> npt.NDArray[np.uint8]:
     return out
 
 
-def digest(values: npt.NDArray[np.generic]) -> str:
-    """sha256 over the canonical bytes: C-order, plus dtype and shape.
-
-    dtype and shape are hashed with the data because two arrays holding the
-    same bytes under different shapes are not the same artifact, and a digest
-    that cannot tell them apart is not evidence.
-    """
-    hasher = hashlib.sha256()
-    hasher.update(str(values.dtype).encode("ascii"))
-    hasher.update(repr(values.shape).encode("ascii"))
-    hasher.update(np.ascontiguousarray(values).tobytes())
-    return hasher.hexdigest()
-
-
 def keypoints() -> npt.NDArray[np.float32]:
     return np.array(KEYPOINTS, dtype=np.float32)
 
@@ -121,11 +108,24 @@ def manifest() -> dict[str, object]:
 
 def main() -> int:
     out = HERE / "fixtures.json"
+    body = json.dumps(manifest(), indent=2, sort_keys=True) + "\n"
+
+    # Diffed against the committed copy rather than silently overwritten. No
+    # module reads this file, so regenerating it and printing "wrote" was a
+    # lane that produced nothing anyone checks. As a drift check it earns its
+    # place: this module's own docstring claims every machine builds
+    # byte-identical fixtures, and this is the assertion of it.
+    was = out.read_text(encoding="utf-8") if out.is_file() else ""
+    moved = bool(was) and was != body
+
     with out.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(json.dumps(manifest(), indent=2, sort_keys=True))
-        handle.write("\n")
-    print(json.dumps(manifest(), indent=2, sort_keys=True))
-    print(f"\nwrote {out}")
+        handle.write(body)
+    print(body)
+    print(f"wrote {out}")
+    if moved:
+        print("\n!! the regenerated fixtures do not match the committed ones.")
+        print("   This module claims every machine produces byte-identical bytes; here, one did not.")
+        return 1
     return 0
 
 

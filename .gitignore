@@ -154,3 +154,13 @@ sg_web/.template-cache/
 # suite, and keeping it out of compat/generated/cases.json is what lets
 # `just compat attack` assert two runs produce byte-identical evidence.
 compat/generated/timings.json
+
+# The compat suite's persistent memo (compat/corpus/cache.py): decoded
+# frames and our own producer's faces, namespaced by the evidence identity
+# digest. Derived, machine-local, and rebuilt by running the suite.
+compat/.cache/
+
+# Per-shard wall clock, written beside each partial. Ignored for the same
+# reason compat/generated/timings.json is: a fact about the machine, and
+# keeping it out of the partials is what lets two runs serialise identically.
+compat/generated/shards/*.timings.json

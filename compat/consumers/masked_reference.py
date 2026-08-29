@@ -2,8 +2,8 @@
 
 `manifest.toml` gives anystory `boundary = ["subject_images", "subject_masks"]`
 and `retained = ["whole_reference_image", "subject_mask"]`.
-`whole_reference.py:93` reads `mask_mode` off the setup and no case uses it, so
-the mask half of that boundary was untested.
+The mask half of that boundary was untested: `mask_mode` was parsed off the
+setup and no case read it. `mask_mode()` below decides the decode here.
 
 Upstream, junjiehe96/AnyStory@c38fef83a35512b2a00c072a95bc0ff56b003f93
 inference.py:19-20, 23:
@@ -48,6 +48,7 @@ from compat.contracts.case import (
     RetainedState,
     Tier,
     UInt8Array,
+    note_skip,
 )
 from compat.harness import provenance
 
@@ -89,6 +90,39 @@ def _repo() -> tuple[Path, str]:
     raise KeyError(f"{CONSUMER_ID} is not in the manifest")
 
 
+#: The PIL modes this lane can decode a mask into. `mask_mode` is the
+#: manifest's word for the channel count upstream's `.convert(...)` asks for,
+#: and `_mask_flag` below is the only place it decides anything.
+MASK_MODES: Final[tuple[str, ...]] = ("L", "RGB")
+
+
+def _mask_flag(mode: str) -> int:
+    """The cv2 decode flag for a PIL mode name."""
+    import cv2
+
+    return {"L": cv2.IMREAD_GRAYSCALE, "RGB": cv2.IMREAD_COLOR}[mode]
+
+
+def mask_mode() -> str:
+    """The declared mask mode, read rather than assumed.
+
+    `whole_reference.WholeSetup` parsed this field and no case used it, so a
+    wrong value was indistinguishable from a right one. Here it selects the
+    decode, and an undeclared or unknown value raises instead of falling back
+    to grayscale.
+    """
+    manifest = provenance.load_manifest()
+    for row in manifest.get("consumers", []):
+        if row["id"] == CONSUMER_ID:
+            declared = str((row.get("vendor_setup") or {}).get("mask_mode") or "")
+            if declared not in MASK_MODES:
+                raise KeyError(
+                    f"{CONSUMER_ID}: vendor_setup declares mask_mode={declared!r}; this lane decodes {list(MASK_MODES)}"
+                )
+            return declared
+    raise KeyError(f"{CONSUMER_ID} is not in the manifest")
+
+
 def pairs() -> list[Pair]:
     """The vendor's own subject/mask pairs, decoded upstream's way.
 
@@ -99,16 +133,21 @@ def pairs() -> list[Pair]:
     import cv2
 
     repo, commit = _repo()
+    declared = mask_mode()
     out: list[Pair] = []
     for label, image_path, mask_path in PAIRS:
         try:
             image_bytes = _blob(repo, commit, image_path)
             mask_bytes = _blob(repo, commit, mask_path)
-        except ValueError:
+        except ValueError as problem:
+            # An unclonened ref, a bad commit and a moved asset all arrive
+            # here as one ValueError. Which one it was is now recorded.
+            note_skip(CONSUMER_ID, f"{image_path} + {mask_path}", f"not at the pinned commit: {problem}")
             continue
         colour = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-        grey = cv2.imdecode(np.frombuffer(mask_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        grey = cv2.imdecode(np.frombuffer(mask_bytes, dtype=np.uint8), _mask_flag(declared))
         if colour is None or grey is None:
+            note_skip(CONSUMER_ID, f"{image_path} + {mask_path}", "cv2 could not decode the image or the mask")
             continue
         image = np.asarray(colour[:, :, ::-1], dtype=np.uint8)
         mask = np.asarray(grey, dtype=np.uint8)
@@ -186,7 +225,12 @@ class MaskedReferenceRunner:
                 ablations=(
                     Ablation(primitive="whole_reference_image", expect_breaks=True),
                     Ablation(primitive="subject_mask", expect_breaks=True),
-                    Ablation(primitive="mask_from_face_bbox", expect_breaks=True, kind="substitution"),
+                    Ablation(
+                        primitive="subject_mask",
+                        swap="face_bbox_rectangle",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
                 ),
                 measurements=("mask_coverage",),
                 note="inference.py:19-20 RGB image + L mask; :23 images=/masks= parallel lists",
@@ -206,7 +250,13 @@ class MaskedReferenceRunner:
         return Artifact(
             name=name,
             dtype=str(joined.dtype),
-            shape=(image.size, mask.size),
+            # The shape of `joined`, which is 1-D. It recorded
+            # `(image.size, mask.size)` -- the two contributions, not the
+            # artifact -- while `contracts/case.py:117` says shape is kept
+            # separately precisely so a shape failure is distinguishable from a
+            # value failure. A comparison reporting "baseline (a, b) against
+            # replay (c, d)" would have been naming a shape neither array had.
+            shape=joined.shape,
             sha256=digest(joined),
             values=joined,
         )
@@ -222,11 +272,11 @@ class MaskedReferenceRunner:
             retained.pixels("subject_mask"),
         )
 
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        if primitive == "mask_from_face_bbox":
+    def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "face_bbox_rectangle":
             substitute, _ = face_box_mask(self._pair(case))
             return retained.replacing("subject_mask", substitute)
-        return retained.without(primitive)
+        return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """How much of the vendor's mask a face rectangle can account for."""

@@ -21,14 +21,18 @@ consumers sweep differently and the first size that finds a face decides the
 keypoints; the selection rule is in the key because `face[0]` and
 largest-by-area disagree the moment a photograph has two people in it.
 
-Nothing is persisted between processes. The point is to stop repeating work
-within one run, not to carry an answer across a change nobody re-derived --
-evidence that survives its own inputs is the failure the rest of this suite
-exists to prevent.
+The dicts here are per-process. `compat/corpus/cache.py` gives them a floor
+on disk, because `compat/harness/sharded.py` runs this population in six
+interpreters and a memo in a dict dies with the one that filled it. That store
+is namespaced by the evidence identity digest -- every pin, weight, and compat
+source file -- so it stops repeated work WITHIN one run without ever carrying
+an answer across a change nobody re-derived, which is the failure the rest of
+this suite exists to prevent.
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -36,6 +40,7 @@ from typing import Any, Final
 import numpy as np
 
 from compat.contracts.case import Fixture, UInt8Array
+from compat.corpus import cache
 from compat.corpus import index as corpus
 from compat.producers import insightface_pass as producer
 
@@ -64,11 +69,42 @@ _shots: dict[int, list[Shot]] = {}
 _detections: dict[tuple[Any, ...], Any] = {}
 
 
+def sha256_of(path: Path) -> str:
+    """The file's digest, over the same bytes `producer.decode` digests.
+
+    Hashing the file is one read; decoding a 4896x6528 JPEG is not. Taking the
+    digest first is what lets the held frame be found without decoding to
+    discover its own key.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def frame_of(path: Path) -> tuple[UInt8Array, str]:
-    """The decoded frame and the file's digest, decoded at most once."""
+    """The decoded frame and the file's digest, decoded at most once.
+
+    Once per process from the dict, and once per identity from the store, so
+    the six shards of one run decode each photograph a single time between
+    them rather than a single time each.
+    """
     key = str(path)
-    if key not in _frames:
-        _frames[key] = producer.decode(path)
+    if key in _frames:
+        return _frames[key]
+
+    sha = sha256_of(path)
+    held = cache.frame_get(sha)
+    cache.note("frame", held is not None)
+    if held is None:
+        frame, decoded = producer.decode(path)
+        # The digest is taken from one read and the decode from another. If
+        # they disagree the file changed underneath this run, which makes every
+        # number derived from it a claim about two different photographs.
+        if decoded != sha:
+            raise ValueError(f"{path} changed while it was being read: {sha} then {decoded}")
+        cache.frame_put(sha, frame)
+    else:
+        frame = held
+
+    _frames[key] = (frame, sha)
     return _frames[key]
 
 
@@ -110,6 +146,23 @@ def shots(limit: int = CORPUS_IMAGES) -> list[Shot]:
     return out
 
 
+def best_face(faces: list[Any]) -> Any:
+    """The one face a photograph is about, by ONE rule for the whole suite.
+
+    Two rules existed. This module took the largest bounding box;
+    `consumers/reactor_face_model.py` took the highest det_score. On any
+    photograph with more than one face they name different people, and both
+    lanes called the result "our producer's face" -- so ReActor's must-retain
+    evidence and the storage evidence could be about different subjects.
+
+    Largest area is the surviving rule because it is the one the storage lane
+    and every consumer lane already used, and because it is a property of the
+    photograph rather than of the detector's confidence, which moves with the
+    pack.
+    """
+    return max(faces, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
+
+
 def our_face(shot: Shot) -> Any:
     """The face OUR producer finds: what the database row would describe.
 
@@ -119,11 +172,19 @@ def our_face(shot: Shot) -> Any:
     per case.
     """
     key = ("ours", shot.fixture.sha256)
-    if key not in _detections:
+    if key in _detections:
+        return _detections[key]
+
+    held = cache.face_get(shot.fixture.sha256)
+    cache.note("ours", held is not None)
+    if held is None:
         faces = producer.analysis().get(shot.frame)
         if not faces:
             raise ValueError(f"our own producer found no face in {shot.label}")
-        _detections[key] = max(faces, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
+        held = best_face(faces)
+        cache.face_put(shot.fixture.sha256, held)
+
+    _detections[key] = held
     return _detections[key]
 
 
@@ -158,9 +219,10 @@ def vendor_face(
     return _detections[key]
 
 
-def statistics() -> dict[str, int]:
+def statistics() -> dict[str, Any]:
     """What the memos actually saved, for the run report."""
     return {
         "frames_decoded": len(_frames),
         "detections_computed": len(_detections),
+        "store": cache.statistics(),
     }

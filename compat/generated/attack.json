@@ -1,5 +1,5 @@
 {
-  "all_detected": false,
+  "all_detected": true,
   "attacks": [
     {
       "detected": true,
@@ -30,10 +30,10 @@
       "expected": "the case that needs it stops reproducing",
       "name": "necessary_removed",
       "notes": [
-        "whole_reference_image: KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\""
+        "patch_origin <- origin_at_zero: exact_bytes: 37632 of 37632 elements differ, worst 225.0"
       ],
-      "observed": "496 recorded removals broke their replay, e.g. anystory_masked_subject_multi_1 without whole_reference_image",
-      "targets": "a primitive whose ablation broke the replay"
+      "observed": "0 removal(s) and 506 substitution(s) broke their replay, e.g. aligned_crop_112_1_id_document on patch_origin <- origin_at_zero",
+      "targets": "a primitive whose removal or degradation broke the replay"
     },
     {
       "detected": true,
@@ -44,19 +44,27 @@
       "targets": "generated/cases.json results"
     },
     {
-      "detected": false,
+      "detected": true,
       "expected": "a second run serialises to the same bytes as the first",
       "name": "evidence_not_reproducible",
       "notes": [],
-      "observed": "the two runs differ from byte 49: 'b717ed229da86b9ceef2f5a9c7681e748e177c306dfe56ddef' against 'de9d2bd4d5502a189d11239f1d5f4ed94861ef048e77646dbc'",
+      "observed": "a second run reproduced all 823,542 bytes of the evidence",
       "targets": "generated/cases.json"
+    },
+    {
+      "detected": true,
+      "expected": "every key the pass emits is named in the recorded inventory",
+      "name": "producer_inventory_stale",
+      "notes": [],
+      "observed": "the recorded inventory names every key the pass emitted",
+      "targets": "generated/producer_inventory.json against the live producer"
     },
     {
       "detected": true,
       "expected": "provenance PASSES and the matrix reports every consumer exercised",
       "name": "positive_control",
       "notes": [],
-      "observed": "provenance PASS; 22/22 reproduced, 0 not exercised",
+      "observed": "provenance PASS; 17/22 reproduced; blocking totals: none",
       "targets": "the real manifest and the real evidence"
     }
   ],

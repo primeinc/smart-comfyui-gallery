@@ -64,9 +64,6 @@ class Observation:
         """
         return iter(self.keys())
 
-    def has(self, key: str) -> bool:
-        return key in self._values
-
     def __getitem__(self, key: str) -> npt.NDArray[np.generic]:
         if key not in self._values:
             raise KeyError(f"the observation carries no {key!r}: it holds {self.keys()}")
@@ -74,9 +71,6 @@ class Observation:
 
     def get(self, key: str) -> npt.NDArray[np.generic] | None:
         return self._values.get(key)
-
-    def bytes_total(self) -> int:
-        return sum(one.nbytes for one in self._values.values())
 
 
 class StorageContract(Protocol):

@@ -63,9 +63,6 @@ class Emission:
     def keys(self) -> tuple[str, ...]:
         return tuple(sorted(self.values))
 
-    def bytes_total(self) -> int:
-        return sum(one.nbytes for one in self.values.values())
-
 
 @dataclass
 class Availability:

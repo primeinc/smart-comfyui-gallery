@@ -21,14 +21,18 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Final
 
-from compat.corpus.loaded import shots
+from compat.corpus.loaded import CORPUS_IMAGES, shots
 from compat.producers.registry import Availability, Emission, every_producer
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
 #: How many corpus photographs each producer sees. Every producer runs on the
-#: same ones, or a key difference could be a photograph difference.
-PHOTOGRAPHS: Final[int] = 2
+#: same ones, or a key difference could be a photograph difference -- and the
+#: same ones the CASE lanes run on, or the union's byte total describes a
+#: different slice from the evidence it is quoted beside. It was 2 against
+#: `loaded.CORPUS_IMAGES`'s 4, and `answer.json` printed the union's
+#: bytes-per-face next to case evidence from twice as many photographs.
+PHOTOGRAPHS: Final[int] = CORPUS_IMAGES
 
 
 def _describe(values: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -73,6 +77,19 @@ def survey() -> dict[str, Any]:
             except (ImportError, ValueError, TypeError, RuntimeError, OSError) as problem:
                 row["ready"] = False
                 row["reason"] = f"{type(problem).__name__}: {problem}"
+                # Whatever it managed to emit before it failed is discarded.
+                # The keys were left on the row, so the artifact listed fields
+                # for a producer it also reported as not-ready -- and those
+                # keys had already been merged into the union above, which is
+                # a byte cost attributed to a pass that did not finish.
+                for key in row["keys"]:
+                    if producer.name in emitters.get(key, []):
+                        emitters[key].remove(producer.name)
+                    if not emitters.get(key):
+                        union.pop(key, None)
+                        emitters.pop(key, None)
+                row["keys"] = {}
+                row["faces"] = 0
         producers.append(row)
 
     unavailable = [one["producer"] for one in producers if not one["ready"]]

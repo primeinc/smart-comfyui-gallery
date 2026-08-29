@@ -29,7 +29,7 @@ suppressions anyway.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
@@ -54,13 +54,24 @@ class Tier(StrEnum):
     """A whole consumer boundary, end to end."""
 
 
-class Verdict(StrEnum):
-    """The four honest outcomes. There is no fifth.
+class MissingPrimitive(KeyError):
+    """A replay asked the retained state for a key that is not there.
 
-    Members are named for what happened and carry the wire value the evidence
-    reports. `REPRODUCED`/`DIVERGED` rather than `PASS`/`FAIL` because a member
-    called PASS reads to a linter as a credential -- and because the verb is
-    the more accurate word for what a replay did.
+    Its own type, because the executor has to tell two situations apart that a
+    bare KeyError cannot. Removing a primitive and watching the consumer
+    produce a different ANSWER is a necessity result. Removing it and watching
+    the runner fail to subscript a dict is a fact about the runner: it holds
+    for every key, including keys nothing needs, so it can never come out the
+    other way and it measures nothing.
+    """
+
+
+class Verdict(StrEnum):
+    """What actually happened, named for the happening.
+
+    `REPRODUCED`/`DIVERGED` rather than `PASS`/`FAIL` because a member called
+    PASS reads to a linter as a credential -- and because the verb is the more
+    accurate word for what a replay did.
     """
 
     REPRODUCED = "PASS"
@@ -68,6 +79,19 @@ class Verdict(StrEnum):
 
     DIVERGED = "FAIL"
     """Replay ran and did not reproduce the baseline. The claim is wrong."""
+
+    INCONCLUSIVE = "INCONCLUSIVE"
+    """An ablation that could not answer the question it was asked.
+
+    Reserved for the case where a removal stopped the replay because the
+    runner dereferenced the absent key, rather than because the consumer
+    needed the value. `RetainedState._require` raises `MissingPrimitive` for
+    exactly that, and the outcome holds for EVERY key -- so recording it as a
+    break made 22 of 23 primitives report `survives: 0` and made every
+    necessity claim in `answer.json` unfalsifiable.
+
+    It is not a claim that the primitive is derivable. It is the absence of a
+    claim, said out loud instead of counted as evidence."""
 
     CONTRADICTED = "CONTRADICTED"
     """An ablation that was expected to break the replay did not, so the
@@ -89,6 +113,49 @@ class Verdict(StrEnum):
     amount of local execution can establish that our adapter reproduces the
     vendor's path. The consumer stays visibly unresolved, and what upstream
     does and does not provide is recorded rather than worked around."""
+
+
+@dataclass(frozen=True)
+class Skipped:
+    """One input a lane declined to build a case from, and the reason."""
+
+    consumer_id: str
+    what: str
+    why: str
+
+
+_skipped: list[Skipped] = []
+
+
+def note_skip(consumer_id: str, what: str, why: str) -> None:
+    """Record an input that produced no case.
+
+    A bare `continue` is how a population shrinks without anyone deciding to
+    shrink it. The evidence then reports a pass rate over whatever survived,
+    which is the one property this suite says it must never have -- and it had
+    it at six sites, silently, each for a different reason.
+    """
+    _skipped.append(Skipped(consumer_id=consumer_id, what=what, why=why))
+
+
+def skipped() -> tuple[Skipped, ...]:
+    """Every DISTINCT input a lane declined to build a case from.
+
+    Deduplicated, and sorted by content rather than by arrival. A skip is a
+    FACT about an input -- this photograph, this reason -- and the ledger was
+    reporting it once per occurrence, which made the evidence a property of
+    how many times a process happened to construct a runner rather than of
+    what was skipped.
+
+    That is not cosmetic. `runners(only)` builds every runner and then filters,
+    so all six shards construct `FaceSelectionRunner`, all six record the same
+    skip, and `sharded.merge` concatenated six copies of one photograph. The
+    single-process rebuild records it once, so
+    `attack.evidence_not_reproducible` compared six against one and reported
+    the pipeline as non-deterministic -- correctly, for a ledger that counted
+    processes.
+    """
+    return tuple(sorted(set(_skipped), key=lambda one: (one.consumer_id, one.what, one.why)))
 
 
 @dataclass(frozen=True)
@@ -154,9 +221,63 @@ class RetainedState:
         """This state with one primitive degraded rather than removed."""
         return RetainedState(**{**self._values, key: value})
 
+    def sizes(self) -> dict[str, int]:
+        """Bytes each retained value occupies, by key.
+
+        The answer this suite produces is a MINIMUM, and a minimum with no
+        size attached is half an answer. `producer_union.json` prices the keys
+        a producer emits and nothing else, so sixteen of the twenty-three
+        names in `must_retain` reported 0 bytes -- including the picture,
+        which is the largest thing in the set by three orders of magnitude.
+
+        Measured off the value itself, per case, so a lane-local name is
+        priced by what it actually holds rather than by whether some producer
+        happens to emit a key of the same name. Scalars and tuples are sized
+        by their Python object where no buffer exists, which is honest for a
+        two-integer origin and irrelevant beside a 36 MB frame.
+        """
+        out: dict[str, int] = {}
+        for key, value in self._values.items():
+            if isinstance(value, np.ndarray):
+                out[key] = value.nbytes
+            elif isinstance(value, (bytes, bytearray, memoryview)):
+                out[key] = len(bytes(value))
+            elif isinstance(value, str):
+                out[key] = len(value.encode("utf-8"))
+            elif isinstance(value, tuple):
+                out[key] = 8 * len(value)
+            elif isinstance(value, bool):
+                out[key] = 1
+            elif isinstance(value, (int, float)):
+                out[key] = 8
+        return out
+
+    def same_as(self, other: RetainedState) -> bool:
+        """Whether two states carry the same keys and the same values.
+
+        A substitution that leaves the state untouched separates nothing, for
+        exactly the reason a removal the replay indexes separates nothing. It
+        happens for real reasons -- `build.KEYPOINTS` are whole numbers under
+        2048 and every one is exact in binary16, so narrowing them returns the
+        original -- and the ablation must report that it could not answer
+        rather than a break it never had a chance to observe.
+        """
+        if self.keys() != other.keys():
+            return False
+        for key in self.keys():
+            mine, theirs = self._values[key], other._values[key]
+            if isinstance(mine, np.ndarray) or isinstance(theirs, np.ndarray):
+                if not (isinstance(mine, np.ndarray) and isinstance(theirs, np.ndarray)):
+                    return False
+                if mine.dtype != theirs.dtype or not np.array_equal(mine, theirs):
+                    return False
+            elif mine != theirs:
+                return False
+        return True
+
     def _require(self, key: str) -> object:
         if key not in self._values:
-            raise KeyError(f"replay needs {key!r}, which the retained state does not carry")
+            raise MissingPrimitive(f"replay needs {key!r}, which the retained state does not carry")
         return self._values[key]
 
     def _array(self, key: str) -> npt.NDArray[np.generic]:
@@ -224,6 +345,18 @@ class RetainedState:
     def flag(self, key: str) -> bool:
         return bool(self._values.get(key, False))
 
+    def text(self, key: str) -> str:
+        """One string the store holds, required and narrowed.
+
+        A retained value is not always a number: `face_selection` keeps the
+        selection RULE beside the face rows, because a store that keeps rows
+        and forgets which rule reached the face has not retained the answer.
+        """
+        value = self._require(key)
+        if not isinstance(value, str):
+            raise TypeError(f"{key!r} is {type(value).__name__}, not a string")
+        return value
+
 
 @dataclass(frozen=True)
 class Ablation:
@@ -233,6 +366,11 @@ class Ablation:
     when removing it actually breaks the replay; if the replay still passes,
     the primitive is derivable from what remained and the verdict is
     CONTRADICTED -- which is the whole reason this dataclass exists.
+
+    `observed_break` is None when the ablation could not answer: the replay
+    raised `MissingPrimitive`, which happens for any absent key and therefore
+    distinguishes nothing. Such an ablation is INCONCLUSIVE and no generated
+    view may count it toward necessity.
     """
 
     primitive: str
@@ -248,9 +386,38 @@ class Ablation:
     together reports `face_patch_substituted` as though it were something the
     database keeps."""
 
+    swap: str = ""
+    """What a substitution put in the primitive's place.
+
+    A substitution names the primitive it DEGRADES in `primitive` and its
+    replacement here. Both halves were previously folded into `primitive`, so
+    `face_patch_substituted` -- a thing no store holds -- appeared in the
+    primitives table beside `kps` and `pose`, and `answer.py` carried a
+    hardcoded set to undo it. Empty for a removal, required for a
+    substitution.
+    """
+
     observed_break: bool | None = None
     verdict: Verdict | None = None
     detail: str = ""
+
+    def __post_init__(self) -> None:
+        if self.kind == "substitution" and not self.swap:
+            raise ValueError(f"the substitution for {self.primitive!r} names no swap")
+        if self.kind == "removal" and self.swap:
+            raise ValueError(f"the removal of {self.primitive!r} carries swap={self.swap!r}")
+        if self.kind not in ("removal", "substitution"):
+            raise ValueError(f"{self.kind!r} is not an ablation kind; removal and substitution are")
+
+    @property
+    def selector(self) -> str:
+        """The name a runner's `ablate` dispatches on.
+
+        One string, because a runner matches a name and does not need to know
+        which half of the pair it came from: the swap for a substitution, the
+        primitive for a removal.
+        """
+        return self.swap or self.primitive
 
 
 @dataclass(frozen=True)
@@ -319,6 +486,11 @@ class CaseResult:
     max_abs_diff: float | None = None
     ablations: tuple[Ablation, ...] = ()
     measurements: tuple[Measurement, ...] = ()
+    retained_bytes: dict[str, int] = field(default_factory=dict)
+    """What each retained value COST, by key. Recorded per case so
+    `answer.json` can price a name no producer emits -- the picture, the
+    aligned crop, the patch origin -- which `producer_union.json` cannot."""
+
     unsupported_reason: str = ""
     seconds: float = 0.0
 
@@ -386,9 +558,6 @@ class Registry:
 
     def all(self) -> tuple[Case, ...]:
         return tuple(self._cases.values())
-
-    def for_consumer(self, consumer_id: str) -> tuple[Case, ...]:
-        return tuple(one for one in self._cases.values() if one.consumer_id == consumer_id)
 
     def __len__(self) -> int:
         return len(self._cases)

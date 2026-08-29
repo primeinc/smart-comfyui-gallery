@@ -15,7 +15,7 @@ CLIP-ViT-B-32, DINOv2-small and Qwen VL, and no base model. Those consumers
 are UNSUPPORTED -- a fact about this machine -- and NOT
 VENDOR_BASELINE_UNAVAILABLE, which is a fact about the upstream.
 
-A diffusion model is not needed to run a vendor's ID side. Seven vendors here
+A diffusion model is not needed to run a vendor's ID side. Eight vendors here
 compute their conditioning entirely before the first sampling step, and each
 of those halves runs on this box as upstream wrote it:
 
@@ -53,10 +53,13 @@ to this suite's question rather than a reading of one.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import subprocess
+import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
@@ -64,8 +67,14 @@ from typing import Any, Final
 import numpy as np
 
 from compat.harness import provenance
+from compat.producers import insightface_pass as producer
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+
+#: Every git call here is bounded. `pinned_source.py:44` and
+#: `provenance.py:44` already were, with the reason: a hang turns a red
+#: gate into a run that never finishes, which reports nothing at all.
+GIT_SECONDS: Final[float] = 60.0
 
 #: The vendor's own checkpoint tree, downloaded from the repo its README names
 #: and kept outside this repository.
@@ -96,7 +105,9 @@ VENDOR: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures"
 #: default and is also buffalo_l. antelopev2 -- what ConsisID, PuLID and
 #: InfiniteYou use -- is a DIFFERENT recognition space: substituting it would
 #: change every embedding below without failing anything.
-BUFFALO_ROOT: Final[Path] = Path("C:/ComfyUI/output/.AImodels/insightface")
+#: The same root `producers/insightface_pass.py` resolves, not a second
+#: copy of the literal: three modules held it and only one was overridable.
+BUFFALO_ROOT: Final[Path] = producer.MODELS_ROOT
 BUFFALO: Final[tuple[str, ...]] = (
     "models/buffalo_l/det_10g.onnx",
     "models/buffalo_l/w600k_r50.onnx",
@@ -177,7 +188,7 @@ def consisid_fixture() -> Path | None:
             "blob",
             f"{row['commit']}:asserts/example_images/1.png",
         ]
-        done = subprocess.run(argv, capture_output=True, check=False)
+        done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
         if done.returncode != 0:
             return None
         where.write_bytes(done.stdout)
@@ -347,6 +358,10 @@ def run_pulid() -> Acceptance:
             )
             helpers[name] = fn
 
+        gray_method, _ = pinned_source.load_symbol(
+            clone, row["commit"], "pulid/pipeline.py", "PuLIDPipeline.to_gray", {"torch": torch}
+        )
+
         method, proof = pinned_source.load_symbol(
             clone,
             row["commit"],
@@ -395,11 +410,12 @@ def run_pulid() -> Acceptance:
                 self.device = device
                 self.debug_img_list: list[Any] = []
 
-            def to_gray(self, img: Any) -> Any:
-                # pulid/pipeline.py:41-44: a fixed luminance matrix, copied as
-                # arithmetic because it is three constants rather than a model.
-                x = 0.299 * img[:, 0:1] + 0.587 * img[:, 1:2] + 0.114 * img[:, 2:3]
-                return x.repeat(1, 3, 1, 1)
+            # `to_gray` is loaded from the pin like every other method here.
+            # It was hand-copied arithmetic under a comment citing
+            # `pulid/pipeline.py:41-44`, which is the SDXL loader; the method
+            # is at :139-142. A transcribed constant with a wrong line number
+            # is the exact thing this module says it does not do.
+            to_gray = gray_method
 
         # RGB: get_id_embedding's docstring says "numpy rgb image, range
         # [0, 255]" (pipeline.py:146-148) and its first act is RGB2BGR.
@@ -514,10 +530,65 @@ def _blob_bytes(clone: Path, commit: str, path: str) -> bytes:
     import subprocess
 
     argv: list[str] = ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False)
+    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
     if done.returncode != 0:
         raise LookupError(f"{path} is not at {commit[:12]} in {clone.name}")
     return done.stdout
+
+
+def _tree_against_pin(clone: Path, commit: str, paths: tuple[str, ...]) -> dict[str, str]:
+    """Working-tree files that differ from their blob at `commit`.
+
+    Needed wherever a lane imports from a clone rather than loading pinned
+    bytes. `provenance` proves the clone is AT a commit; it does not prove the
+    files are unmodified, and an editable install or a stray patch is exactly
+    the case where a recorded digest and the executed code part company.
+
+    RAISES on any difference. Returning the drift and letting the caller
+    decide would put a `raise` inside the recording `try`, where it would be
+    caught and filed as "this vendor did not run here" -- an absent-checkpoint
+    reason, for a provenance failure.
+    """
+    drift: dict[str, str] = {}
+    for one in paths:
+        where = clone / one
+        if not where.is_file():
+            drift[one] = "absent from the working tree"
+            continue
+        if where.read_bytes() != _blob_bytes(clone, commit, one):
+            drift[one] = "working tree differs from the pinned blob"
+    if drift:
+        raise RuntimeError(
+            f"{clone.name} working tree does not match {commit[:12]}: {drift}. "
+            f"The recorded source digests would describe bytes that did not run."
+        )
+    return drift
+
+
+@contextlib.contextmanager
+def _importable(clone: Path) -> Generator[None]:
+    """`clone` on sys.path, bytecode off, both undone on the way out.
+
+    Bytecode off because the mirrors under `../refs` are read-only: importing
+    from one wrote `__pycache__` into three of UniPortrait's directories, which
+    is this project writing to a tree it only ever reads.
+
+    sys.path restored because it was not: an entry left behind shadows every
+    later import in the process, and this module runs eight vendors back to
+    back in one interpreter.
+    """
+    held = str(clone)
+    added = held not in sys.path
+    was = sys.dont_write_bytecode
+    if added:
+        sys.path.insert(0, held)
+    sys.dont_write_bytecode = True
+    try:
+        yield
+    finally:
+        sys.dont_write_bytecode = was
+        if added and held in sys.path:
+            sys.path.remove(held)
 
 
 def _vendor_blob(clone: Path, commit: str, path: str, into: str, name: str) -> Path | None:
@@ -526,12 +597,17 @@ def _vendor_blob(clone: Path, commit: str, path: str, into: str, name: str) -> P
 
     where = ROOT.parent.parent / "sg-vendor-fixtures" / into / name
     where.parent.mkdir(parents=True, exist_ok=True)
-    if where.is_file():
-        return where
     argv: list[str] = ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False)
+    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
     if done.returncode != 0:
         return None
+    # The cache is checked AGAINST the pin, not instead of it. A hit used to
+    # return early and the row still recorded `fixture_origin="vendor_commit"`
+    # -- so a file edited, truncated or left over from another commit was
+    # published as the vendor's committed bytes. The blob read is cheap; the
+    # claim it supports is not.
+    if where.is_file() and where.read_bytes() == done.stdout:
+        return where
     where.write_bytes(done.stdout)
     return where
 
@@ -828,11 +904,27 @@ def reactor_core(clone: Path, commit: str) -> tuple[Any, dict[str, str]]:
         encoding="utf-8",
     )
 
-    if str(scratch) not in sys.path:
+    # `sys.path` and the evicted modules are both put back. The entry was
+    # inserted and left, and `scripts` -- a name nothing here owns -- was
+    # deleted from `sys.modules` for the rest of the process, so any unrelated
+    # package by that name was shadowed for the seven vendors that follow.
+    added = str(scratch) not in sys.path
+    if added:
         sys.path.insert(0, str(scratch))
-    for stale in [one for one in sys.modules if one.startswith(("reactor_core", "reactor_utils", "scripts"))]:
-        del sys.modules[stale]
-    return importlib.import_module("reactor_core.analyzer"), blobs
+    evicted = {
+        one: sys.modules[one]
+        for one in list(sys.modules)
+        if one.startswith(("reactor_core", "reactor_utils", "scripts"))
+    }
+    for one in evicted:
+        del sys.modules[one]
+    try:
+        return importlib.import_module("reactor_core.analyzer"), blobs
+    finally:
+        for one, module in evicted.items():
+            sys.modules.setdefault(one, module)
+        if added and str(scratch) in sys.path:
+            sys.path.remove(str(scratch))
 
 
 def run_reactor() -> Acceptance:
@@ -1143,7 +1235,6 @@ def run_uniportrait() -> Acceptance:
     """
     import importlib
     import math
-    import sys
 
     import torch
 
@@ -1202,9 +1293,12 @@ def run_uniportrait() -> Acceptance:
             "uniportrait/curricular_face/backbone/model_irse.py",
         )
         sources = {one: hashlib.sha256(_blob_bytes(clone, commit, one)).hexdigest() for one in curricular}
-        if str(clone) not in sys.path:
-            sys.path.insert(0, str(clone))
-        backbones = importlib.import_module("uniportrait.curricular_face.backbone")
+        # The digests above describe the pinned blobs; the import below runs
+        # the WORKING TREE. Checked rather than assumed, so the stamp cannot
+        # be cleaner than what executed.
+        _tree_against_pin(clone, commit, curricular)
+        with _importable(clone):
+            backbones = importlib.import_module("uniportrait.curricular_face.backbone")
         facerecog = backbones.get_model("IR_101")([112, 112])
         facerecog.load_state_dict(torch.load(str(backbone), map_location="cpu"))
         facerecog = facerecog.to(device, dtype).eval()
@@ -1392,6 +1486,7 @@ def run_photomaker() -> Acceptance:
         # a face, and a run where none does must fail on `_nonempty` below
         # rather than on an unbound name three lines later.
         seen_embedding: dict[str, Any] = {}
+        per_reference: list[dict[str, Any]] = []
         for one in present:
             before = tuple(detector.det_model.input_size)
             found = analyze(detector, _decode_rgb(one)[:, :, ::-1].copy())
@@ -1405,8 +1500,19 @@ def run_photomaker() -> Acceptance:
             )
             if found:
                 vectors.append(torch.from_numpy(found[0]["embedding"]))
-                seen_embedding = observed_embedding_kind(found[0]["embedding"])
+                # Every reference's kind, not the last one's. `id_embeds`
+                # stacks all of them, so a single overwritten dict described
+                # whichever photograph happened to come last while the tensor
+                # beside it described all four -- and `declared_against_observed`
+                # read that one dict as the run's embedding kind.
+                per_reference.append(observed_embedding_kind(found[0]["embedding"]))
         id_embeds = torch.stack(_nonempty(vectors, "any PhotoMaker example"))
+        kinds = {one["kind"] for one in per_reference}
+        seen_embedding = (
+            {**per_reference[0], "references": len(per_reference)}
+            if len(kinds) == 1 and per_reference
+            else {"kind": f"MIXED {sorted(kinds)}", "dims": 0, "l2_norm": 0.0, "references": len(per_reference)}
+        )
     except (ImportError, OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as problem:
         held.reason = f"{type(problem).__name__}: {problem}"
         held.seconds = time.perf_counter() - began
@@ -1634,41 +1740,79 @@ def determinism(first: list[Acceptance], times: int = 2) -> dict[str, Any]:
     A boundary that does not repeat cannot serve as a baseline: every
     downstream "our adapter matches" would be comparing against a number that
     moves. Measured for EVERY accepted vendor rather than the one it was
-    first seen in -- six of the seven run fp16 on the same EXHAUSTIVE
+    first seen in -- most of the eight run fp16 on the same EXHAUSTIVE
     onnxruntime, so nothing about the mechanism is specific to ConsisID.
 
     `first` supplies each vendor's opening run so the survey is not paid for
-    twice.
+    twice. Every REPEAT is a fresh interpreter, because the mechanism above is
+    per-process: re-calling `runner()` in this one holds the algorithm choice
+    fixed and the comparison becomes two reads of the same decision. Measured
+    that way it reported 8 vendors, 2 runs, 1 digest each, stable -- and could
+    not have reported anything else.
+
+    A vendor that never ran is `not_run`, not `unstable`. The two were one
+    field, so an absent base checkpoint read as a moving boundary.
     """
     opened = {one.consumer_id: one for one in first if one.ran}
     vendors: dict[str, Any] = {}
-    for name, runner in RUNNERS.items():
+    for name in RUNNERS:
         digests: list[str] = []
         reason = ""
         held = opened.get(name)
         if held is None:
-            vendors[name] = {"digests": [], "stable": False, "reason": "did not run; nothing to repeat"}
+            vendors[name] = {
+                "digests": [],
+                "stable": None,
+                "not_run": True,
+                "reason": "did not run here; nothing to repeat",
+            }
             continue
         digests.append(_boundary_digest(held.boundary))
         for _ in range(times - 1):
-            again = runner()
-            if not again.ran:
-                reason = again.reason
+            again = _digest_in_subprocess(name)
+            if again is None:
+                reason = "the repeat could not be run in a fresh interpreter"
                 break
-            digests.append(_boundary_digest(again.boundary))
+            digests.append(again)
         stable = len(digests) == times and len(set(digests)) == 1
         vendors[name] = {
             "digests": digests,
             "stable": stable,
+            "not_run": False,
             "reason": reason or ("" if stable else "identical input produced different bytes"),
         }
-    unstable = sorted(name for name, one in vendors.items() if not one["stable"])
+    unstable = sorted(name for name, one in vendors.items() if one["stable"] is False)
+    not_run = sorted(name for name, one in vendors.items() if one.get("not_run"))
     return {
         "runs": times,
         "vendors": vendors,
         "stable": not unstable,
         "unstable": unstable,
+        "not_run": not_run,
     }
+
+
+def _digest_in_subprocess(name: str) -> str | None:
+    """One vendor's boundary digest, from an interpreter of its own.
+
+    The whole point of the repeat. `python -m compat.vendor.acceptance --one
+    <name>` runs exactly one runner and prints its boundary digest, so the
+    convolution algorithm, the memory arena and every other per-process choice
+    are made again rather than inherited.
+    """
+    done = subprocess.run(
+        [sys.executable, "-m", "compat.vendor.acceptance", "--one", name],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=str(ROOT.parent),
+        timeout=1800,
+    )
+    for line in reversed(done.stdout.splitlines()):
+        held = line.strip()
+        if len(held) == 64 and all(one in "0123456789abcdef" for one in held):
+            return held
+    return None
 
 
 def declared_against_observed(rows: list[Acceptance]) -> list[dict[str, Any]]:
@@ -1772,19 +1916,32 @@ def survey() -> dict[str, Any]:
     rows: list[Acceptance] = [runner() for runner in RUNNERS.values()]
     repeats = determinism(rows)
     against_manifest = declared_against_observed(rows)
+    upstream = against_upstream(rows)
     manifest = provenance.load_manifest()
     declared = {one["id"] for one in manifest.get("consumers", [])}
-    accepted = {one.consumer_id for one in rows if one.ran}
+    ran = {one.consumer_id for one in rows if one.ran}
     attempted = {one.consumer_id for one in rows}
+    # ACCEPTED is now "reproduced the boundary upstream declares", not "did not
+    # raise". A vendor that ran without an upstream statement to check against
+    # is neither accepted nor failed: it is VENDOR_BASELINE_UNAVAILABLE, which
+    # is a fact about the upstream and the verdict `contracts/case.py` reserves
+    # for exactly this.
+    agreed = {one["consumer_id"] for one in upstream if one["agrees"] is True}
+    disagreed = {one["consumer_id"] for one in upstream if one["agrees"] is False}
+    unstated = {one["consumer_id"] for one in upstream if not one["stated"]}
     return {
         "runtime": provenance.runtime_identity(),
         "acceptance": [asdict(one) for one in rows],
         "determinism": repeats,
         "declared_against_observed": against_manifest,
+        "against_upstream": upstream,
         "population": {
             "declared": sorted(declared),
-            "vendor_accepted": sorted(accepted),
-            "attempted_and_failed": sorted(attempted - accepted),
+            "ran_without_raising": sorted(ran),
+            "vendor_accepted": sorted(agreed),
+            "reproduced_wrong_boundary": sorted(disagreed),
+            "vendor_baseline_unavailable": sorted(unstated),
+            "attempted_and_failed": sorted(attempted - ran),
             # Never attempted: their base checkpoints are not on this machine.
             # UNSUPPORTED, a fact about the box, not about the upstream.
             "not_attempted": sorted(declared - attempted),
@@ -1792,7 +1949,98 @@ def survey() -> dict[str, Any]:
     }
 
 
-def main() -> int:
+def against_upstream(rows: list[Acceptance]) -> list[dict[str, Any]]:
+    """Each run compared to the shape UPSTREAM declares for its boundary.
+
+    `ran` means the call did not raise. That is a fact about this machine and
+    not about the vendor reproducing anything, and it was the whole of LAYER
+    ONE's verdict: eight vendors reported accepted because eight calls
+    returned. A call that returns the wrong tensor returns just as quietly.
+
+    `manifest.toml` carries `[consumers.acceptance_expected]` for every vendor
+    whose own source states its boundary, each with the file and line that
+    states it. Two forms, because upstream states it two ways:
+
+        shape   the whole tuple, when upstream writes it out -- ConsisID's
+                own comment says `torch.Size([1, 1280])`
+        tokens  the ONE axis upstream fixes, when the width comes from
+                whichever base model is loaded and is therefore a fact about
+                the checkpoint rather than about the vendor
+
+    A vendor with no such statement is recorded `stated: false` and is NOT
+    counted as reproducing its own boundary. That is the honest reading of
+    "upstream supplies no runnable first-party expectation", and it keeps the
+    absence visible instead of letting `ran` stand in for it.
+    """
+    manifest = provenance.load_manifest()
+    wanted = {
+        one["id"]: one["acceptance_expected"] for one in manifest.get("consumers", []) if one.get("acceptance_expected")
+    }
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if not row.ran:
+            continue
+        expected = wanted.get(row.consumer_id)
+        if expected is None:
+            out.append(
+                {
+                    "consumer_id": row.consumer_id,
+                    "stated": False,
+                    "agrees": None,
+                    "detail": "upstream states no expected boundary at the pinned commit",
+                }
+            )
+            continue
+        held = (row.boundary or {}).get(expected["key"])
+        shape = list(held.get("shape", [])) if isinstance(held, dict) else None
+        if not shape:
+            out.append(
+                {
+                    "consumer_id": row.consumer_id,
+                    "stated": True,
+                    "agrees": False,
+                    "detail": f"the run recorded no {expected['key']!r} shape to compare",
+                }
+            )
+            continue
+        if "shape" in expected:
+            agrees = shape == list(expected["shape"])
+            detail = f"{expected['key']} {shape} against upstream's {list(expected['shape'])}"
+        else:
+            # The token axis is the second-to-last: [batch, tokens, width].
+            tokens = shape[-2] if len(shape) >= 2 else None
+            agrees = tokens == int(expected["tokens"])
+            detail = f"{expected['key']} {shape} carries {tokens} tokens, upstream declares {expected['tokens']}"
+        out.append(
+            {
+                "consumer_id": row.consumer_id,
+                "stated": True,
+                "agrees": agrees,
+                "detail": detail,
+                "cited": list(expected.get("cited", [])),
+            }
+        )
+    return sorted(out, key=lambda one: one["consumer_id"])
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(argv if argv is not None else sys.argv[1:])
+    if "--one" in args:
+        # One vendor, one interpreter, one line of output: the digest.
+        # `determinism` shells out to this so its repeat is a genuinely fresh
+        # process rather than a second call inside the first.
+        name = args[args.index("--one") + 1]
+        runner = RUNNERS.get(name)
+        if runner is None:
+            print(f"no such vendor runner: {name!r}", file=sys.stderr)
+            return 2
+        held = runner()
+        if not held.ran:
+            print(f"{name} did not run: {held.reason}", file=sys.stderr)
+            return 1
+        print(_boundary_digest(held.boundary))
+        return 0
+
     out = survey()
     for row in out["acceptance"]:
         mark = "ok " if row["ran"] else "!! "
@@ -1833,10 +2081,14 @@ def main() -> int:
 
     repeats = out["determinism"]
     mark = "ok " if repeats["stable"] else "!! "
-    print(f"\n{mark}determinism: {repeats['runs']} runs each, unstable={repeats['unstable']}")
+    print(
+        f"\n{mark}determinism: {repeats['runs']} runs each in separate interpreters, "
+        f"unstable={repeats['unstable']}, not run here={repeats['not_run']}"
+    )
     for name, one in sorted(repeats["vendors"].items()):
         seen = " ".join(digest[:16] for digest in one["digests"])
-        print(f"    {'ok ' if one['stable'] else '!! '}{name:<18} {seen}  {one['reason']}")
+        flag = "-- " if one["stable"] is None else ("ok " if one["stable"] else "!! ")
+        print(f"    {flag}{name:<18} {seen}  {one['reason']}")
 
     diff = out["declared_against_observed"]
     disagreed = [one for one in diff if one["agrees"] is False]
@@ -1850,10 +2102,21 @@ def main() -> int:
         )
     print(f"    {len(disagreed)} disagree, {len(unobserved)} unobserved")
 
+    print("\nAGAINST UPSTREAM'S OWN DECLARED BOUNDARY")
+    for one in out["against_upstream"]:
+        mark = "ok " if one["agrees"] else ("-- " if one["agrees"] is None else "!! ")
+        print(f"    {mark}{one['consumer_id']:<20} {one['detail']}")
+
     pop = out["population"]
-    print(f"\nvendor accepted   : {len(pop['vendor_accepted'])}  {pop['vendor_accepted']}")
-    print(f"attempted, failed : {len(pop['attempted_and_failed'])}  {pop['attempted_and_failed']}")
-    print(f"not attempted     : {len(pop['not_attempted'])} (base checkpoints absent on this machine)")
+    print(f"\nran without raising: {len(pop['ran_without_raising'])}  {pop['ran_without_raising']}")
+    print(f"VENDOR ACCEPTED    : {len(pop['vendor_accepted'])}  {pop['vendor_accepted']}")
+    print(f"wrong boundary     : {len(pop['reproduced_wrong_boundary'])}  {pop['reproduced_wrong_boundary']}")
+    print(
+        f"no upstream expectation: {len(pop['vendor_baseline_unavailable'])}  "
+        f"{pop['vendor_baseline_unavailable']} (VENDOR_BASELINE_UNAVAILABLE)"
+    )
+    print(f"attempted, failed  : {len(pop['attempted_and_failed'])}  {pop['attempted_and_failed']}")
+    print(f"not attempted      : {len(pop['not_attempted'])} (base checkpoints absent on this machine)")
 
     generated = ROOT / "generated"
     generated.mkdir(parents=True, exist_ok=True)
@@ -1862,8 +2125,30 @@ def main() -> int:
         handle.write(json.dumps(out, indent=2, sort_keys=True, default=str))
         handle.write("\n")
     print(f"wrote {target}")
-    # A manifest that contradicts the run is a red gate, not a note.
-    return 1 if disagreed else 0
+
+    # Three ways this lane can be wrong, and it used to gate on one. A vendor
+    # that raised and a boundary that will not repeat are both fatal to
+    # "LAYER ONE: the reference itself is known to run" -- reporting them and
+    # exiting 0 is the shape of a suite reporting success it did not earn.
+    unstable = out["determinism"]["unstable"]
+    failed = pop["attempted_and_failed"]
+    blocking = {
+        "manifest disagrees with the run": [one["consumer_id"] for one in disagreed],
+        "boundary did not repeat": unstable,
+        "attempted and raised": failed,
+        # The fourth, and the one this lane exists for. A run whose boundary
+        # is not the shape upstream declares has not reproduced upstream's
+        # example, whatever it did without raising.
+        "boundary is not upstream's": pop["reproduced_wrong_boundary"],
+    }
+    bad = {why: names for why, names in blocking.items() if names}
+    if bad:
+        print("\nacceptance NOT clean:")
+        for why, names in bad.items():
+            print(f"    {why}: {', '.join(names)}")
+        return 1
+    print("\nacceptance clean")
+    return 0
 
 
 if __name__ == "__main__":

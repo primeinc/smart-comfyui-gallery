@@ -133,7 +133,7 @@ vendor:
 # reference itself is known to run. This executes a vendor's OWN entrypoint,
 # on its OWN example input, with its OWN published checkpoints.
 #
-# Seven vendors run here: consisid, pulid_upstream, infiniteyou,
+# Eight vendors run here: consisid, pulid_upstream, infiniteyou,
 # ipadapter_upstream, uniportrait, photomaker_v2 and reactor. Each computes
 # its conditioning entirely before the first sampling step, so no base model
 # is needed for the ID half. What is still absent is the diffusion checkpoint
@@ -149,7 +149,8 @@ vendor:
 acceptance:
     {{ python }} -m compat.vendor.acceptance
 
-# Twelve deliberate corruptions -- pin, weight, manifest, runner source,
+# Nineteen deliberate corruptions -- pin, weight, manifest, runner and
+# application source, corpus, cache, vendor fixture, ablation, matrix,
 # dropped primitive, selection rule, reference order, stale evidence, missing
 # consumer, vendor fixture, faked acceptance, lost round-trip key -- plus a
 # positive control that must report CLEAN. An attack the

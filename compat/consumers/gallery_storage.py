@@ -28,7 +28,6 @@ import numpy as np
 
 from compat.assertions.arrays import digest
 from compat.contracts.case import (
-    Ablation,
     Artifact,
     Case,
     Measurement,
@@ -93,7 +92,21 @@ class GalleryStorageRunner:
                         atol=0.0,
                         exact_bytes=False,
                         retained=(key,),
-                        ablations=(Ablation(primitive=key, expect_breaks=True),),
+                        # No ablation. The retained state here holds exactly
+                        # one key, so removing it and then reading it back
+                        # cannot come out any way but "broke" -- for every
+                        # key, including one nothing needs. That vacuous
+                        # experiment was the SOLE necessity evidence behind
+                        # pose, age, gender, bbox, det_score, kps and
+                        # landmark_2d_106 in `answer.json`.
+                        #
+                        # This lane's real finding is conservation, and the
+                        # case verdict already carries it: baseline is the
+                        # producer's value, replay is what the candidate gave
+                        # back, and a divergence between them is the whole
+                        # measurement. Necessity is a different question and
+                        # belongs to the consumer lanes that actually replay
+                        # a consumer's boundary.
                         measurements=("stored_form",),
                         note=candidate.described,
                     )
@@ -128,10 +141,6 @@ class GalleryStorageRunner:
         """The stored value. Nothing here opens the photograph."""
         _, key, _ = self._parts(case)
         return self._artifact(case.boundary, np.asarray(retained.array(key)))
-
-    def ablate(self, case: Case, retained: RetainedState, primitive: str) -> RetainedState:
-        del case
-        return retained.without(primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         """dtype and shape as the candidate returned them.
