@@ -18,31 +18,19 @@ import time
 
 SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 
-#: Must equal the `PRAGMA user_version` stamped at the end of schema.sql --
-#: pinned by test_the_database_states_its_version, because build.py used to
-#: re-stamp the file after running the DDL and that hid a two-version gap.
-#:
-#: Bumped whenever schema.sql changes in a way a built database must match.
-#: A bump is not enough on its own: db/migrate.py needs a step registered for
-#: the version being left behind, or an existing database cannot be opened.
-#: test_every_version_left_behind_has_a_step_off_it enforces that.
+#: Must equal the `PRAGMA user_version` stamped at the end of schema.sql,
+#: pinned by test_the_database_states_its_version. A bump also needs a
+#: db/migrate.py step off the version left behind, or an existing database
+#: cannot be opened (test_every_version_left_behind_has_a_step_off_it).
 USER_VERSION = 46
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.
 CACHE_KIB = 65_536
-#: How many values one `... IN (?,?,...)` batch binds -- the ONE batching
-#: constant. Six call sites carried private copies (500 at five of them,
-#: 900 in db/scan.py), each typed twice as a range() step and a slice
-#: bound, and nothing said why the scan path could bind more than the
-#: rest. The ceiling is SQLITE_MAX_VARIABLE_NUMBER, a compile-time choice
-#: whose default is 32766 (sqlite/sqlite@b09c88c14 src/sqliteLimit.h:189-191)
-#: and not this application's to assume, so `_prepared` asks the linked
-#: library what it actually grants (Connection.getlimit, python/cpython
-#: Doc/library/sqlite3.rst:1201-1228, 3.11+) and refuses a build that
-#: grants less. Well under the ceiling on purpose: a batch is also a
-#: statement to parse and a parameter row to bind, and hundreds is where
-#: these sites were tuned.
+#: How many values one `IN (?,?,...)` batch binds -- the ONE batching constant.
+#: The ceiling is SQLITE_MAX_VARIABLE_NUMBER, a compile-time choice defaulting to
+#: 32766 (sqlite/sqlite@b09c88c14 src/sqliteLimit.h:189-191), so `_prepared` asks
+#: the linked library (Connection.getlimit) and refuses a build that grants less.
 PARAM_BATCH = 900
 #: How long a connection waits out another process's lock, in seconds:
 #: the WAL conversion's own wait (`_ensure_wal`) and the busy_timeout
@@ -199,21 +187,10 @@ def _prepared(conn: Connection, *, journal: bool) -> Connection:
         raise RuntimeError(
             f"this SQLite grants {granted} bound parameters per statement; batching assumes {PARAM_BATCH}"
         )
-    # Negative N means approximately abs(N*1024) BYTES rather than a page
-    # count (sqlite/sqlite@b09c88c14 src/pcache.c:284-288), so this is 64 MiB.
-    #
-    # The default is 2 MiB, which is not a tuning detail on a library-sized
-    # database -- it decides which query plans are viable. Measured on 100k
-    # files (89 MB), the people page: 60.5 ms at the 2 MiB default, 33.0 ms
-    # at 8 MiB, 5.4 ms at 32 MiB and above. The plan was identical every
-    # time; only the cache changed.
-    #
-    # That mattered more than it looks. With the default cache the analyzed
-    # plan measured three times slower than the unanalyzed one, and the
-    # conclusion drawn from it -- that ANALYZE hurt this schema -- was wrong.
-    # The plan drives from 300 people into 14k random row lookups, which is
-    # correct and which a 2 MiB cache cannot hold. Given room, statistics
-    # make that page three times FASTER than no statistics.
+    # Negative N means approximately abs(N*1024) BYTES rather than a page count
+    # (sqlite/sqlite@b09c88c14 src/pcache.c:284-288), so this is 64 MiB. The
+    # 2 MiB default decides which query plans are viable on a library-sized
+    # database, not merely how fast they run.
     conn.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
     if journal:
         # journal_mode is a write: setting it on a read-only connection raises,

@@ -89,7 +89,7 @@ def join_names(names: list[str]) -> str:
 
 
 def duration(seconds: float) -> str:
-    """`1.5 s`, `4 min 12 s`, `2 h 5 min` -- the camera's own units."""
+    """Seconds in the camera's own units -- `s`, `min s`, or `h min`."""
     if seconds < 60:
         return f"{seconds:.1f} s" if seconds != int(seconds) else f"{int(seconds)} s"
     minutes, rest = divmod(round(seconds), 60)

@@ -556,6 +556,8 @@ STARTED_ELSEWHERE: dict[str, str] = {
     ),
 }
 
+#: Pages that own their whole document instead of extending the shell, and
+#: why. SG502 accepts an entry here in place of EXTENDS_SHELL.
 OWN_DOCUMENT: dict[str, str] = {
     "field.html": (
         "the canvas surface. A rail above a camera and a pager below it is a canvas in a box, "
@@ -576,8 +578,8 @@ CONNECTION_KEPT: frozenset[str] = frozenset(
         # writers' commits, so outliving a request is its whole purpose.
         "db/resultset.py:currency",
         # The schema master a backup is taken from, one per DDL text.
-        # Building it costs 11ms and ~250 tests start from a 0.5ms copy of
-        # it; closing it would make every one of them pay again.
+        # Every test starts from a copy of it, so closing it would make
+        # each one rebuild the schema.
         "tests/staging.py:fresh_schema",
         # The Stage's data_version monitor: an idle reader whose whole
         # purpose is outliving each test to see other connections'

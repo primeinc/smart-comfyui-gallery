@@ -109,35 +109,9 @@ class BlipCaptioner:
         # module in place and hand back the same object, so `loaded` is
         # already the moved model and keeps the type it was loaded with.
         torch.nn.Module.to(loaded, self.device)
-        # HALF PRECISION ON A GPU.
-        #
-        # From benchmarks/results/caption_batch.json (48 real pictures,
-        # 3070 Ti): 15.72 pictures/sec batched in float32, 21.28 in
-        # float16, and peak VRAM 1702.0 MB down to 905.4. Together with
-        # batching that is 3.62 -> 21.28, near enough six times.
-        #
-        # It is not free and the benchmark says so: same_as_baseline drops
-        # to 0.979 -- 47 of 48 captions identical, one differing, because
-        # rounding moved a logit far enough to flip a token. neither is
-        # the correct one: fp32 is not ground truth here, only the other
-        # arithmetic.
-        #
-        # Half precision alone does not do it: the unbatched fp16 row
-        # reports same_as_baseline 1.0, and every divergent row is fp16 and
-        # batched. The cost belongs to the combination, not to the dtype.
-        #
-        # And this checkpoint is the cheap baseline on purpose: a short
-        # descriptive sentence for every picture in a library, from a
-        # base model, so that everything has something. A baseline whose
-        # whole point is breadth should be the fastest baseline
-        # available; a third of the throughput is a real cost and a
-        # token's difference in one sentence out of forty-eight is not.
-        # A better caption is a better model (vision/semantic/qwen_vl.py
-        # is the other one this application can load), not more decimal
-        # places in this one.
-        #
-        # CUDA only. Half precision on a CPU is emulated for most of
-        # these kernels and would be slower than the float32 it replaced.
+        # Half precision on CUDA only; on a CPU most of these kernels are
+        # emulated and slower than float32. Batched, it raises throughput and
+        # halves peak VRAM at same_as_baseline 0.979 (benchmarks/results/caption_batch.json).
         if self.device == "cuda":
             torch.nn.Module.half(loaded)
         self.model = loaded

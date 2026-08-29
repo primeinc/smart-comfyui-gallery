@@ -579,14 +579,9 @@ def written_columns(root: pathlib.Path, conn: sqlite3.Connection) -> tuple[dict[
     """Each table mapped to the columns some INSERT or UPDATE names on it,
     and the tables written without a column list at all.
 
-    Parsed from the statements, not matched against the text. This used to
-    be `re.search(rf"\b{column}\b", source)` over every db/*.py file
-    concatenated -- comments and docstrings included -- so a column counted
-    as produced when its name appeared anywhere: in prose, as a local, as
-    an attribute of an unrelated object, or as a column of another table.
-    `file.width` and `file.height` passed that for years' worth of
-    `typed.width` and `raw.width` in db/ingest.py while nothing has ever
-    written either one.
+    Parsed from the statements, not matched against the text, so a column
+    counts as produced only where an INSERT or UPDATE names it and not
+    wherever its name happens to appear in db/*.py.
     """
     flat = _statements(root, conn)
     written: dict[str, set[str]] = {}

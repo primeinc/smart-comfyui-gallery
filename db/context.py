@@ -40,7 +40,7 @@ generator is `mixed`, with neither claim erased.
 
 `derived_context_state` is the interpretation's identity: `generation`
 advances on EVERY context add, change or delete, so anything computed
-over the contexts (an event run, someday a story) can prove it was
+over the contexts (an event run, a story) can prove it was
 computed over THESE contexts. Invalidation lives HERE, called from the
 source-fact writer seams (db/ingest.py after a parse, db/scan.py when
 a file's times change) -- deliberately not as schema triggers, because
@@ -71,19 +71,10 @@ TIME_BASES = ("capture", "embedded", "filename", "folder", "btime", "mtime")
 #: parameters and never a location, and nothing infers one from content.
 LOCATION_BASES = ("gps", "authored")
 
-#: WHICH MEANING of the ladder is current. Bump when the interpretation
-#: itself changes meaning -- v2 added the embedded generator-date rung,
-#: v3 the precision dimension and the coexistence facts, v4 the
-#: per-claim occurrence rows, v5 the generation judge, v6 the capture
-#: judge and the act key, v7 the file's own claims as an occurrence,
-#: v8 the human timeline at the refined second when the estimate lands
-#: inside the claimed minute, v9 the coarse folder rungs -- a folder
-#: naming a year, a month or a decade is now a CLAIM at that precision
-#: where it used to be no claim at all, so a scanned photograph in
-#: `1998/` is dated 1998 instead of falling through to mtime and being
-#: dated by when it was last copied. Every reader binds THIS constant,
-#: never the version a database happens to remember: after an upgrade the
-#: old rows are honestly invisible until the context job re-interprets.
+#: WHICH MEANING of the ladder is current; bump when the interpretation itself
+#: changes meaning. Every reader binds THIS constant, never the version a
+#: database happens to remember, so rows stamped with another version stay
+#: invisible until the context job re-interprets them.
 POLICY_VERSION = 9
 
 #: The human timeline's one axis, defined ONCE: the wall clock when one

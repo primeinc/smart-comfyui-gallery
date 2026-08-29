@@ -51,29 +51,13 @@ class Finding:
 # --- the tree ---------------------------------------------------------------------------------
 
 
-#: A file's TEXT is deliberately not cached on (mtime, size) the way its
-#: tree is, and the reads through this module stay uncached.
-#:
-#: The stamp is not enough to tell two versions apart. A control writes a
-#: file, runs a rule, rewrites it and runs the rule again -- and
-#: `test_the_vocabulary_and_handler_rules_hold_and_can_fail` does exactly
-#: that with `SAYS = {'a': 1, 'b': 2}` and `SAYS = {'a': 1, 'c': 3}`,
-#: which are the same LENGTH inside one clock tick. A stamped cache hands
-#: back the first, the rule finds nothing wrong with source it never saw,
-#: and the control that exists to prove the rule can fail passes while
-#: proving nothing. Measured: it was tried, and that test caught it.
-#:
-#: The saving was 0.08s. `walked` below is where the real one is, and it
-#: is keyed on the tree OBJECT, so it cannot go stale.
-#: Files that would not parse, and why. Written by `parsed`, reported by
-#: `rule_sources_parse`.
-#:
-#: A linter that dies on the first bad file is worse than no linter: one
-#: unreadable file took down all twenty-one rules over every other file,
-#: and the only output was a traceback from inside `ast.parse` that named
-#: `<unknown>` rather than the path. Every rule in this module now runs
-#: over everything that CAN be read, and the file that cannot becomes a
-#: finding like any other defect.
+# A file's TEXT is not cached on (mtime, size): the stamp cannot separate two
+# same-length rewrites inside one clock tick, which would hand a rule source it
+# never saw. `walked` below is keyed on the tree object instead.
+
+#: Files that would not parse, and why. Written by `parsed` and reported by
+#: `rule_sources_parse`, so every other rule still runs over the files that
+#: can be read.
 _UNPARSEABLE: dict[pathlib.Path, str] = {}
 
 #: What a caller gets for a file that will not parse. Empty, so a rule
@@ -661,12 +645,9 @@ def rule_connection_lifetime(
     #: anything is exactly what that report exists to find.
     excused_in = {one.rsplit(":", 1)[0] for one in excused}
     for source in held:
-        # Nothing here binds the name `connect`, so nothing here can open
-        # one: `_opened_here` matches `connect.<attr>(...)`, which is an
-        # ast.Name node. Read off the module's own walk, which `walked`
-        # has already built for the other rules -- against `_closed_here`
-        # and `_opened_here` each walking every function in the file.
-        # This rule was 0.587s of the 1.09s every rule costs together.
+        # Nothing here binds the name `connect`, so nothing here can open one:
+        # `_opened_here` matches `connect.<attr>(...)`, an ast.Name node. Read
+        # off the module's own walk, which `walked` has already built.
         if source.relative not in excused_in and not any(
             isinstance(node, ast.Name) and node.id == "connect" for node in walked(source.tree)
         ):
@@ -999,7 +980,7 @@ def _page_shapes(templates: typing.Iterable[pathlib.Path]) -> list[Finding]:
     navigation, the notice and the activity surface cannot be missing from
     one page and present on the rest. A fragment is mounted into a page
     that already has a document; one carrying `<html>` or a doctype is a
-    page somebody will eventually serve whole.
+    page, not a fragment.
     """
     found: list[Finding] = []
     for source in templates:
