@@ -101,6 +101,27 @@ prove:
 #   .venv/Scripts on PATH tests/conftest.py boots the app with a bare
 #                         `litestar`, which is FileNotFoundError WinError 2
 #                         from a cwd that is not the repo root
+#
+# And one thing it cannot carry at all: a `.venv` DIRECTORY beside
+# pyproject.toml. `sg_web/__main__.py interpreter()` is a lookup at that
+# exact path and nothing else -- deliberately, so the handover cannot
+# pick up a stranger's python -- and the two tests below assert that the
+# path it finds resolves to the interpreter running them. A worktree has
+# no .venv, so both fail here and only here, on every commit, for ever.
+#
+# They are DESELECTED rather than satisfied. Satisfying them means a
+# junction or symlink from the worktree to the real environment, and that
+# was tried: `git worktree remove --force` walks the tree, follows the
+# link, and deletes the environment it points at. Measured, the hard way
+# -- .venv lost its pyvenv.cfg and its site-packages, and the repository
+# needed `uv sync` to stand up again. A pre-push gate must not be able to
+# do that, however carefully the cleanup is ordered, because the ordering
+# only holds when the cleanup runs at all.
+#
+# Two false failures on every push is how a gate stops being read, so the
+# honest move is to say which two and why rather than leave them red.
+# They pass in a real checkout, which is where they mean something:
+# `just test-slow` runs them.
 [doc('Pre-push gate: skip a proven tree, else run the affected slice of the suite')]
 [script]
 prove-push: web::build
@@ -124,8 +145,20 @@ prove-push: web::build
     if [ -d benchmarks/results ]; then cp -r benchmarks/results/. "$pushed/benchmarks/results/"; fi
     if [ -f .testmondata ]; then cp .testmondata "$pushed/.testmondata"; fi
     cd "$pushed"
+    launch=tests/test_the_documented_launch_serves_a_whole_application.py
+    # The corpus, said out loud. `tests/test_the_corpus_spans_the_shape.py`
+    # looks for `sg-corpus` BESIDE the repository, resolved from the test
+    # file -- so in a worktree under /tmp it looks beside /tmp, finds
+    # nothing, and six coverage tests report that the corpus produced no
+    # dialects, no media kinds and no dating rungs. Not a skip: a wall of
+    # red saying the corpus is empty, about a corpus sitting where it
+    # always was. `SG_CORPUS` is the seam that exists for this, so the
+    # gate measures the same corpus a developer does.
+    if [ -d "$root/../sg-corpus" ]; then export SG_CORPUS="$root/../sg-corpus"; fi
     PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
       "$root/{{ python }}" -m pytest tests/ -m slow -n 4 --dist loadfile \
+      --deselect "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it" \
+      --deselect "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets" \
       -p pytest-testmon --testmon --testmon-forceselect
     settled=$?
     if [ -f "$pushed/.testmondata" ]; then cp "$pushed/.testmondata" "$root/.testmondata"; fi
