@@ -58,37 +58,20 @@ class Gap:
 
 #: The surfaces: what each is called, what it answers, and where.
 #:
-#: AUTHORED, and checked against what is served rather than trusted. That
-#: split is the honest one, and it took two wrong answers to find.
+#: AUTHORED, and checked against what is served rather than trusted: a person
+#: decides what counts as a surface, and the application decides whether each
+#: one is still served.
+#: An entry whose address stops being served disappears rather than 404ing.
 #:
-#: Written out and nothing else, first: accurate the day it was typed,
-#: held there by nothing, and already missing /loras, /clusterings and
-#: /views -- exactly the decay this page exists to stop.
+#: Being SERVED is not enough to be a surface: /clusterings and /views answer
+#: 200 to a browser with raw JSON, and are recorded as machine reads in
+#: sglint/policy.py UNSURFACED instead, with the page a person goes to.
+#: tests/test_the_shell_mounts_every_surface.py crawls every link every page
+#: emits and requires it to land a person on a page.
 #:
-#: Then derived from the route table, which is worse. A route is not a
-#: surface. Sixty rows came back: /g/grid and /g/peek (htmx fragments),
-#: /g/field/shape (JSON the canvas asks for), /ws/jobs (a socket),
-#: /schema/openapi.json, /sw.js, /manifest.webmanifest. Listing those as
-#: places to go would make the page wrong in a louder way than leaving
-#: one out.
-#:
-#: So: a person decides what counts as a surface, because that is a
-#: judgement about what a place IS -- and the application decides whether
-#: each one is still served. An entry whose address stops being served
-#: disappears rather than 404ing, which is the failure that matters.
-#:
-#: Being SERVED is not enough to be a surface either, and that cost two
-#: more entries. /clusterings and /views answer 200 to a browser and hand
-#: it raw JSON -- listing them offered a person a door onto a wall of
-#: braces. They are recorded as machine reads in sglint/policy.py
-#: UNSURFACED instead, with the page a person actually goes to. The crawl
-#: in tests/test_the_shell_mounts_every_surface.py is what caught it:
-#: every link every page emits has to land a person on a page.
-#:
-#: What this does NOT hold: a page added tomorrow with no entry here will
-#: not appear. That is a real gap and it is named rather than papered
-#: over -- sglint's SG010 is what catches an unreachable surface, and it
-#: reads the templates and the browser source, not this list.
+#: A page added with no entry here does not appear; sglint's SG010 is what
+#: catches an unreachable surface, and it reads the templates and the browser
+#: source, not this list.
 SAID: dict[str, tuple[str, str]] = {
     "/g": ("The library", "every picture, newest first, and the question box over it"),
     "/field": ("The field", "the whole answer on one canvas, placed in time, with a board of kept questions"),

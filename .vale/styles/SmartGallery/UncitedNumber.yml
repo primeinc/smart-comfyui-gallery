@@ -1,6 +1,8 @@
 extends: conditional
 message: "A measurement needs a source; cite org/repo@sha path:line or an artifact path."
 level: error
-scope: comment.line
+scope:
+  - comment.line
+  - comment.block
 first: '\b\d+\.\d+\s?(?:ms|s|MB|KB|GB|MiB|KiB)\b'
 second: '(?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{7,40}|benchmarks/results/|\.json\b)'

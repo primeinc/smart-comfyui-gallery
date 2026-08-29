@@ -48,11 +48,11 @@ def _collection_at(conn, slug: str) -> int:
 def _written(state: State, work) -> Response[collection_view.CollectionWriteAnswer]:
     """Refusal mapping, one commit, and the small answer a write owes.
 
-    Where to go and the definition's next concurrency token. It used to
-    answer with the whole management view -- the ResultSet page evaluated,
-    the spans, the places and every legal parent move -- which meant every
-    rename re-ran the collection's rule to build a body the browser reads
-    one field out of.
+    Where to go and the definition's next concurrency token, and nothing
+    more: answering with the whole management view -- the ResultSet page
+    evaluated, the spans, the places and every legal parent move -- would
+    re-run the collection's rule on every rename to build a body the
+    browser reads one field out of.
     """
     conn = connect.connect(state.db_path)
     try:

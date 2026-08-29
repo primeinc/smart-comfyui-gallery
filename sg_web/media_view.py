@@ -203,12 +203,11 @@ def _filmstrip(found: dict, asked: str) -> Filmstrip:
                 kind=near["kind"],
                 ordinal=near["ordinal"],
                 href=f"/i/{near['slug']}" + (f"?{asked}" if asked else ""),
-                # None for a kind with no picture to take. The raster
+                # None for a kind with no picture to take: the raster
                 # routes refuse audio and documents outright
                 # (`_variant_bytes`: "a {kind} has no {variant}"), so a
-                # walk through a mixed library used to emit a 404 for
-                # every such member and draw a broken image where one
-                # was. The strip says the kind instead.
+                # thumb URL for one would 404 and draw a broken image.
+                # The strip says the kind instead.
                 thumb=thumbs.asset_url(near["sha"], near["slug"], medium=near["kind"]),
             )
             for near in found["items"]

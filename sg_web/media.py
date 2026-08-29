@@ -1,8 +1,8 @@
 """Serving bytes: range arithmetic, disk streaming, and the avatar's face.
 
 Litestar's File response streams whole files but implements no Range
-handling -- the only 206 in the package is the constant in
-litestar/status_codes.py (litestar-org/litestar@64cd7da) -- and a video
+handling -- the only 206 in the package is the constant at
+litestar-org/litestar@64cd7da litestar/status_codes.py:35 -- and a video
 element that cannot seek is a slideshow. So the range grammar lives here,
 per RFC 9110 section 14: one bytes-range, first-byte/last-byte inclusive,
 suffix form for "the last N bytes". Syntactically malformed or multipart

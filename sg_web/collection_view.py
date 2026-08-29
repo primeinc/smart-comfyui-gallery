@@ -201,10 +201,9 @@ class CollectionWriteAnswer(Wire):
     """What a lifecycle write answers.
 
     The address to go to and the definition's next concurrency token, and
-    that is the whole contract. Writes used to answer with the management
-    view -- a ResultSet page, the spans, the places and every legal parent
-    move, assembled and thrown away, because the browser reads `slug` out
-    of it and nothing else.
+    that is the whole contract. Answering with the management view -- a
+    ResultSet page, the spans, the places and every legal parent move --
+    would assemble a body the browser reads `slug` out of and nothing else.
     """
 
     slug: str
@@ -536,10 +535,9 @@ class CollectionListed(Wire):
 
     `first_seen` and `last_seen` are the span of the pictures filed in it.
     The archived shelf computes no spans, so it answers null for both --
-    NOT by omitting the keys, which is what the two hand-built dict
-    literals used to do and is a difference no client should have had to
-    discover. Both lists are one representation now; a shelf row carries
-    the span keys because a listed collection has them.
+    NOT by omitting the keys, which would be a difference a client has to
+    discover. Both lists are one representation; a shelf row carries the
+    span keys because a listed collection has them.
     """
 
     name: str

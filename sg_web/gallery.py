@@ -42,16 +42,14 @@ VIEWS = ("gallery", "table", "analyze")
 #: The table's sortable columns: the heading, and which way the FIRST
 #: click orders it.
 #:
-#: Text ascending, numbers descending, because they mean different
-#: things. "Sort by name" means start at A; "sort by size" almost always
-#: means show me what is huge, and opening on the smallest file in the
-#: library is a click somebody has to undo every time. The second click
-#: reverses either way and the heading says which way it is.
+#: Text ascending, numbers descending: "sort by name" means start at A,
+#: while "sort by size" means show what is huge.
+#: The second click reverses either way and the heading says which way it is.
 #:
-#: Every column the table draws, including the LEFT-JOINed ones. A sort
-#: by a column most files lack does not narrow the answer -- they order
-#: last and say so by position -- because narrowing would change what
-#: the answer holds with no chip on screen admitting it.
+#: Every column the table draws, including the LEFT-JOINed ones. A sort by a
+#: column most files lack does not narrow the answer -- they order last and
+#: say so by position, because narrowing would change what the answer holds
+#: with no chip on screen admitting it.
 TABLE_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("name", "name", False),
     ("kind", "kind", False),
@@ -313,7 +311,7 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "views": VIEWS,
         # The questions somebody asked to be reminded of, carried on the
         # first paint: a remembered question is a way IN, and a list that
-        # arrives after the answer is a list nobody used to get to it.
+        # arrives after the answer is no longer one.
         "remembered": remembered,
         #: A person's name spotted in the phrase, and the question it
         #: would become. None when the phrase names nobody, or when the
@@ -348,12 +346,12 @@ def _chips(query: resultset.GalleryQuery, named: dict[str, dict[int, str]] | Non
     and carries the question that remains when it is removed.
 
     Both halves come from elsewhere on purpose. What a clause is CALLED
-    is db/vocabulary.py's -- this module used to hold a private dict of
-    labels beside the registry that held the predicates, and the two
-    drifted, which is how a chip ends up printing a key. What "the
-    question without this" MEANS is db/discovery.py's `without`, the
-    same function that decides what a dimension's own option counts are
-    taken against, so a remove link and a count cannot disagree.
+    is db/vocabulary.py's, so a private dict of labels here cannot drift
+    from the registry that holds the predicates and leave a chip printing
+    a key. What "the question without this" MEANS is db/discovery.py's
+    `without`, the same function that decides what a dimension's own
+    option counts are taken against, so a remove link and a count cannot
+    disagree.
     """
     made = []
     for one in vocabulary.DIMENSIONS:
