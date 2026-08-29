@@ -1,0 +1,116 @@
+{#- The front door.
+
+    Not a dashboard. A dashboard is a wall of numbers somebody has to
+    read before they can act; this is a set of doors with enough written
+    on each to know which one you want. Every tile is an address that
+    already exists, so nothing here is a second copy of a surface.
+
+    The order is the order of what people come here to do. LOOK at the
+    pictures (the library, and the field for the whole of it at once).
+    FIND something (time, people, collections). FIX something (the review
+    queue). And underneath, the machine -- visited when something is
+    wrong, which is why it is at the foot and marked as a different kind
+    of place.
+
+    It extends `base.html` on purpose, unlike /field: this page scrolls,
+    it is where the rail belongs, and a front door that hid the
+    navigation would be a front door into a room with no exits. -#}
+{% extends "base.html" %}
+{% block title %}Steadfast{% endblock %}
+{% block body %}
+<main class="stage front">
+
+  {#- The heading is the state of the library, not the name of the
+      application: the wordmark is already at the top of the rail, and
+      repeating it two centimetres to the right told a person nothing
+      they could not read from where their eye already was. -#}
+  <header class="front-head">
+    {% if held.files %}
+    <h1><b class="num">{{ "{:,}".format(held.files) }}</b> pictures, kept.</h1>
+    <p>Everything below is a way into them.</p>
+    {% else %}
+    <h1>Nothing here yet.</h1>
+    <p><a href="/operations#panel-setup">Point it at a folder</a> and this fills in as it reads.</p>
+    {% endif %}
+  </header>
+
+  <div class="front-doors">
+
+    {#- The library, and it is the hero because it is what this
+        application is. A library says what it is by showing some of
+        itself; sg_web/app.py `front` picks which ones. -#}
+    <a class="door door-wide" href="/g">
+      {% if newest %}
+      <span class="door-covers" aria-hidden="true">
+        {% for slug in newest %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}
+      </span>
+      {% endif %}
+      <span class="door-words">
+        <b>The library</b>
+        <span>Everything, newest first. Search it by what a picture looks like, or by a word a caption says.</span>
+      </span>
+    </a>
+
+    {#- The same pictures as a place rather than as rows. Its own door
+        because it answers a different question -- not "what is here"
+        but "when did all this happen". -#}
+    <a class="door door-canvas" href="/field">
+      <span class="door-words">
+        <b>The field</b>
+        <span>The whole answer on one canvas, placed in time. Keep the questions you come back to on a board.</span>
+      </span>
+    </a>
+
+    <a class="door" href="/timeline">
+      <span class="door-words">
+        <b>Timeline</b>
+        <span>Every sitting, in order, with the quiet stretches drawn as quiet stretches.</span>
+      </span>
+    </a>
+
+    <a class="door" href="/people">
+      <span class="door-words">
+        <b>People</b>
+        <span>{% if held.people %}<b class="num">{{ "{:,}".format(held.people) }}</b> found so far &mdash; name them and they become a way in.{% else %}Nobody found yet. Run the face sweep and they appear here.{% endif %}</span>
+      </span>
+    </a>
+
+    <a class="door" href="/albums">
+      <span class="door-words">
+        <b>Collections</b>
+        <span>{% if held.collections %}<b class="num">{{ "{:,}".format(held.collections) }}</b> albums and saved questions.{% else %}No albums yet. A good question can be saved as one.{% endif %}</span>
+      </span>
+    </a>
+
+    <a class="door" href="/folders">
+      <span class="door-words">
+        <b>Folders</b>
+        <span>{% if held.folders %}<b class="num">{{ "{:,}".format(held.folders) }}</b> on disk, as they really sit.{% else %}No folders read yet.{% endif %}</span>
+      </span>
+    </a>
+
+    {#- The work that needs a person, rather than a dashboard somebody
+        has to interpret. Marked in the colour that means "this is
+        happening" everywhere else in the application. -#}
+    <a class="door door-needs" href="/dupes">
+      <span class="door-words">
+        <b>Needs you</b>
+        <span>Near-identical copies to settle, faces with no name, and anything that failed.</span>
+      </span>
+    </a>
+  </div>
+
+  {#- The machine underneath. At the foot and looking different, because
+      the reason to come down here is almost always that something is
+      running or something broke. -#}
+  {% with jobs = activity_jobs() %}
+  {% set live = jobs | rejectattr("settled") | list %}
+  <a class="front-machine" href="/operations">
+    <span class="dot" data-worker="{{ 'running' if live else 'idle' }}" aria-hidden="true"></span>
+    <b>Operations</b>
+    <span>{% if live %}<b class="num">{{ live | length }}</b> running now{% else %}Idle{% endif %}
+      &middot; sweeps, the job ledger, and every setting</span>
+  </a>
+  {% endwith %}
+</main>
+{% endblock %}

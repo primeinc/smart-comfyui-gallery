@@ -28,7 +28,7 @@
 
 import { closestFrom, findElement } from "./dom";
 import { spellDays } from "./spelling";
-import { board as pinned, pin as keep, unpin } from "./workspace";
+import { pin as keep, board as pinned, unpin } from "./workspace";
 
 /** How a pane is presented. */
 type Mode = "overlay" | "dock" | "window";

@@ -130,26 +130,86 @@ def _resolved(conn, kind: str, slug: str, where: str) -> tuple[int, str | None]:
     return entity_id, None
 
 
+#: How many covers the front door's hero tile shows, how far back it
+#: walks to find them, and the resulting stride. The reach is an indexed
+#: walk of `file_recent` (db/pages.py NEWEST_FIRST), so it is the same
+#: cost at four thousand files and at four hundred thousand.
+COVERS = 8
+COVER_STRIDE = 7
+COVER_REACH = COVERS * COVER_STRIDE
+
+#: How many rows the machine's newest strip carries. Named because the
+#: browser now reads further back than the strip does, and the two
+#: numbers must not drift into each other: a caller of this address gets
+#: the strip it has always got.
+NEWEST_STRIP = 12
+
+
+def _covers(newest: list) -> list[str]:
+    """Which of the recent stretch the hero tile shows. A library too
+    small to stride shows what it has, in order."""
+    reach = newest if len(newest) < COVER_REACH else newest[::COVER_STRIDE]
+    return [row[0] for row in reach[:COVERS]]
+
+
 @get("/", sync_to_thread=True)
-def front(state: State, request: Request) -> Response | Redirect:
-    """The front link. A browser lands in the gallery -- /g owns the
-    canonical question state, and an entrance pointing at JSON was the
-    one page of this application still shaped for its developers. A
-    machine gets the compact library summary with a newest strip; the
-    media answers themselves are the ResultSet's."""
-    if not wants_json(request):
-        return Redirect(path="/g", status_code=302)
+def front(state: State, request: Request) -> Response | Template:
+    """The front door: where you are and what you can do from here.
+
+    A BROWSER GETS A PLACE TO STAND, not a redirect. It used to bounce to
+    /g, which answered "what is in this library" with four thousand
+    thumbnails before asking whether that was the question. The gallery
+    is one of eight things a person opens this application to do, and
+    landing in it made the other seven feel like somewhere else.
+
+    So this says what the library holds, what is running, and what needs
+    a person -- and then offers the ways in, each one an address that
+    already exists. It is a door, not a dashboard: nothing here is a
+    number for its own sake, and every tile goes somewhere.
+
+    A MACHINE GETS EXACTLY WHAT IT GOT BEFORE. The JSON is the same
+    summary with the same keys, negotiated on Accept, so a client that
+    reads this address is untouched by the browser having a page now.
+    """
     conn = _connect(state.db_path)
     try:
         files, folders, people, collections_held, artifacts = pages.library_summary(conn)
-        return Response(
-            {
-                "files": files,
-                "folders": folders,
-                "people": people,
-                "collections": collections_held,
-                "artifacts": artifacts,
-                "newest": _rows(pages.newest(conn, 12), ("slug", "name", "mtime")),
+        newest = pages.newest(conn, COVER_REACH)
+        if wants_json(request):
+            return Response(
+                {
+                    "files": files,
+                    "folders": folders,
+                    "people": people,
+                    "collections": collections_held,
+                    "artifacts": artifacts,
+                    "newest": _rows(newest[:NEWEST_STRIP], ("slug", "name", "mtime")),
+                },
+                headers=VARIES,
+            )
+        return Template(
+            template_name="front.html",
+            context={
+                "held": {
+                    "files": files,
+                    "folders": folders,
+                    "people": people,
+                    "collections": collections_held,
+                    "artifacts": artifacts,
+                },
+                # The covers are the point of the hero tile: a
+                # library says what it is by showing some of itself,
+                # not by printing its own row count.
+                #
+                # STRIDED, not the newest eight. The newest eight of
+                # this library are eight frames of one sitting -- the
+                # same prompt at eight seeds -- and eight near-identical
+                # thumbnails say "one picture" where the tile is meant
+                # to say "a library". Walking the recent stretch and
+                # taking every Nth one costs the same indexed walk and
+                # crosses several sittings. A library too small to
+                # stride shows what it has, in order.
+                "newest": _covers(newest),
             },
             headers=VARIES,
         )

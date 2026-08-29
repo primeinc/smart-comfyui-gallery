@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}SmartGallery{% endblock %}</title>
+  <title>{% block title %}Steadfast{% endblock %}</title>
   {# Error responses are swapped, into the shell's notice, and still
      counted as errors (bigskysoftware/htmx@v2.0.7 www/content/docs.md:940-960
      `htmx.config.responseHandling`): a refused form shows its reason
@@ -19,7 +19,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#14151a">
   <link rel="apple-touch-icon" href="/static/pwa/apple-touch-icon-180.png">
-  <meta name="apple-mobile-web-app-title" content="SmartGallery">
+  <meta name="apple-mobile-web-app-title" content="Steadfast">
   <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-440x956@3x.png">
   <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-430x932@3x.png">
   <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/static/pwa/splash-420x912@3x.png">
@@ -56,7 +56,11 @@
   {% set here = request.url.path if request is defined else "" %}
   <a class="skip-link" href="#stage">skip to content</a>
   <nav class="shell" aria-label="primary">
-    <a class="shell-brand" href="/g">SmartGallery</a>
+    {# The wordmark goes HOME, and home is the front door. It pointed at
+       /g back when `/` bounced there, so the one link every page carries
+       for going back to the start went to the gallery instead -- and the
+       front door was reachable only by clearing the address bar. #}
+    <a class="shell-brand" href="/"><b>Steadfast</b></a>
 
     {# Four destinations, two of which disclose.
 

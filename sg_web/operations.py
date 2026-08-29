@@ -224,6 +224,70 @@ def _ingest_again(state: State, conn) -> list[int]:
 #: Deliberately NOT a field on db/settings.py REGISTRY: that tuple is
 #: read positionally by the worker and the validators, and where a row
 #: is drawn is not something the store should have an opinion about.
+#: What each setting is CALLED, and what changing it does, in words.
+#:
+#: The registry's keys are the machine's names -- `ort_providers`,
+#: `dupe_dhash_verify` -- and they are the right names for a store the
+#: worker reads positionally. They are not names for a person deciding
+#: whether to touch something. A row that says `dupe_threshold: 4` tells
+#: you the state of a variable; it does not tell you that raising it
+#: makes this library call more pictures the same photograph.
+#:
+#: The key is still shown beside the words, because it is what the
+#: contract, the logs and every error message call it -- somebody
+#: reading a failure needs to get from the message back to this row.
+SETTING_WORDS: dict[str, tuple[str, str]] = {
+    "models_dir": (
+        "Where the models live",
+        "The folder jobs load checkpoints from. Empty means `models`, beside this library.",
+    ),
+    "caption_model": (
+        "Which model writes captions",
+        "Each model's captions are kept beside the others' and never merged.",
+    ),
+    "semantic_model": (
+        "Which models search by what a picture looks like",
+        "One space per entry, each with its own idea of similarity, fused by rank.",
+    ),
+    "face_backend": (
+        "Which face reader",
+        "Each is its own space, so switching starts fresh rather than rewriting.",
+    ),
+    "ort_providers": (
+        "What the face model runs on",
+        "Read when a job is submitted, so it applies to the next one you start.",
+    ),
+    "worker": (
+        "Run queued jobs",
+        "Off, jobs still queue. They are rows, so nothing is lost by waiting.",
+    ),
+    "faiss_gpu": (
+        "Use the GPU for search",
+        "Read once per process, so a change applies from the next start.",
+    ),
+    "thumbnail_precache": (
+        "Make thumbnails while other jobs run",
+        "Off, a thumbnail is made the first time something asks for one.",
+    ),
+    "dupe_threshold": (
+        "How alike counts as the same picture",
+        "Bits of difference allowed, 0 to 31. Lower is stricter.",
+    ),
+    "dupe_dhash_verify": (
+        "The second opinion on a duplicate",
+        "A pair must also agree on a different fingerprint, within this many bits.",
+    ),
+    "face_cluster_threshold": (
+        "How alike counts as the same person",
+        "`auto` decides per run. Lower splits one person up; higher merges two.",
+    ),
+    "viewer_wheel_modifier": (
+        "What Alt and the wheel do in the viewer",
+        "`alt` steps through pictures; `none` leaves the wheel to zoom alone.",
+    ),
+}
+
+
 SETTING_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "models",
@@ -255,7 +319,19 @@ def _grouped_settings(rows: list[dict]) -> list[dict]:
     falls into a trailing "other" group rather than vanishing, so adding
     a row to the registry can never silently remove it from the page.
     """
-    by_key = {row["key"]: row for row in rows}
+
+    def said(row: dict) -> dict:
+        """One row, with the words a person reads it by.
+
+        A key nobody has written words for keeps its machine name and
+        says nothing about itself -- which is honest, and visibly worse
+        than the rows beside it, so the gap asks to be filled rather
+        than hiding.
+        """
+        name, does = SETTING_WORDS.get(row["key"], (row["key"], ""))
+        return {**row, "name": name, "does": does}
+
+    by_key = {row["key"]: said(row) for row in rows}
     grouped: list[dict] = []
     claimed: set[str] = set()
     for name, hint, keys in SETTING_GROUPS:
@@ -263,7 +339,7 @@ def _grouped_settings(rows: list[dict]) -> list[dict]:
         claimed.update(key for key in keys if key in by_key)
         if present:
             grouped.append({"name": name, "hint": hint, "rows": present})
-    rest = [row for row in rows if row["key"] not in claimed]
+    rest = [by_key[row["key"]] for row in rows if row["key"] not in claimed]
     if rest:
         grouped.append({"name": "other", "hint": "not yet filed under a heading", "rows": rest})
     return grouped

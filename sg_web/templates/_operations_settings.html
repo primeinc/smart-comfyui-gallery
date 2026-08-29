@@ -1,31 +1,64 @@
-<h2>settings</h2>
+{# What this library can be told to do differently.
+
+   Every row is one entry in db/settings.py REGISTRY, grouped by what it
+   is about (sg_web/operations.py SETTING_GROUPS) and NAMED in words a
+   person can decide from (SETTING_WORDS). `dupe_threshold: 4` tells you
+   the state of a variable; "how alike counts as the same picture" tells
+   you what happens if you move it.
+
+   The machine's key is kept beside the words rather than replaced by
+   them, because it is what the logs, the contract and every error
+   message call this thing -- somebody reading a failure has to be able
+   to get from the message back to the row. #}
+<header class="settings-head">
+  <h2>Settings</h2>
+  <p>Every one of these has a considered default. Nothing here needs touching for the library to work
+    &mdash; they are for when you want it to work differently.</p>
+</header>
 {% if notice %}<p id="shell-notice" class="shell-notice" data-shell-notice hx-swap-oob="true"><span data-notice>{{ notice }}</span></p>{% endif %}
-{# Grouped by what the row is about (sg_web/operations.py SETTING_GROUPS).
-   Flat, these were twelve full-width slabs in registry order, so the two
-   that belong together sat as far apart as the two that do not. #}
+
 {% for group in settings %}
-<section class="operations-group">
+<section class="settings-group">
   <h3>{{ group.name }}</h3>
-  <p class="operations-hint">{{ group.hint }}</p>
-  <ul class="operations-settings">
+  <p class="settings-about">{{ group.hint }}</p>
+
+  <ul class="settings-rows">
     {% for row in group.rows %}
-    <li data-setting="{{ row.key }}">
-      <form class="operations-form" hx-post="/operations/settings/{{ row.key }}" hx-target="#operations-settings" hx-swap="innerHTML">
-        <label>{{ row.key }}
+    <li class="settings-row" data-setting="{{ row.key }}">
+      <form class="settings-form" hx-post="/operations/settings/{{ row.key }}"
+            hx-target="#operations-settings" hx-swap="innerHTML">
+        <div class="settings-what">
+          <label for="setting-{{ row.key }}">{{ row.name }}</label>
+          {# Changed from what it ships as, said where the eye already
+             is. A row at its default needs no badge: that is the
+             quiet case and most rows are in it. #}
+          {% if row.value != row.default %}
+          <span class="settings-moved" title="the default is {{ row.default or 'empty' }}">changed</span>
+          {% endif %}
+          <code class="settings-key">{{ row.key }}</code>
+        </div>
+
+        {% if row.does %}<p class="settings-does">{{ row.does }}</p>{% endif %}
+
+        <div class="settings-set">
           {% if row.choices %}
-          <select name="value" aria-label="{{ row.key }}">
+          <select id="setting-{{ row.key }}" name="value">
             {% for choice in row.choices %}
             <option value="{{ choice }}"{% if choice == row.value %} selected{% endif %}>{{ choice }}</option>
             {% endfor %}
           </select>
           {% else %}
-          <input name="value" value="{{ row.value }}" aria-label="{{ row.key }}">
+          <input id="setting-{{ row.key }}" name="value" value="{{ row.value }}"
+                 {% if not row.value %}placeholder="{{ row.default or 'empty' }}"{% endif %}>
           {% endif %}
-        </label>
-        {# Saving a setting you have already typed is not the page's
-           headline act; it is available where the hand already is. #}
-        <button type="submit" class="operations-set">set</button>
-        {% if row.value != row.default %}<span class="operations-default">default {{ row.default or "(empty)" }}</span>{% endif %}
+          <button type="submit" class="operations-set">Set</button>
+          {# The way back. A person who has moved something and wants it
+             as it was should not have to know what it was. #}
+          {% if row.value != row.default %}
+          <button type="submit" name="value" value="{{ row.default }}" class="settings-restore"
+                  title="back to {{ row.default or 'empty' }}">Default</button>
+          {% endif %}
+        </div>
       </form>
     </li>
     {% endfor %}

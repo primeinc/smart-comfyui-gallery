@@ -71,13 +71,27 @@ def _state_of(frame: str) -> str:
 # --- the shell ---------------------------------------------------------------
 
 
-def test_the_front_link_is_the_gallery(served):
-    """A browser at `/` lands in the gallery; a machine gets the compact
-    library summary with a newest strip. The building entrance stopped
-    pointing at JSON."""
+def test_the_front_link_is_a_place_to_stand(served):
+    """A browser at `/` gets a front door -- a page, not a bounce; a
+    machine gets the compact library summary with a newest strip.
+
+    It used to redirect to `/g`, which answered "what is in this
+    library" with the whole library before asking whether that was the
+    question. Every door on the page is an address that already exists,
+    which is the property worth holding: the front door can never become
+    a second copy of a surface, only a way to it."""
     client, _ = served
     landed = client.get("/", headers={"accept": "text/html,application/xhtml+xml"}, follow_redirects=False)
-    assert (landed.status_code, landed.headers["location"]) == (302, "/g")
+    assert landed.status_code == 200, landed.text[:400]
+    assert 'class="stage front"' in landed.text
+
+    # Each door goes somewhere the application actually serves, and the
+    # page is a door rather than a dashboard: no tile is a number.
+    doors = re.findall(r'<a class="door[^"]*" href="([^"]+)"', landed.text)
+    assert doors, landed.text
+    for door in doors:
+        opened = client.get(door, headers={"accept": "text/html"}, follow_redirects=True)
+        assert opened.status_code == 200, f"the front door offers {door}, which answers {opened.status_code}"
 
     front = client.get("/").json()
     assert front["files"] == 3
@@ -405,7 +419,16 @@ def test_every_link_every_page_emits_lands_on_a_page(served):
         assert answer.status_code == 200, f"{where}: {answer.status_code} {answer.text[:200]}"
         kind = answer.headers["content-type"]
         assert kind.startswith("text/html"), f"{where} lands a person on {kind}"
-        assert '<nav class="shell"' in answer.text, f"{where} renders without the shell"
+        # A page a person lands on offers the way onward. Two shells do
+        # that: the rail on a page that scrolls, and the LAUNCHER on a
+        # surface that is one full-viewport canvas. The field cannot
+        # carry the rail -- a header above a camera and a pager below it
+        # is the canvas-in-a-box this surface exists to stop being -- so
+        # it carries the same destinations as a deck over the picture
+        # plane. What is being held here is that nowhere is a dead end,
+        # not that everywhere wears the same furniture.
+        onward = '<nav class="shell"' in answer.text or '<nav class="launcher"' in answer.text
+        assert onward, f"{where} renders with no way onward"
         queue.extend(link for link in _links(answer.text) if link not in seen)
     assert len(seen) >= 12, sorted(seen)
     _drained(client, [row["id"] for row in client.get("/jobs").json()])

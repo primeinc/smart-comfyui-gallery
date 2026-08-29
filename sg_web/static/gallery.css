@@ -7674,4 +7674,312 @@
       justify-content: center;
     }
   }
+
+  /* ==========================================================================
+   SETTINGS
+
+   Twelve rows of `label input set` was a form. This is a list of
+   decisions: what each one is called, what moving it does, what it is
+   set to, and -- only when somebody has moved it -- that it is no
+   longer what it ships as, with the way back beside it.
+
+   The reading order is deliberate. The NAME first, because that is what
+   you are looking for. What it DOES second, because that is what you
+   need before touching it. The control last, because you only reach it
+   once the first two have convinced you. The machine's key sits at the
+   end of the name line, quiet, for whoever arrived here from a log.
+   ========================================================================== */
+
+  .settings-head h2 {
+    margin: 0;
+    font-size: var(--t-h2);
+    font-weight: var(--w-strong);
+    letter-spacing: -0.02em;
+  }
+  .settings-head p {
+    margin: 6px 0 var(--s5);
+    max-width: 62ch;
+    font-size: var(--t-body);
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  .settings-group {
+    margin-bottom: var(--s6);
+  }
+  .settings-group h3 {
+    margin: 0;
+    font-size: var(--t-lead);
+    font-weight: var(--w-strong);
+    letter-spacing: -0.015em;
+    text-transform: capitalize;
+  }
+  .settings-about {
+    margin: 3px 0 var(--s4);
+    font-size: var(--t-small);
+    color: var(--ink-muted);
+  }
+
+  .settings-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+  }
+
+  /* One decision, in a panel of its own. Rows in a shared table put the
+   long explanation and the short one on the same line height and make
+   the page a wall; a card can be as tall as its own sentence. */
+  .settings-row {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: var(--s4);
+  }
+  .settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .settings-what {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s2);
+    flex-wrap: wrap;
+  }
+  .settings-what label {
+    font-size: var(--t-body);
+    font-weight: var(--w-strong);
+    color: var(--ink);
+  }
+  /* The machine's name for this, for whoever came from an error message.
+   Last on the line and at the faint tier: findable, never the headline. */
+  .settings-key {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: var(--t-mono-micro);
+    color: var(--ink-faint);
+  }
+  /* Moved from what it ships as. Orange, because that is this
+   application's colour for "something here is not the resting state". */
+  .settings-moved {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    font-size: var(--t-micro);
+    font-weight: var(--w-label);
+  }
+
+  .settings-does {
+    margin: 0;
+    max-width: 68ch;
+    font-size: var(--t-small);
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  .settings-set {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    margin-top: 2px;
+  }
+  .settings-set input,
+  .settings-set select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 34em;
+  }
+  .settings-restore {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 6px 11px;
+    color: var(--ink-muted);
+    font: var(--w-label) var(--t-small) / 1.2 var(--face);
+    cursor: pointer;
+  }
+  .settings-restore:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Narrow: the control takes the width and the buttons sit under it,
+   rather than three things fighting over 390px. */
+  @media (max-width: 640px) {
+    .settings-set {
+      flex-wrap: wrap;
+    }
+    .settings-set input,
+    .settings-set select {
+      flex: 1 1 100%;
+      max-width: none;
+    }
+    .settings-key {
+      margin-left: 0;
+      flex: 1 1 100%;
+    }
+  }
+
+  /* ==========================================================================
+   THE FRONT DOOR
+
+   A set of doors, not a dashboard. Each tile carries enough to know
+   whether it is the one you want, and nothing carries a number for its
+   own sake.
+
+   The grid is `auto-fit` over a minimum, so the composition answers to
+   its CONTAINER rather than to a guess about the viewport: three across
+   on a desk, two in a pane or a split window, one on a phone, and none
+   of those is a breakpoint anybody had to write.
+   ========================================================================== */
+
+  .front {
+    max-width: 1180px;
+  }
+  .front-head h1 {
+    margin: 0;
+    font-size: var(--t-display);
+    font-weight: var(--w-strong);
+    letter-spacing: -0.035em;
+    color: var(--ink);
+  }
+  .front-head h1 .num {
+    color: var(--brand);
+  }
+  .front-head p {
+    margin: 4px 0 var(--s6);
+    font-size: var(--t-lead);
+    color: var(--ink-muted);
+  }
+
+  .front-doors {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+    gap: var(--s4);
+  }
+
+  .door {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease);
+  }
+  .door:hover {
+    border-color: var(--brand);
+    transform: translateY(-2px);
+  }
+  /* `flex: none`, because these words are the door's whole point. As a
+     shrinkable flex item under a picture strip that wanted more height than
+     it declared, the label was squeezed to nothing and drawn back over the
+     pictures -- the hero read as an unlabelled collage with a caption
+     bleeding through it. */
+  .door-words {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: var(--s4);
+  }
+  .door-words b {
+    font-size: var(--t-lead);
+    font-weight: var(--w-strong);
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+  .door-words span {
+    font-size: var(--t-small);
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  /* The library is the hero: it is what this application IS, and it says
+   so by showing some of itself rather than printing its own row count. */
+  .door-wide {
+    grid-column: 1 / -1;
+  }
+  /* ONE row, however many fit. The covers are decorative -- the markup
+     marks them aria-hidden -- and their job is to say "a library" at a
+     glance, so a narrow door shows three of them rather than reflowing
+     eight into a block two rows deep.
+
+     One EXPLICIT row and implicit rows of no height is what holds that:
+     whatever auto-fit cannot fit on row one wraps onto a track of zero
+     height and is clipped. Both halves are load-bearing. Without the
+     explicit row every track is implicit, so the row is zero too and the
+     strip draws nothing; without the zero implicit rows the overflow row
+     sizes to its content, the images resolve `height: 100%` against an
+     auto track, and the strip grows past the height it declares and pushes
+     the label off the tile. */
+  .door-covers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    grid-template-rows: 1fr;
+    grid-auto-rows: 0;
+    gap: 2px;
+    height: 168px;
+    overflow: hidden;
+    background: var(--sunken);
+  }
+  .door-covers img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* The canvas door, marked as the other way of looking. Violet, because
+   in this application violet is where you are and where you can go. */
+  .door-canvas {
+    background: linear-gradient(160deg, color-mix(in srgb, var(--brand) 13%, var(--panel)), var(--panel));
+  }
+
+  /* The work that needs a person, in the colour that means "this is
+   happening" on every other surface. */
+  .door-needs {
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 13%, var(--panel)), var(--panel));
+  }
+  .door-needs:hover {
+    border-color: var(--accent);
+  }
+
+  /* The machine, at the foot and a different kind of thing: a strip
+   rather than a tile, because you come down here when something is
+   running or something broke, not to browse. */
+  .front-machine {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    margin-top: var(--s5);
+    padding: var(--s4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--sunken);
+    text-decoration: none;
+    color: inherit;
+    flex-wrap: wrap;
+  }
+  .front-machine:hover {
+    border-color: var(--line-strong);
+  }
+  .front-machine b {
+    font-size: var(--t-body);
+    font-weight: var(--w-strong);
+    color: var(--ink);
+  }
+  .front-machine > span:last-child {
+    font-size: var(--t-small);
+    color: var(--ink-muted);
+  }
 }

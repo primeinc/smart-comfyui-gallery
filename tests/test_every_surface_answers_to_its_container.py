@@ -56,6 +56,7 @@ FINGER = 44
 #: not surfaces; sglint SG010 keeps the register of what is deliberately
 #: unreachable, and this is what IS reachable.
 SURFACES = (
+    "/",
     "/g",
     "/field",
     "/timeline",

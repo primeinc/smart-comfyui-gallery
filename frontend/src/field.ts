@@ -35,7 +35,7 @@
 
 import { closestFrom, findElement } from "./dom";
 import { register } from "./keys";
-import { board as pinned, type Pin, pin as keep, unpin } from "./workspace";
+import { pin as keep, type Pin, board as pinned, unpin } from "./workspace";
 
 /** Below this on-screen width a picture is drawn as its own average
  *  colour: the thumbnail would be a smear, and ten thousand smears cost
