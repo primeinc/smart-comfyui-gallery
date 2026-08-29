@@ -38,6 +38,12 @@ A comment, docstring, README, or prose document is not evidence for a claim abou
 
 A comment that cannot be proven is shortened to the provable fact, or deleted.
 
+### Why citing beats reading
+
+One measurement existed in four files in three wrong versions. At 80,000 files `benchmarks/results/answer_currency.json` records `quiet_ms 0.179`, `answer_commit_ms 37.93`, `answer_factor 211.8`; `db/resultset.py`, `db/migrate.py` and `tests/test_an_answer_knows_when_it_is_stale.py` each said `0.18`, `38.26` and `214`. That last file also carried the 40,000-file row as `105.9` where the artifact records `98.4`.
+
+Every one was found by trying to source the number and failing. None was found by reading the prose and doubting it — each reads as confident and correct, and three of them agreed with each other. That is the argument for citing rather than for writing carefully: careful reading was never going to find them.
+
 ### Docstrings
 
 A docstring states a public API contract: accepted inputs, return values, raised errors, side effects, invariants, and externally imposed constraints.
@@ -49,3 +55,11 @@ The rules above apply to docstrings. A docstring is not a place for implementati
 `just check` and `just test` run on every commit through `lefthook.yml`. `just prove-push` runs on push. `just budget` holds each lane to the clock it was measured against.
 
 A check no hook runs does not gate anything. Wire a new check into the hook, and prove it can fail.
+
+### A test that passes alone and fails in parallel
+
+That is evidence of a race, not evidence against a defect. Serial execution beating a race is what a race looks like from outside.
+
+`test_every_picture_carries_the_correction` failed five pushes with `assert 1 == 3` and passed alone in 2.92s each time. It waited for `[data-person-pictures]`, the container, then counted `[data-person-picture]`, the shells that arrive inside it. The count read whatever had rendered. `expect(...).to_have_count()` retries, and was already on the next line for a different locator.
+
+Wait for the thing being asserted, not for its container. Reading does not catch this one either: the prose is right, the code is right, and only the ordering is wrong.
