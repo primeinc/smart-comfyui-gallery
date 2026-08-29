@@ -304,12 +304,9 @@ def _capture(scratch: pathlib.Path, staging: pathlib.Path) -> list[dict]:
                     for surface in _surfaces(slug):
                         url = surface["url"].replace("{checkpoint}", str(busiest))
                         page.goto(url, wait_until="networkidle")
-                        # Workspace state persists across navigation ON
-                        # PURPOSE, which means one capture's open drawer
-                        # followed it into the next nine. Each surface is
-                        # photographed from a person's default
-                        # arrangement, then arranges only what it is
-                        # about.
+                        # Workspace state persists across navigation ON PURPOSE, so
+                        # one capture's open drawer follows it into the next.
+                        # Each surface is photographed from the default arrangement.
                         page.evaluate("() => localStorage.removeItem('sg.workspace.v1')")
                         page.reload(wait_until="networkidle")
                         settle = surface.get("settle")

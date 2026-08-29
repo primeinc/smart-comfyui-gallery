@@ -28,15 +28,12 @@ REVISION = "main"
 #: captions are one sentence.
 MOST_TOKENS = 40
 
-#: How many pictures go through the model at once.
-#:
-#: Read off benchmarks/results/caption_batch.json, 48 real pictures on a
-#: 3070 Ti (`just bench captions` regenerates it): 3.62 pictures/sec at
-#: one, 12.81 at eight, 15.72 at sixteen, every float32 row reporting
-#: same_as_baseline 1.0 -- identical captions to the ones captioned alone.
-#: Sixteen is where the curve flattens; past it the batch is mostly a
-#: longer wait for whoever asked the job to stop, since cancellation is
-#: checked between items and a batch runs inside one.
+#: How many pictures go through the model at once: sixteen is where the curve
+#: flattens (benchmarks/results/caption_batch.json, `just bench captions`), every
+#: float32 row reporting same_as_baseline 1.0 against captioning alone.
+
+#: Past that a larger batch is mostly a longer wait for whoever asked the job to
+#: stop, since cancellation is checked between items and a batch runs inside one.
 BATCH = 16
 _WEIGHTS = ("model.safetensors", "pytorch_model.bin")
 _SNAPSHOT_FILES = ("config.json", "preprocessor_config.json", "tokenizer_config.json", "vocab.txt")
@@ -94,20 +91,13 @@ class BlipCaptioner:
         self.processor = BlipProcessor.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded = BlipForConditionalGeneration.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded.eval()
-        # Unbound, and the return value is discarded. Two separate facts:
-        #
-        # `loaded.to(...)` does not type check, because transformers
-        # decorates `Module.to` with a functools wrapper whose `__call__`
-        # still wants the model as its first argument -- the descriptor
-        # never binds, so the device string lands in the `self` slot.
-        #
-        # And the return has to go unused, because taking it costs the
-        # concrete class: `Module.to` is annotated to return Self, ty
-        # resolves that through the unbound call and pyrefly does not, so
-        # the assigned name becomes plain `Module` for one of the two and
-        # `self.model.generate` stops existing. Both calls mutate the
-        # module in place and hand back the same object, so `loaded` is
-        # already the moved model and keeps the type it was loaded with.
+        # Unbound: `loaded.to(...)` does not type check, because transformers
+        # decorates `Module.to` with a functools wrapper whose `__call__` still
+        # wants the model first, so the device string lands in the `self` slot.
+
+        # The return goes unused because taking it costs the concrete class --
+        # `Module.to` returns Self, which ty resolves through the unbound call
+        # and pyrefly does not. Both calls mutate in place and return the object.
         torch.nn.Module.to(loaded, self.device)
         # Half precision on CUDA only; on a CPU most of these kernels are
         # emulated and slower than float32. Batched, it raises throughput and

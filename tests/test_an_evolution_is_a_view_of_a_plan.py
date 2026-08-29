@@ -555,18 +555,20 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     assert view["links"]["search"].startswith("/search")
 
 
-# The only test here that changes the library on disk -- it replaces one file's
-# bytes and deletes another -- and `Stage.restore` compares the library's
-# (size, mtime) listing, so a mismatch sends the NEXT test down the rebuild path.
-#
-# It puts the library back rather than relying on running last, which no
-# ordering guarantees. Both mutations are recoverable: `_listing` keys on
-# (size, mtime), the bytes are known, and `os.utime` restores a stamp.
 def test_the_view_is_immune_to_the_live_library_moving_on(planned, request):
     """The relation changes, a file is replaced, a file is gone: the view
     over the frozen plan reads frozen hashes and frozen bytes only --
     the replacement's vector is never substituted, and what cannot be
-    measured says why."""
+    measured says why.
+
+    The only test here that changes the library on disk -- it replaces one
+    file's bytes and deletes another -- and `Stage.restore` compares the
+    library's (size, mtime) listing, so a mismatch sends the NEXT test down
+    the rebuild path. It puts the library back rather than relying on running
+    last, which no ordering guarantees; both mutations are recoverable, because
+    `_listing` keys on (size, mtime), the bytes are known, and `os.utime`
+    restores a stamp.
+    """
     client, root, _names, _snap, made = planned
     held = {at: ((root / at).read_bytes(), (root / at).stat()) for at in ("gen_1.png", "gen_2.png")}
 

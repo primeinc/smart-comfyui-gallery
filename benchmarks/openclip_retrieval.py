@@ -174,10 +174,9 @@ def compare(name: str, base_scores, base_order, other_scores, other_order, depth
         shared = [len(set(base_order[q, :depth]) & set(other_order[q, :depth])) / depth for q in range(queries)]
         overlaps[str(depth)] = round(float(np.mean(shared)), 6)
 
-    # Where each of the base top-k landed in the other ordering. Reported
-    # instead of a rank correlation because "the third result moved to
-    # fourth" is the thing a person would notice, and a correlation
-    # coefficient hides which end of the list moved.
+    # Where each of the base top-k landed in the other ordering, reported
+    # instead of a rank correlation: a correlation coefficient hides which end
+    # of the list moved.
     displacements = []
     for q in range(queries):
         landed = np.empty(other_order.shape[1], dtype=np.int64)
@@ -187,16 +186,12 @@ def compare(name: str, base_scores, base_order, other_scores, other_order, depth
 
     moved = np.abs(base_scores - other_scores)
 
-    # Adjacent pairs closer together than the drift are the ones that
-    # COULD swap, counted twice: over the whole ranking, and over the
-    # top-k alone.
-    #
-    # The whole-ranking number is nearly useless on its own and is
-    # reported to say so. Most items are far from any given query, so
-    # their scores bunch up in the tail and around 90% of all adjacent
-    # pairs sit inside the drift -- a swap between the 600th and 601st
-    # result is not a changed answer. The top-k count is the one that
-    # corresponds to something a person sees.
+    # Adjacent pairs closer together than the drift are the ones that COULD
+    # swap, counted twice: over the whole ranking, and over the top-k alone.
+
+    # Scores bunch up in the tail, so most of the whole-ranking count is pairs
+    # nobody sees; it is reported to say so, and the top-k count is the one
+    # that corresponds to something a person reads.
     close = swapped = 0
     close_top = swapped_top = 0
     for q in range(queries):

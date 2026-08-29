@@ -86,10 +86,9 @@ def _decoded(paths: list[str], bound: int | None):
 
     made = []
     for path in paths:
-        # Through vision/decode either way: `open_still` is what the job
-        # reaches (via `oriented.for_model`), and a bare `Image.open`
-        # would skip the plugin registration and the RAW reader, so the
-        # measurement would not be of this application's decode.
+        # Through vision/decode either way: `open_still` is what the job reaches
+        # (via `oriented.for_model`), and a bare `Image.open` would skip the
+        # plugin registration and the RAW reader.
         held = decode.open_still(path) if bound is None else decode.open_bounded(path, bound)
         made.append(held.convert("RGB"))
     return made
@@ -186,10 +185,9 @@ def main() -> None:
         nonlocal baseline
         want = torch.float16 if half else torch.float32
         if next(captioner.model.parameters()).dtype != want:
-            # Unbound and unassigned, exactly as vision/captions.py does
-            # and for the same two reasons: transformers' functools wrapper
-            # around `Module.to` never binds, and the call mutates in place,
-            # so taking its return would only cost the concrete class.
+            # Unbound and unassigned, exactly as vision/captions.py does and for
+            # the same reasons: transformers' functools wrapper around `Module.to`
+            # never binds, and the call mutates in place.
             torch.nn.Module.to(captioner.model, want)
         if captioner.device == "cuda":
             torch.cuda.reset_peak_memory_stats()

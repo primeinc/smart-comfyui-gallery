@@ -63,10 +63,9 @@ def staged(home: pathlib.Path, roots: list[pathlib.Path], limit: int):
         scan.scan(conn, root_id, str(root), 0.0)
     conn.commit()
 
-    # Every kind submit_embed will queue, not just stills: it takes
-    # image, animated_image AND video (db/runner.py submit_embed), so
-    # counting only stills here reported 100 staged against a job of 105
-    # and made the two numbers look unrelated.
+    # Every kind submit_embed will queue, not just stills: it takes image,
+    # animated_image AND video (db/runner.py submit_embed), so counting only
+    # stills here reports fewer staged than the job holds.
     kept = [
         row[0]
         for row in conn.execute(
@@ -151,9 +150,8 @@ SUBMITTERS = {
     "hash": lambda runner, conn, home, models: runner.submit_verify(conn, 0.0),
     "context": lambda runner, conn, home, models: runner.submit_context(conn, 0.0),
     # The captioner, whose phases are `decoding`, `batch-captioning` (or
-    # `captioning` for a clip or a lone item) and `recording` -- so the
-    # split says whether the model or the decode in front of it is what
-    # a caption now costs.
+    # `captioning` for a clip or a lone item) and `recording`, so the split says
+    # whether the model or the decode in front of it is what a caption costs.
     "annotate": lambda runner, conn, home, models: runner.submit_annotate(conn, 0.0, models_dir=models),
 }
 
@@ -176,10 +174,11 @@ def run(conn, models_dir: str, owner: str, job: str, home: pathlib.Path) -> dict
     def heard(event) -> None:
         # The runner's own vocabulary: an item settles as `item.done` or
         # `item.failed`, and its phases arrive as `item.observed`
-        # (db/runner.py:1186, :1206, :1242). Every report is spoken
-        # TWICE -- once marked `pending`, while the transaction that
-        # produced it may still roll back, and once as the committed
-        # ledger row (db/runner.py Report) -- and only the row counts.
+        # (db/runner.py:1186, :1206, :1242).
+
+        # Every report is spoken TWICE, once marked `pending` while its
+        # transaction may still roll back and once as the committed ledger row
+        # (db/runner.py Report), and only the row counts.
         if event.get("pending"):
             return
         kind = event.get("type")
@@ -368,11 +367,9 @@ def main() -> None:
             f" ({(found['wall_ms'] - inside) / found['wall_ms'] * 100:.0f}%)"
         )
     else:
-        # The ceiling is measured one picture at a time. A job that beats
-        # it is not doing less work, it is doing the same work on more
-        # than one thread -- so the subtraction stops meaning "overhead"
-        # and printing it as a negative percentage would be worse than
-        # saying nothing.
+        # The ceiling is measured one picture at a time, so a job that beats it
+        # is doing the same work on more than one thread. The subtraction stops
+        # meaning overhead there, and a negative percentage would say less.
         print(
             f"\n  the job takes {found['wall_ms']:.0f} ms where the same decode and encode measured ONE"
             f" AT A TIME take {inside:.0f} ms. The difference is not overhead; it is parallelism, and"

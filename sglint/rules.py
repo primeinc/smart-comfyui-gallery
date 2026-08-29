@@ -61,10 +61,9 @@ class Finding:
 #: can be read.
 _UNPARSEABLE: dict[pathlib.Path, str] = {}
 
-#: What a caller gets for a file that will not parse. Empty, so a rule
-#: walking it finds nothing rather than crashing -- and never silently:
-#: SG011 reports the file, so "no findings here" can only ever mean the
-#: file was read.
+#: What a caller gets for a file that will not parse. Empty, so a rule walking
+#: it finds nothing rather than crashing, and never silently -- SG011 reports
+#: the file, so "no findings here" can only mean the file was read.
 _NOTHING = ast.Module(body=[], type_ignores=[])
 
 
@@ -122,12 +121,9 @@ def rule_sources_parse(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     ]
 
 
-#: Walked trees, keyed on the tree itself.
-#:
-#: `ast.AST` hashes by identity, so the dict holds each tree alive for as
-#: long as it holds its walk -- which is what makes this sound. Keying on
-#: `id()` alone would not be: a control's tree is built from text and can
-#: be collected, and the next tree along can be handed the same id.
+#: Walked trees, keyed on the tree itself: `ast.AST` hashes by identity, so the
+#: dict holds each tree alive for as long as it holds its walk. Keying on `id()`
+#: would not, a collected tree's id being reusable by the next tree along.
 _WALKED: dict[ast.AST, tuple[ast.AST, ...]] = {}
 
 
@@ -303,16 +299,9 @@ def every_source() -> tuple[pathlib.Path, ...]:
     found: list[pathlib.Path] = []
     for current, subdirs, names in os.walk(REPO_ROOT):
         here = pathlib.Path(current)
-        # A virtualenv is not ours whatever it is CALLED. `NOT_OURS` named
-        # `.venv`, so a second environment beside it -- `.venv-compat`,
-        # built by another session -- was walked as repository source, and
-        # one third-party test file in it (mediapipe's
-        # text_embedder_test.py, which carries a partial-differential sign)
-        # killed the whole linter with a traceback naming `<unknown>`.
-        # Twenty-one rules over every other file stopped running because of
-        # a file we do not own and would never check. `pyvenv.cfg` is what
-        # makes a directory an environment (PEP 405), so that is what this
-        # asks rather than guessing at names.
+        # A virtualenv is not ours whatever it is CALLED: a second environment
+        # beside `.venv` walked as repository source can stop every rule on one
+        # third-party file. `pyvenv.cfg` makes a directory an environment (PEP 405).
         subdirs[:] = sorted(d for d in subdirs if d not in policy.NOT_OURS and not (here / d / "pyvenv.cfg").is_file())
         found.extend(here / name for name in sorted(names) if name.endswith(".py"))
     return tuple(found)
@@ -401,13 +390,12 @@ def rule_spawns(
     return found
 
 
-#: How a test inspects production SOURCE rather than exercising it, as
-#: (module, function): each is a linter wearing a pytest nametag -- it can
-#: fail without running the thing whose behaviour it claims.
-#:
-#: Qualified, and that matters: `parse` alone matched `facets.parse` and
-#: `resultset.parse` sixty-two times, which are the application's own
-#: functions being CALLED, the opposite of what this looks for.
+#: How a test inspects production SOURCE rather than exercising it, as (module,
+#: function): each is a linter wearing a pytest nametag, able to fail without
+#: running the thing whose behaviour it claims.
+
+#: Qualified, and that matters: `parse` alone also matches `facets.parse` and
+#: `resultset.parse`, the application's own functions being CALLED.
 _SOURCE_INSPECTION = {
     ("inspect", "getsource"): "asks Python for a function's source and searches it",
     ("inspect", "getsourcelines"): "asks Python for a function's source and searches it",
@@ -640,10 +628,9 @@ def rule_connection_lifetime(
     excused = policy.CONNECTION_KEPT if kept is None else kept
     held = [on_disk(one) for one in every_source()] if sources is None else list(sources)
     found: list[Finding] = []
-    #: Which files an excusal names. A module with no `connect` in it is
-    #: skipped below, and that skip must not take the stale-excusal
-    #: report with it: an entry naming a function that stopped opening
-    #: anything is exactly what that report exists to find.
+    #: Which files an excusal names. A module with no `connect` in it is skipped
+    #: below, and that skip must not take the stale-excusal report with it: an
+    #: entry naming a function that stopped opening anything is what it finds.
     excused_in = {one.rsplit(":", 1)[0] for one in excused}
     for source in held:
         # Nothing here binds the name `connect`, so nothing here can open one:
@@ -903,10 +890,8 @@ def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     # neither of which this sweep judges.
     templates = sorted((web / "templates").glob("*.html"))
     # frontend/src/generated is the browser's view of the application's own
-    # OpenAPI document. It is not authored, and it names every route the
-    # application serves -- including /search -- so sweeping it for the words
-    # a hand-written surface must not contain would fail on the contract
-    # itself rather than on anybody's code.
+    # OpenAPI document. It is not authored, and it names every route served --
+    # including /search -- so sweeping it would fail on the contract itself.
     scripts = sorted(p for p in authored.rglob("*.ts") if "generated" not in p.parts)
     found: list[Finding] = []
     for what, where, sources, minimum in (
@@ -929,10 +914,9 @@ def rule_surfaces(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
 
 #: The one module allowed to listen to the document for keystrokes.
 KEY_ROUTER = "keys.ts"
-#: Claiming keys for a whole surface, however it is spelled -- the direct
-#: listener, one through a module's own helper. An element-scoped listener
-#: (`swap.addEventListener("keydown", ...)`) is deliberately not matched:
-#: a key pressed inside one widget is that widget's business.
+#: Claiming keys for a whole surface, however it is spelled: the direct
+#: listener, or one through a module's own helper. An element-scoped listener is
+#: deliberately not matched -- a key inside one widget is that widget's business.
 _DOCUMENT_KEYDOWN = re.compile(r'(?:(?:document|window)\.addEventListener|onDocument)\(\s*"keydown"')
 
 
@@ -995,11 +979,9 @@ def _page_shapes(templates: typing.Iterable[pathlib.Path]) -> list[Finding]:
             continue
         if source.name == policy.SHELL_TEMPLATE or source.name in policy.OWN_DOCUMENT:
             continue
-        # Past any leading Jinja comment. The rule is that a page EXTENDS
-        # the shell, not that its first bytes are the tag -- and a page
-        # whose first lines say what it is and why was read as a page that
-        # extends nothing, which punishes the one habit this codebase most
-        # wants to encourage.
+        # Past any leading Jinja comment: the rule is that a page EXTENDS the
+        # shell, not that its first bytes are the tag. A page opening with what
+        # it is and why would otherwise read as a page that extends nothing.
         opens = held.lstrip()
         while opens.startswith("{#"):
             shut = opens.find("#}")
@@ -1012,17 +994,12 @@ def _page_shapes(templates: typing.Iterable[pathlib.Path]) -> list[Finding]:
             line = lowered[: lowered.index("<!doctype")].count("\n") + 1
             found.append(Finding(source, line, 0, "SG502", "a page carrying its own document; the shell owns it"))
 
-    # A recorded decision about a page that is gone says a choice was
-    # taken about something that does not exist, which is worse than no
-    # note at all.
-    #
-    # Against THIS REPOSITORY's templates, not against whatever set the
-    # caller passed. `_page_shapes` is handed arbitrary template lists --
-    # sglint's own tests build two files in a tmp_path to prove the rule
-    # bites -- and reading the record against those said `field.html is
-    # recorded but is not a template` about a directory that was never
-    # meant to hold it. A rule that fires on its own test fixtures is a
-    # rule nobody can trust the output of.
+    # A recorded decision about a page that is gone names something that does
+    # not exist, which is worse than no note at all.
+
+    # Against THIS REPOSITORY's templates, not the set the caller passed:
+    # `_page_shapes` is handed arbitrary template lists, sglint's own tests
+    # among them, and a rule that fires on its own fixtures says nothing.
     here = REPO_ROOT / "sg_web" / "templates"
     if here.is_dir():
         names = {source.name for source in here.glob("*.html")}
@@ -1141,10 +1118,9 @@ def _wire_contracts(sources: typing.Iterable[Source]) -> set[str]:
         for node in walked(source.tree):
             if isinstance(node, ast.ClassDef):
                 held = {base.id for base in node.bases if isinstance(base, ast.Name)}
-                # `class X(RootModel[Annotated[A | B, ...]])` is how a
-                # discriminated body is spelled: litestar takes a body only
-                # when the annotation is a model CLASS, so the union travels
-                # inside one. It is a contract when its arms are.
+                # `class X(RootModel[Annotated[A | B, ...]])` is how a discriminated
+                # body is spelled: litestar takes a body only when the annotation is
+                # a model CLASS, so the union travels inside one.
                 for base in node.bases:
                     if isinstance(base, ast.Subscript) and _annotation_name(base.value) == "RootModel":
                         held |= {one.id for one in ast.walk(base.slice) if isinstance(one, ast.Name)}

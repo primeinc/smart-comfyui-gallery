@@ -177,11 +177,12 @@ def sniff_path(path: str | os.PathLike[str]) -> tuple[str, str] | None:
         return None
 
 
-#: Content-Type per sniff token, for serving the bytes the sniff looked at.
-#: Types are the essence strings mimesniff itself matches on
-#: (whatwg/mimesniff@39aa535 mimesniff.bs:860-1360); the formats beyond the
-#: browser's set carry their registered types as immich serves them
-#: (immich-app/immich@f88fb62 server/src/utils/mime-types.ts).
+#: Content-Type per sniff token, for serving the bytes the sniff looked at: the
+#: essence strings mimesniff matches on (whatwg/mimesniff@39aa535
+#: mimesniff.bs:860-1360).
+
+#: The formats beyond the browser's set carry their registered types as immich
+#: serves them (immich-app/immich@f88fb62 server/src/utils/mime-types.ts).
 MIME = {
     "png": "image/png",
     "jpeg": "image/jpeg",

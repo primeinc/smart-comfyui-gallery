@@ -320,12 +320,9 @@ def rule_bundle_freshness(git: Git = real_git, root: pathlib.Path = REPO_ROOT) -
     at = root / "web.just"
     ran = recipe_commands(at.read_text(encoding="utf-8"), "fresh")
     found: list[Finding] = []
-    # TWO questions, because neither command answers both. `git diff`
-    # sees a rebuilt bundle nobody staged and deliberately not one that
-    # was staged -- which matters, since build/gate/add/commit is the
-    # ordinary flow and a gate refusing staged output could never be
-    # passed. `ls-files --others` is the only one that sees a file git
-    # was never told about.
+    # TWO questions, because neither command answers both. `git diff` sees a
+    # rebuilt bundle nobody staged and deliberately not one that was staged,
+    # and `ls-files --others` is the only one that sees an untracked file.
     if not any("ls-files --others" in line for line in ran):
         found.append(
             Finding(at, 1, 0, "SG811", "the freshness gate must ask `git ls-files --others` about untracked bundles")

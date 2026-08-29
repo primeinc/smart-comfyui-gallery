@@ -73,24 +73,22 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-#: Neighbours asked of the GPU before the CPU is consulted for a query
-#: that had more. Upstream's own default. A GPU index caps k at 2048 and
-#: selection cost climbs above about 512 (faiss.wiki Faiss-on-the-GPU,
-#: "Limitations"), so this already sits near the useful ceiling.
+#: Neighbours asked of the GPU before the CPU is consulted for a query that had
+#: more, which is upstream's own default. A GPU index caps k at 2048 and
+#: selection cost climbs above about 512 (faiss.wiki Faiss-on-the-GPU).
 GPU_K = 1024
 
-#: The hard device ceiling on k-selection: past it the GPU index refuses
-#: outright ("GPU index only supports min/max-K selection up to 2048",
-#: faiss/gpu/impl/IndexUtils.cu validateKSelect). A deeper search --
-#: retrieval asking for a whole scoped ranking -- serves from the CPU
-#: canonical, which computes the same exact flat answer with no ceiling.
+#: The hard device ceiling on k-selection: past it the GPU index refuses outright
+#: ("GPU index only supports min/max-K selection up to 2048",
+#: faiss/gpu/impl/IndexUtils.cu validateKSelect).
+
+#: A deeper search -- retrieval asking for a whole scoped ranking -- serves from
+#: the CPU canonical, which computes the same exact flat answer with no ceiling.
 GPU_MAX_K = 2048
 
-#: The ways a faiss capability fails to exist on a machine: no module, a
-#: DLL that will not load, an API the build lacks, no GPU, a SWIG-level
-#: refusal. Named so the device probe catches what "not available"
-#: actually raises and nothing more -- a genuine bug propagates instead
-#: of reading as absence.
+#: The ways a faiss capability fails to exist on a machine: no module, a DLL that
+#: will not load, an API the build lacks, no GPU, a SWIG-level refusal. Named so
+#: the probe catches only those and a genuine bug propagates.
 FALLIBLE = (ImportError, OSError, RuntimeError, AttributeError, ValueError, TypeError)
 
 
@@ -273,12 +271,12 @@ class IndexManager:
         except (RuntimeError, OSError) as why:
             _logger.warning("snapshot %s refused: %s unreadable: %s: %s", spec.key, index_path, type(why).__name__, why)
             return False
-        # read_index hands back the concrete class (faiss's out-typemap
-        # downcasts every Index*); this proxy owns the object, and a
-        # downcast_index() on it would be a second, non-owning proxy left
-        # pointing at freed memory once this one is collected. A snapshot
-        # that is not an id-mapped index is not this manager's snapshot,
-        # whatever the sidecar says.
+        # read_index hands back the concrete class (faiss's out-typemap downcasts
+        # every Index*), and this proxy owns the object, so a downcast_index() on
+        # it would point at freed memory once this one is collected.
+
+        # A snapshot that is not an id-mapped index is not this manager's
+        # snapshot, whatever the sidecar says.
         if not isinstance(index, (faiss.IndexIDMap, faiss.IndexBinaryIDMap)):
             _logger.warning(
                 "snapshot %s refused: %s holds a %s, not an id-mapped index", spec.key, index_path, type(index).__name__
@@ -500,10 +498,9 @@ class IndexManager:
 
                 inner = space.index.index
                 with self._gpu_lock:
-                    # `inner` as the CPU fallback rather than None: contrib
-                    # runs a CPU range pass for queries whose k-th neighbour
-                    # still cleared the radius, which is what makes this
-                    # exact instead of a top-k approximation.
+                    # `inner` as the CPU fallback rather than None: contrib runs a
+                    # CPU range pass for queries whose k-th neighbour still cleared
+                    # the radius, which makes this exact and not a top-k guess.
                     lims, distances, positions = range_search_gpu(unit, _inclusive(radius), device, inner, gpu_k=GPU_K)
                 held = self.ids(key)
                 self._served[key] = "faiss-gpu"
@@ -544,10 +541,9 @@ class IndexManager:
             with self._gpu_lock:
                 if self._resources is None:
                     resources = faiss.StandardGpuResources()
-                    # Both from the wiki's brute-force page: FAISS orders its
-                    # work on a non-default CUDA stream, so results are read
-                    # before kernels finish without this; and the default
-                    # scratch reservation is sized for indexed search.
+                    # Both from the wiki's brute-force page: FAISS orders its work
+                    # on a non-default CUDA stream, so without this results are read
+                    # before kernels finish, and the default scratch is oversized.
                     resources.setDefaultNullStreamAllDevices()
                     resources.setTempMemory(64 * 1024 * 1024)
                     self._resources = resources

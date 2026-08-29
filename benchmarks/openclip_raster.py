@@ -220,17 +220,12 @@ def main() -> None:
         vectors, ms, sizes = encoded(backend, files, bound)
         drift = float(np.abs(vectors - whole).max())
         by_text = agreement(whole, vectors, text, (1, 20))
-        # Two conditions, and they answer different questions.
-        #
-        # MIXED: the full-decode vectors already in the index, asked
-        # against a bounded one. That is what happens if a bound ships
-        # and nothing is re-embedded.
-        #
-        # MIGRATED: every vector bounded, queries included, compared with
-        # every vector whole. That is what happens if a bound ships AND
-        # the library is re-embedded, and it is the fairer test of
-        # whether the smaller raster is a worse picture or merely a
-        # different one.
+        # MIXED: the full-decode vectors already in the index, asked against a
+        # bounded one -- what happens if a bound ships and nothing is re-embedded.
+
+        # MIGRATED: every vector bounded, queries included, against every vector
+        # whole -- what happens if a bound ships and the library is re-embedded,
+        # and the fairer test of whether the smaller raster is a worse picture.
         mixed = agreement(whole, vectors, whole, (1, 20))
         migrated = neighbours_agree(whole, vectors, (1, 20))
         rows[str(bound)] = {

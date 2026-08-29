@@ -20,10 +20,9 @@ from PIL import Image
 from db import authored, derived, detect, library, scan
 from tests.staging import NOW, fresh_schema
 
-#: One InsightFace detection, as `vision/faces.py` builds it. Upstream hands
-#: pose back as an array ordered [pitch, yaw, roll] (deepinsight/insightface
-#: model_zoo/landmark.py:111); it is keyed here because the three values are
-#: interchangeable-looking degrees and these columns are yaw-first.
+#: One InsightFace detection, as `vision/faces.py` builds it. Pose is keyed here
+#: because upstream returns [pitch, yaw, roll] as an array and these columns are
+#: yaw-first (deepinsight/insightface model_zoo/landmark.py:111).
 TRAITS = {
     "age": 27,
     "sex": "male",

@@ -452,10 +452,9 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 # --- the grid, over real files --------------------------------
                 page = watched_page()
                 rows = web.get("/roots").json()
-                # Read-only by construction (mode=ro): picks WHICH files to
-                # photograph (there is no listing route yet); every pixel
-                # still arrives over HTTP. `closing`, because sqlite3's
-                # context manager manages transactions, not the connection.
+                # Read-only by construction (mode=ro): it picks WHICH files to
+                # photograph, and every pixel still arrives over HTTP. `closing`,
+                # because sqlite3's context manager manages transactions.
                 from db import connect
 
                 with contextlib.closing(connect.connect(home / "gallery.db", read_only=True)) as conn:
@@ -526,11 +525,10 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 page.close()
 
                 # --- one picture opened, and the radius dial ------------------
+
                 # Driven by the app alone: /dupes names the groups, /i/<slug>
-                # names each group's bodies with their measured distances, and
-                # the threshold is a live setting exercised over its own
-                # route. The driver never identifies a file itself -- what
-                # joined, what stayed out, and at which radius is testimony.
+                # names each group's bodies with their distances, and the threshold
+                # is a live setting. The driver never identifies a file itself.
                 page = watched_page()
                 page.evaluate(
                     "(feed) => { window.__got = [];"
@@ -589,19 +587,16 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                     f"</div></div>"
                 )
 
-                # The dial, turned live. A body that joins the shown picture a
-                # few bits out is a copy the default radius missed (the crops
-                # land here); a radius that fuses groups the default keeps
-                # apart is the dial turned too far -- both read straight
-                # off the shelf.
+                # The dial, turned live. A body that joins a few bits out is a copy
+                # the default radius missed, and a radius that fuses groups the
+                # default keeps apart is the dial turned too far.
                 ladder: list[dict] = []
                 for radius in (8, 12, 16, 24):
                     regrouped = regroup(radius)
                     wider = members_of(regrouped)
-                    # Follow the shown picture by MEMBERSHIP, not by its best:
-                    # a merged group crowns whichever body has the most pixels,
-                    # so tracking the old best's slug loses the group the
-                    # moment the dial makes it interesting.
+                    # Follow the shown picture by MEMBERSHIP, not by its best: a
+                    # merged group crowns whichever body has the most pixels, so
+                    # the old best's slug loses the group as the dial widens.
                     grew = next((body for body in wider.values() if shown.keys() & body.keys()), {})
                     joined = sorted(
                         [(name, bits) for name, bits in grew.items() if name not in shown],

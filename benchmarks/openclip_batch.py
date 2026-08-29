@@ -208,11 +208,9 @@ def measure(backend, pictures: list, size: int, workers: int, repeats: int, *, o
         "peak_vram_mb": round(torch.cuda.max_memory_allocated() / 1e6, 1) if on_cuda else None,
     }
     if overlap:
-        # NOT reported as preprocess and inference. In this mode the two
-        # run at once, so there is one composed region and no honest way
-        # to split it from the outside; reporting `preprocess 0.0` beside
-        # an `inference` that is really the whole pipeline reads as an
-        # encoder that got slower.
+        # NOT reported as preprocess and inference: in this mode the two run at
+        # once, so there is one composed region and no honest way to split it.
+        # A zero preprocess beside a whole-pipeline inference reads as a slowdown.
         row["pipeline_ms"] = round(pipeline * 1000, 1)
     else:
         row["preprocess_ms"] = round(preprocess * 1000, 1)
@@ -262,10 +260,9 @@ def main() -> None:
     megapixels = sorted(picture.size[0] * picture.size[1] / 1e6 for picture in pictures)
     print(f"source megapixels: median {megapixels[len(megapixels) // 2]:.2f}, largest {megapixels[-1]:.2f}")
     if len(pictures) < asked.count:
-        # Cycled to reach the target. Honest for encoder throughput --
-        # the pictures are already decoded and resident, and neither the
-        # transform nor the GPU cares that it has seen one before -- and
-        # it is the only way to sweep a batch larger than the population.
+        # Cycled to reach the target: the pictures are already decoded and
+        # resident, and neither the transform nor the GPU cares that it has seen
+        # one before. It is the only way to sweep a batch past the population.
         whole = list(pictures)
         pictures = list(itertools.islice(itertools.cycle(whole), asked.count))
         print(f"cycled {len(whole)} distinct pictures up to {len(pictures)} to sweep larger batches")
@@ -333,10 +330,9 @@ def main() -> None:
         within = [row["batch"] for row in plateau if row["images_per_second"] >= best_of * 0.95]
         print(f"  -> sequential plateau from batch {min(within)}: {min(within)}-{max(within)} are within 5%")
 
-    # 3. the same, with preprocessing and inference overlapped. Fixed
-    #    sizes, not ones derived from the sequential winner: run to run
-    #    the sequential plateau moves around inside 400-460 img/sec, so
-    #    picking from it printed whichever batch won the noise, twice.
+    # 3. the same, with preprocessing and inference overlapped. Fixed sizes,
+    #    not ones derived from the sequential winner, whose plateau moves
+    #    run to run and would print whichever batch won the noise.
     print()
     for size in OVERLAP_BATCHES:
         if size > len(pictures):
@@ -345,10 +341,9 @@ def main() -> None:
             torch.cuda.reset_peak_memory_stats()
         show(measure(backend, pictures, size, best_workers, asked.repeats, overlap=True))
 
-    # A2: the threaded preprocess must produce the SAME TENSORS, not
-    # merely call the same function. Asserting equivalence from a shared
-    # function name is how a "semantics-free" optimisation stops being
-    # one, so this compares bytes.
+    # A2: the threaded preprocess must produce the SAME TENSORS, not merely
+    # call the same function. Asserting equivalence from a shared function name
+    # is how a semantics-free optimisation stops being one, so this compares bytes.
     print()
     print("preprocessed tensors, serial against threaded:")
     serial = [backend.preprocess(picture) for picture in pictures[:64]]

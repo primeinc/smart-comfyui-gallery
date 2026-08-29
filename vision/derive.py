@@ -103,27 +103,23 @@ def stand_aside(patience: float = PATIENCE) -> None:
     _WAITING.nobody.wait(patience)
 
 
-# pyvips logs every operation at INFO -- "reducev: 15 point mask",
-# "threadpool completed with 3 workers" -- which is a dozen lines per
-# thumbnail. That is a library's debugging channel rather than this
-# program's output, so it is raised to WARNING: anything that goes wrong
-# still arrives, and turning it back down is one line.
+# pyvips logs every operation at INFO -- "reducev: 15 point mask" -- which is a
+# dozen lines per thumbnail. That is a library's debugging channel rather than
+# this program's output, so it is raised to WARNING and nothing else changes.
 logging.getLogger("pyvips").setLevel(logging.WARNING)
 
-#: A libvips image. Deliberately not `pyvips.Image`: pyvips builds every
-#: operation at runtime from libvips' own introspection, and the package
+#: pyvips builds every operation at runtime from libvips' own introspection and
 #: ships neither stubs nor py.typed, so `rot`, `thumbnail_image` and
 #: `webpsave_buffer` do not exist as far as a type checker is concerned.
-#: Annotating them as `pyvips.Image` states something untrue and fails;
-#: a named alias says dynamic-on-purpose where a bare Any looks careless.
-#: `pyvips.Image.thumbnail` and `pyvips.Error` below are real attributes
-#: and are used as themselves.
+
+#: A libvips image, deliberately not `pyvips.Image`: a named alias says
+#: dynamic-on-purpose where a bare Any looks careless. `pyvips.Image.thumbnail`
+#: and `pyvips.Error` below are real attributes and are used as themselves.
 type Raster = typing.Any
 
-#: EXIF orientation -> the turn libvips must make. db/oriented.TURNS is the
-#: same mapping for Pillow and the two are NOT interchangeable: `rot`
-#: angles are clockwise where Pillow's ROTATE_* are counter-clockwise, so
-#: 6 and 8 swap. One fixture proves both.
+#: EXIF orientation -> the turn libvips must make. db/oriented.TURNS is the same
+#: mapping for Pillow and the two are NOT interchangeable: `rot` angles are
+#: clockwise where Pillow's ROTATE_* are counter-clockwise, so 6 and 8 swap.
 TURNS = {
     2: ("flip", "horizontal"),
     3: ("rot", "d180"),
@@ -175,12 +171,13 @@ def opened(path: pathlib.Path, want: int, orientation: int | None) -> Raster | N
     """
     try:
         loaded = pyvips.Image.thumbnail(os.fspath(path), want, size="down", no_rotate=True)
-        # Materialised because a `thumbnail` pipeline reads sequentially
-        # and may be consumed once -- encoding it and then deriving the
-        # smaller variant from the same object fails with "out of order
-        # read". At the preview edge it is the largest thing held either
-        # way, and it beats reading the file twice, because PNG has no
-        # shrink-on-load to make a second read cheap.
+        # Materialised because a `thumbnail` pipeline reads sequentially and may
+        # be consumed once: encoding it and then deriving the smaller variant
+        # from the same object fails with "out of order read".
+
+        # It beats reading the file twice, PNG having no shrink-on-load to make
+        # a second read cheap, and at the preview edge this is the largest thing
+        # held either way.
         return upright(loaded, orientation).copy_memory()
     except pyvips.Error as why:
         _logger.debug("%s: libvips will not read this, using Pillow: %s", path, why)

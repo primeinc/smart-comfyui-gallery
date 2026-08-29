@@ -63,17 +63,13 @@ class MediaRef:
     path: str
     kind: str  # 'image' | 'animated_image' | 'video'
     frame: Callable[[], Any]
-    #: Name the stretch of work about to happen, so the job's own ledger
-    #: can say where an item's time went. An adapter calls
-    #: `media.phase("preprocess")` and the runner turns that into a
-    #: `phase.finished` row carrying its duration.
-    #:
-    #: Passed IN rather than reached for, because the reporter lives in
-    #: db/runner.py and this package must not import db -- db/oriented.py
-    #: already imports vision/decode, and a link the other way would
-    #: close the loop. The default does nothing, so an adapter used
-    #: outside a job, or a test that builds a MediaRef by hand, needs no
-    #: reporter and no branch.
+    #: Name the stretch of work about to happen, so the job's ledger can say
+    #: where an item's time went: an adapter calls `media.phase("preprocess")`
+    #: and the runner turns that into a `phase.finished` row with its duration.
+
+    #: Passed IN because the reporter lives in db/runner.py and this package must
+    #: not import db, which db/oriented.py already imports the other way. The
+    #: default does nothing, so a MediaRef built by hand needs no reporter.
     phase: Callable[..., None] = lambda name, **data: None
 
 

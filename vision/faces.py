@@ -48,10 +48,9 @@ class BackendUnavailable(LookupError):
     (db/runner.py ITEM_FAILURES) instead of dying and retrying forever."""
 
 
-# insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate()
-# API; skimage 0.26 deprecates it with a FutureWarning that fires on
-# every alignment. Silence exactly that warning at its source module —
-# every other warning stays visible.
+# insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate() API, and
+# skimage 0.26 deprecates it with a FutureWarning that fires on every alignment.
+# Exactly that warning is silenced at its source module; every other stays.
 warnings.filterwarnings(
     "ignore", category=FutureWarning, module=r"insightface\.utils\.face_align", message=r".*`estimate` is deprecated.*"
 )
@@ -139,11 +138,9 @@ class FaceDetection:
             self.dim = arr.shape[0]
 
 
-#: The shared operating point both backends construct with -- one edit
-#: moves it. `DEFAULT_MIN_DET_SCORE` is the detector-confidence floor;
-#: `DEFAULT_MIN_FACE_PX` is the noise-floor face size: YuNet detects
-#: down to ~10px, and boxes near that floor are featureless, embed into
-#: one generic region, and chain unrelated clusters together.
+#: The shared operating point both backends construct with -- one edit moves it.
+#: `DEFAULT_MIN_DET_SCORE` is the detector-confidence floor; `DEFAULT_MIN_FACE_PX`
+#: is the noise floor, below which boxes chain unrelated clusters together.
 DEFAULT_MIN_DET_SCORE = 0.5
 DEFAULT_MIN_FACE_PX = 24
 
@@ -155,9 +152,8 @@ class FaceBackend(ABC):
     model_version: str  # scopes stored instances and clusters; versions never mix
     default_cluster_threshold: float = 0.55  # per-embedder operating point
     # No face backend declares itself callable from two threads at once:
-    # cv2.FaceDetectorYN and insightface's FaceAnalysis both carry per-call
-    # state inside the native object, so a caller that shares one instance
-    # across threads must hold it exclusively while it runs.
+    # cv2.FaceDetectorYN and insightface's FaceAnalysis both carry per-call state
+    # inside the native object, so a shared instance is held exclusively.
     thread_safe: bool = False
 
     @abstractmethod
@@ -184,10 +180,9 @@ class StubFaceBackend(FaceBackend):
     def detect(self, img: Image.Image) -> list:
         """Replay the pre-programmed detections for `img`; unknown images
         detect as no faces."""
-        # Narrowed on Mapping rather than on `callable`: asking whether
-        # something is callable narrows to "some callable" and loses the
-        # signature, so the call below could not be checked at all. A
-        # Mapping is the half with a runtime-checkable ABC.
+        # Narrowed on Mapping rather than on `callable`: asking whether something
+        # is callable narrows to "some callable" and loses the signature, so the
+        # call below could not be checked. A Mapping has a runtime-checkable ABC.
         if isinstance(self._source, Mapping):
             return list(self._source.get(image_key(img), []))
         return list(self._source(img))
@@ -291,33 +286,17 @@ class OpenCVFaceBackend(FaceBackend):
         self._embedder = embedder
         self.model_id = f"opencv/yunet+{embedder}"
         # The detection cap is part of the version because it changes the
-        # vectors. It was baked in as the literal "ms1600" while
-        # detect_max_side stayed a runtime knob, so a cap of 800 produced
-        # embeddings from a different preprocessing pipeline under a
-        # string claiming 1600.
-        # invalidation.is_stale compares version strings exactly, so nothing
-        # re-indexed, and cluster_faces then built one cosine graph over two
-        # incompatible regimes -- undetectable by _single_dim, since the
-        # dimension does not change. The two regimes are not
-        # interchangeable: over the same 824 faces the >=300px band recalls
-        # 0.5534 uncapped against 0.9709 at 1600
-        # (benchmarks/results/face_detection_recall_native.json and
-        # face_detection_recall_ms1600.json).
+        # vectors, and invalidation.is_stale compares version strings exactly.
+        # A cap left out of the string lets one cosine graph span two regimes.
         base = "yunet-2023mar+arcface-glintr100" if embedder == "arcface" else "yunet-2023mar+sface-2021dec-v2"
         self.model_version = f"{base}-ms{detect_max_side}"
-        # 0.48 is what the pipeline benchmark selects on its own. Over the
-        # KYC dataset (7 known identities, truth held only in memory so no
-        # path can leak it), `just bench faces-validate` sweeps method x
-        # threshold and records both `chosen` and `labels_best` as
-        # chinese-whispers at 0.48 -- benchmarks/results/face_pipeline_validation.json.
-        #
-        # 0.40, 0.48 and 0.55 all reach pair_f1 1.0 there; 0.48 and 0.40
-        # leave fewer faces alone than 0.55 (alone_share 0.032 against
-        # 0.043), and 0.60 breaks a cluster (pair_f1 0.9826). So the band is
-        # wide and 0.48 sits inside it rather than on an edge.
-        #
-        # sface takes 0.55: a different embedder with its own geometry, and
-        # that sweep is not in this file's evidence.
+        # 0.48 is what `just bench faces-validate` selects on its own, recording
+        # `chosen` and `labels_best` as chinese-whispers at 0.48
+        # (benchmarks/results/face_pipeline_validation.json).
+
+        # The band there is wide: 0.40, 0.48 and 0.55 all reach pair_f1 1.0 and
+        # 0.60 breaks a cluster, so 0.48 sits inside it rather than on an edge.
+        # sface takes 0.55, a different embedder whose sweep is not that file.
         self.default_cluster_threshold = 0.48 if embedder == "arcface" else 0.55
         # Model creation logs native "setPreferableTarget ... not supported"
         # WARNs from inside OpenCV on some builds; not actionable, so hold
@@ -380,10 +359,9 @@ class OpenCVFaceBackend(FaceBackend):
                 continue
             landmarks_px = row[4:14].reshape(5, 2)
             if self._arcface is not None:
-                # ArcFace contract (insightface arcface_onnx.py get_feat):
-                # canonical 112x112 norm_crop, then blob with mean/std
-                # 127.5 and BGR->RGB swap; 512-d output, cosine-ready
-                # after normalization downstream.
+                # ArcFace contract (insightface arcface_onnx.py get_feat): canonical
+                # 112x112 norm_crop, then blob with mean/std 127.5 and BGR->RGB
+                # swap; 512-d output, cosine-ready after normalization downstream.
                 aligned = _arcface_norm_crop(bgr, landmarks_px)
                 blob = cv2.dnn.blobFromImage(aligned, 1.0 / 127.5, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
                 self._arcface.setInput(blob)
@@ -468,10 +446,9 @@ class InsightFaceBackend(FaceBackend):
             return []
         detections = []
         for face in self._app.get(bgr):
-            # insightface leaves both optional on its Face record. A
-            # detection without a box or a confidence is not a detection
-            # this pipeline can place or rank, so it is dropped here
-            # rather than raising four frames later.
+            # insightface leaves both optional on its Face record. A detection
+            # without a box or a confidence cannot be placed or ranked, so it is
+            # dropped here rather than raising four frames later.
             if face.det_score is None or face.bbox is None:
                 continue
             score = float(face.det_score)
@@ -491,20 +468,13 @@ class InsightFaceBackend(FaceBackend):
             if face.gender is not None and face.age is not None:
                 attributes["age"] = int(face.age)
                 attributes["sex"] = sex_word(face.sex)
-            # Not rounded. These were `round(x, 5)` on the normalized
-            # coordinate and `round(deg, 2)` on the pose, which is a lossy
-            # transform with nothing on the other side of the trade: half of
-            # one unit in the 5th decimal is 5e-6 of the frame, and on a
-            # 6528 px photograph that discards up to 0.033 source pixels
-            # before anything has been asked of the value.
-            #
-            # Measured, by `compat/consumers/gallery_storage.py`: it cost
-            # `landmark_2d_106` up to 0.0322 px, `landmark_3d_68` up to
-            # 0.0320, and `pose` up to 0.0034 degrees, on every face this
-            # application has ever stored. A normalized float64 round trip is
-            # exact for a float32 source, so keeping the full value costs
-            # some JSON width and conserves the producer's measurement
-            # outright.
+            # Not rounded: 5 decimals on a normalized coordinate discards up to
+            # 0.033 source pixels on a 6528 px photograph, measured at up to
+            # 0.0322 px and 0.0034 degrees (compat/consumers/gallery_storage.py).
+
+            # A normalized float64 round trip is exact for a float32 source, so
+            # the full value costs some JSON width and conserves the producer's
+            # measurement outright.
             lmk106 = face.get("landmark_2d_106")
             if lmk106 is not None:
                 attributes["landmark_2d_106"] = [
@@ -580,7 +550,21 @@ def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: 
     over the antelopev2 pack -- the run's copy, the shared ~/.insightface,
     or (provisioning) insightface's own download into the run's copy --
     cached per (root, providers). Raises `BackendUnavailable` when the
-    package or the pack is missing."""
+    package or the pack is missing.
+
+    Every pack head loads: genderage (age/sex), 2d106det (dense 106-pt 2D
+    landmarks), 1k3d68 (3D 68-pt + pitch/yaw/roll pose). 1k3d68 is the expensive
+    one to keep first-class: 143,607,619 bytes on disk against 5,030,888 for
+    2d106det and 1,322,532 for genderage (antelopev2 pack). Those are file sizes,
+    not the resident size of the ORT sessions they become.
+
+    Providers are per stage, and the split is structural: detection runs dynamic
+    input shapes (SCRFD '?' dims), where the CUDA EP re-tunes conv algorithms per
+    distinct shape; recognition is a ResNet100 at a fixed 112x112, which gives the
+    EP one shape to tune once. So detection and genderage stay on CPU and the
+    recognition session gets _ort_providers(providers) -- CUDA when the installed
+    build offers it, with the ort_providers setting overriding.
+    """
     try:
         from insightface.app import FaceAnalysis
     except Exception as exc:
@@ -598,22 +582,9 @@ def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: 
     if cache_key in _insightface_apps:
         return _insightface_apps[cache_key]
     try:
-        # Every pack head loads: genderage (age/sex), 2d106det (dense
-        # 106-pt 2D landmarks), 1k3d68 (3D 68-pt + pitch/yaw/roll pose).
-        # All of it persists per face in FaceDetection.attributes.
-        #
-        # 1k3d68 is the expensive one to keep first-class: 143,607,619 bytes
-        # on disk against 5,030,888 for 2d106det and 1,322,532 for genderage
-        # (antelopev2 pack). Those are file sizes, not the resident size of
-        # the ORT sessions they become.
-        #
-        # Providers are per stage, and the split is structural: detection
-        # runs dynamic input shapes (SCRFD '?' dims), where the CUDA EP
-        # re-tunes conv algorithms per distinct shape; recognition is a
-        # ResNet100 at a fixed 112x112, which gives the EP one shape to tune
-        # once. So detection + genderage stay on CPU and the recognition
-        # session gets _ort_providers(providers) (CUDA when the installed
-        # build offers it; the ort_providers setting overrides).
+        # Every pack head loads, and all of it persists per face in
+        # FaceDetection.attributes -- see the docstring for the cost of
+        # 1k3d68 and for why the providers are split per stage.
         app = FaceAnalysis(
             name=weights_module.PACK,
             root=root,

@@ -69,10 +69,10 @@ def _register_cuda_dll_dirs() -> int:
     """
     registered = 0
     # Windows-only, said here and not only at the call site:
-    # `os.add_dll_directory` exists on no other platform, and a
-    # precondition that lives in the caller is one a second caller does
-    # not have. `import_faiss` still gates on the same test. Written as
-    # the positive test around the body rather than an early return
+    # `os.add_dll_directory` exists on no other platform, and `import_faiss`
+    # gates on the same test.
+
+    # Written as the positive test around the body rather than an early return,
     # because that is the shape both type checkers narrow on.
     if sys.platform == "win32":
         for d in _cuda_dll_dirs():
@@ -121,13 +121,9 @@ def import_faiss(gpu: bool = True):
             import faiss
 
         except (Exception, SystemExit):
-            # missing CUDA wheel DLLs, wrong arch, partial vendor dir --
-            # purge the half-imported package and fall back to faiss-cpu.
-            # WARNING, not debug: the worker sets this package's logger to
-            # INFO, so a debug line here made the one thing worth saying
-            # invisible. The GPU index quietly becomes a CPU one and only
-            # the speed says so, on a machine that shipped 104,797,658
-            # bytes of binaries specifically to avoid that.
+            # Missing CUDA wheel DLLs, wrong arch, partial vendor dir: purge the
+            # half-imported package and fall back to faiss-cpu. WARNING, not debug,
+            # the worker setting this package's logger to INFO.
             _logger.warning(
                 "the vendored GPU faiss did not load; using faiss-cpu. Its CUDA runtime DLLs "
                 "normally come from the installed torch's lib directory (a CUDA build ships "
@@ -140,12 +136,9 @@ def import_faiss(gpu: bool = True):
                 del sys.modules[name]
             importlib.invalidate_caches()
         else:
-            # Say what actually loaded, next to the noise: the vendored
-            # package's own upstream loader first probes swigfaiss_avx2 and
-            # logs the miss at INFO ("Could not load library with AVX2
-            # support") before loading its real binary. That reads like a
-            # degraded fallback; it is not -- the CUDA wheel simply ships
-            # no AVX2 sub-module, because its main binary IS the build.
+            # Say what actually loaded, next to the noise: the vendored package's
+            # upstream loader probes swigfaiss_avx2 and logs the miss at INFO. That
+            # is no fallback -- the CUDA wheel's main binary IS the build.
             _logger.info(
                 "vendored GPU faiss loaded from %s (%d CUDA device(s)); the loader's AVX2 lines "
                 "above are its probe order, not a fallback",
@@ -157,13 +150,9 @@ def import_faiss(gpu: bool = True):
             with contextlib.suppress(ValueError):
                 sys.path.remove(_VENDOR_ROOT)
 
-    # Either the vendored build was not eligible or it failed to load. Both
-    # land here, on the installed faiss-cpu, and both need their own import:
-    # the one above binds `faiss` as a local, so reaching this line without
-    # it raised UnboundLocalError rather than importing anything. That is
-    # every install without the vendored GPU build -- all of Linux and
-    # macOS, any Windows box with no nvidia-smi, and anyone who turned
-    # faiss_gpu off -- so the documented fallback never once happened.
+    # Either the vendored build was not eligible or it failed to load. Both land
+    # here on the installed faiss-cpu, and both need their own import, the one
+    # above binding `faiss` as a local that this line would otherwise read unset.
     import faiss
 
     return faiss

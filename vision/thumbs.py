@@ -46,12 +46,9 @@ if TYPE_CHECKING:
 #: lightbox on ordinary displays without shipping originals.
 EDGES = {"thumb": 512, "preview": 1440}
 
-#: The file kinds a raster variant can be made from. Audio and documents
-#: have no picture to take, and the routes that serve variants refuse
-#: them outright -- so a surface that asks for one anyway gets a 404 and
-#: draws a broken image. Named here, beside what a derivative IS, so a
-#: surface can ask before pointing at one instead of finding out from
-#: the network.
+#: The file kinds a raster variant can be made from: audio and documents have no
+#: picture to take, and the routes that serve variants refuse them outright.
+#: Named here so a surface can ask before pointing at one.
 PICTURED = ("image", "animated_image", "video")
 
 #: The cache's directory under a run's home (sg_web/home.py thumbs_dir);
@@ -71,13 +68,12 @@ AVATAR_CONTEXT = 2.0
 #: bytes, not appearance.
 QUALITY = 82
 
-#: libwebp's speed/size dial, 0 fastest to 6 smallest. Pillow's default
-#: for stills is 4 (python-pillow/Pillow src/PIL/WebPImagePlugin.py:294).
-#: Encoding cost depends on the encoder's effort rather than on the
-#: picture, so it does not fall away for small sources the way decode and
-#: resize do. 2 trades a little size for a lot of throughput against that
-#: default, which is the right direction for a cache written once and read
-#: forever.
+#: libwebp's speed/size dial, 0 fastest to 6 smallest; Pillow's default for
+#: stills is 4 (python-pillow/Pillow src/PIL/WebPImagePlugin.py:294). Encoding
+#: cost follows the encoder's effort, so it does not fall away for small sources.
+
+#: 2 trades a little size for a lot of throughput against that default, which is
+#: the right direction for a cache written once and read many times.
 METHOD = 2
 
 

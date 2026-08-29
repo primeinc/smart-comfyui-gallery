@@ -32,10 +32,9 @@ from __future__ import annotations
 
 import threading
 
-# Module scope, not inside _for_embedding: transformers' __init_subclass__
-# runs get_type_hints over the class, which evaluates the (lazily stringified)
-# ClassVar annotation in this module's globals -- a function-local import is
-# invisible there and the class definition dies with a NameError.
+# Module scope, not inside _for_embedding: transformers' __init_subclass__ runs
+# get_type_hints over the class, which evaluates the lazily stringified ClassVar
+# in this module's globals, where a function-local import is invisible.
 from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
 if TYPE_CHECKING:
@@ -44,11 +43,8 @@ if TYPE_CHECKING:
 PROVIDER = "qwen"
 
 #: The 2B embedding model: 2048 dimensions, MRL-capable, the smallest
-#: retrieval-trained Qwen3-VL. The `semantic_model` setting names others
-#: as `qwen:<org>/<repo>[@revision]` -- the Hugging Face repo id AS the
-#: model reference, because that is what the thing is called upstream;
-#: splitting it into a fake "model/checkpoint" pair would misname both
-#: halves.
+#: retrieval-trained Qwen3-VL. The `semantic_model` setting names others as
+#: `qwen:<org>/<repo>[@revision]`, the Hugging Face repo id AS the reference.
 MODEL = "Qwen/Qwen3-VL-Embedding-2B"
 CHECKPOINT = "main"
 
@@ -66,12 +62,11 @@ def parse(reference: str) -> tuple[str, str]:
     return repo, revision or CHECKPOINT
 
 
-#: refs/QwenLM/Qwen3-VL-Embedding src/models/qwen3_vl_embedding.py:24-33,
-#: verbatim: token budget, patch-derived pixel budgets, frame sampling --
-#: and the fixed facts of the flow (:329-393): the vision patch size the
-#: fetch resizes for, resizing done by the fetch rather than the
-#: processor, last-attended-position pooling, L2 normalization. Named
-#: because every one of them is representation identity (policy_version).
+#: refs/QwenLM/Qwen3-VL-Embedding src/models/qwen3_vl_embedding.py:24-33
+#: verbatim -- token budget, pixel budgets, frame sampling -- and the fixed facts
+#: of the flow at :329-393 (patch size, fetch-side resize, pooling, L2 norm).
+
+#: Named because every one of them is representation identity (policy_version).
 MAX_LENGTH = 8192
 IMAGE_FACTOR = 32
 MIN_PIXELS = 4 * IMAGE_FACTOR * IMAGE_FACTOR
@@ -164,11 +159,9 @@ def space(model: str, checkpoint: str, dimensions: int):
     )
 
 
-#: What a loadable snapshot must hold: the model, its processor, its
-#: tokenizer, and the chat template the whole flow starts from. Weight
-#: presence alone is not provisioned -- from_pretrained on a snapshot
-#: missing its tokenizer fails halfway into serving instead of refusing
-#: up front with the fix named.
+#: What a loadable snapshot must hold: the model, its processor, its tokenizer,
+#: and the chat template the flow starts from. Weight presence alone is not
+#: provisioned, a missing tokenizer failing halfway into serving instead.
 _SNAPSHOT_FILES = (
     "config.json",
     "tokenizer_config.json",
@@ -345,12 +338,9 @@ class QwenBackend:
         link -- the model samples its own frames under the fps and frame
         budgets; everything else embeds the canonical frame."""
         if media.kind == "video":
-            # The PATH, not a `file://` link. Every backend's docstring
-            # claims the scheme, and only the torchvision one ever
-            # stripped it -- `_read_video_torchcodec` hands the string
-            # to `VideoDecoder` verbatim, which opens it as a filename
-            # and reports "No such file or directory" for a name that
-            # begins `file://`. The live backend is torchcodec.
+            # The PATH, not a `file://` link: the live backend is torchcodec, and
+            # `_read_video_torchcodec` hands the string to `VideoDecoder`
+            # verbatim, which opens it as a filename.
             content = {"type": "video", "video": media.path, "fps": FPS, "max_frames": MAX_FRAMES}
         else:
             frame = media.frame().convert("RGB")
@@ -374,14 +364,9 @@ class QwenBackend:
             {"role": "system", "content": [{"type": "text", "text": instruction}]},
             {"role": "user", "content": [content]},
         ]
-        # `apply_chat_template` is annotated `conversation: list[dict[str,
-        # str]] | list[list[dict[str, str]]]` and its own docstring, twenty
-        # lines below the signature, shows `content` as a list of typed
-        # parts -- exactly what is built above and what the template
-        # requires for anything but plain text. The annotation describes
-        # the text-only special case; the cast says which of the two to
-        # believe, because the multimodal path is the one this file exists
-        # for.
+        # `apply_chat_template` is annotated for the text-only special case, while
+        # its own docstring shows `content` as a list of typed parts, which is what
+        # the template requires beyond plain text. The cast says which to believe.
         conversations = cast("list[list[dict[str, str]]]", [conversation])
         text = self.processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
         images, video_inputs, video_kwargs = process_vision_info(
@@ -397,9 +382,8 @@ class QwenBackend:
         else:
             videos, video_metadata = None, None
         # Flat keyword arguments, the way the processor takes them: its
-        # _merge_kwargs sorts each into text/images/videos by name. The
-        # per-video values (metadata, fps) are lists, one per clip, which
-        # the typed groups spell as scalars; hence a plain mapping.
+        # _merge_kwargs sorts each into text/images/videos by name. The per-video
+        # values are lists, one per clip, which the typed groups spell as scalars.
         settings: dict[str, Any] = {
             "video_metadata": video_metadata,
             "truncation": True,
@@ -421,15 +405,13 @@ class QwenBackend:
         return functional.normalize(pooled, p=2, dim=-1)[0].cpu().float().numpy()
 
 
-#: One loaded model per (models_dir, model, PINNED checkpoint) per
-#: process -- loading is seconds and gigabytes. The cache key pins first,
-#: because the embed job asks by the configured ref ("main") and the
-#: search path asks by the resolved commit: two spellings of the same
-#: weights, and an unpinned key loaded the 4GB model twice in one
-#: process, which is an out-of-memory on an 8GB card, measured. After a
-#: fresh download the backend's own post-download resolution registers
-#: under the commit too, so the one first-provision process also serves
-#: both spellings from one load.
+#: One loaded model per (models_dir, model, PINNED checkpoint) per process. The
+#: key pins first because the embed job asks by the configured ref and the search
+#: path by the resolved commit, and an unpinned key loads the weights twice.
+
+#: After a fresh download the backend's own post-download resolution registers
+#: under the commit too, so the one first-provision process serves both
+#: spellings from one load.
 _LOADED: dict[tuple, QwenBackend] = {}
 _LOCK = threading.Lock()
 

@@ -38,20 +38,13 @@ CHECKPOINT = "laion2b_s34b_b79k"
 #: VRAM rises from 774.7 MB to 1246.3 (benchmarks/results/openclip_batch.json).
 BATCH = 64
 
-#: Threads for the CLIP transform inside one batch, and the job already
-#: keeps about 7 cores busy on its own, so asking for all of them would be
-#: taking them from the decoders. Capped rather than scaled to the machine
-#: for that reason.
-#:
-#: Preprocess milliseconds per image at batch 64, same file:
-#:
-#:     1 worker    7.28        8 workers   1.85
-#:     2 workers   5.06       16 workers   1.83
-#:     4 workers   2.83
-#:
-#: 8 is where it flattens; 16 buys 1%. The transform is bit-identical
-#: across widths regardless (`preprocess_equivalence`, max_abs_difference
-#: 0.0 at 2/4/8/16), so the thread count cannot change a vector.
+#: Threads for the CLIP transform inside one batch. Capped rather than scaled to
+#: the machine, the job already keeping about 7 cores busy on its own, and 8 is
+#: where preprocess time flattens (benchmarks/results/openclip_batch.json).
+
+#: The transform is bit-identical across widths regardless
+#: (`preprocess_equivalence`, max_abs_difference 0.0 at 2/4/8/16), so the thread
+#: count cannot change a vector.
 BATCH_WORKERS = 8
 
 
@@ -147,11 +140,9 @@ def record_provision(models_dir: str, model: str, checkpoint: str, repo: str, na
     held[f"{model}/{checkpoint}"] = {"repo": repo, "names": list(names)}
     path = _record_path(models_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Through a temp file in the same directory. `_LOCK` orders writers
-    # inside ONE process, but a worker serving /search and a worker
-    # running /jobs/embed share a models_dir, and the read-modify-write
-    # above is where one of them loses the other's entry. `os.replace`
-    # also means no reader ever sees a half-written record.
+    # Through a temp file in the same directory: `_LOCK` orders writers inside ONE
+    # process, and two processes sharing a models_dir lose each other's entry in
+    # the read-modify-write above. `os.replace` also hides a half-written record.
     fd, tmp = tempfile.mkstemp(prefix=".provisioned-", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as out:
@@ -282,12 +273,9 @@ class ClipBackend:
                 model, pretrained=checkpoint, cache_dir=models_dir
             )
         else:
-            # `pretrained=<file>` takes factory.py's local-file branch --
-            # no hub call anywhere in it -- but that branch skips the
-            # tag's preprocess merge, so the tag's four preprocess keys
-            # ride along explicitly (refs/mlfoundations/open_clip
-            # src/open_clip/factory.py:412-421 vs :414; pretrained.py
-            # _pcfg: mean, std, interpolation, resize_mode).
+            # `pretrained=<file>` takes the local-file branch, with no hub call, but
+            # that branch skips the tag's preprocess merge, so its four keys ride
+            # along (refs/mlfoundations/open_clip src/open_clip/factory.py:412-421 vs :414).
             from open_clip.pretrained import get_pretrained_cfg
 
             tag = get_pretrained_cfg(model, checkpoint) or {}
@@ -432,18 +420,13 @@ def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *
     key = (models_dir, model, checkpoint)
     with _LOCK:
         if key not in _LOADED:
-            # The offline refusal must not cost torch's import: without
-            # this record check the 400 for an unprovisioned model paid
-            # ~9s of open_clip+torch just to say no (measured in
-            # test_search_never_downloads_a_model). ClipBackend keeps its
-            # own guard for the path that really loads.
-            #
-            # So the record is authoritative here, not the cache: weights
-            # another tool dropped into the shared HF cache, or weights
-            # whose record was wiped, refuse offline until /jobs/embed
-            # writes the record back. That is the trade -- reading the
-            # cache instead needs `_hub_names`, whose import is the nine
-            # seconds this check exists to avoid.
+            # The offline refusal must not cost torch's import: without this record
+            # check, the 400 for an unprovisioned model paid the whole
+            # open_clip+torch import (test_search_never_downloads_a_model).
+
+            # So the record is authoritative here, not the cache: weights another
+            # tool dropped into the shared HF cache refuse offline until
+            # /jobs/embed writes the record back, and ClipBackend guards the load.
             if offline and provisioned(models_dir, model, checkpoint) is None:
                 raise _unprovisioned(models_dir, model, checkpoint)
             _LOADED[key] = ClipBackend(models_dir, model, checkpoint, offline=offline)
