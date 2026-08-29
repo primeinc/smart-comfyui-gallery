@@ -9,7 +9,7 @@ are the tree's current truth.
 from __future__ import annotations
 
 #: Directories that are not this project's code.
-NOT_OURS = frozenset({".git", ".venv", "__pycache__", "node_modules", "vendor"})
+NOT_OURS = frozenset({".git", ".pytest_cache", ".venv", "__pycache__", "node_modules", "vendor"})
 #: The test files SG007 does not judge: proving a rule fires means
 #: handing it source, which is the one place that is the point.
 SOURCE_INSPECTION_EXCUSED: frozenset[str] = frozenset({"test_sglint_has_teeth.py"})
