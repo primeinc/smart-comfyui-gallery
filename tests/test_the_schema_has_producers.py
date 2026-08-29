@@ -1757,7 +1757,18 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
                 "embedding": numpy.random.rand(128).astype(numpy.float32).tobytes(),
                 "age": numpy.int32(34),
                 "landmarks": numpy.array([[1.5, 2.5]], dtype=numpy.float32).tobytes(),
-                "pose": (numpy.float32(1.5), numpy.float32(-2.0), numpy.float32(0.25)),
+                # Keyed, not a triple: the axes have to be named. This used
+                # to be a positional tuple and could not have caught the one
+                # error worth catching here -- the detector's array is
+                # [pitch, yaw, roll] and the columns are yaw-first, so a
+                # swap lands three plausible float32 degrees in the wrong
+                # columns and no CHECK sees it. `_insert_face` now refuses
+                # the anonymous shape.
+                "pose": {
+                    "yaw": numpy.float32(1.5),
+                    "pitch": numpy.float32(-2.0),
+                    "roll": numpy.float32(0.25),
+                },
             }
         ],
     )
