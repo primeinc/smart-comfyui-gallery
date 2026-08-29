@@ -22,6 +22,7 @@ this is what it measures with.
 from __future__ import annotations
 
 import contextlib
+import os
 import pathlib
 import sys
 import types
@@ -91,11 +92,25 @@ class Reached:
     __slots__ = ("_watching", "lines")
 
     def __init__(self, readers: Iterable[str] = READERS):
-        self._watching = {str(REPO / one): one for one in readers}
+        # NORMCASE on both sides. `REPO` is resolved, so it carries the
+        # filesystem's own spelling of every component; `co_filename` carries
+        # the spelling of whichever sys.path entry the module was found
+        # through. On Windows those differ without either being wrong --
+        # measured, `C:\Windows\Temp\...` against `C:\WINDOWS\TEMP\...` from a
+        # worktree under `mktemp -d` -- and a plain string compare then
+        # matches nothing at all.
+        #
+        # Nothing raised. The readers ran, the tracer recorded zero lines, and
+        # the test reported "the sourced files closed only 0 of the frozen
+        # target" -- which reads as a fact about the corpus and was a fact
+        # about path spelling. An empty measurement that looks like an answer
+        # is the worst shape a measurement can have, so it is the one this
+        # cannot produce any more.
+        self._watching = {os.path.normcase(str(REPO / one)): one for one in readers}
         self.lines: dict[str, set[int]] = {one: set() for one in readers}
 
     def _trace(self, frame: types.FrameType, event: str, _arg: object) -> _Tracer | None:
-        name = self._watching.get(frame.f_code.co_filename)
+        name = self._watching.get(os.path.normcase(frame.f_code.co_filename))
         if name is None:
             return None
         if event == "line":
