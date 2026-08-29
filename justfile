@@ -412,18 +412,26 @@ check-all: check check-deep test-slow smoke
 # they are not copied into prose, where they would go stale unread.
 #
 # The budgets are PER LANE because the lanes are not the same size, and
-# `test` is deliberately not held to `check`'s ten seconds. The fast lane
-# is several hundred tests with a flat duration distribution -- no tail to
+# `test` is deliberately not held to `check`'s clock. The fast lane is
+# several hundred tests with a flat duration distribution -- no tail to
 # cut -- so a lane that fit ten seconds could only be built by dropping
 # half of them on the criterion "whatever fits", which is a lane whose
 # green says nothing. `--durations` on the lane is what shows the shape.
+#
+# `check` was held to ten seconds when it ran lint, format and the web
+# lanes. It has since taken on two Python type checkers, the prose gate
+# and SG013, and no longer fits. The lanes run in parallel, so the clock
+# is the slowest one: sglint, at 5.4-7.8s of it, where rule_sources_parse
+# is 1.3s and SG013 0.5s. Vale is 1.7s beside it, not on the path.
+# Twenty seconds is measured, not chosen -- and sglint, not the newer
+# gates, is what to make faster if it needs to come back down.
 [doc('Prove `just check` and `just test` each stay inside their measured budget')]
 [script]
 budget:
     over=0
     for lane in check test; do
       case "$lane" in
-        check) allowed=10000 ;;
+        check) allowed=20000 ;;
         test)  allowed=30000 ;;
       esac
       start=$(date +%s%N)
