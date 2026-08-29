@@ -16,8 +16,8 @@ produced -- open, not a fixed set, and recorded whole.
 
 A detection pass is the expensive thing in this application and the bytes
 it produces are not: antelopev2 loads a 143 MB session per worker to derive
-head pose and two dense landmark sets, and all of it is ~3.7 KB per face to
-keep. Anything dropped here can only be recovered by reading the whole
+head pose and two dense landmark sets, and what it emits is kilobytes per
+face to keep. Anything dropped here can only be recovered by reading the whole
 library again, and only while the originals are still on disk. So the rule
 is: whatever a backend emits is persisted, and columns are promotions out
 of that record rather than a filter in front of it.

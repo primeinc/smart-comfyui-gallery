@@ -214,16 +214,13 @@ def _ingest_again(state: State, conn) -> list[int]:
     return _one(runner.submit_ingest(conn, time.time(), everything=True))
 
 
-#: What each setting is ABOUT, for the console alone. Twelve rows of
-#: `label input set` in registry order is twelve peers, and reading it
-#: means holding all twelve to find the two that belong together --
-#: caption_model and semantic_model name checkpoints, worker and
-#: faiss_gpu decide what runs, dupe_threshold and face_cluster_threshold
-#: are numbers that change what counts as the same thing.
+#: What each setting is ABOUT, for the console alone: rows of
+#: `label input set` in registry order are peers, and the console groups
+#: the ones that belong together.
 #:
-#: Deliberately NOT a field on db/settings.py REGISTRY: that tuple is
-#: read positionally by the worker and the validators, and where a row
-#: is drawn is not something the store should have an opinion about.
+#: Deliberately NOT a field on db/settings.py REGISTRY, whose tuple is read
+#: positionally by the worker and the validators; where a row is drawn is
+#: not something the store should have an opinion about.
 #: What each setting is CALLED, and what changing it does, in words.
 #:
 #: The registry's keys are the machine's names -- `ort_providers`,
@@ -289,13 +286,9 @@ SETTING_WORDS: dict[str, tuple[str, str]] = {
 
 
 #: The groups, NAMED as a heading is named rather than as a variable is.
-#: These read straight onto the page, and they used to be `models`,
-#: `runtime`, `thresholds`, `reading` -- lowercase identifiers with a
-#: `text-transform: capitalize` in the stylesheet standing in front of
-#: them. That is a stylesheet covering for its data: the words were
-#: still wrong, `Models` is not a sentence a person writes, and any
-#: surface that showed the same value without that one rule showed the
-#: identifier raw.
+#: These read straight onto the page, so a lowercase identifier leaning on a
+#: `text-transform: capitalize` in the stylesheet would show the identifier
+#: raw on any surface drawn without that rule.
 SETTING_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "Models",
@@ -429,9 +422,8 @@ def _state_of(state: State, conn, now: float) -> OperationsState:
     """The console's whole read, assembled once.
 
     The cold page and the JSON route are the same facts, so they are the
-    same assembly: the page used to build a parallel dict and mutate it
-    afterwards, which is how the two drifted into disagreeing about what
-    `worker` carries.
+    same assembly: a parallel dict built by the page and mutated afterwards
+    is how the two come to disagree about what `worker` carries.
     """
     held = inspecting.overview(conn, now, models_dir=_weights(state, conn))
     thread = getattr(state, "worker_thread", None)
@@ -934,8 +926,7 @@ class WhatTheThumbsSay(Wire):
 
     Deliberately no headline verdict on any model. An error rate over a
     sample nobody drew at random is not a measurement, and printing one
-    beside a name is how a number gets used to make a decision it cannot
-    support.
+    beside a name invites a decision it cannot support.
     """
 
     producers: list[ProducerJudged]

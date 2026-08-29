@@ -433,8 +433,9 @@ def currency(conn) -> str:
     (sqlite/sqlite ext/fts5/fts5_index.c fts5IndexDataVersion), but it
     means "somebody committed something", and what is cached here is the
     WHOLE ORDERED ANSWER. Jobs commit per item, so at 80,000 files a
-    page cost 0.18 ms at rest and 38.26 ms while a job ran -- 214x --
-    and the job that runs for hours writes nothing but the ledger.
+    page costs 0.179 ms at rest and 37.93 ms while a job runs, 211.8x
+    (benchmarks/results/answer_currency.json) -- and the job that runs
+    for hours writes nothing but the ledger.
 
     The counter moves for every table except `job`, `job_item` and
     `job_event` (db/schema.sql), so a ledger commit no longer discards

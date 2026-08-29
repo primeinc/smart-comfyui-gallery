@@ -184,15 +184,15 @@ def said(text: str) -> str:
     return text
 
 
-#: What the application has TOLD this module, layered over the lexical
-#: rules above. `_SENSITIVE` holds normcased prefixes of the home
-#: directory and every registered root -- hidden by knowledge, checked
-#: before the code-prefix table so a root inside the tree hides rather
-#: than relativizes. `_ROUTES` holds one shape per served route: a str
-#: is a literal segment kept as code, True keeps a parameter whose
-#: values carry no user data (numbers, the code vocabularies), None
-#: hashes one. Both are learned, never typed here, so neither can
-#: drift from what the application actually serves.
+#: What the application has TOLD this module, layered over the lexical rules
+#: above.
+#: `_SENSITIVE` holds normcased prefixes of the home directory and every
+#: registered root, checked before the code-prefix table so a root inside the
+#: tree hides rather than relativizes.
+#: `_ROUTES` holds one shape per served route: a str is a literal segment kept
+#: as code, True keeps a parameter whose values carry no user data (numbers,
+#: the code vocabularies), None hashes one. Both are learned, never typed
+#: here, so neither can drift from what the application actually serves.
 _SENSITIVE: list[str] = []
 _ROUTES: list[tuple[str | bool | None, ...]] = []
 

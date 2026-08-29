@@ -195,21 +195,17 @@ PLANNER_FOR = {
     "file_session": "file_history",
 }
 
-#: How wide a claim at each precision is. `db/when.py SPAN`, NOT a copy of
-#: it. This was a hand-written table of three, and it was indexed by a
-#: precision read out of the database -- so the day a file could be dated
-#: to its month, `/timeline` answered 500 with `KeyError: 'month'` on any
-#: library holding a folder-dated scan. A lookup keyed by a vocabulary
-#: somebody else owns has to be that vocabulary.
+#: How wide a claim at each precision is: `db/when.py SPAN`, NOT a copy of it.
+#: This is indexed by a precision read out of the database, and a lookup keyed
+#: by a vocabulary somebody else owns has to be that vocabulary or it raises
+#: `KeyError` on a precision the schema allows.
 _SPAN = when.SPAN
 
-#: Sessions one answer lists -- a whole library's extent can touch
-#: thousands; the page lists the most recent this many, says how many
-#: more there are, and the person narrows the window. Never a silent
-#: cut. Every listed session carries its thumbnails. The number is the
-#: query's own bound (db/pages.py TIMELINE_EVENTS_MOST): this paragraph
-#: used to justify a 200 that sat on the other side of the seam from
-#: the 200 that actually limited the read.
+#: Sessions one answer lists -- a whole library's extent can touch thousands,
+#: so the page lists the most recent this many, says how many more there are,
+#: and lets the person narrow the window. Never a silent cut, and every listed
+#: session carries its thumbnails.
+#: The number is the query's own bound (db/pages.py TIMELINE_EVENTS_MOST).
 SESSIONS_MOST = pages.TIMELINE_EVENTS_MOST
 SESSIONS_SAMPLED_MOST = SESSIONS_MOST
 #: How much time a first visit shows: the last month that holds pictures,

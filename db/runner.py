@@ -342,8 +342,8 @@ def submit_thumbs(conn, now: float, *, thumbs_dir: str) -> int | None:
 
     The serving layer renders a missing variant on first request: one
     full decode of the original per picture, nine at once under the
-    rail's popover -- 3.7s for a page of 22-megapixel PNGs. This job
-    pays that decode once, in the background, as files arrive
+    rail's popover. This job pays that decode once, in the background,
+    as files arrive
     (`precache_after_scan`), so a view is a stat and a read. Rides the
     'hash' kind with a payload the handler dispatches on, like the
     perceptual job: it is about what a file's pixels are.

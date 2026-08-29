@@ -35,20 +35,17 @@ VARIES = {"vary": "Accept, HX-Request"}
 #: Every `Template` in this application states `media_type` rather than
 #: letting Litestar work it out.
 #:
-#: Told nothing, `Template.to_response` guesses from the template's own
-#: suffix -- `guess_type(f"name{suffix}")`, litestar@2.24.0
-#: response/template.py:135 -- and on Windows the first `guess_type` in a
-#: process calls `mimetypes.init()`, which reads the whole MIME map out
-#: of the registry. That is 55 ms of a 99 ms first render, measured with
-#: cProfile (`_winapi._mimetypes_read_windows_registry`), to be told that
-#: `.html` is `text/html`.
+#: Told nothing, `Template.to_response` guesses from the template's own suffix
+#: (`guess_type(f"name{suffix}")`, litestar@2.24.0 response/template.py:135),
+#: and on Windows the first `guess_type` in a process calls `mimetypes.init()`,
+#: which reads the whole MIME map out of the registry
+#: (`_winapi._mimetypes_read_windows_registry`).
 #:
-#: Paid once per process, so ONE template left guessing would pay it for
-#: all of them -- which is why all twenty-two say it. First render 78.4
-#: ms -> 25.0 ms, `mimetypes.inited` stays False, and the response
-#: carries the same `text/html; charset=utf-8` either way. Every template
-#: this application has is `.html`; a template that is not must state its
-#: own type here.
+#: Paid once per process, so ONE template left guessing would pay it for all
+#: of them, which is why all twenty-two state it. Stating it keeps
+#: `mimetypes.inited` False and carries the same `text/html; charset=utf-8`
+#: either way; every template this application has is `.html`, and one that
+#: is not must state its own type here.
 
 
 def wants_json(request: Request) -> bool:

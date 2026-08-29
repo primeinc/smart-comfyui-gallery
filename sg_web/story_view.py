@@ -348,23 +348,21 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
 
 # --- the Evolution Explorer's contract ---------------------------------------
 #
-# db/evolution.py measures; these say what a reader is given. Two kinds of
-# thing share the document and are modelled differently on purpose.
+# db/evolution.py measures; these say what a reader is given.
+# Two kinds of thing share the document and are modelled differently.
 #
 # MEASURED HERE, NOW -- the cosines, the deltas, the space they were taken
 # in. One function produces them over a closed set of facts, so every field
 # is named exactly.
 #
-# FROZEN THEN -- a StoryPlan at ITS OWN format version (there have been
-# seven) and a StorySnapshot as it was written. A claim's `facts` have to
-# fit its kind under the plan's vocabulary version, and db/planning.py
-# validates that seven different ways; restating the union here would be an
-# eighth spelling free to disagree with all of them. So `facts` stays open,
+# FROZEN THEN -- a StoryPlan at ITS OWN format version and a StorySnapshot as
+# it was written. A claim's `facts` have to fit its kind under the plan's
+# vocabulary version, which db/planning.py validates, so `facts` stays open
 # and `plan.format` says which vocabulary wrote it.
 #
-# The same reasoning keeps the frozen strings as strings. `media.kind` came
-# out of the library at freeze time; holding it to today's CHECK would make
-# a historical document fail for having been true.
+# The same reasoning keeps the frozen strings as strings: `media.kind` came
+# out of the library at freeze time, and holding it to today's CHECK would
+# make a historical document fail for having been true.
 
 
 class EvolutionUnsupported(Wire):
@@ -572,8 +570,8 @@ class EvolutionChanges(Wire):
     `parameters` is a LIST rather than an object with a field per
     parameter: the module reports only what actually changed, and a field
     per parameter would make the wire say "the seed did not change" where
-    the measurement says nothing at all. Membership carries the sparseness
-    that key-presence used to.
+    the measurement says nothing at all. Membership is what carries the
+    sparseness.
     """
 
     parameters: list[EvolutionParameterChange]
