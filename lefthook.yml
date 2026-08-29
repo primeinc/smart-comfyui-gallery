@@ -22,6 +22,85 @@
 # even when nothing changed since the last green run.
 #
 # `LEFTHOOK=0 git commit` skips, deliberately and visibly.
+#
+# ---------------------------------------------------------------------------
+# THE PER-COMMIT GATE IS ON commit-msg, NOT pre-commit. THIS IS LOAD-BEARING.
+# ---------------------------------------------------------------------------
+#
+# On `pre-commit`, lefthook REVERTS THE WORKING TREE, runs the jobs against
+# the staged content, and restores afterwards -- and on success it does this
+# SILENTLY.
+#
+# The mechanism, lefthook v2.1.10, internal/run/controller/controller.go,
+# the newGuard call in RunHook:
+#
+#     newGuard(
+#         c.git, c.logger, c.filesToStage,
+#         !opts.NoStageFixed && config.HookUsesStagedFiles(hook.Name),
+#         opts.FailOnChanges, opts.FailOnChangesDiff,
+#     )
+#
+# That fourth argument is the guard's `stashUnstagedChanges`. In guard.go,
+# `withHiddenUnstagedChanges`: when it is true AND `PartiallyStagedFiles()`
+# is non-empty, the guard saves the unstaged changes, REVERTS them, runs the
+# hook, then restores -- and if `CanRestoreUnstagedChanges()` is false it
+# reverts everything and returns errRestorationConflict.
+#
+# So the trigger is the HOOK NAME, via `HookUsesStagedFiles(hook.Name)`, and
+# the only switch is `opts.NoStageFixed` -- the `--no-stage-fixed` CLI flag
+# on `lefthook run` ("ignore 'stage_fixed: true' setting"). It is a FLAG, not
+# a config key, and the hook file lefthook generates calls
+# `lefthook run "pre-commit" "$@"` with no flag. Config cannot inject one.
+#
+# And there is no config key for it. lefthook ships its own JSON Schema at
+# node_modules/lefthook/schema.json (2.1.10, stamped 2026.07.03), and it is
+# CLOSED -- `"additionalProperties": false` on the root and on every one of
+# Hook, Job, Group, Command, Script. No `no_stash`, no `stash`, no
+# `skip_stash`, no `hide_unstaged`. A `stash: false` here would be REJECTED,
+# not ignored. The only stash-adjacent key that exists is `stage_fixed`,
+# which does the opposite.
+#
+# Measured in a scratch repo, one variable. Worktree holds "four", index
+# holds "three" (status `MM`), the only job is `cat a.txt`:
+#
+#   lefthook run pre-commit                    job saw "three"  <- REVERTED
+#   lefthook run pre-commit --no-stage-fixed   job saw "four"   <- untouched
+#
+# It printed nothing either way. The only reason this was ever visible here
+# is that it FAILED: lefthook logs the git command only when it errors.
+#
+# commit-msg is not in `HookUsesStagedFiles`, so the guard is constructed
+# with stashUnstagedChanges=false and the revert cannot happen -- by
+# construction, with no flag to forget. Measured the same way: with a stale
+# .git/index.lock present, which makes any stash attempt fail loudly,
+# pre-commit died at the stash before running a single job while commit-msg
+# ran its job and exited 0.
+#
+# The revert also bought this repository NOTHING. It exists so a hook reading
+# a partially staged file sees staged content rather than staged+unstaged.
+# Every lane in `just check` walks the WHOLE TREE -- `ruff check .`,
+# `ruff format --check .`, `biome lint frontend/src sg_web/static`,
+# `tsc -p frontend`, `ty check`, `pyrefly check`. Not one takes
+# `{staged_files}`. Hiding the developer's unstaged work so a whole-tree
+# checker can check the whole tree minus that work is pure cost.
+#
+# The cost was real: three commits wedged in seven minutes. `git commit -a`
+# holds .git/index.lock, the guard's revert needs that same lock, and the
+# hook subtree then sits at zero CPU until the parent git is killed --
+# leaving the lock behind so the NEXT commit wedges identically. Recovery
+# meant killing six process trees and deleting .git/index.lock by hand.
+#
+# commit-msg gets the same trigger (every commit, `-m` and `-a` included) and
+# aborts the commit identically on non-zero exit. The gate reads the working
+# tree rather than the index, which for whole-tree checkers is what it was
+# always effectively doing.
+#
+# This mirrors what `prove-push` already decided in the justfile: "The
+# worktree, not a stash: a gate that moves the developer's files to inspect
+# them can lose them." pre-commit was the one place that had not caught up.
+#
+# DO NOT move this block back to `pre-commit:` to make it "conventional".
+# There is no config-only version of that which does not revert the tree.
 
 min_version: 1.10.0
 
@@ -30,7 +109,7 @@ min_version: 1.10.0
 # as a test lane that collects nothing and exits clean.
 assert_lefthook_installed: true
 
-pre-commit:
+commit-msg:
   # Sequential: `just check` already runs its own lanes in parallel and
   # rebuilds sg_web/static/build first, and two of those at once would walk
   # the same directory.
