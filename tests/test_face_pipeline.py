@@ -237,10 +237,9 @@ def planted(groups: int = 3, members: int = 6, dim: int = 32) -> np.ndarray:
     return np.asarray(rows, dtype=np.float32)
 
 
-# The engine itself -- edges vs the exact oracle, device-policy parity,
-# inclusive thresholds -- is proven in tests/test_faiss_index.py. These
-# tests consume the oracle directly: grouping is a pure function of a
-# graph, and the oracle is the independent way to make one.
+# The engine itself -- edges against the exact oracle, device-policy parity,
+# inclusive thresholds -- is proven in tests/test_faiss_index.py. These tests
+# consume the oracle directly, since grouping is a pure function of a graph.
 
 
 # --- grouping --------------------------------------------------------------

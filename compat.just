@@ -133,8 +133,8 @@ vendor:
 # reference itself is known to run. This executes a vendor's OWN entrypoint,
 # on its OWN example input, with its OWN published checkpoints.
 #
-# Eight vendors run here: consisid, pulid_upstream, infiniteyou,
-# ipadapter_upstream, uniportrait, photomaker_v2 and reactor. Each computes
+# Eight vendors run here: consisid, pulid_upstream, instantid_upstream,
+# infiniteyou, ipadapter_upstream, uniportrait, photomaker_v2 and reactor. Each computes
 # its conditioning entirely before the first sampling step, so no base model
 # is needed for the ID half. What is still absent is the diffusion checkpoint
 # the rest of the population conditions -- FLUX or SDXL -- which makes those
@@ -150,10 +150,10 @@ acceptance:
     {{ python }} -m compat.vendor.acceptance
 
 # Nineteen deliberate corruptions -- pin, weight, manifest, runner and
-# application source, corpus, cache, vendor fixture, ablation, matrix,
-# dropped primitive, selection rule, reference order, stale evidence, missing
-# consumer, vendor fixture, faked acceptance, lost round-trip key -- plus a
-# positive control that must report CLEAN. An attack the
+# application source, corpus, cache, vendor fixture, dropped primitive,
+# selection rule, reference order, stale evidence, missing consumer, faked
+# acceptance, lost round-trip key, boundary repeat, pack declaration,
+# asserted retained bytes -- plus a positive control that must report CLEAN. An attack the
 # gate does not see is red: every green ever reported for it was
 # uninformative.
 

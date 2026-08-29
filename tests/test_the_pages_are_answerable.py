@@ -13,6 +13,15 @@ plan is not a scan of a table that grows with the library.
 The plan assertion is what makes this useful at 12 files. A page that reads
 every row is fine on a fixture and unusable at 100k, and the difference is
 visible in the plan long before it is visible in the clock.
+
+`STAYS_SMALL` names the tables that stay small however big the library gets:
+one row per root, per user, per setting, per watched folder, per distinct
+metadata key, plus `derived_context_state`, which is ONE row by CHECK
+(id = 1) -- the interpretation's identity, not a growing table. Scanning one
+of those is fine. EVERYTHING ELSE in the schema grows and is derived from
+sqlite_master rather than listed, because a list of nine names left the other
+twenty-nine growing tables scannable by any page without the gate saying a
+word.
 """
 
 import pathlib
@@ -35,14 +44,8 @@ A1111 = (
     "Model: dreamshaper_8"
 )
 
-#: Tables that stay small however big the library gets: one row per root, per
-#: user, per setting, per watched folder, per distinct metadata key. Scanning
-#: one of these is fine. EVERYTHING ELSE in the schema grows, and is derived
-#: from sqlite_master rather than listed here -- the list was nine names, and
-#: the other twenty-nine growing tables could be scanned by any page without
-#: the gate saying a word.
-#: derived_context_state is ONE row by CHECK (id = 1) -- the
-#: interpretation's identity, not a growing table.
+#: Tables that stay small however big the library gets; every other table is
+#: derived from sqlite_master, for the reason the module docstring records.
 STAYS_SMALL = {"root", "user", "setting", "watched_folder", "param_key", "sqlite_sequence", "derived_context_state"}
 
 #: Words that can follow FROM or JOIN without being an alias.
@@ -205,10 +208,9 @@ def assert_no_growing_scan(conn, sql, args=(), *, aggregate=False, whole_index=F
     temp B-tree ban still applies.
     """
     names = tables_by_name(sql)
-    # An ordered index walk that stops early reads as many rows as it returns.
-    # The same walk with no LIMIT reads the table, index or not -- which is why
-    # `USING INDEX` alone is not the excuse it was being used as: a covering
-    # index made `SELECT f.id FROM file f` read as acceptable.
+    # An ordered index walk that stops early reads as many rows as it returns;
+    # with no LIMIT it reads the table, index or not. `USING INDEX` alone
+    # excuses nothing: a covering index made `SELECT f.id FROM file f` pass.
     stops_early = re.search(r"\bLIMIT\b", sql, re.IGNORECASE) is not None
     # A recursive CTE walks the rows it recurses over -- a folder's
     # subtree, never the library -- and the planner spells that walk as a
@@ -532,9 +534,8 @@ def test_the_ways_page_is_generated_from_the_library(library):
     rows = pages.ways(conn)
     assert rows, "the library taught the facet list nothing"
     # Grouped by (source, key) on both sides -- param_key's primary key. On
-    # `key` alone the dict kept one row per name while the GROUP BY summed
-    # across sources, so the two agreed by accident and would have gone on
-    # agreeing through a real drift.
+    # `key` alone the dict keeps one row per name while the GROUP BY sums
+    # across sources, and the two agree by accident through a real drift.
     counted = {
         (s, k): n for s, k, n in conn.execute("SELECT source, key, count(*) FROM file_param GROUP BY source, key")
     }
@@ -664,10 +665,9 @@ def test_identical_files_are_never_guessed_between_on_a_move(library):
     assert result.missing == 2, "the originals were not left as missing"
     assert conn.execute("SELECT count(*) FROM file WHERE missing_since IS NULL").fetchone()[0] == 14
 
-    # Every file above is one this test made, so taking them away leaves
-    # the master's listing as it found it -- and the next test restores
-    # rather than rebuilding the library from nothing. Same reason as
-    # the move test above.
+    # Every file above is one this test made, so taking them away leaves the
+    # master's listing as it found it and the next test restores rather than
+    # rebuilding the library. Same reason as the move test above.
     for name in ("a.png", "b.png"):
         (root / "twins2" / name).unlink()
     (root / "twins2").rmdir()
@@ -846,9 +846,8 @@ def test_the_navigation_indexes_ask_answerable_questions(library):
     assert_no_growing_scan(conn, pages.FOLDER_TOPS, (root_id,))
 
     # The albums shelf promises EVERY collection, in one statement: the
-    # whole-index category demands the read be one ordered walk of
-    # collection_parent with no read-time sort, and one statement is
-    # what makes the rendered tree one snapshot.
+    # whole-index category demands one ordered walk of collection_parent with
+    # no read-time sort, and one statement makes the tree one snapshot.
     nested = collections.collection(conn, "Deeper", NOW, parent_id=album)
     shelf = {row[0]: row[1] for row in pages.collection_shelf(conn)}
     assert shelf[album] is None

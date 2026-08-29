@@ -18,10 +18,19 @@ buttons; the settings from `db/settings.py REGISTRY`; the gaps from the
 same registers `sglint` holds the tree to -- one register, two readers,
 which cannot disagree because there is only one of them.
 
-The surfaces are the exception, and `SAID` below says why at length: a
-route is not a surface, and no rule the application can state tells the
-two apart. That one list is authored, and every entry in it is checked
-against what is actually served.
+The surfaces are the exception: a route is not a surface, and no rule the
+application can state tells the two apart. `SAID` below is therefore AUTHORED --
+a person decides what counts as a surface -- and every entry is checked against
+what is served, so an entry whose address stops being served disappears rather
+than 404ing.
+
+Being served is not enough to be a surface: /clusterings and /views answer 200 to
+a browser with raw JSON, and are recorded as machine reads in sglint/policy.py
+UNSURFACED instead, with the page a person goes to.
+tests/test_the_shell_mounts_every_surface.py crawls every link every page emits
+and requires it to land a person on a page. A page added with no entry in `SAID`
+does not appear; sglint's SG010 is what catches an unreachable surface, and it
+reads the templates and the browser source, not this list.
 
 Importing `sglint.policy` from the application looks backwards and is
 deliberate. The alternative is a second copy of the decisions, which
@@ -56,22 +65,8 @@ class Gap:
     why: str
 
 
-#: The surfaces: what each is called, what it answers, and where.
-#:
-#: AUTHORED, and checked against what is served rather than trusted: a person
-#: decides what counts as a surface, and the application decides whether each
-#: one is still served.
-#: An entry whose address stops being served disappears rather than 404ing.
-#:
-#: Being SERVED is not enough to be a surface: /clusterings and /views answer
-#: 200 to a browser with raw JSON, and are recorded as machine reads in
-#: sglint/policy.py UNSURFACED instead, with the page a person goes to.
-#: tests/test_the_shell_mounts_every_surface.py crawls every link every page
-#: emits and requires it to land a person on a page.
-#:
-#: A page added with no entry here does not appear; sglint's SG010 is what
-#: catches an unreachable surface, and it reads the templates and the browser
-#: source, not this list.
+#: The surfaces: what each is called, what it answers, and where. Authored, and
+#: checked against what is served -- see the module docstring.
 SAID: dict[str, tuple[str, str]] = {
     "/g": ("The library", "every picture, newest first, and the question box over it"),
     "/field": ("The field", "the whole answer on one canvas, placed in time, with a board of kept questions"),

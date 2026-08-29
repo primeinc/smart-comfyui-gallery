@@ -47,13 +47,9 @@ class KeywordListed(Wire):
     pictures: int
     #: The gallery question this keyword asks, ready to hang on a link.
     qs: str
-    #: A few of the pictures wearing it, newest first. The shelf is the
-    #: one place the whole vocabulary is seen at once, and whether a word
-    #: is worth keeping is a question about the pictures under it -- which
-    #: a count cannot answer and a row of thumbnails can.
-    #: Required rather than defaulted: `_shelf` is the only thing that
-    #: builds one of these and it always answers, so a mutable default
-    #: would be a second, emptier truth nobody produces.
+    #: A few of the pictures wearing it, newest first: whether a word is worth
+    #: keeping is a question about the pictures under it, which a count cannot
+    #: answer. Required, `_shelf` being the only builder and always answering.
     covers: list[str]
 
 
@@ -88,9 +84,8 @@ def _shelf(conn) -> list[KeywordListed]:
 @get(
     "/keywords",
     # The return annotation can only say `Template | Response`, and a union
-    # mixing a page with a JSON answer reaches OpenAPI as the empty schema
-    # however precisely the arms are written. So the shape a client
-    # actually parses is declared here, where the document reads it.
+    # mixing a page with a JSON answer reaches OpenAPI as the empty schema. The
+    # shape a client parses is declared here, where the document reads it.
     responses={
         200: ResponseSpec(
             data_container=list[KeywordListed],

@@ -14,6 +14,11 @@ The suggestion list matters more than it looks. A vocabulary is only
 worth having if one picture-idea gets one word every time, and nobody
 remembers whether they wrote "seaside" or "sea side" last year -- so what
 the library already calls things is offered as the box is entered.
+
+One served run for the module, so the library these tests write on is SHARED.
+Every assertion below is about a word its own test typed, never about how many
+keywords exist -- an order-dependent count would be a test that passes alone
+and fails in the suite.
 """
 
 from __future__ import annotations
@@ -43,17 +48,9 @@ def prepare(api, root) -> None:
     assert swept["added"] == FILES
 
 
-# One served run for the module, so the library these tests write on is
-# SHARED. Every assertion below is about a word this test typed, never
-# about how many keywords exist -- an order-dependent count here would be
-# a test that passes alone and fails in the suite.
-#: The pictures' own addresses, asked once for the whole module.
-#:
-#: Every test here reached a picture by loading the grid and clicking a
-#: cell -- TWO page loads to arrive at one picture, eight times over. The
-#: addresses are a fact about the library this module wrote, and it does
-#: not change between tests, so the first test discovers them and the
-#: rest go straight there.
+#: The pictures' own addresses, asked once for the whole module. Reaching a
+#: picture through the grid costs TWO page loads, and these addresses are a
+#: fact about the library this module wrote that no test changes.
 _ADDRESSES: list[str] = []
 
 

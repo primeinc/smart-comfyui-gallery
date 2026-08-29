@@ -73,11 +73,9 @@ def prepare(api, root) -> list[str]:
     swept = api.post(f"/roots/{made['id']}/scan").json()
     assert swept["added"] == FILES
     grid = api.get("/g?sort=oldest", headers=AS_BROWSER).text
-    # No closing quote in the pattern: a cell's href is
-    # `/i/{slug}?{qs}` (sg_web/templates/_grid.html:33), so anchoring on
-    # one matched nothing -- and an exception raised in `prepare` HANGS
-    # the run rather than failing it, which is how a silent zero here
-    # costs twenty minutes instead of a red line.
+    # No closing quote in the pattern: a cell's href is `/i/{slug}?{qs}`
+    # (sg_web/templates/_grid.html:33), so anchoring on one matched nothing.
+    # An exception raised in `prepare` HANGS the run rather than failing it.
     slugs = re.findall(r'href="/i/([^"?]+)', grid)
     assert len(slugs) >= FILES, f"the grid named {len(slugs)} pictures, not {FILES}"
     # so the shelf is never empty, and no test may touch this one

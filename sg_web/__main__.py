@@ -146,27 +146,20 @@ def handover() -> None:
     try:
         ended = serving.wait()
     except KeyboardInterrupt:
-        # The console delivered that ^C to the child too, and wait() has
-        # already given it a moment to act on it before re-raising here
-        # (cpython Lib/subprocess.py:1444-1461). This second wait is for
-        # its real exit status, so Ctrl-C reports what the server did.
+        # The console delivered that ^C to the child too, and wait() has already
+        # given it a moment to act on it (cpython Lib/subprocess.py:1444-1461).
+        # This second wait is for its real exit status.
         ended = serving.wait()
     raise SystemExit(ended)
 
 
-#: The two bind addresses this launcher names. The unspecified address
-#: is every IPv4 interface; the loopback address is this machine and
-#: nothing else, which is the default because a media library with no
-#: sign-in should not arrive on the network because somebody forgot a
-#: flag.
-#:
-#: Named through `ipaddress` rather than spelled as literals: the
-#: wildcard written out is what ruff's S104 looks for, and the honest
-#: way past a rule about binding everywhere is not to silence it on the
-#: one line that means it. These ARE those addresses -- `IPv4Address(0)`
-#: is the unspecified one and `ip_address` refuses anything malformed at
-#: import -- so the names say what they are and the analyzer has nothing
-#: to flag.
+#: The two bind addresses this launcher names: the unspecified address is every
+#: IPv4 interface, the loopback address this machine alone. Loopback is the
+#: default, a library with no sign-in not arriving on a network by accident.
+
+#: Named through `ipaddress` rather than spelled as literals: `IPv4Address(0)` IS
+#: the unspecified address and `ip_address` refuses anything malformed at import,
+#: so no line has to silence ruff's S104 about binding everywhere.
 LOCAL = str(ipaddress.ip_address("127.0.0.1"))
 PUBLIC = str(ipaddress.IPv4Address(0))
 
@@ -201,6 +194,19 @@ def reachable() -> list[str]:
 
 
 def main() -> None:
+    """Read the flags and serve.
+
+    Redaction is installed before the app is built, so a path in a boot-time log
+    line (a migration's, a refused database's) is already covered. It is
+    process-global on purpose and only here: a served run is one process with one
+    launcher, where the flag was or was not typed.
+
+    A refused boot is a SystemExit whose message names the database path -- under
+    the home directory, so under a username -- and it never passes through
+    logging, so it is redacted here the same as a line. `access_log` rides the
+    same flag (uvicorn/main.py:520): each request line spells the URL, whose
+    entity slugs are derived from media filenames, so by default there is none.
+    """
     handover()
     absent_package = missing()
     if absent_package is not None:
@@ -236,11 +242,9 @@ def main() -> None:
         ),
     )
     asked = parser.parse_args()
-    # `--host` and `--public` are two ways to say the same thing, so
-    # saying both differently is refused rather than silently resolved.
-    # A launcher that quietly picked one would be a launcher that binds
-    # somewhere the person did not ask for -- which for this flag is the
-    # difference between their own machine and their whole network.
+    # `--host` and `--public` are two ways to say the same thing, so saying both
+    # differently is refused rather than resolved. Quietly picking one would bind
+    # somewhere unasked -- for this flag, one machine or a whole network.
     if asked.public and asked.host is not None and asked.host != PUBLIC:
         print(
             f"--public means --host {PUBLIC}; you also asked for --host {asked.host}.\nchoose one.",
@@ -269,19 +273,8 @@ def main() -> None:
         )
         for address in reachable():
             print(f"    http://{address}:{asked.port}", file=sys.stderr)
-    # Before the app is built, so a path in a boot-time log line (a
-    # migration's, a refused database's) is already covered. Process-
-    # global on purpose and only HERE: a served run is one process with
-    # one launcher, where the flag was or was not typed.
-    #
-    # A refused boot is a SystemExit whose message names the database
-    # path -- under the home directory, so under a username -- and it
-    # never passes through logging. Redacted here, the same as a line.
-    #
-    # `access_log` rides the same flag (uvicorn/main.py:520): each
-    # request line spells the URL, whose entity slugs are derived from
-    # media filenames -- an access log IS a list of what the library
-    # holds, so by default there is none.
+    # Installed before the app is built, and the access log rides the same
+    # flag -- see the docstring.
     if not asked.log_user_paths:
         redaction.install()
         try:

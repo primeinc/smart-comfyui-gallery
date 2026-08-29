@@ -107,11 +107,9 @@ def _slug(live: Live, name: str) -> str:
 
 def test_the_tray_stays_out_of_the_way_until_something_is_kept(page: Page, live: Live, unbroken):
     _gallery(page)
-    # `to_have_count`, not `count() == 1`: the tray is MOUNTED by the
-    # bundle, and `count()` answers with whatever is in the document at
-    # the instant it is asked -- which on a slow load is before the mount.
-    # Measured: `assert 0 == 1` on a full-suite run. A web-first assertion
-    # retries, so it reads the page rather than a moment of it.
+    # `to_have_count`, not `count() == 1`: the tray is MOUNTED by the bundle,
+    # and `count()` answers about the instant it is asked, which on a slow load
+    # is before the mount (measured, `assert 0 == 1`, on a full-suite run).
     expect(page.locator("[data-compare-tray]")).to_have_count(1)
     assert not page.locator("[data-compare-tray]").is_visible(), "and shows nothing until it holds something"
 

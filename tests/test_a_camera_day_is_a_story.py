@@ -488,12 +488,9 @@ def test_a_real_canon_day_becomes_acts_sessions_and_a_story(tmp_path):
             _library(client, RAW / "2013-02-10")
             return pathlib.Path(client.app.state.db_path)
 
-    # The derivation is a constant of frozen bytes and current code;
-    # tests/staging.corpus_snapshot builds it once per (corpus, code)
-    # and hands the copy back in milliseconds -- a fresh build hashes
-    # 9 GB of CR2 and cost this test 11.3 of its 11.6 seconds. The
-    # assertions below run in full either way, on a working copy
-    # because snapshot_event writes.
+    # tests/staging.corpus_snapshot builds the derivation once per (corpus, code)
+    # instead of hashing 9 GB of CR2, which cost this test 11.3 of its 11.6 seconds.
+    # A working copy is taken because snapshot_event writes.
     working = tmp_path / "day.db"
     shutil.copyfile(corpus_snapshot(RAW / "2013-02-10", built), working)
     conn = connect.connect(str(working))

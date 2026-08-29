@@ -60,10 +60,9 @@ def test_the_url_owns_the_window_and_the_surface_carries_pictures(page: Page, li
     assert page.get_attribute("[data-surface]", "data-window-start") == f"{JUNE_10}.0"
     page.wait_for_selector("[data-samples] .surface-sample img", timeout=10_000)
     page.wait_for_selector("[data-sessions] .session [data-session-open]", timeout=10_000)
-    # The strip's pictures arrive after the session it belongs to, so a
-    # `count()` taken the moment the session appears reads zero -- measured,
-    # `assert 0 >= 1`, on a full-suite run. `not_to_have_count(0)` retries,
-    # which is the same claim made of the page rather than of an instant.
+    # The strip's pictures arrive after the session they belong to, so a
+    # `count()` taken the moment the session appears reads zero (measured,
+    # `assert 0 >= 1`, full-suite run). `not_to_have_count(0)` retries.
     expect(page.locator("[data-sessions] .session-strip img")).not_to_have_count(0)
     bar_at = page.get_attribute("[data-strip] [data-bin-window]", "data-bin-at")
     assert bar_at is not None
@@ -125,9 +124,8 @@ def test_opening_a_session_tells_its_story_and_the_story_rides_the_session(page:
     page.wait_for_url("**/evolution", timeout=10_000)
     page.wait_for_selector("[data-evolution-story]", timeout=10_000)
     # The crumb above is server-rendered and proves only that the shell
-    # arrived. The members are not in the HTML at all: they exist once the
-    # explorer has asked the same route for its document and drawn it, so
-    # this is the clause that holds the fetch.
+    # arrived. The members are not in the HTML at all -- they exist once the
+    # explorer has drawn the document it asked that route for.
     page.wait_for_selector("[data-main] [data-ref]", timeout=10_000)
     page.goto("/timeline")
     page.wait_for_selector("[data-sessions] .session[data-session-story]", timeout=10_000)
@@ -173,11 +171,9 @@ def test_a_page_of_dates_stays_alive_under_people_js(page: Page, live: Live):
         '<body><time data-epoch="1686355200">1686355200</time><time data-epoch="1686441600">x</time>'
         f'<script src="{live.url}/static/build/app.js"></script></body>'
     )
-    # Waited for the spelling, not for a guess at how long spelling takes.
-    # The bug this catches -- a watcher that re-spells what it just spelled
-    # -- pins the main thread, so it still fails here: a pinned thread
-    # never satisfies a retrying read either. It just costs milliseconds
-    # when the page is well instead of the 700ms two fixed pauses cost.
+    # Waited for the spelling, not for a guess at how long spelling takes, and
+    # for milliseconds rather than the 700ms two fixed pauses cost. The bug
+    # this catches pins the main thread, which no retrying read satisfies.
     expect(page.locator("time")).to_have_text(["2023-06-10", "2023-06-11"])
     page.evaluate(
         "const t = document.createElement('time'); t.dataset.epoch = '1686528000'; document.body.appendChild(t)"
@@ -248,9 +244,8 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
     # its snapshot arrives over the network, which no clock touches.
     page.clock.run_for(2100)  # milliseconds; `run_for` takes a number or "mm:ss"
     # `expect` and not `wait_for_function`: the installed clock stubs
-    # `requestAnimationFrame`, which is what an in-page poll runs on, so
-    # a `wait_for_function` here would be waiting on a clock this test
-    # has stopped. `expect` retries from the driver instead.
+    # `requestAnimationFrame`, which an in-page poll runs on, so the poll would
+    # wait on a clock this test has stopped. `expect` retries from the driver.
     expect(page.locator("[data-surface][data-stale]")).to_have_count(0, timeout=30_000)
     assert sockets["lost"] == job_id, "the terminal delta was never withheld; the test proved nothing"
     assert sockets["n"] >= 2, "the page never reconnected"

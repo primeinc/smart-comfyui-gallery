@@ -29,10 +29,9 @@ CORPUS = pathlib.Path(os.environ.get("SG_CORPUS", REPO.parent / "sg-corpus"))
 IMAGES = CORPUS / "scanned"
 LOCKFILE = REPO / "tests" / "scanned.lock.json"
 
-#: `(folder chain, file name, the rung it should land on)`. The expectation
-#: is stated so the lockfile records what each file was written to prove;
-#: `tests/needs.py` measures what the application actually concluded, and a
-#: disagreement between the two is the finding.
+#: `(folder chain, file name, the rung it should land on)`. The expectation is
+#: stated so the lockfile records what each file was written to prove, and a
+#: disagreement with what `tests/needs.py` measured is the finding.
 SHAPES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("1964",), "seaside with nan.jpg", "year"),
     (("1978",), "the old ford.jpg", "year"),
@@ -47,12 +46,9 @@ SHAPES: tuple[tuple[tuple[str, ...], str, str], ...] = (
 )
 
 
-#: A photograph that was ALSO generated from. `db/schema.sql` determines
-#: origin rather than accepting it: `has_generation = 1 AND has_capture = 1`
-#: is `mixed`, and nothing in a corpus of camera output beside generator
-#: output is ever both. img2img on a photograph is, and it is the ordinary
-#: case -- the schema has had a name for it since it was written and no file
-#: had ever landed there.
+#: A photograph that was ALSO generated from. `db/schema.sql` calls
+#: `has_generation = 1 AND has_capture = 1` `mixed`; camera output beside
+#: generator output is never both, and no file had ever landed there.
 MIXED_NAME = "img2img over a photograph.png"
 MIXED_CAMERA = ("Canon", "Canon EOS 5D Mark III")
 MIXED_TAKEN = "2013:02:10 14:23:01"

@@ -17,6 +17,13 @@ both derived from the file rather than from a number anybody typed.
 
 Not a test. `tests/test_a_corpus_reaches_what_it_claims.py` is the gate;
 this is what it measures with.
+
+`db/scan.py` is deliberately ABSENT from `READERS`. Its file-shaped surface
+is three functions and a suffix table; the rest takes a CONNECTION, not a
+path, and no corpus can or should reach it. Counting it put the module at 1%
+and added 300 lines to a denominator a corpus cannot close, which would make
+the frozen target unreachable and so make this creation unfinishable -- the
+one thing the freeze exists to prevent.
 """
 
 from __future__ import annotations
@@ -30,24 +37,16 @@ from collections.abc import Callable, Iterable
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: `sys.settrace`'s local trace function, which returns ITSELF to keep
-#: tracing the frame it was called for. Named because the type is
-#: recursive: left to inference the fixpoint does not close, and the
-#: checker says so rather than guessing (pyrefly non-convergent-recursion).
+#: `sys.settrace`'s local trace function, which returns ITSELF to keep tracing
+#: the frame it was called for. Named because the type is recursive: left to
+#: inference the fixpoint does not close (pyrefly non-convergent-recursion).
 type _Tracer = Callable[[types.FrameType, str, object], "_Tracer | None"]
 
-#: The readers a media corpus is FOR. Each turns bytes on disk into
-#: something the library believes, and each is full of branches only a
-#: particular shape of file reaches. Everything else in the tree is out
-#: of scope for this measurement and stays out.
+#: The readers a media corpus is FOR: each turns bytes on disk into something
+#: the library believes, and each is full of branches only a particular shape
+#: of file reaches. Everything else in the tree is out of scope and stays out.
 READERS: tuple[str, ...] = (
-    # `db/scan.py` is deliberately ABSENT. Its file-shaped surface is
-    # three functions and a suffix table; the rest takes a CONNECTION,
-    # not a path, and no corpus can or should reach it. Counting it put
-    # the module at 1% and added 300 lines to a denominator a corpus
-    # cannot close -- which would make the frozen target unreachable and
-    # so make this creation unfinishable, which is the one thing the
-    # freeze exists to prevent.
+    # `db/scan.py` is deliberately ABSENT; the module docstring says why.
     "db/capture.py",
     "db/when.py",
     "db/graph.py",
@@ -192,11 +191,8 @@ def over(files: Iterable[pathlib.Path]) -> Reached:
             lambda p=one: _closed(decode.open_still(p)),
             lambda p=spelled: adapters.parse_file(p, allow_stealth=True),
             # KEYWORDS. `judge_file` and `judge_capture` are keyword-only
-            # (db/when.py:425-431, :490-498) and were called positionally
-            # here, so both raised TypeError -- which `watch()` suppresses
-            # on purpose, so they reported no coverage and no complaint.
-            # Two of the ten readers were measured as zero for as long as
-            # this file has existed.
+            # (db/when.py:425-431, :490-498), so calling them positionally raised
+            # a TypeError `watch()` suppresses and two of ten readers read zero.
             lambda p=one: when.judge_file(
                 name=p.name,
                 folders=[q.name for q in p.parents[:3]],
@@ -214,11 +210,9 @@ def over(files: Iterable[pathlib.Path]) -> Reached:
             for chunk in ("prompt", "workflow", "parameters"):
                 if (raw.text or {}).get(chunk):
                     held.watch(lambda text=raw.text[chunk]: graph.read(text))
-        # INSIDE watch(), like everything else. Called bare, a reader
-        # that raises takes the whole measurement down with it -- and
-        # `JXL.jxl` does exactly that: pillow-jxl raises RuntimeError out
-        # of `capture.read`. A measurement that dies on the files it
-        # exists to measure is not a measurement.
+        # INSIDE watch(), like everything else: called bare, a reader that
+        # raises takes the whole measurement down with it. `JXL.jxl` does
+        # exactly that -- pillow-jxl raises RuntimeError out of `capture.read`.
         held.watch(lambda p=one: _judged(when, capture.read(p)))
     return held
 

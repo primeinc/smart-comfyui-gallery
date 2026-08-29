@@ -610,11 +610,9 @@ def test_every_job_kind_has_words_beside_its_raw_name(bare, tmp_path):
     assert "queued #" in dupes
     matrix = client.get("/operations/overview").json()["matrix"]
     told = {(row["kind"], row.get("derive")): row["what"] for row in matrix}
-    # The claim is that the MODE is told apart -- these are two acts
-    # behind one kind. The count comes from the row and so depends
-    # on the library, which is why this asserts the shape rather
-    # than a sentence: a test that pinned "fingerprint every
-    # picture" is what kept the line a constant.
+    # The claim is that the MODE is told apart -- these are two acts behind one
+    # kind. The count comes from the row and depends on the library, so this
+    # asserts the shape rather than a sentence.
     assert told[("hash", "perceptual")].startswith("fingerprint ")
     assert "group perceptual copies" in told[("hash", "groups")]
     assert told[("hash", "perceptual")] != told[("hash", "groups")]
@@ -786,11 +784,9 @@ def test_a_job_says_its_own_numbers_not_its_kind(db):
     assert console.describe_kind("scan", None, 412) == "read metadata for 412 files"
     assert console.describe_kind("scan", None, 1) == "read metadata for 1 file"
     assert console.describe_kind("embed", None, 400) == "embed 400 pictures for search"
-    # The LEAF, never the path. This line is not only the console's: the
-    # activity strip carries it onto /folders and /f/<slug>, whose rule is
-    # that a place is entered by entity and never by path -- and the whole
-    # absolute path really did appear there. `root.path` is where a library
-    # sits, not what it is (schema.sql `root.uuid`).
+    # The LEAF, never the path: the activity strip carries this line onto
+    # /folders and /f/<slug>, whose rule is that a place is entered by entity.
+    # `root.path` is where a library sits, not what it is (schema.sql root.uuid).
     assert console.describe_kind("walk", None, None, "D:/Photos/2019") == "look for files under 2019"
     assert console.describe_kind("walk", None, None, "D:/") == "look for files under D:/", (
         "a root with no leaf still says something"

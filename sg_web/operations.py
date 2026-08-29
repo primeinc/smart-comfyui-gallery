@@ -141,10 +141,9 @@ def _events(state: State, conn) -> list[int]:
     return [runner.submit_events(conn, time.time())]
 
 
-#: What the page can start, in the order a library is usually built:
-#: find files, read them, fingerprint, thumbnail, group copies, embed, detect faces,
-#: cluster, interpret time, group events. Each launcher returns the job
-#: ids it queued -- the same db/runner.py entry points the JSON routes use.
+#: What the page can start, in the order a library is built, over the same
+#: db/runner.py entry points the JSON routes use. Each launcher returns the
+#: job ids it queued.
 def _catch_up(state: State, conn) -> list[int]:
     """Every step of the derivation chain, gated in order.
 
@@ -158,11 +157,9 @@ def _catch_up(state: State, conn) -> list[int]:
     return runner.catch_up(conn, time.time(), models_dir=_weights(state, conn), thumbs_dir=cache)
 
 
-#: What starts a sweep, in the order the buttons appear. `catch_up`
-#: first, and it is not one sweep among thirteen: it is the answer to
-#: the question the other twelve force a person to answer themselves --
-#: which of these, and in what order. The rest stay because knowing
-#: exactly what you want is a real thing to want.
+#: What starts a sweep, in the order the buttons appear. `catch_up` first,
+#: because it answers the question the others leave to the person -- which of
+#: these, and in what order.
 LAUNCHERS: dict[str, tuple[str, Launcher]] = {
     "catch_up": ("bring the library up to date, in order", _catch_up),
     "ingest": ("read the metadata of every file not yet read", _ingest),
@@ -214,25 +211,12 @@ def _ingest_again(state: State, conn) -> list[int]:
     return _one(runner.submit_ingest(conn, time.time(), everything=True))
 
 
-#: What each setting is ABOUT, for the console alone: rows of
-#: `label input set` in registry order are peers, and the console groups
-#: the ones that belong together.
-#:
-#: Deliberately NOT a field on db/settings.py REGISTRY, whose tuple is read
-#: positionally by the worker and the validators; where a row is drawn is
-#: not something the store should have an opinion about.
-#: What each setting is CALLED, and what changing it does, in words.
-#:
-#: The registry's keys are the machine's names -- `ort_providers`,
-#: `dupe_dhash_verify` -- and they are the right names for a store the
-#: worker reads positionally. They are not names for a person deciding
-#: whether to touch something. A row that says `dupe_threshold: 4` tells
-#: you the state of a variable; it does not tell you that raising it
-#: makes this library call more pictures the same photograph.
-#:
-#: The key is still shown beside the words, because it is what the
-#: contract, the logs and every error message call it -- somebody
-#: reading a failure needs to get from the message back to this row.
+#: What each setting is CALLED, and what changing it does, in words. The
+#: registry's keys are the machine's names, right for a store the worker reads
+#: positionally and wrong for a person deciding whether to touch something.
+
+#: The key is still shown beside the words: it is what the contract, the logs
+#: and every error message call it, so a failure leads back to this row.
 SETTING_WORDS: dict[str, tuple[str, str]] = {
     "models_dir": (
         "Where the models live",
@@ -285,10 +269,13 @@ SETTING_WORDS: dict[str, tuple[str, str]] = {
 }
 
 
-#: The groups, NAMED as a heading is named rather than as a variable is.
-#: These read straight onto the page, so a lowercase identifier leaning on a
-#: `text-transform: capitalize` in the stylesheet would show the identifier
-#: raw on any surface drawn without that rule.
+#: What each setting is ABOUT, for the console alone: rows in registry order are
+#: peers, and the console groups the ones that belong together. Deliberately NOT
+#: a field on db/settings.py REGISTRY, which the worker reads positionally.
+
+#: The groups are NAMED as a heading is, not as a variable: they read straight
+#: onto the page, where a lowercase identifier would show raw on any surface
+#: drawn without the stylesheet's `text-transform: capitalize`.
 SETTING_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "Models",
@@ -686,13 +673,9 @@ class FaceExport(Wire):
     spaces: list[FaceSpace]
 
 
-#: The benchmarks that measure THROUGHPUT, and the job each one is
-#: about. Three of twenty-three, and the number is the point: the rest
-#: of `benchmarks/results/` are calibration and evidence documents with
-#: nothing in common -- no key is shared by all of them -- and four
-#: carry real filesystem paths, which is not something a page should
-#: put on screen. These three agree on a shape because one script
-#: (benchmarks/job_phases.py) writes them.
+#: The benchmarks that measure THROUGHPUT, and the job each one is about; they
+#: agree on a shape because one script (benchmarks/job_phases.py) writes them.
+#: The rest of `benchmarks/results/` share no key, and four carry real paths.
 MEASURED = {"job_scan.json": "scan", "embed_job.json": "embed", "job_annotate.json": "annotate"}
 
 #: Where those files land. Absent in an installed copy that ships no
@@ -931,10 +914,9 @@ class WhatTheThumbsSay(Wire):
 
     producers: list[ProducerJudged]
     contests: list[ProducerContest]
-    #: Face producers whose attributions were corrected by hand. Counted
-    #: rather than rated, and kept apart from `producers` for that
-    #: reason: the two cannot go in one table without the reader
-    #: comparing a rate against a tally.
+    #: Face producers whose attributions were corrected by hand, counted rather
+    #: than rated. Kept apart from `producers`, which the two cannot share
+    #: without the reader comparing a rate against a tally.
     corrected: list[ProducerCorrected]
     #: how many verdicts a producer needs before a rate is shown at all
     floor: int
@@ -957,10 +939,9 @@ class Collapsed(Wire):
     name: str
     #: every step, in the order each gates the next
     steps: list[int]
-    #: units done and units expected across the steps that state a total.
-    #: A step with no total (a walk, which finds its work by doing it)
-    #: contributes to neither, so the bar measures what can be measured
-    #: rather than inventing a denominator.
+    #: units done and units expected across the steps that state a total. A step
+    #: with no total (a walk, which finds its work by doing it) contributes to
+    #: neither, so the bar never invents a denominator.
     done: int
     total: int | None
     #: how many steps have settled, and how many there are
@@ -1300,10 +1281,9 @@ def _job_detail(state: State, told: dict) -> JobDetail:
 
 @get(
     "/job/{job_id:int}",
-    # The route negotiates, and a union that mixes a fragment with a JSON
-    # answer reaches OpenAPI as the empty schema however precisely the
-    # arms are written (measured on litestar v2.24.0). The JSON answer is
-    # declared here, where the document reads it.
+    # The route negotiates, and a union mixing a fragment with a JSON answer
+    # reaches OpenAPI as the empty schema however the arms are written (litestar
+    # v2.24.0). The JSON answer is declared here, where the document reads it.
     responses={
         200: ResponseSpec(
             data_container=JobDetail,
@@ -1539,10 +1519,9 @@ def scan_root(state: State, root_id: FromPath[int]) -> Template:
             conn.commit()
             submitted(state, conn, precache)
         roots = _roots(conn)
-        # A scan LISTS files. Nothing here reads, fingerprints or captions
-        # one, so the person who just registered a library is looking at a
-        # gallery with no metadata, no search and no people -- and the
-        # button that fixes it is in a different section further down.
+        # A scan LISTS files: nothing here reads, fingerprints or captions one,
+        # so a newly registered library has no metadata, no search and no
+        # people until a sweep further down the page is started.
         behind = _behind(inspecting.coverage(conn, _weights(state, conn))["missing"])
     finally:
         connect.close(conn)
@@ -1614,10 +1593,9 @@ class Scheduled(Wire):
     collection: str
     every_hours: float
     enabled: bool
-    #: when it last STARTED its collection, never when that finished:
-    #: the next run is measured from the start, so a three-hour catch-up
-    #: on a nightly schedule still runs once a night rather than
-    #: drifting three hours later every day
+    #: when it last STARTED its collection, never when that finished: the next
+    #: run is measured from the start, so a long catch-up on a nightly schedule
+    #: still runs once a night rather than drifting later every day
     last_started_at: float | None
     #: when it is next due, null when it never runs. 0 means "now",
     #: which is what a schedule somebody just turned on should be --
@@ -1802,9 +1780,8 @@ def export_faces(
     should know what they are about to put in a file.
     """
     # The extension rides INSIDE the captured value, the way
-    # `/thumbs/{shard}/{name}` takes `<sha>.webp`: a path parameter
-    # occupies a whole segment, so `{slug:str}.json` matches nothing at
-    # all -- checked, it 404s before the handler is reached.
+    # `/thumbs/{shard}/{name}` takes `<sha>.webp`. A path parameter occupies a
+    # whole segment, so `{slug:str}.json` 404s before the handler is reached.
     slug = name.removesuffix(".json")
     conn = connect.connect(state.db_path)
     try:
@@ -1887,10 +1864,9 @@ def export_verdicts(state: State, include: FromQuery[str] = "") -> Response[list
     under (tests/test_the_shell_mounts_every_surface.py `_links`).
     """
     wanted = tuple(one.strip() for one in include.split(",") if one.strip())
-    # Refused before the connection: what was asked for is answerable from
-    # the argument, and a request that is going to be told no should not
-    # open a database to hear it. `exported` checks again, because a
-    # caller that reaches it another way is owed the same refusal.
+    # Refused before the connection: what was asked for is answerable from the
+    # argument alone. `exported` checks again, because a caller that reaches it
+    # another way is owed the same refusal.
     try:
         verdicts.withheld_by(wanted)
     except ValueError as refusal:

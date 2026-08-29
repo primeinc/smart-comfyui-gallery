@@ -598,11 +598,9 @@ def test_a_batch_is_bounded_by_pixels_including_the_item_that_leads_it(db, tmp_p
     monkeypatch.setattr(semantic, "encoder", lambda *args, **kwargs: Grouping())
     monkeypatch.setattr(runner, "BATCH_MEGAPIXELS", 100.0)
     files = _pictures(db, tmp_path, {f"p{i}.png": i for i in range(8)})
-    # 40 megapixels each against a bound of 100. Charging the leader
-    # leaves room for exactly one follower, so batches are of two.
-    # WITHOUT charging it there is room for two followers and they would
-    # be three -- which is what makes this test tell the two apart rather
-    # than pass either way.
+    # 40 megapixels each against a bound of 100. Charging the leader leaves
+    # room for exactly one follower, so batches are of two; without charging it
+    # there is room for two followers and they would be three.
     db.execute("UPDATE file SET width = 5000, height = 8000")
     db.commit()
 
@@ -687,7 +685,11 @@ def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
     setting parses in the provider's OWN grammar (a Hugging Face repo
     id, not a fake model/checkpoint split), duplicates collapse instead
     of voting twice, and the space identity pins repo, revision and the
-    whole preprocessing policy."""
+    whole preprocessing policy.
+
+    The QUERY instruction is deliberately outside the preprocess digest:
+    rewording a query prompt must not force a re-embed of a library whose
+    stored vectors are all still valid."""
     from db import retrieval, settings
     from vision import semantic
     from vision.semantic import qwen_vl
@@ -706,28 +708,23 @@ def test_the_qwen_provider_is_a_named_space_and_a_parsed_choice(db):
         with pytest.raises(ValueError, match=r"repo id|revision"):
             qwen_vl.parse(malformed)
 
-    # Space identity is exercised with a COMMIT, the only checkpoint the
-    # real paths ever mint under: the backend pins a mutable ref to the
-    # cached commit after weights land, and retrieval pins before it
-    # probes the registry -- "main" never becomes producer_version.
+    # Space identity is exercised with a COMMIT, the only checkpoint the real
+    # paths mint under: the backend pins after weights land and retrieval pins
+    # before it probes the registry, so "main" never becomes producer_version.
     commit = "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
     spec = semantic.space("qwen", "Qwen/Qwen3-VL-Embedding-2B", commit, 2048)
     assert spec.key == f"semantic.qwen.Qwen/Qwen3-VL-Embedding-2B.{commit}"
     assert (spec.producer, spec.producer_version) == ("qwen3vl:Qwen/Qwen3-VL-Embedding-2B", commit)
     assert (spec.preprocess, spec.dimensions, spec.metric) == ("qwen3vl.chat-template", 2048, "cosine")
 
-    # The preprocess version is a PROPERTY of the policy, not a label:
-    # it names the three packages whose code is the preprocessing, and
-    # any edited knob or media instruction changes the digest, hence the
-    # spec hash, hence the space. The QUERY instruction is deliberately
-    # outside it -- rewording a query prompt must not force a re-embed
-    # of a library whose stored vectors are all still valid.
+    # The preprocess version is a PROPERTY of the policy, not a label: it names
+    # the three packages whose code is the preprocessing, and any edited knob
+    # or media instruction changes the digest, the spec hash, and the space.
     assert spec.preprocess_version.startswith("tf")
     assert "+qvu" in spec.preprocess_version
-    # The DECODER, because it decides bytes. qwen_vl_utils names a frame
-    # index; torchcodec is what that index resolves to, so two libraries
-    # built against different torchcodec builds hold different vectors.
-    # A key that omits it calls them comparable.
+    # The DECODER, because it decides bytes: qwen_vl_utils names a frame index
+    # and torchcodec is what that index resolves to, so two libraries built
+    # against different torchcodec builds hold different vectors.
     assert "+tc" in spec.preprocess_version, (
         "the video decoder chooses the pixels and must be part of the space identity"
     )
@@ -878,11 +875,9 @@ def test_the_qwen_adapter_takes_the_native_link_for_video(monkeypatch):
     backend.encode_media(semantic.MediaRef(path="C:/pics/clip.mp4", kind="video", frame=never_the_frame))
     assert seen["instruction"] == qwen_vl.MEDIA_INSTRUCTION
     assert seen["content"]["type"] == "video"
-    # The bare path. `_read_video_torchcodec` opens this string as a
-    # filename, so a `file://` prefix is a file that does not exist --
-    # and its failure lands in a bare `except` that retries the dead
-    # torchvision backend, so the error names read_video and never the
-    # scheme.
+    # The bare path: `_read_video_torchcodec` opens this string as a filename,
+    # so a `file://` prefix is a missing file whose failure a bare `except`
+    # retries on the dead torchvision backend, naming read_video not the scheme.
     assert seen["content"]["video"] == "C:/pics/clip.mp4"
     assert (seen["content"]["fps"], seen["content"]["max_frames"]) == (qwen_vl.FPS, qwen_vl.MAX_FRAMES)
 

@@ -152,11 +152,9 @@ def _exif_for(when: float, camera: tuple, *, place: tuple | None, seed: int) -> 
     exif[ExifTags.Base.Make] = made
     exif[ExifTags.Base.Model] = model
     photo = exif.get_ifd(ExifTags.IFD.Exif)
-    # LOCAL wall clock, with no zone, which is what EXIF stores and what
-    # a camera writes. Spelling it in UTC on a machine that is not UTC
-    # makes the file disagree with its own mtime by the offset -- and
-    # every photograph then arrives CONTESTED, which buries the ones that
-    # are contested on purpose. Measured: 146 of 146, before this line.
+    # LOCAL wall clock, with no zone, which is what EXIF stores and what a
+    # camera writes. Spelling it in UTC makes the file disagree with its own
+    # mtime by the offset, and 146 of 146 photographs then arrived CONTESTED.
     local = datetime.datetime.fromtimestamp(when, UTC).astimezone()
     photo[ExifTags.Base.DateTimeOriginal] = local.strftime("%Y:%m:%d %H:%M:%S")
     photo[ExifTags.Base.SubsecTimeOriginal] = f"{seed % 100:02d}"
@@ -337,11 +335,9 @@ def _folder_for(era: Era, when: float) -> str:
     if era.name == "undated":
         return "downloads"
     if era.dating == "conflicting":
-        # Where they belong, and where the docstring already said they
-        # come from: a file whose EXIF and whose name disagree is most of
-        # anybody's downloads folder. It also keeps them out of
-        # `photos/`, so "these agree with themselves" is a claim about a
-        # directory rather than about a naming convention.
+        # A file whose EXIF and whose name disagree is most of anybody's
+        # downloads folder. It also keeps them out of `photos/`, so "these
+        # agree with themselves" is a claim about a directory, not a convention.
         return f"downloads/{d:%Y-%m}"
     return f"photos/{d:%Y}/{d:%Y-%m-%d}"
 

@@ -74,9 +74,8 @@ def view(
     """
     with resultset.snapshot(conn):
         # `neighborhood` IS locate plus the window around it, from one
-        # projection: the ordinal, the arrows and the strip beneath the
-        # picture are then the same answer at the same generation. Two
-        # calls would be two chances to describe two different walks.
+        # projection, so the ordinal, the arrows and the strip are the same
+        # answer at the same generation. Two calls would describe two walks.
         found = resultset.neighborhood(conn, models_dir, query, file_id, now, actor_id=actor_id)
         if found is not None:
             generation, asked, answer = found["currency"], found["qs"], found["answer"]
@@ -98,10 +97,9 @@ def _assembled(
         back += ("&" if asked else "?") + f"page={found['page']}"
     loras = pages.file_loras(conn, file_id)
     recipe = pages.generation_of(conn, file_id)
-    # Every prompt role in one read (db/prompts.py ROLES), so the panel can
-    # show what was TYPED beside what the sampler actually saw -- they
-    # differ exactly when something expanded wildcards, which is when the
-    # person branching the picture wants the one they can edit.
+    # Every prompt role in one read (db/prompts.py ROLES), so the panel shows
+    # what was TYPED beside what the sampler saw. They differ exactly when
+    # something expanded wildcards, and the editable one is the typed one.
     typed = pages.prompt_texts(conn, file_id)
     # A recipe is the reason there is a Creation at all: a photograph was
     # taken, and giving it an empty prompt/checkpoint/seed block would be
@@ -203,11 +201,9 @@ def _filmstrip(found: dict, asked: str) -> Filmstrip:
                 kind=near["kind"],
                 ordinal=near["ordinal"],
                 href=f"/i/{near['slug']}" + (f"?{asked}" if asked else ""),
-                # None for a kind with no picture to take: the raster
-                # routes refuse audio and documents outright
-                # (`_variant_bytes`: "a {kind} has no {variant}"), so a
-                # thumb URL for one would 404 and draw a broken image.
-                # The strip says the kind instead.
+                # None for a kind with no picture: the raster routes refuse audio
+                # and documents (`_variant_bytes`: "a {kind} has no {variant}"),
+                # so a thumb URL would 404. The strip says the kind instead.
                 thumb=thumbs.asset_url(near["sha"], near["slug"], medium=near["kind"]),
             )
             for near in found["items"]
@@ -248,11 +244,9 @@ def _authored(conn, file_id: int, actor_id: int) -> AuthoredState:
     )
 
 
-#: The place vocabulary is the schema's: db/schema.sql constrains place.kind
-#: with CHECK, and db/places.py KINDS is the same list. Stating it here as a
-#: Literal carries the closed set across the wire, so a body naming a kind no
-#: place can ever be is a 400 at the seam rather than a row the database
-#: refuses later, and the browser gets a union instead of `string`.
+#: The place vocabulary is the schema's: db/schema.sql constrains place.kind with
+#: CHECK and db/places.py KINDS is the same list. As a Literal it gives the browser
+#: a union and makes an impossible kind a 400 at the seam, not a later refusal.
 PlaceKind = Literal["country", "region", "island", "county", "city", "locality", "neighborhood", "poi"]
 
 
@@ -411,14 +405,13 @@ class DocumentStage(Wire):
     original: str
 
 
-#: What the viewer paints, per kind.
-#:
-#: A plain union, as CollectionDocument is: litestar builds a union's schema
-#: itself and never asks pydantic, so `Field(discriminator=...)` would be an
-#: annotation lying about the document. Every arm states `kind` as a
-#: single-valued Literal, which is what the browser narrows on -- and what
-#: makes `source`, `shown` and `promotable` reachable ONLY where they mean
-#: something, with no assertion at the call site.
+#: What the viewer paints, per kind. A plain union, as CollectionDocument is:
+#: litestar builds a union's schema itself and never asks pydantic, so
+#: `Field(discriminator=...)` would be an annotation lying about the document.
+
+#: Every arm states `kind` as a single-valued Literal, which is what the browser
+#: narrows on, and what makes `source`, `shown` and `promotable` reachable only
+#: where they mean something without an assertion at the call site.
 Stage = ImageStage | AnimatedStage | VideoStage | SoundStage | DocumentStage
 
 
@@ -479,11 +472,9 @@ class Faces(Wire):
     looked: list[FaceScan]
 
 
-#: What a model can say about a picture. `derived_annotation.kind` carries
-#: a CHECK of exactly this list (db/schema.sql).
-#:
-#: Named by table rather than by line: this said :1468, which is inside
-#: `derived_face_instance` -- a different table about a different thing.
+#: What a model can say about a picture. `derived_annotation.kind` carries a
+#: CHECK of exactly this list (db/schema.sql), cited by table rather than by
+#: line so the reference cannot slide into a neighbouring table.
 SaidKind = Literal["caption", "description", "alt_text", "tag", "ocr", "title"]
 
 
@@ -500,10 +491,9 @@ class Said(Wire):
     sample_id: int | None
     #: where in a clip it was said, when it was said of a frame
     offset_ms: int | None
-    #: what THIS actor said about it: right, wrong, unsure, or nothing.
-    #: Never a machine's confidence -- `confidence` above is that, and
-    #: the two being one field is how a model's certainty and a person's
-    #: judgement come to be averaged together.
+    #: what THIS actor said about it: right, wrong, unsure, or nothing. Never a
+    #: machine's confidence -- `confidence` above is that, and one field for both
+    #: is how a model's certainty and a person's judgement get averaged together.
     verdict: Literal["right", "wrong", "unsure"] | None = None
     #: said of bytes this file no longer has
     stale: bool
@@ -651,10 +641,9 @@ class FilmstripItem(Wire):
     #: position in the WHOLE answer, not in this window
     ordinal: int
     href: str
-    #: None for a kind with no picture to take -- audio, documents. The
-    #: strip is still a walk through THIS answer, and those files are
-    #: members of it, so the cell is drawn saying its kind rather than
-    #: dropped: a walk that skips its own members is a different walk.
+    #: None for a kind with no picture to take -- audio, documents. Those files
+    #: are members of this answer, so the cell is drawn saying its kind rather
+    #: than dropped: a walk that skips its own members is a different walk.
     thumb: str | None
 
 
@@ -694,10 +683,9 @@ class BrowsingContext(Wire):
     total: int | None
     previous: str | None
     next: str | None
-    #: the two ENDS of this answer, so a walk that WRAPS has an address
-    #: to wrap to. Whether it wraps is how a person arranged their viewer
-    #: (frontend/src/workspace.ts) -- it changes no membership and is in
-    #: no fingerprint; what the server owes is where the ends are.
+    #: the two ENDS of this answer, so a walk that WRAPS has an address to wrap
+    #: to. Whether it wraps is how a person arranged their viewer
+    #: (frontend/src/workspace.ts); it changes no membership and no fingerprint.
     first: str | None
     last: str | None
     #: the few members either side of this one, or None when the item is
@@ -750,11 +738,9 @@ class AuthoredState(Wire):
     favorite: bool
     rating: int | None
     collections: list[CollectionSummary]
-    #: Shared rather than this actor's, unlike everything above it: a
-    #: keyword is a fact about the picture that everybody reads, where a
-    #: rating is one person's opinion and two people may hold different
-    #: ones. It rides in the actor's state anyway because it is authored
-    #: and this is where the surface already looks for authored things.
+    #: Shared rather than this actor's, unlike everything above it: a keyword is
+    #: a fact everybody reads, where a rating is one person's opinion. It rides
+    #: in the actor's state because it is authored, which is where surfaces look.
     tags: list[TagSummary]
 
 
@@ -972,10 +958,9 @@ def media_page(
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
         told = view(conn, weights, file_id, slug, query, time.time(), state.actor_id)
         conn.commit()  # a semantic context may have minted registry rows
-        # Compared AFTER assembly, against the currency the view was
-        # actually located in: a commit landing mid-request would
-        # otherwise pass a pre-assembly check and hand back arrows from
-        # a newer answer under the old mounted gallery.
+        # Compared AFTER assembly, against the currency the view was located in.
+        # A commit landing mid-request would otherwise pass a pre-assembly check
+        # and hand back arrows from a newer answer under the old gallery.
         expected = request.headers.get("x-sg-expect")
         if expected is not None and told.context.currency != expected:
             raise HTTPException(status_code=409, detail="the result set has changed; redraw the gallery")

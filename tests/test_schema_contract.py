@@ -134,8 +134,7 @@ def unconstrained_reference_columns(conn):
         fks = {r[3] for r in conn.execute(f"PRAGMA foreign_key_list({table})")}
         # Being part of a primary key does NOT excuse a column from declaring
         # its reference: file_person.person_id is both. Surrogate keys are
-        # named in _NOT_A_REFERENCE instead, one line each, so the exemption
-        # is a decision on the record rather than a rule that quietly widens.
+        # named in _NOT_A_REFERENCE instead, one line each, on the record.
         out.extend(
             f"{table}.{col}"
             for col in (c[1] for c in cols)
@@ -938,11 +937,9 @@ def test_dropping_the_derived_namespace_keeps_everything_authored(db):
     derived = [
         r[0]
         for r in db.execute(
-            # Reverse creation order: a derived table may reference an
-            # earlier derived table, and with foreign keys on, a child
-            # cannot even be DROPPED after its parent is gone -- the
-            # mechanical drop is children-first, which reverse-creation
-            # order guarantees because the DDL declares parents first.
+            # Reverse creation order: a derived table may reference an earlier
+            # one and, with foreign keys on, a child cannot even be DROPPED
+            # after its parent -- and the DDL declares parents first.
             "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%' ORDER BY rowid DESC"
         )
     ]
@@ -1576,11 +1573,9 @@ def test_a_name_survives_dropping_everything_derived(db):
     derived = [
         r[0]
         for r in db.execute(
-            # Reverse creation order: a derived table may reference an
-            # earlier derived table, and with foreign keys on, a child
-            # cannot even be DROPPED after its parent is gone -- the
-            # mechanical drop is children-first, which reverse-creation
-            # order guarantees because the DDL declares parents first.
+            # Reverse creation order: a derived table may reference an earlier
+            # one and, with foreign keys on, a child cannot even be DROPPED
+            # after its parent -- and the DDL declares parents first.
             "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'derived_%' ORDER BY rowid DESC"
         )
     ]

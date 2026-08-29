@@ -130,7 +130,13 @@ def _png(path, chunks, mode="RGB"):
 
 
 def _stealth_png(path, text):
-    """Writer port of Forge modules/stealth_infotext.py, alpha mode."""
+    """Writer port of Forge modules/stealth_infotext.py, alpha mode.
+
+    Only the alpha channel carries payload, so the colour is a constant and
+    this builds the alpha plane alone. Forge walks columns first (x outer, y
+    inner); putdata is row-major, so the index converts rather than the loop.
+    The ground alpha is 255, hence `254 | bit`.
+    """
     payload = gzip.compress(text.encode("utf-8"))
     bits = "".join(format(byte, "08b") for byte in b"stealth_pngcomp")
     data = "".join(format(byte, "08b") for byte in payload)
@@ -138,10 +144,6 @@ def _stealth_png(path, text):
     side = 1
     while side * side < len(bits):
         side += 1
-    # Only the alpha channel carries payload, so the colour is a constant and
-    # this builds the alpha plane alone. Forge walks columns first (x outer,
-    # y inner); putdata is row-major, so the index converts rather than the
-    # loop. The ground alpha is 255, hence `254 | bit`.
     alpha = [255] * (side * side)
     for index, bit in enumerate(bits):
         x, y = divmod(index, side)

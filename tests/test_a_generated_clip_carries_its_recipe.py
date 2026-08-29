@@ -47,16 +47,19 @@ WORKFLOW = {"nodes": [{"id": 3, "type": "KSampler"}], "links": [], "version": 0.
 
 
 def _clip(path: pathlib.Path, metadata: dict[str, str] | None = None) -> None:
-    """A real, playable mp4 -- with ComfyUI's tags when asked for."""
+    """A real, playable mp4 -- with ComfyUI's tags when asked for.
+
+    `movflags=use_metadata_tags` is not optional and not decoration: without
+    it the mp4 muxer DROPS every tag it does not recognise, so `workflow` and
+    `prompt` never reach the file. ComfyUI passes exactly this, for exactly
+    this reason
+    (refs/Comfy-Org/ComfyUI/comfy_api/latest/_input_impl/video_types.py:41).
+    A fixture that omitted it would be testing a clip ComfyUI never writes,
+    and would have proved the reader broken when it was not.
+    """
     import av
 
-    # `movflags=use_metadata_tags` is not optional and not decoration:
-    # without it the mp4 muxer DROPS every tag it does not recognise, so
-    # `workflow` and `prompt` never reach the file. ComfyUI passes exactly
-    # this, for exactly this reason
-    # (refs/Comfy-Org/ComfyUI/comfy_api/latest/_input_impl/video_types.py:41).
-    # A fixture that omitted it would be testing a clip ComfyUI never
-    # writes, and would have proved the reader broken when it was not.
+    # `movflags=use_metadata_tags` is required; the docstring says why.
     with av.open(str(path), "w", options={"movflags": "use_metadata_tags"}) as container:
         if metadata:
             for key, value in metadata.items():
@@ -196,11 +199,9 @@ def test_a_clip_and_a_still_of_one_graph_are_read_identically(library):
     )
     assert rows.get("boat.mp4") == rows.get("still.png") is not None, rows
 
-    # and the same for what each hung off itself: prompts by role, and
-    # artifacts by role. This library's graph carries no links, so the
-    # adapter resolves no prompt ROLE from it -- for either file. That is
-    # a fact about the graph, and the point here is that it is the SAME
-    # fact about both.
+    # and the same for what each hung off itself: prompts by role, and artifacts
+    # by role. This library's graph carries no links, so the adapter resolves no
+    # prompt ROLE for either file -- and the point is that it is the SAME fact.
     def held(name: str) -> tuple:
         prompts = library.execute(
             "SELECT gp.role, p.text FROM generation_prompt gp JOIN prompt p ON p.id = gp.prompt_id"

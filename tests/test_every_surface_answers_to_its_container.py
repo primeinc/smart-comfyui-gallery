@@ -41,10 +41,9 @@ pytestmark = pytest.mark.slow
 
 FILES = 8
 
-#: The widths this application is really used at, and what each is for.
-#: Not a sweep of every pixel: three shapes that break different things.
-#: A phone (one column), the awkward middle where a two-column layout is
-#: deciding, and a desk.
+#: The widths this application is really used at, not a sweep of every pixel.
+#: Three shapes that break different things: a phone (one column), the awkward
+#: middle where a two-column layout is deciding, and a desk.
 WIDTHS = ((390, 844, "phone"), (820, 1180, "tablet"), (1512, 950, "desktop"))
 
 #: The smallest a target may be under a finger. Below this a control is

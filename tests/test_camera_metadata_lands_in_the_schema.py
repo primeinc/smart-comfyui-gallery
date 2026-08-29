@@ -399,11 +399,9 @@ def test_a_column_tag_is_not_also_long_tail(db, a_file, tmp_path):
     assert duplicated == [], duplicated
 
 
-# The awkward half of real EXIF. Everything above was written by Pillow and
-# read back by Pillow, which agrees with itself about types; a camera does
-# not. These are the shapes that actually arrive: binary blobs, a version as
-# four bytes, an unknown-rational meaning "not recorded", a tag no table
-# names, and text that is not ASCII.
+# The awkward half of real EXIF, which Pillow round-tripping itself never
+# produces: binary blobs, a version as four bytes, an unknown-rational meaning
+# "not recorded", a tag no table names, and text that is not ASCII.
 AWKWARD_PHOTO = {
     ExifTags.Base.ExifVersion: b"0232",
     ExifTags.Base.ComponentsConfiguration: b"\x01\x02\x03\x00",
@@ -614,10 +612,9 @@ def test_an_exif_read_that_throws_is_not_a_file_without_camera_tags(tmp_path, mo
 
     root = tmp_path / "lib"
     root.mkdir()
-    # A PNG, not a JPEG. Pillow's JPEG `_open` calls `getexif()` itself to
-    # read the DPI (PIL/JpegImagePlugin.py:507), so making that method
-    # throw breaks the OPEN and tests nothing about the EXIF read. The
-    # first version of this test did exactly that and blamed the code.
+    # A PNG, not a JPEG. Pillow's JPEG `_open` calls `getexif()` itself to read
+    # the DPI (PIL/JpegImagePlugin.py:507), so a throwing `getexif` would break
+    # the OPEN and test nothing about the EXIF read.
     Image.new("RGB", (16, 16)).save(root / "picture.png")
 
     db = fresh_schema()

@@ -37,10 +37,9 @@ from sg_web.wire import Wire
 from story_renderers import formatting
 from vision import thumbs
 
-#: The surface's scope is a gallery question (db/resultset.py scope_of):
-#: its scopes and facets in the live spelling, unsorted, unpaged. The
-#: timeline never invents its own spelling of a link -- every link is
-#: that question plus the facets the link adds, ordered by moment.
+#: The surface's scope is a gallery question (db/resultset.py scope_of): its
+#: scopes and facets in the live spelling, unsorted, unpaged. Every link is that
+#: question plus the facets the link adds, ordered by moment.
 WHOLE = resultset.GalleryQuery()
 
 
@@ -196,36 +195,31 @@ PLANNER_FOR = {
 }
 
 #: How wide a claim at each precision is: `db/when.py SPAN`, NOT a copy of it.
-#: This is indexed by a precision read out of the database, and a lookup keyed
-#: by a vocabulary somebody else owns has to be that vocabulary or it raises
-#: `KeyError` on a precision the schema allows.
+#: This is indexed by a precision read out of the database, so a copy would
+#: raise `KeyError` on a precision the schema allows.
 _SPAN = when.SPAN
 
-#: Sessions one answer lists -- a whole library's extent can touch thousands,
-#: so the page lists the most recent this many, says how many more there are,
-#: and lets the person narrow the window. Never a silent cut, and every listed
-#: session carries its thumbnails.
-#: The number is the query's own bound (db/pages.py TIMELINE_EVENTS_MOST).
+#: Sessions one answer lists, the query's own bound (db/pages.py
+#: TIMELINE_EVENTS_MOST). The page lists the most recent this many and says how
+#: many more there are, so the cut is never silent.
 SESSIONS_MOST = pages.TIMELINE_EVENTS_MOST
+#: How many of those carry thumbnails: every listed session does.
 SESSIONS_SAMPLED_MOST = SESSIONS_MOST
 #: How much time a first visit shows: the last month that holds pictures,
 #: clipped to the library -- never the whole library at once.
 OPENING = 30 * when.DAY
-#: The presets beside the window, each ending at the newest picture.
-#: `1m` and `1y` are the mean month and year the bars themselves are
-#: drawn from (db/pages.py BINS): they were 30 and 365 days, so the
-#: preset labelled `1y` selected a window narrower than the year bin.
+#: The presets beside the window, each ending at the newest picture. `1m` and
+#: `1y` are the mean month and year the bars themselves are drawn from
+#: (db/pages.py BINS), so no preset selects a window narrower than its own bin.
 PRESETS = (("1w", 7 * when.DAY), ("1m", when.MONTH), ("3m", 3 * when.MONTH), ("1y", when.YEAR), ("all", None))
-#: The zoom follows the window's width: enough bars to see the shape,
-#: never more than the strip samples thumbnails for.
-#: `when.YEAR` is the Gregorian mean (365.2425 days). 31_557_600 -- the
-#: JULIAN year, 365.25 days -- was typed here twice, so the bars were
-#: drawn against one length of year and the zoom boundaries decided by
-#: another.
-#: Half a year: the span above which the day zoom ends and the axis
-#: labels months instead of days. It was `183 * 86_400` at both sites --
-#: one number doing two jobs, derived from nothing.
+
+#: Half a year, derived from `when.YEAR` (the Gregorian mean) rather than typed:
+#: the span above which the day zoom ends and the axis labels months instead of
+#: days, and the one place both sites read it from.
 MONTH_LABELS_ABOVE = when.YEAR / 2
+
+#: The zoom follows the window's width: enough bars to see the shape, never more
+#: than the strip samples thumbnails for.
 _ZOOM = (
     ("minute", 6 * when.HOUR),
     ("quarter", 2 * when.DAY),
@@ -253,10 +247,9 @@ def _coverage(conn, scope: tuple[str, list] = ("", []), question: resultset.Gall
         "interpreted": have,
         "present": present,
         "contested": contested,
-        #: a session run answers only at the current interpretation
-        #: (db/pages.py TIMELINE_EVENTS); one authored place moves the
-        #: generation and every session link goes dark until the events
-        #: job runs again -- the page names that remedy, never an empty list
+        #: a session run answers only at the current interpretation (db/pages.py
+        #: TIMELINE_EVENTS): one authored place moves the generation and every
+        #: session link goes dark until the events job runs, which the page names
         "events_current": pages.timeline_events_current(conn),
         "contested_qs": _link(question, facets.facet("context.disputed", "eq", "1")),
         "policy_version": context.POLICY_VERSION,
@@ -485,10 +478,9 @@ def _picture(row, qs: str) -> dict:
     slug, name, kind, width, height, moment, precision, origin, wall, sha, faces, sessions = row
     return {
         "slug": slug,
-        #: Where to draw it. Content-addressed from the hash this row
-        #: already carries, so a river of a thousand pictures costs no
-        #: connections; None for a medium with no picture to take, and
-        #: the cell says the kind instead.
+        #: Where to draw it, content-addressed from the hash this row already
+        #: carries, so a river of a thousand pictures costs no connections.
+        #: None for a medium with no picture; the cell says the kind instead.
         "thumb": thumbs.asset_url(sha, slug, medium=kind),
         "name": name,
         "kind": kind,
@@ -724,14 +716,13 @@ def _silence(days: int) -> int:
 #: The most segments with pictures a scrubber carries: the unit is the
 #: finest that keeps to this (_scrubber_unit).
 SEGMENTS_MOST = 40
-#: The scrubber's height in its own units; the least a segment with
-#: pictures takes of it (a thumb can land on 2.5% of a screen); what a
-#: run of empty bins takes, however long. A segment's pictures are not
-#: counted here: the page asks /timeline/spread for as many as the
-#: segment's own pixels can show, and /timeline/at for the one under
-#: the pointer.
+#: The scrubber's height in its own units.
 _H = 1000
+#: The least of it a segment with pictures takes (a thumb can land on 2.5% of a
+#: screen). Pictures are not counted here: the page asks /timeline/spread for as
+#: many as a segment's own pixels can show, and /timeline/at for the one under the pointer.
 SEGMENT_LEAST = 25.0
+#: What a run of empty bins takes, however long the run is.
 GAP_H = 10.0
 #: The most pictures one spread answers.
 SPREAD_MOST = 400
@@ -1115,11 +1106,9 @@ def _surface(
         }
         told_bins.append(told)
     overview_most = max([1, *(pictures for _, pictures, *_ in overview_bins)])
-    # The scrubber's axis, collapsed on the same rule. This is the
-    # twenty-four-year case: a library holding one scanned photograph
-    # from 2002 spends nine tenths of its navigation control on years
-    # that hold nothing, and the handle for THIS month ends a hairline
-    # nobody can take hold of.
+    # The scrubber's axis, collapsed on the same rule. Uncollapsed, a library
+    # holding one scanned photograph from decades back spends most of its
+    # navigation control on years that hold nothing.
     whole_axis = projecting.projected(
         whole_lo,
         whole_hi,
@@ -1176,10 +1165,9 @@ def _surface(
     fine = sum(b["pictures"] for b in told_bins)
     coarse = sum(pictures for _, _, pictures in spans)
     unit = UNIT[bin_name]
-    # The Y SCALE, which the surface drew and never stated: "each bar is
-    # a day" names the x unit and nothing named the other one, so a bar
-    # could be five pictures or five hundred and the only way to find out
-    # was to hover it.
+    # The Y SCALE, said rather than drawn: "each bar is a day" names the x unit
+    # only, so without the tallest count a bar could be five pictures or five
+    # hundred and hovering it is the only way to tell.
     note = f"{fine:,} pictures · each bar is a {unit} · tallest {most:,}"
     if axis.collapsed:
         # Said in the sentence as well as drawn as a band: somebody
@@ -1226,10 +1214,9 @@ def _surface(
         "composition": composition,
         "ticks": _ticks(lo, hi, axis),
         "now_x": round(axis.x(time.time()), 2) if lo <= time.time() < hi else None,
-        #: The window axis as the browser must invert it: a click, a drag
-        #: and a pan all turn x back into a moment, and a piecewise axis
-        #: the server kept to itself would put every gesture in the wrong
-        #: year (frontend/src/timeline.ts).
+        #: The window axis as the browser must invert it: a click, a drag and a
+        #: pan all turn x back into a moment, and a piecewise axis kept on the
+        #: server would put every gesture in the wrong year (frontend/src/timeline.ts).
         "segments": axis.told(),
         #: The runs that hold nothing and are drawn as a band saying so.
         #: Blank pixels are ambiguous between "no pictures", "nothing
@@ -1291,20 +1278,8 @@ def _surface(
 
 
 # --- the timeline's contract -------------------------------------------------
-#
-# These do not restate `_surface`; they DESCRIBE it, and the description is
-# executable. `TimelineSurface(**told)` validates the whole tree at the seam:
-# `extra="forbid"` means a key the builder grows and this does not name is a
-# refusal here rather than an undescribed field on the wire, and strict mode
-# means a count that turned into a string, or an int where the contract
-# promised a boolean, is caught in the same call. A dict is accepted for a
-# model field and a list of dicts for a list of models, so the builder goes on
-# building dicts and this stays the one place that says what they are.
-#
-# Both what a person reads (`spelled`, `label`, `title`, `note`) and what a
-# browser draws with (`x`, `w`, `h`, `y`) are here on purpose: the server
-# decides how the surface reads AND how it is laid out, and the browser puts
-# that on screen rather than recomputing it.
+# The models below describe `_surface` rather than restating it; see
+# TimelineSurface for what that description is worth.
 
 
 class TimelineScopePart(Wire):
@@ -1755,6 +1730,21 @@ class TimelineSurface(Wire):
     the scope holds nothing placeable -- and `coverage` then says why and
     what to run about it, which is the whole reason an empty surface is
     still an answer.
+
+    This model and its parts do not restate `_surface`; they DESCRIBE it, and
+    the description is executable. `TimelineSurface(**told)` validates the whole
+    tree at the seam: `extra="forbid"` means a key the builder grows and this
+    does not name is a refusal here rather than an undescribed field on the
+    wire, and strict mode means a count that turned into a string, or an int
+    where the contract promised a boolean, is caught in the same call. A dict is
+    accepted for a model field and a list of dicts for a list of models, so the
+    builder goes on building dicts and this stays the one place that says what
+    they are.
+
+    Both what a person reads (`spelled`, `label`, `title`, `note`) and what a
+    browser draws with (`x`, `w`, `h`, `y`) are here on purpose: the server
+    decides how the surface reads AND how it is laid out, and the browser puts
+    that on screen rather than recomputing it.
     """
 
     #: the zoom, and how wide one bar is in seconds

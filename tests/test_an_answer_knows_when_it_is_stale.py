@@ -297,12 +297,9 @@ def test_a_migrated_database_gets_the_same_coverage(tmp_path):
     path = tmp_path / "gallery.db"
     schemas.seed(path, 31)  # the schema that shipped as v31
 
-    # `32 in`, not `== [32]`. What this test is about is that step 32 --
-    # the one that writes the triggers -- really ran over a database that
-    # got here the long way. Spelling the whole list pins something else
-    # entirely: how many steps exist above 31, which is a number every
-    # future migration changes, and which broke this test the first time
-    # one did.
+    # `32 in`, not `== [32]`: this test is about step 32, the one that writes
+    # the triggers, really running over a database that got here the long way.
+    # The whole list pins a number every migration changes, which broke it once.
     ran = migrate.migrate(path)
     assert 32 in ran, ran
 

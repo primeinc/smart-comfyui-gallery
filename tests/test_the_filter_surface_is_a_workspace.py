@@ -150,8 +150,7 @@ def _pick(page: Page, key: str, label: str) -> None:
     )
     # Not a no-op, though `[data-grid]` is there before the click as well:
     # choosing a value REPLACES the grid, so this waits for the new one.
-    # Removing it fails `test_a_dimensions_own_list_still_offers_what_it
-    # _would_give`, which then reads the grid it just replaced.
+    # Removing it fails `test_a_dimensions_own_list_still_offers_what_it_would_give`.
     page.wait_for_selector("[data-grid]", timeout=15_000)
 
 
@@ -294,6 +293,19 @@ def test_ai_generated_is_asked_of_the_fact_not_the_interpretation(page: Page, li
 
 
 def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Live, unbroken):
+    """The link is the question: a reload and a browsing context that has
+    never seen this page both land on the same answer.
+
+    Every read here RETRIES, because the surface reloads itself: it settles by
+    asking `/g/locate/{slug}` and calls a reload when that answers with an
+    error (frontend/src/authored.ts:113-121). A one-shot `evaluate` meeting
+    that document dies with "Execution context was destroyed" -- measured on
+    the cell read below, one full-suite run in two or three, and on the chip
+    read after it under six workers. One `expect` absorbs one reload and this
+    surface can ask for a second, so the chips are held by
+    `wait_for_function`, which is the same claim made of the page rather than
+    of an instant and re-runs after a navigation.
+    """
     _open_gallery(page)
     _pick(page, "generation.checkpoint", "dreamshaper_8")
     _pick(page, "generation.lora", "filmGrain")
@@ -311,20 +323,11 @@ def test_the_question_survives_a_reload_and_a_fresh_browser(page: Page, live: Li
     try:
         other = fresh.new_page()
         other.goto(asked)
-        # Through `expect`, which RETRIES across a navigation. This surface
-        # settles by asking `/g/locate/{slug}` and reloads itself when that
-        # answers with an error (frontend/src/authored.ts:113-121), so the
-        # first read after a `goto` can meet a document that is being
-        # replaced -- and a one-shot `evaluate` dies on it with "Execution
-        # context was destroyed" while a locator re-reads whatever replaced
-        # it. Measured: this line, one full-suite run in two or three.
+        # Through `expect`, which RETRIES across the reload this surface can
+        # ask for itself; the docstring records the measurement.
         expect(other.locator("[data-grid] a.cell")).to_have_count(cells)
-        # The chips read as a WAIT, not as an evaluate-then-assert. One
-        # `expect` above absorbs one reload; this surface can ask for a
-        # second, and the raw read below it died on exactly that
-        # (measured, line 318, under six workers). `wait_for_function` is
-        # the same claim -- these chips, sorted -- made of the page
-        # instead of of an instant, and it re-runs after a navigation.
+        # The chips read as a WAIT, not as an evaluate-then-assert, because the
+        # `expect` above absorbs only the first reload.
         other.wait_for_function(
             "(want) => [...document.querySelectorAll('[data-chip-edit]')]"
             ".map(c => c.textContent.trim()).sort().join('|') === want",
@@ -481,10 +484,9 @@ def test_the_advanced_door_is_there_and_asks_the_long_tail(page: Page, live: Liv
     _open_dimension(page, "param.has")
     offered = _values(page, "param.has")
     assert offered, "the registry has keys and they are listed with counts"
-    # Discovered, not curated: these are whatever the tools that made
-    # this library happened to write, which is the whole point of the
-    # door. Asserting a PARTICULAR key would be asserting the parsers'
-    # current output, which is not what this surface promises.
+    # Discovered, not curated: these are whatever the tools that made this
+    # library wrote. Asserting a PARTICULAR key would pin the parsers' output,
+    # which is not what this surface promises.
     picked = next(iter(offered))
     _pick(page, "param.has", picked)
     assert _cells(page) == offered[picked], f"choosing {picked!r} leaves exactly what it was counted at"

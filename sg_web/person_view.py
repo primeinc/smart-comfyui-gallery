@@ -68,14 +68,9 @@ def view(conn, models_dir: str, person_id: int, slug: str, now: float, *, legacy
         told = {
             "slug": slug,
             "name": pages.person_name(conn, person_id),
-            # None when there is no clustered face to crop, and then no
-            # surface points at one. `/avatar/<slug>` answers 404 for a
-            # person with no exemplar -- correctly -- and the pages
-            # requested it unconditionally, so a person nothing has
-            # clustered a face for showed a broken image where their
-            # face goes. The same rule vision/thumbs.py `asset_url`
-            # states for a medium with no picture: a surface must be
-            # able to ask before it points.
+            # None when there is no clustered face to crop, so no surface points
+            # at one: `/avatar/<slug>` answers 404 for a person with no exemplar.
+            # The same rule vision/thumbs.py `asset_url` states for a medium.
             "avatar": f"/avatar/{slug}" if media.exemplar_face(conn, person_id) is not None else None,
             "count": grid["total"],
             "sessions": [
@@ -175,10 +170,9 @@ def people_index(state: State, request: Request) -> Template | Response:
     try:
         spans = pages.people_spans(conn)
         ids = {slug: person_id for person_id, slug in pages.people_ids(conn)}
-        # Asked once for the whole index rather than once per card: the
-        # route 404s for a person nothing has clustered a face for, and
-        # a page that points at one anyway draws a broken image where a
-        # face goes.
+        # Asked once for the whole index rather than once per card: the route
+        # 404s for a person nothing has clustered a face for, and a page that
+        # points at one anyway draws a broken image where a face goes.
         facing = pages.people_with_a_face(conn)
         told = [
             {
@@ -197,10 +191,9 @@ def people_index(state: State, request: Request) -> Template | Response:
         runs = pages.standings(conn) if not told else []
     finally:
         connect.close(conn)
-    # The work still to do, apart and AFTER the named: a clustering run
-    # mints one placeholder person per group nobody has named, and a
-    # queue of forty strangers must not bury the twelve people somebody
-    # HAS named (people.html holds the order).
+    # The work still to do, apart and AFTER the named: a clustering run mints
+    # one placeholder person per group nobody has named, and a queue of
+    # strangers must not bury the people somebody HAS named (people.html).
     unknown = [one for one in told if not one["name"]]
     return presented_page(
         request,
@@ -379,10 +372,9 @@ def name_person(state: State, slug: FromPath[str], data: NewName) -> NamedPerson
         fresh = authored.name_person(conn, person_id, cleaned, now)
         asserted = authored.assert_named_cluster(conn, person_id, None, now)
         if pages.person_assertions(conn, person_id) == 0:
-            # Refused BEFORE the commit, so nothing above persists: a name
-            # with no face to assert it against would be silently lost by
-            # the next re-cluster, and the application must not accept
-            # what it cannot keep.
+            # Refused BEFORE the commit, so nothing above persists: a name with
+            # no face to assert it against is lost by the next re-cluster, and
+            # the application must not accept what it cannot keep.
             raise ClientException(f"/p/{slug} has no clustered face to keep the name by; nothing was renamed")
         conn.commit()
         return NamedPerson(slug=fresh, name=cleaned, asserted=asserted)

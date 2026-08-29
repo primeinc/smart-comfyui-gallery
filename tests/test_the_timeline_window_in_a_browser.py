@@ -112,13 +112,10 @@ def test_the_window_opens_on_the_last_month_and_the_brush_moves_it(page: Page, l
     expect(page.locator("[data-zoom] a[data-preset]")).to_have_count(5)
 
     # the brush: a new window drawn across the left half of the overview
-    #
-    # Every sample settled FIRST. `box` is geometry, and the drag below is
-    # aimed with it -- so a thumbnail that arrives between the measurement
-    # and the mouse moves the brush out from under the coordinates, the
-    # drag lands on nothing, and the wait for it times out rather than
-    # saying what went wrong. Measured: line 122, ten seconds, under four
-    # workers.
+
+    # Every sample settled FIRST. `box` is geometry and the drag below is aimed
+    # with it, so a thumbnail arriving between the measurement and the mouse
+    # moves the brush out from under the coordinates (measured, four workers).
     page.wait_for_function(
         "() => [...document.querySelectorAll('[data-samples] .surface-sample img')].every(i => i.complete)",
         timeout=10_000,

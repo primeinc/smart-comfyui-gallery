@@ -39,10 +39,9 @@ LOCKFILE = REPO / "tests" / "commons.lock.json"
 
 API = "https://commons.wikimedia.org/w/api.php"
 
-#: Hosts this module is allowed to open. Commons serves its API from the
-#: first and its files from the second, and nothing here has any business
-#: opening anything else -- a URL arrives from a JSON response, so the
-#: scheme and host are checked rather than assumed (ruff S310).
+#: Hosts this module is allowed to open: the API host and the upload host.
+#: A URL arrives from a JSON response, so the scheme and host are checked
+#: rather than assumed (ruff S310).
 ALLOWED = ("https://commons.wikimedia.org/", "https://upload.wikimedia.org/")
 
 #: What a per-file or per-category failure is allowed to be. Anything else
@@ -50,10 +49,9 @@ ALLOWED = ("https://commons.wikimedia.org/", "https://upload.wikimedia.org/")
 #: to propagate (ruff BLE001).
 TROUBLE = (OSError, RuntimeError, ValueError, KeyError)
 
-#: Commons rate-limits requests that do not carry a contact, and returned
-#: HTTP 429 to a version of this module that carried none. The `+url` form
-#: is the contact -- the Wikimedia UA policy accepts a reachable page in
-#: place of an address.
+#: Commons rate-limits requests that do not carry a contact, and returned HTTP
+#: 429 to a version of this module that carried none. The `+url` form is the
+#: contact -- Wikimedia's UA policy accepts a reachable page instead of an address.
 AGENT = "smart-comfyui-gallery-corpus/1.0 (+https://github.com/primeinc/smart-comfyui-gallery)"
 
 #: The makers to walk. Commons names these categories inconsistently -- some
@@ -178,11 +176,9 @@ def category_for(maker: str) -> str | None:
         if pages and not pages[0].get("missing"):
             return name
 
-    # A category can hold files without having a description page, and then
-    # `categoryinfo` calls it missing. `Category:Taken with Casio` is one:
-    # it has members and reported missing, so Casio and Kodak were recorded
-    # as makers Commons does not photograph. Ask what categories actually
-    # exist under the prefix instead of what pages do.
+    # `categoryinfo` calls a category with members but no description page
+    # missing; `Category:Taken with Casio` is one, and Casio and Kodak were
+    # recorded as makers Commons does not photograph. Ask the prefix instead.
     for form in FORMS:
         prefix = form.format(maker).removeprefix("Category:")
         got = _get({"action": "query", "list": "allcategories", "acprefix": prefix, "aclimit": "1"})
@@ -298,10 +294,9 @@ def download(one: Picture, into: pathlib.Path) -> pathlib.Path:
     if target.is_file() and target.stat().st_size == one.bytes:
         return target
     raw = _fetched(one.url, 300).content
-    # SHA-1 because that is what the API reports, and this compares the
-    # bytes to what it described. Not a security boundary -- the transport
-    # is TLS and the checksum is an integrity check against a truncated or
-    # substituted download.
+    # SHA-1 because that is what the API reports. Not a security boundary --
+    # the transport is TLS and the checksum is an integrity check against a
+    # truncated or substituted download.
     got = hashlib.sha1(raw, usedforsecurity=False).hexdigest()
     if one.sha1 and got != one.sha1:
         raise RuntimeError(f"{one.title}: sha1 {got} but the API said {one.sha1}")

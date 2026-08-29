@@ -32,24 +32,15 @@ from sg_web import home
 from sg_web.asking import gallery_query as _asked
 from sg_web.wire import Wire
 
-#: The presentations one answer has. `view` is NOT part of the question:
-#: it never reaches the GalleryQuery, never moves the fingerprint, and
-#: switching between them must leave the membership and the total exactly
-#: where they were. It rides the URL so a link to an analysis is a link.
+#: The presentations one answer has. `view` is NOT part of the question: it
+#: never reaches the GalleryQuery and never moves the fingerprint, so switching
+#: leaves membership and total where they were, and it rides the URL.
 VIEWS = ("gallery", "table", "analyze")
 
 
-#: The table's sortable columns: the heading, and which way the FIRST
-#: click orders it.
-#:
-#: Text ascending, numbers descending: "sort by name" means start at A,
-#: while "sort by size" means show what is huge.
-#: The second click reverses either way and the heading says which way it is.
-#:
-#: Every column the table draws, including the LEFT-JOINed ones. A sort by a
-#: column most files lack does not narrow the answer -- they order last and
-#: say so by position, because narrowing would change what the answer holds
-#: with no chip on screen admitting it.
+#: The table's sortable columns: the heading, and which way the FIRST click
+#: orders it. Text ascending, numbers descending; the second click reverses
+#: either way and the heading says which way it is.
 TABLE_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("name", "name", False),
     ("kind", "kind", False),
@@ -82,6 +73,11 @@ def _column_sorts(query: resultset.GalleryQuery, view: str) -> dict[str, dict]:
     the rows already fetched would be a table disagreeing with its own
     pager. Reload, Back and a shared link all land on the same order for
     the same reason every other filter does.
+
+    TABLE_COLUMNS is every column the table draws, including the LEFT-JOINed
+    ones. A sort by a column most files lack does not narrow the answer -- they
+    order last and say so by position, because narrowing would change what the
+    answer holds with no chip on screen admitting it.
     """
     made: dict[str, dict] = {}
     for name, label, biggest_first in TABLE_COLUMNS:
@@ -187,10 +183,9 @@ def _analysis(conn, query: resultset.GalleryQuery, total: int, weights: str, vie
         ],
         "prompts": [{"id": one.id, "text": one.text, "uses": one.uses, "role": one.role} for one in told.prompts],
         "more_prompts": told.more_prompts,
-        # Each term carries the question it would make: clicking one
-        # narrows to the files whose prompt says it. `q` rather than a
-        # facet, because a term is text inside a prompt and the text
-        # search is what reads inside prompts.
+        # Each term carries the question it would make: clicking one narrows to
+        # the files whose prompt says it. `q` rather than a facet, because a term
+        # is text inside a prompt and the text search is what reads inside them.
         "terms": [
             {"term": one.term, "files": one.files, "qs": _with_text(query, one.term, view)} for one in told.terms
         ],
@@ -240,15 +235,9 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         # context dict below is assembled after `close`, so anything
         # asked for down there is asked of a closed database.
         remembered = views_module.all_of(conn)
-        # "Sarah at the beach" is what somebody types, and the ranking
-        # is over image embeddings: the text encoder has never heard of
-        # Sarah and never will. The answer is not a better caption, it
-        # is the question splitting into a filter the vocabulary already
-        # has plus the phrase that is left.
-        #
-        # Offered, never applied. Rewriting a typed question silently is
-        # how somebody stops trusting what the box does, and this
-        # application says what a question is with visible chips.
+        # The text encoder has never heard of a person's name, so a typed
+        # question splits into a filter the vocabulary already has plus the
+        # phrase left over. Offered, never applied: the chips stay visible.
         splitting = None
         if query.text and not query.person:
             found = discovery.person_in(conn, query.text)
@@ -266,10 +255,9 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
     # a caption that mentions no word of the phrase is the ordinary
     # outcome of a word match (retrieval's `unmatched`), said quietly
     unmatched = (provenance.get("unmatched") or {}).get("captions")
-    # Where each cell points, resolved ONCE for the page. The ResultSet
-    # already carried the content hash out of its own row read, so this
-    # is arithmetic rather than a query -- and it is what stops sixty
-    # cells being sixty connections (vision/thumbs.py `asset_url`).
+    # Where each cell points, resolved ONCE for the page. The ResultSet already
+    # carried the content hash out of its own row read, so this is arithmetic
+    # and not sixty connections (vision/thumbs.py `asset_url`).
     thumbs.address(shape["items"])
     return {
         "items": shape["items"],
@@ -283,10 +271,9 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "missing_spaces": provenance.get("missing") or {},
         "captions_unmatched": unmatched,
         "answered_by": provenance.get("contributors") or [],
-        # What the cut cost. A phrase ranks every file a space holds and
-        # `head` keeps the ones standing above the middle of what it
-        # said (db/retrieval.py); without these three the page looks
-        # like a small library rather than an answer that ended.
+        # What the cut cost. A phrase ranks every file a space holds and `head`
+        # keeps the ones above the middle of what it said (db/retrieval.py), so
+        # without these the page reads as a small library rather than a cut.
         "ranked": provenance.get("ranked"),
         "answering": provenance.get("answering"),
         "depth": query.depth if query.text else None,
@@ -322,18 +309,14 @@ def _grid_context(state: State, query: resultset.GalleryQuery, page: int, view: 
         "columns": _column_sorts(query, view),
         "kinds": resultset.KINDS,
         "sorts": resultset.SORTS,
-        # the filter surface, drawn from the one vocabulary: the
-        # sections and their dimensions, and how many clauses the
-        # question already carries per dimension. The VALUES are not
-        # here -- counting thirty dimensions to draw a closed drawer
-        # is thirty queries nobody asked for; each section fetches its
-        # own from /g/options when somebody opens it.
+        # the filter surface, drawn from the one vocabulary: the sections, their
+        # dimensions, and how many clauses the question carries per dimension.
+        # The VALUES are not here; each section fetches its own from /g/options.
         "filter_groups": [
             {"name": name, "label": label, "dimensions": held}
-            # `asked_kind`, not `query.kind`: the question can say which
-            # medium in two places now -- the scope every bookmark
-            # carries, and the facet the drawer writes so kinds can be
-            # OR'd -- and which dimensions apply must follow both.
+            # `asked_kind`, not `query.kind`: a question says which medium in two
+            # places -- the scope every bookmark carries, and the facet the
+            # drawer writes -- and which dimensions apply follows both.
             for name, label, held in vocabulary.grouped(discovery.asked_kind(query))
         ],
         "filter_counts": discovery.counts(query),
@@ -372,10 +355,9 @@ def _chips(query: resultset.GalleryQuery, named: dict[str, dict[int, str]] | Non
             )
             continue
         held = [facet for facet in query.facets if facet.key == one.key]
-        # An OR GROUP is one thing the question says, so it is one chip
-        # that removes as one. Rendering `kind image` beside `kind video`
-        # would read exactly like two ANDed clauses -- the opposite
-        # question, and one that answers nothing.
+        # An OR GROUP is one thing the question says, so it is one chip that
+        # removes as one. Rendering `kind image` beside `kind video` would read
+        # as two ANDed clauses -- the opposite question.
         ored = [facet for facet in held if facet.op == facets_module.ANY]
         if ored:
             rest = dataclasses.replace(query, facets=tuple(other for other in query.facets if other not in ored))
@@ -580,10 +562,9 @@ def _field_items(rows: list[dict]) -> list[FieldItem]:
             slug=row["slug"],
             name=row["name"],
             thumb=thumbs.asset_url(row.get("sha"), row["slug"], medium=row["kind"]),
-            # The proportion the justified grid already uses, decided
-            # once here rather than measured again in the browser. A
-            # square is the honest fallback for a file nothing has
-            # measured; a collapsed cell is not.
+            # The proportion the justified grid uses, decided once here rather
+            # than measured again in the browser. A square is the honest
+            # fallback for a file nothing has measured; a collapsed cell is not.
             ar=(row["width"] / row["height"]) if row.get("width") and row.get("height") else 1.0,
             moment=row.get("moment"),
             dated=bool(row.get("dated", True)),
@@ -887,10 +868,9 @@ class FilterOptions(Wire):
     note: str
     value_kind: str
     ops: list[str]
-    #: How choosing SEVERAL reads: "" one at a time, "any" OR'd, "both"
-    #: OR'd or ANDed at the person's choosing. A fact about the
-    #: dimension, not a preference (db/vocabulary.py `multi`), so the
-    #: surface is told rather than deciding.
+    #: How choosing SEVERAL reads: "" one at a time, "any" OR'd, "both" OR'd or
+    #: ANDed at the person's choosing. A fact about the dimension, not a
+    #: preference (db/vocabulary.py `multi`), so the surface is told.
     multi: str
     options: list[FilterOption]
     #: how many values were not returned. Never silently zero: a
@@ -1245,38 +1225,25 @@ class ResultItem(Wire):
     said: str | None
     #: position in the whole answer, 1-based -- not within the page
     ordinal: int
-    #: Where to point an `<img>`: the content-addressed asset when the
-    #: bytes have been hashed, the slug route when they have not, and
-    #: None when the kind has no picture to take -- audio, documents.
-    #: RESOLVED ONCE, here, for the whole page -- which is the entire
-    #: point (vision/thumbs.py `asset_url`).
+    #: Where to point an `<img>`: the content-addressed asset when the bytes
+    #: have been hashed, the slug route when they have not, None when the kind
+    #: has none. RESOLVED ONCE for the page (vision/thumbs.py `asset_url`).
     thumb: str | None
-    #: The picture's own proportion, for a grid that justifies rows
-    #: instead of cropping every file to a square. None for a kind with
-    #: no picture, and for a file nothing has read the dimensions of yet
-    #: -- the cell falls back to a square there rather than collapsing.
+    #: The picture's own proportion, for a grid that justifies rows instead of
+    #: cropping every file to a square. None for a kind with no picture and for
+    #: unmeasured dimensions; the cell falls back to a square rather than collapsing.
     width: int | None = None
     height: int | None = None
-    #: How many files the dupe job put in this one's group, itself
-    #: included; None when no group holds it. A library of generation
-    #: sweeps draws the same picture forty times and the grid showed
-    #: forty peers. Marked, never collapsed -- the total, the ordinals
-    #: and the rail's map are all about MEMBERS.
+    #: How many files the dupe job put in this one's group, itself included;
+    #: None when no group holds it. Marked, never collapsed -- the total, the
+    #: ordinals and the rail's map are all about MEMBERS.
     copies: int | None = None
-    #: Where this picture sits in time, epoch seconds. The canvas field
-    #: PLACES pictures by it instead of flowing them into rows, so a busy
-    #: afternoon reads as a tower and a quiet month as a gap you can see
-    #: across.
-    #:
-    #: Never absent for a file that exists: the interpretation when the
-    #: context job has made one, the file's own mtime otherwise. Nothing
-    #: in a library has no time -- a file that has not been interpreted
-    #: still arrived on a day -- so there is no undated band and nothing
-    #: is drawn at the epoch.
+    #: Where this picture sits in time, epoch seconds; the canvas field PLACES
+    #: pictures by it instead of flowing them into rows. Never absent for a file
+    #: that exists: the interpretation when there is one, the mtime otherwise.
     moment: float | None = None
-    #: Whether `moment` is the INTERPRETATION or only the file's mtime.
-    #: False means "this is when the file landed, not when the photograph
-    #: happened", which a surface must be able to say out loud rather
+    #: Whether `moment` is the INTERPRETATION or only the file's mtime. False
+    #: means the file landed then, which a surface must be able to say rather
     #: than presenting a copy date as a capture date.
     dated: bool = True
 

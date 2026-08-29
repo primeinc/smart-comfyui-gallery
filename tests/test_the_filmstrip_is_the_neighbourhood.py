@@ -84,11 +84,9 @@ def _open(page: Page, live: Live, ordinal: int) -> None:
     page.goto(f"/i/{_at(live.api, ordinal)}?sort=oldest&size=5")
     expect(page.locator("[data-filmstrip-item]")).to_have_count(WIDE)
     expect(page.locator("[data-filmstrip-item][aria-current='true']")).to_have_attribute("data-ordinal", str(ordinal))
-    # The strip is server-rendered, so its cells exist BEFORE the script
-    # that wires the keys and the clicks has run -- and an arrow pressed
-    # in that window goes nowhere. `data-zoom` is written by the viewer's
-    # first paint (frontend/src/viewer.ts:195), so carrying it is the
-    # page saying mountViewer finished.
+    # The strip is server-rendered, so its cells exist BEFORE the script that
+    # wires the keys has run and an arrow pressed then goes nowhere. `data-zoom`
+    # is the viewer's first paint (frontend/src/viewer.ts:195) saying it mounted.
     expect(page.locator("[data-viewer][data-zoom]")).to_have_count(1)
 
 

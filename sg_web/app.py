@@ -131,18 +131,16 @@ def _resolved(conn, kind: str, slug: str, where: str) -> tuple[int, str | None]:
     return entity_id, None
 
 
-#: How many covers the front door's hero tile shows, how far back it
-#: walks to find them, and the resulting stride. The reach is an indexed
-#: walk of `file_recent` (db/pages.py NEWEST_FIRST), so it is the same
-#: cost at four thousand files and at four hundred thousand.
+#: How many covers the front door's hero tile shows, how far back it walks
+#: for them, and the stride between them. The reach is an indexed walk of
+#: `file_recent` (db/pages.py NEWEST_FIRST), so its cost is flat in library size.
 COVERS = 8
 COVER_STRIDE = 7
 COVER_REACH = COVERS * COVER_STRIDE
 
-#: How many rows the machine's newest strip carries. Named because the
-#: browser now reads further back than the strip does, and the two
-#: numbers must not drift into each other: a caller of this address gets
-#: the strip it has always got.
+#: How many rows the machine's newest strip carries. Named apart from
+#: COVER_REACH, which the browser walks further back over, so a caller of this
+#: address keeps the strip width it has.
 NEWEST_STRIP = 12
 
 
@@ -162,10 +160,9 @@ def what_this_can_do(request: Request) -> Template:
     is dropped, or a setting that is added cannot leave this page
     describing an older application.
     """
-    # The application's OWN route table, handed over rather than
-    # imported: this module is what `sg_web/inventory.py` would have to
-    # import to ask, and it already imports that. A surface added
-    # tomorrow appears here without anybody adding it twice.
+    # The application's own route table, handed over rather than imported:
+    # `sg_web/inventory.py` would have to import this module to ask, and this
+    # module already imports that one. A new surface appears here without a second entry.
     served = {route.path for route in request.app.routes}
     return Template(template_name="inventory.html", context={"held": inventory.held(served)}, headers=VARIES)
 
@@ -179,6 +176,10 @@ def _covers(newest: list) -> list[str]:
     and a page spelling it asks for the slow path on every picture that
     HAS been hashed. A library too small to stride shows what it has, in
     order.
+
+    Strided rather than the newest eight: the newest eight are often eight
+    seeds of one prompt, so walking the recent stretch and taking every Nth
+    one crosses several sittings for the same indexed walk.
     """
     from vision import thumbs
 
@@ -218,11 +219,9 @@ def front(state: State, request: Request) -> Response | Template:
                     "people": people,
                     "collections": collections_held,
                     "artifacts": artifacts,
-                    # The first three columns, named. The row carries the sha and
-                    # the kind as well now, because the browser's covers go
-                    # through `thumbs.asset_url` -- but the machine's strip
-                    # is the strip it has always been, and widening it here
-                    # would change a contract nothing asked to change.
+                    # The first three columns, named. The row also carries the sha
+                    # and kind for the browser's covers (`thumbs.asset_url`), and
+                    # widening the machine's strip here would change its contract.
                     "newest": _rows([row[:3] for row in newest[:NEWEST_STRIP]], ("slug", "name", "mtime")),
                 },
                 headers=VARIES,
@@ -237,15 +236,9 @@ def front(state: State, request: Request) -> Response | Template:
                     "collections": collections_held,
                     "artifacts": artifacts,
                 },
-                # The covers are the point of the hero tile: a
-                # library says what it is by showing some of itself,
-                # not by printing its own row count.
-                #
-                # STRIDED, not the newest eight: the newest eight are
-                # often eight seeds of one prompt, so walking the recent
-                # stretch and taking every Nth one crosses several
-                # sittings for the same indexed walk. A library too small
-                # to stride shows what it has, in order.
+                # The covers are the point of the hero tile: a library says
+                # what it is by showing some of itself, not by printing its own
+                # row count. Strided, not the newest eight -- see `_covers`.
                 "newest": _covers(newest),
             },
             headers=VARIES,
@@ -254,16 +247,13 @@ def front(state: State, request: Request) -> Response | Template:
         connect.close(conn)
 
 
-# The media page lives in sg_web/media_view.py, the folder page in
-# sg_web/folder_view.py, the artifact pages in sg_web/artifact_view.py:
-# one address each, negotiated per caller. The shelf indexes below are
-# aggregates -- "which artifacts are commonly used?" -- not media
-# answers; every media answer is the ResultSet's.
+# One address each, negotiated per caller: the media page in sg_web/media_view.py,
+# the folder page in sg_web/folder_view.py, the artifact pages in
+# sg_web/artifact_view.py. The shelf indexes below aggregate; media answers are the ResultSet's.
 
 
-# The album index and page live in sg_web/collection_view.py, and every
-# lifecycle write in sg_web/collection_authoring.py: one address per
-# collection, one write adapter over db/collections.py. The legacy
+# The album index and page live in sg_web/collection_view.py, every lifecycle
+# write in sg_web/collection_authoring.py over db/collections.py. The legacy
 # membership routes below stay as compatibility adapters.
 
 
@@ -406,13 +396,8 @@ class JobDeltaFrame(Wire):
 
 
 #: What arrives on /ws/jobs, discriminated on `type` rather than the `frame`
-#: /ws/events uses: an event row already HAS a `type` column and needed
-#: another name for its discriminant, and a job delta does not. A browser
-#: narrows to the arm it is handling and cannot read a job list off a delta.
-#:
-#: Not an OpenAPI path -- a socket has none -- so this is carried into the
-#: contract by job_frames() below, and the browser's type is generated from
-#: that rather than written twice.
+#: /ws/events uses: an event row already HAS a `type` column and needed another
+#: name for its discriminant. A browser narrows to the arm it is handling.
 JobFrame = JobsSnapshotFrame | JobDeltaFrame
 
 
@@ -426,6 +411,10 @@ def job_frames() -> JobFrame:
     (litestar-org/litestar@v2.24.0 litestar/_openapi/plugin.py:90). It
     answers an empty snapshot rather than raising -- a route a generator
     reads is still a route somebody can request.
+
+    A socket is not an OpenAPI path, so this route is what carries `JobFrame`
+    into the contract, and the browser's type is generated from that rather
+    than written twice.
     """
     return JobsSnapshotFrame(type="snapshot", jobs=[])
 
@@ -692,14 +681,9 @@ def submit_catch_up(state: State) -> CatchUpQueued:
             return CatchUpQueued(collection=runner.CATCH_UP, steps=[])
         conn.commit()
         first = _submitted(state, conn, queued[0])
-        # `cancel_requested` is stored as 0/1 -- STRICT has no boolean --
-        # and every other submit route hands the raw dict back, so nothing
-        # ever validated it against the model that says `bool`. Naming the
-        # answer is what made the disagreement visible.
-        # `submitted` answers an untyped dict, so the union below infers
-        # every value as `Unknown | bool` and offers that to each of
-        # JobSnapshot's differently-typed fields. Named, so the spread
-        # says what it is.
+        # `cancel_requested` is stored as 0/1 -- STRICT has no boolean -- so the
+        # model that says `bool` needs the cast. `fields` is annotated because
+        # `_submitted` answers an untyped dict and the union infers `Unknown | bool`.
         fields: dict[str, Any] = first | {"cancel_requested": bool(first["cancel_requested"])}
         return CatchUpQueued(collection=runner.CATCH_UP, steps=queued, first=JobSnapshot(**fields))
     finally:
@@ -840,11 +824,9 @@ def search(state: State, request: Request, q: FromQuery[str], k: FromQuery[int] 
         conn.commit()  # align may have minted registry rows on the way
         results = found["results"]
         shown = pages.files_shown(conn, [row["file_id"] for row in results])
-        # The machine answer is addresses, scores and provenance -- what a
-        # caller can act on. The page needs a picture as well, so it is
-        # drawn from a second shape rather than by widening this one:
-        # `presented_page` hands `told` to a machine and `drawn` to the
-        # template.
+        # The machine answer is addresses, scores and provenance; the page needs
+        # a picture as well, so it is drawn from a second shape rather than by
+        # widening this one. `presented_page` hands `told` out and `drawn` to the template.
         told, drawn = [], []
         for row in results:
             if row["file_id"] not in shown:
@@ -1147,9 +1129,8 @@ def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream |
     ctype = sniff_module.content_type(sniff_module.sniff_path(path))
     if request.method == "HEAD":
         # b"", not None: render() refuses None under a non-text media type
-        # ("unsupported media_type image/png for content None"). The empty
-        # body computes length 0, and the true length survives because the
-        # base only setdefaults content-length (response/base.py:112-113).
+        # ("unsupported media_type image/png for content None"), and the declared
+        # length survives the empty body (litestar/response/base.py:112-113).
         return Response(
             content=b"",
             media_type=ctype,
@@ -1178,16 +1159,18 @@ def media_bytes(state: State, slug: FromPath[str], request: Request) -> Stream |
     )
 
 
-#: One in-flight render per missing derivative, and everybody else
-#: waits for it. Keyed on the target PATH, which is what both render
-#: paths already compute and what the answer is: two requests wanting
-#: the same file are the same work.
-#:
-#: The dict is emptied as gates are released, so it holds what is being
-#: rendered right now rather than everything ever asked for. Same shape
-#: as `resultset._MONITORS`: a module dict, one module lock over it.
 class _Render:
-    """A gate over one target, and the count of who still wants it."""
+    """A gate over one target, and the count of who still wants it.
+
+    One in-flight render per missing derivative, and everybody else waits for
+    it. Keyed on the target PATH, which is what both render paths already
+    compute and what the answer is: two requests wanting the same file are the
+    same work.
+
+    `_RENDERS` is emptied as gates are released, so it holds what is being
+    rendered right now rather than everything ever asked for. Same shape as
+    `resultset._MONITORS`: a module dict, one module lock over it.
+    """
 
     __slots__ = ("lock", "wanted")
 
@@ -1270,13 +1253,9 @@ def _variant_bytes(state: State, slug: str, variant: str, where: str) -> Respons
     return Response(content=target.read_bytes(), media_type="image/webp")
 
 
-#: How long a content-addressed asset may be kept. A year, and
-#: `immutable`, because the URL names the BYTES: `<sha>.webp` cannot come
-#: to mean different pixels, so a browser that has it never needs to ask
-#: again. Immich says the same thing about its assets in
-#: refs/immich-app/immich/server/src/utils/file.ts:41 -- `private`
-#: because a library is somebody's, cacheable because the bytes are
-#: fixed.
+#: How long a content-addressed asset may be kept: a year and `immutable`,
+#: because `<sha>.webp` names the BYTES and cannot come to mean other pixels.
+#: `private` because a library is somebody's (refs/immich-app/immich/server/src/utils/file.ts:41).
 ASSET_CACHE = "private, max-age=31536000, immutable, no-transform"
 
 #: The variants an asset URL may name, and the on-disk suffix of each.
@@ -1303,6 +1282,13 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
     The name is matched against a pattern rather than trusted: sixty-four
     hex characters and one of two known suffixes, so nothing that is not
     a cache entry can be spelled, and `..` cannot appear at all.
+
+    A MISS RENDERS, exactly as the slug route does. The surface emits this URL
+    for anything ingest has hashed, which is not the same set as anything the
+    thumbs job has rendered, so 404ing would give a fresh library a grid of
+    broken pictures. That miss is the only path here that opens a connection,
+    and it renders by CONTENT rather than by slug: the cache is keyed on the
+    bytes, so any present file carrying them will do.
     """
     found = _ASSET_NAME.match(name)
     if found is None or shard != name[:2]:
@@ -1312,38 +1298,20 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
         raise NotFoundException(f"/thumbs/{shard}/{name} names no variant")
     target = home.thumbs_dir(pathlib.Path(state.home)) / shard / name
     if not target.is_file():
-        # A MISS RENDERS, exactly as the slug route does.
-        #
-        # The surface emits this URL for anything ingest has hashed,
-        # which is not the same set as "anything the thumbs job has
-        # rendered", so 404ing here would give a fresh library a grid of
-        # broken pictures. This is the ONLY path that opens a connection,
-        # and after the precache job it is never taken.
-        #
-        # By CONTENT, not by slug: the cache is keyed on the bytes, so
-        # any present file carrying them will do.
+        # A miss renders, by content rather than by slug -- see the docstring.
         from vision import derive
 
         try:
             # One render per missing file however many cells ask. A fresh
-            # library's grid asks for sixty at once and reloads while they
-            # are in flight; without this each ask decoded, resized and
-            # encoded the same picture again, on its own connection,
-            # competing with the precache job for the same CPU.
+            # library's grid asks for sixty at once and reloads while they are
+            # in flight, and without this each ask decodes and encodes it again.
             with _rendered_once(target), derive.waited_on():
                 if not target.is_file():
                     _render_asset(state, sha, ASSET_VARIANTS_BY_SUFFIX[suffix], target)
         except ValueError as unrenderable:
-            # A file with no decodable frame has no thumbnail, and that
-            # is a 404 rather than a defect: the request asked for a
-            # picture of something that does not have one.
-            #
-            # It reached here as an uncaught 500 with a traceback, once
-            # per cell, for a folder of album tracks -- an .m4a is
-            # ISO-BMFF, so the sniffer called it video/mp4 (fixed in
-            # vision/sniff.py) and the grid minted it an address. The
-            # sniff was the cause; this is the reason one bad row cost a
-            # page of stack traces instead of one grey cell.
+            # A file with no decodable frame has no thumbnail, and that is a 404
+            # rather than a defect. Without it one bad row -- an audio file the
+            # sniffer types as video (vision/sniff.py) -- costs a page of tracebacks.
             raise NotFoundException(str(unrenderable)) from unrenderable
     return File(
         path=target,
@@ -1520,10 +1488,9 @@ def change_setting(state: State, key: FromPath[str], data: SettingChange) -> dic
         except (KeyError, ValueError) as refused:
             raise ClientException(str(refused)) from refused
         conn.commit()
-        # Switching the worker on makes queued work runnable now. Without
-        # the nudge the loop does not look again until IDLE_WAIT expires
-        # (sg_web/worker.py), so the switch reads as one that does nothing
-        # for a second -- the same reason a cancel nudges below.
+        # Switching the worker on makes queued work runnable now. Without the
+        # nudge the loop waits out IDLE_WAIT (sg_web/worker.py) and the switch
+        # reads as one that does nothing -- the same reason a cancel nudges below.
         if key == "worker":
             _nudge(state)
         return {"key": key, "value": settings.value(conn, key)}
@@ -1696,9 +1663,8 @@ def roots(state: State) -> list[dict]:
 
 
 #: What a watched directory is to the library, per db/schema.sql root.kind.
-#: What a root IS. 'mount' was here and nothing branched on it -- the
-#: distinction it reached for, "not always attached", is `root.online`,
-#: which is per-root and set by probing.
+#: No 'mount' member: "not always attached" is `root.online`, which is
+#: per-root and set by probing.
 RootKind = Literal["library", "trash"]
 
 
@@ -1825,6 +1791,18 @@ def scan_root(state: State, root_id: FromPath[int]) -> dict:
     Still synchronous, so the answer is still the counts. What is new is
     that somebody watching has something to watch: a `walk` row, its
     phases, and a file count that moves.
+
+    This request IS the worker for its own job: the same checkpoint/settle the
+    runner uses, so the row obeys the same invariants (a fence, a lease, one
+    owner) rather than being a second kind of job nothing else understands.
+    `jobs.begin`, not submit-then-claim -- between those two the row sits QUEUED
+    and the background worker, which polls for any runnable kind, has no handler
+    for a walk and fails it, leaving the request unable to claim its own work.
+    Inserted running and owned, it is never claimable.
+
+    The root goes in the PAYLOAD: `target_id` references `entity`, and a root is
+    not one -- its top folder is, and on a first scan that folder does not exist
+    until this walk makes it.
     """
     conn = _connect(state.db_path)
     try:
@@ -1832,29 +1810,15 @@ def scan_root(state: State, root_id: FromPath[int]) -> dict:
         if path is None:
             raise NotFoundException(f"no root {root_id}")
 
-        # This request IS the worker for its own job -- the same
-        # checkpoint/settle the runner uses, so the row obeys the same
-        # invariants (a fence, a lease, one owner) rather than being a
-        # second kind of job nothing else understands.
-        #
-        # `begin`, not submit-then-claim: between those two the row sits
-        # QUEUED, and the background worker polls for any runnable kind.
-        # It took the walk, found no handler for it, failed it, and the
-        # request that had just created it then could not claim its own
-        # work. Inserted running and owned, it is never claimable.
-        #
-        # The root goes in the PAYLOAD: `target_id` references `entity`,
-        # and a root is not one -- its top folder is, and on a first scan
-        # that folder does not exist until this walk makes it.
+        # Begun running and owned, with the root in the payload -- see the docstring.
         owner = f"scan-{os.getpid()}"
         walking, fence = jobs.begin(conn, "walk", owner, time.time(), payload={"root": root_id, "path": path})
         conn.commit()
         _announce(state, conn, walking, event_type="job.submitted")
 
         # The last seen counts, kept so the FINAL report is the true one.
-        # Throttling alone left the job settled at 750 of 790 -- the tail
-        # below the cadence was never spoken, so the count a person was
-        # watching stopped short of the number the same request returned.
+        # Under throttling alone the tail below the cadence is never spoken, and
+        # the count being watched stops short of the one the request returns.
         seen = {"folders": 0, "files": 0, "hashed": 0, "spoken": 0}
 
         def say(folders: int, files: int, hashed: int) -> None:
@@ -1980,6 +1944,20 @@ def _template_engine() -> JinjaTemplateEngine:
     (litestar/template/config.py:58-61 `engine_instance`), so the activity
     Module's global is registered here, before any template loads
     (pallets/jinja@3.1.6 docs/api.rst "The Global Namespace").
+
+    The bytecode cache is safe to keep between processes: a bucket is keyed on
+    sha1(name|filename) and carries sha1(source), and `bc_magic` carries the
+    Python version, so editing a template or upgrading the interpreter resets it
+    and the worst case is a miss (pallets/jinja@3.1.6
+    src/jinja2/bccache.py:35-43, 65-82, 152-181).
+
+    `environment.globals` is cast at the assignment because jinja2 never
+    annotates the attribute -- `self.globals = DEFAULT_NAMESPACE.copy()`
+    (pallets/jinja@3.1.6 src/jinja2/environment.py:353) -- so its type is
+    inferred from a literal holding a range, a dict and a callable, and a str is
+    not one of them. Adding to `globals` is the documented way to register one,
+    and the cast is local, so nothing else in this module stops being checked --
+    which a file-wide rule override would have cost.
     """
     from jinja2 import Environment, FileSystemBytecodeCache, FileSystemLoader, StrictUndefined
 
@@ -1988,29 +1966,14 @@ def _template_engine() -> JinjaTemplateEngine:
         loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
         undefined=StrictUndefined,
         autoescape=True,
-        # Compiled templates, kept between processes, so a template is
-        # compiled once rather than on the first render of every served
-        # run and every test process. A bucket is keyed on
-        # sha1(name|filename) and carries sha1(source), and `bc_magic`
-        # carries the Python version, so editing a template or upgrading
-        # the interpreter resets it and the worst case is a miss
-        # (pallets/jinja@3.1.6 src/jinja2/bccache.py:35-43, 65-82,
-        # 152-181).
+        # Compiled templates, kept between processes, so a template is compiled
+        # once rather than on the first render of every served run and every
+        # test process -- see the docstring for why that is safe.
         bytecode_cache=FileSystemBytecodeCache(str(cache)) if cache else None,
     )
-    # every stylesheet and script URL carries the newest mtime under
-    # static/: a browser that cached yesterday's timeline.js fetches
-    # today's, and a deploy that changed nothing keeps every cache warm
-    #
-    # Cast, for jinja2's missing annotation rather than for anything
-    # here: it never types the attribute -- `self.globals =
-    # DEFAULT_NAMESPACE.copy()` (jinja2/environment.py:353) -- so the
-    # type is inferred from a literal holding a range, a dict and a
-    # callable, and a str is not one of them. Adding to `globals` is the
-    # documented way to do this, and the cast keeps the line idiomatic
-    # while saying whose problem it is. Local, so nothing else in this
-    # module stops being checked -- which a file-wide rule override
-    # would have cost.
+    # Every stylesheet and script URL carries the newest mtime under static/: a
+    # browser that cached yesterday's timeline.js fetches today's, and a deploy
+    # that changed nothing keeps every cache warm.
     cast("dict[str, object]", environment.globals)["static_v"] = _StaticVersion()
     engine = JinjaTemplateEngine.from_environment(environment)
     activity.register(engine)
@@ -2095,11 +2058,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
     if not where.exists():
         connect.create(where)
     else:
-        # A database an older build wrote is brought forward HERE, one
-        # version per transaction with a `.vN.backup` beside it
-        # (db/migrate.py) -- never opened as-is to 500 on the first column
-        # it lacks. A newer build's file, or one this build has no step
-        # for, is refused at boot with the reason, not per request.
+        # A database an older build wrote is brought forward HERE, one version
+        # per transaction with a `.vN.backup` beside it (db/migrate.py). A newer
+        # build's file, or one this build has no step for, is refused with the reason.
         try:
             applied = migrate.migrate(where)
         except (migrate.Downgrade, migrate.StepMissing, migrate.NotOurDatabase) as refused:
@@ -2107,11 +2068,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         if applied:
             _logger.info("%s: brought forward to v%d (steps %s)", where, applied[-1], applied)
 
-    # The one local authored identity, resolved ONCE into application
-    # state: every rating and favorite is per-user by schema, and this is
-    # the single place the local-first deployment answers "who is
-    # writing" (db/authored.py local_actor). A future session layer
-    # replaces this resolution, not the authored signatures.
+    # The one local authored identity, resolved ONCE into application state:
+    # every rating and favorite is per-user by schema, and this is the single
+    # place the local-first deployment answers who is writing (db/authored.py).
     opening = connect.connect(where)
     try:
         actor_id = authored.local_actor(opening, time.time())
@@ -2146,11 +2105,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
         def publish(delta: dict) -> None:
             loop.call_soon_threadsafe(channels.publish, delta, "jobs")
 
-        # The latest report INSIDE the item each job is working on -- what
-        # the ledger cannot hold yet (db/runner.py Report: it lands at the
-        # item boundary). Process memory, never storage: a restart loses
-        # it exactly as it loses the item. A reconnecting console reads it
-        # through the inspector instead of waiting for the next report.
+        # The latest report INSIDE the item each job is working on, which the
+        # ledger cannot hold (db/runner.py Report lands at the item boundary).
+        # Process memory, read back through the inspector; a restart loses it.
         live_reports: dict[int, dict] = {}
         app.state.live_reports = live_reports
 
@@ -2171,10 +2128,9 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
                     live_reports.pop(int(event["job_id"]), None)
             loop.call_soon_threadsafe(channels.publish, frame.model_dump(mode="json"), "events")
 
-        # Request handlers run on the thread pool too, so a job's `queued`
-        # delta (sg_web/submitting.py) crosses the same bridge the worker's
-        # deltas do. Set whether or not the worker thread starts: a
-        # submit is an observable change in either case.
+        # Request handlers run on the thread pool too, so a job's `queued` delta
+        # (sg_web/submitting.py) crosses the same bridge the worker's deltas do.
+        # Set whether or not the worker thread starts: a submit is observable either way.
         app.state.publish = publish
         app.state.publish_event = publish_event
 
@@ -2331,39 +2287,32 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             curating.bulk_rating,
             curating.bulk_place,
             curating.bulk_membership,
-            # The runtime's own surface, under one Router seam (litestar-org/
-            # litestar@v2.24.0 docs/usage/routing/overview.rst "Routers"):
-            # every operational page and form shares the /operations prefix
-            # and whatever policy that layer grows later.
+            # The runtime's own surface, under one Router seam so every
+            # operational page and form shares the /operations prefix
+            # (litestar-org/litestar@v2.24.0 docs/usage/routing/overview.rst "Routers").
             operations.router,
             create_static_files_router(
-                # Absolute on purpose: the docs interpret relative
-                # directories against the process working directory
-                # (litestar-org/litestar docs/usage/static-files.rst),
-                # and this application is started from anywhere.
+                # Absolute on purpose: the docs interpret relative directories
+                # against the process working directory (litestar-org/litestar
+                # docs/usage/static-files.rst), and this is started from anywhere.
                 path="/static",
                 directories=[str(pathlib.Path(__file__).resolve().parent / "static")],
             ),
         ],
         plugins=[*wire.plugins(), channels, _WorkerPlugin()],
         template_config=TemplateConfig(instance=_template_engine()),
-        # a 500 says what broke and where: the traceback page for a
-        # browser, {"details": <traceback>} for JSON (litestar-org/litestar
-        # litestar/exceptions/responses/_debug_response.py:175-195), and
-        # the same traceback in the log (litestar/logging/config.py:247)
+        # a 500 says what broke and where: a traceback page for a browser,
+        # {"details": <traceback>} for JSON, and the same traceback in the log
+        # (litestar/exceptions/responses/_debug_response.py:175-195, litestar/logging/config.py:247)
         exception_handlers={Exception: _told_whole},
         logging_config=LoggingConfig(log_exceptions="always"),
     )
     app.state.home = str(base)
     app.state.db_path = str(where)
     app.state.actor_id = actor_id
-    # The route table, as shapes the redactor can render URLs against:
-    # a literal segment is code and stays readable; a parameter keeps
-    # its value only when it cannot carry user data -- numbers, and the
-    # two code vocabularies spelled as {kind} and {key}. Every other
-    # parameter (slugs, names, collections) hashes. Derived from
-    # `app.routes` (litestar routes/base.py `path_components`), never
-    # typed, so the shapes cannot drift from what is served.
+    # Shapes the redactor renders URLs against, derived from `app.routes`
+    # (litestar routes/base.py `path_components`) rather than typed: a literal
+    # segment stays readable, a number or {kind}/{key} keeps its value, the rest hashes.
     redaction.learn_routes(
         tuple(
             segment

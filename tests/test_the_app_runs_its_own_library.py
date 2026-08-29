@@ -5,6 +5,12 @@ redirected homes -- so each writes one and registers it as root 1. The
 APPLICATION is shared: booting it is ~200 ms and none of these claims is
 about a fresh process. The two that ARE -- the shutdown ordering, and the
 run contained in one directory -- build their own.
+
+Waiting happens on the ROW (tests/staging.settled), never on delta frames.
+The worker legitimately pauses a job mid-drain under load ("paused after 1
+items; the next turn resumes it"), so a fixed inter-frame timeout is a coin
+flip on a saturated runner. The one test about being SPOKEN to on the feed
+keeps its own socket.
 """
 
 from __future__ import annotations
@@ -65,13 +71,6 @@ MEADOW = (
     (60, 140, 60),
     {"box": (5, 70, 90, 95), "fill": (50, 120, 50), "sun": (66, 6, 88, 28), "glow": (255, 255, 230)},
 )
-
-
-#: Waiting happens on the ROW (tests/staging.settled), never on delta
-#: frames: the worker legitimately pauses a job mid-drain under load
-#: ("paused after 1 items; the next turn resumes it"), so a fixed
-#: inter-frame timeout is a coin flip on a saturated runner. The one
-#: test about being SPOKEN to on the feed keeps its own socket below.
 
 
 def test_the_recipe_axis_is_produced_and_served(tmp_path, served):
@@ -450,23 +449,24 @@ def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, 
     to is still alive. Ordered wrongly, a shutdown mid-drain logged
     "Plugin not yet initialized" from the bridge -- and the docstring's
     "no thread mid-write" was a lie. The job it was draining stays rows,
-    picked up by the next run."""
+    picked up by the next run.
+
+    Forty files, not three hundred. Teardown is the next statement after the
+    submit -- microseconds later -- so the drain has to OUTLAST that rather
+    than last a particular time: at ~7 ms an item (the per-item commit, which
+    is what a verify item costs here) forty spans about a quarter second and
+    three hundred spanned two, and the test waits out the whole of it twice,
+    once as the worker is interrupted and once as the second app finishes what
+    was left. Both numbers land teardown solidly mid-drain; only one of them
+    costs two seconds to say so."""
     import logging
 
     from litestar.channels import ChannelsPlugin
 
     root = tmp_path / "lib"
     root.mkdir()
-    # Forty, not three hundred. What this needs is that the app tears
-    # down WHILE the worker is draining, and teardown is the next
-    # statement after the submit -- microseconds later. The drain has to
-    # outlast that, not last a particular time: at ~7 ms an item (the
-    # per-item commit, which is what a verify item costs here) forty
-    # spans about a quarter second and three hundred spanned two, and
-    # the test waits out the whole of it twice -- once as the worker is
-    # interrupted, once as the second app finishes what was left.
-    # Both numbers land teardown solidly mid-drain; only one of them
-    # costs two seconds to say so.
+    # Enough to keep the worker draining while the app tears down; the
+    # docstring records why forty and not three hundred.
     for n in range(40):
         (root / f"frame_{n:03}.png").write_bytes(b"\x89PNG-" + f"{n:03}".encode() * 64)
     burrow = tmp_path / "run"
@@ -491,11 +491,9 @@ def test_shutdown_stops_the_worker_before_the_channel_it_publishes_to(tmp_path, 
     assert "Plugin not yet initialized" not in said, "a publish landed on a torn-down channel"
     assert "worker turn died" not in said
 
-    # The next run picks the interrupted job up: its own feed says so.
-    # The worker starts with the app and may drain fast rows before this
-    # socket finishes its handshake, so a job already settled is also
-    # "picked back up" -- only one still in the snapshot owes the feed
-    # its remaining deltas.
+    # The next run picks the interrupted job up: its own feed says so. The
+    # worker may drain fast rows before this socket finishes its handshake, so
+    # a job already settled counts too -- only one in the snapshot owes deltas.
     with TestClient(app=build_app(str(burrow))) as client:
         with client.websocket_connect("/ws/jobs") as feed:
             first = feed.receive_json(timeout=10)

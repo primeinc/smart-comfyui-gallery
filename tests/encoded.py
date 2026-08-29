@@ -42,17 +42,14 @@ CORPUS = pathlib.Path(os.environ.get("SG_CORPUS", REPO.parent / "sg-corpus"))
 IMAGES = CORPUS / "encoded"
 LOCKFILE = REPO / "tests" / "encoded.lock.json"
 
-#: What one encoder attempt is allowed to fail with. FFmpeg refuses an
-#: unusable parameter with `ValueError`, an absent codec with a `LookupError`
-#: subclass, and a bad muxer with an `OSError`; `TypeError` is the stream-kind
-#: assertion below. Anything else is a defect in this module and propagates
-#: rather than becoming a row in `trouble` nobody reads.
+#: What one encoder attempt may fail with: `ValueError` for an unusable parameter,
+#: a `LookupError` subclass for an absent codec, `OSError` for a bad muxer, and
+#: `TypeError` for the stream-kind assertion. Anything else propagates as a defect.
 ENCODER_FAILURES = (OSError, ValueError, RuntimeError, LookupError, TypeError)
 
-#: Every frame written here, named once. These were typed at each call site
-#: -- `96, 64` in four places and `(64, 96, 3)` transposed in a fifth -- and
-#: a corpus whose files disagree about their own size for no stated reason
-#: is a corpus somebody has to re-derive the intent of.
+#: Every frame written here, named once. These were typed at each call site --
+#: `96, 64` in four places and `(64, 96, 3)` transposed in a fifth -- and a
+#: corpus that disagrees about its own frame size is one nobody can re-derive.
 WIDTH, HEIGHT = 96, 64
 
 #: Frames per encoded clip. Enough that a container holds more than one
@@ -103,11 +100,9 @@ STILLS: tuple[tuple[str, str], ...] = (
     (".heics", "HEIF"),
     (".heifs", "HEIF"),
     (".hif", "HEIF"),
-    # A REAL one. The only `.jxl` in the corpus was an ExifTool specimen
-    # truncated to 22 bytes, so the suffix sat at PARTIAL with the reader
-    # correctly refusing garbage -- which proves the refusal path and
-    # nothing about whether the application can open a JPEG XL. Both are
-    # wanted; the truncated one is not a substitute for this.
+    # A REAL one, wanted alongside the truncated specimen rather than instead of
+    # it. The corpus's only `.jxl` was an ExifTool specimen of 22 bytes, so the
+    # suffix sat at PARTIAL proving refusal and not that a JPEG XL can be opened.
     (".jxl", "JXL"),
 )
 
@@ -134,10 +129,9 @@ CLIPS: tuple[tuple[str, str, str, int, str], ...] = (
     (".qt", "mov", "mpeg4", FRAME_RATE, "yuv420p"),
     (".divx", "avi", "mpeg4", FRAME_RATE, "yuv420p"),
     (".rmvb", "rm", "rv10", FRAME_RATE, "yuv420p"),
-    # REAL ones, for the same reason as `.jxl` above. The corpus's only
-    # `.mkv`, `.rm` and `.wmv` were ExifTool specimens truncated to their
-    # metadata, so all three sat at PARTIAL and the application had never
-    # been shown a Matroska, a RealMedia or an ASF it could actually open.
+    # REAL ones, for the same reason as `.jxl` above. The corpus's only `.mkv`,
+    # `.rm` and `.wmv` were ExifTool specimens truncated to their metadata, so
+    # all three sat at PARTIAL and no Matroska, RealMedia or ASF ever opened.
     (".mkv", "matroska", "mpeg4", FRAME_RATE, "yuv420p"),
     (".rm", "rm", "rv10", FRAME_RATE, "yuv420p"),
     (".wmv", "asf", "msmpeg4v3", FRAME_RATE, "yuv420p"),
@@ -163,9 +157,8 @@ def _still(path: pathlib.Path, fmt: str) -> None:
 
     decode.ensure_decoders()
     # Not flat colour: a gradient survives a lossy codec as something a
-    # perceptual hash can still tell from its neighbours, where a solid
-    # block would make every encoded file a duplicate of every other and
-    # drown the duplicate surfaces.
+    # perceptual hash can still tell from its neighbours. A solid block would
+    # make every encoded file a duplicate of every other.
     picture = Image.new("RGB", (WIDTH, HEIGHT))
     picture.putdata([(x * 2 % 256, y * 4 % 256, (x + y) % 256) for y in range(HEIGHT) for x in range(WIDTH)])
     picture.save(path, format=fmt)
@@ -196,9 +189,8 @@ def _clip(path: pathlib.Path, container: str, codec: str, rate: int, pix: str) -
     try:
         stream = held.add_stream(codec, rate=fractions.Fraction(rate, 1))
         # `add_stream` is typed as returning any stream kind, so the checker
-        # cannot know a video codec yields a VideoStream. Asserted rather
-        # than assumed: if a codec name ever routes elsewhere this says so
-        # here instead of failing on an attribute three lines down.
+        # cannot know a video codec yields a VideoStream. Asserted rather than
+        # assumed, so a codec name that routes elsewhere says so here.
         if not isinstance(stream, av.VideoStream):
             raise TypeError(f"{codec} did not open a video stream, got {type(stream).__name__}")
         stream.width, stream.height, stream.pix_fmt = WIDTH, HEIGHT, pix

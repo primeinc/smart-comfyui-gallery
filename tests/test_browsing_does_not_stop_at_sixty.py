@@ -20,7 +20,13 @@ stack:
     jump, and the no-JavaScript path
 
 The library is 150 pictures at a page size of 20, so there are eight
-pages and the window (six) is genuinely exceeded.
+pages and the window (six) is genuinely exceeded. The page cannot be
+smaller: the eight-pages-against-a-window-of-six ratio is not the whole
+requirement, because a page also has to be big enough that the first
+screen does NOT reach the end. Tried at 80 files and a page of ten,
+which keeps that ratio -- the loader pulled all eight pages before the
+first assertion and the window had already dropped 1 and 2, leaving
+`[3, 4, 5, 6, 7, 8]` where the test wants to watch more ARRIVE.
 """
 
 from __future__ import annotations
@@ -38,14 +44,8 @@ pytestmark = pytest.mark.slow
 
 #: More than WINDOW * SIZE, so cells really are dropped off the top.
 MANY = 150
-#: Small pages, so eight of them fit in a test that is not slow.
-#:
-#: Not smaller. The eight-pages-against-a-window-of-six ratio is not the
-#: whole requirement: a page has to be big enough that the first screen
-#: does NOT reach the end. Tried at 80 files and a page of ten, which
-#: keeps that ratio -- the loader pulled all eight pages before the first
-#: assertion and the window had already dropped 1 and 2, leaving
-#: `[3, 4, 5, 6, 7, 8]` where the test wants to watch more ARRIVE.
+#: Small pages, so eight of them fit in a test that is not slow. Not
+#: smaller, for the reason the module docstring records.
 SIZE = 20
 
 
@@ -90,14 +90,17 @@ def _open(page: Page, extra: str = "") -> None:
     expect(page.locator("[data-grid][data-endless]")).to_have_count(1)
 
 
-#: THE PAGE MAY RELOAD ITSELF UNDER A READ: the authored surface settles by
-#: asking `/g/locate/{slug}` and calls `window.location.reload()` if that
-#: answers with an error (frontend/src/authored.ts:113-121).
-#:
-#: `expect(...)` retries across that reload and `page.evaluate` does not, so
-#: the first read after `_open` is an `expect` and the rest depend on the
-#: ingest in `prepare` making `/g/locate` answer.
 def _cells(page: Page) -> int:
+    """How many cells the document is holding.
+
+    THE PAGE MAY RELOAD ITSELF UNDER A READ: the authored surface settles by
+    asking `/g/locate/{slug}` and calls `window.location.reload()` if that
+    answers with an error (frontend/src/authored.ts:113-121).
+
+    `expect(...)` retries across that reload and `page.evaluate` does not, so
+    the first read after `_open` is an `expect` and the rest depend on the
+    ingest in `prepare` making `/g/locate` answer.
+    """
     return page.evaluate("() => document.querySelectorAll('[data-cells] > *').length")
 
 
@@ -131,26 +134,13 @@ def _ended(page: Page) -> bool:
     return page.locator(f'[data-cells] > *[data-page="{last}"]').count() > 0
 
 
-#: Consecutive animation frames of `idle` that end a round of work.
-#:
-#: More than one, because `idle` happens twice: `pump` re-arms itself a frame
-#: after finishing when it appended with more in reach (endless.ts:216). Below
-#: five the settle returns while the loader is still between frames of work.
+#: Consecutive animation frames of `idle` that end a round of work: `pump`
+#: re-arms itself a frame after finishing when it appended with more in reach
+#: (endless.ts:216), and below five the settle returns mid-work.
 STILL_FOR = 5
 
-#: Frames to allow work to BEGIN before giving up on this scroll.
-#:
-#: `idle` is also the state BEFORE anything starts, so a settle that
-#: accepts it returns at once and the round fetches nothing -- and the
-#: next `_to_bottom` is then a scroll to where the page already is, which
-#: fires no scroll event at all (endless.ts:309-315). The remaining
-#: wake-up is the IntersectionObserver on the pager (endless.ts:257) and
-#: this is how long it is given.
-#:
-#: Only ever paid when there IS more to fetch. `_ended` answers that from
-#: `data-pages` first, which is what makes this cheap: waiting this out
-#: on every exhausted scroll is what took the module from 15s to 23s when
-#: it was tried without the check.
+#: Frames to allow work to BEGIN before giving up on this scroll, and only
+#: ever paid when there is more to fetch. `_settled` records why.
 BEGIN_WITHIN = 30
 
 
@@ -188,6 +178,18 @@ def _settled(page: Page, timeout: int = 15_000) -> None:
 
     `wait_for_function` polls on animation frames, so these count
     frames, which is the unit the loader's own wake-ups are in.
+
+    `BEGIN_WITHIN` is how long the round is given to START. `idle` is also
+    the state BEFORE anything starts, so a settle that accepts it returns at
+    once and the round fetches nothing -- and the next `_to_bottom` is then a
+    scroll to where the page already is, which fires no scroll event at all
+    (endless.ts:309-315). The remaining wake-up is the IntersectionObserver
+    on the pager (endless.ts:257), and this is how long it is given.
+
+    That wait is only ever paid when there IS more to fetch, because `_ended`
+    answers from `data-pages` first. Waiting it out on every exhausted scroll
+    is what took the module from 15s to 23s when it was tried without the
+    check.
     """
     page.wait_for_function(
         "([round, still, begin]) => { const g = document.querySelector('[data-grid]');"
@@ -237,17 +239,9 @@ def _reached_page(page: Page, atLeast: int, timeout: int = 15_000) -> None:
 
 def test_scrolling_to_the_end_brings_the_next_page(page: Page, live: Live, unbroken):
     _open(page)
-    # The first screen may already have pulled a page or two: the trigger
-    # is "is the end within reach", and on a wide window a page of twenty
-    # cells does not fill it. What matters is that it starts at page 1 and
-    # that more arrives when there is more.
-    #
-    # Through `expect`, which RETRIES, and not through `_pages_held`,
-    # which evaluates once. This is the first read after `_open` and it
-    # was the module's intermittent failure: something navigates just
-    # after `_open`'s waits are satisfied, and a one-shot `evaluate` dies
-    # on it with "Execution context was destroyed" while a locator
-    # simply re-reads the document that replaced it.
+    # The first screen may already have pulled a page or two: the trigger is
+    # "is the end within reach", and on a wide window a page of twenty cells
+    # does not fill it. Read through `expect`, which retries -- see `_cells`.
     expect(page.locator('[data-cells] > *[data-page="1"]').first).to_be_attached()
     # SETTLED first. Read while the loader is still filling the first
     # screen, `was` is a number that keeps moving, and the target built

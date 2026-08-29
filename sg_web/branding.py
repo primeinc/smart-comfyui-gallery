@@ -33,11 +33,9 @@ ACCENT = (0xD8, 0xA2, 0x4A, 255)
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 PWA = STATIC / "pwa"
 
-#: The iOS launch-screen matrix, one row per CSS media triple in
-#: base.html: (device-width, device-height, device-pixel-ratio). The
-#: PNG for a row is width*ratio x height*ratio pixels. A near-miss
-#: triple is ignored in silence, so base.html's links and this table
-#: are held together by tests/test_the_app_installs_like_an_app.py.
+#: The iOS launch-screen matrix, one row per CSS media triple in base.html
+#: (device-width, device-height, device-pixel-ratio); a row's PNG is width*ratio
+#: by height*ratio. A near miss is silent, so tests/test_the_app_installs_like_an_app.py holds the pair together.
 SPLASH: tuple[tuple[int, int, int], ...] = (
     (440, 956, 3),
     (430, 932, 3),
@@ -57,10 +55,9 @@ def splash_name(width: int, height: int, ratio: int) -> str:
     return f"splash-{width}x{height}@{ratio}x.png"
 
 
-#: Screenshot captures: manifest `form_factor` -> viewport. Both ship
-#: because a UA shows only its own form factor's screenshots
-#: (w3c/manifest-app-info index.html:471-474) -- a narrow-only set
-#: leaves every desktop install sheet blank, and vice versa.
+#: Screenshot captures: manifest `form_factor` -> viewport. Both ship because a
+#: UA shows only its own form factor's screenshots (w3c/manifest-app-info
+#: index.html:471-474), so a one-sided set leaves the other install sheet blank.
 SHOTS: dict[str, tuple[int, int]] = {"narrow": (750, 1334), "wide": (1920, 1080)}
 
 

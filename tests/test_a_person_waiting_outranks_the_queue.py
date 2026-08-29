@@ -40,10 +40,9 @@ def test_the_queue_holds_off_while_somebody_is_waiting():
     with derive.waited_on():
         worker = threading.Thread(target=speculative, daemon=True)
         worker.start()
-        # It is held, not slow: given a person waiting, it cannot start
-        # at all, so a slow machine cannot turn this green by accident.
-        # A BROKEN gate fires within scheduler latency (single-digit ms);
-        # 100ms is margin over noise, not part of the claim.
+        # It is held, not slow: given a person waiting, it cannot start at all,
+        # so a slow machine cannot turn this green by accident. A BROKEN gate
+        # fires within scheduler latency, so 100ms is margin, not the claim.
         assert not began.wait(0.1), "a speculative render started while a person was waiting"
 
     assert began.wait(timeout=10), "the queue never resumed after the person was served"

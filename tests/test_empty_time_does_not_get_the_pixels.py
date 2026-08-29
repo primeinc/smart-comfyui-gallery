@@ -41,11 +41,9 @@ from tests.staging import staged
 
 pytestmark = pytest.mark.slow
 
-#: `db/when.py`'s units, not a fourth spelling of them. This said
-#: `YEAR = 365 * DAY` -- the common year, 31_536_000 -- while the
-#: surface under test drew against 31_556_952 and
-#: `tests/test_the_timeline_draws_any_span.py` built its fixtures
-#: against 31_557_600.
+#: `db/when.py`'s units, not a fourth spelling of them: a local
+#: `YEAR = 365 * DAY` is 31_536_000 against the surface's 31_556_952 and the
+#: 31_557_600 that `tests/test_the_timeline_draws_any_span.py` builds against.
 DAY = when.DAY
 YEAR = when.YEAR
 
@@ -85,12 +83,9 @@ def test_the_same_rule_holds_at_twenty_four_years():
     assert len(axis.collapsed) == 1
     assert axis.collapsed[0].seconds > 23 * YEAR
 
-    # Against the linear axis, not against a number somebody picked. The
-    # 2002 photograph was 0.011% of the width -- a hairline nothing can
-    # be aimed at. It is a day beside thirty days of content, so it gets
-    # a thirty-first of the drawn time and no more: `x` stays linear
-    # INSIDE kept time, and a rule that gave it a fixed share would be
-    # distorting the content to flatter one end of it.
+    # Against the linear axis, not against a number somebody picked: `x` stays
+    # linear INSIDE kept time, so a day beside thirty days of content gets a
+    # thirty-first of the drawn time and no more.
     was = (DAY / (24 * YEAR)) * projecting.WIDTH
     assert was < 0.2, f"a ninth of one pixel, and that was the whole of 2002: {was}"
     assert axis.x(DAY) > was * 200, "collapsing the empty years bought the old day nothing"

@@ -51,12 +51,9 @@ def _world(tmp_path_factory):
             # looks thriftier and says nothing, because a library is often
             # one flat folder
             where = stage.root if i % 3 else stage.root / "deeper"
-            # Bytes, not an encoded picture. A walk stats and HASHES; it
-            # never decodes, and nothing in this module looks at a pixel
-            # -- so `Image.new(...).save(...)` was paying an encoder per
-            # file, MANY times, to produce input no test reads as an
-            # image. Distinct per file, because the walk's whole subject
-            # is telling them apart by content.
+            # Bytes, not an encoded picture: a walk stats and HASHES, and
+            # nothing in this module looks at a pixel. Distinct per file,
+            # because the walk's whole subject is telling them apart by content.
             (where / f"p{i:05d}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + f"{i:05d}".encode() * 8)
         made = stage.client.post("/roots", json={"path": str(stage.root)}).json()
         answer = stage.client.post(f"/roots/{made['id']}/scan")

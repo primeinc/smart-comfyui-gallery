@@ -44,28 +44,31 @@ def _drain(client) -> None:
 
 
 def _library(root) -> None:
-    # Wider than the opening window, and clustered at the end. A library
-    # that fits INSIDE the last thirty days makes `all` current and hides
-    # the case one of these tests is about; a few old pictures and a
-    # recent cluster is both the ordinary shape and the one where the
-    # tightened window matches no preset at all.
+    """Wider than the opening window, and clustered at the end.
+
+    A library that fits INSIDE the last thirty days makes `all` current and
+    hides the case one of these tests is about; a few old pictures and a
+    recent cluster is both the ordinary shape and the one where the tightened
+    window matches no preset at all.
+
+    One picture's NAME claims a date its EXIF contradicts, so the surface has
+    something contested to count and the line that counts it is not skipped
+    past. TWO CLAIMS are what it takes: an mtime that disagrees is filesystem
+    dissent, which cannot demote a claim and never reads as a conflict
+    (tests/corpus.py `_name_for`).
+
+    That EXIF stamp is a LOCAL wall clock with no zone, which is what a camera
+    writes. Spelling it in UTC on a machine that is not UTC makes EVERY
+    photograph disagree by the offset, and the one that disagrees on purpose
+    stops being visible among them (tests/corpus.py `_exif_for`).
+    """
     when = datetime.datetime(2026, 5, 1, 10, tzinfo=datetime.UTC).timestamp()
     for i, day in enumerate((0, 30, 60, 95, 97, 99)):
         path = root / f"p{i}.png"
         Image.new("RGB", (32, 24), (10 * i, 90, 140)).save(path)
         os.utime(path, (when + day * 86_400, when + day * 86_400))
 
-    # One picture whose NAME claims a date its EXIF contradicts, so the
-    # surface has something contested to count and the line that counts
-    # it is not skipped past. TWO CLAIMS are what it takes: an mtime that
-    # disagrees is filesystem dissent, which cannot demote a claim and
-    # never reads as a conflict (tests/corpus.py `_name_for`).
-    #
-    # The EXIF stamp is a LOCAL wall clock with no zone, which is what a
-    # camera writes: spelling it in UTC on a machine that is not UTC
-    # makes EVERY photograph disagree by the offset, and the one that
-    # disagrees on purpose stops being visible among them
-    # (tests/corpus.py `_exif_for`).
+    # the contested picture: a name and an EXIF stamp that disagree
     named = datetime.datetime.fromtimestamp(when, datetime.UTC)
     muddled = root / f"IMG_{named:%Y%m%d}_{named:%H%M%S}.png"
     said = datetime.datetime.fromtimestamp(when - 400 * 86_400, datetime.UTC).astimezone()

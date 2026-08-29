@@ -124,10 +124,9 @@ def test_the_first_item_renders_more_than_its_own_picture(tmp_path):
         assert told is not None
         assert told["did"] == 1, told
         assert len(list(jobs.pending(conn, job))) == 11, "more than one item was performed"
-        # both halves: more than its own, and exactly the group size. The
-        # first alone would be satisfied by any lookahead at all; the
-        # second alone is satisfied by a group size of one, comparing the
-        # knob against itself.
+        # both halves: more than its own, and exactly the group size. The first
+        # alone is satisfied by any lookahead at all, the second alone by a
+        # group size of one comparing the knob against itself.
         assert _cached(conn, cache) > 1, "one item performed cached only its own picture"
         assert _cached(conn, cache) == runner.thumbs_in_flight(), (
             f"one item performed cached {_cached(conn, cache)} pictures; "

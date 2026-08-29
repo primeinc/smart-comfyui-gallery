@@ -108,9 +108,8 @@ def _video(fmt, codec, *, size=SIZE, rate=10, frames=8, pix="yuv420p"):
         width, height = size
         with av.open(str(path), "w", format=fmt) as container:
             stream = container.add_stream(codec, rate=rate)
-            # `add_stream` answers VideoStream | AudioStream |
-            # SubtitleStream -- the codec name decides which, and only the
-            # first has a frame size. Asserted rather than assumed, so a
+            # `add_stream` answers VideoStream | AudioStream | SubtitleStream
+            # by codec name, and only the first has a frame size. Asserted so a
             # codec typo fails here instead of on the attribute.
             assert isinstance(stream, av.VideoStream)
             stream.width, stream.height = width, height
@@ -310,10 +309,9 @@ def _cached(suffix: str, write):
 _SAMPLES = pathlib.Path(__file__).resolve().parent.parent / ".pytest_cache" / "suffix-samples"
 WRITERS = {suffix: _cached(suffix, write) for suffix, write in WRITERS.items()}
 
-#: One suffix per writer configuration -- the decoder families. These run
-#: in the fast lane; the aliases that share a writer (.jpeg/.jpe/.jfif
-#: for JPEG, .m2ts/.mts/.m2t for MPEG-TS, ...) are the same bytes through
-#: the same link and run in the slow lane, where the whole claim is proven.
+#: One suffix per writer configuration -- the decoder families, which run in
+#: the fast lane. The aliases that share a writer (.jpeg/.jpe/.jfif for JPEG,
+#: .m2ts/.mts/.m2t for MPEG-TS) run in the slow lane, where the claim is whole.
 FAMILIES = {
     ".png", ".jpg", ".webp", ".bmp", ".tif", ".avif", ".jxl", ".heic", ".heics", ".jp2", ".j2k",
     ".mpo", ".psd", ".gif", ".apng", ".dng",
@@ -385,10 +383,9 @@ def test_the_whole_pipeline_answers_for(suffix, tmp_path):
     if kind in ("image", "animated_image"):
         picture = oriented.for_model(conn, file_id, path)
         assert picture.size[0] > 0, f"{suffix} did not decode"
-        # Animation is a decoded fact -- but only for suffixes that CAN
-        # animate. An MPO reports extra frames too, and those are stereo
-        # viewpoints, not motion, which is why ingest consults the decoder
-        # only inside the possibly-animated set.
+        # Animation is a decoded fact, but only for suffixes that CAN animate.
+        # An MPO reports extra frames that are stereo viewpoints, not motion,
+        # so ingest consults the decoder only inside the possibly-animated set.
         if suffix in ingest._POSSIBLY_ANIMATED:
             with decode.open_still(path) as opened:
                 moving = decode.is_animated(opened)

@@ -133,12 +133,9 @@ def test_switching_presentation_does_not_change_the_answer(page: Page, live: Liv
     """The claim the whole design rests on. `view` never reaches the
     GalleryQuery, so the membership and the total are untouched."""
     page.goto("/g?f=has.generation%3Aeq%3A1")
-    # Through `expect`, which RETRIES across a navigation. This surface
-    # settles by asking `/g/locate/{slug}` and reloads itself when that
-    # answers with an error (frontend/src/authored.ts:113-121), so the
-    # first read after a `goto` can meet a document being replaced and a
-    # one-shot `evaluate` dies on it with "Execution context was
-    # destroyed". The reads below are safe because this one absorbed it.
+    # Through `expect`, which RETRIES across a navigation: this surface reloads
+    # when `/g/locate/{slug}` errors (frontend/src/authored.ts:113-121). The
+    # reads below are safe because this one absorbed the document replacement.
     expect(page.locator("[data-grid] a.cell")).to_have_count(len(MADE))
     grid_total = _total(page)
 

@@ -48,10 +48,9 @@ WIDTH = 1000.0
 #: number governs a fortnight and a quarter-century.
 SHARE = 0.04
 
-#: The least of the axis the pictures keep, however many runs were
-#: worth collapsing. It is what bounds the NUMBER of bands: past this
-#: the marks would want more room than the axis has and would run off
-#: the end of it.
+#: The least of the axis the pictures keep, however many runs were worth
+#: collapsing. It bounds the NUMBER of bands: past this the marks would want
+#: more room than the axis has.
 LEAST_DRAWN = 0.5
 
 #: What a collapsed run is drawn as instead. Wide enough to carry a
@@ -197,22 +196,18 @@ def projected(lo: float, hi: float, occupied, *, width: float = WIDTH, share: fl
         gaps.append((edge, hi))
 
     worth = [one for one in gaps if (one[1] - one[0]) / span > share]
-    # Bounded, and the bound is load-bearing rather than tidy: a window
-    # riddled with gaps would otherwise want more band than there is
-    # axis -- fifty of them is 1100 units of a 1000-unit width -- and the
-    # marks would run off the end. The LONGEST ones are kept, because
-    # they are the ones whose collapse buys the most; the rest stay drawn
-    # to scale, which is also the honest answer for a short gap.
+    # Bounded because a window riddled with gaps would want more band than
+    # there is axis. The LONGEST are kept, their collapse buying the most; the
+    # rest stay drawn to scale, which is the honest answer for a short gap.
     most = int((width * (1.0 - LEAST_DRAWN)) // COLLAPSED)
     if len(worth) > most:
         worth = sorted(sorted(worth, key=lambda one: one[0] - one[1])[:most])
     if not worth:
         return linear(lo, hi, width)
 
-    # What is left after every collapsed run has taken its fixed band,
-    # shared out over the time that is still drawn to scale. Never below
-    # LEAST_DRAWN of the axis: collapsing must not make the pictures
-    # harder to see than the nothing did.
+    # What is left after every collapsed run has taken its fixed band, shared
+    # out over the time still drawn to scale. Never below LEAST_DRAWN of the
+    # axis: collapsing must not make the pictures harder to see.
     taken = COLLAPSED * len(worth)
     drawn_seconds = span - sum(one[1] - one[0] for one in worth)
     usable = max(width * LEAST_DRAWN, width - taken)

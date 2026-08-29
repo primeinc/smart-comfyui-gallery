@@ -5,6 +5,12 @@ closure contains a browser, a `live` server or a database; see
 SLOW_FIXTURES below for the criterion and the counted split. `just test`
 runs what is left, `just test-slow` runs the marked set.
 
+`SLOW_FIXTURES` is derived from a test's own fixture closure rather than
+written on modules by hand, so a new browser test is slow the moment it asks
+for a page. `_servers` is deliberately not in it: every collected test
+requests it transitively and it boots nothing unless `sg_browser_modules` is
+non-zero, so it does not discriminate.
+
 Of the fixtures, one closes every in-memory database a test
 opened. The other, `live`, is the browser tests' server: the application
 in a subprocess through Litestar's own runner, over a library the test
@@ -44,13 +50,8 @@ if typing.TYPE_CHECKING:
 
 
 #: Requesting any of these is what makes a test slow: a browser process, a
-#: server in a subprocess, or a database. Derived from the test's own fixture
-#: closure rather than written on modules by hand, so a new browser test is
-#: slow the moment it asks for a page and no list is maintained anywhere.
-#:
-#: `_servers` is deliberately NOT here. Every collected test requests it
-#: transitively and it boots nothing unless `sg_browser_modules` is non-zero,
-#: so it does not discriminate.
+#: server in a subprocess, or a database. The module docstring says how this
+#: set is derived and why `_servers` is not in it.
 SLOW_FIXTURES = frozenset(
     {
         "browser",
@@ -220,24 +221,18 @@ class _Servers:
             raise broke
 
     def _begin(self) -> None:
-        # The home is minted HERE, on the calling thread, and handed to
-        # the boot. `self._homes` is `tmp_path_factory.mktemp`, which
-        # pytest does not promise is thread-safe -- and since this boot
-        # now starts at session start it runs alongside the module's own
-        # fixtures, which mint their directories from the same factory.
-        # Minting inside the thread raced them, and the module errored
-        # in `live` about one run in two.
+        # Minted HERE on the calling thread: `tmp_path_factory.mktemp` is not
+        # promised thread-safe, and this boot runs alongside module fixtures using
+        # it. Minting inside the thread errored `live` about one run in two.
         home = self._homes()
 
         def boot() -> None:
             try:
                 self._spare = self._boot(home)
             except Exception as error:
-                # Kept for the next `_settle`, which raises it on the
-                # thread that asked for a server -- and said out loud
-                # here as well, because a boot that fails in the
-                # background is otherwise silent until something happens
-                # to ask, and may never be asked at all.
+                # Kept for the next `_settle`, which raises it on the thread
+                # that asked for a server. Logged here as well, because a boot
+                # that fails in the background may never be asked about at all.
                 self._broke = error
                 logging.getLogger(__name__).exception("a spare server did not boot")
 
@@ -304,20 +299,21 @@ def _servers(request, tmp_path_factory):
     overlapping them buys a fraction of the window. Not worth an
     unconditional spare, nor the predicate that would be needed to guess
     at configure time whether this run drives a browser at all.
+
+    The backlog is THIS WORKER's share, not the run's. `sg_browser_modules`
+    is counted from the full collection and every xdist worker runs its own
+    session, so each of them read the whole suite's browser modules as its
+    own backlog and kept a spare booting for modules the scheduler had
+    already given to somebody else. The pool's own docstring says "at most
+    two servers are alive at a time", which is true per worker and false per
+    run: at -n 4 that is eight application subprocesses, each importing
+    forty-five modules, behind four chromiums. `--dist loadfile` (the
+    justfile's test-slow) hands out whole files, so the share is the count
+    over the worker count, rounded up because the remainder lands on
+    somebody.
     """
     repo = pathlib.Path(__file__).resolve().parent.parent
-    # THIS WORKER's share, not the run's. `sg_browser_modules` is counted
-    # from the full collection, and every xdist worker runs its own
-    # session -- so each of them read the whole suite's browser modules as
-    # its own backlog and kept a spare booting for modules the scheduler
-    # had already given to somebody else. The pool's own docstring says
-    # "at most two servers are alive at a time", which is true per worker
-    # and false per run: at -n 4 that is eight application subprocesses,
-    # each importing forty-five modules, behind four chromiums.
-    #
-    # `--dist loadfile` (the justfile's test-slow) hands out whole files, so
-    # the share is the count over the worker count -- rounded up, because
-    # the remainder lands on somebody.
+    # THIS WORKER's share, not the run's; the docstring above says why.
     wanted = getattr(request.config, "sg_browser_modules", 0)
     workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or 1)
     wanted = -(-wanted // workers)
@@ -406,16 +402,7 @@ def _settled(api, timeout: float = 120.0) -> None:
 
 
 #: Where a failure's own words are kept, so they survive the terminal.
-#:
-#: `--full-trace` prints twenty to thirty kilobytes of pytest's internal
-#: frames for a single failure, and a console that truncates keeps the
-#: ends and drops the middle -- which is exactly where the assertion and
-#: its message are. The run says FAILED and refuses to say why.
-#:
-#: The report object already holds the text. Writing it to a file costs
-#: nothing on a green run, changes no flag, and means the reason for a
-#: failure is readable afterwards instead of being a thing you had to be
-#: watching to catch.
+#: `pytest_runtest_logreport` below says why the file exists.
 FAILURES = pathlib.Path(__file__).resolve().parent.parent / ".pytest_cache" / "failures.txt"
 
 
@@ -427,6 +414,18 @@ def pytest_sessionstart(session) -> None:
 
 
 def pytest_runtest_logreport(report) -> None:
+    """Append a failure's own text to `FAILURES`.
+
+    `--full-trace` prints twenty to thirty kilobytes of pytest's internal
+    frames for a single failure, and a console that truncates keeps the ends
+    and drops the middle -- which is exactly where the assertion and its
+    message are. The run says FAILED and refuses to say why.
+
+    The report object already holds the text. Writing it to a file costs
+    nothing on a green run, changes no flag, and means the reason for a
+    failure is readable afterwards instead of something you had to be
+    watching to catch.
+    """
     if not report.failed:
         return
     with contextlib.suppress(OSError):
@@ -487,11 +486,9 @@ def unbroken(page, live: Live):
     try:
         yield found
     finally:
-        # Taken off again because the page OUTLIVES the test (`page`
-        # below). Left attached, every test's handlers would still be
-        # listening during the next one -- the lists grow without bound
-        # and each test pays a callback per handler for every response
-        # the whole module makes.
+        # Taken off again because the page OUTLIVES the test (`page` below).
+        # Left attached, the lists grow without bound and each test pays a
+        # callback per handler for every response the whole module makes.
         for event, handler in (("response", answered), ("pageerror", crashed), ("console", logged)):
             with contextlib.suppress(Exception):
                 page.remove_listener(event, handler)
@@ -566,23 +563,20 @@ def page(_module_page):
     answering 404 for the test after it -- which is about a picture that
     LOADS, and which then failed on the very 404s the test before it
     asked for.
+
+    Dialog handlers are NOT cleared, though they outlive their test the way
+    a route does. Removing them was tried and did not fix the module it was
+    written for (`test_a_keyword_vocabulary_can_be_kept_honest`, which keeps
+    a page of its own and says why), so it is not kept: a fix that does not
+    fix anything is a line the next person has to disprove again.
     """
     with contextlib.suppress(Exception):
         _module_page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
     with contextlib.suppress(Exception):
         _module_page.unroute_all()
-    # Dialog handlers are NOT cleared here, though they outlive their
-    # test the way a route does. Removing them was tried and did not fix
-    # the module it was written for
-    # (`test_a_keyword_vocabulary_can_be_kept_honest`, which keeps a page
-    # of its own and says why), so it is not kept: a fix that does not
-    # fix anything is a line the next person has to disprove again.
-    # A blank document LAST, which is what a fresh page was really being
-    # bought for: a navigation replaces the document and its JS realm, so
-    # the next test starts with no DOM, no listeners and no timers of the
-    # last one's -- an open confirmation, a mounted widget, a pending
-    # poll. Storage is cleared before it, while there is still an origin
-    # to clear it on.
+    # A blank document LAST: a navigation replaces the document and its JS
+    # realm, so the next test starts with no DOM, no listeners and no timers
+    # of the last one's. Storage is cleared first, while an origin still exists.
     with contextlib.suppress(Exception):
         _module_page.goto("about:blank")
     return _module_page

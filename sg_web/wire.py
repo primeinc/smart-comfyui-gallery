@@ -60,11 +60,9 @@ class _WireSchema(PydanticSchemaPlugin):
     def for_pydantic_model(cls, field_definition: FieldDefinition, schema_creator: SchemaCreator) -> Schema:
         model = field_definition.annotation
         if isinstance(model, type) and issubclass(model, RootModel):
-            # A RootModel's JSON is its root, not `{"root": ...}`. Litestar
-            # builds a component from a model's FIELDS, and a RootModel has
-            # exactly one called `root`, so the document described a wrapper
-            # object the server does not accept -- and the browser would
-            # have been generated against it.
+            # A RootModel's JSON is its root, not `{"root": ...}`. Litestar builds
+            # a component from a model's FIELDS and a RootModel has exactly one
+            # called `root`, so the document would describe a wrapper object.
             held = model.model_fields["root"]
             inner = schema_creator.for_field_definition(FieldDefinition.from_annotation(held.annotation))
             return inner if isinstance(inner, Schema) else Schema(one_of=[inner])

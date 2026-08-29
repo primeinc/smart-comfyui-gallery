@@ -63,10 +63,8 @@ def page(_shared_context):
 
 FILES = 4
 
-#: The dwell these tests run the slideshow at, in seconds.
-#:
-#: The claim is that it steps ON ITS OWN, not that it waits a particular
-#: length of time, so the dwell is margin over the remount a step costs.
+#: The dwell these tests run the slideshow at, in seconds. The claim is that it
+#: steps ON ITS OWN, so the dwell is margin over the remount a step costs and
 #: `viewer.ts` honours any positive value (`every()`, :581).
 STEP = 0.35
 
@@ -187,11 +185,9 @@ def test_wrap_is_about_the_arrows_and_loop_does_not_turn_it_on(page: Page, live:
     _arrange(page, loop=True, wrap=False)
     _open_first(page)
     assert page.get_attribute("[data-viewer]", "data-wrap") == "off"
-    # The wrapping arrow IS in the document -- the server spelled its
-    # address -- and is not a STEP: `data-nav` means "a step you can take
-    # right now", so an arrow nobody can reach must not carry it. It is
-    # hidden as well, because an invisible link over a tenth of the stage
-    # would still take the click.
+    # The wrapping arrow IS in the document and is not a STEP: `data-nav` means
+    # "a step you can take right now". It is hidden as well, because an
+    # invisible link over a tenth of the stage would still take the click.
     around = page.locator('[data-nav-wrap="previous"]')
     assert around.count() == 1
     assert not around.is_visible()

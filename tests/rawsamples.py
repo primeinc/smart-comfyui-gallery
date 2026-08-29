@@ -75,18 +75,20 @@ def filename(name: str) -> str:
     suffixes uncovered while the ledger said they had been fetched. The
     same defect was fixed in `tests/commons.py` first and not carried here,
     which is why it happened twice.
+
+    A colon is the dangerous one and it does not raise: Windows reads
+    `A (3:2).CRW` as the file `A (3` plus an NTFS alternate data stream, so
+    seventeen frames landed with their extension GONE -- named
+    `Canon - EOS D30 - RAW (3` -- and a suffix ledger counted them as nothing
+    while the download reported success. The suffix is checked rather than
+    trusted.
     """
     held = name
     for bad in '<>:"/\\|?*':
         held = held.replace(bad, "_")
     held = held.strip(". ")[:180]
-    # A colon is the dangerous one and it does not raise. Windows reads
-    # `A (3:2).CRW` as the file `A (3` plus an NTFS alternate data stream,
-    # so seventeen frames landed with their extension GONE -- named
-    # `Canon - EOS D30 - RAW (3` -- and a suffix ledger counted them as
-    # nothing while the download reported success. Checked rather than
-    # trusted: a name that lost its suffix is a name that lost the only
-    # thing this file was fetched for.
+    # A name that lost its suffix lost the only thing this file was fetched
+    # for. The docstring says how a colon does that without raising.
     if pathlib.Path(name).suffix and not pathlib.Path(held).suffix:
         raise ValueError(f"sanitising {name!r} dropped its suffix and produced {held!r}")
     return held
@@ -128,10 +130,9 @@ def pick(rows: list[dict], suffixes: set[str]) -> list[dict]:
     """The smallest CC0 file for each wanted suffix."""
 
     def size(one: dict) -> float:
-        # A row can carry no size at all. Sorting None as though it were
-        # zero makes an unmeasured file win every comparison, so an unknown
-        # size loses instead: it is picked only when nothing else offers
-        # that suffix.
+        # A row can carry no size at all. Sorting None as though it were zero
+        # makes an unmeasured file win every comparison, so an unknown size
+        # loses instead and is picked only when nothing else offers that suffix.
         held = one.get("megabytes")
         return float(held) if isinstance(held, (int, float)) else float("inf")
 
@@ -154,10 +155,8 @@ def wanted() -> set[str]:
         raise RuntimeError(f"run `just corpus needs` first: {ledger} does not exist")
     held = json.loads(ledger.read_text(encoding="utf-8"))
     # BLOCKED_EXTERNALLY is retried on purpose: the block register in
-    # `tests/needs.py` survives only while the world still offers no
-    # specimen, and this fetch is what challenges that on every run. The
-    # day the archive gains a `.cap`, this closes the gap and the gate's
-    # reverse assertion retires the excuse.
+    # `tests/needs.py` survives only while the world still offers no specimen,
+    # and this fetch is what challenges that on every run.
     return {
         one["need"].removeprefix("suffix:")
         for one in held["needs"]

@@ -454,10 +454,9 @@ def test_the_fallback_naming_run_is_the_earliest_carrying_run(db, a_library):
     assert asserted == 1
     assert held == [file_a], f"the assertion base must be the earliest run {minting}'s files, not the newest run's"
 
-    # Re-stamping the earliest run moves the pick to the other one: the
-    # rule reads the stamps as they stand. Recording minting would need a
-    # column the schema does not carry; until somebody needs it, the
-    # deterministic-in-the-rows rule is the contract.
+    # Re-stamping the earliest run moves the pick to the other one, because the
+    # rule reads the stamps as they stand. Recording which run minted a person
+    # would need a column the schema does not carry.
     db.execute("DELETE FROM person_assertion WHERE person_id = ?", (person,))
     derived.run_for(db, "test/emb", "v1", "given", None, NOW + 30)
     authored.assert_named_cluster(db, person, None, NOW + 40)
@@ -1105,11 +1104,9 @@ def test_the_carrier_is_kept_and_says_whether_it_was_understood(db, a_library, a
     ).fetchall()
     assert rows, "nothing kept the payload it parsed"
     assert all(length > 0 for _, _, length in rows)
-    # The half the name promises and the assertions above never checked:
-    # deleting the parsed_by logic from ingest._carrier left this test green.
-    # A carrier is kept whether or not anything understood it, and which of
-    # the two it was is the whole point -- it turns unparsed metadata into a
-    # backlog you can query instead of a silent loss.
+    # The half the name promises: deleting the parsed_by logic from
+    # ingest._carrier leaves the assertions above green. Which of the two a
+    # carrier was is what turns unparsed metadata into a queryable backlog.
     claimed = {slot: parser for slot, parser, _ in rows}
     assert claimed.get("parameters") == "metaparse/A1111 / Forge", claimed
 
@@ -1140,10 +1137,9 @@ def test_a_carrier_nothing_understood_says_so(db, a_library, tmp_path):
 
 def test_the_registry_learns_what_the_file_contained(db, a_library, a_generated_file):
     ingest.one(db, a_library["file"], a_generated_file, NOW)
-    # Keyed on (source, key), which is param_key's actual primary key. Keyed
-    # on `key` alone the dict silently kept one row per name while the GROUP
-    # BY summed every source, and the comparison meant nothing the moment one
-    # key appeared under two sources -- `Width` already does.
+    # Keyed on (source, key), param_key's actual primary key. On `key` alone
+    # the dict keeps one row per name while the GROUP BY sums every source, so
+    # the comparison means nothing once a key has two -- `Width` already does.
     learned = {(s, k): n for s, k, n in db.execute("SELECT source, key, occurrences FROM param_key")}
     counted = {(s, k): n for s, k, n in db.execute("SELECT source, key, count(*) FROM file_param GROUP BY source, key")}
     assert learned == counted
@@ -1755,13 +1751,9 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
                 "embedding": numpy.random.rand(128).astype(numpy.float32).tobytes(),
                 "age": numpy.int32(34),
                 "landmarks": numpy.array([[1.5, 2.5]], dtype=numpy.float32).tobytes(),
-                # Keyed, not a triple: the axes have to be named. This used
-                # to be a positional tuple and could not have caught the one
-                # error worth catching here -- the detector's array is
-                # [pitch, yaw, roll] and the columns are yaw-first, so a
-                # swap lands three plausible float32 degrees in the wrong
-                # columns and no CHECK sees it. `_insert_face` now refuses
-                # the anonymous shape.
+                # Keyed, not a triple, and `_insert_face` refuses the anonymous
+                # shape: the detector's array is [pitch, yaw, roll] while the
+                # columns are yaw-first, and no CHECK catches a swap.
                 "pose": {
                     "yaw": numpy.float32(1.5),
                     "pitch": numpy.float32(-2.0),

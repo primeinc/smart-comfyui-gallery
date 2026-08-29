@@ -124,10 +124,9 @@ def test_the_filmstrip_is_the_walk_the_context_describes(address):
 
     for one in strip["items"]:
         assert one["href"] == f"/i/{one['slug']}?sort=oldest", "the walked question rides every address"
-        # A thumbnail is a CONTENT address now (vision/thumbs.py
-        # asset_url), not a slug the application has to look up: the
-        # strip's thumbnails cost no database connection and cache
-        # forever. This asserted `/thumb/<slug>` long after that landed.
+        # A thumbnail is a CONTENT address (vision/thumbs.py asset_url), not a
+        # slug the application looks up, so the strip's thumbnails cost no
+        # database connection and cache forever.
         assert one["thumb"] is not None, "a picture in the strip has no thumbnail"
         assert one["thumb"].startswith("/thumbs/"), one["thumb"]
         assert one["thumb"].endswith(".webp")

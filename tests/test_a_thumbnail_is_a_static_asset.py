@@ -165,10 +165,9 @@ def _world(tmp_path_factory):
         _pictures,
         _interpreted,
         worker=True,
-        # The rendered derivatives ARE the steady state these tests read;
-        # emptying the cache between them buys a re-render of six webps
-        # per test and proves nothing. The one test about a miss deletes
-        # its own entry.
+        # The rendered derivatives ARE the steady state these tests read, so
+        # emptying the cache between them buys a re-render of six webps per
+        # test. The one test about a miss deletes its own entry.
         keep_thumbs=True,
     ) as stage:
         yield stage
@@ -303,10 +302,9 @@ def test_a_name_that_is_not_a_derivative_is_refused(served):
 # --- and every OTHER surface that draws pictures ----------------------------
 
 
-#: These addresses answer JSON to a machine and a page to a browser, so
-#: asking without saying which gets the machine's answer -- and a regex
-#: for `<img>` over JSON finds nothing and reads exactly like a page
-#: that drew no pictures. Cost ten minutes once.
+#: These addresses answer JSON to a machine and a page to a browser, so asking
+#: without saying which gets the machine's answer. A regex for `<img>` over JSON
+#: finds nothing and reads exactly like a page that drew no pictures.
 AS_BROWSER = {"accept": "text/html,application/xhtml+xml"}
 
 

@@ -118,9 +118,7 @@ def test_the_console_seam_words_busy_as_503_and_nothing_else():
 
     # Litestar's own factory, which is exactly this case -- "logic that
     # expects to receive a request object" (docs/usage/testing.rst:343).
-    # Not a stand-in and not a hand-built scope: `HTTPScope` is a dozen
-    # keys the handler never reads, and filling them by hand is a fake
-    # wearing the real type. No application, no transport either way.
+    # A hand-built `HTTPScope` would be a fake wearing the real type.
     request = RequestFactory().post(path="/operations/jobs/events")
     answer = operations.busy(request, _real_busy_error())
     assert answer.status_code == 503

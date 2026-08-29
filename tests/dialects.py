@@ -55,9 +55,8 @@ def write(into: pathlib.Path | None = None) -> dict:
     from tests.test_metaparse import DRAWTHINGS_XMP, make_png
 
     # Draw Things is registered in `metaparse/adapters.py` and absent from
-    # WRITERS, so `tests/needs.py` reported the one dialect with no file
-    # anywhere -- an adapter the schema tests never exercise. Its fixture
-    # does exist, one module over, as an XMP payload in an iTXt chunk.
+    # WRITERS, so `tests/needs.py` reported one dialect with no file anywhere.
+    # Its fixture does exist, one module over, as an XMP payload in an iTXt chunk.
     writers = dict(WRITERS)
     writers["drawthings"] = (
         lambda d: make_png(d / "drawthings.png", {"XML:com.adobe.xmp": DRAWTHINGS_XMP}, itxt=("XML:com.adobe.xmp",)),

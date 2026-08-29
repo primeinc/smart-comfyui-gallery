@@ -50,19 +50,20 @@ def _host(tmp_path_factory):
     here -- forgetting a root deliberately leaves its files, and a test
     re-adds them -- so they must outlive a restore rather than read as a
     changed library and provoke a rebuild.
+
+    The two roots are given DISTINCT pixels, not merely distinct names.
+    `resolve_scan` reconciles by content across the whole library on purpose --
+    a file dragged from one drive to another is a move -- so two roots holding
+    byte-identical pictures are one set of files that appears to migrate, and
+    the second scan re-attributed every row from the first root. That is the
+    scanner being right; a fixture that trips it measures the wrong thing.
     """
     import re
 
     with hosting(tmp_path_factory, "a_root_can_be_forgotten", worker=True) as stage:
         keep = stage.home.parent / "keep"
         drop = stage.home.parent / "drop"
-        # DISTINCT pixels across the two roots, not merely distinct names.
-        # `resolve_scan` reconciles by content across the whole library on
-        # purpose -- a file dragged from one drive to another is a move --
-        # so two roots holding byte-identical pictures are one set of files
-        # that appears to migrate, and the second scan re-attributed every
-        # row from the first root. That is the scanner being right; a
-        # fixture that trips it is measuring the wrong thing.
+        # DISTINCT pixels across the two roots; the docstring says why.
         drawn = 0
         for where, count in ((keep, 2), (drop, 3)):
             where.mkdir()
@@ -102,12 +103,9 @@ def served(_host):
     return _host.client, held["made"], held["keep"], held["drop"], held["target"]
 
 
-#: What `library.add_root` writes into a directory to give it a durable
-#: identity, so a moved root is recognised rather than re-indexed. It is
-#: the one file this application puts in somebody's media directory, and
-#: forgetting a root deliberately leaves it: removing it would be a disk
-#: WRITE, which is exactly what forgetting promises not to do -- and
-#: re-adding the directory then reuses the identity it already had.
+#: What `library.add_root` writes into a directory for a durable identity, so a
+#: moved root is recognised rather than re-indexed and a re-added one reuses it.
+#: Forgetting leaves the file: removing it would be the disk WRITE it forbids.
 MARKER = ".smartgallery-root"
 
 

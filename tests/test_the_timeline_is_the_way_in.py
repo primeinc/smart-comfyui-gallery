@@ -259,10 +259,8 @@ def test_a_picture_says_when_and_in_which_sessions(links):
     assert [s["kind"] for s in when["sessions"]] == ["file_session"]
     assert _total(links, when["sessions"][0]["qs"]) == 5
     fragment = links.get(f"/i/{slugs[1]}", headers={"hx-request": "true"}).text
-    # The overlay carries the day as a link into the gallery. It moved from
-    # the old lightbox's stuffed label into the viewer's About panel when
-    # one viewer replaced two presentations; what it must still be is an
-    # address, not a client-side filter.
+    # The overlay carries the day as a link into the gallery, from the viewer's
+    # About panel. What it must be is an ADDRESS, not a client-side filter.
     assert 'href="/g?f=context.local_day%3Aeq%3A2023-06-10' in fragment, "the overlay opens the day"
     assert "data-when-day" in fragment
     html = links.get(f"/i/{slugs[1]}", headers={"accept": "text/html"}).text

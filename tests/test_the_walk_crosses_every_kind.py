@@ -51,10 +51,9 @@ WRITTEN = (
     "h_fourth.png",
 )
 
-#: What each of those becomes once the scanner has read it. A document
-#: is a PDF and nothing else -- `vision/sniff.py` recognises `%PDF-` and
-#: `db/scan.py` KIND_BY_SUFFIX maps `.pdf`; a `.txt` is not a medium
-#: this application has an opinion about and is not scanned at all.
+#: What each of those becomes once the scanner has read it. A document is a
+#: PDF and nothing else -- `vision/sniff.py` recognises `%PDF-` and
+#: `db/scan.py` KIND_BY_SUFFIX maps `.pdf`; a `.txt` is not scanned at all.
 KIND_OF = {
     "a_first.png": "image",
     "b_notes.pdf": "document",
@@ -66,10 +65,9 @@ KIND_OF = {
     "h_fourth.png": "image",
 }
 
-#: The kinds with no picture to take -- the COMPLEMENT of
-#: `vision/thumbs.py PICTURED` within the kind vocabulary, computed so a
-#: sixth kind cannot be in neither set and quietly uncovered by the
-#: assertions below. These are the cells that must not ask for a raster.
+#: The kinds with no picture to take, and the cells that must not ask for a
+#: raster: the COMPLEMENT of `vision/thumbs.py PICTURED` within the kind
+#: vocabulary, computed so a sixth kind cannot land in neither set.
 UNPICTURED = set(facets.KINDS) - set(thumbs.PICTURED)
 
 
@@ -111,10 +109,9 @@ def write_library(root) -> None:
         elif name.endswith(".pdf"):
             path.write_bytes(_pdf(f"document {i}"))
         elif name.endswith(".wav"):
-            # A REAL wav, written by the standard library. A hand-cut
-            # RIFF stub sniffs as audio but the prober cannot read it,
-            # so the scan job logs a failed item -- noise this fixture
-            # would then be teaching people to ignore.
+            # A REAL wav, written by the standard library: a hand-cut RIFF stub
+            # sniffs as audio but the prober cannot read it, so the scan job
+            # logs a failed item this fixture would be teaching people to ignore.
             import wave
 
             with wave.open(str(path), "wb") as sound:
@@ -155,17 +152,21 @@ WALK = "sort=oldest"
 
 
 def _surface(live: Live, slug: str) -> dict:
+    """One member's own answer, through the address that negotiates.
+
+    `/g` is a page and does not negotiate JSON: asking it for
+    `application/json` returns HTML that `.json()` then fails to parse.
+    `/i/{slug}` DOES negotiate, and that is the seam the filmstrip's own
+    answer comes through.
+    """
     told = live.api.get(f"/i/{slug}", params={"sort": "oldest"}, headers={"accept": "application/json"})
     assert told.status_code == 200, told.text
     return told.json()
 
 
-#: A file's slug is minted from its name (`a_first.png` -> `a-first`),
-#: so the walk is addressable by the names this module wrote -- no
-#: scraping the grid for them. `/g` is a page and does not negotiate
-#: JSON: asking it for `application/json` returns HTML that `.json()`
-#: then fails to parse. `/i/{slug}` DOES negotiate, and that is the
-#: seam the filmstrip's own answer comes through.
+#: A file's slug is minted from its name (`a_first.png` -> `a-first`), so the
+#: walk is addressable by the names this module wrote, with no scraping of the
+#: grid for them.
 SLUG_OF = {name: name.rsplit(".", 1)[0].replace("_", "-") for name in WRITTEN}
 
 

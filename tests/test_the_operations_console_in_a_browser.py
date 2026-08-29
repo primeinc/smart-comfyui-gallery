@@ -86,13 +86,9 @@ def test_a_job_appears_moves_and_settles_without_a_reload(console: Page, live: L
     assert types[-1] == "job.done"
     console.click(f'[data-matrix-job="{job_id}"]')
     console.wait_for_selector(f'[data-inspect-job="{job_id}"][data-state="done"]', timeout=10_000)
-    # Lifecycle, execution and recovery sit behind a fold now -- they are
-    # forensics, read when something is wrong, and they were drawn at the
-    # weight of the progress figure. It opens by itself on a failure, an
-    # expired lease or a cancellation; this job is none of those, and a
-    # closed <details> is not in innerText. Opened rather than asserted
-    # around: what this checks is that the inspector CARRIES every
-    # contract field, not which of them are visible on arrival.
+    # The lifecycle fold opens by itself on a failure, an expired lease or a
+    # cancellation, and a closed <details> is not in innerText. This job is
+    # none of those, and the claim is that every contract field is CARRIED.
     console.evaluate(
         "() => { const d = document.querySelector('[data-inspector-body] .inspect-fine'); if (d) d.open = true; }"
     )
@@ -275,10 +271,9 @@ def test_an_unreadable_backlog_reconnects_instead_of_dropping_its_rows(page: Pag
         server = ws.connect_to_server()
 
         def from_server(message) -> None:
-            # 1: deaf, so the job's rows are still owed to the page.
-            # 2: the backlog that owes them, corrupted and swallowed.
-            # 3 and after: honest, so what the page ends up holding is what
-            #    the rows say.
+            # 1: deaf, so the job's rows are still owed to the page; 2: the
+            # backlog that owes them, corrupted and swallowed; 3 and after:
+            # honest, so what the page ends up holding is what the rows say.
             if mine == 1:
                 return
             if mine == 2 and isinstance(message, str):

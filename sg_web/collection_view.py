@@ -185,15 +185,13 @@ class SmartUnavailable(_Unanswered):
     reason: str
 
 
-#: One collection at its address.
-#:
-#: A plain union, not `Field(discriminator=...)`: litestar builds a union's
-#: schema itself and never asks pydantic for it
-#: (litestar/_openapi/schema_generation/schema.py for_union_field), so the
-#: OpenAPI `discriminator` object would be dropped and the annotation would
-#: only be lying about what the document says. It is not needed anyway --
-#: every variant states `kind`, and the smart four state `state`, as
-#: single-valued enums, which is what the browser narrows on.
+#: One collection at its address, as a plain union rather than
+#: `Field(discriminator=...)`: litestar builds a union's schema itself and never
+#: asks pydantic (litestar/_openapi/schema_generation/schema.py for_union_field).
+
+#: A discriminator is not needed either: every variant states `kind`, and the
+#: smart four state `state`, as single-valued enums, which is what the browser
+#: narrows on.
 CollectionDocument = ListedCollection | SmartEvaluated | SmartUnevaluated | SmartBroken | SmartUnavailable
 
 
@@ -546,10 +544,9 @@ class CollectionListed(Wire):
     pictures: int
     first_seen: float | None = None
     last_seen: float | None = None
-    #: The newest member's thumbnail. This is a library of PHOTOGRAPHS and
-    #: the shelf was a list of words; a collection should show what is in
-    #: it. None for a rule-defined collection, which holds a question
-    #: rather than files, and for one whose members are all missing.
+    #: The newest member's thumbnail, so a shelf of collections shows what is in
+    #: them rather than a list of words. None for a rule-defined collection, which
+    #: holds a question rather than files, and for one whose members are missing.
     cover: str | None = None
 
 
@@ -667,20 +664,17 @@ def _albums_nested(db_path: str) -> tuple[list[_Shelved], int]:
 
 @get(
     "/albums",
-    # The route negotiates: a browser gets a page, a machine gets this list.
-    # The return annotation can only say `Template | Response`, which tells
-    # OpenAPI nothing, so the JSON body is declared here instead -- otherwise
-    # the one shape a client actually parses would be the one shape the
-    # contract did not describe.
+    # The route negotiates: a browser gets a page, a machine gets this list. The
+    # return annotation can only say `Template | Response`, which tells OpenAPI
+    # nothing, so the JSON body is declared here instead.
     responses={
         200: ResponseSpec(
             data_container=list[CollectionListed],
             description="Every active collection, or the archived shelf under ?state=archived",
             media_type=MediaType.JSON,
-            # ResponseSpec invents examples by default. They are deterministic,
-            # so the drift gate does not flap, but they are made-up values in a
-            # committed contract -- a reader should not have to work out that
-            # `"kind": "VvHsoVSEeCtLViFvDEMp"` was never a kind.
+            # ResponseSpec invents examples by default: deterministic, so the
+            # drift gate does not flap, but made-up values in a committed
+            # contract that a reader would have to recognise as never real.
             generate_examples=False,
         )
     },

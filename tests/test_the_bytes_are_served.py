@@ -238,10 +238,9 @@ def test_head_answers_what_get_would_say_without_the_body(served):
 def test_a_thumbnail_renders_once_and_serves_from_cache(served, request):
     client, slugs, root = served
     slug = slugs["wide.png"]
-    # The rewrite below is the claim; leaving it there is a library the
-    # next test's restore cannot put back, and it rebuilds the whole
-    # world instead. The file is written in place, so its bytes and its
-    # stamp go back and the listing is the one the world snapshotted.
+    # The rewrite below is the claim; leaving it there is a library the next
+    # test's restore cannot put back. Bytes and stamp both go back, so the
+    # listing stays the one the world snapshotted.
     was, stamped = (root / "wide.png").read_bytes(), (root / "wide.png").stat()
 
     def put_back() -> None:

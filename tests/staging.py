@@ -50,11 +50,9 @@ if typing.TYPE_CHECKING:
 
 SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
-#: How often a wait-for-work loop asks again, in seconds.
-#:
-#: GRANULARITY, not a margin: every loop that uses it ends the moment the row
-#: it is watching is terminal, so the interval is only overshoot past work that
-#: has already finished. Each turn is a real request against the run.
+#: How often a wait-for-work loop asks again, in seconds. GRANULARITY, not a
+#: margin: every loop ends the moment the row it watches is terminal, so the
+#: interval is only overshoot, and each turn is a real request against the run.
 POLL = 0.01
 
 #: The suite's fixed clock. It was declared, identically, in 38 test
@@ -69,11 +67,9 @@ JUNE_10 = 1_686_355_200.0
 HOUR = when.HOUR
 DAY = when.DAY
 _MASTERS: dict[str, sqlite3.Connection] = {}
-#: Connections that outlive the test that opened them on purpose -- a
-#: module's master built inside a function-scoped fixture. conftest closes
-#: every other in-memory connection when its test ends.
-#:
-#: The CONNECTIONS, not their id()s. See `keep`.
+#: Connections that outlive the test that opened them on purpose -- a module's
+#: master built inside a function-scoped fixture. The CONNECTIONS, not their
+#: id()s (see `keep`); conftest closes every other in-memory connection.
 LONG_LIVED: list[sqlite3.Connection] = []
 
 
@@ -154,10 +150,9 @@ def _built_master() -> pathlib.Path:
     where.mkdir(parents=True, exist_ok=True)
     master = where / f"master-{stamp.hexdigest()[:16]}.db"
     if not master.exists():
-        # Built under a name of its own and moved on: `build.build`
-        # refuses to overwrite a database holding rows, and a run that
-        # dies mid-executescript must not leave a half-written file for
-        # the next one to copy as a database.
+        # Built under a name of its own and moved on: `build.build` refuses to
+        # overwrite a database holding rows, and a run that dies mid-executescript
+        # must not leave a half-written file for the next one to copy.
         building = where / f"{master.stem}.{os.getpid()}.building"
         build.build(building)
         try:
@@ -282,10 +277,9 @@ def _corpus_key(corpus: pathlib.Path) -> str:
         key.update(f"{corpus.name}|{held.st_size}|{held.st_mtime_ns}\n".encode())
     else:
         for path, held in sorted(_scanned(corpus)):
-            # The root marker is the APPLICATION's writing -- registering
-            # the corpus as a root re-stamps it on every build, and keying
-            # on it made every run see a "changed corpus" and rebuild the
-            # 11-second constant forever.
+            # The root marker is the APPLICATION's writing: registering the
+            # corpus as a root re-stamps it on every build, and keying on it
+            # made every run see a "changed corpus" and rebuild an 11-second constant.
             if path.name == library.MARKER:
                 continue
             key.update(f"{path.relative_to(corpus)}|{held[0]}|{held[1]}\n".encode())
@@ -386,10 +380,9 @@ def migrated(path: pathlib.Path, target: int | None = None, *, name: str = "step
     src = connect.connect(path, read_only=True)
     try:
         for line in src.iterdump():
-            # sqlite_stat* is query history, not the fixture: `PRAGMA
-            # optimize` on close writes rows that vary with whatever ran
-            # on the connection, and keying on them drifted a fresh key
-            # every run -- an unbounded cache with a 0% hit rate.
+            # sqlite_stat* is query history, not the fixture: `PRAGMA optimize`
+            # on close writes rows that vary with whatever ran on the connection.
+            # Keying on them drifted a fresh key every run, at a 0% hit rate.
             if "sqlite_stat" in line:
                 continue
             key.update(line.encode())
@@ -535,11 +528,9 @@ class Stage:
     #: when any OTHER connection commits and omits changes made on this one
     #: (sqlite/sqlite@b09c88c1 src/sqlite.h.in:1193-1196). It must never write.
     _monitor: sqlite3.Connection | None = None
-    #: The snapshot, held open READ-ONLY as the backup's source. It is
-    #: the same bytes for every restore in the module, and opening it
-    #: again per test is a second connection's worth of PRAGMAs on the
-    #: hot path -- a hundred-test module pays that a hundred times.
-    #: Re-opened after a rebuild, which writes a new template.
+    #: The snapshot, held open READ-ONLY as the backup's source, and re-opened
+    #: after a rebuild writes a new template. Opening it per test would cost a
+    #: second connection's PRAGMAs on the hot path, once for every test.
     _frozen: sqlite3.Connection | None = None
     #: The backup's DESTINATION, held open for the same reason. It is
     #: not in a transaction between restores, so it holds no lock and
@@ -599,16 +590,18 @@ class Stage:
         """The snapshot back under the running application. No request is
         in flight between tests, so no connection is open on the file.
         The thumbnail cache is content-keyed and safe to delete whole
-        (sg_web/home.py), and a test about first renders needs it gone."""
+        (sg_web/home.py), and a test about first renders needs it gone.
+
+        Cached thumbnails go through `_scanned`, which already knows which
+        entries are files from the directory read; `rglob` then `is_file()`
+        asks the filesystem again per entry, before every test in the module,
+        over a cache that grows as the module renders more of them. It needs
+        no `exists()` first: scandir on a directory that is not there raises
+        the same OSError `_scanned` already steps over.
+        """
         thumbs = self.home / "thumbs"
         if self.wipes_thumbs:
-            # Through `_scanned`, which already knows which entries are
-            # files from the directory read. `rglob` then `is_file()` asks
-            # the filesystem again per entry, and this runs before every
-            # test in the module -- over a cache that grows as the module
-            # renders more of them. It also needs no `exists()` first:
-            # scandir on a directory that is not there is the same
-            # OSError it already steps over.
+            # Through `_scanned`, for the reason in the docstring.
             for cached, _held in _scanned(thumbs):
                 cached.unlink(missing_ok=True)
         if _listing(self.root) != self.library:
@@ -623,10 +616,9 @@ class Stage:
         # writes, so an unchanged value means no other connection did.
         if self._seen_version is not None and self._data_version() == self._seen_version:
             return
-        # Through the backup API, not a file copy: a connection a test
-        # leaked still holds the -wal open on Windows, and the backup
-        # writes the destination through its own pager with such
-        # connections present (sqlite3.rst: backup into a live database).
+        # Through the backup API, not a file copy: a connection a test leaked
+        # still holds the -wal open on Windows, and the backup writes the
+        # destination through its own pager (sqlite3.rst: into a live database).
         self._from_template().backup(self._into_db())
         # The backup itself is another connection's write; rebase on it.
         self._seen_version = self._data_version()
@@ -770,10 +762,9 @@ def staged(
         client.post("/roots", json={"path": str(root)})
         precache = client.post("/roots/1/scan").json()["precache"]
         if worker and precache is not None:
-            # The scan queued the thumbnail job; a world snapshotted while
-            # it runs is one whose cache files are being written under
-            # the next restore's unlink, and whose feed already carries a
-            # running job nobody in the module asked for.
+            # The scan queued the thumbnail job; a world snapshotted while it
+            # runs has cache files being written under the next restore's
+            # unlink, and a feed already carrying a job nobody asked for.
             settled(client, precache)
         if setup is not None:
             setup(stage)

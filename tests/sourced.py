@@ -25,6 +25,12 @@ no test ever asserts a thumbnail on a file that has no pixels.
 Not a conformance suite. Nothing here states what a field should hold.
 The lockfile carries a checksum and one sentence about why the file is
 present; every expectation belongs to a test, computed at read time.
+
+`CORPUS` is NOT `../refs`: a sibling of the repository is a directory on one
+machine. Pointing tests at it meant seven of eight skipped everywhere else
+and the suite went green having proved nothing, which is worse than no tests
+because it reads as coverage. The tarball is fetched from GitHub at a pinned
+tag instead, into a cache outside the repo.
 """
 
 from __future__ import annotations
@@ -41,17 +47,8 @@ import urllib.request
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: Where the real media lives, and how it gets there.
-#:
-#: NOT `../refs`: a sibling of the repository is a directory on one
-#: machine. Pointing tests at it meant seven of eight skipped everywhere
-#: else and the suite went green having proved nothing -- which is worse
-#: than no tests, because it reads as coverage.
-#:
-#: Fetched from GitHub at a pinned tag instead, into a cache outside the
-#: repo. ExifTool is GPL-3 and its images are collected from mixed
-#: sources with real coordinates in them, so they are DOWNLOADED and
-#: never committed.
+#: Where the real media lives, and how it gets there. The module docstring
+#: says why it is not `../refs` and why nothing is committed.
 CORPUS = pathlib.Path(os.environ.get("SG_CORPUS", REPO.parent / "sg-corpus"))
 IMAGES = CORPUS / "exiftool"
 TAG = "13.59"

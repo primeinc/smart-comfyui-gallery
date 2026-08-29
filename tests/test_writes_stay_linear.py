@@ -37,10 +37,9 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 #: The gap is wide enough that timing noise cannot reach it.
 TOLERANCE = 2.0
 
-#: The two sizes the ratio is taken across. What discriminates is the
-#: FOURFOLD step, not the absolute size: a quadratic path grows ~3.5x
-#: across it and a linear one 1.0-1.1x, whether the step is 1k->4k or
-#: 2k->8k. The smaller pair says the same thing for half the rows.
+#: The two sizes the ratio is taken across: what discriminates is the FOURFOLD
+#: step, not the absolute size, so 1k->4k says what 2k->8k says for half the
+#: rows.
 SMALL, LARGE = 1_000, 4_000
 
 

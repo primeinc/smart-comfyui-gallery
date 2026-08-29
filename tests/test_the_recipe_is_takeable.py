@@ -178,10 +178,9 @@ def test_copy_everything_is_enough_to_make_the_picture_again(clipboard: Page, li
     # listed a second time -- pasting that would apply each one twice
     assert "Loras:" not in text, text
 
-    # the control for that absence, on the same panel: take the inline
-    # tags out of the prompt and they come back as a listed pair, with
-    # their weights. Without this the assertion above would also pass if
-    # the LoRA emission were dead code -- an empty result proving nothing.
+    # the control for that absence, on the same panel: take the inline tags out
+    # of the prompt and they come back as a listed pair, with their weights.
+    # Without it the assertion above would pass on dead LoRA emission too.
     page.fill("[data-recipe-field='prompt'] [data-scratch]", "a castle on a hill")
     listed = _copy(page, "[data-copy-all]")
     assert "Loras: <lora:castleLora:0.80> <lora:filmGrain:0.35>" in listed, listed

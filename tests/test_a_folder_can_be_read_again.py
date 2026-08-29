@@ -69,10 +69,8 @@ def test_the_button_is_on_the_folder_it_would_read(page: Page, live: Live, unbro
     exists on the operations page; this is the one somebody runs."""
     page.goto("/f/album")
     # Two retrying assertions rather than a wait and two one-shot reads:
-    # `expect` waits for the element itself, so the `wait_for_selector`
-    # was a round trip spent arriving somewhere the next line goes
-    # anyway -- and a read that answers once races the render it is
-    # reading.
+    # `expect` waits for the element itself, so a `wait_for_selector` is a
+    # round trip, and a read that answers once races the render it reads.
     button = page.locator("[data-folder-reread]")
     expect(button).to_have_attribute("data-folder-reread", "album")
     expect(button).to_contain_text(str(INSIDE))

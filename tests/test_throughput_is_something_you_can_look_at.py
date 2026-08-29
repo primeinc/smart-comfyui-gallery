@@ -89,10 +89,9 @@ def test_no_filesystem_path_reaches_the_page(rendered):
     the machine that ran them. None of the three shown do, and this is
     the assertion that notices if a later benchmark starts."""
     page = rendered
-    # ONE backslash: the page renders decoded values, so a Windows path
-    # arrives as `C:\ComfyUI`. The doubled form is what JSON SOURCE holds
-    # and matches nothing here -- checked, because a probe that cannot
-    # match is a test that cannot fail.
+    # ONE backslash: the page renders decoded values, so a Windows path arrives
+    # as `C:\ComfyUI`. The doubled form is what the JSON SOURCE holds and
+    # matches nothing here, which would be a probe that cannot fail.
     for leak in ("C:" + chr(92), "C:/", "/home/", "/Users/", "ComfyUI", "sample-datasets"):
         assert leak not in page, f"the console rendered {leak!r} out of a benchmark result"
 

@@ -225,11 +225,9 @@ def test_the_folders_index_enters_by_entity_never_by_path(placed_on_disk):
     assert told.status_code == 200
     assert told.headers["vary"] == "Accept, HX-Request"
 
-    # `cover` is a content address, which is the whole reason it is
-    # allowed on this surface: the assertions below prove no host path
-    # reaches a browsing answer, and /thumbs/<sha> carries none. Lifted
-    # out of BOTH readings rather than popped out of one -- the trash
-    # check further down compares a fresh answer against this body.
+    # `cover` is a content address, so it is allowed here: the assertions below
+    # prove no host path reaches a browsing answer, and /thumbs/<sha> carries none.
+    # Lifted out of BOTH readings, since the trash check compares a fresh answer.
     def without_covers(rows):
         return [
             {**shelf, "folders": [{k: v for k, v in one.items() if k != "cover"} for one in shelf["folders"]]}

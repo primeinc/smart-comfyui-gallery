@@ -327,10 +327,9 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
             addressed[ref]["said"] = said.get(file_id)
     finally:
         connect.close(conn)
-    # Rendered by the application's one engine (sg_web/app.py
-    # _template_engine: StrictUndefined, so a missing frozen field explodes
-    # instead of rendering "You introduced ."; autoescape, because frozen
-    # evidence is evidence, not trusted markup).
+    # Rendered by the application's one engine (sg_web/app.py _template_engine):
+    # StrictUndefined, so a missing frozen field explodes rather than printing an
+    # empty string, and autoescape, because frozen evidence is not trusted markup.
     return Template(
         media_type=MediaType.HTML,
         template_name="story.html",
@@ -347,22 +346,8 @@ def render_document(state: State, render_id: FromPath[int], request: Request) ->
 
 
 # --- the Evolution Explorer's contract ---------------------------------------
-#
-# db/evolution.py measures; these say what a reader is given.
-# Two kinds of thing share the document and are modelled differently.
-#
-# MEASURED HERE, NOW -- the cosines, the deltas, the space they were taken
-# in. One function produces them over a closed set of facts, so every field
-# is named exactly.
-#
-# FROZEN THEN -- a StoryPlan at ITS OWN format version and a StorySnapshot as
-# it was written. A claim's `facts` have to fit its kind under the plan's
-# vocabulary version, which db/planning.py validates, so `facts` stays open
-# and `plan.format` says which vocabulary wrote it.
-#
-# The same reasoning keeps the frozen strings as strings: `media.kind` came
-# out of the library at freeze time, and holding it to today's CHECK would
-# make a historical document fail for having been true.
+# db/evolution.py measures; the models below say what a reader is given.
+# EvolutionView carries why the two halves are modelled differently.
 
 
 class EvolutionUnsupported(Wire):
@@ -618,7 +603,20 @@ class EvolutionLinks(Wire):
 
 
 class EvolutionView(Wire):
-    """The Generation Evolution Explorer's whole document."""
+    """The Generation Evolution Explorer's whole document.
+
+    Two kinds of thing share it and are modelled differently. MEASURED HERE, NOW
+    -- the cosines, the deltas, the space they were taken in: one function
+    produces them over a closed set of facts, so every field is named exactly.
+
+    FROZEN THEN -- a StoryPlan at ITS OWN format version and a StorySnapshot as
+    it was written. A claim's `facts` have to fit its kind under the plan's
+    vocabulary version, which db/planning.py validates, so `facts` stays open and
+    `plan.format` says which vocabulary wrote it. The same reasoning keeps the
+    frozen strings as strings: `media.kind` came out of the library at freeze
+    time, and holding it to today's CHECK would make a historical document fail
+    for having been true.
+    """
 
     v: int
     plan: EvolutionPlan
@@ -846,10 +844,9 @@ def plan_evolution(
     document = evolution_document(view, render_id=render_id)
     if wants_json(request):
         return Response(document, headers=VARIES)
-    # The page renders its shell from the same document, as HTML. What it
-    # does NOT do is serialize the document into the HTML for the browser
-    # to parse back out: the explorer asks this route for it, by Accept,
-    # and is given the one contract OpenAPI describes.
+    # The page renders its shell from the same document, as HTML, and does not
+    # serialize the document into that HTML for the browser to parse back out.
+    # The explorer asks this route for it by Accept, under the contract above.
     return Template(
         media_type=MediaType.HTML,
         template_name="evolution.html",

@@ -69,11 +69,9 @@ def _drained(api, timeout=60.0) -> None:
         time.sleep(POLL)
 
 
-#: name -> slug, asked once. The library is written before the module's
-#: first test and `live` is module-scoped (tests/conftest.py:84), so this
-#: mapping cannot change under it -- and every one of the sixty tests
-#: here opens a picture, so asking per open was fifty-nine round trips
-#: for an answer already known.
+#: name -> slug, asked once. The library is written before the module's first
+#: test and `live` is module-scoped (tests/conftest.py:84), so this mapping
+#: cannot change under it and every open after the first is a saved round trip.
 _SLUGS: dict[str, str] = {}
 
 
@@ -119,11 +117,9 @@ def _painted(page: Page) -> None:
 
 OPENERS = [("page", _open_page), ("overlay", _open_overlay)]
 
-#: The viewer's gesture boundary: how long the wheel must be still before
-#: the next gesture may step (frontend/src/viewer.ts:378 QUIET_MS). Every
-#: wait around a flick is derived from it rather than guessed, because a
-#: guessed number stops discriminating the moment the viewer's own changes
-#: -- a test sleeping 600ms says nothing about a boundary raised to 700.
+#: The viewer's gesture boundary: how long the wheel must be still before the
+#: next gesture may step (frontend/src/viewer.ts:378 QUIET_MS). Waits around a
+#: flick derive from it -- sleeping 600ms says nothing about a boundary of 700.
 QUIET_MS = 260
 
 
@@ -284,10 +280,9 @@ def test_dragging_across_the_filmstrip_leaves_the_photograph_alone(page: Page, l
     page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2, steps=8)
     page.mouse.up()
     page.mouse.wheel(0, -300)
-    # A wheel the viewer acts on repaints synchronously -- `zoomAbout`
-    # ends in `paint()`, which writes `data-zoom` before the handler
-    # returns (frontend/src/viewer.ts). One frame is the whole window in
-    # which this could have gone wrong.
+    # A wheel the viewer acts on repaints synchronously: `zoomAbout` ends in
+    # `paint()`, which writes `data-zoom` before the handler returns
+    # (frontend/src/viewer.ts). One frame is the whole window of risk.
     _a_frame(page)
 
     assert _zoom(page) == held, f"{where}: a wheel over the strip zoomed the picture"
@@ -600,11 +595,9 @@ def test_one_flick_of_the_wheel_is_one_picture(page: Page, live: Live, where, op
     page.mouse.move(at["x"] + at["w"] / 2, at["y"] + at["h"] / 2)
     forward = 300 if "next" in walk else -300
     page.keyboard.down("Alt")
-    # FIVE, not ten. What discriminates is the stream's SPAN against the
-    # boundary, not its length: paced at 90ms these span 450ms, so a
-    # cooldown counted from the step expires at 260ms with three events
-    # still to come and walks its second picture -- which is the bug.
-    # Ten spanned 900ms and caught the same thing twice as slowly.
+    # FIVE, not ten: what discriminates is the stream's SPAN against the
+    # boundary. Paced at 90ms these span 450ms, so a cooldown counted from the
+    # step expires at 260ms with three events still to come, which is the bug.
     for _ in range(5):
         page.mouse.wheel(0, forward)
         if pace_ms:
@@ -695,12 +688,9 @@ def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live
     """
     open_it(page, live, "b_small.png")
     _actual(page)
-    # Painted, not slept. `promote()` decides SYNCHRONOUSLY inside the
-    # zoom it is called from (frontend/src/viewer.ts:216-219, called at
-    # 253 and 270), and nothing calls it again without another gesture --
-    # so once the picture is on screen the decision has been made and
-    # declined. A fixed wait was both slower and weaker: it would pass
-    # just as happily on a viewer that never decided at all.
+    # Painted, not slept: `promote()` decides SYNCHRONOUSLY inside the zoom it
+    # is called from (frontend/src/viewer.ts:216-219, called at 253 and 270)
+    # and nothing calls it again, so on screen means decided and declined.
     _painted(page)
     assert page.get_attribute("[data-stage]", "data-quality") == "preview", where
     assert "/preview/" in (page.get_attribute("img[data-stage-media]", "src") or ""), (
@@ -857,11 +847,9 @@ def test_lights_out_is_a_decision_a_mouse_move_does_not_undo(page: Page, live: L
     page.keyboard.press("l")
     page.wait_for_function("() => document.querySelector('[data-viewer]').dataset.chrome === 'focus'")
     page.mouse.move(300, 300)
-    # One frame, not two hundred milliseconds. `wake()` returns on its
-    # first line when the chrome is `focus` (frontend/src/viewer.ts:301),
-    # so a move either cancels it synchronously or never -- and the only
-    # timer in there sets `resting`, which cannot touch `focus`. There is
-    # no later moment for a fixed wait to catch.
+    # One frame, not two hundred milliseconds: `wake()` returns on its first
+    # line when the chrome is `focus` (frontend/src/viewer.ts:301), and its
+    # only timer sets `resting`, which cannot touch `focus`.
     _a_frame(page)
     assert page.get_attribute("[data-viewer]", "data-chrome") == "focus", f"{where}: a mouse move cancelled focus"
     page.keyboard.press("l")

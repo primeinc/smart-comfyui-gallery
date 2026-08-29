@@ -115,12 +115,9 @@ def _applied(state: State, query, data, write) -> Response[Curated]:
         weights = str(home.models_dir(pathlib.Path(state.home), settings.value(conn, "models_dir")))
 
         def proven():
-            # The proof reads under one snapshot; a space's first scoped
-            # question mints registry rows inside it, and a commit that
-            # landed since the snapshot's first read makes that write
-            # SQLITE_BUSY_SNAPSHOT -- refused at once, not waited for
-            # (sqlite/src/wal.c sqlite3WalBeginWriteTransaction). The
-            # snapshot rolled back; prove again on a fresh one.
+            # The proof reads under one snapshot and a scoped question mints
+            # registry rows inside it, so a commit landed since makes that write
+            # SQLITE_BUSY_SNAPSHOT (sqlite/src/wal.c sqlite3WalBeginWriteTransaction).
             for again in (False, True):
                 try:
                     return resultset.prove_subset(
@@ -155,10 +152,9 @@ def _applied(state: State, query, data, write) -> Response[Curated]:
                 break
             if last:
                 _still_racing()
-            # A commit landed in the proof-to-lane handoff. Re-prove
-            # OUTSIDE the lane, once: an unrelated commit leaves this
-            # answer identical and the retry lands; a changed answer
-            # raises here, with zero writes behind it.
+            # A commit landed in the proof-to-lane handoff. Re-prove OUTSIDE the
+            # lane, once: an unrelated commit leaves this answer identical and the
+            # retry lands, and a changed answer raises with zero writes behind it.
             proof = proven()
         after = resultset.describe(conn, weights, query, time.time(), actor_id=state.actor_id)
         return Response(

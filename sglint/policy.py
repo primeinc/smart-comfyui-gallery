@@ -38,10 +38,9 @@ SQL_STRUCTURE: dict[str, str] = {
     "kind_filter": "clause",
     # "" or a COALESCE-over-setting guard; the key and default are bound
     "gate_filter": "clause",
-    # db/resultset.py membership: a conjunction of module-literal
-    # predicates (every value in them bound), and ASC/DESC chosen from
-    # the validated sort vocabulary -- eligibility is an intersection,
-    # constructed, so the pieces are structure by definition
+    # db/resultset.py membership: a conjunction of module-literal predicates
+    # (every value in them bound), with ASC/DESC chosen from the validated
+    # sort vocabulary, so every constructed piece is structure
     "' AND '.join(where)": "clause",
     # db/runner.py submit_ingest: the freshness predicate, chosen between
     # two literals here -- the folder it may be bounded to is BOUND.
@@ -53,25 +52,22 @@ SQL_STRUCTURE: dict[str, str] = {
     # from the module's fixed patch vocabulary, every value bound
     "sets": "clause",
     "order": "keyword",
-    # db/resultset.py table sorts: the LEFT JOIN a sortable column needs
-    # to be reachable, chosen from COLUMN_JOINS -- a module literal, one
-    # entry per alias, and the only bound value in any of them (the
-    # actor, in `rating`) rides as a `?`.
+    # db/resultset.py table sorts: the LEFT JOIN a sortable column needs to be
+    # reachable, chosen from COLUMN_JOINS -- a module literal, one entry per
+    # alias, whose only bound value (the actor, in `rating`) rides as a `?`.
     "joined": "clause",
     # table / column names checked against sqlite_master or fixed registries
     "table": "identifier",
     "column": "identifier",
     "name": "identifier",
-    # db/migrate.py, the step that installs the answer-generation
-    # triggers: both come from a literal tuple in the step itself
-    # (("INSERT", "ins"), ("UPDATE", "upd"), ("DELETE", "del")), and a
-    # trigger's name and its event are structure -- neither can be bound.
+    # db/migrate.py, the step that installs the answer-generation triggers:
+    # both come from a literal tuple in the step (("INSERT", "ins"), ("UPDATE",
+    # "upd"), ("DELETE", "del")), and a trigger's name and event are structure.
     "verb": "keyword",
     "short": "identifier",
-    # db/migrate.py `rebuilt`, the table-rebuild dance: the column list of
-    # the table being rebuilt, read from `PRAGMA table_info` rather than
-    # written out -- which is what stopped one step inventing a `job`
-    # table with no `heartbeat_at`. Column names are structure.
+    # db/migrate.py `rebuilt`, the table-rebuild dance: column names are
+    # structure, and the list is read from `PRAGMA table_info` rather than
+    # written out, so no step can invent a column the table does not have.
     "named": "identifier",
     "', '.join(named)": "identifier",
     # the same list on the reading side, where a column the new table
@@ -87,10 +83,9 @@ SQL_STRUCTURE: dict[str, str] = {
     # db/jobs.py: the one module-literal column list the active and recent
     # reads share, so both rows carry the same shape
     "_LISTED": "identifier",
-    # db/jobs.py TERMINAL_SQL: the settled-state IN (...) list, built at
-    # import from the TERMINAL tuple beside JobState -- fixed words from
-    # a Literal, never anything a caller supplied. One spelling, so the
-    # statements cannot drift from the guard in `settle`.
+    # db/jobs.py TERMINAL_SQL: the settled-state IN (...) list, built at import
+    # from the TERMINAL tuple beside JobState -- fixed words from a Literal. One
+    # spelling, so the statements cannot drift from the guard in `settle`.
     "TERMINAL_SQL": "clause",
     "jobs.TERMINAL_SQL": "clause",
     # db/resultset.py moment sort: the human timeline's one axis
@@ -119,32 +114,28 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
         {"collection_rules", "collections", "connect", "facets", "naming", "pages", "resultset", "settings"}
     ),
     "sg_web/artifact_view.py": frozenset({"connect", "naming", "pages", "resultset", "settings"}),
-    # facets and vocabulary are VOCABULARY, not query paths: they parse
-    # and spell the closed registry and describe what its keys are
-    # called, and neither touches a connection. `discovery` does read
-    # one -- but only to count what one dimension's values would leave,
-    # and it takes that count through resultset.scope_of rather than
-    # writing membership SQL of its own, which is the whole point of it
-    # existing beside the ResultSet instead of inside this adapter.
-    # `analysis` is the other presentation of one answer: it aggregates
-    # over the SAME membership, taken through resultset.scope_of, and
-    # writes no WHERE clause of its own about which media are included.
-    # `pages` for the TABLE presentation only: one read of the columns a
-    # grid cell deliberately does not carry, over the ids the ResultSet
-    # already returned. It never asks which files those are.
-    # `catalog` is `discovery` for the OTHER axis and admitted on the
-    # same terms: discovery counts what one dimension's values would
-    # leave, catalog ranks which dimensions are worth offering at all,
-    # and both take their membership through resultset.scope_of rather
-    # than writing a WHERE clause about which media are included.
     "sg_web/gallery.py": frozenset(
         {
+            # The other presentation of one answer: it aggregates over the SAME
+            # membership, taken through resultset.scope_of, and writes no WHERE
+            # clause of its own about which media are included.
             "analysis",
+            # `discovery` for the OTHER axis, on the same terms: it ranks which
+            # dimensions are worth offering at all, and takes its membership
+            # through resultset.scope_of.
             "catalog",
             "connect",
+            # Reads a connection only to count what one dimension's values would
+            # leave, and takes that count through resultset.scope_of rather than
+            # writing membership SQL of its own.
             "discovery",
+            # VOCABULARY, not a query path: it parses and spells the closed
+            # registry, and touches no connection.
             "facets",
             "naming",
+            # The TABLE presentation only: one read of the columns a grid cell
+            # deliberately does not carry, over the ids the ResultSet already
+            # returned. It never asks which files those are.
             "pages",
             "places",
             "resultset",
@@ -153,6 +144,8 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             # are asked. Read only: the ADDRESS of a question, never a
             # rule, so nothing here defines what one means.
             "views",
+            # VOCABULARY on the same terms as `facets`: it describes what the
+            # registry's keys are called, and touches no connection.
             "vocabulary",
         }
     ),
@@ -168,18 +161,9 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     "sg_web/story_view.py": frozenset(
         {"connect", "derived", "evolution", "facets", "naming", "pages", "planning", "rendering", "settings", "stories"}
     ),
-    # `when` is VOCABULARY on the same terms as `facets` above: it holds
-    # how wide a claim at each precision is (`when.SPAN`) and how long a
-    # day, a month and a year are, and it touches no connection -- it
-    # imports dataclasses, datetime and re, and nothing else.
-    #
-    # Admitted because the alternative was worse. This adapter kept its
-    # own `_SPAN = {"day": .., "hour": .., "minute": ..}` and indexed it
-    # with a `time_precision` read out of the database, so the day a file
-    # could be dated to its month, `/timeline` answered 500 with
-    # `KeyError: 'month'`. A table keyed by a vocabulary another module
-    # owns has to BE that vocabulary; a second copy only fails on the one
-    # input the copy never heard of.
+    # `when` is VOCABULARY on the same terms as `facets` above: how wide a claim
+    # at each precision is (`when.SPAN`), over dataclasses, datetime and re, and no
+    # connection. A table keyed by a vocabulary another module owns has to BE it.
     "sg_web/timeline_view.py": frozenset(
         {"connect", "context", "facets", "pages", "planning", "rendering", "resultset", "settings", "when"}
     ),
@@ -188,12 +172,8 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
     # connection through it.
     "sg_web/operations.py": frozenset(
         {
-            # The authored layer, READ, for the export that makes it
-            # portable. Admitted on the narrowest terms: this module
-            # calls `authored.exported` and nothing else there, because
-            # an application whose thesis is custody of your own data
-            # must not be the only place that data can exist -- and the
-            # console is where a person looks for "take this with me".
+            # The authored layer, READ, for the export that makes it portable:
+            # this module calls `authored.exported` and nothing else there.
             # Authoring itself stays in the media and person adapters.
             "authored",
             "connect",
@@ -206,18 +186,14 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "prompts",
             "runner",
             "scan",
-            # What runs without being asked. The console is where a
-            # schedule is read and set; the RUNNER is the only thing
-            # that acts on one (`runner.run_schedules`), so this module
-            # never starts a collection itself -- it writes a row saying
-            # when one should start.
+            # What runs without being asked. The console reads and sets a
+            # schedule; the RUNNER is the only thing that acts on one
+            # (`runner.run_schedules`), so this module only writes the row.
             "scheduling",
             "settings",
-            # The verdicts, added up. Admitted on the same terms as
-            # `inspecting`: a read-only aggregate that derives numbers
-            # from rows and writes nothing -- and one that deliberately
-            # never joins the derived layer it is about, so a rebuild
-            # cannot look like people changing their minds.
+            # The verdicts, added up, admitted as `inspecting` is: a read-only
+            # aggregate that writes nothing and never joins the derived layer it
+            # is about, so a rebuild cannot look like people changing their minds.
             "verdicts",
         }
     ),
@@ -242,11 +218,9 @@ ADAPTER_DB_VOCABULARY: dict[str, frozenset[str]] = {
             "sample",
             "scan",
             "settings",
-            # Remembered questions. A saved view is the ADDRESS of a
-            # question and never a rule, so this module stores and lists
-            # spellings and defines no query semantics -- which is the
-            # same line the smart-collection route holds by sending the
-            # canonical spelling instead of a rule shape.
+            # Remembered questions. A saved view is the ADDRESS of a question and
+            # never a rule, so this module stores and lists spellings and defines
+            # no query semantics -- the same line the smart-collection route holds.
             "views",
         }
     ),
@@ -338,10 +312,9 @@ MUST_NOT_CONTAIN_BEFORE: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]
         ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"),
         (),
     ),
-    # The planner structures frozen evidence: it holds no connection, runs
-    # no statement and loads no model. `engine_for` resolves which provider
-    # is CONFIGURED, which is the one thing before the marker that needs a
-    # connection, so it is cut out rather than the words being widened.
+    # The planner structures frozen evidence: no connection, no statement, no
+    # model. `engine_for` resolves which provider is CONFIGURED and is the one
+    # thing before the marker that needs a connection, so it is cut out.
     "db/planning.py": (
         "# --- persistence and orchestration",
         ("execute(", "FROM ", "JOIN ", "sqlite3", "(conn", "conn,", "conn)"),
@@ -402,14 +375,12 @@ LITERAL_STATEMENTS_ONLY: tuple[str, ...] = ("db/collection_rules.py",)
 # --- SG5xx: templates and scripts carry no query logic --------------------------------------
 
 #: Closed vocabularies the HTTP contract restates as `Literal`, and the CHECK
-#: constraint each one must equal: {module: {name: (table, column)}}.
-#:
-#: The wire says the members out loud so the browser is given a union instead
-#: of `string`, which means they are a human copy of the schema until
-#: something compares the two. This is text against text -- an assignment in a
-#: module and a constraint in the DDL -- so it is a lint, not a test: no
-#: database is built and no application is served to learn that two lists
-#: disagree.
+#: constraint each one must equal: {module: {name: (table, column)}}. The wire
+#: spells the members out for the browser, so each is a copy of the schema.
+
+#: Text against text -- an assignment in a module and a constraint in the DDL --
+#: so it is a lint, not a test: no database is built and no application is
+#: served to learn that two lists disagree.
 WIRE_VOCABULARIES: dict[str, dict[str, tuple[str, str]]] = {
     "db/jobs.py": {
         "JobKind": ("job", "kind"),
@@ -425,10 +396,9 @@ SURFACE_FORBIDDEN_WORDS: tuple[str, ...] = ("SELECT ", "INSERT ", "UPDATE ", "DE
 
 # --- SG80x: the repo sweep's own sanity floors ------------------------------------------------
 
-#: Below this many tracked files the git sweep declares itself blind
-#: (SG800) rather than passing on a repository it cannot be seeing --
-#: this repo tracks several hundred, so a double-digit answer means the
-#: command ran somewhere wrong.
+#: Below this many tracked files the git sweep declares itself blind (SG800)
+#: rather than passing on a repository it cannot be seeing. This repo tracks
+#: several hundred, so a smaller answer means the command ran somewhere wrong.
 TRACKED_MINIMUM: int = 100
 #: The same self-doubt for the line-ending parse: fewer entries than
 #: this, or fewer LF files than LF_MINIMUM, means `i/<eolinfo>` was not
@@ -491,14 +461,9 @@ UNSURFACED = {
     "/jobs/cluster": "console sweep `cluster`",
 }
 
-#: Capabilities that are not addresses. Same contract as above -- recorded
-#: with the evidence, so nobody has to rediscover them -- and each says
-#: what would have to happen first, because none of these can be surfaced
-#: by drawing something.
-#:
-#: That is the useful part. "No affordance" reads like a decision somebody
-#: could reverse this afternoon; every one of these is blocked further
-#: back, and saying where stops the next person starting at the wrong end.
+#: Capabilities that are not addresses, on the same contract as above: recorded
+#: with the evidence, and each says what would have to happen first. None of
+#: these can be surfaced by drawing something; each is blocked further back.
 UNSURFACED_BEYOND_ROUTES = {
     "face age/sex/pose": (
         "vision/faces.py computes them and derived_face_instance stores them. "
@@ -536,13 +501,9 @@ UNSURFACED_BEYOND_ROUTES = {
     ),
 }
 
-#: A job kind no console button starts, and what starts it instead.
-#:
-#: Not every capability belongs on a button. A kind here is reached by
-#: doing the thing it belongs to, and the entry names that thing so the
-#: claim can be checked rather than trusted -- SG012 checks both halves,
-#: that the kind still exists and that what is said to start it still
-#: does.
+#: A job kind no console button starts, and what starts it instead: a kind here
+#: is reached by doing the thing it belongs to, and the entry names that thing.
+#: SG012 checks both halves -- that the kind exists and that its starter does.
 STARTED_ELSEWHERE: dict[str, str] = {
     "walk": (
         "queued by `catch_up` as its first step (db/runner.py). Walking the roots alone finds "
@@ -568,9 +529,8 @@ OWN_DOCUMENT: dict[str, str] = {
 }
 
 #: The functions that open a connection meant to outlive the call, and why.
-#: SG103 takes returning or yielding as a transfer; it does not take storing
-#: one, because that would let any leak be hidden inside an object. Every
-#: entry is the real thing, and each says what it is for.
+#: SG103 takes returning or yielding as a transfer, and not storing one, because
+#: storing would let any leak be hidden inside an object.
 CONNECTION_KEPT: frozenset[str] = frozenset(
     {
         # One read-only monitor per database file, shared by every
@@ -585,10 +545,9 @@ CONNECTION_KEPT: frozenset[str] = frozenset(
         # purpose is outliving each test to see other connections'
         # commits, so a restore nothing wrote through is skipped.
         "tests/staging.py:_data_version",
-        # The restore's SOURCE: the frozen template, read-only. Same
-        # bytes for every restore in the module, so re-opening it per
-        # test buys nothing and costs a connection's PRAGMAs on the
-        # hot path. Re-opened after a rebuild writes a new template.
+        # The restore's SOURCE: the frozen template, read-only, the same bytes
+        # for every restore in the module. Re-opening it per test would cost a
+        # connection's PRAGMAs on the hot path; a rebuild re-opens it.
         "tests/staging.py:_from_template",
         # The restore's DESTINATION. Held for the same reason, and it
         # is between transactions whenever a test can see it, so it
@@ -598,11 +557,9 @@ CONNECTION_KEPT: frozenset[str] = frozenset(
     }
 )
 
-#: Route handlers whose JSON answer SG413 does not yet hold to a wire
-#: model. This is the migration's remaining surface, written down: a
-#: handler leaves the list by naming its answer, never by being excused,
-#: and SG413 reports an entry here that no longer offends, so the list can
-#: only shrink.
+#: Route handlers whose JSON answer SG413 does not hold to a wire model. A
+#: handler leaves the list by naming its answer, never by being excused, and
+#: SG413 reports an entry here that no longer offends, so the list only shrinks.
 RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
     {
         "sg_web/app.py:add_root",
@@ -650,10 +607,9 @@ RESPONSE_CONTRACT_RESERVED: frozenset[str] = frozenset(
     }
 )
 
-#: Route handlers whose JSON body SG412 does not hold to a Wire contract,
-#: and why. Empty, and meant to stay that way: every JSON body this
-#: application takes is a named contract. SG412 reports an entry here that
-#: no longer offends, so a line cannot outlive its reason.
+#: Route handlers whose JSON body SG412 does not hold to a Wire contract, and
+#: why. Empty, because every JSON body this application takes is a named
+#: contract, and SG412 reports an entry here that no longer offends.
 REQUEST_CONTRACT_RESERVED: frozenset[str] = frozenset()
 
 #: Each half of the sweep counts on its own. One shared minimum could not see
@@ -689,13 +645,9 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("derived_face_instance", "id"),
         ("derived_annotation", "id"),
         ("region", "id"),
-        # A verdict names the producer it judged and must NOT reference
-        # it: a re-run replaces the judged row and the verdict has to
-        # survive that. A foreign key with any ON DELETE is
-        # wrong in both directions here -- CASCADE deletes the human's
-        # words with the machine's, SET NULL erases which model was
-        # judged, which is the only thing that makes the verdict
-        # aggregable afterwards. Copied text, on purpose.
+        # A verdict names the producer it judged and must NOT reference it: a
+        # re-run replaces the judged row and the verdict has to survive that.
+        # Copied text -- CASCADE would delete the words, SET NULL the model.
         ("feedback", "model_id"),
         ("feedback", "model_version"),
         # backend identity strings ("insightface", "qwen-vl"), not rows
@@ -706,12 +658,9 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("derived_file_person", "model_id"),
         ("derived_face_run", "model_id"),
         ("job_item", "item_id"),
-        # The filesystem's own identifier for a directory or a file --
-        # NTFS FileID, an ReFS FileId128 -- kept as its exact decimal
-        # spelling. It names a row in no table of ours and there is
-        # nothing to reference: it is minted by the volume, is lost on a
-        # copy or a restore, and is absent entirely on filesystems that
-        # report none.
+        # The filesystem's own identifier for a directory or a file (an NTFS
+        # FileID, an ReFS FileId128), as its exact decimal spelling. It names no
+        # row here: the volume mints it, a copy or restore loses it, some report none.
         ("folder", "fs_id"),
         ("file", "fs_id"),
         ("job_event", "id"),
@@ -719,10 +668,9 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("job_event", "item_id"),
     }
 )
-#: TEXT columns whose name looks like a closed vocabulary but whose values
-#: are genuinely open. Each is a decision on the record, not an oversight
-#: -- SG711 reads a name ending in one of its suffixes as an enum unless it
-#: is here.
+#: TEXT columns whose name looks like a closed vocabulary but whose values are
+#: genuinely open. SG711 reads a name ending in one of its suffixes as an enum
+#: unless it is here, so each entry is a decision on the record.
 FREE_TEXT: frozenset[str] = frozenset(
     {
         # the location of a root, which is the one place a path IS the fact
@@ -784,11 +732,9 @@ LOAD_BEARING_REFERENCES: dict[tuple[str, str], str] = {
 
 # --- SG713 / SG415: a vocabulary and the code that must cover it --------------------------------
 
-#: A dispatch table and the closed vocabulary every one of its keys must
-#: cover: {module: {table: (vocabulary module, vocabulary name)}}. Both
-#: halves are module-level literals, so this is text against text -- an
-#: event the ledger can write and the console cannot say is caught without
-#: building a database or rendering anything.
+#: A dispatch table and the closed vocabulary every one of its keys must cover:
+#: {module: {table: (vocabulary module, vocabulary name)}}. Both halves are
+#: module-level literals, so the check is text against text.
 VOCABULARY_HANDLERS: dict[str, dict[str, tuple[str, str]]] = {
     "sg_web/console.py": {"RENDERINGS": ("db/ledger.py", "EventType")},
 }

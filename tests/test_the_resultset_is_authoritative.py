@@ -361,10 +361,9 @@ def test_an_album_is_a_scope(shelves):
 
 
 def test_malformed_questions_are_refused():
-    # The TABLE is annotated, not the loop variable: a declaration on the
-    # target does not reach a for-target, whose type comes from the
-    # iterable's elements. These really are request-shaped values of
-    # mixed type -- that is what `parse` takes and what it refuses.
+    # The TABLE is annotated, not the loop variable: a declaration on the target
+    # does not reach a for-target, whose type comes from the iterable's
+    # elements. These are request-shaped values of mixed type, which `parse` takes.
     cases: tuple[tuple[dict[str, Any], str], ...] = (
         ({"sort": "best"}, "sort must be"),
         ({"sort": "similarity"}, "needs a phrase"),

@@ -88,12 +88,9 @@ def sharp(tmp_path_factory):
     conn.close()
 
 
-#: No head, the shape a real ranking makes: a normal density, sampled
-#: at its own even quantiles so the fixture carries no randomness. This
-#: is what a phrase nothing answers looks like -- the whole library
-#: bunched on its own median, the best of it three deviations up. Half
-#: that span is +1.5 sigma, which is the top ~7%: the same order as the
-#: 8% the nonsense phrases actually kept over the real library.
+#: No head, the shape a real ranking makes: a normal density at its own even
+#: quantiles, bunched on the median with the best three deviations up and no
+#: randomness. Half that span is +1.5 sigma -- the top ~7%, the order of the measured 8%.
 BELL = [statistics.NormalDist(0.15, 0.03).inv_cdf((i + 0.5) / 601) for i in range(601)]
 #: No head, the worst case the rule can be handed: a hundred scores in
 #: a perfectly even ramp, so a quarter of them are in the top half of

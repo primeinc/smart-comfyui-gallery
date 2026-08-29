@@ -42,10 +42,9 @@ _logger = logging.getLogger(__name__)
 #: submits set the wake event and are picked up immediately.
 IDLE_WAIT = 1.0
 
-#: Seconds between two looks at the schedule table. Not the resolution of
-#: a schedule -- those are hours -- but the cost of asking: an idle
-#: worker wakes every second, and a query per second for a row that
-#: changes twice a year is a poll nobody is waiting for.
+#: Seconds between two looks at the schedule table. Not the resolution of a
+#: schedule -- those are hours -- but the cost of asking, an idle worker waking
+#: every second being far more often than a schedule row changes.
 SCHEDULE_EVERY = 60.0
 
 
@@ -56,11 +55,9 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
     conn = connect.connect(db_path)
     owner = f"worker-{os.getpid()}"
     try:
-        # Hot similarity spaces become resident at boot -- restored from
-        # snapshots when they match, rebuilt once when they don't -- so
-        # producers upsert into live indexes instead of paying a build
-        # on the first job. A failed warm is a slower first job, never a
-        # worker that refuses to start.
+        # Hot similarity spaces become resident at boot, restored from snapshots
+        # when they match and rebuilt once when they do not, so producers upsert
+        # into live indexes. A failed warm is a slower first job, never a refusal.
         try:
             runner.warm_similarity(conn, time.time())
             conn.commit()
@@ -74,12 +71,9 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
         looked = 0.0
         while not stop.is_set():
             turn = None
-            # What runs without being asked, started on the worker's own
-            # turn. Not a timer of its own: a second scheduler is a
-            # second thing that can be running while nobody thinks
-            # anything is, and the runner is already the only thing that
-            # runs jobs. A worker that is off starts nothing, which is
-            # what off should mean.
+            # What runs without being asked, started on the worker's own turn
+            # rather than a timer of its own: the runner is already the only thing
+            # that runs jobs. A worker that is off starts nothing.
             if settings.flag(conn, "worker") and time.time() - looked >= SCHEDULE_EVERY:
                 looked = time.time()
                 try:
@@ -96,10 +90,9 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
                     # hand are the ones that matter more.
                     conn.rollback()
                     _logger.exception("a schedule could not be started")
-            # The flag read is economy -- skip the claim entirely while
-            # off. The GUARANTEE is the gate inside the claim itself: a
-            # flag read here goes stale in the gap before the claim, and
-            # an off-switch committed in that gap must still win.
+            # The flag read is economy -- skip the claim entirely while off.
+            # The GUARANTEE is the gate inside the claim: a flag read here goes
+            # stale in the gap, and an off-switch committed there must still win.
             if settings.flag(conn, "worker"):
                 try:
                     turn = runner.run_next(
@@ -114,12 +107,9 @@ def run(db_path: str, publish, stop: threading.Event, wake: threading.Event, pub
                     )
                     conn.commit()
                 except Exception:
-                    # run_next already committed a `worker.turn_failed`
-                    # row with the traceback before letting this propagate.
-                    #
-                    # A BUSY database does not arrive here: `run_next`
-                    # answers None when it cannot get the writer to claim,
-                    # because that is backpressure and not a defect.
+                    # run_next already committed a `worker.turn_failed` row with
+                    # the traceback. A BUSY database does not arrive here: run_next
+                    # answers None when it cannot claim, which is backpressure.
                     conn.rollback()
                     from db import similarity
 

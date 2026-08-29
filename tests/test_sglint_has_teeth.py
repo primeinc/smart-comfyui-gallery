@@ -666,10 +666,8 @@ def test_the_connection_lifetime_rule_can_fail():
     )
 
     # The stale line is still found in a module that has stopped using
-    # `connect` ALTOGETHER, which is the likeliest way for one to go
-    # stale and the case the rule's own source-level skip could swallow:
-    # it passes over a file with no `connect` in it, and must not pass
-    # over one an excusal names.
+    # `connect` ALTOGETHER. That is the case the rule's own source-level skip
+    # could swallow: it passes over a file with no `connect` in it.
     moved_on = rules.from_text("tests/opener.py", "def stores(k):\n    return k\n")
     assert _flagged(rules.rule_connection_lifetime([moved_on], ledger)) == {"stores"}, (
         "a ledger line outliving the last connection in its file is the one that most needs reporting"

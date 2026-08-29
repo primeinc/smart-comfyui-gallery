@@ -288,10 +288,9 @@ def test_authored_judgement_is_a_gallery_question(tmp_path, monkeypatch):
         rated = {
             row[0] for row in conn.execute("SELECT file_id FROM rating WHERE user_id = ? AND rating >= 4", (mine,))
         }
-        # the TABLE, not the loop variable: a for-target takes its type
-        # from the iterable's elements, so a declaration above it does
-        # not reach. `favorite` is request-shaped ("1") and `rating_min`
-        # a number -- which is what `parse` takes.
+        # the TABLE, not the loop variable: a for-target takes its type from
+        # the iterable's elements, so a declaration above it does not reach.
+        # `favorite` is request-shaped ("1") and `rating_min` a number.
         cases: tuple[tuple[dict[str, Any], set], ...] = (
             ({"favorite": "1"}, favorites),
             ({"rating_min": 4}, rated),
@@ -360,6 +359,10 @@ def test_a_body_the_contract_does_not_name_is_refused(kept):
     The pair matters: the same body without the surprise must still be
     accepted, or this would pass just as well against a route that refused
     everything.
+
+    The coercion half is the same contract from the other side. Under a lax
+    plugin the `1` posted below would arrive as True and the route would
+    answer 201.
     """
     good = kept.post("/i/pic-3/favorite", json={"value": True})
     assert good.status_code == 201, good.text
@@ -367,11 +370,9 @@ def test_a_body_the_contract_does_not_name_is_refused(kept):
     surprised = kept.post("/i/pic-3/favorite", json={"value": True, "supriseFieldNobodyAskedFor": 72})
     assert surprised.status_code == 400, surprised.text
 
-    # And the coercion half, which no linter can see: Litestar decodes a
-    # body with model_validate(value, strict=...), and that argument beats
-    # the model's own config, so Wire's strictness is only real while the
-    # application registers PydanticPlugin(validate_strict=True). Lax, the
-    # 1 below would arrive as True and this route would answer 201.
+    # And the coercion half, which no linter can see: Litestar decodes a body
+    # with model_validate(value, strict=...) and that argument beats the model's
+    # own config, so Wire is strict only under PydanticPlugin(validate_strict=True).
     coerced = kept.post("/i/pic-3/favorite", json={"value": 1})
     assert coerced.status_code == 400, coerced.text
 

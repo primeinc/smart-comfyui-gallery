@@ -207,11 +207,9 @@ def test_swarmui_png_marker(tmp_path):
     assert parsed.params["sampler"] == "euler"
     assert parsed.params["version"] == "0.9.3.1"
     assert parsed.extra["generation_time"] == "4.84 sec"
-    # `sui_models` is a manifest, not a sentence. It was being joined into one
-    # comma-separated "used models" string, which threw away the role -- so a
-    # checkpoint and a LoRA became the same kind of nothing -- and threw away
-    # every hash, which is the only thing that can match a weight file here to
-    # the one on disk it came from.
+    # `sui_models` is a manifest, not a sentence: joining it into one
+    # comma-separated string throws away the role, which tells a checkpoint
+    # from a LoRA, and the hash, which is what matches a weight file on disk.
     assert parsed.artifacts == [
         {
             "name": "sd_xl_base_1.0.safetensors",

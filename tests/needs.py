@@ -25,6 +25,25 @@ A need has four terminal states and `DEFERRED` is not among them:
     UNSATISFIED         nothing in the corpus covers it
     BLOCKED_EXTERNALLY  evidenced: no obtainable source, restrictive terms,
                         hardware that does not exist here
+
+`INTERACTIONS` names values no file can carry because a PERSON produces them:
+six of the seven axes are read out of a file, while `location_basis` has an
+`authored` half -- one person's word, recorded through `POST /i/{slug}/place`.
+It is measured by DOING it, not by excusing it: mint a place, assert it on a
+real file in the real library, re-interpret that file, and read back what the
+application concluded. That is the same three calls the route makes, so if
+`set_place` ever stops producing `authored` the need goes UNSATISFIED and the
+gate fails -- which a list of allowed exceptions could never do.
+
+`BLOCKED` holds the needs the corpus cannot close because the WORLD offers no
+specimen, each with the evidence that obtaining one was attempted, and where.
+`docs/CORPUS_SHAPE.md`: a declared value is reached by a real file or it is
+BLOCKED_EXTERNALLY with evidence; there is no third state. It is not an
+exceptions table -- `tests/test_the_corpus_spans_the_shape.py` holds the three
+properties that keep it honest: a row must carry evidence with a positive
+control, a row whose need a corpus file now reaches FAILS the gate, and
+`tests/rawsamples.py` retries blocked suffixes on every fetch, so a row is
+challenged on every run rather than filed.
 """
 
 from __future__ import annotations
@@ -183,10 +202,9 @@ def _read(path: pathlib.Path) -> dict:
         held["tool"] = None
         held["tool_why"] = f"{type(why).__name__}: {why}"[:120]
     if held["kind"] in ("video", "audio"):
-        # A container reader, not a picture decoder. Without this every
-        # video read as "present; no reader produced anything", because
-        # only the image branch below ran and a valid mp4 has no still to
-        # open -- a wrong number about 12 suffixes at once.
+        # A container reader, not a picture decoder. Without this every video
+        # read as "present; no reader produced anything" -- a wrong number
+        # about 12 suffixes at once, since a valid mp4 has no still to open.
         from db import probe
 
         try:
@@ -199,12 +217,9 @@ def _read(path: pathlib.Path) -> dict:
             held["decodes_why"] = f"{type(why).__name__}: {why}"[:120]
     if held["kind"] in ("image", "animated_image"):
         try:
-            # `open_bounded`, not `open_still`: a RAW file carries a JPEG
-            # preview the camera put there, and developing the sensor data
-            # instead costs 1398 ms against 47 (vision/decode.py). The
-            # question here is whether a reader produces a picture at all,
-            # and both answer it. Full development of 326 Canon files spent
-            # 700 CPU-seconds proving nothing this table asks.
+            # `open_bounded`, not `open_still`: a RAW file carries a JPEG preview
+            # the camera put there, and developing the sensor data instead costs
+            # 1398 ms against 47 (vision/decode.py). Both show a reader read one.
             opened = decode.open_bounded(path, 512)
             held["decodes"] = True
             opened.close()
@@ -228,29 +243,13 @@ def _served_db() -> pathlib.Path | None:
     return found[0] if found else None
 
 
-#: Values NO FILE can carry, because a PERSON produces them: six of the seven
-#: axes are read out of a file, while `location_basis` has an `authored` half
-#: -- one person's word, recorded through `POST /i/{slug}/place`.
-#:
-#: So it is measured by DOING it, not by excusing it: mint a place, assert
-#: it on a real file in the real library, re-interpret that file, and read
-#: back what the application concluded. That is the same three calls the
-#: route makes. If `set_place` ever stops producing `authored`, this goes
-#: UNSATISFIED and the gate fails -- which a list of allowed exceptions
-#: could never do.
+#: Values NO FILE can carry, because a PERSON produces them. The module
+#: docstring says how each one is measured.
 INTERACTIONS = {"location_basis": ("authored",)}
 
-#: Needs the corpus cannot close because the WORLD offers no specimen --
-#: each with the evidence that obtaining one was attempted, and where.
-#: `docs/CORPUS_SHAPE.md`: a declared value is reached by a real file or
-#: it is BLOCKED_EXTERNALLY with evidence; there is no third state.
-#:
-#: This is not an exceptions table. Three properties keep it honest, and
-#: `tests/test_the_corpus_spans_the_shape.py` holds all three: a row
-#: must carry evidence with a positive control, a row whose need a
-#: corpus file now reaches FAILS the gate -- the excuse dies the day the
-#: gap closes -- and `tests/rawsamples.py` retries blocked suffixes on
-#: every fetch, so a row is challenged on every run, never filed.
+#: Needs the corpus cannot close because the WORLD offers no specimen, each
+#: with the evidence that obtaining one was attempted, and where. The module
+#: docstring says what keeps this from becoming an exceptions table.
 BLOCKED: dict[str, dict] = {
     "suffix:.cap": {
         "why": "Phase One .cap: LibRaw reads it, and no sample archive offers one",
@@ -320,21 +319,25 @@ def performed(db_path: pathlib.Path) -> collections.Counter:
 
 
 def measure(root: pathlib.Path | None = None, db_path: pathlib.Path | None = None) -> dict:
-    """Every need, its state, and the file that put it there."""
+    """Every need, its state, and the file that put it there.
+
+    `per_suffix` caps how many files of one suffix go through the EXPENSIVE
+    readers. Every one answers the same question -- does a reader produce
+    anything for this suffix -- so reading 326 Canon files to learn what the
+    first two say is spent time, and the row records how many are present.
+
+    The cheap metadata parse is NOT capped. A dialect is orthogonal to a
+    suffix: capping at four PNGs hid all eight generators behind whichever
+    four PNGs came first alphabetically, and reported every one of them
+    UNSATISFIED while they sat in the corpus parsing correctly.
+    """
     suffixes, dialects = declared_suffixes(), declared_dialects()
     files = corpus_files(root)
 
     by_suffix: dict[str, list[dict]] = collections.defaultdict(list)
     by_tool: dict[str, list[str]] = collections.defaultdict(list)
-    #: How many files of one suffix to put through the EXPENSIVE readers.
-    #: Every one answers the same question -- does a reader produce anything
-    #: for this suffix -- so reading 326 Canon files to learn what the first
-    #: two say is spent time, and the row records how many are present.
-    #:
-    #: The cheap metadata parse is NOT capped. A dialect is orthogonal to a
-    #: suffix: capping at four PNGs hid all eight generators behind whichever
-    #: four PNGs came first alphabetically, and reported every one of them
-    #: UNSATISFIED while they sat in the corpus parsing correctly.
+    #: How many files of one suffix go through the EXPENSIVE readers; the
+    #: docstring says why the cheap metadata parse is not capped.
     per_suffix = 4
     counted: collections.Counter = collections.Counter()
     for path in files:
@@ -395,11 +398,9 @@ def measure(root: pathlib.Path | None = None, db_path: pathlib.Path | None = Non
             }
         )
 
-    # The axes only a scanned library can answer. `db/when.py` decides which
-    # dating rung a file lands on, so the corpus cannot be asked directly --
-    # and without this the ledger measured two axes out of seven and called
-    # the result coverage. `mtime` and `btime` are the rungs most of a real
-    # library lands on, and no corpus of camera output reaches them.
+    # The axes only a scanned library can answer: `db/when.py` decides the
+    # dating rung, and `mtime`/`btime` are rungs no corpus of camera output
+    # reaches. Without this the ledger measured two axes of seven as coverage.
     library = db_path or _served_db()
     concluded = assigned(library) if library else {}
     # The interaction half, run once and only if an axis has one. See

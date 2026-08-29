@@ -107,11 +107,9 @@ def seed(path, version: int) -> None:
         digest = hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
         master = _master_dir() / f"v{version:02d}-{digest}.db"
         if not master.exists():
-            # Built beside the name it will take and moved onto it, so a
-            # run that dies mid-executescript leaves no half-written file
-            # for the next one to copy as a database. `os.replace` is
-            # atomic within a directory, and two processes racing on the
-            # same version write identical bytes either way.
+            # Built beside the name it will take and moved onto it, so a run that
+            # dies mid-executescript leaves no half-written database behind.
+            # `os.replace` is atomic within a directory, and a race writes the same bytes.
             building = master.with_name(f"{master.stem}.{os.getpid()}.building")
             # Through db.connect, the way `build.build` writes a fresh one: a raw
             # sqlite3.connect leaves the schema's foreign keys inert, and a

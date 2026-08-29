@@ -505,8 +505,7 @@ def test_case_twin_siblings_stop_the_migration_by_name(tmp_path):
     root_id = conn.execute("INSERT INTO root(path, kind, created_at) VALUES('Z:/x', 'library', 0)").lastrowid
     assert root_id is not None
     # Straight INSERT rather than `scan.ensure_folder`: the scanner writes
-    # `fs_id`, a v31 column, and this database really is a v4 one. That is
-    # the cost of an authentic fixture and it is the point of one -- the
+    # `fs_id`, a v31 column, and this database really is a v4 one. The
     # inverted v4 accepted the scanner because it was today's schema.
     top = scan.mint(conn, "folder", "x")
     conn.execute("INSERT INTO folder(id, root_id, parent_id, name, depth) VALUES(?, ?, NULL, 'x', 0)", (top, root_id))
@@ -803,12 +802,9 @@ def v3_database_with_embeddings(tmp_path):
     sid = similarity.space_id(conn, spec, NOW)
     conn.commit()
 
-    # The one object still written by hand, and the reason is in
-    # `@step(3)`: "version 3 drifted during development". The commit that
-    # LAST stamped v3 already carried the immutable-id rework that
-    # shipped as v4, so the vendored v3 is the late one. This reverts
-    # exactly that table to the shape semantic search first shipped with
-    # -- one object, against a database authentic in every other.
+    # The one object still written by hand; the reason is in `@step(3)`:
+    # "version 3 drifted during development". The commit that LAST stamped v3
+    # carried the immutable-id rework that shipped as v4, so vendored v3 is late.
     conn.execute("DROP TABLE derived_embedding")
     conn.execute("""CREATE TABLE derived_embedding (
     file_id       INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
@@ -910,9 +906,8 @@ def test_a_dormant_rule_on_a_listed_collection_stops_v8_by_name(tmp_path):
     schemas.seed(path, 7)
     conn = connect.connect(path, autocommit=True)
     # Straight INSERT rather than `collections.collection`: that writes
-    # `updated_at`, which v7's collection table does not have. An
-    # authentic fixture is the schema of its day, and today's writers
-    # speak today's columns.
+    # `updated_at`, which v7's collection table does not have. An authentic
+    # fixture is the schema of its day, and today's writers speak today's columns.
     album = scan.mint(conn, "collection", "Keepers")
     conn.execute(
         "INSERT INTO collection(id, parent_id, name, kind, created_at) VALUES(?, NULL, 'Keepers', 'album', ?)",

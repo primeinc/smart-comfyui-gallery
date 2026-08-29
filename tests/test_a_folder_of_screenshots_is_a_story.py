@@ -155,11 +155,9 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert shelf[0]["title"] == "5 files from June 10, 2023"
     assert (shelf[0]["kind"], shelf[0]["profile"], shelf[0]["members"]) == ("file_session", "memory", 5)
     assert shelf[0]["heroes"], "the shelf shows the story's heroes"
-    # `/thumb` prefixes both: the content-addressed
-    # `/thumbs/<shard>/<sha>.webp` for a hashed file, and the
-    # `/thumb/<slug>` route for one ingest has not reached. A card's
-    # heroes address a picture the same way the story page does, which is
-    # what makes the two share a cache entry rather than fetch it twice.
+    # `/thumb` prefixes both: `/thumbs/<shard>/<sha>.webp` for a hashed file,
+    # and the `/thumb/<slug>` route for one ingest has not reached. A card's
+    # heroes address a picture as the story page does, so they share a cache entry.
     assert all(h["thumbnail"].startswith("/thumb") for h in shelf[0]["heroes"])
     page = client.get("/stories", headers={"accept": "text/html"}).text
     assert f'data-story="{made.json()["id"]}"' in page
@@ -179,17 +177,13 @@ def test_a_file_story_is_told_through_the_routes_the_timeline_uses(told):
     assert "data-story-hero-said" not in story_page, "nothing captioned yet"
     conn = connect.connect(client.app.state.db_path)
     try:
-        # By the sha the address carries, not by a slug parsed out of it:
-        # a content-addressed thumbnail deliberately holds no slug, which
-        # is the lookup it exists to save.
-        #
-        # And it names BYTES rather than a file. Every picture in this
-        # fixture is the same 12x12 image, so one sha is eight files --
-        # which is the honest shape of content addressing and not an
-        # artifact of the fixture. A caption about what the picture SHOWS
-        # is true of every file that is that picture, so it is recorded
-        # against all of them.
+        # By the sha the address carries, not by a slug parsed out of it: a
+        # content-addressed thumbnail deliberately holds no slug, which is the
+        # lookup it exists to save.
         sha = shelf[0]["heroes"][0]["thumbnail"].rsplit("/", 1)[1].removesuffix(".webp")
+        # The sha names BYTES rather than a file: every picture in this fixture
+        # is the same 12x12 image, so one sha is eight files. A caption about
+        # what the picture SHOWS is true of every file that is that picture.
         holders = [one for (one,) in conn.execute("SELECT id FROM file WHERE content_sha256 = ?", (sha,))]
         assert holders, f"the hero addresses {sha}, which no file in the library has"
         for one in holders:

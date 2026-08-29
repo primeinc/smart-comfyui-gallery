@@ -18,6 +18,11 @@ never executable; the ResultSet still owns the ordered answer, so the
 outer question's facets intersect the rule's members instead of
 replacing them. Every failure state stays loud: unevaluated, broken
 and unavailable are never presented as an empty collection.
+
+A refused transition leaves the caller's transaction untouched, and this is
+tested the hostile way: a direct caller catches the refusal and COMMITS
+anyway, and nothing partial persists, because every domain check precedes the
+first mutation and the revision claim leads every multi-step transition.
 """
 
 from __future__ import annotations
@@ -716,11 +721,7 @@ def test_the_module_refuses_a_smart_child_under_an_archived_parent_even_when_the
 
 
 # --- a refused transition leaves the caller's transaction untouched --------
-#
-# The Module's invariant, tested the hostile way: a direct caller catches
-# the refusal and COMMITS anyway -- and nothing partial persists, because
-# every domain check precedes the first mutation and the revision claim
-# leads every multi-step transition.
+# The module docstring says what makes this hold.
 
 
 def _held(conn, collection_id: int) -> tuple:

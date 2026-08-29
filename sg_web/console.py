@@ -50,10 +50,9 @@ def _item(event: Mapping) -> str:
     at = event.get("item_id")
     if at is None:
         return "item"
-    # `item_name`, never `name`: `item.observed` has always used `name`
-    # for what the HANDLER noticed, and reading one key for two facts
-    # rendered "item 41 · captioned · captioned" the moment both were
-    # present. Two facts, two keys.
+    # `item_name`, never `name`: `item.observed` uses `name` for what the
+    # HANDLER noticed, so one key for two facts renders the same word twice.
+    # Two facts, two keys.
     named = (event.get("data") or {}).get("item_name")
     return f"item {at} · {named}" if named else f"item {at}"
 
@@ -270,18 +269,13 @@ HASH_MODES: dict[str | None, str] = {
     "groups": "group perceptual copies",
 }
 
-#: The same sentences with THIS job's numbers in them: a template and
-#: the unit its count is in.
-#:
-#: The sentences above are constants per kind, so "read every file's
-#: metadata" is the same line whether the job is over four files or
-#: eighty thousand, and a console full of them says nothing about what
-#: is actually happening. The count is `job.total` -- it has been on the
-#: row the whole time and nothing read it.
-#:
-#: `every` is left in the uncounted forms deliberately: a job whose
-#: items were never enumerable really is over whatever is there, and
-#: inventing a number for it would be worse than the constant.
+#: The same sentences with THIS job's numbers in them: a template and the unit
+#: its count is in. The count is `job.total`, so the line says how much work the
+#: job is over rather than repeating one constant per kind.
+
+#: `every` is left in the uncounted forms above: a job whose items were never
+#: enumerable really is over whatever is there, and inventing a number for it
+#: would be worse than the constant.
 COUNTED: dict[str, tuple[str, str]] = {
     "scan": ("read metadata for {n}", "file"),
     "embed": ("embed {n} for search", "picture"),
@@ -323,16 +317,9 @@ def describe_kind(kind: str, derive: str | None = None, total: int | None = None
     every job of a kind it ever ran.
     """
     if kind == "walk" and where:
-        # A walk has no enumerable items -- finding them is the job --
-        # so what it can say is WHERE it is looking, which is the fact
-        # somebody watching a scan actually wants.
-        #
-        # By the root's LEAF, never its path. `root.path` is where a
-        # library currently sits and explicitly not what it is (see
-        # schema.sql `root.uuid`), and this line put an absolute
-        # filesystem path onto every page carrying the activity strip --
-        # including /folders, whose whole rule is that a place is entered
-        # by entity and never by path.
+        # A walk has no enumerable items -- finding them is the job -- so what it
+        # says is WHERE it is looking. By the root's LEAF, never `root.path`
+        # (schema.sql `root.uuid`), which would put a filesystem path on the strip.
         return f"look for files under {pathlib.PurePath(where).name or where}"
     counted = COUNTED_HASH.get(derive) if kind == "hash" else COUNTED.get(kind)
     if counted is not None and total:
@@ -387,14 +374,9 @@ class BacklogFrame(Wire):
     last_id: int
 
 
-#: What arrives on /ws/events. Discriminated on `frame`, so a browser
-#: narrows to the arm it is handling and cannot read `events` off a
-#: single event or an id off a pending report.
-#:
-#: Not an OpenAPI path -- a socket has none -- so this is carried into the
-#: contract by socket_frames() below, which puts the union in the
-#: document's components. The browser's type is generated from that, never
-#: written twice.
+#: What arrives on /ws/events, discriminated on `frame`, so a browser narrows to
+#: the arm it is handling and cannot read `events` off a single event. A socket
+#: is not an OpenAPI path, so socket_frames() below carries this into the contract.
 Frame = EventFrame | PendingFrame | BacklogFrame
 
 

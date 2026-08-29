@@ -317,9 +317,8 @@ def test_the_page_offers_the_correction_beside_the_name(tmp_path, served):
             run_id = derived.run_for(conn, MODEL[0], MODEL[1], derived.DEFAULT_METHOD, 0.5, clock.time())
             derived.attribute(conn, file_id, who, run_id, MODEL[0], MODEL[1], face_count=1)
             # The page shows the PRIMARY run's people and nothing else
-            # (db/pages.py MEDIA_PEOPLE), so a run nobody chose renders
-            # an empty "who" -- which reads exactly like a missing
-            # button rather than like a fixture that named no run.
+            # (db/pages.py MEDIA_PEOPLE), so a run nobody chose renders an
+            # empty "who" that reads as a missing button.
             derived.make_primary(conn, run_id)
             conn.commit()
             named = naming.entity_slug(conn, file_id)

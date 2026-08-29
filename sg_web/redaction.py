@@ -43,6 +43,15 @@ Redacted, kept, and the stated boundary:
             readable because routes are code, parameter segments are
             hashed because slugs are data. A URL matching no learned
             route falls through to the floor.
+
+Regex over log text is the narrow exception rule 18 leaves open: a log line is
+genuinely unstructured prose with no grammar and no parser, and these patterns
+FIND path-shaped tokens in it rather than parse it. A Windows path may contain
+spaces ("nan and grandad.jpg") and may not contain a colon after its drive, so
+the match runs to the next colon or end of line -- which is also this codebase's
+own `%s: reason` separator. A POSIX path stops at whitespace: spaced POSIX paths
+in a log line are not distinguishable from prose, and the filename rule still
+catches their last component.
 """
 
 from __future__ import annotations
@@ -58,13 +67,9 @@ from db import naming, scan
 
 _REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: Prefixes whose paths are CODE, not somebody's library -- each with the
-#: label its remainder is spelled under. RELATIVIZED, never passed
-#: through: the first version kept them verbatim, and a checkout under
-#: `C:\Users\<name>\dev\...` then shipped the username on every kept
-#: frame and every "loaded from" line -- the exact leak this module
-#: exists to stop. Longest prefix first, because the venv lives inside
-#: the repo and must claim its own paths before the repo does.
+#: Prefixes whose paths are CODE, not somebody's library, each with the label its
+#: remainder is spelled under. RELATIVIZED so a checkout under a home directory
+#: cannot ship the username; longest prefix first, the venv being inside the repo.
 _OURS = tuple(
     sorted(
         {
@@ -81,31 +86,18 @@ _OURS = tuple(
     )
 )
 
-# Regex over log text is the narrow exception rule 18 leaves open: a log
-# line is genuinely unstructured prose with no grammar and no parser,
-# and these patterns FIND path-shaped tokens in it rather than parse it.
-#
-# A Windows path may contain spaces ("nan and grandad.jpg") and may not
-# contain a colon after its drive, so the match runs to the next colon
-# or end of line -- which is also this codebase's own `%s: reason`
-# separator. A POSIX path stops at whitespace: spaced POSIX paths in a
-# log line are not distinguishable from prose, and the filename rule
-# below still catches their last component.
-#: `(?![\\/])`: a drive spec is never `X://`, but a URL's `s://` is --
-#: uvicorn's own startup format string `%s://%s:%d` read as the drive
-#: `s:` until this, and a mangled format string raises inside logging,
-#: whose last-resort handler prints raw frames past this module.
+#: `(?![\\/])`: a drive spec is never `X://`, but a URL's `s://` is -- uvicorn's
+#: startup format string `%s://%s:%d` read as the drive `s:` until this. A mangled
+#: format string raises inside logging, whose last resort prints past this module.
 _WINDOWS_PATH = re.compile(r"(?<![\w])[A-Za-z]:[\\/](?![\\/])[^:<>\"|?*\n]*")
 #: A network share: `\\nas\photos\...`. No drive colon, so the same
 #: run-to-colon-or-EOL policy; a NAS-hosted library is an ordinary
 #: place for a media collection to live.
 _UNC_PATH = re.compile(r"(?<![\w\\])\\\\[^:<>\"|?*\n]+")
 _POSIX_PATH = re.compile(r"(?<![\w:])/(?:[^/\s]+/)+[^/\s:]+")
-#: A bare token that ends in a suffix the application claims. Two
-#: shapes: spaceless anywhere, and spaced only inside parentheses --
-#: the one emitter that logs a bare name (db/runner.py's `(named)`)
-#: parenthesizes it, and letting spaces in everywhere would swallow the
-#: prose to a name's left.
+#: A bare token ending in a suffix the application claims, in two shapes:
+#: spaceless anywhere, spaced only inside parentheses (db/runner.py's `(named)`).
+#: Spaces allowed everywhere would swallow the prose to a name's left.
 _SUFFIXES = "|".join(re.escape(one) for one in sorted(scan.KIND_BY_SUFFIX))
 _MEDIA_NAME = re.compile(rf"[^\s\\/:*?\"<>|()]+(?:{_SUFFIXES})(?![\w.])", re.IGNORECASE)
 _NAMED_IN_PARENS = re.compile(rf"\(([^()\n]+(?:{_SUFFIXES}))\)(?![\w.])", re.IGNORECASE)
@@ -184,16 +176,13 @@ def said(text: str) -> str:
     return text
 
 
-#: What the application has TOLD this module, layered over the lexical rules
-#: above.
-#: `_SENSITIVE` holds normcased prefixes of the home directory and every
-#: registered root, checked before the code-prefix table so a root inside the
-#: tree hides rather than relativizes.
-#: `_ROUTES` holds one shape per served route: a str is a literal segment kept
-#: as code, True keeps a parameter whose values carry no user data (numbers,
-#: the code vocabularies), None hashes one. Both are learned, never typed
-#: here, so neither can drift from what the application actually serves.
+#: Normcased prefixes of the home directory and every registered root, checked
+#: before the code-prefix table so a root inside the tree hides rather than
+#: relativizes. Learned, never typed here, so it cannot drift from what is served.
 _SENSITIVE: list[str] = []
+#: One shape per served route: a str is a literal segment kept as code, True
+#: keeps a parameter whose values carry no user data (numbers, the code
+#: vocabularies), None hashes one. Learned, layered over the lexical rules above.
 _ROUTES: list[tuple[str | bool | None, ...]] = []
 
 
@@ -212,11 +201,9 @@ def learn_routes(shapes) -> None:
             _ROUTES.append(held)
 
 
-#: What install() put in place, held by IDENTITY: idempotence without
-#: decorating foreign callables (a function attribute satisfied neither
-#: type checker nor linter), and a test that restores the previous
-#: factory makes the next install wrap afresh instead of trusting a
-#: stale marker.
+#: What install() put in place, held by IDENTITY: idempotence without decorating
+#: foreign callables. A test that restores the previous factory then makes the
+#: next install wrap afresh instead of trusting a stale marker.
 _MINE: dict[str, object] = {"factory": None, "hook": None}
 
 
@@ -246,18 +233,13 @@ def install() -> None:
 
     def make(*args, **kwargs):
         record = current(*args, **kwargs)
-        # Args are redacted IN PLACE, never flattened into the message:
-        # uvicorn's access formatter unpacks record.args as a five-tuple
-        # (uvicorn/logging.py AccessFormatter.formatMessage), and a first
-        # version that set `args = ()` made every access line raise
-        # inside logging -- whose last-resort handler prints raw frames
-        # to stderr, OUTSIDE this factory. Non-strings pass through so
-        # `%d` directives keep formatting.
+        # Args are redacted IN PLACE, never flattened into the message: uvicorn's
+        # access formatter unpacks record.args as a five-tuple (uvicorn/logging.py
+        # AccessFormatter.formatMessage). Non-strings pass through so `%d` still formats.
         record.msg = said(str(record.msg)) if record.msg else record.msg
-        # `%(pathname)s` in any handler's format would print the
-        # emitting file's absolute path, username included; relativize
-        # it the same as a frame. (`filename` and `module`, derived at
-        # init, are already bare names.)
+        # `%(pathname)s` in any handler's format would print the emitting file's
+        # absolute path, username included, so it is relativized like a frame.
+        # `filename` and `module`, derived at init, are already bare names.
         record.pathname = said(record.pathname)
         if isinstance(record.args, dict):
             record.args = {key: said(one) if isinstance(one, str) else one for key, one in record.args.items()}

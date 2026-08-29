@@ -97,11 +97,9 @@ def test_the_documented_launcher_refuses_to_serve_without_its_bundles(tmp_path, 
 
     monkeypatch.setattr(launcher, "HERE", hollow)
     monkeypatch.setattr(sys, "argv", ["sg_web"])
-    # uvicorn.run would serve; reaching it at all is the failure. Patched
-    # by dotted path rather than through the launcher, which no longer
-    # holds the name: `main` imports uvicorn itself, after the handover,
-    # so that an interpreter without one gets handed to the environment
-    # that has it instead of a traceback at module import.
+    # uvicorn.run would serve; reaching it at all is the failure. Patched by
+    # dotted path because `main` imports uvicorn itself after the handover, so
+    # an interpreter without one is re-launched rather than traced back.
     monkeypatch.setattr("uvicorn.run", _never_served)
 
     with pytest.raises(SystemExit) as refused:
@@ -291,7 +289,7 @@ def test_the_media_page_loads_the_bundle_that_makes_it_a_viewer(served):
 
 
 # --- where it binds ---------------------------------------------------------
-#
+
 # A media library with no sign-in must not arrive on the network because
 # somebody forgot a flag, and must arrive on it when somebody asks. Both
 # halves are asserted on the address actually handed to the server.

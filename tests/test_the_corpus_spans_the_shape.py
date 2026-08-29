@@ -26,6 +26,14 @@ evidence fails, and a row whose gap a corpus file has since closed fails.
 An earlier `ALLOWED` table here had neither property and filled up with
 deferrals wearing the word "blocked"; the reverse assertion and the evidence
 requirement are what make this one a measurement instead of an excuse.
+
+The three honest fixes for an unreached value, in the order to try them:
+
+  * the corpus lacks a file -> write or fetch the file
+  * the app declares a lie -> delete the declaration (`time_precision:hour`
+    and three friends went this way in v44)
+  * the world offers no specimen -> a `tests/needs.py BLOCKED` row, with
+    evidence, held by `test_an_excuse_cannot_outlive_its_gap`
 """
 
 from __future__ import annotations
@@ -43,19 +51,6 @@ from tests.staging import corpus_measurement
 pytestmark = pytest.mark.slow
 
 CORPUS = pathlib.Path(os.environ.get("SG_CORPUS", pathlib.Path(__file__).resolve().parent.parent.parent / "sg-corpus"))
-
-#: The three honest fixes for an unreached value, in the order to try them:
-#:
-#:   the corpus lacks a file        -> write or fetch the file
-#:   the app declares a lie         -> delete the declaration
-#:     (`time_precision:hour` and three friends went this way in v44)
-#:   the world offers no specimen   -> a `tests/needs.py BLOCKED` row,
-#:     with evidence, held by test_an_excuse_cannot_outlive_its_gap
-#:
-#: An `ALLOWED` table here once tried to be the third fix without the
-#: evidence or the reverse assertion, and it filled up with the first two
-#: wearing the word "blocked". The register survives only because both
-#: properties are enforced below.
 
 
 @pytest.fixture(scope="module")

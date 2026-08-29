@@ -824,16 +824,13 @@ def test_the_migration_carries_prompt_ids_roles_and_fts_integrity(tmp_path, pinn
         conn.commit()
     finally:
         connect.close(conn)
-    # A SUPERSET, not the exact list. What these tests are about is that
-    # the prompt steps ran over a database that came the long way; the
-    # exact tail is "how many steps exist above 17", a number every
-    # future migration changes and which broke this assertion the first
-    # time one did.
-    # Live, not `migrated`: this staged v17 content drifts across runs
-    # by something uuid-pinning and stated root uuids do not cover, so
-    # the cache never hit and its keying was pure overhead. The drift's
-    # source is unidentified; a dump diff of two runs would name it.
+    # Live, not `migrated`: this staged v17 content drifts across runs by
+    # something uuid-pinning and stated root uuids do not cover, so the cache
+    # never hit. The drift's source is unidentified; a dump diff would name it.
     stepped = migrate.migrate(path)
+    # A SUPERSET, not the exact list: these tests are about the prompt steps
+    # running over a database that came the long way. The exact tail is a number
+    # every migration changes, and it broke this assertion the first time one did.
     assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
     try:
@@ -1092,13 +1089,11 @@ def test_the_migration_carries_the_unsampler_prompt(tmp_path, pinned_identity):
         conn.commit()
     finally:
         connect.close(conn)
-    # A SUPERSET, not the exact list. What these tests are about is that
-    # the prompt steps ran over a database that came the long way; the
-    # exact tail is "how many steps exist above 17", a number every
-    # future migration changes and which broke this assertion the first
-    # time one did.
     # Live for the same reason as the sibling above.
     stepped = migrate.migrate(path)
+    # A SUPERSET, not the exact list: these tests are about the prompt steps
+    # running over a database that came the long way. The exact tail is a number
+    # every migration changes, and it broke this assertion the first time one did.
     assert set(range(18, 31)) <= set(stepped), stepped
     conn = connect.connect(str(path))
     try:

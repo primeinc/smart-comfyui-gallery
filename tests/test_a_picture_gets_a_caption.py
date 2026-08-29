@@ -6,6 +6,13 @@ same model and kept beside a different one. The job reads the
 (the one caller that may), and the media page shows what was said.
 Nothing here touches the network: the captioner is replaced at the
 seam and what reaches it is asserted.
+
+Captions are generated in batches. One picture per `generate()` left the GPU
+idle between them; measured on 48 real pictures (`just bench captions`): 3.62
+pictures/sec alone, 15.72 batched at sixteen with every caption IDENTICAL,
+21.28 batched in half precision. The runner still works one item at a time --
+started, committed, settled on its own -- and what changed is only WHEN the
+model runs.
 """
 
 from __future__ import annotations
@@ -381,13 +388,7 @@ def test_a_moments_caption_is_a_link_into_the_clip(tmp_path, monkeypatch, served
 
 
 # --- captioned in batches ---------------------------------------------------
-#
-# One picture per `generate()` left the GPU idle between them. Measured
-# on 48 real pictures (`just bench captions`): 3.62 pictures/sec alone,
-# 15.72 batched at sixteen with every caption IDENTICAL, 21.28 batched in
-# half precision. The runner still works one item at a time -- started,
-# committed, settled on its own -- and what changed is only WHEN the model
-# runs.
+# The module docstring carries the measurement this batching rests on.
 
 
 class BatchCaptioner(FakeCaptioner):
