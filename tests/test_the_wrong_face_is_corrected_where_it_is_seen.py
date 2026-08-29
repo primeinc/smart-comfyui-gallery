@@ -103,15 +103,24 @@ def _shells(page: Page) -> int:
 
 def test_every_picture_carries_the_correction(page: Page, live: Live):
     """The control, and the claim: it is on all of them, not on the one
-    somebody already opened."""
+    somebody already opened.
+
+    `to_have_count` rather than a count off `_shells`: waiting for
+    `[data-person-pictures]` waits for the CONTAINER, and the shells inside it
+    arrive after, so a count taken at that moment reads whatever has rendered
+    so far.
+
+    The timeout is thirty seconds because this asserts CONTENT -- every picture
+    carries the button -- and contention must not decide it. Ten was enough
+    serially, in a detached worktree, and under `just test-slow`; it was not
+    enough under `prove-push`, whose testmon selection puts a different set of
+    browser modules on the workers at once.
+    """
     held = live.prepared
     assert isinstance(held, dict)
     page.goto(f"/p/{held['person']}")
-    # `to_have_count` and not a count off `_shells`: waiting for
-    # `[data-person-pictures]` waits for the CONTAINER, and the shells inside it
-    # arrive after. Counting at that moment reads whatever has rendered so far.
-    expect(page.locator("[data-person-picture]")).to_have_count(FILES, timeout=10_000)
-    expect(page.locator("[data-person-not-here]")).to_have_count(FILES, timeout=10_000)
+    expect(page.locator("[data-person-picture]")).to_have_count(FILES, timeout=30_000)
+    expect(page.locator("[data-person-not-here]")).to_have_count(FILES, timeout=30_000)
 
 
 def test_saying_it_takes_that_picture_off_the_person(page: Page, live: Live):
@@ -131,7 +140,7 @@ def test_saying_it_takes_that_picture_off_the_person(page: Page, live: Live):
     # and it holds across a reload, because it is a record and not a
     # thing the browser drew
     page.reload()
-    expect(page.locator("[data-person-picture]")).to_have_count(was - 1, timeout=10_000)
+    expect(page.locator("[data-person-picture]")).to_have_count(was - 1, timeout=30_000)
 
 
 def test_undo_says_what_it_actually_undoes(page: Page, live: Live):
