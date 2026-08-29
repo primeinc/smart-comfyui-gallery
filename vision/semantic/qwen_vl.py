@@ -34,7 +34,7 @@ import threading
 
 # Module scope, not inside _for_embedding: transformers' __init_subclass__
 # runs get_type_hints over the class, which evaluates the (lazily stringified)
-# ClassVar annotation in THIS module's globals -- a function-local import is
+# ClassVar annotation in this module's globals -- a function-local import is
 # invisible there and the class definition dies with a NameError.
 from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 
@@ -327,7 +327,7 @@ class QwenBackend:
         # function it is: transformers wraps it with functools.wraps, which
         # leaves the bound-method signature behind
         self.model = PreTrainedModel.to(loaded, self.device)
-        # Pin AFTER weights land, so the space this backend mints is keyed
+        # Pin after weights land, so the space this backend mints is keyed
         # by the immutable commit the download resolved to -- never by the
         # mutable ref the configuration spelled.
         self.checkpoint = pin(models_dir, model, checkpoint)
@@ -376,7 +376,7 @@ class QwenBackend:
         ]
         # `apply_chat_template` is annotated `conversation: list[dict[str,
         # str]] | list[list[dict[str, str]]]` and its own docstring, twenty
-        # lines below the signature, shows `content` as a LIST of typed
+        # lines below the signature, shows `content` as a list of typed
         # parts -- exactly what is built above and what the template
         # requires for anything but plain text. The annotation describes
         # the text-only special case; the cast says which of the two to
@@ -422,7 +422,7 @@ class QwenBackend:
 
 
 #: One loaded model per (models_dir, model, PINNED checkpoint) per
-#: process -- loading is seconds and GIGABYTES. The cache key pins first,
+#: process -- loading is seconds and gigabytes. The cache key pins first,
 #: because the embed job asks by the configured ref ("main") and the
 #: search path asks by the resolved commit: two spellings of the same
 #: weights, and an unpinned key loaded the 4GB model twice in one

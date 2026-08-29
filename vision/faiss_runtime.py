@@ -68,7 +68,7 @@ def _register_cuda_dll_dirs() -> int:
     being missing.
     """
     registered = 0
-    # Windows-only, said HERE and not only at the call site:
+    # Windows-only, said here and not only at the call site:
     # `os.add_dll_directory` exists on no other platform, and a
     # precondition that lives in the caller is one a second caller does
     # not have. `import_faiss` still gates on the same test. Written as

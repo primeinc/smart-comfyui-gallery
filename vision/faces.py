@@ -50,7 +50,7 @@ class BackendUnavailable(LookupError):
 
 # insightface 1.0.1 aligns faces through skimage's pre-2.2 estimate()
 # API; skimage 0.26 deprecates it with a FutureWarning that fires on
-# EVERY alignment. Silence exactly that warning at its source module —
+# every alignment. Silence exactly that warning at its source module —
 # every other warning stays visible.
 warnings.filterwarnings(
     "ignore", category=FutureWarning, module=r"insightface\.utils\.face_align", message=r".*`estimate` is deprecated.*"
@@ -491,7 +491,7 @@ class InsightFaceBackend(FaceBackend):
             if face.gender is not None and face.age is not None:
                 attributes["age"] = int(face.age)
                 attributes["sex"] = sex_word(face.sex)
-            # NOT ROUNDED. These were `round(x, 5)` on the normalized
+            # Not rounded. These were `round(x, 5)` on the normalized
             # coordinate and `round(deg, 2)` on the pose, which is a lossy
             # transform with nothing on the other side of the trade: half of
             # one unit in the 5th decimal is 5e-6 of the frame, and on a
@@ -607,7 +607,7 @@ def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: 
         # (antelopev2 pack). Those are file sizes, not the resident size of
         # the ORT sessions they become.
         #
-        # Providers are PER STAGE, and the split is structural: detection
+        # Providers are per stage, and the split is structural: detection
         # runs dynamic input shapes (SCRFD '?' dims), where the CUDA EP
         # re-tunes conv algorithms per distinct shape; recognition is a
         # ResNet100 at a fixed 112x112, which gives the EP one shape to tune

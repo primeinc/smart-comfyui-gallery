@@ -49,22 +49,18 @@ from vision import thumbs
 _logger = logging.getLogger(__name__)
 
 
-#: Somebody is blocked on a picture RIGHT NOW.
+#: Priority between a browser waiting on a cell and the precache queue.
 #:
-#: A browser waiting on a cell is real work. The precache queue is a
-#: guess about what will be wanted later, and since it renders several
-#: at a time it fills every core while guessing. Measured on a grid of
-#: 30 misses served while a precache ran: 1.29s with the precache one in
-#: flight, 1.92s at eight -- so the faster queue made the page a person
-#: was actually looking at half again slower. The speculative side
-#: stands aside instead.
+#: A request is work someone is blocked on; the precache queue is a guess
+#: about what will be wanted later, and it renders several at a time, so
+#: it fills every core while guessing. Widening the queue therefore slows
+#: the page a person is looking at. The speculative side stands aside.
 #:
-#: An Event rather than a lock or a semaphore, because the two sides
-#: want different things: the person must NEVER wait (they are the work
-#: being prioritised), and the queue only has to not start another
-#: picture. A render already running is not interrupted -- there is
-#: nothing to interrupt it with -- so the most this costs a person is
-#: the tail of the pictures already in flight.
+#: An Event rather than a lock or a semaphore, because the two sides want
+#: different things: the request must not wait, and the queue only has to
+#: not start another picture. A render already running is not interrupted
+#: -- there is nothing to interrupt it with -- so the most this costs a
+#: request is the tail of the pictures already in flight.
 class _Waiting:
     """How many people are blocked on a picture, and a gate that is open
     exactly when nobody is."""
@@ -116,13 +112,11 @@ def stand_aside(patience: float = PATIENCE) -> None:
     _WAITING.nobody.wait(patience)
 
 
-# pyvips narrates every operation at INFO -- "reducev: 15 point mask",
+# pyvips logs every operation at INFO -- "reducev: 15 point mask",
 # "threadpool completed with 3 workers" -- which is a dozen lines per
-# thumbnail and drowns the application's own log the moment a precache
-# job starts. It is a library's debugging channel, not this program's
-# news, so it is raised to WARNING here: anything that actually goes
-# wrong still arrives, and turning it back down is one line for whoever
-# is debugging libvips itself.
+# thumbnail. That is a library's debugging channel rather than this
+# program's output, so it is raised to WARNING: anything that goes wrong
+# still arrives, and turning it back down is one line.
 logging.getLogger("pyvips").setLevel(logging.WARNING)
 
 #: A libvips image. Deliberately not `pyvips.Image`: pyvips builds every
@@ -191,11 +185,11 @@ def opened(path: pathlib.Path, want: int, orientation: int | None) -> Raster | N
     try:
         loaded = pyvips.Image.thumbnail(os.fspath(path), want, size="down", no_rotate=True)
         # Materialised because a `thumbnail` pipeline reads sequentially
-        # and may be consumed ONCE -- encoding it and then deriving the
+        # and may be consumed once -- encoding it and then deriving the
         # smaller variant from the same object fails with "out of order
         # read". At the preview edge it is the largest thing held either
-        # way, and it beats reading the file twice: 88 ms against 113,
-        # because PNG has no shrink-on-load to make a second read cheap.
+        # way, and it beats reading the file twice, because PNG has no
+        # shrink-on-load to make a second read cheap.
         return upright(loaded, orientation).copy_memory()
     except pyvips.Error as why:
         _logger.debug("%s: libvips will not read this, using Pillow: %s", path, why)

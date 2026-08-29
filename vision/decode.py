@@ -48,13 +48,13 @@ TIMEOUT = 30.0
 #: Started as immich's list (immich-app/immich@f88fb62
 #: server/src/utils/mime-types.ts:4-35) and was described here as "LibRaw's
 #: coverage spelled as suffixes". It is not that. immich's table maps a
-#: suffix to the MIME TYPES IT SERVES; whether LibRaw decodes the bytes is
+#: suffix to the MIME types it serves; whether LibRaw decodes the bytes is
 #: a different question, and the two disagree.
 #:
 #: `.cin` and `.ari` were the disagreements, and both are gone.
 #:
 #: immich spells them `image/x-phantom-cin` and `image/x-arriflex-ari` --
-#: a high-speed camera's VIDEO format and a cinema camera's -- and LibRaw
+#: a high-speed camera's video format and a cinema camera's -- and LibRaw
 #: decodes neither. Searched LibRaw@HEAD src/, internal/ and libraw/:
 #: `cineon` 0 hits; `phantom` 1, which is "DJI Phantom4 Pro/Pro+" at
 #: cameralist.cpp:310; `\bARRI\b|ARRIFLEX|\bAlexa\b` 0. A bare `arri`
@@ -380,9 +380,8 @@ def is_animated(image: Image.Image) -> bool:
     """Whether this picture moves -- a per-file fact, never a suffix fact.
 
     An animated WebP, AVIF, APNG or HEIF wears the same suffix as its
-    still sibling; only the decoded file can say. Suffix-based kinds
-    called every .webp a still, which is how animated ones would have
-    been filed wrong.
+    still sibling, so only the decoded file can say. A suffix-based kind
+    files every .webp as a still and gets the animated ones wrong.
     """
     return bool(getattr(image, "is_animated", False))
 
@@ -418,7 +417,7 @@ def frames_at(path: str | os.PathLike[str], offsets_ms):
     # raised EOFError and ended the whole job. Which container a file was
     # decided which -- for the same fact about the file.
     #
-    # EVERY FFmpegError is translated, not only the uncovered ones: one
+    # Every FFmpegError is translated, not only the uncovered ones: one
     # rule cannot drift out of step with a taxonomy in another package.
     # Translated here, like the LibRawError above, so format knowledge
     # stays in one layer and db/runner.py need not import av.

@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 #: lightbox on ordinary displays without shipping originals.
 EDGES = {"thumb": 512, "preview": 1440}
 
-#: The file kinds a raster variant can be MADE from. Audio and documents
+#: The file kinds a raster variant can be made from. Audio and documents
 #: have no picture to take, and the routes that serve variants refuse
 #: them outright -- so a surface that asks for one anyway gets a 404 and
 #: draws a broken image. Named here, beside what a derivative IS, so a

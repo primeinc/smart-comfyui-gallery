@@ -274,7 +274,7 @@ class IndexManager:
             _logger.warning("snapshot %s refused: %s unreadable: %s: %s", spec.key, index_path, type(why).__name__, why)
             return False
         # read_index hands back the concrete class (faiss's out-typemap
-        # downcasts every Index*); this proxy OWNS the object, and a
+        # downcasts every Index*); this proxy owns the object, and a
         # downcast_index() on it would be a second, non-owning proxy left
         # pointing at freed memory once this one is collected. A snapshot
         # that is not an id-mapped index is not this manager's snapshot,

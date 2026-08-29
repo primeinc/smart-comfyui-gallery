@@ -36,7 +36,7 @@ MOST_TOKENS = 40
 #: same_as_baseline 1.0 -- identical captions to the ones captioned alone.
 #: Sixteen is where the curve flattens; past it the batch is mostly a
 #: longer wait for whoever asked the job to stop, since cancellation is
-#: checked between ITEMS and a batch runs inside one.
+#: checked between items and a batch runs inside one.
 BATCH = 16
 _WEIGHTS = ("model.safetensors", "pytorch_model.bin")
 _SNAPSHOT_FILES = ("config.json", "preprocessor_config.json", "tokenizer_config.json", "vocab.txt")
@@ -94,7 +94,7 @@ class BlipCaptioner:
         self.processor = BlipProcessor.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded = BlipForConditionalGeneration.from_pretrained(source, cache_dir=models_dir, revision=REVISION)
         loaded.eval()
-        # Unbound, and the return value is DISCARDED. Two separate facts:
+        # Unbound, and the return value is discarded. Two separate facts:
         #
         # `loaded.to(...)` does not type check, because transformers
         # decorates `Module.to` with a functools wrapper whose `__call__`
@@ -118,21 +118,21 @@ class BlipCaptioner:
         #
         # It is not free and the benchmark says so: same_as_baseline drops
         # to 0.979 -- 47 of 48 captions identical, one differing, because
-        # rounding moved a logit far enough to flip a token. NEITHER IS
-        # THE CORRECT ONE: fp32 is not ground truth here, only the other
+        # rounding moved a logit far enough to flip a token. neither is
+        # the correct one: fp32 is not ground truth here, only the other
         # arithmetic.
         #
         # Half precision alone does not do it: the unbatched fp16 row
         # reports same_as_baseline 1.0, and every divergent row is fp16 and
         # batched. The cost belongs to the combination, not to the dtype.
         #
-        # And this checkpoint is the CHEAP BASELINE on purpose: a short
+        # And this checkpoint is the cheap baseline on purpose: a short
         # descriptive sentence for every picture in a library, from a
         # base model, so that everything has something. A baseline whose
         # whole point is breadth should be the fastest baseline
         # available; a third of the throughput is a real cost and a
         # token's difference in one sentence out of forty-eight is not.
-        # A better caption is a better MODEL (vision/semantic/qwen_vl.py
+        # A better caption is a better model (vision/semantic/qwen_vl.py
         # is the other one this application can load), not more decimal
         # places in this one.
         #

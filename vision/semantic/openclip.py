@@ -249,10 +249,9 @@ def _cached_checkpoint(models_dir: str, model: str, checkpoint: str) -> str | No
     (refs/huggingface/huggingface_hub src/huggingface_hub/
     file_download.py:1475). Repo presence is not enough: a cache can
     hold the repo's config without the weight file, and open_clip's tag
-    resolver would then reach for the network. Setting HF_HUB_OFFLINE
-    at runtime is theater -- huggingface_hub reads it at import --
-    which is how the first version of this guard downloaded 600MB
-    while claiming it would not.
+    resolver would then reach for the network. Setting HF_HUB_OFFLINE at
+    runtime does not help: huggingface_hub reads it at import, so a guard
+    that sets it later can still download.
     """
     from vision.weights import hub_cached
 
@@ -457,7 +456,7 @@ def encoder(models_dir: str, model: str = MODEL, checkpoint: str = CHECKPOINT, *
             # test_search_never_downloads_a_model). ClipBackend keeps its
             # own guard for the path that really loads.
             #
-            # So the RECORD is authoritative here, not the cache: weights
+            # So the record is authoritative here, not the cache: weights
             # another tool dropped into the shared HF cache, or weights
             # whose record was wiped, refuse offline until /jobs/embed
             # writes the record back. That is the trade -- reading the
