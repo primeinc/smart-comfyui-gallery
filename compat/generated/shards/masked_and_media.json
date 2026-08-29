@@ -1,0 +1,1349 @@
+{
+  "cases": 24,
+  "identity": {
+    "digest": "b717ed229da86b9ceef2f5a9c7681e748e177c306dfe56ddefa4a0a609a0af97",
+    "manifest": "26e3d3fb2ddb7dfbd29e850703340a91aa2698efade623f7ffe26b37365ddf34",
+    "repos": {
+      "consumer:anystory": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
+      "consumer:consisid": "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e",
+      "consumer:id_lora": "13dc9c286a2d3c1a21a7781f9ac0fe7727ec56cd",
+      "consumer:id_v2v": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
+      "consumer:infiniteyou": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "consumer:instantcharacter": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
+      "consumer:instantid": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
+      "consumer:instantid_upstream": "2145b67f9607da6234702063692330185f374486",
+      "consumer:ipadapter_faceid": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer:ipadapter_faceid_plus": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer:ipadapter_upstream": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "consumer:omnigen2": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
+      "consumer:photomaker_v2": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "consumer:pulid_comfyui": "93e0c4c226b87b23c0009d671978bad0e77289ff",
+      "consumer:pulid_upstream": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "consumer:qwen_image_edit_2509": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
+      "consumer:reactor": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "consumer:umo": "aada3dc32990ae82061857ebe911b2c15621571a",
+      "consumer:uniportrait": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "consumer:uno": "a563432dcfb4caf98df4368facb8102bf97d376c",
+      "consumer:uso": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
+      "consumer:xverse": "65e2581aac0faffe4607881a10cc486186f6499d",
+      "upstream:adaptive_wing_loss": "4b64de5b9417bc7ecc9b8862c60d1942893e2a9d",
+      "upstream:bisenet": "6b4b67a8e3eb0cc23b3d7a94843a7c3c11dedca8",
+      "upstream:celebamask_hq": "3f6c45df5e67130568f9459f24f8d6a5ff836d30",
+      "upstream:clip": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "upstream:comfyui": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "upstream:comfyui_original": "e7051b03758a1247e3adb84a5b784ffacb9a23bd",
+      "upstream:david": "20a3eb66f61d0e1caff42489c6775e142179bd46",
+      "upstream:deep_head_pose": "f7bbb9981c2953c2eca67748d6492a64c8243946",
+      "upstream:depth_anything_v1": "1d03336771fe09c5398ffdd211441e33941a97dc",
+      "upstream:depth_anything_v2": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+      "upstream:diffsynth_studio": "102fe9980b9375ecb6436d360297a00327472535",
+      "upstream:diffusers": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "upstream:dinov2": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+      "upstream:eva": "5623d08bb08a8268c7bc18e1d9b8b4bd651fe4d9",
+      "upstream:face_makeup": "8917ca11d226e115dd34a0bf708c20b5f6fda0ba",
+      "upstream:face_parsing": "d2e684cf1588b46145635e8fe7bcc29544e5537e",
+      "upstream:faceboxes": "22efc6a35ce21b53b66ffc8c7a01c293e503df7a",
+      "upstream:facexlib": "260620ae93990a300f4b16448df9bb459f1caba9",
+      "upstream:fastcomposer": "b9304a2e7d09ffe4036ebd8ed5656bb08d6a8ca9",
+      "upstream:flux": "802fb4713906133fcbd0d8dc5351620ca4773036",
+      "upstream:infiniteyou_main": "aaa6ea5f75ba2ff58b9025fa7df45e4a139ed717",
+      "upstream:insightface": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+      "upstream:insightface_pytorch": "350ff7aa9c9db8d369d1932e14d2a4d11a3e9553",
+      "upstream:ltx2": "a95ab856bf29407b6b066ede0abe1846050db56c",
+      "upstream:modnet": "28165a451e4610c9d77cfdf925a94610bb2810fb",
+      "upstream:ominicontrol": "65d929e390a3f785b11e71344de082bb58a2c527",
+      "upstream:open_clip": "92433b5e7d0ffd3a367737f5550738ec5c3fc69a",
+      "upstream:reactor_assets": "606558ed08f16b99a29ef30b0df0b4622164c524",
+      "upstream:retinaface_1mb": "2b075657aef954b9426f938ac7fce100b6910fe6",
+      "upstream:retinaface_pytorch": "b984b4b775b2c4dced95c1eadd195a5c7d32a60b",
+      "upstream:sam2": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+      "upstream:sam3": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+      "upstream:style_aligned": "2faf0af7cf89a00e334d2304ef9f43d34baa0efd",
+      "upstream:t2i_adapter": "c408b059c36e3f9ce336b66746bd606edaa5483a",
+      "upstream:vace": "48eb44f1c4be87cc65a98bff985a26976841e9f3",
+      "upstream:wan21": "9737cba9c1c3c4d04b33fcad41c111989865d315"
+    },
+    "runtime": {
+      "backends": {
+        "face-alignment": "1.5.0",
+        "imported": {
+          "PIL": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+            "version": "12.3.0"
+          },
+          "cv2": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+            "version": "4.14.0"
+          },
+          "numpy": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+            "version": "2.5.2"
+          },
+          "skimage": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+            "version": "0.26.0"
+          },
+          "torch": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+            "version": "2.13.0+cu132"
+          }
+        },
+        "insightface": "1.0.1",
+        "mediapipe": "1.0.1",
+        "numpy": "2.5.2",
+        "onnx": "1.22.0",
+        "onnxruntime": {
+          "available_providers": [
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+          "device": "GPU",
+          "version": "1.29.0"
+        },
+        "opencv-contrib-python": "4.14.0.94",
+        "opencv-python": "4.14.0.94",
+        "scikit-image": "0.26.0",
+        "torch": "2.13.0+cu132"
+      },
+      "implementation": "CPython",
+      "machine": "AMD64",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.5"
+    },
+    "sources": {
+      "assertions/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertions/arrays.py": "ade0d8fcb437e6aa51be997bb610e3325e02263bd98e8afe757bd31c50eb98e5",
+      "assertions/minimize.py": "33753282d1971557d6e91405cd127c0a5b05afd446fe945dda4515746360a4d4",
+      "consumers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumers/aligned_crop.py": "c5b63435a97b99baeb627757778cf7a0a7c2e12a030bdec93789477e47b4b928",
+      "consumers/consisid_facexlib.py": "baef577c4e1af40cccacaacc3b9cf9b3ccef040cd61dc9e386f8826b50bffb04",
+      "consumers/control_stream.py": "64bbe8aeb5d1826f54a8c35dfaebc904c3aa2b263a1921b2a8d1f5ae7eda4d4b",
+      "consumers/embedding_spaces.py": "295e9edc1de473b478cdc606a292e1bf78b7065a4e21c9bbe1220a374a78befc",
+      "consumers/face_family.py": "af9c531f6a98c91a1538217e3f3122431f310a1e7cf9f4675189f93021614276",
+      "consumers/face_selection.py": "90dc25127087c1f05a329d65a538e34d5bbfc2db6202a2b136a28573852acf0d",
+      "consumers/gallery_storage.py": "26e2a47d01a6f4f83baf85cfc405ad72685d9e7168b4d565c73131dba1a9c289",
+      "consumers/masked_reference.py": "f904ca59c6b2358498c3a2e9473df3ee5b085d96c832a4b055df5cebf099d465",
+      "consumers/other_media.py": "14690c27586b5f9c533002e81336bff500c590dbf3dd634e30b698b26caa4101",
+      "consumers/producer_derivations.py": "ce0abd229df42ad6c607e6e7d4d2d081f5768401b3c9fb3f9b031b10ca1627d8",
+      "consumers/reactor_face_model.py": "192e992f05b51f57c7baa2058951ef661a690e78952737dfbb13ec7491f265a7",
+      "consumers/reference_sets.py": "6250d8e46c2a7bc301cece064e119352e8978fc4101790c76200bfafe06078ec",
+      "consumers/whole_reference.py": "08de876d920895b18e67c687196bb98884280c78e3735058ceda9a6c2ebdc5af",
+      "contracts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contracts/case.py": "87cd405b3d3c3609a38eaa0e13d2b1b3c57407adea05ac5457bd95a35cf055a9",
+      "corpus/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "corpus/groups.py": "7dcff3dfe625e5e70688e7c0c8440c3d49313f9aab72e731ad3ad69cdcb5b2fd",
+      "corpus/index.py": "830432a744a626b4f7fd8e97d88241a8a29cfc4b22ffee7cc2c4bea4e373e9f2",
+      "corpus/loaded.py": "e6c21fc83f7a79112668d71b42c5d934577d8ea45b798f82903c226b00c323f4",
+      "harness/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "harness/answer.py": "5b8ac74fb73245e45de387ddfd3e63992f03c083006ed933fdb52aa223d5978d",
+      "harness/attack.py": "bf02bec54c64ca3864b7590d7179d8283497b534ed7f8abc7da1dd13ec147b6f",
+      "harness/citations.py": "fef869c2472692d3ea01ed2dca5563881981e0a65a9d381895193370427bf214",
+      "harness/identity.py": "2754b7c8a7357fa599738480dee303f9cc2d9ae66bf4830f49af92251cb6bdb8",
+      "harness/matrices.py": "37f45d00cecb84a5642aefeddfffaae34b7d2711d8aa920778bad483367acfb9",
+      "harness/pinned_source.py": "19726ef0c60c5ff613aa75fb20514ce1c9b07336c031872f2d4d3da46faecde2",
+      "harness/provenance.py": "34521665454a322ee9d14cc30f2b76f9b64e7a30cfa4469216056d46e46b6a4f",
+      "harness/run.py": "fa7e3eb373ebdbe320066faff03d0adc80ed79ff471a2b2101111772a97cd0f7",
+      "harness/selftest.py": "e10b2f26aa41eb34fc63f9d07788abe735da655f54a32d5149335b3939c740ee",
+      "harness/sharded.py": "0fab2e8225e5471eb5f23bd7b66545233744f57b9eed419ae5c248955821f815",
+      "primitives/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "primitives/build.py": "21998299538186d094c10f5737a448cafa9102671bce76b19d714daca55b262a",
+      "producers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "producers/insightface_pass.py": "e44fe57a8e4d196986d93692eb27d29a2e5a64dbbe7422036458ee870641d368",
+      "producers/inventory.py": "1d7bf42e974659e05fd45a82716992ec12ab42866921a49694405ccc0797b219",
+      "producers/registry.py": "823f5c00e6abfaa1818be4a3fdadda1dfe8aa3b9d012b586c73a17b133f18231",
+      "producers/union.py": "e7d6e7b051a0c0dbd0aa4f60a330cfa8976e5b0446e5a90210d38c9a500c4b8d",
+      "storage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage/contract.py": "181c7f23d3d7e57c21e46e1f638b41fdb2d94441f46063c600e8d8765c3e9223",
+      "storage/gallery_v45.py": "ecd96f1ae1f19ca368dd099daf8be046d2d3077e39dfde02be635a8f42e863af",
+      "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vendor/acceptance.py": "f1b194149e7a24ff23fcfd31dd48bd038b40bc91724baf5b138c0b515699d389",
+      "vendor/conformance.py": "cf9ccdb4b42e69916657312bf8fafebd6fee30589706892f9e1355dfb06db7a8",
+      "vendor/fixtures.py": "ebf1928c7cf2cbd23c98e9909bd01f9f543aafb974148be4f1575d9ce4f3966c"
+    },
+    "weights": {
+      "antelopev2/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "antelopev2/2d106det.onnx": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "antelopev2/genderage.onnx": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "antelopev2/glintr100.onnx": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "antelopev2/scrfd_10g_bnkps.onnx": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "buffalo_l/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "buffalo_l/2d106det.onnx": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "buffalo_l/det_10g.onnx": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "buffalo_l/genderage.onnx": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "buffalo_l/w600k_r50.onnx": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+      "facexlib/detection_Resnet50_Final.pth": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "facexlib/parsing_bisenet.pth": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "facexlib/recognition_arcface_ir_se50.pth": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
+    }
+  },
+  "population": {
+    "consumer_tier_covered": [
+      "anystory",
+      "id_lora",
+      "id_v2v"
+    ],
+    "declared": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ],
+    "primitive_tier_only": [],
+    "unexercised": [
+      "consisid",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ]
+  },
+  "results": [
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "KeyError: \"replay needs 'subject_mask', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "subject_mask",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "599575 of 3784800 elements differ, worst 255.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "mask_from_face_bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "masked_subject|multi_1",
+        "sha256": "6d7d64a1c71df17a853fee619cec5193951a1711947149058d29b13b3fc1c699",
+        "shape": [
+          2838600,
+          946200
+        ],
+        "values": null
+      },
+      "case": "anystory_masked_subject_multi_1",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "54cbdb39f9180d06ce518af0e59f65e7c41f0f0f85029eccb3e7c7be510d2172",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the vendor's subject mask against the best a face row could offer",
+          "detail": "multi_1: subject mask covers 354,343 px of 946,200; NO FACE DETECTED, so the full frame covers 946,200 and accounts for 100.0% of it",
+          "name": "mask_coverage",
+          "unit": "fraction",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "masked_subject|multi_1",
+        "sha256": "6d7d64a1c71df17a853fee619cec5193951a1711947149058d29b13b3fc1c699",
+        "shape": [
+          2838600,
+          946200
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "KeyError: \"replay needs 'subject_mask', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "subject_mask",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "42721 of 883600 elements differ, worst 255.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "mask_from_face_bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "masked_subject|multi_2",
+        "sha256": "d0e12eec732ddc267fadb6036b18f9e9e9e48f99c5b9c4dc2465243d6be2e501",
+        "shape": [
+          662700,
+          220900
+        ],
+        "values": null
+      },
+      "case": "anystory_masked_subject_multi_2",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "4c32442eb07dfc39ac1cb6809b20eec773c33ed2d514b8922e02d210b13c4484",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the vendor's subject mask against the best a face row could offer",
+          "detail": "multi_2: subject mask covers 39,351 px of 220,900; a face rectangle covers 2,254 and accounts for 5.3% of it",
+          "name": "mask_coverage",
+          "unit": "fraction",
+          "value": 0.052908439429747656
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "masked_subject|multi_2",
+        "sha256": "d0e12eec732ddc267fadb6036b18f9e9e9e48f99c5b9c4dc2465243d6be2e501",
+        "shape": [
+          662700,
+          220900
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "KeyError: \"replay needs 'subject_mask', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "subject_mask",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "63695 of 645072 elements differ, worst 255.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "mask_from_face_bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "masked_subject|single",
+        "sha256": "7e675e326d3c609a7514f3031f2705aa78b93777db84598cb55296b923fdb746",
+        "shape": [
+          483804,
+          161268
+        ],
+        "values": null
+      },
+      "case": "anystory_masked_subject_single",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "9910ff590a88764965f8768ae6a20926d2e782749a4dcd4544d2f5d91ec6e705",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the vendor's subject mask against the best a face row could offer",
+          "detail": "single: subject mask covers 100,340 px of 161,268; NO FACE DETECTED, so the full frame covers 161,268 and accounts for 100.0% of it",
+          "name": "mask_coverage",
+          "unit": "fraction",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "masked_subject|single",
+        "sha256": "7e675e326d3c609a7514f3031f2705aa78b93777db84598cb55296b923fdb746",
+        "shape": [
+          483804,
+          161268
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (4032, 3024, 3) against replay (948, 948, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|1_id_document",
+        "sha256": "ac6e4880bcdc105280992f35826d9cfd8cd0debb9a284fd3d40cc8f63af3099f",
+        "shape": [
+          4032,
+          3024,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_1_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (4032, 3024, 3) 36,578,304 B against face patch (948, 948, 3) 2,696,112 B -- 13.6x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 13.567056561448485
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|1_id_document",
+        "sha256": "ac6e4880bcdc105280992f35826d9cfd8cd0debb9a284fd3d40cc8f63af3099f",
+        "shape": [
+          4032,
+          3024,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (3088, 2316, 3) against replay (1426, 1426, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|1_selfie",
+        "sha256": "a26254d4567b70e429b821095a580e81c021b1200bf2c62978551730a21882f6",
+        "shape": [
+          3088,
+          2316,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (3088, 2316, 3) 21,455,424 B against face patch (1426, 1426, 3) 6,100,428 B -- 3.5x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 3.5170358538777933
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|1_selfie",
+        "sha256": "a26254d4567b70e429b821095a580e81c021b1200bf2c62978551730a21882f6",
+        "shape": [
+          3088,
+          2316,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (4000, 3000, 3) against replay (763, 763, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|2_id_document",
+        "sha256": "7a2f8585144ea176f032d1cb21c6edae1b96e1bca21bcacbb8eb3e64f1152dbe",
+        "shape": [
+          4000,
+          3000,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (4000, 3000, 3) 36,000,000 B against face patch (763, 763, 3) 1,746,507 B -- 20.6x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 20.61257126367086
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|2_id_document",
+        "sha256": "7a2f8585144ea176f032d1cb21c6edae1b96e1bca21bcacbb8eb3e64f1152dbe",
+        "shape": [
+          4000,
+          3000,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (6528, 4896, 3) against replay (3335, 3335, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|2_selfie",
+        "sha256": "8286da0f5a97a3ce231efdfa399e99afb77a63214b84e0cb8917cddeac248682",
+        "shape": [
+          6528,
+          4896,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (6528, 4896, 3) 95,883,264 B against face patch (3335, 3335, 3) 33,366,675 B -- 2.9x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 2.8736235780160895
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|2_selfie",
+        "sha256": "8286da0f5a97a3ce231efdfa399e99afb77a63214b84e0cb8917cddeac248682",
+        "shape": [
+          6528,
+          4896,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (878, 878, 3) against replay (434, 433, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_kaifu_resize",
+        "sha256": "af3201df8d8a46821c038e8cfe25e9cbf1f1911252c47e9dfeb77926e19aaf63",
+        "shape": [
+          878,
+          878,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_vendor_kaifu_resize",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "b7302f0f7d0ff61be67bf13d172ad2393b6cb2bc985f048089f4e901145324d7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (878, 878, 3) 2,312,652 B against face patch (434, 433, 3) 563,766 B -- 4.1x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 4.102148763848831
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_kaifu_resize",
+        "sha256": "af3201df8d8a46821c038e8cfe25e9cbf1f1911252c47e9dfeb77926e19aaf63",
+        "shape": [
+          878,
+          878,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (1460, 1460, 3) against replay (762, 763, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_musk_resize",
+        "sha256": "6177b442c0c57fb864384188996581caa0cb3ab954a41d894cc62453c85f68ab",
+        "shape": [
+          1460,
+          1460,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_vendor_musk_resize",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "002e9a3b45b0a46c6d3c9daea7aac40d12e1e649a62e62d340796ab7254aacf9",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (1460, 1460, 3) 6,394,800 B against face patch (762, 763, 3) 1,744,218 B -- 3.7x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 3.666284833661847
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_musk_resize",
+        "sha256": "6177b442c0c57fb864384188996581caa0cb3ab954a41d894cc62453c85f68ab",
+        "shape": [
+          1460,
+          1460,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (1620, 1620, 3) against replay (911, 910, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_schmidhuber_resize",
+        "sha256": "1dee33e850b38cedfe619ac5c269a38f7beec30301fa3b2aafe1183f5705f50b",
+        "shape": [
+          1620,
+          1620,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_vendor_schmidhuber_resize",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "51beaa72d1eb9f56118118fae8775bda818bcb56b03220f3cd39daa425f57a9a",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (1620, 1620, 3) 7,873,200 B against face patch (911, 910, 3) 2,487,030 B -- 3.2x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 3.1657036706432975
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_schmidhuber_resize",
+        "sha256": "1dee33e850b38cedfe619ac5c269a38f7beec30301fa3b2aafe1183f5705f50b",
+        "shape": [
+          1620,
+          1620,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "baseline (543, 543, 3) against replay (310, 310, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_patch_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_yann-lecun_resize",
+        "sha256": "55c12fa865d5cf646bb72cdec52c7276a404b22f8317dfa23783990c5391b11e",
+        "shape": [
+          543,
+          543,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_vendor_yann-lecun_resize",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (543, 543, 3) 884,547 B against face patch (310, 310, 3) 288,300 B -- 3.1x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 3.0681477627471385
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|vendor_yann-lecun_resize",
+        "sha256": "55c12fa865d5cf646bb72cdec52c7276a404b22f8317dfa23783990c5391b11e",
+        "shape": [
+          543,
+          543,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'audio_waveform', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "audio_waveform",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "KeyError: \"replay needs 'audio_sample_rate', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "audio_sample_rate",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "resampled_waveform@44100",
+        "sha256": "f5d9cecaacf99fdbfa83be84b59f1489f12034e46f9f938a3c209d382e7da41a",
+        "shape": [
+          2,
+          220500
+        ],
+        "values": null
+      },
+      "case": "id_lora_reference_waveform",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_lora",
+      "fixture_sha256": "d8d47d293e4565b9510006ee204ba7c269cf958f208b28811038928b13ea5bee",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "float32 waveform at capture rate, against the same clip resampled to the VAE's rate",
+          "detail": "stored (2, 80000) at 16000 Hz = 640,000 B; resampled to 44100 Hz it becomes (2, 220500) = 1,764,000 B (2.76x). Storing the VAE's tokens instead would freeze one model's rate and one model's encoder, and could not be resampled back",
+          "name": "waveform_against_latent_cost",
+          "unit": "bytes",
+          "value": 640000.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "resampled_waveform@44100",
+        "sha256": "f5d9cecaacf99fdbfa83be84b59f1489f12034e46f9f938a3c209d382e7da41a",
+        "shape": [
+          2,
+          220500
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_david_normal_mp4_cover_eyes",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: david_normal_mp4 needs the david weight at $IDV2V_CHECKPOINTS/david/multi-task-model-vitl16_384.onnx, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a david pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_david_normal_mp4_woman_dancing",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: david_normal_mp4 needs the david weight at $IDV2V_CHECKPOINTS/david/multi-task-model-vitl16_384.onnx, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a david pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_david_normal_mp4_woman_phone",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: david_normal_mp4 needs the david weight at $IDV2V_CHECKPOINTS/david/multi-task-model-vitl16_384.onnx, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a david pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_depth_mp4_cover_eyes",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: depth_mp4 needs the depth_anything_v2 weight at $IDV2V_CHECKPOINTS/depthv2/depth_anything_v2_vitl.pth, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a depth_anything_v2 pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_depth_mp4_woman_dancing",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: depth_mp4 needs the depth_anything_v2 weight at $IDV2V_CHECKPOINTS/depthv2/depth_anything_v2_vitl.pth, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a depth_anything_v2 pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_depth_mp4_woman_phone",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: depth_mp4 needs the depth_anything_v2 weight at $IDV2V_CHECKPOINTS/depthv2/depth_anything_v2_vitl.pth, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a depth_anything_v2 pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_orig_pixel_mp4_cover_eyes",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: orig_pixel_mp4 needs the sam3 weight at $IDV2V_CHECKPOINTS/sam3, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a sam3 pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_orig_pixel_mp4_woman_dancing",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: orig_pixel_mp4 needs the sam3 weight at $IDV2V_CHECKPOINTS/sam3, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a sam3 pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [],
+      "baseline": null,
+      "case": "id_v2v_orig_pixel_mp4_woman_phone",
+      "comparison": "",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
+      "max_abs_diff": null,
+      "measurements": [],
+      "replay": null,
+      "tier": "consumer",
+      "unsupported_reason": "ValueError: orig_pixel_mp4 needs the sam3 weight at $IDV2V_CHECKPOINTS/sam3, which is not on this machine. UNSUPPORTED, never a fallback to source-video-only: re-deriving this stream is a sam3 pass over every frame, which is the cost the retention question is about",
+      "verdict": "UNSUPPORTED"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'source_video_bytes', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "ValueError: these bytes are not decodable video: InvalidDataError: [Errno 1094995529] Invalid data found when processing input: '<none>'",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_row_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|cover_eyes",
+        "sha256": "9651808d69b3fd5893622b11d16456a2aff7148a25c413ae52e50f39da8da829",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "cover_eyes: source 2,704,234 B decodes to (81, 1080, 1920, 3) = 503,884,800 B (186.3x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 2704234.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|cover_eyes",
+        "sha256": "9651808d69b3fd5893622b11d16456a2aff7148a25c413ae52e50f39da8da829",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'source_video_bytes', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "ValueError: these bytes are not decodable video: InvalidDataError: [Errno 1094995529] Invalid data found when processing input: '<none>'",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_row_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|woman_dancing",
+        "sha256": "041e242841a9139f5a3af7a8e3ab03c9344453f4eccb11d2592c35afa9b1566c",
+        "shape": [
+          240,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_woman_dancing",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "woman_dancing: source 10,395,202 B decodes to (240, 1080, 1920, 3) = 1,492,992,000 B (143.6x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 10395202.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|woman_dancing",
+        "sha256": "041e242841a9139f5a3af7a8e3ab03c9344453f4eccb11d2592c35afa9b1566c",
+        "shape": [
+          240,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'source_video_bytes', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "ValueError: these bytes are not decodable video: InvalidDataError: [Errno 1094995529] Invalid data found when processing input: '<none>'",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "face_row_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|woman_phone",
+        "sha256": "552f87660dae6f3b88152fc5d1e5bb84a80c860c7701b75e3ef1db80e59a6a92",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_woman_phone",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "woman_phone: source 1,580,908 B decodes to (81, 1080, 1920, 3) = 503,884,800 B (318.7x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 1580908.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|woman_phone",
+        "sha256": "552f87660dae6f3b88152fc5d1e5bb84a80c860c7701b75e3ef1db80e59a6a92",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "tier": "consumer",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    }
+  ],
+  "runtime": {
+    "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
+      "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-contrib-python": "4.14.0.94",
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  },
+  "verdicts": {
+    "CONTRADICTED": 0,
+    "FAIL": 0,
+    "PASS": 15,
+    "UNSUPPORTED": 9,
+    "VENDOR_BASELINE_UNAVAILABLE": 0
+  }
+}

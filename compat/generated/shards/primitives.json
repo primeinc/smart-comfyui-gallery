@@ -1,0 +1,3139 @@
+{
+  "cases": 57,
+  "identity": {
+    "digest": "b717ed229da86b9ceef2f5a9c7681e748e177c306dfe56ddefa4a0a609a0af97",
+    "manifest": "26e3d3fb2ddb7dfbd29e850703340a91aa2698efade623f7ffe26b37365ddf34",
+    "repos": {
+      "consumer:anystory": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
+      "consumer:consisid": "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e",
+      "consumer:id_lora": "13dc9c286a2d3c1a21a7781f9ac0fe7727ec56cd",
+      "consumer:id_v2v": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
+      "consumer:infiniteyou": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "consumer:instantcharacter": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
+      "consumer:instantid": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
+      "consumer:instantid_upstream": "2145b67f9607da6234702063692330185f374486",
+      "consumer:ipadapter_faceid": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer:ipadapter_faceid_plus": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer:ipadapter_upstream": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "consumer:omnigen2": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
+      "consumer:photomaker_v2": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "consumer:pulid_comfyui": "93e0c4c226b87b23c0009d671978bad0e77289ff",
+      "consumer:pulid_upstream": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "consumer:qwen_image_edit_2509": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
+      "consumer:reactor": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "consumer:umo": "aada3dc32990ae82061857ebe911b2c15621571a",
+      "consumer:uniportrait": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "consumer:uno": "a563432dcfb4caf98df4368facb8102bf97d376c",
+      "consumer:uso": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
+      "consumer:xverse": "65e2581aac0faffe4607881a10cc486186f6499d",
+      "upstream:adaptive_wing_loss": "4b64de5b9417bc7ecc9b8862c60d1942893e2a9d",
+      "upstream:bisenet": "6b4b67a8e3eb0cc23b3d7a94843a7c3c11dedca8",
+      "upstream:celebamask_hq": "3f6c45df5e67130568f9459f24f8d6a5ff836d30",
+      "upstream:clip": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "upstream:comfyui": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "upstream:comfyui_original": "e7051b03758a1247e3adb84a5b784ffacb9a23bd",
+      "upstream:david": "20a3eb66f61d0e1caff42489c6775e142179bd46",
+      "upstream:deep_head_pose": "f7bbb9981c2953c2eca67748d6492a64c8243946",
+      "upstream:depth_anything_v1": "1d03336771fe09c5398ffdd211441e33941a97dc",
+      "upstream:depth_anything_v2": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+      "upstream:diffsynth_studio": "102fe9980b9375ecb6436d360297a00327472535",
+      "upstream:diffusers": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "upstream:dinov2": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+      "upstream:eva": "5623d08bb08a8268c7bc18e1d9b8b4bd651fe4d9",
+      "upstream:face_makeup": "8917ca11d226e115dd34a0bf708c20b5f6fda0ba",
+      "upstream:face_parsing": "d2e684cf1588b46145635e8fe7bcc29544e5537e",
+      "upstream:faceboxes": "22efc6a35ce21b53b66ffc8c7a01c293e503df7a",
+      "upstream:facexlib": "260620ae93990a300f4b16448df9bb459f1caba9",
+      "upstream:fastcomposer": "b9304a2e7d09ffe4036ebd8ed5656bb08d6a8ca9",
+      "upstream:flux": "802fb4713906133fcbd0d8dc5351620ca4773036",
+      "upstream:infiniteyou_main": "aaa6ea5f75ba2ff58b9025fa7df45e4a139ed717",
+      "upstream:insightface": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+      "upstream:insightface_pytorch": "350ff7aa9c9db8d369d1932e14d2a4d11a3e9553",
+      "upstream:ltx2": "a95ab856bf29407b6b066ede0abe1846050db56c",
+      "upstream:modnet": "28165a451e4610c9d77cfdf925a94610bb2810fb",
+      "upstream:ominicontrol": "65d929e390a3f785b11e71344de082bb58a2c527",
+      "upstream:open_clip": "92433b5e7d0ffd3a367737f5550738ec5c3fc69a",
+      "upstream:reactor_assets": "606558ed08f16b99a29ef30b0df0b4622164c524",
+      "upstream:retinaface_1mb": "2b075657aef954b9426f938ac7fce100b6910fe6",
+      "upstream:retinaface_pytorch": "b984b4b775b2c4dced95c1eadd195a5c7d32a60b",
+      "upstream:sam2": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+      "upstream:sam3": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+      "upstream:style_aligned": "2faf0af7cf89a00e334d2304ef9f43d34baa0efd",
+      "upstream:t2i_adapter": "c408b059c36e3f9ce336b66746bd606edaa5483a",
+      "upstream:vace": "48eb44f1c4be87cc65a98bff985a26976841e9f3",
+      "upstream:wan21": "9737cba9c1c3c4d04b33fcad41c111989865d315"
+    },
+    "runtime": {
+      "backends": {
+        "face-alignment": "1.5.0",
+        "imported": {
+          "PIL": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+            "version": "12.3.0"
+          },
+          "cv2": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+            "version": "4.14.0"
+          },
+          "numpy": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+            "version": "2.5.2"
+          },
+          "skimage": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+            "version": "0.26.0"
+          },
+          "torch": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+            "version": "2.13.0+cu132"
+          }
+        },
+        "insightface": "1.0.1",
+        "mediapipe": "1.0.1",
+        "numpy": "2.5.2",
+        "onnx": "1.22.0",
+        "onnxruntime": {
+          "available_providers": [
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+          "device": "GPU",
+          "version": "1.29.0"
+        },
+        "opencv-contrib-python": "4.14.0.94",
+        "opencv-python": "4.14.0.94",
+        "scikit-image": "0.26.0",
+        "torch": "2.13.0+cu132"
+      },
+      "implementation": "CPython",
+      "machine": "AMD64",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.5"
+    },
+    "sources": {
+      "assertions/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertions/arrays.py": "ade0d8fcb437e6aa51be997bb610e3325e02263bd98e8afe757bd31c50eb98e5",
+      "assertions/minimize.py": "33753282d1971557d6e91405cd127c0a5b05afd446fe945dda4515746360a4d4",
+      "consumers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumers/aligned_crop.py": "c5b63435a97b99baeb627757778cf7a0a7c2e12a030bdec93789477e47b4b928",
+      "consumers/consisid_facexlib.py": "baef577c4e1af40cccacaacc3b9cf9b3ccef040cd61dc9e386f8826b50bffb04",
+      "consumers/control_stream.py": "64bbe8aeb5d1826f54a8c35dfaebc904c3aa2b263a1921b2a8d1f5ae7eda4d4b",
+      "consumers/embedding_spaces.py": "295e9edc1de473b478cdc606a292e1bf78b7065a4e21c9bbe1220a374a78befc",
+      "consumers/face_family.py": "af9c531f6a98c91a1538217e3f3122431f310a1e7cf9f4675189f93021614276",
+      "consumers/face_selection.py": "90dc25127087c1f05a329d65a538e34d5bbfc2db6202a2b136a28573852acf0d",
+      "consumers/gallery_storage.py": "26e2a47d01a6f4f83baf85cfc405ad72685d9e7168b4d565c73131dba1a9c289",
+      "consumers/masked_reference.py": "f904ca59c6b2358498c3a2e9473df3ee5b085d96c832a4b055df5cebf099d465",
+      "consumers/other_media.py": "14690c27586b5f9c533002e81336bff500c590dbf3dd634e30b698b26caa4101",
+      "consumers/producer_derivations.py": "ce0abd229df42ad6c607e6e7d4d2d081f5768401b3c9fb3f9b031b10ca1627d8",
+      "consumers/reactor_face_model.py": "192e992f05b51f57c7baa2058951ef661a690e78952737dfbb13ec7491f265a7",
+      "consumers/reference_sets.py": "6250d8e46c2a7bc301cece064e119352e8978fc4101790c76200bfafe06078ec",
+      "consumers/whole_reference.py": "08de876d920895b18e67c687196bb98884280c78e3735058ceda9a6c2ebdc5af",
+      "contracts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contracts/case.py": "87cd405b3d3c3609a38eaa0e13d2b1b3c57407adea05ac5457bd95a35cf055a9",
+      "corpus/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "corpus/groups.py": "7dcff3dfe625e5e70688e7c0c8440c3d49313f9aab72e731ad3ad69cdcb5b2fd",
+      "corpus/index.py": "830432a744a626b4f7fd8e97d88241a8a29cfc4b22ffee7cc2c4bea4e373e9f2",
+      "corpus/loaded.py": "e6c21fc83f7a79112668d71b42c5d934577d8ea45b798f82903c226b00c323f4",
+      "harness/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "harness/answer.py": "5b8ac74fb73245e45de387ddfd3e63992f03c083006ed933fdb52aa223d5978d",
+      "harness/attack.py": "bf02bec54c64ca3864b7590d7179d8283497b534ed7f8abc7da1dd13ec147b6f",
+      "harness/citations.py": "fef869c2472692d3ea01ed2dca5563881981e0a65a9d381895193370427bf214",
+      "harness/identity.py": "2754b7c8a7357fa599738480dee303f9cc2d9ae66bf4830f49af92251cb6bdb8",
+      "harness/matrices.py": "37f45d00cecb84a5642aefeddfffaae34b7d2711d8aa920778bad483367acfb9",
+      "harness/pinned_source.py": "19726ef0c60c5ff613aa75fb20514ce1c9b07336c031872f2d4d3da46faecde2",
+      "harness/provenance.py": "34521665454a322ee9d14cc30f2b76f9b64e7a30cfa4469216056d46e46b6a4f",
+      "harness/run.py": "fa7e3eb373ebdbe320066faff03d0adc80ed79ff471a2b2101111772a97cd0f7",
+      "harness/selftest.py": "e10b2f26aa41eb34fc63f9d07788abe735da655f54a32d5149335b3939c740ee",
+      "harness/sharded.py": "0fab2e8225e5471eb5f23bd7b66545233744f57b9eed419ae5c248955821f815",
+      "primitives/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "primitives/build.py": "21998299538186d094c10f5737a448cafa9102671bce76b19d714daca55b262a",
+      "producers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "producers/insightface_pass.py": "e44fe57a8e4d196986d93692eb27d29a2e5a64dbbe7422036458ee870641d368",
+      "producers/inventory.py": "1d7bf42e974659e05fd45a82716992ec12ab42866921a49694405ccc0797b219",
+      "producers/registry.py": "823f5c00e6abfaa1818be4a3fdadda1dfe8aa3b9d012b586c73a17b133f18231",
+      "producers/union.py": "e7d6e7b051a0c0dbd0aa4f60a330cfa8976e5b0446e5a90210d38c9a500c4b8d",
+      "storage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage/contract.py": "181c7f23d3d7e57c21e46e1f638b41fdb2d94441f46063c600e8d8765c3e9223",
+      "storage/gallery_v45.py": "ecd96f1ae1f19ca368dd099daf8be046d2d3077e39dfde02be635a8f42e863af",
+      "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vendor/acceptance.py": "f1b194149e7a24ff23fcfd31dd48bd038b40bc91724baf5b138c0b515699d389",
+      "vendor/conformance.py": "cf9ccdb4b42e69916657312bf8fafebd6fee30589706892f9e1355dfb06db7a8",
+      "vendor/fixtures.py": "ebf1928c7cf2cbd23c98e9909bd01f9f543aafb974148be4f1575d9ce4f3966c"
+    },
+    "weights": {
+      "antelopev2/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "antelopev2/2d106det.onnx": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "antelopev2/genderage.onnx": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "antelopev2/glintr100.onnx": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "antelopev2/scrfd_10g_bnkps.onnx": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "buffalo_l/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "buffalo_l/2d106det.onnx": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "buffalo_l/det_10g.onnx": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "buffalo_l/genderage.onnx": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "buffalo_l/w600k_r50.onnx": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+      "facexlib/detection_Resnet50_Final.pth": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "facexlib/parsing_bisenet.pth": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "facexlib/recognition_arcface_ir_se50.pth": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
+    }
+  },
+  "population": {
+    "consumer_tier_covered": [],
+    "declared": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ],
+    "primitive_tier_only": [
+      "face_selection",
+      "insightface_producer",
+      "reference_sets"
+    ],
+    "unexercised": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ]
+  },
+  "results": [
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_faceid_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. ipadapter_faceid takes first -> area 17,850 px^2; largest_bbox_area -> area 23,041 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_faceid_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. ipadapter_faceid takes first -> area 2,763 px^2; largest_bbox_area -> area 21,441 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_faceid_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. ipadapter_faceid takes first -> area 40,030 px^2; largest_bbox_area -> area 94,256 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid_plus|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_faceid_plus_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. ipadapter_faceid_plus takes first -> area 17,850 px^2; largest_bbox_area -> area 23,041 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid_plus|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid_plus|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_faceid_plus_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. ipadapter_faceid_plus takes first -> area 2,763 px^2; largest_bbox_area -> area 21,441 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid_plus|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid_plus|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_faceid_plus_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. ipadapter_faceid_plus takes first -> area 40,030 px^2; largest_bbox_area -> area 94,256 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_faceid_plus|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_upstream|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_upstream_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. ipadapter_upstream takes first -> area 17,850 px^2; largest_bbox_area -> area 23,041 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_upstream|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_upstream|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_upstream_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. ipadapter_upstream takes first -> area 2,763 px^2; largest_bbox_area -> area 21,441 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_upstream|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|ipadapter_upstream|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_ipadapter_upstream_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. ipadapter_upstream takes first -> area 40,030 px^2; largest_bbox_area -> area 94,256 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|ipadapter_upstream|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|photomaker_v2|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_photomaker_v2_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. photomaker_v2 takes first -> area 17,850 px^2; largest_bbox_area -> area 23,041 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|photomaker_v2|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|photomaker_v2|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_photomaker_v2_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. photomaker_v2 takes first -> area 2,763 px^2; largest_bbox_area -> area 21,441 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|photomaker_v2|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|photomaker_v2|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_photomaker_v2_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. photomaker_v2 takes first -> area 40,030 px^2; largest_bbox_area -> area 94,256 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|photomaker_v2|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|reactor|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_reactor_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. reactor takes first -> area 17,850 px^2; largest_bbox_area -> area 23,041 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|reactor|1649731234",
+        "sha256": "3a840d92bd7e03e50911a3c3e4c44252791bd2c1b54d53967312da5eee8036f2",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|reactor|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_reactor_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. reactor takes first -> area 2,763 px^2; largest_bbox_area -> area 21,441 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|reactor|1717292131",
+        "sha256": "bb8a1c549b1349f6331c9e8659d50af77d37780e6237ca58be2852d2918c0adf",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "first|reactor|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_first_reactor_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. reactor takes first -> area 40,030 px^2; largest_bbox_area -> area 94,256 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "first|reactor|1922908529",
+        "sha256": "27fa2cbfb426cea69fbb538fa1fcfd74644f961e1a8854d6509445d6534432c9",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|infiniteyou|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_infiniteyou_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. infiniteyou takes largest_bbox_area -> area 23,041 px^2; first -> area 17,850 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|infiniteyou|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|infiniteyou|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_infiniteyou_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. infiniteyou takes largest_bbox_area -> area 21,441 px^2; first -> area 2,763 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|infiniteyou|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|infiniteyou|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_infiniteyou_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. infiniteyou takes largest_bbox_area -> area 94,256 px^2; first -> area 40,030 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|infiniteyou|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_instantid_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. instantid takes largest_bbox_area -> area 23,041 px^2; first -> area 17,850 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_instantid_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. instantid takes largest_bbox_area -> area 21,441 px^2; first -> area 2,763 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_instantid_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. instantid takes largest_bbox_area -> area 94,256 px^2; first -> area 40,030 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid_upstream|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_instantid_upstream_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. instantid_upstream takes largest_bbox_area -> area 23,041 px^2; first -> area 17,850 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid_upstream|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid_upstream|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_instantid_upstream_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. instantid_upstream takes largest_bbox_area -> area 21,441 px^2; first -> area 2,763 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid_upstream|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid_upstream|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_instantid_upstream_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. instantid_upstream takes largest_bbox_area -> area 94,256 px^2; first -> area 40,030 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|instantid_upstream|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_comfyui|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_pulid_comfyui_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. pulid_comfyui takes largest_bbox_area -> area 23,041 px^2; first -> area 17,850 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_comfyui|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_comfyui|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_pulid_comfyui_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. pulid_comfyui takes largest_bbox_area -> area 21,441 px^2; first -> area 2,763 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_comfyui|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_comfyui|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_pulid_comfyui_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. pulid_comfyui takes largest_bbox_area -> area 94,256 px^2; first -> area 40,030 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_comfyui|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_upstream|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_pulid_upstream_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. pulid_upstream takes largest_bbox_area -> area 23,041 px^2; first -> area 17,850 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_upstream|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_upstream|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_pulid_upstream_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. pulid_upstream takes largest_bbox_area -> area 21,441 px^2; first -> area 2,763 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_upstream|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_upstream|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_pulid_upstream_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. pulid_upstream takes largest_bbox_area -> area 94,256 px^2; first -> area 40,030 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|pulid_upstream|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 348.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|uniportrait|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_uniportrait_1649731234",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0e235c576cbc5c0cbed90307c45dae9ffccd42037203724e361597515b8d6fe7",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1649731234: 2 faces detected, 2 released. uniportrait takes largest_bbox_area -> area 23,041 px^2; first -> area 17,850 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 5190.565250655636
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|uniportrait|1649731234",
+        "sha256": "1700fdf12cfb0a4de6063b6af1d31e7f99e244d5aafb34046750038fbcda5a2e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 434.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|uniportrait|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_uniportrait_1717292131",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "081338d48dcaca3d537efcfcc6d180fe43ffbafef21bf88910a09d0e9fee8563",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1717292131: 15 faces detected, 14 released. uniportrait takes largest_bbox_area -> area 21,441 px^2; first -> area 2,763 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 18678.123922249302
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|uniportrait|1717292131",
+        "sha256": "983d602c1b925b4293aa853278fa63f538fdb6126d874cf1000b3a82925d51bc",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "4 of 4 elements differ, worst 402.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "selection_rule_mutated",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|uniportrait|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "select_largest_bbox_area_uniportrait_1922908529",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "face_selection",
+      "fixture_sha256": "0ec1c2b65f1f1b060badf34f2da1c6590377556001a46ccf36b1ae73a32b8509",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "area of the face this rule picks against the area the other rule picks",
+          "detail": "1922908529: 2 faces detected, 2 released. uniportrait takes largest_bbox_area -> area 94,256 px^2; first -> area 40,030 px^2",
+          "name": "rules_disagree",
+          "unit": "px^2",
+          "value": 54225.97577137165
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "largest_bbox_area|uniportrait|1922908529",
+        "sha256": "f9fc456511228772d1fb2eb488359f5f6e9eb1a3202f19003a4d1b4125d4197e",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "normed_embedding|1_id_document",
+        "sha256": "ed24cf8a8b03224260a62d59539a7079fd6141d5138fa0d9b03d0d618ef49559",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "normed_embedding_from_embedding_1_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "norm(embedding); reconstruction needs a number the unit vector does not carry",
+          "detail": "norm 25.0815; raw recovers to 1.192e-07 WITH the norm supplied externally, and not at all without it",
+          "name": "norm_is_not_recoverable",
+          "unit": "l2_norm",
+          "value": 25.081518173217773
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "normed_embedding|1_id_document",
+        "sha256": "ed24cf8a8b03224260a62d59539a7079fd6141d5138fa0d9b03d0d618ef49559",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "normed_embedding|1_selfie",
+        "sha256": "59f8820651ab81b7e00aac5eb49ee70884aa4993e12e48acf1e8d3fb4ad57739",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "normed_embedding_from_embedding_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "norm(embedding); reconstruction needs a number the unit vector does not carry",
+          "detail": "norm 23.2301; raw recovers to 2.384e-07 WITH the norm supplied externally, and not at all without it",
+          "name": "norm_is_not_recoverable",
+          "unit": "l2_norm",
+          "value": 23.230085372924805
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "normed_embedding|1_selfie",
+        "sha256": "59f8820651ab81b7e00aac5eb49ee70884aa4993e12e48acf1e8d3fb4ad57739",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "normed_embedding|2_id_document",
+        "sha256": "bf85bc9723347671114fc5cf96b77583c4d5a4a4f60a0d99921d64eae4cded05",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "normed_embedding_from_embedding_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "norm(embedding); reconstruction needs a number the unit vector does not carry",
+          "detail": "norm 23.5546; raw recovers to 2.384e-07 WITH the norm supplied externally, and not at all without it",
+          "name": "norm_is_not_recoverable",
+          "unit": "l2_norm",
+          "value": 23.554641723632812
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "normed_embedding|2_id_document",
+        "sha256": "bf85bc9723347671114fc5cf96b77583c4d5a4a4f60a0d99921d64eae4cded05",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "normed_embedding|2_selfie",
+        "sha256": "e09bd7a467f0b8820d0671d65a2426cc84520c08ba6c90ce774208c1a65f309a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "normed_embedding_from_embedding_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "norm(embedding); reconstruction needs a number the unit vector does not carry",
+          "detail": "norm 19.9020; raw recovers to 1.192e-07 WITH the norm supplied externally, and not at all without it",
+          "name": "norm_is_not_recoverable",
+          "unit": "l2_norm",
+          "value": 19.901992797851562
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "normed_embedding|2_selfie",
+        "sha256": "e09bd7a467f0b8820d0671d65a2426cc84520c08ba6c90ce774208c1a65f309a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "normed_embedding|3_id_document",
+        "sha256": "6812e8eec93cb37229e946ce33cbd91d25852335bb76d7a6f3bf8cffa5a4c6ec",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "normed_embedding_from_embedding_3_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "norm(embedding); reconstruction needs a number the unit vector does not carry",
+          "detail": "norm 25.1167; raw recovers to 2.384e-07 WITH the norm supplied externally, and not at all without it",
+          "name": "norm_is_not_recoverable",
+          "unit": "l2_norm",
+          "value": 25.11669158935547
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "normed_embedding|3_id_document",
+        "sha256": "6812e8eec93cb37229e946ce33cbd91d25852335bb76d7a6f3bf8cffa5a4c6ec",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "normed_embedding|3_selfie",
+        "sha256": "357c7ed3412106dffa06c74075660495a8161d49d677148496d6a826e930baa9",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "normed_embedding_from_embedding_3_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "norm(embedding); reconstruction needs a number the unit vector does not carry",
+          "detail": "norm 21.0826; raw recovers to 1.192e-07 WITH the norm supplied externally, and not at all without it",
+          "name": "norm_is_not_recoverable",
+          "unit": "l2_norm",
+          "value": 21.082599639892578
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "normed_embedding|3_selfie",
+        "sha256": "357c7ed3412106dffa06c74075660495a8161d49d677148496d6a826e930baa9",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "pose|1_id_document",
+        "sha256": "f697aced13a0e1e63dca24c6a8850350dded2d903fadd9842a9a3d0c90e7c1ef",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "pose_from_landmark_3d_68_1_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "landmark_3d_68 normalised by 3024x4032, xy rounded to 5 places, z to 2, clamped to [0,1], expanded back, then re-derived",
+          "detail": "worst axis error 0.000731 deg against the producer's own pose (pitch -2.67 yaw -1.20 roll -0.46)",
+          "name": "pose_error_through_todays_storage",
+          "unit": "degrees",
+          "value": 0.0007312297821044922
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "pose|1_id_document",
+        "sha256": "f697aced13a0e1e63dca24c6a8850350dded2d903fadd9842a9a3d0c90e7c1ef",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "pose|1_selfie",
+        "sha256": "7ca346a7798720f19b4cb9e25a382f4cfbcf646f310e2525ea2b7808ea58ca41",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "pose_from_landmark_3d_68_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "landmark_3d_68 normalised by 2316x3088, xy rounded to 5 places, z to 2, clamped to [0,1], expanded back, then re-derived",
+          "detail": "worst axis error 0.000530 deg against the producer's own pose (pitch -4.78 yaw 2.55 roll -0.42)",
+          "name": "pose_error_through_todays_storage",
+          "unit": "degrees",
+          "value": 0.0005304813385009766
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "pose|1_selfie",
+        "sha256": "7ca346a7798720f19b4cb9e25a382f4cfbcf646f310e2525ea2b7808ea58ca41",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "pose|2_id_document",
+        "sha256": "38c9199b70b5b65f3a7ac0d84a0576193ba43ba3bdbe42c19e8fcafd6901fead",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "pose_from_landmark_3d_68_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "landmark_3d_68 normalised by 3000x4000, xy rounded to 5 places, z to 2, clamped to [0,1], expanded back, then re-derived",
+          "detail": "worst axis error 0.000712 deg against the producer's own pose (pitch -6.98 yaw 0.78 roll -2.27)",
+          "name": "pose_error_through_todays_storage",
+          "unit": "degrees",
+          "value": 0.0007123947143554688
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "pose|2_id_document",
+        "sha256": "38c9199b70b5b65f3a7ac0d84a0576193ba43ba3bdbe42c19e8fcafd6901fead",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "pose|2_selfie",
+        "sha256": "33ff56374857f9e6ae3e0889a2021693e0518c87bc0fc184213f537ee4af5d52",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "pose_from_landmark_3d_68_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "landmark_3d_68 normalised by 4896x6528, xy rounded to 5 places, z to 2, clamped to [0,1], expanded back, then re-derived",
+          "detail": "worst axis error 0.000290 deg against the producer's own pose (pitch -4.00 yaw -4.28 roll 2.32)",
+          "name": "pose_error_through_todays_storage",
+          "unit": "degrees",
+          "value": 0.0002903938293457031
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "pose|2_selfie",
+        "sha256": "33ff56374857f9e6ae3e0889a2021693e0518c87bc0fc184213f537ee4af5d52",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "pose|3_id_document",
+        "sha256": "e9a44d8a250a7af9d5c81fe2e0f9e8b95ce3ae958e7bb6c84610cc159f5817ba",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "pose_from_landmark_3d_68_3_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "dee8d298eda4e1080dc2328f7835c7a765eb843aeb55c36d61e6f898bf93c474",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "landmark_3d_68 normalised by 3024x4032, xy rounded to 5 places, z to 2, clamped to [0,1], expanded back, then re-derived",
+          "detail": "worst axis error 0.000764 deg against the producer's own pose (pitch -9.26 yaw 0.68 roll -1.47)",
+          "name": "pose_error_through_todays_storage",
+          "unit": "degrees",
+          "value": 0.0007638931274414062
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "pose|3_id_document",
+        "sha256": "e9a44d8a250a7af9d5c81fe2e0f9e8b95ce3ae958e7bb6c84610cc159f5817ba",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "pose|3_selfie",
+        "sha256": "45cfec9ae37390373acfecb1e6980191dc60ccba9775fe81dfead7de5d9ee828",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "pose_from_landmark_3d_68_3_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "insightface_producer",
+      "fixture_sha256": "1e4806dce7c302e463bee60f13f4828426d87713f929499c480359cd5faad67e",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "landmark_3d_68 normalised by 2316x3088, xy rounded to 5 places, z to 2, clamped to [0,1], expanded back, then re-derived",
+          "detail": "worst axis error 0.000170 deg against the producer's own pose (pitch -13.43 yaw 3.84 roll 3.22)",
+          "name": "pose_error_through_todays_storage",
+          "unit": "degrees",
+          "value": 0.0001697540283203125
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "pose|3_selfie",
+        "sha256": "45cfec9ae37390373acfecb1e6980191dc60ccba9775fe81dfead7de5d9ee828",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "mean|duplicate_AA",
+        "sha256": "3ef5705b06fcc7a68446f9a307050aeab644b9c33be146a940ea514f2f40f7c8",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_mean_duplicate_AA",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "910c532411cb4e82ac5489312166fe830b387b353677071b52eee8f7496b0958",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "duplicate_AA through mean: (2, 512) -> (512,) = 2,048 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "mean|duplicate_AA",
+        "sha256": "3ef5705b06fcc7a68446f9a307050aeab644b9c33be146a940ea514f2f40f7c8",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "mean|mixed_AX",
+        "sha256": "40dc861a7b25148a811c9d5acb2cb1ca7532a44869865e1e50f54e3fe52ab020",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_mean_mixed_AX",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "0c8731b6776a5857be310f5d41593e7d73d08a5c1bf6fc362598a17b04b012e4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "mixed_AX through mean: (2, 512) -> (512,) = 2,048 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "mean|mixed_AX",
+        "sha256": "40dc861a7b25148a811c9d5acb2cb1ca7532a44869865e1e50f54e3fe52ab020",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "mean|pair_AB",
+        "sha256": "9fa059f08fbbedcdc5c8d96fabc4fbb48d537e01f5b75acd7a679756f109b569",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_mean_pair_AB",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "59cea541de9c25a75ebadf1e4b0d50d827f9428b2725240f82ca2974512657b5",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "pair_AB through mean: (2, 512) -> (512,) = 2,048 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "mean|pair_AB",
+        "sha256": "9fa059f08fbbedcdc5c8d96fabc4fbb48d537e01f5b75acd7a679756f109b569",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "mean|pair_BA",
+        "sha256": "9fa059f08fbbedcdc5c8d96fabc4fbb48d537e01f5b75acd7a679756f109b569",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_mean_pair_BA",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "ca10963d02528cc2b7171f6e14c8c2bbf4ecf7c0c36984f662560b081ee0e440",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "pair_BA through mean: (2, 512) -> (512,) = 2,048 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "mean|pair_BA",
+        "sha256": "9fa059f08fbbedcdc5c8d96fabc4fbb48d537e01f5b75acd7a679756f109b569",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "mean|single_A",
+        "sha256": "3ef5705b06fcc7a68446f9a307050aeab644b9c33be146a940ea514f2f40f7c8",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_mean_single_A",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "ec63bef5ef0b26aa8f7e332f48f688733930b00ead942c6304e0208c9898757e",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "single_A through mean: (1, 512) -> (512,) = 2,048 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "mean|single_A",
+        "sha256": "3ef5705b06fcc7a68446f9a307050aeab644b9c33be146a940ea514f2f40f7c8",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "119 of 512 elements differ, worst 0.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "mean|triple_ABC",
+        "sha256": "f7db7928f40455ab7adc0b24a4ae98721358d211241526af18ba90d3a37b735a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_mean_triple_ABC",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "2919b201885f804ca6c9d3c2f93a44d87ae01bf1256cb209fc20d4d5d7a0a680",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "triple_ABC through mean: (3, 512) -> (512,) = 2,048 B; order-sensitive: True",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "mean|triple_ABC",
+        "sha256": "f7db7928f40455ab7adc0b24a4ae98721358d211241526af18ba90d3a37b735a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "stack|duplicate_AA",
+        "sha256": "92c7b1029803f0b74098ca0b683a2b6d09029f70eaffb761e6bd4ab1ea08a70c",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_stack_duplicate_AA",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "910c532411cb4e82ac5489312166fe830b387b353677071b52eee8f7496b0958",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "duplicate_AA through stack: (2, 512) -> (2, 512) = 4,096 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 4096.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "stack|duplicate_AA",
+        "sha256": "92c7b1029803f0b74098ca0b683a2b6d09029f70eaffb761e6bd4ab1ea08a70c",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "1024 of 1024 elements differ, worst 4.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "stack|mixed_AX",
+        "sha256": "a7e7738b59f836dbae2954dc235fb5474214c43327b7f04e4e16d7af3f4855aa",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_stack_mixed_AX",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "0c8731b6776a5857be310f5d41593e7d73d08a5c1bf6fc362598a17b04b012e4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "mixed_AX through stack: (2, 512) -> (2, 512) = 4,096 B; order-sensitive: True",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 4096.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "stack|mixed_AX",
+        "sha256": "a7e7738b59f836dbae2954dc235fb5474214c43327b7f04e4e16d7af3f4855aa",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "1024 of 1024 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "stack|pair_AB",
+        "sha256": "9d5808801f2d2e1fbd39c6aa3c078c8261d697386110c50b513e1815571900d7",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_stack_pair_AB",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "59cea541de9c25a75ebadf1e4b0d50d827f9428b2725240f82ca2974512657b5",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "pair_AB through stack: (2, 512) -> (2, 512) = 4,096 B; order-sensitive: True",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 4096.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "stack|pair_AB",
+        "sha256": "9d5808801f2d2e1fbd39c6aa3c078c8261d697386110c50b513e1815571900d7",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "1024 of 1024 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "stack|pair_BA",
+        "sha256": "edd5ff93d5542978e0b2bd75e735d4a2d683ef989c0fe0b7376523570ad8bcb1",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_stack_pair_BA",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "ca10963d02528cc2b7171f6e14c8c2bbf4ecf7c0c36984f662560b081ee0e440",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "pair_BA through stack: (2, 512) -> (2, 512) = 4,096 B; order-sensitive: True",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 4096.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "stack|pair_BA",
+        "sha256": "edd5ff93d5542978e0b2bd75e735d4a2d683ef989c0fe0b7376523570ad8bcb1",
+        "shape": [
+          2,
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "byte-identical",
+          "expect_breaks": false,
+          "kind": "substitution",
+          "observed_break": false,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "stack|single_A",
+        "sha256": "9f48c89116c881c227ecc937b307ecb315dd9b65dd182eacab3c0f72d25f1427",
+        "shape": [
+          1,
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_stack_single_A",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "ec63bef5ef0b26aa8f7e332f48f688733930b00ead942c6304e0208c9898757e",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "single_A through stack: (1, 512) -> (1, 512) = 2,048 B; order-sensitive: False",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 2048.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "stack|single_A",
+        "sha256": "9f48c89116c881c227ecc937b307ecb315dd9b65dd182eacab3c0f72d25f1427",
+        "shape": [
+          1,
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'reference_vectors', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "reference_vectors",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "1024 of 1536 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "order_reversed",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "stack|triple_ABC",
+        "sha256": "b951a03d5281d4db680aab0d5ca7ed7a4777fb3145fb95111980c365ebeeb623",
+        "shape": [
+          3,
+          512
+        ],
+        "values": null
+      },
+      "case": "refset_stack_triple_ABC",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "reference_sets",
+      "fixture_sha256": "2919b201885f804ca6c9d3c2f93a44d87ae01bf1256cb209fc20d4d5d7a0a680",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the combined artifact, and whether reversing the set changes it",
+          "detail": "triple_ABC through stack: (3, 512) -> (3, 512) = 6,144 B; order-sensitive: True",
+          "name": "set_semantics",
+          "unit": "bytes",
+          "value": 6144.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "stack|triple_ABC",
+        "sha256": "b951a03d5281d4db680aab0d5ca7ed7a4777fb3145fb95111980c365ebeeb623",
+        "shape": [
+          3,
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    }
+  ],
+  "runtime": {
+    "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
+      "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-contrib-python": "4.14.0.94",
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  },
+  "verdicts": {
+    "CONTRADICTED": 0,
+    "FAIL": 0,
+    "PASS": 57,
+    "UNSUPPORTED": 0,
+    "VENDOR_BASELINE_UNAVAILABLE": 0
+  }
+}

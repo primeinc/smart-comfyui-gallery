@@ -21,6 +21,7 @@ during the un-ablated replay has failed outright.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -38,6 +39,7 @@ from compat.contracts.case import (
     Tier,
     Verdict,
 )
+from compat.harness import identity as evidence_identity
 from compat.harness import provenance
 
 ROOT: Path = Path(__file__).resolve().parent.parent
@@ -176,7 +178,7 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
     )
 
 
-def runners() -> tuple[Runner, ...]:
+def build_runners() -> tuple[Runner, ...]:
     """Every consumer file that can run here.
 
     Imported rather than discovered by filename: a module that fails to import
@@ -185,18 +187,30 @@ def runners() -> tuple[Runner, ...]:
     """
     from compat.consumers.aligned_crop import AlignedCropRunner
     from compat.consumers.consisid_facexlib import ConsisIDRunner
+    from compat.consumers.control_stream import all_runners as control_runners
+    from compat.consumers.embedding_spaces import all_runners as space_runners
     from compat.consumers.face_family import all_runners
+    from compat.consumers.face_selection import all_runners as selection_runners
+    from compat.consumers.gallery_storage import all_runners as storage_runners
+    from compat.consumers.masked_reference import all_runners as masked_runners
     from compat.consumers.other_media import all_runners as media_runners
     from compat.consumers.producer_derivations import ProducerDerivationRunner
     from compat.consumers.reactor_face_model import ReactorFaceModelRunner
+    from compat.consumers.reference_sets import all_runners as refset_runners
     from compat.consumers.whole_reference import all_runners as whole_runners
+    from compat.vendor.conformance import all_runners as conformance_runners
 
     # ReActor appears twice on purpose and the two are not redundant. The
     # family runner covers the embedding it extracts like every other
     # consumer; this one covers its ACTUAL boundary -- a safetensors file
     # written and read back by upstream's own code -- which is the only
     # first-party loader in the population.
+    # `gallery_storage` is FIRST because everything after it is quoted against
+    # it. Every other runner builds its retained state from the producer held
+    # in memory, which proves a conditional whose antecedent -- that this
+    # application durably keeps those values -- nothing else here tests.
     return (
+        *storage_runners(),
         AlignedCropRunner(),
         ProducerDerivationRunner(),
         ReactorFaceModelRunner(),
@@ -204,6 +218,17 @@ def runners() -> tuple[Runner, ...]:
         *all_runners(),
         *whole_runners(),
         *media_runners(),
+        *control_runners(),
+        *selection_runners(),
+        *refset_runners(),
+        *masked_runners(),
+        # The same family, over the VENDOR's own reference images rather
+        # than our corpus. Case names carry a `vendor_` shot label, so
+        # these do not collide with the corpus cases.
+        *conformance_runners(),
+        # Three recognition models over ONE aligned crop: whether the
+        # stored vector serves consumers that use a different one.
+        *space_runners(),
     )
 
 
@@ -212,10 +237,60 @@ def _without_timing(row: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if key != "seconds"}
 
 
-def run_all() -> dict[str, Any]:
+def _without_seconds(out: dict[str, Any]) -> dict[str, Any]:
+    """One run's evidence with the wall clock removed.
+
+    A shard's partial carries the same shape as a whole run so the merge does
+    not special-case it, minus timings for the same reason the whole run drops
+    them: two identical runs must serialise to identical bytes.
+    """
+    return {key: value for key, value in out.items() if key != "seconds_by_case"}
+
+
+def runners(only: str = "") -> tuple[Runner, ...]:
+    """Every runner, or just the ones whose `consumer_id` matches `only`.
+
+    Constructed LAZILY per selection rather than all at once. Sixteen lanes
+    now load model packs in their constructors -- two insightface packs, the
+    face family per vendor setup, three recognition models, facexlib, torch --
+    and building every one of them in a single process exhausted memory and
+    the run died with no traceback partway through model loading.
+
+    Selecting is therefore an operational need, not a convenience: a lane that
+    cannot be run on its own cannot be debugged either.
+    """
+    if not only:
+        return build_runners()
+    wanted = {one.strip() for one in only.split(",") if one.strip()}
+    return tuple(one for one in build_runners() if one.consumer_id in wanted)
+
+
+def canonical(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Case results in an order that belongs to the RESULTS, not the producer.
+
+    Two entrypoints write this evidence and they disagreed about order:
+    `run_all` emits in `runners()` order, while `sharded.merge` concatenates
+    shard by shard in `SHARDS` order. Both are legitimate; neither is
+    canonical; so the bytes of `cases.json` depended on which one wrote it.
+
+    That is not a cosmetic difference. `attack.evidence_not_reproducible`
+    re-runs the executor in-process and compares against the file on disk --
+    which `just compat::cases` writes via the SHARDED path. It was therefore
+    comparing two different orderings of the same results and reporting the
+    harness as non-deterministic. The attack was right that the bytes did not
+    match and wrong about why, and a green there would have been just as
+    uninformative as the red.
+
+    `(consumer_id, case)` is unique per row: `case` already carries the
+    boundary label that distinguishes rows within a consumer.
+    """
+    return sorted(results, key=lambda one: (one["consumer_id"], one["case"]))
+
+
+def run_all(only: str = "") -> dict[str, Any]:
     registry = Registry()
     results: list[CaseResult] = []
-    for runner in runners():
+    for runner in runners(only):
         cases = runner.cases()
         registry.extend(cases)
         results.extend(run_case(runner, one) for one in cases)
@@ -238,6 +313,9 @@ def run_all() -> dict[str, Any]:
 
     return {
         "runtime": provenance.runtime_identity(),
+        # Every answer-changing input, so a runner edited under unchanged pins
+        # makes the evidence provably stale rather than silently wrong.
+        "identity": evidence_identity.identity(),
         "cases": len(registry),
         # Timing is stripped from the EVIDENCE and reported beside it. It is a
         # property of the machine, not of the observation, and leaving it in
@@ -245,7 +323,7 @@ def run_all() -> dict[str, Any]:
         # runs produced different files, so "the evidence is unchanged" was
         # never a statement anyone could make. Now it is, and `attack.py`
         # asserts it.
-        "results": [_without_timing(asdict(one)) for one in results],
+        "results": canonical([_without_timing(asdict(one)) for one in results]),
         # Reported beside the evidence, never inside it. `main` moves this into
         # timings.json; `attack.py` re-runs the executor and asserts what is
         # left serialises to the same bytes, which is only a question that can
@@ -288,9 +366,36 @@ def report(out: dict[str, Any]) -> None:
     print(f"NOT exercised           : {len(pop['unexercised'])}")
 
 
-def main() -> int:
-    out = run_all()
+def main(argv: list[str] | None = None) -> int:
+    """`python -m compat.harness.run [consumer_id[,consumer_id...]]`.
+
+    With an argument the run is PARTIAL: it writes no evidence, because a
+    cases.json covering one lane would read as a full pass over a shrunken
+    population -- the exact failure `unexercised` exists to prevent.
+    """
+    args = list(argv if argv is not None else sys.argv[1:])
+    # `--json <path>` writes this shard's partial where the caller asks, so
+    # `compat.harness.sharded` can merge several processes into one evidence
+    # file. Without a path a selected run stays partial and writes nothing.
+    partial_to: Path | None = None
+    if "--json" in args:
+        at = args.index("--json")
+        partial_to = Path(args[at + 1])
+        del args[at : at + 2]
+    only = " ".join(args).strip()
+
+    out = run_all(only)
     report(out)
+    if only:
+        if partial_to is None:
+            print(f"\nPARTIAL RUN ({only}): no evidence written. Run the whole population for that.")
+        else:
+            partial_to.parent.mkdir(parents=True, exist_ok=True)
+            with partial_to.open("w", encoding="utf-8", newline="") as handle:
+                handle.write(json.dumps(_without_seconds(out), indent=2, sort_keys=True, default=str))
+                handle.write("\n")
+            print(f"wrote partial {partial_to}")
+        return 0 if out["verdicts"][Verdict.DIVERGED.value] == 0 else 1
 
     # Timings leave the evidence and land beside it, so two identical runs
     # produce byte-identical cases.json and a diff of that file means

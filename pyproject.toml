@@ -44,6 +44,14 @@ dependencies = [
     # compiler. See vision/derive.py.
     "pyvips[binary]>=3.1.1",
     "opencv-python<5",  # 5.x ORT engine needs dynamic-dims ONNX; the shipped YuNet 2023mar is static-shape
+    # The SAME bound on the contrib distribution, because the bound above is
+    # on a package name and `cv2` is a MODULE name. mediapipe requires
+    # opencv-contrib-python; installing it brought 5.0.0.93 in beside
+    # opencv-python 4.14, cv2 began resolving to 5.0, and every aligned crop
+    # moved by one level in a handful of pixels -- 3 of 37,632 at 112, 88 of
+    # 338,688 at 336. Nothing was violated: the constraint simply did not
+    # cover the distribution that won the import.
+    "opencv-contrib-python<5",
     "numpy",
     # XMP is parsed out of image files the gallery did not write; expat
     # expands entities, so a crafted file can exhaust memory during a scan.
@@ -128,6 +136,13 @@ compat = [
     "safetensors>=0.8.0",
     "consisid-eva-clip>=1.0.2",
     "torchaudio>=2.11.0",
+    # A SECOND and THIRD landmark producer, so the storage contract is graded
+    # against the union of what providers emit rather than against one pack's
+    # nine keys. antelopev2 emits 5, 106 and 68x3 points; these add 68 2D/3D
+    # (iBUG) and 478 3D with 52 blendshapes, and neither has a place to land
+    # in the current schema -- which is the claim under test.
+    "face-alignment>=1.4.1",
+    "mediapipe>=0.10.14",
 ]
 dev = [
     "pytest",

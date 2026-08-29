@@ -19,7 +19,20 @@ Vendor preprocessing is theirs, not ours:
                 `ImageOps.exif_transpose` first; UNO's own inference.py does
                 not, which is a real difference between two consumers sharing
                 one function.
-    uso, instantcharacter, qwen, anystory, omnigen2
+    uso         its OWN `preprocess_ref`, uso/flux/pipeline.py:72-87 --
+                LANCZOS to a long edge, called from inference.py:147. This was
+                recorded as `rgb_only` until the pinned source was read, which
+                made every USO case compare a bare array against a resample
+                the consumer really performs.
+    instantcharacter
+                pipeline.py:379 squares the reference to its longer edge, then
+                :64-65 resamples to 384 and 768 for two encoder paths. Also
+                recorded as `rgb_only` until the source was read.
+    omnigen2    max_pixels 1024*1024 and max_input_image_side_length 1024,
+                applied per reference at pipeline_omnigen2.py:265 and computed
+                at image_processor.py:121-133, then floored to a multiple of
+                16. Recorded as `rgb_only` until the source was read.
+    qwen, anystory
                 `Image.open(...).convert("RGB")` and nothing else. Qwen is
                 worth naming: the file this manifest originally cited is prose
                 with no code, and the runnable entrypoint hands a PIL image
@@ -69,6 +82,10 @@ class WholeSetup:
     cited: tuple[str, ...]
     preprocess: str
     preprocess_from: str
+    preprocess_path: str
+    max_pixels: int
+    max_side_length: int
+    vae_scale_factor: int
     long_size_single: int
     exif_transpose: bool
     mask_mode: str
@@ -87,6 +104,10 @@ def whole_setups() -> dict[str, WholeSetup]:
             repo=row["repo"],
             cited=tuple(setup.get("cited", [])),
             preprocess=setup.get("preprocess", "rgb_only"),
+            preprocess_path=str(setup.get("preprocess_path") or "uno/flux/pipeline.py"),
+            max_pixels=int(setup.get("max_pixels") or 1024 * 1024),
+            max_side_length=int(setup.get("max_side_length") or 1024),
+            vae_scale_factor=int(setup.get("vae_scale_factor") or 16),
             preprocess_from=str(setup.get("preprocess_from") or row["id"]),
             long_size_single=int(setup.get("long_size_single", 0)),
             exif_transpose=bool(setup.get("exif_transpose", False)),
@@ -95,13 +116,13 @@ def whole_setups() -> dict[str, WholeSetup]:
     return out
 
 
-def uno_preprocess_ref(setup: WholeSetup) -> Any:
-    """UNO's own `preprocess_ref`, executed from the pinned blob.
+def loaded_preprocess_ref(setup: WholeSetup) -> Any:
+    """That vendor's own `preprocess_ref`, executed from the pinned blob.
 
-    UMO imports this same function rather than reimplementing it, so both
-    consumers resolve to one source -- `preprocess_from` names which clone the
-    bytes come out of, and the evidence records that commit rather than the
-    importing repository's.
+    UMO imports UNO's rather than reimplementing it, so both resolve to one
+    source; USO ships its OWN copy at `uso/flux/pipeline.py`. `preprocess_from`
+    names the clone the bytes come out of and `preprocess_path` the file inside
+    it, so the evidence records the commit that actually supplied the code.
     """
     from PIL import Image
 
@@ -112,16 +133,16 @@ def uno_preprocess_ref(setup: WholeSetup) -> Any:
     owner = next(row for row in manifest["consumers"] if row["id"] == setup.preprocess_from)
     repo = provenance.clone_dir(refs_root, owner["repo"])
 
-    key = (setup.preprocess_from, owner["commit"])
+    key = (setup.preprocess_from, owner["commit"], setup.preprocess_path)
     if key not in _preprocessors:
         fn, _proof = pinned_source.load_symbol(
-            repo, owner["commit"], "uno/flux/pipeline.py", "preprocess_ref", {"Image": Image}
+            repo, owner["commit"], setup.preprocess_path, "preprocess_ref", {"Image": Image}
         )
         _preprocessors[key] = fn
     return _preprocessors[key]
 
 
-_preprocessors: dict[tuple[str, str], Any] = {}
+_preprocessors: dict[tuple[str, str, str], Any] = {}
 
 
 def to_pil(bgr: UInt8Array) -> Any:
@@ -142,8 +163,33 @@ def vendor_preprocess(setup: WholeSetup, bgr: UInt8Array) -> UInt8Array:
         # upright, so it is a no-op and recorded as one rather than skipped.
         image = ImageOps.exif_transpose(image)
 
-    if setup.preprocess == "uno_preprocess_ref":
-        image = uno_preprocess_ref(setup)(image, setup.long_size_single)
+    if setup.preprocess == "preprocess_ref":
+        image = loaded_preprocess_ref(setup)(image, setup.long_size_single)
+    elif setup.preprocess == "omnigen2_max_pixels":
+        # OmniGen2@18e6f9d5271b pipeline_omnigen2.py:265 preprocesses EVERY
+        # reference; defaults max_pixels = 1024*1024 and
+        # max_input_image_side_length = 1024 (:481-482). image_processor.py
+        # :121-133 takes ratio = min(max_pixels_ratio, max_side_length_ratio,
+        # 1.0) -- never upscales -- then floors each side to a multiple of
+        # vae_scale_factor, which the pipeline sets to vae_scale_factor * 2
+        # (:176) and the processor defaults to 16 (:52).
+        image = image.convert("RGB")
+        width, height = image.size
+        by_side = setup.max_side_length / max(width, height)
+        by_pixels = (setup.max_pixels / (width * height)) ** 0.5
+        ratio = min(by_pixels, by_side, 1.0)
+        step = setup.vae_scale_factor
+        new_w = int(width * ratio) // step * step
+        new_h = int(height * ratio) // step * step
+        image = image.resize((new_w, new_h))
+    elif setup.preprocess == "square_then_dual_resize":
+        # InstantCharacter@5f5c49a98ba1 pipeline.py:379 squares the reference
+        # to its LONGER edge, then :64-65 resamples it to 384 and to 768 for
+        # two encoder paths. The boundary is the squared image: it is the last
+        # artifact before the two branches, and both are derived from it.
+        image = image.convert("RGB")
+        longest = max(image.size)
+        image = image.resize((longest, longest))
     else:
         image = image.convert("RGB")
     return np.asarray(image, dtype=np.uint8)

@@ -80,6 +80,16 @@ class Verdict(StrEnum):
     population: a consumer that disappears when it cannot run is how a suite
     reports success it did not earn."""
 
+    VENDOR_BASELINE_UNAVAILABLE = "VENDOR_BASELINE_UNAVAILABLE"
+    """Upstream supplies no runnable first-party example, or no first-party
+    sample input for one, at the pinned commit.
+
+    Distinct from UNSUPPORTED, which is a fact about THIS machine. This is a
+    fact about the upstream: there is nothing to calibrate against, so no
+    amount of local execution can establish that our adapter reproduces the
+    vendor's path. The consumer stays visibly unresolved, and what upstream
+    does and does not provide is recorded rather than worked around."""
+
 
 @dataclass(frozen=True)
 class Fixture:
@@ -154,6 +164,16 @@ class RetainedState:
         if not isinstance(value, np.ndarray):
             raise TypeError(f"{key!r} is {type(value).__name__}, not an array")
         return value
+
+    def array(self, key: str) -> npt.NDArray[np.generic]:
+        """The value with its dtype unchanged.
+
+        The accessors below narrow to a dtype the caller names. A case whose
+        question IS the dtype cannot use them: `det_score` written to a
+        SQLite REAL returns float64, and `points()` would cast it back to the
+        producer's float32 and report a match.
+        """
+        return self._array(key)
 
     def pixels(self, key: str) -> UInt8Array:
         return self._array(key).astype(np.uint8, copy=False)

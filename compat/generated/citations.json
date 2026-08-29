@@ -1,0 +1,998 @@
+{
+  "citations": [
+    {
+      "consumer_id": "instantid",
+      "detail": "extractFeatures defined at line 171",
+      "field": "entrypoint",
+      "first": 171,
+      "last": 171,
+      "path": "InstantID.py",
+      "text": "InstantID.py::extractFeatures",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid",
+      "detail": "inside load_insight_face, defined at line 216",
+      "field": "vendor_setup",
+      "first": 217,
+      "last": 217,
+      "path": "InstantID.py",
+      "text": "InstantID.py:217 load_insight_face",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid",
+      "detail": "anchored on extractFeatures",
+      "field": "vendor_setup",
+      "first": 171,
+      "last": 191,
+      "path": "InstantID.py",
+      "text": "InstantID.py:171-191 extractFeatures",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid",
+      "detail": "ipadapter_execute defined at line 228",
+      "field": "entrypoint",
+      "first": 228,
+      "last": 228,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py::ipadapter_execute",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid",
+      "detail": "inside ipadapter_execute, defined at line 228",
+      "field": "vendor_setup",
+      "first": 350,
+      "last": 367,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:350-367 ipadapter_execute face branch",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid",
+      "detail": "anchored on buffalo_l",
+      "field": "vendor_setup",
+      "first": 157,
+      "last": 166,
+      "path": "utils.py",
+      "text": "utils.py:157-166 insightface_loader(provider, model_name='buffalo_l')",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid",
+      "detail": "anchored on insightface_loader",
+      "field": "vendor_setup",
+      "first": 636,
+      "last": 636,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:636 insightface_loader(provider) called with no model_name",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid",
+      "detail": "anchored on AdapterUnifiedLoaderFaceID",
+      "field": "vendor_setup",
+      "first": 643,
+      "last": 643,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:643 IPAdapterUnifiedLoaderFaceID inherits that loader",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid",
+      "detail": "anchored on AdapterInsightFaceLoader",
+      "field": "vendor_setup",
+      "first": 684,
+      "last": 700,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:684-700 IPAdapterInsightFaceLoader offers ['buffalo_l', 'antelopev2']",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid_plus",
+      "detail": "ipadapter_execute defined at line 228",
+      "field": "entrypoint",
+      "first": 228,
+      "last": 228,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py::ipadapter_execute",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid_plus",
+      "detail": "inside ipadapter_execute, defined at line 228",
+      "field": "vendor_setup",
+      "first": 350,
+      "last": 367,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:350-367 ipadapter_execute face branch",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid_plus",
+      "detail": "anchored on buffalo_l",
+      "field": "vendor_setup",
+      "first": 157,
+      "last": 166,
+      "path": "utils.py",
+      "text": "utils.py:157-166 insightface_loader(provider, model_name='buffalo_l')",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid_plus",
+      "detail": "anchored on insightface_loader",
+      "field": "vendor_setup",
+      "first": 636,
+      "last": 636,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:636 insightface_loader(provider) called with no model_name",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid_plus",
+      "detail": "anchored on AdapterUnifiedLoaderFaceID",
+      "field": "vendor_setup",
+      "first": 643,
+      "last": 643,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:643 IPAdapterUnifiedLoaderFaceID inherits that loader",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_faceid_plus",
+      "detail": "anchored on AdapterInsightFaceLoader",
+      "field": "vendor_setup",
+      "first": 684,
+      "last": 700,
+      "path": "IPAdapterPlus.py",
+      "text": "IPAdapterPlus.py:684-700 IPAdapterInsightFaceLoader offers ['buffalo_l', 'antelopev2']",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_comfyui",
+      "detail": "apply_pulid defined at line 297",
+      "field": "entrypoint",
+      "first": 297,
+      "last": 297,
+      "path": "pulid.py",
+      "text": "pulid.py::ApplyPulid.apply_pulid",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_comfyui",
+      "detail": "inside load_insightface, defined at line 239",
+      "field": "vendor_setup",
+      "first": 240,
+      "last": 241,
+      "path": "pulid.py",
+      "text": "pulid.py:240-241 load_insightface",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_comfyui",
+      "detail": "inside apply_pulid, defined at line 297",
+      "field": "vendor_setup",
+      "first": 350,
+      "last": 363,
+      "path": "pulid.py",
+      "text": "pulid.py:350-363 apply_pulid sweep",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_comfyui",
+      "detail": "anchored on cat",
+      "field": "vendor_setup",
+      "first": 405,
+      "last": 419,
+      "path": "pulid.py",
+      "text": "pulid.py:405-419 per-image get_image_embeds, then torch.cat, then torch.mean",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "save_face_model defined at line 184",
+      "field": "entrypoint",
+      "first": 184,
+      "last": 184,
+      "path": "reactor_utils.py",
+      "text": "reactor_utils.py::save_face_model",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "anchored on load_face_model",
+      "field": "vendor_setup",
+      "first": 184,
+      "last": 208,
+      "path": "reactor_utils.py",
+      "text": "reactor_utils.py:184-208 save_face_model/load_face_model",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "quoted 'class Face'",
+      "field": "vendor_setup",
+      "first": 5,
+      "last": 5,
+      "path": "reactor_core/face_objects.py",
+      "text": "reactor_core/face_objects.py:5 \"class Face\"",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "anchored on buffalo_l",
+      "field": "vendor_setup",
+      "first": 96,
+      "last": 105,
+      "path": "scripts/reactor_swapper.py",
+      "text": "scripts/reactor_swapper.py:96-105 getAnalysisModel names buffalo_l outright",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "anchored on analyze_faces",
+      "field": "vendor_setup",
+      "first": 181,
+      "last": 198,
+      "path": "scripts/reactor_swapper.py",
+      "text": "scripts/reactor_swapper.py:181-198 analyze_faces halving recursion",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "inside build_face_model, defined at line 742",
+      "field": "vendor_setup",
+      "first": 749,
+      "last": 754,
+      "path": "nodes.py",
+      "text": "nodes.py:749-754 build_face_model halves once more",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "anchored on node_version",
+      "field": "vendor_setup",
+      "first": 5,
+      "last": 5,
+      "path": "README.md",
+      "text": "README.md:5 node_version 0.7.0_alpha2",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "anchored on ReActor",
+      "field": "vendor_setup",
+      "first": 55,
+      "last": 55,
+      "path": "README.md",
+      "text": "README.md:55 New ReActor Core, no Insightface required",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "anchored on ArcFaceONNX",
+      "field": "vendor_setup",
+      "first": 50,
+      "last": 58,
+      "path": "reactor_core/analyzer.py",
+      "text": "reactor_core/analyzer.py:50-58 SCRFD ArcFaceONNX Attribute Landmark",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "reactor",
+      "detail": "quoted 'def get'",
+      "field": "vendor_setup",
+      "first": 70,
+      "last": 103,
+      "path": "reactor_core/analyzer.py",
+      "text": "reactor_core/analyzer.py:70-103 \"def get\" does not sort",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "infiniteyou",
+      "detail": "extract_id_embedding defined at line 189",
+      "field": "entrypoint",
+      "first": 189,
+      "last": 189,
+      "path": "nodes.py",
+      "text": "nodes.py::ExtractIDEmbedding.extract_id_embedding",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "infiniteyou",
+      "detail": "anchored on FaceDetector",
+      "field": "vendor_setup",
+      "first": 35,
+      "last": 49,
+      "path": "nodes.py",
+      "text": "nodes.py:35-49 FaceDetector",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "infiniteyou",
+      "detail": "anchored on det_sizes",
+      "field": "vendor_setup",
+      "first": 104,
+      "last": 108,
+      "path": "nodes.py",
+      "text": "nodes.py:104-108 det_sizes when face_analysis_det_size is AUTO",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "infiniteyou",
+      "detail": "anchored on extract_arcface_bgr_embedding",
+      "field": "vendor_setup",
+      "first": 22,
+      "last": 29,
+      "path": "utils.py",
+      "text": "utils.py:22-29 extract_arcface_bgr_embedding",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uniportrait",
+      "detail": "process_faceid_image defined at line 79",
+      "field": "entrypoint",
+      "first": 79,
+      "last": 79,
+      "path": "gradio_app.py",
+      "text": "gradio_app.py::process_faceid_image",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uniportrait",
+      "detail": "anchored on face_app",
+      "field": "vendor_setup",
+      "first": 65,
+      "last": 66,
+      "path": "gradio_app.py",
+      "text": "gradio_app.py:65-66 face_app",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uniportrait",
+      "detail": "anchored on pad_np_bgr_image",
+      "field": "vendor_setup",
+      "first": 69,
+      "last": 103,
+      "path": "gradio_app.py",
+      "text": "gradio_app.py:69-103 pad_np_bgr_image/process_faceid_image",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "photomaker_v2",
+      "detail": "inference_scripts/inference_pmv2_ip_adapter.py present; module-level entry",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "inference_scripts/inference_pmv2_ip_adapter.py",
+      "text": "inference_scripts/inference_pmv2_ip_adapter.py::__main__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "photomaker_v2",
+      "detail": "anchored on FaceAnalysis2",
+      "field": "vendor_setup",
+      "first": 9,
+      "last": 9,
+      "path": "photomaker/insightface_package.py",
+      "text": "photomaker/insightface_package.py:9 class FaceAnalysis2",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "photomaker_v2",
+      "detail": "anchored on analyze_faces",
+      "field": "vendor_setup",
+      "first": 20,
+      "last": 29,
+      "path": "photomaker/insightface_package.py",
+      "text": "photomaker/insightface_package.py:20-29 def analyze_faces",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "photomaker_v2",
+      "detail": "anchored on FaceAnalysis2",
+      "field": "vendor_setup",
+      "first": 13,
+      "last": 14,
+      "path": "inference_scripts/inference_pmv2_ip_adapter.py",
+      "text": "inference_scripts/inference_pmv2_ip_adapter.py:13-14 FaceAnalysis2 construction",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "photomaker_v2",
+      "detail": "anchored on id_embed_list",
+      "field": "vendor_setup",
+      "first": 77,
+      "last": 87,
+      "path": "inference_scripts/inference_pmv2_ip_adapter.py",
+      "text": "inference_scripts/inference_pmv2_ip_adapter.py:77-87 id_embed_list/torch.stack",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "consisid",
+      "detail": "process_face_embeddings defined at line 110",
+      "field": "entrypoint",
+      "first": 110,
+      "last": 110,
+      "path": "src/diffusers/pipelines/consisid/consisid_utils.py",
+      "text": "src/diffusers/pipelines/consisid/consisid_utils.py::process_face_embeddings",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "infer.py present; module-level entry",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "infer.py",
+      "text": "infer.py::__main__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on draw_kps",
+      "field": "vendor_setup",
+      "first": 107,
+      "last": 134,
+      "path": "pipeline_stable_diffusion_xl_instantid.py",
+      "text": "pipeline_stable_diffusion_xl_instantid.py:107-134 draw_kps",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on FaceAnalysis",
+      "field": "vendor_setup",
+      "first": 39,
+      "last": 39,
+      "path": "infer.py",
+      "text": "infer.py:39 FaceAnalysis(name='antelopev2')",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on face_info",
+      "field": "vendor_setup",
+      "first": 67,
+      "last": 67,
+      "path": "infer.py",
+      "text": "infer.py:67 face_info sorted by bbox area, then [-1]",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on face_emb",
+      "field": "vendor_setup",
+      "first": 68,
+      "last": 68,
+      "path": "infer.py",
+      "text": "infer.py:68 face_emb = face_info['embedding']",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on resize_img",
+      "field": "vendor_setup",
+      "first": 12,
+      "last": 33,
+      "path": "infer.py",
+      "text": "infer.py:12-33 resize_img",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on draw_kps",
+      "field": "vendor_setup",
+      "first": 64,
+      "last": 69,
+      "path": "infer.py",
+      "text": "infer.py:64-69 resize BEFORE detect, and draw_kps onto the RESIZED image",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantid_upstream",
+      "detail": "anchored on num_queries",
+      "field": "vendor_setup",
+      "first": 162,
+      "last": 183,
+      "path": "pipeline_stable_diffusion_xl_instantid.py",
+      "text": "pipeline_stable_diffusion_xl_instantid.py:162-183 Resampler num_queries=16",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_upstream",
+      "detail": "get_image_embeds defined at line 183",
+      "field": "entrypoint",
+      "first": 183,
+      "last": 183,
+      "path": "ip_adapter/ip_adapter_faceid.py",
+      "text": "ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_upstream",
+      "detail": "anchored on get_image_embeds",
+      "field": "vendor_setup",
+      "first": 183,
+      "last": 188,
+      "path": "ip_adapter/ip_adapter_faceid.py",
+      "text": "ip_adapter/ip_adapter_faceid.py:183-188 IPAdapterFaceID.get_image_embeds",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "ipadapter_upstream",
+      "detail": "quoted 'buffalo_l'",
+      "field": "vendor_setup",
+      "first": 72,
+      "last": 72,
+      "path": "visualization_attnmap_faceid.ipynb",
+      "text": "visualization_attnmap_faceid.ipynb:72 FaceAnalysis(name=\"buffalo_l\")",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "get_id_embedding defined at line 144",
+      "field": "entrypoint",
+      "first": 144,
+      "last": 144,
+      "path": "pulid/pipeline.py",
+      "text": "pulid/pipeline.py::PuLIDPipeline.get_id_embedding",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "anchored on FaceAnalysis",
+      "field": "vendor_setup",
+      "first": 87,
+      "last": 92,
+      "path": "pulid/pipeline.py",
+      "text": "pulid/pipeline.py:87-92 FaceAnalysis + handler_ante",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "pulid_upstream",
+      "detail": "anchored on get_id_embedding",
+      "field": "vendor_setup",
+      "first": 144,
+      "last": 157,
+      "path": "pulid/pipeline.py",
+      "text": "pulid/pipeline.py:144-157 get_id_embedding",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "umo",
+      "detail": "main defined at line 69",
+      "field": "entrypoint",
+      "first": 69,
+      "last": 69,
+      "path": "eval/UNO/inference_omnicontext.py",
+      "text": "eval/UNO/inference_omnicontext.py::main",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "umo",
+      "detail": "anchored on preprocess_ref",
+      "field": "vendor_setup",
+      "first": 29,
+      "last": 29,
+      "path": "eval/UNO/inference_omnicontext.py",
+      "text": "eval/UNO/inference_omnicontext.py:29 import preprocess_ref",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "umo",
+      "detail": "anchored on exif_transpose",
+      "field": "vendor_setup",
+      "first": 108,
+      "last": 113,
+      "path": "eval/UNO/inference_omnicontext.py",
+      "text": "eval/UNO/inference_omnicontext.py:108-113 exif_transpose then preprocess_ref",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uno",
+      "detail": "inference.py present; module-level entry",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "inference.py",
+      "text": "inference.py::__main__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uno",
+      "detail": "anchored on preprocess_ref",
+      "field": "vendor_setup",
+      "first": 70,
+      "last": 98,
+      "path": "uno/flux/pipeline.py",
+      "text": "uno/flux/pipeline.py:70-98 preprocess_ref",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uno",
+      "detail": "anchored on ref_size",
+      "field": "vendor_setup",
+      "first": 94,
+      "last": 97,
+      "path": "inference.py",
+      "text": "inference.py:94-97 ref_size selection",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uso",
+      "detail": "inference.py present; module-level entry",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "inference.py",
+      "text": "inference.py::__main__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uso",
+      "detail": "anchored on ref_imgs",
+      "field": "vendor_setup",
+      "first": 132,
+      "last": 137,
+      "path": "inference.py",
+      "text": "inference.py:132-137 ref_imgs",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uso",
+      "detail": "anchored on content_ref",
+      "field": "vendor_setup",
+      "first": 69,
+      "last": 69,
+      "path": "inference.py",
+      "text": "inference.py:69 content_ref: int = 512",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uso",
+      "detail": "anchored on args",
+      "field": "vendor_setup",
+      "first": 147,
+      "last": 147,
+      "path": "inference.py",
+      "text": "inference.py:147 preprocess_ref(img, args.content_ref)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "uso",
+      "detail": "anchored on preprocess_ref",
+      "field": "vendor_setup",
+      "first": 72,
+      "last": 92,
+      "path": "uso/flux/pipeline.py",
+      "text": "uso/flux/pipeline.py:72-92 preprocess_ref",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "main defined at line 290",
+      "field": "entrypoint",
+      "first": 290,
+      "last": 290,
+      "path": "inference.py",
+      "text": "inference.py::main",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on example_edit",
+      "field": "vendor_setup",
+      "first": 138,
+      "last": 139,
+      "path": "README.md",
+      "text": "README.md:138-139 bash example_edit.sh",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "quoted 'set the output size to match the input image'",
+      "field": "vendor_setup",
+      "first": 230,
+      "last": 230,
+      "path": "README.md",
+      "text": "README.md:230 \"set the output size to match the input image\"",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "quoted 'occupy a larger proportion of the frame'",
+      "field": "vendor_setup",
+      "first": 215,
+      "last": 215,
+      "path": "README.md",
+      "text": "README.md:215 \"occupy a larger proportion of the frame\"",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on max_pixels",
+      "field": "vendor_setup",
+      "first": 184,
+      "last": 186,
+      "path": "README.md",
+      "text": "README.md:184-186 max_pixels",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "quoted 'greater than 512'",
+      "field": "vendor_setup",
+      "first": 205,
+      "last": 205,
+      "path": "README.md",
+      "text": "README.md:205 \"greater than 512\"",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on max_input_image_side_length",
+      "field": "vendor_setup",
+      "first": 481,
+      "last": 482,
+      "path": "omnigen2/pipelines/omnigen2/pipeline_omnigen2.py",
+      "text": "omnigen2/pipelines/omnigen2/pipeline_omnigen2.py:481-482 max_pixels and max_input_image_side_length defaults",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "quoted 'def main'",
+      "field": "vendor_setup",
+      "first": 290,
+      "last": 290,
+      "path": "inference.py",
+      "text": "inference.py:290 \"def main\"",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on max_input_image_side_length",
+      "field": "vendor_setup",
+      "first": 1042,
+      "last": 1047,
+      "path": "app.py",
+      "text": "app.py:1042-1047 max_input_image_side_length slider, value=2048",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on max_pixels",
+      "field": "vendor_setup",
+      "first": 1049,
+      "last": 1054,
+      "path": "app.py",
+      "text": "app.py:1049-1054 max_pixels slider, value=1024*1024",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on vae_scale_factor",
+      "field": "vendor_setup",
+      "first": 52,
+      "last": 52,
+      "path": "omnigen2/pipelines/image_processor.py",
+      "text": "omnigen2/pipelines/image_processor.py:52 vae_scale_factor=16",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on max_pixels_ratio",
+      "field": "vendor_setup",
+      "first": 122,
+      "last": 132,
+      "path": "omnigen2/pipelines/image_processor.py",
+      "text": "omnigen2/pipelines/image_processor.py:122-132 max_pixels_ratio then floor to a multiple",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "omnigen2",
+      "detail": "anchored on image_processor",
+      "field": "vendor_setup",
+      "first": 265,
+      "last": 265,
+      "path": "omnigen2/pipelines/omnigen2/pipeline_omnigen2.py",
+      "text": "omnigen2/pipelines/omnigen2/pipeline_omnigen2.py:265 image_processor.preprocess per reference",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantcharacter",
+      "detail": "__call__ defined at line 195",
+      "field": "entrypoint",
+      "first": 195,
+      "last": 195,
+      "path": "pipeline.py",
+      "text": "pipeline.py::InstantCharacterFluxPipeline.__call__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantcharacter",
+      "detail": "anchored on Image",
+      "field": "vendor_setup",
+      "first": 21,
+      "last": 21,
+      "path": "infer_demo.py",
+      "text": "infer_demo.py:21 Image.open(ref_image_path).convert('RGB')",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantcharacter",
+      "detail": "anchored on resize",
+      "field": "vendor_setup",
+      "first": 379,
+      "last": 379,
+      "path": "pipeline.py",
+      "text": "pipeline.py:379 subject_image.resize((max(size), max(size)))",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "instantcharacter",
+      "detail": "anchored on object_image_pil_high_res",
+      "field": "vendor_setup",
+      "first": 64,
+      "last": 65,
+      "path": "pipeline.py",
+      "text": "pipeline.py:64-65 object_image_pil_low_res 384 and object_image_pil_high_res 768",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "qwen_image_edit_2509",
+      "detail": "infer defined at line 22",
+      "field": "entrypoint",
+      "first": 22,
+      "last": 22,
+      "path": "src/examples/edit_demo.py",
+      "text": "src/examples/edit_demo.py::infer",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "qwen_image_edit_2509",
+      "detail": "anchored on negative_prompt",
+      "field": "vendor_setup",
+      "first": 36,
+      "last": 60,
+      "path": "src/examples/edit_demo.py",
+      "text": "src/examples/edit_demo.py:36-60 infer, negative_prompt hardcoded",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "qwen_image_edit_2509",
+      "detail": "anchored on Image",
+      "field": "vendor_setup",
+      "first": 82,
+      "last": 82,
+      "path": "src/examples/edit_demo.py",
+      "text": "src/examples/edit_demo.py:82 gr.Image type=pil",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "anystory",
+      "detail": "inference.py present; module-level entry",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "inference.py",
+      "text": "inference.py::__main__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "anystory",
+      "detail": "anchored on subject_image",
+      "field": "vendor_setup",
+      "first": 19,
+      "last": 20,
+      "path": "inference.py",
+      "text": "inference.py:19-20 subject_image/subject_mask",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "anystory",
+      "detail": "anchored on generate",
+      "field": "vendor_setup",
+      "first": 23,
+      "last": 23,
+      "path": "inference.py",
+      "text": "inference.py:23 story_pipe.generate with images= and masks=",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "inference_single_sample.py present; module-level entry",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "inference_single_sample.py",
+      "text": "inference_single_sample.py::__main__",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "anchored on input_images",
+      "field": "vendor_setup",
+      "first": 108,
+      "last": 108,
+      "path": "inference_single_sample.py",
+      "text": "inference_single_sample.py:108 input_images",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "anchored on cond_size",
+      "field": "vendor_setup",
+      "first": 172,
+      "last": 172,
+      "path": "inference_single_sample.py",
+      "text": "inference_single_sample.py:172 cond_size default 256",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "quoted 'idips'",
+      "field": "vendor_setup",
+      "first": 183,
+      "last": 183,
+      "path": "inference_single_sample.py",
+      "text": "inference_single_sample.py:183 \"idips\"",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "anchored on cond_size",
+      "field": "vendor_setup",
+      "first": 113,
+      "last": 113,
+      "path": "README.md",
+      "text": "README.md:113 cond_size 256 on the documented command",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "anchored on loose_warp_face",
+      "field": "vendor_setup",
+      "first": 75,
+      "last": 75,
+      "path": "eval/tools/face_utils/face.py",
+      "text": "eval/tools/face_utils/face.py:75 loose_warp_face (metric, not input)",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "xverse",
+      "detail": "anchored on FACE_ID_MODEL_PATH",
+      "field": "vendor_setup",
+      "first": 55,
+      "last": 55,
+      "path": "eval/tools/face_id.py",
+      "text": "eval/tools/face_id.py:55 FACE_ID_MODEL_PATH read only under eval",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "id_v2v",
+      "detail": "preprocess present as literal text in scripts/preprocess.sh",
+      "field": "entrypoint",
+      "first": 0,
+      "last": 0,
+      "path": "scripts/preprocess.sh",
+      "text": "scripts/preprocess.sh::preprocess",
+      "verdict": "OK"
+    },
+    {
+      "consumer_id": "id_lora",
+      "detail": "execute defined at line 51",
+      "field": "entrypoint",
+      "first": 51,
+      "last": 51,
+      "path": "comfy_extras/nodes_lt.py",
+      "text": "comfy_extras/nodes_lt.py::LTXVReferenceAudio.execute",
+      "verdict": "OK"
+    }
+  ],
+  "clean": true,
+  "counts": {
+    "OK": 99
+  }
+}

@@ -1,0 +1,986 @@
+{
+  "fixtures": [
+    {
+      "bytes": 30572,
+      "cited": "README.md:163 load_image('./examples/yann-lecun_resize.jpg')",
+      "consumer_id": "instantid_upstream",
+      "entrypoint": "infer.py",
+      "path": "examples/yann-lecun_resize.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4"
+    },
+    {
+      "bytes": 360937,
+      "cited": "README.md:163 load_image('./examples/yann-lecun_resize.jpg')",
+      "consumer_id": "instantid_upstream",
+      "entrypoint": "infer.py",
+      "path": "examples/musk_resize.jpeg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "002e9a3b45b0a46c6d3c9daea7aac40d12e1e649a62e62d340796ab7254aacf9"
+    },
+    {
+      "bytes": 1059403,
+      "cited": "README.md:163 load_image('./examples/yann-lecun_resize.jpg')",
+      "consumer_id": "instantid_upstream",
+      "entrypoint": "infer.py",
+      "path": "examples/kaifu_resize.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "b7302f0f7d0ff61be67bf13d172ad2393b6cb2bc985f048089f4e901145324d7"
+    },
+    {
+      "bytes": 3225696,
+      "cited": "README.md:163 load_image('./examples/yann-lecun_resize.jpg')",
+      "consumer_id": "instantid_upstream",
+      "entrypoint": "infer.py",
+      "path": "examples/schmidhuber_resize.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "51beaa72d1eb9f56118118fae8775bda818bcb56b03220f3cd39daa425f57a9a"
+    },
+    {
+      "bytes": 2362631,
+      "cited": "README.md:163 load_image('./examples/yann-lecun_resize.jpg')",
+      "consumer_id": "instantid_upstream",
+      "entrypoint": "infer.py",
+      "path": "examples/sam_resize.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "1390d8a9a1be7b8f5388c0bc8483b2d5cca6c0f0adeb6eecd970a4413b1f1deb"
+    },
+    {
+      "bytes": 417794,
+      "cited": "README.md:94 'generation with face image as prompt'",
+      "consumer_id": "ipadapter_upstream",
+      "entrypoint": "ip_adapter-plus-face_demo.ipynb",
+      "path": "assets/images/ai_face.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "665e730040b49472860b6f7f11be7b0ba062c0a48477903bd848cf24a281b2d9"
+    },
+    {
+      "bytes": 1781460,
+      "cited": "README.md:94 'generation with face image as prompt'",
+      "consumer_id": "ipadapter_upstream",
+      "entrypoint": "ip_adapter-plus-face_demo.ipynb",
+      "path": "assets/images/ai_face2.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "4c103383aa58133aba7a0371ae9b7c7f4a067e4fff5896d80b17a7c9d704f6db"
+    },
+    {
+      "bytes": 1272726,
+      "cited": "README.md:94 'generation with face image as prompt'",
+      "consumer_id": "ipadapter_upstream",
+      "entrypoint": "ip_adapter-plus-face_demo.ipynb",
+      "path": "assets/images/woman.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "053db5ec51eb927a77da7f445f409b4d6a3e41654cba64622fc56e41ca3a2cbd"
+    },
+    {
+      "bytes": 318012,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/newton_man/newton_0.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "312532bd8fa2222662aa6807569c710df63640ff00d8984639c358af1128c2ff"
+    },
+    {
+      "bytes": 54137,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/newton_man/newton_1.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "428fa7302f076736edb1cc676734b3c2bb465456bab59fb6db3b181df5f86d39"
+    },
+    {
+      "bytes": 1484715,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/newton_man/newton_2.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "63ed6b340b8923d1b24bb97ed56b5f007e7a938aaf25e19a2100e93b885309f4"
+    },
+    {
+      "bytes": 26276,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/newton_man/newton_3.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "b085b4b78af6ae872c8209ce04b75b8488b9c12d81438ece57b95332316a7f72"
+    },
+    {
+      "bytes": 89644,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/scarletthead_woman/scarlett_0.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "23fa9d104903f1899e9383591c584a2266ba2dc3b9afc5f31857408ae8fd52a0"
+    },
+    {
+      "bytes": 26938,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/scarletthead_woman/scarlett_1.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "114e3872fe772b3a3ceb52a0733b741a32c1515ab3553c20ccd768808cb69ac1"
+    },
+    {
+      "bytes": 74279,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/scarletthead_woman/scarlett_2.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "f8d129e1cc11e5aa26a934bbeca82749e60ee8e25ab04a77a20b0c421d14aae9"
+    },
+    {
+      "bytes": 109149,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/scarletthead_woman/scarlett_3.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "aa19a71617f5e85129bbf0c020c069ac2e9881a3804eae6246bbfe07684827e4"
+    },
+    {
+      "bytes": 39682,
+      "cited": "examples/<identity>_<gender>/ one folder per identity",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "examples",
+      "path": "examples/lenna_woman/lenna.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "a8c86d3944a8904e72edbf6b1038f7fb9c66f73f3fe06efcbe232888731a1707"
+    },
+    {
+      "bytes": 1639385,
+      "cited": "asserts/example_images/ committed example inputs",
+      "consumer_id": "consisid",
+      "entrypoint": "infer.py",
+      "path": "asserts/example_images/1.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "434856739faadf1c89bc38d8b940fcdbe027595de89645f721d8585fc2fe2459"
+    },
+    {
+      "bytes": 250004,
+      "cited": "asserts/example_images/ committed example inputs",
+      "consumer_id": "consisid",
+      "entrypoint": "infer.py",
+      "path": "asserts/example_images/2.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "2ac6f12cdfd71d6d1398ff3bbb79f3a077aa1aed3f1157ce20b193077b92384c"
+    },
+    {
+      "bytes": 70498,
+      "cited": "asserts/example_images/ committed example inputs",
+      "consumer_id": "consisid",
+      "entrypoint": "infer.py",
+      "path": "asserts/example_images/3.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "102f4874d5ea38572a0781371b4f22694d5645f6a470497e8a2070f80463fa9a"
+    },
+    {
+      "bytes": 5780685,
+      "cited": "asserts/example_images/ committed example inputs",
+      "consumer_id": "consisid",
+      "entrypoint": "infer.py",
+      "path": "asserts/example_images/4.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "351c5624de7df1f33fef389442941d12577891a45fa247874e60e4f5744dd2b7"
+    },
+    {
+      "bytes": 26938,
+      "cited": "asserts/example_images/ committed example inputs",
+      "consumer_id": "consisid",
+      "entrypoint": "infer.py",
+      "path": "asserts/example_images/5.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "114e3872fe772b3a3ceb52a0733b741a32c1515ab3553c20ccd768808cb69ac1"
+    },
+    {
+      "bytes": 12870,
+      "cited": "README.md:42-55 images=[...] masks=[...]",
+      "consumer_id": "anystory",
+      "entrypoint": "anystory.generate.AnyStoryFluxPipeline.generate",
+      "path": "assets/examples/1.webp",
+      "present": true,
+      "role": "masked_reference_set",
+      "sha256": "b593d511c4a1addc0e9fb335bc6ee29b7b88a9f8aac73dc12cecd1ef56b522e6"
+    },
+    {
+      "bytes": 3828,
+      "cited": "README.md:42-55 images=[...] masks=[...]",
+      "consumer_id": "anystory",
+      "entrypoint": "anystory.generate.AnyStoryFluxPipeline.generate",
+      "path": "assets/examples/1_mask.webp",
+      "present": true,
+      "role": "masked_reference_set",
+      "sha256": "7675117af98bb1d89fa165097047f8b849e3f48d8f78ea223a2d48e59ac36cbc"
+    },
+    {
+      "bytes": 34510,
+      "cited": "README.md:42-55 images=[...] masks=[...]",
+      "consumer_id": "anystory",
+      "entrypoint": "anystory.generate.AnyStoryFluxPipeline.generate",
+      "path": "assets/examples/6_1.webp",
+      "present": true,
+      "role": "masked_reference_set",
+      "sha256": "3127e7c03961a96966550b5fa9c6dcc9458fe9be61cc61d1a56f4a1909964848"
+    },
+    {
+      "bytes": 12266,
+      "cited": "README.md:42-55 images=[...] masks=[...]",
+      "consumer_id": "anystory",
+      "entrypoint": "anystory.generate.AnyStoryFluxPipeline.generate",
+      "path": "assets/examples/6_1_mask.webp",
+      "present": true,
+      "role": "masked_reference_set",
+      "sha256": "ff0fc617745453c01963cb9a3c8e72b671aeb1a4fd5cfa67c9c717f0e7e1dbaf"
+    },
+    {
+      "bytes": 10242,
+      "cited": "README.md:42-55 images=[...] masks=[...]",
+      "consumer_id": "anystory",
+      "entrypoint": "anystory.generate.AnyStoryFluxPipeline.generate",
+      "path": "assets/examples/6_2.webp",
+      "present": true,
+      "role": "masked_reference_set",
+      "sha256": "1cbc72a511a020e4815a59f734a76df576bb5437e2938b00d76ae497e1f20d66"
+    },
+    {
+      "bytes": 3690,
+      "cited": "README.md:42-55 images=[...] masks=[...]",
+      "consumer_id": "anystory",
+      "entrypoint": "anystory.generate.AnyStoryFluxPipeline.generate",
+      "path": "assets/examples/6_2_mask.webp",
+      "present": true,
+      "role": "masked_reference_set",
+      "sha256": "2520526b035d64089d27a4345cc3739c157fbbd891d0c1fae2cdb323dd869cbd"
+    },
+    {
+      "bytes": 154360,
+      "cited": "examples/reference.wav + examples/first_frame.png",
+      "consumer_id": "id_lora",
+      "entrypoint": "examples",
+      "path": "examples/reference.wav",
+      "present": true,
+      "role": "audio_identity",
+      "sha256": "a8a1530a10105d5352ef33d85cd04758ad4ad0594a1c760e03b8a5d2bdd4e805"
+    },
+    {
+      "bytes": 131,
+      "cited": "examples/reference.wav + examples/first_frame.png",
+      "consumer_id": "id_lora",
+      "entrypoint": "examples",
+      "path": "examples/first_frame.png",
+      "present": true,
+      "role": "audio_identity",
+      "sha256": "c1140268c5a9f7775926a7bae2c11c62d5e3cc680ac48d22855ae74851530ccc"
+    },
+    {
+      "bytes": 9703,
+      "cited": "sample/ and assets/XVerseBench/human/",
+      "consumer_id": "xverse",
+      "entrypoint": "sample",
+      "path": "sample/woman.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "a8e1f90dea4068a0e5a7852c7ee51d4e5919b8761beedf4d43b46abd461234b0"
+    },
+    {
+      "bytes": 22285,
+      "cited": "sample/ and assets/XVerseBench/human/",
+      "consumer_id": "xverse",
+      "entrypoint": "sample",
+      "path": "sample/old_man.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "f003c510573ec339449f1bb5d922071d9018b2ddc4388527445c62f4ce2342cd"
+    },
+    {
+      "bytes": 16497,
+      "cited": "sample/ and assets/XVerseBench/human/",
+      "consumer_id": "xverse",
+      "entrypoint": "sample",
+      "path": "sample/girl.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "b89e97b851868edbd25b58d12524ae12b770600979de3e47cedff339aeaaf2b4"
+    },
+    {
+      "bytes": 66397,
+      "cited": "assets/girl.jpg, assets/boy.jpg",
+      "consumer_id": "instantcharacter",
+      "entrypoint": "assets",
+      "path": "assets/girl.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "c5682eda5e31ebc43402973d08305acd7feec45f5750542d7a6f39d5590f6e4e"
+    },
+    {
+      "bytes": 80537,
+      "cited": "assets/girl.jpg, assets/boy.jpg",
+      "consumer_id": "instantcharacter",
+      "entrypoint": "assets",
+      "path": "assets/boy.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "9184cfadd0744c6698d94eb54a10e462ddd2cd21d9b1bfe5d47e4a86c7240942"
+    },
+    {
+      "bytes": 1029762,
+      "cited": "assets/examples/4two2one/ ref1 + ref2",
+      "consumer_id": "uno",
+      "entrypoint": "assets/examples",
+      "path": "assets/examples/4two2one/ref1.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "8881fc7081c1e873fc0d2a82fa3c68ac28173759673380e9bc4a62f38b66ca06"
+    },
+    {
+      "bytes": 377963,
+      "cited": "assets/examples/4two2one/ ref1 + ref2",
+      "consumer_id": "uno",
+      "entrypoint": "assets/examples",
+      "path": "assets/examples/4two2one/ref2.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "1ea7aa8be90a1346068594530d7e70abbdf99935a2a9bb95c8661e98a56dc76b"
+    },
+    {
+      "bytes": 96515,
+      "cited": "assets/examples/UNO/4/ ref_1 + ref_2",
+      "consumer_id": "umo",
+      "entrypoint": "assets/examples",
+      "path": "assets/examples/UNO/4/ref_1.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "57222fa3132f6a6275a0b611711ea8b704a100064619e9a00a3ef00fbf2ba24d"
+    },
+    {
+      "bytes": 1053737,
+      "cited": "assets/examples/UNO/4/ ref_1 + ref_2",
+      "consumer_id": "umo",
+      "entrypoint": "assets/examples",
+      "path": "assets/examples/UNO/4/ref_2.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "2ae24705eaa3314f7ca32cf69e32f066765d953f26f516da5fe817e456de079d"
+    },
+    {
+      "bytes": 131647,
+      "cited": "README.md:53-55 image_kps input, examples/daydreaming.jpg",
+      "consumer_id": "instantid",
+      "entrypoint": "examples",
+      "path": "examples/daydreaming.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "8bf03c7282331382229a5db6ea954274be8c60042397a762a4bddf069cfd0c7c"
+    },
+    {
+      "bytes": 5362,
+      "cited": "ComfyUI-ReActor@6ad6b35a4df2 README.md:175,:220 link this workflow. Its four LoadImage targets are not distributed anywhere: entrypoint present, no input media.",
+      "consumer_id": "reactor",
+      "entrypoint": "comfyui-reactor-node/workflows/ReActor--Build-Blended-Face-Model--v2.json",
+      "path": "comfyui-reactor-node/workflows/ReActor--Build-Blended-Face-Model--v1.json",
+      "present": true,
+      "role": "entrypoint_only",
+      "sha256": "6709ace24a17ca1bad210a183fe33eec03c7c0b7bbba3addf8b6d55dae2898b9"
+    },
+    {
+      "bytes": 7732,
+      "cited": "ComfyUI-ReActor@6ad6b35a4df2 README.md:175,:220 link this workflow. Its four LoadImage targets are not distributed anywhere: entrypoint present, no input media.",
+      "consumer_id": "reactor",
+      "entrypoint": "comfyui-reactor-node/workflows/ReActor--Build-Blended-Face-Model--v2.json",
+      "path": "comfyui-reactor-node/workflows/ReActor--Build-Blended-Face-Model--v2.json",
+      "present": true,
+      "role": "entrypoint_only",
+      "sha256": "6d042c5d8d7748f08cd1494d82d542ec65164b6de13bbf88463bf03d94a6a73e"
+    },
+    {
+      "bytes": 174373,
+      "cited": "Qwen-Image@6b5e1f5cec98 README.md:285-286 requests.get(...edit2509_1.jpg / edit2509_2.jpg) -> https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/edit2509/edit2509_1.jpg",
+      "consumer_id": "qwen_image_edit_2509",
+      "entrypoint": "QwenImageEditPlusPipeline",
+      "path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\qwen_image_edit_2509\\edit2509_1.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "c91431b29ff9c5050e3570f3d957c179b98d42e074d780b8f3df0aca0fa5d774"
+    },
+    {
+      "bytes": 199424,
+      "cited": "Qwen-Image@6b5e1f5cec98 README.md:285-286 requests.get(...edit2509_1.jpg / edit2509_2.jpg) -> https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/edit2509/edit2509_2.jpg",
+      "consumer_id": "qwen_image_edit_2509",
+      "entrypoint": "QwenImageEditPlusPipeline",
+      "path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\qwen_image_edit_2509\\edit2509_2.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "4c081d9beaee2c775946a40839f94df9622ff6cd02ea17ea3d00f26d1a18e085"
+    },
+    {
+      "bytes": 319930,
+      "cited": "README.md:49 'python gradio_app.py'; assets/examples/ tracked at a4deff2b48e3 (git ls-tree). Hidden from `rg --files` by .gitignore.",
+      "consumer_id": "uniportrait",
+      "entrypoint": "gradio_app.py",
+      "path": "assets/examples/1-newton.jpg",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "6b5bed3bc2aa494892d44c014768a4551cc65ce23c7a68348359dfd7770174b9"
+    },
+    {
+      "bytes": 1342435,
+      "cited": "README.md:49 'python gradio_app.py'; assets/examples/ tracked at a4deff2b48e3 (git ls-tree). Hidden from `rg --files` by .gitignore.",
+      "consumer_id": "uniportrait",
+      "entrypoint": "gradio_app.py",
+      "path": "assets/examples/2-stylegan2-ffhq-0100.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "3620d6c5a3280dea0cf9e98b91ce5b505a6c6fee94a515c9cbff250f9d13f9c5"
+    },
+    {
+      "bytes": 1214268,
+      "cited": "README.md:49 'python gradio_app.py'; assets/examples/ tracked at a4deff2b48e3 (git ls-tree). Hidden from `rg --files` by .gitignore.",
+      "consumer_id": "uniportrait",
+      "entrypoint": "gradio_app.py",
+      "path": "assets/examples/2-stylegan2-ffhq-0293.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "acd15320b4f75d12642b7916fd276d59dbcb592c7695cf5e09c3d710da973c7e"
+    },
+    {
+      "bytes": 1214268,
+      "cited": "README.md:49 'python gradio_app.py'; assets/examples/ tracked at a4deff2b48e3 (git ls-tree). Hidden from `rg --files` by .gitignore.",
+      "consumer_id": "uniportrait",
+      "entrypoint": "gradio_app.py",
+      "path": "assets/examples/3-stylegan2-ffhq-0293.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "acd15320b4f75d12642b7916fd276d59dbcb592c7695cf5e09c3d710da973c7e"
+    },
+    {
+      "bytes": 1347919,
+      "cited": "README.md:49 'python gradio_app.py'; assets/examples/ tracked at a4deff2b48e3 (git ls-tree). Hidden from `rg --files` by .gitignore.",
+      "consumer_id": "uniportrait",
+      "entrypoint": "gradio_app.py",
+      "path": "assets/examples/3-stylegan2-ffhq-0381.png",
+      "present": true,
+      "role": "reference_set",
+      "sha256": "b54010565c6f18618735b9dadaec16494fa7818c37d87003664b269b43c11d28"
+    },
+    {
+      "bytes": 417794,
+      "cited": "ComfyUI_IPAdapter_plus@a0f451a5113c README.md:2 'reference implementation for IPAdapter models'; media in tencent-ailab/IP-Adapter",
+      "consumer_id": "ipadapter_faceid",
+      "entrypoint": "examples",
+      "path": "assets/images/ai_face.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "665e730040b49472860b6f7f11be7b0ba062c0a48477903bd848cf24a281b2d9"
+    },
+    {
+      "bytes": 1781460,
+      "cited": "ComfyUI_IPAdapter_plus@a0f451a5113c README.md:2 'reference implementation for IPAdapter models'; media in tencent-ailab/IP-Adapter",
+      "consumer_id": "ipadapter_faceid",
+      "entrypoint": "examples",
+      "path": "assets/images/ai_face2.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "4c103383aa58133aba7a0371ae9b7c7f4a067e4fff5896d80b17a7c9d704f6db"
+    },
+    {
+      "bytes": 1272726,
+      "cited": "ComfyUI_IPAdapter_plus@a0f451a5113c README.md:2 'reference implementation for IPAdapter models'; media in tencent-ailab/IP-Adapter",
+      "consumer_id": "ipadapter_faceid",
+      "entrypoint": "examples",
+      "path": "assets/images/woman.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "053db5ec51eb927a77da7f445f409b4d6a3e41654cba64622fc56e41ca3a2cbd"
+    },
+    {
+      "bytes": 417794,
+      "cited": "ComfyUI_IPAdapter_plus@a0f451a5113c README.md:2; media in tencent-ailab/IP-Adapter",
+      "consumer_id": "ipadapter_faceid_plus",
+      "entrypoint": "examples",
+      "path": "assets/images/ai_face.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "665e730040b49472860b6f7f11be7b0ba062c0a48477903bd848cf24a281b2d9"
+    },
+    {
+      "bytes": 1781460,
+      "cited": "ComfyUI_IPAdapter_plus@a0f451a5113c README.md:2; media in tencent-ailab/IP-Adapter",
+      "consumer_id": "ipadapter_faceid_plus",
+      "entrypoint": "examples",
+      "path": "assets/images/ai_face2.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "4c103383aa58133aba7a0371ae9b7c7f4a067e4fff5896d80b17a7c9d704f6db"
+    },
+    {
+      "bytes": 1272726,
+      "cited": "ComfyUI_IPAdapter_plus@a0f451a5113c README.md:2; media in tencent-ailab/IP-Adapter",
+      "consumer_id": "ipadapter_faceid_plus",
+      "entrypoint": "examples",
+      "path": "assets/images/woman.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "053db5ec51eb927a77da7f445f409b4d6a3e41654cba64622fc56e41ca3a2cbd"
+    },
+    {
+      "bytes": 508648,
+      "cited": "PuLID_ComfyUI@93e0c4c226b8 README.md:3 'PuLID ComfyUI native implementation'; media in ToTheBeginning/PuLID",
+      "consumer_id": "pulid_comfyui",
+      "entrypoint": "examples",
+      "path": "example_inputs/liuyifei.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "d9dfdaaac866ac410dfaa7a624c674ff027ca36728ae656be8d03891883bf53d"
+    },
+    {
+      "bytes": 30572,
+      "cited": "PuLID_ComfyUI@93e0c4c226b8 README.md:3 'PuLID ComfyUI native implementation'; media in ToTheBeginning/PuLID",
+      "consumer_id": "pulid_comfyui",
+      "entrypoint": "examples",
+      "path": "example_inputs/lecun.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4"
+    },
+    {
+      "bytes": 183274,
+      "cited": "PuLID_ComfyUI@93e0c4c226b8 README.md:3 'PuLID ComfyUI native implementation'; media in ToTheBeginning/PuLID",
+      "consumer_id": "pulid_comfyui",
+      "entrypoint": "examples",
+      "path": "example_inputs/hinton.jpeg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "85ef976b2e60ff65eb664851b00c8999c2993b56f601e4629be41e55c57f643b"
+    },
+    {
+      "bytes": 185278,
+      "cited": "PuLID_ComfyUI@93e0c4c226b8 README.md:3 'PuLID ComfyUI native implementation'; media in ToTheBeginning/PuLID",
+      "consumer_id": "pulid_comfyui",
+      "entrypoint": "examples",
+      "path": "example_inputs/rihanna.webp",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "8b4e0f9e4fa1421b89d4bed91a121b3aca5f97e89c3d39823670cf0c2bcdc278"
+    },
+    {
+      "bytes": 482909,
+      "cited": "ComfyUI_InfiniteYou@1c979397c5c8 workflow JSONs name woman.jpg and man.jpg; media lives in bytedance/InfiniteYou",
+      "consumer_id": "infiniteyou",
+      "entrypoint": "examples/infinite_you_workflow.json",
+      "path": "assets/examples/woman.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "63fdaab6fee7de6ae2fbdd00822001830da2155ade407f692964cde508050c2a"
+    },
+    {
+      "bytes": 264974,
+      "cited": "ComfyUI_InfiniteYou@1c979397c5c8 workflow JSONs name woman.jpg and man.jpg; media lives in bytedance/InfiniteYou",
+      "consumer_id": "infiniteyou",
+      "entrypoint": "examples/infinite_you_workflow.json",
+      "path": "assets/examples/man.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "26d6e503140428fa2aaf7c2287cea3b1b67c0f2f998b8f6d9f9774be854be090"
+    },
+    {
+      "bytes": 886158,
+      "cited": "ComfyUI_InfiniteYou@1c979397c5c8 workflow JSONs name woman.jpg and man.jpg; media lives in bytedance/InfiniteYou",
+      "consumer_id": "infiniteyou",
+      "entrypoint": "examples/infinite_you_workflow.json",
+      "path": "assets/examples/man_pose.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "a077c92cb14e6969a8f1974b0b47f73c90055ff50a47cb6cfed33006112c28b6"
+    },
+    {
+      "bytes": 508648,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/liuyifei.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "d9dfdaaac866ac410dfaa7a624c674ff027ca36728ae656be8d03891883bf53d"
+    },
+    {
+      "bytes": 202940,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/lifeifei.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "c7b26e78b94ccd8c30a40efca3c52c8a04573188b41eb4b3d1fc517ec8577b35"
+    },
+    {
+      "bytes": 30572,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/lecun.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4"
+    },
+    {
+      "bytes": 183274,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/hinton.jpeg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "85ef976b2e60ff65eb664851b00c8999c2993b56f601e4629be41e55c57f643b"
+    },
+    {
+      "bytes": 185278,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/rihanna.webp",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "8b4e0f9e4fa1421b89d4bed91a121b3aca5f97e89c3d39823670cf0c2bcdc278"
+    },
+    {
+      "bytes": 1244849,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/pengwei.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "1d163eb4cc3244e063895263490ee5abc199fe915e6dae9aadbdfb435523644c"
+    },
+    {
+      "bytes": 435420,
+      "cited": "example_inputs/ committed example inputs",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "app.py",
+      "path": "example_inputs/zcy.webp",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "7c041ede58322e0a22352380fbf40e8c8c94d0a9f4b9abfb7b685f3d8978c59d"
+    },
+    {
+      "bytes": 1455216,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/input.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "14fca9c1085732a0e44c6eb0a83d9781b9f3f662a75fec0b50ca348631a1a493"
+    },
+    {
+      "bytes": 1422220,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/example1.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "ff852bd7d81f9e7f0a049d1c3748be9848c2879cbd3382ba2d215b6852e4afe4"
+    },
+    {
+      "bytes": 1238775,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/example2.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "5260b6dafb652d9217683f7945f7bd7f62622b09b5292d582e49f5dcf9d9b1e0"
+    },
+    {
+      "bytes": 1748212,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/example3.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "0c665d4932a0400ca18daff04398de07a26cba4ff77764464ae07e8590a81490"
+    },
+    {
+      "bytes": 951607,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/example4.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "fced5721dbf800ae927585365a725842f17caacb627fd50d89fe749066cc0773"
+    },
+    {
+      "bytes": 1382891,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/example5.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "0deb24b5cc0dc039ddde740cf9143af2f6550b649d595880fb1d1803bfe3ec04"
+    },
+    {
+      "bytes": 1602362,
+      "cited": "workflow/input.png and workflow/example*.png",
+      "consumer_id": "uso",
+      "entrypoint": "workflow",
+      "path": "workflow/example6.png",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "31078ef2daa6ec71e545bbb4b7d35314037a5f17db3f7656821ad35071b29025"
+    },
+    {
+      "bytes": 81382,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/000050281.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "67dd38f4823db276825d742d0f2bd5644dc3992818e1bbc81b493d97e9baf6dc"
+    },
+    {
+      "bytes": 153002,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/000077066.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "be0b793a4f9511ebf2ca55f6bbfb65cd80a6072892701599a532e3e7c5a2cad9"
+    },
+    {
+      "bytes": 203256,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/000119733.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "d0389d04f59d8c5fbe0d555819bf82a7c99d32309c7ea8d1e3923d96ef69b8ca"
+    },
+    {
+      "bytes": 142061,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/000365954.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "d6754d6401e61588f884c2e71acac2305bf3062bfe3602a1b13bfbfdcd25a937"
+    },
+    {
+      "bytes": 136969,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/000440817.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "9d09fd634fc66fb721ea2e0305c209ccbeba43ee5c69cc66da13a8c7d6eb4977"
+    },
+    {
+      "bytes": 57468,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/01.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "ebf54dfa51e48e4a2753272ef3570694d6d56152ca1ac302374bfdd7d48bd1c1"
+    },
+    {
+      "bytes": 274915,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/02.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "8e7a23633f7671855dffbd21a45b370bd28904aa71894ca001a800f5b8ca72a9"
+    },
+    {
+      "bytes": 170620,
+      "cited": "example_images/ referenced by the repository's own example scripts",
+      "consumer_id": "omnigen2",
+      "entrypoint": "example_images",
+      "path": "example_images/04.jpg",
+      "present": true,
+      "role": "single_reference",
+      "sha256": "a222dbab698fdb63ccb36c3adb7e96ee4de4a26e6685bcaaf17a92d4def1defe"
+    },
+    {
+      "bytes": 2357666,
+      "cited": "scripts/preprocess.sh SAMPLE_DIR default test_samples/restylization/two_sitting_woman",
+      "consumer_id": "id_v2v",
+      "entrypoint": "scripts/preprocess.sh",
+      "path": "test_samples/restylization/two_sitting_woman/source.mp4",
+      "present": true,
+      "role": "temporal_source",
+      "sha256": "cce40e07f8ce119065badf5fd0df37225d3dc848ceef7750a253d5d24744eaf1"
+    },
+    {
+      "bytes": 1888933,
+      "cited": "scripts/preprocess.sh SAMPLE_DIR default test_samples/restylization/two_sitting_woman",
+      "consumer_id": "id_v2v",
+      "entrypoint": "scripts/preprocess.sh",
+      "path": "test_samples/restylization/music_band/source.mp4",
+      "present": true,
+      "role": "temporal_source",
+      "sha256": "b18e84d86493117bdf59621f1b67116dc6618378d138d6ed87cff1f9e8326e31"
+    },
+    {
+      "bytes": 2803533,
+      "cited": "scripts/preprocess.sh SAMPLE_DIR default test_samples/restylization/two_sitting_woman",
+      "consumer_id": "id_v2v",
+      "entrypoint": "scripts/preprocess.sh",
+      "path": "test_samples/first_last_frame/two_women_spotlight/source.mp4",
+      "present": true,
+      "role": "temporal_source",
+      "sha256": "978275c92f264478e45ed48855a4b6652b1a7ca731389b6f4e3ed74532b32794"
+    },
+    {
+      "bytes": 1863137,
+      "cited": "scripts/preprocess.sh SAMPLE_DIR default test_samples/restylization/two_sitting_woman",
+      "consumer_id": "id_v2v",
+      "entrypoint": "scripts/preprocess.sh",
+      "path": "test_samples/non_aligned_keyframe/suits/source.mp4",
+      "present": true,
+      "role": "temporal_source",
+      "sha256": "7ac180543a58a857539673ba581bdcca8b812eb076f647a296be30d66da81585"
+    }
+  ],
+  "population": {
+    "VENDOR_BASELINE_UNAVAILABLE": [],
+    "declared": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ],
+    "entrypoint_only": [
+      "reactor"
+    ],
+    "with_vendor_input_media": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ]
+  },
+  "runtime": {
+    "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
+      "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-contrib-python": "4.14.0.94",
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  }
+}

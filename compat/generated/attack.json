@@ -1,5 +1,5 @@
 {
-  "all_detected": true,
+  "all_detected": false,
   "attacks": [
     {
       "detected": true,
@@ -22,7 +22,7 @@
       "expected": "a re-run recomputes the digest and does not reproduce the doctored one",
       "name": "blob_mutated",
       "notes": [],
-      "observed": "re-run produced 28 digests, none of them the doctored value",
+      "observed": "re-run produced 62 digests, none of them the doctored value",
       "targets": "generated/provenance.json blob_sha256"
     },
     {
@@ -30,9 +30,9 @@
       "expected": "the case that needs it stops reproducing",
       "name": "necessary_removed",
       "notes": [
-        "source_region_pixels: KeyError: \"replay needs 'source_region_pixels', which the retained state does not carry\""
+        "whole_reference_image: KeyError: \"replay needs 'whole_reference_image', which the retained state does not carry\""
       ],
-      "observed": "272 recorded removals broke their replay, e.g. aligned_crop_112_synthetic without source_region_pixels",
+      "observed": "496 recorded removals broke their replay, e.g. anystory_masked_subject_multi_1 without whole_reference_image",
       "targets": "a primitive whose ablation broke the replay"
     },
     {
@@ -44,11 +44,11 @@
       "targets": "generated/cases.json results"
     },
     {
-      "detected": true,
+      "detected": false,
       "expected": "a second run serialises to the same bytes as the first",
       "name": "evidence_not_reproducible",
       "notes": [],
-      "observed": "a second run reproduced all 291,908 bytes of the evidence",
+      "observed": "the two runs differ from byte 49: 'b717ed229da86b9ceef2f5a9c7681e748e177c306dfe56ddef' against 'de9d2bd4d5502a189d11239f1d5f4ed94861ef048e77646dbc'",
       "targets": "generated/cases.json"
     },
     {
@@ -62,7 +62,31 @@
   ],
   "runtime": {
     "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
       "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
       "numpy": "2.5.2",
       "onnx": "1.22.0",
       "onnxruntime": {
@@ -75,6 +99,7 @@
         "device": "GPU",
         "version": "1.29.0"
       },
+      "opencv-contrib-python": "4.14.0.94",
       "opencv-python": "4.14.0.94",
       "scikit-image": "0.26.0",
       "torch": "2.13.0+cu132"

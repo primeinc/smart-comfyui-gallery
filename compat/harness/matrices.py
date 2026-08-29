@@ -41,6 +41,10 @@ class Evidence:
     cases: dict[str, Any]
     provenance: dict[str, Any]
     producer: dict[str, Any]
+    union: dict[str, Any]
+    """The producer UNION. Optional: the retention section is empty without
+    it rather than absent, because a matrix that silently dropped a section
+    would read as "nothing to report" instead of "not measured"."""
 
     @classmethod
     def load(cls, where: Path = GENERATED) -> Evidence:
@@ -53,7 +57,16 @@ class Evidence:
                 )
             return json.loads(path.read_text(encoding="utf-8"))
 
-        return cls(read("cases.json"), read("provenance.json"), read("producer_inventory.json"))
+        def read_optional(name: str) -> dict[str, Any]:
+            path = where / name
+            return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+        return cls(
+            read("cases.json"),
+            read("provenance.json"),
+            read("producer_inventory.json"),
+            read_optional("producer_union.json"),
+        )
 
 
 def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:

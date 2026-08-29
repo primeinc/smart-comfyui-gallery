@@ -1,0 +1,364 @@
+{
+  "photographs": [
+    "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+    "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87"
+  ],
+  "population": {
+    "bytes_per_face_union": 10352,
+    "distinct_keys": 13,
+    "producers": 4,
+    "ran": 4,
+    "unavailable": []
+  },
+  "producers": [
+    {
+      "faces": 2,
+      "identity": {
+        "insightface": "1.0.1",
+        "onnxruntime": "1.29.0"
+      },
+      "keys": {
+        "age": {
+          "bytes": 8,
+          "dtype": "int64",
+          "shape": []
+        },
+        "bbox": {
+          "bytes": 16,
+          "dtype": "float32",
+          "shape": [
+            4
+          ]
+        },
+        "det_score": {
+          "bytes": 4,
+          "dtype": "float32",
+          "shape": []
+        },
+        "embedding": {
+          "bytes": 2048,
+          "dtype": "float32",
+          "shape": [
+            512
+          ]
+        },
+        "gender": {
+          "bytes": 8,
+          "dtype": "int64",
+          "shape": []
+        },
+        "kps": {
+          "bytes": 40,
+          "dtype": "float32",
+          "shape": [
+            5,
+            2
+          ]
+        },
+        "landmark_2d_106": {
+          "bytes": 848,
+          "dtype": "float32",
+          "shape": [
+            106,
+            2
+          ]
+        },
+        "landmark_3d_68": {
+          "bytes": 816,
+          "dtype": "float32",
+          "shape": [
+            68,
+            3
+          ]
+        },
+        "pose": {
+          "bytes": 12,
+          "dtype": "float32",
+          "shape": [
+            3
+          ]
+        }
+      },
+      "producer": "insightface/antelopev2",
+      "ready": true,
+      "reason": ""
+    },
+    {
+      "faces": 2,
+      "identity": {
+        "insightface": "1.0.1",
+        "onnxruntime": "1.29.0"
+      },
+      "keys": {
+        "age": {
+          "bytes": 8,
+          "dtype": "int64",
+          "shape": []
+        },
+        "bbox": {
+          "bytes": 16,
+          "dtype": "float32",
+          "shape": [
+            4
+          ]
+        },
+        "det_score": {
+          "bytes": 4,
+          "dtype": "float32",
+          "shape": []
+        },
+        "embedding": {
+          "bytes": 2048,
+          "dtype": "float32",
+          "shape": [
+            512
+          ]
+        },
+        "gender": {
+          "bytes": 8,
+          "dtype": "int64",
+          "shape": []
+        },
+        "kps": {
+          "bytes": 40,
+          "dtype": "float32",
+          "shape": [
+            5,
+            2
+          ]
+        },
+        "landmark_2d_106": {
+          "bytes": 848,
+          "dtype": "float32",
+          "shape": [
+            106,
+            2
+          ]
+        },
+        "landmark_3d_68": {
+          "bytes": 816,
+          "dtype": "float32",
+          "shape": [
+            68,
+            3
+          ]
+        },
+        "pose": {
+          "bytes": 12,
+          "dtype": "float32",
+          "shape": [
+            3
+          ]
+        }
+      },
+      "producer": "insightface/buffalo_l",
+      "ready": true,
+      "reason": ""
+    },
+    {
+      "faces": 14,
+      "identity": {
+        "face_alignment": "1.5.0",
+        "torch": "2.13.0+cu132"
+      },
+      "keys": {
+        "landmark_2d_68": {
+          "bytes": 544,
+          "dtype": "float32",
+          "shape": [
+            68,
+            2
+          ]
+        },
+        "landmark_3d_68": {
+          "bytes": 816,
+          "dtype": "float32",
+          "shape": [
+            68,
+            3
+          ]
+        }
+      },
+      "producer": "face_alignment/68",
+      "ready": true,
+      "reason": ""
+    },
+    {
+      "faces": 2,
+      "identity": {
+        "bundle_sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+        "mediapipe": "1.0.1"
+      },
+      "keys": {
+        "blendshape_scores": {
+          "bytes": 208,
+          "dtype": "float32",
+          "shape": [
+            52
+          ]
+        },
+        "facial_transform_matrix": {
+          "bytes": 64,
+          "dtype": "float32",
+          "shape": [
+            4,
+            4
+          ]
+        },
+        "landmark_3d_478": {
+          "bytes": 5736,
+          "dtype": "float32",
+          "shape": [
+            478,
+            3
+          ]
+        }
+      },
+      "producer": "mediapipe/face_landmarker",
+      "ready": true,
+      "reason": ""
+    }
+  ],
+  "union": {
+    "age": {
+      "bytes": 8,
+      "dtype": "int64",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": []
+    },
+    "bbox": {
+      "bytes": 16,
+      "dtype": "float32",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": [
+        4
+      ]
+    },
+    "blendshape_scores": {
+      "bytes": 208,
+      "dtype": "float32",
+      "emitted_by": [
+        "mediapipe/face_landmarker"
+      ],
+      "shape": [
+        52
+      ]
+    },
+    "det_score": {
+      "bytes": 4,
+      "dtype": "float32",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": []
+    },
+    "embedding": {
+      "bytes": 2048,
+      "dtype": "float32",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": [
+        512
+      ]
+    },
+    "facial_transform_matrix": {
+      "bytes": 64,
+      "dtype": "float32",
+      "emitted_by": [
+        "mediapipe/face_landmarker"
+      ],
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "gender": {
+      "bytes": 8,
+      "dtype": "int64",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": []
+    },
+    "kps": {
+      "bytes": 40,
+      "dtype": "float32",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": [
+        5,
+        2
+      ]
+    },
+    "landmark_2d_106": {
+      "bytes": 848,
+      "dtype": "float32",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": [
+        106,
+        2
+      ]
+    },
+    "landmark_2d_68": {
+      "bytes": 544,
+      "dtype": "float32",
+      "emitted_by": [
+        "face_alignment/68"
+      ],
+      "shape": [
+        68,
+        2
+      ]
+    },
+    "landmark_3d_478": {
+      "bytes": 5736,
+      "dtype": "float32",
+      "emitted_by": [
+        "mediapipe/face_landmarker"
+      ],
+      "shape": [
+        478,
+        3
+      ]
+    },
+    "landmark_3d_68": {
+      "bytes": 816,
+      "dtype": "float32",
+      "emitted_by": [
+        "face_alignment/68",
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": [
+        68,
+        3
+      ]
+    },
+    "pose": {
+      "bytes": 12,
+      "dtype": "float32",
+      "emitted_by": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "shape": [
+        3
+      ]
+    }
+  }
+}

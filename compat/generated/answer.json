@@ -1,0 +1,643 @@
+{
+  "derivable": [
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "instantid",
+        "infiniteyou",
+        "instantid_upstream"
+      ],
+      "name": "reference_pixels",
+      "note": "",
+      "proof": [
+        "every removal reproduced the baseline: derivable from what remained"
+      ],
+      "verdict": "DERIVABLE"
+    }
+  ],
+  "derived_from": {
+    "cases": 357,
+    "producers_ran": 4,
+    "union_bytes_per_face": 10352,
+    "union_keys": 13,
+    "vendor_accepted": [
+      "consisid",
+      "infiniteyou",
+      "instantid_upstream",
+      "ipadapter_upstream",
+      "photomaker_v2",
+      "pulid_upstream",
+      "reactor",
+      "uniportrait"
+    ]
+  },
+  "lane_internal": [
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "ipadapter_faceid_plus"
+      ],
+      "name": "derive_256_from_336",
+      "note": "",
+      "proof": [
+        "aligned_crop_256_synthetic: 192133 of 196608 elements differ, worst 58.0",
+        "aligned_crop_256_1_id_document: 191524 of 196608 elements differ, worst 187.0",
+        "aligned_crop_256_1_selfie: 192509 of 196608 elements differ, worst 178.0"
+      ],
+      "verdict": "NECESSARY"
+    }
+  ],
+  "lossy_today": [
+    {
+      "bytes_per_face": 4,
+      "consumers": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "name": "det_score",
+      "note": "stored, but not returned unchanged",
+      "proof": [
+        "worst 0 (dtype)"
+      ],
+      "verdict": "LOSSY"
+    },
+    {
+      "bytes_per_face": 40,
+      "consumers": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "name": "kps",
+      "note": "stored, but not returned unchanged",
+      "proof": [
+        "worst 0.000244141 (allclose rtol=0.0 atol=0.0)"
+      ],
+      "verdict": "LOSSY"
+    },
+    {
+      "bytes_per_face": 848,
+      "consumers": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "name": "landmark_2d_106",
+      "note": "stored, but not returned unchanged",
+      "proof": [
+        "worst 0.0322266 (allclose rtol=0.0 atol=0.0)"
+      ],
+      "verdict": "LOSSY"
+    },
+    {
+      "bytes_per_face": 816,
+      "consumers": [
+        "face_alignment/68",
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "name": "landmark_3d_68",
+      "note": "stored, but not returned unchanged",
+      "proof": [
+        "worst 0.0319824 (allclose rtol=0.0 atol=0.0)"
+      ],
+      "verdict": "LOSSY"
+    },
+    {
+      "bytes_per_face": 12,
+      "consumers": [
+        "insightface/antelopev2",
+        "insightface/buffalo_l"
+      ],
+      "name": "pose",
+      "note": "stored, but not returned unchanged",
+      "proof": [
+        "worst 0.00339532 (allclose rtol=0.0 atol=0.0)"
+      ],
+      "verdict": "LOSSY"
+    }
+  ],
+  "must_retain": [
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "gallery_storage"
+      ],
+      "name": "age",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'age', which the retained state does",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'age', which the retained state does",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'age', which the retained state does"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "embedding_spaces"
+      ],
+      "name": "aligned_crop_112",
+      "note": "",
+      "proof": [
+        "space_glintr100_1_id_document: KeyError: \"replay needs 'aligned_crop_112', which the retain",
+        "space_w600k_r50_1_id_document: KeyError: \"replay needs 'aligned_crop_112', which the retain",
+        "space_facexlib_arcface_1_id_document: KeyError: \"replay needs 'aligned_crop_112', which the retain"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "id_lora"
+      ],
+      "name": "audio_sample_rate",
+      "note": "",
+      "proof": [
+        "id_lora_reference_waveform: KeyError: \"replay needs 'audio_sample_rate', which the retai"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "id_lora"
+      ],
+      "name": "audio_waveform",
+      "note": "",
+      "proof": [
+        "id_lora_reference_waveform: KeyError: \"replay needs 'audio_waveform', which the retained"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "gallery_storage"
+      ],
+      "name": "bbox",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'bbox', which the retained state doe",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'bbox', which the retained state doe",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'bbox', which the retained state doe"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "gallery_storage"
+      ],
+      "name": "det_score",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'det_score', which the retained stat",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'det_score', which the retained stat",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'det_score', which the retained stat"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "insightface_producer",
+        "gallery_storage"
+      ],
+      "name": "embedding",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'embedding', which the retained stat",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'embedding', which the retained stat",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'embedding', which the retained stat"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "instantid",
+        "ipadapter_faceid",
+        "ipadapter_faceid_plus",
+        "pulid_comfyui",
+        "reactor",
+        "infiniteyou",
+        "photomaker_v2",
+        "instantid_upstream",
+        "ipadapter_upstream",
+        "pulid_upstream"
+      ],
+      "name": "embedding_raw",
+      "note": "",
+      "proof": [
+        "instantid_embedding_1_id_document: KeyError: \"replay needs 'embedding_raw', which the retained ",
+        "instantid_embedding_1_selfie: KeyError: \"replay needs 'embedding_raw', which the retained ",
+        "instantid_embedding_2_id_document: KeyError: \"replay needs 'embedding_raw', which the retained "
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "instantid",
+        "infiniteyou",
+        "instantid_upstream"
+      ],
+      "name": "frame_dimensions",
+      "note": "",
+      "proof": [
+        "instantid_kps_render_1_id_document: KeyError: \"replay needs 'frame_dimensions', which the retain",
+        "instantid_kps_render_1_selfie: KeyError: \"replay needs 'frame_dimensions', which the retain",
+        "instantid_kps_render_2_id_document: KeyError: \"replay needs 'frame_dimensions', which the retain"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "gallery_storage"
+      ],
+      "name": "gender",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'gender', which the retained state d",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'gender', which the retained state d",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'gender', which the retained state d"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "gallery_storage"
+      ],
+      "name": "kps",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'kps', which the retained state does",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'kps', which the retained state does",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'kps', which the retained state does"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "ipadapter_faceid_plus",
+        "instantid",
+        "infiniteyou",
+        "uniportrait",
+        "instantid_upstream"
+      ],
+      "name": "kps_source_px",
+      "note": "",
+      "proof": [
+        "aligned_crop_112_synthetic: KeyError: \"replay needs 'kps_source_px', which the retained ",
+        "aligned_crop_224_synthetic: KeyError: \"replay needs 'kps_source_px', which the retained ",
+        "aligned_crop_256_synthetic: KeyError: \"replay needs 'kps_source_px', which the retained "
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "gallery_storage"
+      ],
+      "name": "landmark_2d_106",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'landmark_2d_106', which the retaine",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'landmark_2d_106', which the retaine",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'landmark_2d_106', which the retaine"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reactor",
+        "insightface_producer",
+        "gallery_storage"
+      ],
+      "name": "landmark_3d_68",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: KeyError: \"replay needs 'landmark_3d_68', which the retained",
+        "reactor_face_model_1_selfie: KeyError: \"replay needs 'landmark_3d_68', which the retained",
+        "reactor_face_model_2_id_document: KeyError: \"replay needs 'landmark_3d_68', which the retained"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "ipadapter_faceid_plus",
+        "infiniteyou",
+        "uniportrait"
+      ],
+      "name": "patch_origin",
+      "note": "",
+      "proof": [
+        "aligned_crop_112_synthetic: KeyError: \"replay needs 'patch_origin', which the retained s",
+        "aligned_crop_224_synthetic: KeyError: \"replay needs 'patch_origin', which the retained s",
+        "aligned_crop_256_synthetic: KeyError: \"replay needs 'patch_origin', which the retained s"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "gallery_storage"
+      ],
+      "name": "pose",
+      "note": "",
+      "proof": [
+        "store_gallery_v45_pose_1_id_document: KeyError: \"replay needs 'pose', which the retained state doe",
+        "store_gallery_v45_pose_1_selfie: KeyError: \"replay needs 'pose', which the retained state doe",
+        "store_gallery_v45_pose_2_id_document: KeyError: \"replay needs 'pose', which the retained state doe"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reference_sets"
+      ],
+      "name": "reference_vectors",
+      "note": "",
+      "proof": [
+        "refset_stack_single_A: KeyError: \"replay needs 'reference_vectors', which the retai",
+        "refset_stack_pair_AB: KeyError: \"replay needs 'reference_vectors', which the retai",
+        "refset_stack_pair_BA: KeyError: \"replay needs 'reference_vectors', which the retai"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "ipadapter_faceid_plus",
+        "infiniteyou",
+        "uniportrait"
+      ],
+      "name": "source_region_pixels",
+      "note": "",
+      "proof": [
+        "aligned_crop_112_synthetic: KeyError: \"replay needs 'source_region_pixels', which the re",
+        "aligned_crop_224_synthetic: KeyError: \"replay needs 'source_region_pixels', which the re",
+        "aligned_crop_256_synthetic: KeyError: \"replay needs 'source_region_pixels', which the re"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "id_v2v"
+      ],
+      "name": "source_video_bytes",
+      "note": "",
+      "proof": [
+        "id_v2v_source_frames_cover_eyes: KeyError: \"replay needs 'source_video_bytes', which the reta",
+        "id_v2v_source_frames_woman_dancing: KeyError: \"replay needs 'source_video_bytes', which the reta",
+        "id_v2v_source_frames_woman_phone: KeyError: \"replay needs 'source_video_bytes', which the reta"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "anystory"
+      ],
+      "name": "subject_mask",
+      "note": "",
+      "proof": [
+        "anystory_masked_subject_single: KeyError: \"replay needs 'subject_mask', which the retained s",
+        "anystory_masked_subject_multi_1: KeyError: \"replay needs 'subject_mask', which the retained s",
+        "anystory_masked_subject_multi_2: KeyError: \"replay needs 'subject_mask', which the retained s"
+      ],
+      "verdict": "NECESSARY"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "umo",
+        "uno",
+        "uso",
+        "omnigen2",
+        "instantcharacter",
+        "qwen_image_edit_2509",
+        "xverse",
+        "anystory",
+        "consisid"
+      ],
+      "name": "whole_reference_image",
+      "note": "",
+      "proof": [
+        "umo_reference_1_id_document: KeyError: \"replay needs 'whole_reference_image', which the r",
+        "umo_reference_1_selfie: KeyError: \"replay needs 'whole_reference_image', which the r",
+        "umo_reference_2_id_document: KeyError: \"replay needs 'whole_reference_image', which the r"
+      ],
+      "verdict": "NECESSARY"
+    }
+  ],
+  "question": "the minimum canonical evidence this application must durably retain after one expensive observation pass, so every supported consumer is served without reopening the source media or re-running the producer",
+  "substitutes_that_fail": [
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "consisid"
+      ],
+      "name": "arcface_footprint_only",
+      "note": "",
+      "proof": [
+        "consisid_align_face_1_id_document: 770526 of 786432 elements differ, worst 171.0",
+        "consisid_align_face_1_selfie: 771685 of 786432 elements differ, worst 195.0",
+        "consisid_align_face_2_id_document: 733580 of 786432 elements differ, worst 111.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "umo",
+        "uno",
+        "uso",
+        "omnigen2",
+        "instantcharacter",
+        "qwen_image_edit_2509",
+        "xverse",
+        "anystory"
+      ],
+      "name": "face_patch_substituted",
+      "note": "",
+      "proof": [
+        "umo_reference_1_id_document: baseline (4032, 3024, 3) against replay (948, 948, 3)",
+        "umo_reference_1_selfie: baseline (3088, 2316, 3) against replay (1426, 1426, 3)",
+        "umo_reference_2_id_document: baseline (4000, 3000, 3) against replay (763, 763, 3)"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "id_v2v"
+      ],
+      "name": "face_row_substituted",
+      "note": "",
+      "proof": [
+        "id_v2v_source_frames_cover_eyes: ValueError: these bytes are not decodable video: InvalidData",
+        "id_v2v_source_frames_woman_dancing: ValueError: these bytes are not decodable video: InvalidData",
+        "id_v2v_source_frames_woman_phone: ValueError: these bytes are not decodable video: InvalidData"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "consisid"
+      ],
+      "name": "generous_patch_substituted",
+      "note": "",
+      "proof": [
+        "consisid_align_face_1_id_document: 707096 of 786432 elements differ, worst 76.0",
+        "consisid_align_face_1_selfie: 736955 of 786432 elements differ, worst 241.0",
+        "consisid_align_face_2_id_document: 726351 of 786432 elements differ, worst 126.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "embedding_spaces"
+      ],
+      "name": "glintr100_substituted",
+      "note": "",
+      "proof": [
+        "space_w600k_r50_1_id_document: 512 of 512 elements differ, worst 4.0",
+        "space_facexlib_arcface_1_id_document: 512 of 512 elements differ, worst 3.0",
+        "space_w600k_r50_1_selfie: 512 of 512 elements differ, worst 4.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "anystory"
+      ],
+      "name": "mask_from_face_bbox",
+      "note": "",
+      "proof": [
+        "anystory_masked_subject_single: 63695 of 645072 elements differ, worst 255.0",
+        "anystory_masked_subject_multi_1: 599575 of 3784800 elements differ, worst 255.0",
+        "anystory_masked_subject_multi_2: 42721 of 883600 elements differ, worst 255.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "reference_sets"
+      ],
+      "name": "order_reversed",
+      "note": "fails on some arrangements and serves on others; see per-case evidence",
+      "proof": [
+        "refset_stack_pair_AB: 1024 of 1024 elements differ, worst 3.0",
+        "refset_stack_pair_BA: 1024 of 1024 elements differ, worst 3.0",
+        "refset_stack_triple_ABC: 1024 of 1536 elements differ, worst 3.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "face_selection"
+      ],
+      "name": "selection_rule_mutated",
+      "note": "",
+      "proof": [
+        "select_first_ipadapter_faceid_1717292131: 4 of 4 elements differ, worst 434.0",
+        "select_first_ipadapter_faceid_plus_1717292131: 4 of 4 elements differ, worst 434.0",
+        "select_first_ipadapter_upstream_1717292131: 4 of 4 elements differ, worst 434.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
+      "bytes_per_face": 0,
+      "consumers": [
+        "instantid",
+        "ipadapter_faceid",
+        "ipadapter_faceid_plus",
+        "pulid_comfyui",
+        "reactor",
+        "infiniteyou",
+        "photomaker_v2",
+        "instantid_upstream",
+        "ipadapter_upstream",
+        "pulid_upstream"
+      ],
+      "name": "stored_glintr100_substituted",
+      "note": "fails on some arrangements and serves on others; see per-case evidence",
+      "proof": [
+        "ipadapter_faceid_embedding_1_id_document: 512 of 512 elements differ, worst 0.0",
+        "ipadapter_faceid_embedding_1_selfie: 512 of 512 elements differ, worst 0.0",
+        "ipadapter_faceid_embedding_2_id_document: 512 of 512 elements differ, worst 0.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    }
+  ],
+  "substitutes_that_serve": [],
+  "unretainable_today": [
+    {
+      "bytes_per_face": 5736,
+      "consumers": [
+        "mediapipe/face_landmarker"
+      ],
+      "name": "landmark_3d_478",
+      "note": "no column",
+      "proof": [
+        "emitted by mediapipe/face_landmarker; gallery_storage returned no such key"
+      ],
+      "verdict": "UNRETAINABLE"
+    },
+    {
+      "bytes_per_face": 544,
+      "consumers": [
+        "face_alignment/68"
+      ],
+      "name": "landmark_2d_68",
+      "note": "no column",
+      "proof": [
+        "emitted by face_alignment/68; gallery_storage returned no such key"
+      ],
+      "verdict": "UNRETAINABLE"
+    },
+    {
+      "bytes_per_face": 208,
+      "consumers": [
+        "mediapipe/face_landmarker"
+      ],
+      "name": "blendshape_scores",
+      "note": "no column",
+      "proof": [
+        "emitted by mediapipe/face_landmarker; gallery_storage returned no such key"
+      ],
+      "verdict": "UNRETAINABLE"
+    },
+    {
+      "bytes_per_face": 64,
+      "consumers": [
+        "mediapipe/face_landmarker"
+      ],
+      "name": "facial_transform_matrix",
+      "note": "no column",
+      "proof": [
+        "emitted by mediapipe/face_landmarker; gallery_storage returned no such key"
+      ],
+      "verdict": "UNRETAINABLE"
+    }
+  ]
+}

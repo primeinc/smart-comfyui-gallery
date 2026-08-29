@@ -258,7 +258,30 @@ def verify_repo(
 #: Packages whose version changes results and whose source CAN be hashed the
 #: ordinary way, so they are recorded by version here and pinned by blob in
 #: `[[runtimes]]` where a consumer actually executes them.
-LIBRARIES: tuple[str, ...] = ("onnx", "numpy", "opencv-python", "scikit-image", "torch", "insightface")
+LIBRARIES: tuple[str, ...] = (
+    "onnx",
+    "numpy",
+    "opencv-python",
+    "opencv-contrib-python",
+    "scikit-image",
+    "torch",
+    "insightface",
+    "mediapipe",
+    "face-alignment",
+)
+
+#: The modules whose arithmetic decides pixel values, recorded by the version
+#: the IMPORT actually resolves to rather than by a distribution name.
+#:
+#: Measured, not feared: installing mediapipe pulled in
+#: opencv-contrib-python 5.0.0.93 alongside opencv-python 4.14, cv2 began
+#: resolving to 5.0.0, and every aligned crop moved by one level in a handful
+#: of pixels -- 3 of 37,632 at 112, 88 of 338,688 at 336. Nothing in the
+#: identity changed, because it was watching the distribution `opencv-python`
+#: while a different distribution supplied the module. The same trap the
+#: onnxruntime note below describes: metadata describes what was installed,
+#: not what will run.
+IMPORTED: tuple[str, ...] = ("cv2", "numpy", "skimage", "torch", "PIL")
 
 
 def backend_identity() -> dict[str, Any]:
@@ -289,6 +312,22 @@ def backend_identity() -> dict[str, Any]:
         except importlib.metadata.PackageNotFoundError:
             out[name] = None
 
+    # What the IMPORT resolves to, which is what actually runs.
+    imported: dict[str, Any] = {}
+    for name in IMPORTED:
+        try:
+            module = importlib.import_module(name)
+        except ImportError as why:
+            imported[name] = f"ABSENT: {why}"
+            continue
+        imported[name] = {
+            "version": str(getattr(module, "__version__", "present")),
+            # Where it loaded FROM: two distributions can supply one module
+            # name, and the path is what says which won.
+            "file": str(getattr(module, "__file__", "?")),
+        }
+    out["imported"] = imported
+
     engine: dict[str, Any] = {}
     try:
         import onnxruntime
@@ -315,6 +354,27 @@ def digest_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def _weight_root(row: dict[str, Any]) -> Path:
+    """Where a weight actually lives, resolved the way the run resolves it.
+
+    A row may name `root` outright, or name `root_package` -- the importable
+    package that owns the weights -- plus `root_subdir`.
+
+    The second spelling exists because the first drifted. `facexlib`'s weights
+    were declared under `.venv/...` while the suite runs from `.venv-compat`,
+    so the manifest named a directory no interpreter in this project uses and
+    the rows read ABSENT. A path typed into a manifest is a claim about an
+    environment; asking the interpreter removes the gap between the two.
+    """
+    package = row.get("root_package")
+    if package:
+        found = importlib.util.find_spec(package)
+        if found is None or not found.origin:
+            return Path(row.get("root", f"<{package} not importable>"))
+        return Path(found.origin).parent / row.get("root_subdir", "")
+    return Path(row["root"])
+
+
 def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """The model files themselves, by content.
 
@@ -329,8 +389,14 @@ def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """
     out: list[dict[str, Any]] = []
     for row in manifest.get("weights", []):
-        where = Path(row["root"]) / row["file"]
+        where = _weight_root(row) / row["file"]
         found = where.is_file()
+        measured = digest_file(where) if found else None
+        # A hash WE computed proves our copy has not changed since we hashed
+        # it. It does not prove our copy is the one the vendor shipped. Where a
+        # vendor publishes the digest in its own documentation, that claim is
+        # recorded and checked, which is a different and stronger statement.
+        published = row.get("published_sha256")
         out.append(
             {
                 "pack": row["pack"],
@@ -339,7 +405,10 @@ def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "role": row.get("role", ""),
                 "present": found,
                 "bytes": where.stat().st_size if found else 0,
-                "sha256": digest_file(where) if found else None,
+                "sha256": measured,
+                "published_sha256": published,
+                "published_by": row.get("published_by", ""),
+                "matches_published": None if not (published and measured) else measured == published,
             }
         )
     return out
@@ -500,6 +569,10 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
             all(one.ok for one in proofs)
             and all(one.matches for one in runtimes)
             and all(one["present"] for one in weights)
+            # A weight whose measured digest contradicts the digest its vendor
+            # PUBLISHES is not our copy of their file. That is a harder
+            # failure than absence: the run would proceed and be wrong.
+            and all(one["matches_published"] is not False for one in weights)
         ),
     }
 
@@ -530,9 +603,20 @@ def report(out: dict[str, Any]) -> None:
         print(f"{mark} runtime:{row['package']:<38} {row['pinned_commit'][:12]}  {state}")
 
     for row in out["weights"]:
-        mark = "ok  " if row["present"] else "FAIL"
+        mark = "ok  " if row["present"] and row["matches_published"] is not False else "FAIL"
         digest = row["sha256"][:12] if row["sha256"] else "ABSENT"
-        print(f"{mark} weight:{row['pack']}/{row['file']:<32} {digest}  {row['bytes']:>12,} bytes")
+        against = ""
+        if row["matches_published"] is True:
+            against = f"  == published by {row['published_by']}"
+        elif row["matches_published"] is False:
+            against = f"  != PUBLISHED {row['published_sha256'][:12]} ({row['published_by']})"
+        print(f"{mark} weight:{row['pack']}/{row['file']:<32} {digest}  {row['bytes']:>12,} bytes{against}")
+
+    verified = [one for one in out["weights"] if one["matches_published"] is True]
+    unverified = [one for one in out["weights"] if one["matches_published"] is None]
+    print(
+        f"\nweights vs vendor-published digests: {len(verified)} verified, {len(unverified)} with no published digest"
+    )
 
     pop: dict[str, Any] = out["population"]
     print(f"\npopulation: {pop['total']} consumers")

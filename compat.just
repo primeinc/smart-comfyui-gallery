@@ -46,7 +46,7 @@ sync:
     uv sync --group compat --group dev
 
 # Every lane in order. Stops at the first red
-run: sync pins producer cases matrices attack
+run: sync check pins citations vendor acceptance producer union cases matrices attack selftest staleness answer
 
 # Three independent layers, and none excuses the others: a clone at the right
 # commit says nothing about what the interpreter will import, and neither says
@@ -64,13 +64,43 @@ pins:
 producer:
     {{ python }} -m compat.producers.inventory
 
+# ONE producer is one pack's opinion of what a face observation is. The
+# storage contract has to answer for the union of what every provider emits,
+# or a schema shaped around antelopev2 scores perfectly and proves nothing.
+# A producer that cannot run here is recorded with its reason, never dropped.
+
+# Every producer's keys, unioned
+union:
+    {{ python }} -m compat.producers.union
+
 # Red while any declared consumer is unexercised. That is deliberate: a
 # consumer which disappears when nothing runs it is how a suite reports
 # success it did not earn.
 
+# Sixteen lanes hold six ONNX packs, torch, mediapipe and every memoised
+# full-resolution frame. One process holding all of it died during model
+# loading with exit 1 and no traceback. Shards split the lanes across
+# processes and merge one evidence file, recomputing the population from the
+# FROZEN manifest -- so a dead shard shows up as unexercised consumers and a
+# red gate, never as a smaller green population.
+
+# Eleven wrong values were found in this manifest by hand in one session --
+# four recognition packs, two combine rules, two det-size ladders, a max side
+# length, a preprocessing note and a mis-attributed loader. Every one was
+# written from a careful read of the source that later contradicted it, so
+# the citations are resolved by machine rather than read again more carefully.
+#
+# Placed BEFORE the expensive lanes on purpose: a manifest defect found after
+# the case shards have run costs a second GPU pass, and that is how this gate
+# came to exist.
+
+# Every path:line in the manifest, resolved against the pinned commit
+citations:
+    {{ python }} -m compat.harness.citations
+
 # Baseline, replay and ablation for every consumer that has a runner
 cases:
-    {{ python }} -m compat.harness.run
+    {{ python }} -m compat.harness.sharded
 
 # Reads only what the lanes above wrote, so a hand-typed conclusion cannot
 # enter. Red while the population is incomplete, for the same reason `cases`
@@ -90,6 +120,62 @@ matrices:
 # Attack the suite and prove its gates can fail
 attack:
     {{ python }} -m compat.harness.attack
+
+# Each upstream's OWN example input, resolved from its pinned commit and
+# hashed. A consumer with no first-party input is VENDOR_BASELINE_UNAVAILABLE
+# and stays visibly unresolved; our photographs are never substituted.
+
+# First-party sample inputs, per consumer, by sha256
+vendor:
+    {{ python }} -m compat.vendor.fixtures
+
+# LAYER ONE. Our adapter matching a reference proves nothing until the
+# reference itself is known to run. This executes a vendor's OWN entrypoint,
+# on its OWN example input, with its OWN published checkpoints.
+#
+# Seven vendors run here: consisid, pulid_upstream, infiniteyou,
+# ipadapter_upstream, uniportrait, photomaker_v2 and reactor. Each computes
+# its conditioning entirely before the first sampling step, so no base model
+# is needed for the ID half. What is still absent is the diffusion checkpoint
+# the rest of the population conditions -- FLUX or SDXL -- which makes those
+# consumers UNSUPPORTED, a fact about this box, never
+# VENDOR_BASELINE_UNAVAILABLE, which would be a claim about upstream.
+#
+# PhotoMaker is split by that line rather than excluded by it: its
+# `analyze_faces` and id_embeds stack run, its ID ENCODER does not, because
+# that forward takes SDXL prompt_embeds. The row records both halves.
+
+# The pinned upstream reproducing its own example
+acceptance:
+    {{ python }} -m compat.vendor.acceptance
+
+# Twelve deliberate corruptions -- pin, weight, manifest, runner source,
+# dropped primitive, selection rule, reference order, stale evidence, missing
+# consumer, vendor fixture, faked acceptance, lost round-trip key -- plus a
+# positive control that must report CLEAN. An attack the
+# gate does not see is red: every green ever reported for it was
+# uninformative.
+
+# Corrupt the harness deliberately and assert it notices
+selftest:
+    {{ python }} -m compat.harness.selftest
+
+# Evidence that does not name its inputs cannot be stale. This recomputes the
+# identity over fixtures, pins, weights, runtime, manifest and OUR OWN runner
+# source, and fails when generated/cases.json answers an older question.
+
+# Fail if the generated evidence is not current
+staleness:
+    {{ python }} -m compat.harness.identity
+
+# The whole point. Every other lane produces evidence; this reads it and
+# states the minimum durable set, citing the case that proves each line.
+# Nothing in it decides anything: a primitive is in because an ablation
+# removed it and a replay broke, and out because one did not.
+
+# The minimum retained state, derived from the evidence
+answer:
+    {{ python }} -m compat.harness.answer
 
 # The licence is cc-by-nc-nd-4.0, so nothing here copies, resizes or rewrites
 # a file. A digest rather than a path is what keeps the evidence honest: a

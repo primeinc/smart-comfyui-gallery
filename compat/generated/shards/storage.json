@@ -1,0 +1,2638 @@
+{
+  "cases": 48,
+  "identity": {
+    "digest": "b717ed229da86b9ceef2f5a9c7681e748e177c306dfe56ddefa4a0a609a0af97",
+    "manifest": "26e3d3fb2ddb7dfbd29e850703340a91aa2698efade623f7ffe26b37365ddf34",
+    "repos": {
+      "consumer:anystory": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
+      "consumer:consisid": "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e",
+      "consumer:id_lora": "13dc9c286a2d3c1a21a7781f9ac0fe7727ec56cd",
+      "consumer:id_v2v": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
+      "consumer:infiniteyou": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "consumer:instantcharacter": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
+      "consumer:instantid": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
+      "consumer:instantid_upstream": "2145b67f9607da6234702063692330185f374486",
+      "consumer:ipadapter_faceid": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer:ipadapter_faceid_plus": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+      "consumer:ipadapter_upstream": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "consumer:omnigen2": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
+      "consumer:photomaker_v2": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "consumer:pulid_comfyui": "93e0c4c226b87b23c0009d671978bad0e77289ff",
+      "consumer:pulid_upstream": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "consumer:qwen_image_edit_2509": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
+      "consumer:reactor": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "consumer:umo": "aada3dc32990ae82061857ebe911b2c15621571a",
+      "consumer:uniportrait": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "consumer:uno": "a563432dcfb4caf98df4368facb8102bf97d376c",
+      "consumer:uso": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
+      "consumer:xverse": "65e2581aac0faffe4607881a10cc486186f6499d",
+      "upstream:adaptive_wing_loss": "4b64de5b9417bc7ecc9b8862c60d1942893e2a9d",
+      "upstream:bisenet": "6b4b67a8e3eb0cc23b3d7a94843a7c3c11dedca8",
+      "upstream:celebamask_hq": "3f6c45df5e67130568f9459f24f8d6a5ff836d30",
+      "upstream:clip": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "upstream:comfyui": "a9ab2b62dac17743c62fc1cab8468340496d302e",
+      "upstream:comfyui_original": "e7051b03758a1247e3adb84a5b784ffacb9a23bd",
+      "upstream:david": "20a3eb66f61d0e1caff42489c6775e142179bd46",
+      "upstream:deep_head_pose": "f7bbb9981c2953c2eca67748d6492a64c8243946",
+      "upstream:depth_anything_v1": "1d03336771fe09c5398ffdd211441e33941a97dc",
+      "upstream:depth_anything_v2": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+      "upstream:diffsynth_studio": "102fe9980b9375ecb6436d360297a00327472535",
+      "upstream:diffusers": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "upstream:dinov2": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+      "upstream:eva": "5623d08bb08a8268c7bc18e1d9b8b4bd651fe4d9",
+      "upstream:face_makeup": "8917ca11d226e115dd34a0bf708c20b5f6fda0ba",
+      "upstream:face_parsing": "d2e684cf1588b46145635e8fe7bcc29544e5537e",
+      "upstream:faceboxes": "22efc6a35ce21b53b66ffc8c7a01c293e503df7a",
+      "upstream:facexlib": "260620ae93990a300f4b16448df9bb459f1caba9",
+      "upstream:fastcomposer": "b9304a2e7d09ffe4036ebd8ed5656bb08d6a8ca9",
+      "upstream:flux": "802fb4713906133fcbd0d8dc5351620ca4773036",
+      "upstream:infiniteyou_main": "aaa6ea5f75ba2ff58b9025fa7df45e4a139ed717",
+      "upstream:insightface": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+      "upstream:insightface_pytorch": "350ff7aa9c9db8d369d1932e14d2a4d11a3e9553",
+      "upstream:ltx2": "a95ab856bf29407b6b066ede0abe1846050db56c",
+      "upstream:modnet": "28165a451e4610c9d77cfdf925a94610bb2810fb",
+      "upstream:ominicontrol": "65d929e390a3f785b11e71344de082bb58a2c527",
+      "upstream:open_clip": "92433b5e7d0ffd3a367737f5550738ec5c3fc69a",
+      "upstream:reactor_assets": "606558ed08f16b99a29ef30b0df0b4622164c524",
+      "upstream:retinaface_1mb": "2b075657aef954b9426f938ac7fce100b6910fe6",
+      "upstream:retinaface_pytorch": "b984b4b775b2c4dced95c1eadd195a5c7d32a60b",
+      "upstream:sam2": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+      "upstream:sam3": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+      "upstream:style_aligned": "2faf0af7cf89a00e334d2304ef9f43d34baa0efd",
+      "upstream:t2i_adapter": "c408b059c36e3f9ce336b66746bd606edaa5483a",
+      "upstream:vace": "48eb44f1c4be87cc65a98bff985a26976841e9f3",
+      "upstream:wan21": "9737cba9c1c3c4d04b33fcad41c111989865d315"
+    },
+    "runtime": {
+      "backends": {
+        "face-alignment": "1.5.0",
+        "imported": {
+          "PIL": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+            "version": "12.3.0"
+          },
+          "cv2": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+            "version": "4.14.0"
+          },
+          "numpy": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+            "version": "2.5.2"
+          },
+          "skimage": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+            "version": "0.26.0"
+          },
+          "torch": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+            "version": "2.13.0+cu132"
+          }
+        },
+        "insightface": "1.0.1",
+        "mediapipe": "1.0.1",
+        "numpy": "2.5.2",
+        "onnx": "1.22.0",
+        "onnxruntime": {
+          "available_providers": [
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+          "device": "GPU",
+          "version": "1.29.0"
+        },
+        "opencv-contrib-python": "4.14.0.94",
+        "opencv-python": "4.14.0.94",
+        "scikit-image": "0.26.0",
+        "torch": "2.13.0+cu132"
+      },
+      "implementation": "CPython",
+      "machine": "AMD64",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.5"
+    },
+    "sources": {
+      "assertions/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertions/arrays.py": "ade0d8fcb437e6aa51be997bb610e3325e02263bd98e8afe757bd31c50eb98e5",
+      "assertions/minimize.py": "33753282d1971557d6e91405cd127c0a5b05afd446fe945dda4515746360a4d4",
+      "consumers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumers/aligned_crop.py": "c5b63435a97b99baeb627757778cf7a0a7c2e12a030bdec93789477e47b4b928",
+      "consumers/consisid_facexlib.py": "baef577c4e1af40cccacaacc3b9cf9b3ccef040cd61dc9e386f8826b50bffb04",
+      "consumers/control_stream.py": "64bbe8aeb5d1826f54a8c35dfaebc904c3aa2b263a1921b2a8d1f5ae7eda4d4b",
+      "consumers/embedding_spaces.py": "295e9edc1de473b478cdc606a292e1bf78b7065a4e21c9bbe1220a374a78befc",
+      "consumers/face_family.py": "af9c531f6a98c91a1538217e3f3122431f310a1e7cf9f4675189f93021614276",
+      "consumers/face_selection.py": "90dc25127087c1f05a329d65a538e34d5bbfc2db6202a2b136a28573852acf0d",
+      "consumers/gallery_storage.py": "26e2a47d01a6f4f83baf85cfc405ad72685d9e7168b4d565c73131dba1a9c289",
+      "consumers/masked_reference.py": "f904ca59c6b2358498c3a2e9473df3ee5b085d96c832a4b055df5cebf099d465",
+      "consumers/other_media.py": "14690c27586b5f9c533002e81336bff500c590dbf3dd634e30b698b26caa4101",
+      "consumers/producer_derivations.py": "ce0abd229df42ad6c607e6e7d4d2d081f5768401b3c9fb3f9b031b10ca1627d8",
+      "consumers/reactor_face_model.py": "192e992f05b51f57c7baa2058951ef661a690e78952737dfbb13ec7491f265a7",
+      "consumers/reference_sets.py": "6250d8e46c2a7bc301cece064e119352e8978fc4101790c76200bfafe06078ec",
+      "consumers/whole_reference.py": "08de876d920895b18e67c687196bb98884280c78e3735058ceda9a6c2ebdc5af",
+      "contracts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "contracts/case.py": "87cd405b3d3c3609a38eaa0e13d2b1b3c57407adea05ac5457bd95a35cf055a9",
+      "corpus/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "corpus/groups.py": "7dcff3dfe625e5e70688e7c0c8440c3d49313f9aab72e731ad3ad69cdcb5b2fd",
+      "corpus/index.py": "830432a744a626b4f7fd8e97d88241a8a29cfc4b22ffee7cc2c4bea4e373e9f2",
+      "corpus/loaded.py": "e6c21fc83f7a79112668d71b42c5d934577d8ea45b798f82903c226b00c323f4",
+      "harness/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "harness/answer.py": "5b8ac74fb73245e45de387ddfd3e63992f03c083006ed933fdb52aa223d5978d",
+      "harness/attack.py": "bf02bec54c64ca3864b7590d7179d8283497b534ed7f8abc7da1dd13ec147b6f",
+      "harness/citations.py": "fef869c2472692d3ea01ed2dca5563881981e0a65a9d381895193370427bf214",
+      "harness/identity.py": "2754b7c8a7357fa599738480dee303f9cc2d9ae66bf4830f49af92251cb6bdb8",
+      "harness/matrices.py": "37f45d00cecb84a5642aefeddfffaae34b7d2711d8aa920778bad483367acfb9",
+      "harness/pinned_source.py": "19726ef0c60c5ff613aa75fb20514ce1c9b07336c031872f2d4d3da46faecde2",
+      "harness/provenance.py": "34521665454a322ee9d14cc30f2b76f9b64e7a30cfa4469216056d46e46b6a4f",
+      "harness/run.py": "fa7e3eb373ebdbe320066faff03d0adc80ed79ff471a2b2101111772a97cd0f7",
+      "harness/selftest.py": "e10b2f26aa41eb34fc63f9d07788abe735da655f54a32d5149335b3939c740ee",
+      "harness/sharded.py": "0fab2e8225e5471eb5f23bd7b66545233744f57b9eed419ae5c248955821f815",
+      "primitives/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "primitives/build.py": "21998299538186d094c10f5737a448cafa9102671bce76b19d714daca55b262a",
+      "producers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "producers/insightface_pass.py": "e44fe57a8e4d196986d93692eb27d29a2e5a64dbbe7422036458ee870641d368",
+      "producers/inventory.py": "1d7bf42e974659e05fd45a82716992ec12ab42866921a49694405ccc0797b219",
+      "producers/registry.py": "823f5c00e6abfaa1818be4a3fdadda1dfe8aa3b9d012b586c73a17b133f18231",
+      "producers/union.py": "e7d6e7b051a0c0dbd0aa4f60a330cfa8976e5b0446e5a90210d38c9a500c4b8d",
+      "storage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage/contract.py": "181c7f23d3d7e57c21e46e1f638b41fdb2d94441f46063c600e8d8765c3e9223",
+      "storage/gallery_v45.py": "ecd96f1ae1f19ca368dd099daf8be046d2d3077e39dfde02be635a8f42e863af",
+      "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vendor/acceptance.py": "f1b194149e7a24ff23fcfd31dd48bd038b40bc91724baf5b138c0b515699d389",
+      "vendor/conformance.py": "cf9ccdb4b42e69916657312bf8fafebd6fee30589706892f9e1355dfb06db7a8",
+      "vendor/fixtures.py": "ebf1928c7cf2cbd23c98e9909bd01f9f543aafb974148be4f1575d9ce4f3966c"
+    },
+    "weights": {
+      "antelopev2/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "antelopev2/2d106det.onnx": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "antelopev2/genderage.onnx": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "antelopev2/glintr100.onnx": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "antelopev2/scrfd_10g_bnkps.onnx": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "buffalo_l/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "buffalo_l/2d106det.onnx": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "buffalo_l/det_10g.onnx": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "buffalo_l/genderage.onnx": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "buffalo_l/w600k_r50.onnx": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+      "facexlib/detection_Resnet50_Final.pth": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "facexlib/parsing_bisenet.pth": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "facexlib/recognition_arcface_ir_se50.pth": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
+    }
+  },
+  "population": {
+    "consumer_tier_covered": [],
+    "declared": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ],
+    "primitive_tier_only": [
+      "embedding_spaces",
+      "gallery_storage"
+    ],
+    "unexercised": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ]
+  },
+  "results": [
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|1_id_document",
+        "sha256": "5d4652cbf7eb49955212c50ce486d3b317e7a8fa377e6c245b00066fb9cc941a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_facexlib_arcface_1_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
+          "detail": "1_id_document: facexlib_arcface |v|=1.000 against glintr100 |v|=25.082, cosine -0.0169",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": -0.01687491560485342
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|1_id_document",
+        "sha256": "5d4652cbf7eb49955212c50ce486d3b317e7a8fa377e6c245b00066fb9cc941a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|1_selfie",
+        "sha256": "b49ae59e06e575e6969aecdb609d6119d3e4b5ef616c5d761f3daee01ed7a774",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_facexlib_arcface_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
+          "detail": "1_selfie: facexlib_arcface |v|=1.000 against glintr100 |v|=23.230, cosine -0.0232",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": -0.02324876716233153
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|1_selfie",
+        "sha256": "b49ae59e06e575e6969aecdb609d6119d3e4b5ef616c5d761f3daee01ed7a774",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|2_id_document",
+        "sha256": "f08a77678fb7afe3e81b4fb6d1b26cd380831a7655f5026a5fd9ddf539113677",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_facexlib_arcface_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
+          "detail": "2_id_document: facexlib_arcface |v|=1.000 against glintr100 |v|=23.555, cosine -0.0565",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": -0.056541963423646105
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|2_id_document",
+        "sha256": "f08a77678fb7afe3e81b4fb6d1b26cd380831a7655f5026a5fd9ddf539113677",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|2_selfie",
+        "sha256": "a7d4ee9f893196a39a4f87c11eb4177eb89bd3a1d0d85e939c2a9f6076bd7b10",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_facexlib_arcface_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
+          "detail": "2_selfie: facexlib_arcface |v|=1.000 against glintr100 |v|=19.902, cosine -0.0538",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": -0.05378948410183771
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "facexlib_arcface|2_selfie",
+        "sha256": "a7d4ee9f893196a39a4f87c11eb4177eb89bd3a1d0d85e939c2a9f6076bd7b10",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "glintr100|1_id_document",
+        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_glintr100_1_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "glintr100 against glintr100 on the same norm_crop@112",
+          "detail": "1_id_document: glintr100 |v|=25.082 against glintr100 |v|=25.082, cosine +1.0000 -- the same model",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "glintr100|1_id_document",
+        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "glintr100|1_selfie",
+        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_glintr100_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "glintr100 against glintr100 on the same norm_crop@112",
+          "detail": "1_selfie: glintr100 |v|=23.230 against glintr100 |v|=23.230, cosine +1.0000 -- the same model",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 1.0000000000000002
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "glintr100|1_selfie",
+        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "glintr100|2_id_document",
+        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_glintr100_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "glintr100 against glintr100 on the same norm_crop@112",
+          "detail": "2_id_document: glintr100 |v|=23.555 against glintr100 |v|=23.555, cosine +1.0000 -- the same model",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "glintr100|2_id_document",
+        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "glintr100|2_selfie",
+        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_glintr100_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "glintr100 against glintr100 on the same norm_crop@112",
+          "detail": "2_selfie: glintr100 |v|=19.902 against glintr100 |v|=19.902, cosine +1.0000 -- the same model",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "glintr100|2_selfie",
+        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 4.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "w600k_r50|1_id_document",
+        "sha256": "f5dc064e2ebc1bd41f1d837940ce4b63eb8b103365bb09ff10244b8295a1f188",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_w600k_r50_1_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
+          "detail": "1_id_document: w600k_r50 |v|=23.080 against glintr100 |v|=25.082, cosine +0.0306",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 0.0305950003294706
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "w600k_r50|1_id_document",
+        "sha256": "f5dc064e2ebc1bd41f1d837940ce4b63eb8b103365bb09ff10244b8295a1f188",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 4.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "w600k_r50|1_selfie",
+        "sha256": "c84f8121a27832318348af711280ae72eab9d802ac77f86d44fa607afa97239a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_w600k_r50_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
+          "detail": "1_selfie: w600k_r50 |v|=24.115 against glintr100 |v|=23.230, cosine +0.0218",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 0.021803663501000204
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "w600k_r50|1_selfie",
+        "sha256": "c84f8121a27832318348af711280ae72eab9d802ac77f86d44fa607afa97239a",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 4.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "w600k_r50|2_id_document",
+        "sha256": "38a47c0dfa7cd386717fe212860c6715a232a2745518cbad078840461ce1c083",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_w600k_r50_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
+          "detail": "2_id_document: w600k_r50 |v|=21.825 against glintr100 |v|=23.555, cosine +0.0302",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 0.030166459204413066
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "w600k_r50|2_id_document",
+        "sha256": "38a47c0dfa7cd386717fe212860c6715a232a2745518cbad078840461ce1c083",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'aligned_crop_112', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "aligned_crop_112",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "512 of 512 elements differ, worst 3.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "glintr100_substituted",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "w600k_r50|2_selfie",
+        "sha256": "314f35e1c5d89ccae09770477d954687c709c2d1c712fb6375327ca23877a953",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "space_w600k_r50_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "embedding_spaces",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
+          "detail": "2_selfie: w600k_r50 |v|=20.075 against glintr100 |v|=19.902, cosine +0.0538",
+          "name": "agreement_with_stored",
+          "unit": "cosine",
+          "value": 0.053755380102048014
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "w600k_r50|2_selfie",
+        "sha256": "314f35e1c5d89ccae09770477d954687c709c2d1c712fb6375327ca23877a953",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "age",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|1_id_document",
+        "sha256": "230ec863e18d6e3e86d06fb25e4e78c810af7d7ce505d8d0802305aea64b4fb0",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_age_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "age: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|1_id_document",
+        "sha256": "230ec863e18d6e3e86d06fb25e4e78c810af7d7ce505d8d0802305aea64b4fb0",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "age",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|1_selfie",
+        "sha256": "cdf3c496c923be3475aa8681db8f55214b5a88454f51b90d0971931cd7c499e4",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_age_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "age: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|1_selfie",
+        "sha256": "cdf3c496c923be3475aa8681db8f55214b5a88454f51b90d0971931cd7c499e4",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "age",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|2_id_document",
+        "sha256": "779f279bb43b90d658b524739ac78e9cd2be48dea0b43c8fbe3cfebdf04f7ded",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_age_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "age: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|2_id_document",
+        "sha256": "779f279bb43b90d658b524739ac78e9cd2be48dea0b43c8fbe3cfebdf04f7ded",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'age', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "age",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|2_selfie",
+        "sha256": "71a5c86fb79d28ed3f01c8b356bd6bd86011a4c4c8fd603a4c09d00cf7591cc5",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_age_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "age: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|age|2_selfie",
+        "sha256": "71a5c86fb79d28ed3f01c8b356bd6bd86011a4c4c8fd603a4c09d00cf7591cc5",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|1_id_document",
+        "sha256": "77cecdc87ace1cdd0a987f7e61a55e8f2479d65d0aec099241a82eaa145e6fd4",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_bbox_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 4.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|1_id_document",
+        "sha256": "77cecdc87ace1cdd0a987f7e61a55e8f2479d65d0aec099241a82eaa145e6fd4",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|1_selfie",
+        "sha256": "edb2131103d7800f39132f79148b812cf5da1a3de24fdf47250a1a1b0cf7d75a",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_bbox_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 4.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|1_selfie",
+        "sha256": "edb2131103d7800f39132f79148b812cf5da1a3de24fdf47250a1a1b0cf7d75a",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|2_id_document",
+        "sha256": "74faa92a64888fe434fb30230f9229eee7f7417c57f45a607cc42bfbc9222a49",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_bbox_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 4.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|2_id_document",
+        "sha256": "74faa92a64888fe434fb30230f9229eee7f7417c57f45a607cc42bfbc9222a49",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'bbox', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "bbox",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|2_selfie",
+        "sha256": "fe6fee9d801eb9b4415c238ea25eec137e385da1e2b147cdd523acd11b1b3619",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_bbox_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 4.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|bbox|2_selfie",
+        "sha256": "fe6fee9d801eb9b4415c238ea25eec137e385da1e2b147cdd523acd11b1b3619",
+        "shape": [
+          4
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "det_score",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|det_score|1_id_document",
+        "sha256": "0bf15d9d05904e439d8b5084f3f58d2800077374c8a779d29ae095d11b30df2d",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_det_score_1_id_document",
+      "comparison": "dtype: baseline float32 against replay float64",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": null,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "det_score: producer float32() -> stored float64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float64",
+        "name": "gallery_v45|det_score|1_id_document",
+        "sha256": "8adee7d45dcaddbbfbda41bd3a4bcc1f67a0a7221b267d636c6970091406cfe2",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "det_score",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|det_score|1_selfie",
+        "sha256": "bca8758bd0036741538e85d98ee6e682f87a1a78abb37c9b38c74f25361b4dd2",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_det_score_1_selfie",
+      "comparison": "dtype: baseline float32 against replay float64",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": null,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "det_score: producer float32() -> stored float64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float64",
+        "name": "gallery_v45|det_score|1_selfie",
+        "sha256": "a0ef332897eb13877140f0bd268ebca3753e0441c4f40dfeb07a16d5cdb15a1c",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "det_score",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|det_score|2_id_document",
+        "sha256": "fdaa27ea7138bdc715f9a22ed5729225eebab5b5d82d3205b0acb3ccaf572d02",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_det_score_2_id_document",
+      "comparison": "dtype: baseline float32 against replay float64",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": null,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "det_score: producer float32() -> stored float64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float64",
+        "name": "gallery_v45|det_score|2_id_document",
+        "sha256": "bcb94de81979dde74d6aaea318dc822c3c81ee071db8766108e33bb53ccbc0ac",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'det_score', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "det_score",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|det_score|2_selfie",
+        "sha256": "5955f11b80103ac23b3fb70386261278de356be780a52c68d89ad98068bc0c6a",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_det_score_2_selfie",
+      "comparison": "dtype: baseline float32 against replay float64",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": null,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "det_score: producer float32() -> stored float64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "float64",
+        "name": "gallery_v45|det_score|2_selfie",
+        "sha256": "24729a8047683595e9b6d0d5001a5440d087bbff26f7cd2d355bb6cf73800f97",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|1_id_document",
+        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_embedding_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 512.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|1_id_document",
+        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|1_selfie",
+        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_embedding_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 512.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|1_selfie",
+        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|2_id_document",
+        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_embedding_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 512.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|2_id_document",
+        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'embedding', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "embedding",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|2_selfie",
+        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_embedding_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 512.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|embedding|2_selfie",
+        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
+        "shape": [
+          512
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "gender",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|1_id_document",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_gender_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "gender: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|1_id_document",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "gender",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|1_selfie",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_gender_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "gender: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|1_selfie",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "gender",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|2_id_document",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_gender_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "gender: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|2_id_document",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'gender', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "gender",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|2_selfie",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "case": "store_gallery_v45_gender_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "gender: producer int64() -> stored int64()",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 1.0
+        }
+      ],
+      "replay": {
+        "dtype": "int64",
+        "name": "gallery_v45|gender|2_selfie",
+        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+        "shape": [],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "kps",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|1_id_document",
+        "sha256": "0cf646ccea11b6d2fc8b9d4a3059f7ba9d6e731042a666b6d87c6758d415a4a6",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_kps_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 1 of 10 elements outside, worst 0.0001220703125",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0001220703125,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 10.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|1_id_document",
+        "sha256": "bc2d2f9bdbe45208f0e4dfd6b4ef0c821eb1ab62042e708b51afea46f2d283c0",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "kps",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|1_selfie",
+        "sha256": "ee68bddb33638177cb818129a576a17d1029d5204ca53cd0eb7720477f1cb212",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_kps_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 3 of 10 elements outside, worst 0.0001220703125",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0001220703125,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 10.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|1_selfie",
+        "sha256": "1174e3f10cdf453a078548c531a74534737815d06cee7fc5faf05d631e7ff720",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "kps",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|2_id_document",
+        "sha256": "e98707a93bb70a8d27da6c19982f345ea981d971cf9a0301b1bdb0d1d3e4414e",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_kps_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 10.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|2_id_document",
+        "sha256": "e98707a93bb70a8d27da6c19982f345ea981d971cf9a0301b1bdb0d1d3e4414e",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'kps', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "kps",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|2_selfie",
+        "sha256": "1ea402747a0400679716c50e7b8db654aeff07751d47610b0917887c08322933",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_kps_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 2 of 10 elements outside, worst 0.000244140625",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.000244140625,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 10.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|kps|2_selfie",
+        "sha256": "d879d768359f47ed7cb788d267176f9a40f828dcde2f2f1e6a652579fc9ac87a",
+        "shape": [
+          5,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_2d_106",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|1_id_document",
+        "sha256": "8debb683cd56aa8d90e7444273ab280ceface39a7789409aa54b1677761b54e4",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_2d_106_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 211 of 212 elements outside, worst 0.0201416015625",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0201416015625,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 212.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|1_id_document",
+        "sha256": "3e7aa6e6214802a84aa691db00715e6c907694a09ed001895613385dbe8e9af2",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_2d_106",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|1_selfie",
+        "sha256": "4f36e26ac1897a9a5b3907216ec528e85223c193baa33843e0e10c539b7ebddc",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_2d_106_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 211 of 212 elements outside, worst 0.015380859375",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.015380859375,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 212.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|1_selfie",
+        "sha256": "92e9866b21917154db209b1006256f7b9e60ce3ffd595c442021d11ef66e9cde",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_2d_106",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|2_id_document",
+        "sha256": "64e707192b5260382bd32a00977f4bf2f4b2757f2c92e9d7056428751273072f",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_2d_106_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 212 of 212 elements outside, worst 0.0198974609375",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0198974609375,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 212.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|2_id_document",
+        "sha256": "a5dd428ccfc8ad3144185806a94056277214e4b6ce89211fea735172d1ae600f",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_2d_106', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_2d_106",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|2_selfie",
+        "sha256": "95a9f6746f9d222d3d7d93886540bc8b832a675d44236b332eeb0252c851397d",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_2d_106_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 212 of 212 elements outside, worst 0.0322265625",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0322265625,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 212.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_2d_106|2_selfie",
+        "sha256": "9be139343220fbd2ca38db73e67bc2d3ed84e097e8685228301a32b44bb0ad3f",
+        "shape": [
+          106,
+          2
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|1_id_document",
+        "sha256": "9089a9e4a5f414a6372282b907fe84de4955ac1ed7dcbfadd68978e9b0114b1a",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_3d_68_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 203 of 204 elements outside, worst 0.019775390625",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.019775390625,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 204.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|1_id_document",
+        "sha256": "2a226ca4835f6b88516fc2cffddc093ce806e008c62189aba88547758a62a149",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|1_selfie",
+        "sha256": "a1d3273145be0ea2f9ce07886fe44fca57dac42f264cc2c3c742ea591eefc186",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_3d_68_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 204 of 204 elements outside, worst 0.01513671875",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.01513671875,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 204.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|1_selfie",
+        "sha256": "9c9673f454ac33747bf7ea31b3d0b8ffe91baf95d27941756102e30bf8a8fdb5",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|2_id_document",
+        "sha256": "85dbe8a367809601d0fe8b561ace545325ce1600826a22905171e1c20bd58904",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_3d_68_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 203 of 204 elements outside, worst 0.01953125",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.01953125,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 204.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|2_id_document",
+        "sha256": "b1c15412dbeb89277a493e60e8161120ede2f5462dea4d5e4ecbcc8ee2f94697",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'landmark_3d_68', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "landmark_3d_68",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|2_selfie",
+        "sha256": "d493516d0aa47dea2127760ecb410baf4edde2e65e4c53ce6e3eb6ea00c81677",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_landmark_3d_68_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 202 of 204 elements outside, worst 0.031982421875",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.031982421875,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 204.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|landmark_3d_68|2_selfie",
+        "sha256": "9193ed2b6ccb5d9a590c11a8347096d7dc2a417f6c8c232af797fc0937b4477f",
+        "shape": [
+          68,
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "pose",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|1_id_document",
+        "sha256": "f697aced13a0e1e63dca24c6a8850350dded2d903fadd9842a9a3d0c90e7c1ef",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_pose_1_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 3 of 3 elements outside, worst 0.0033953189849853516",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "max_abs_diff": 0.0033953189849853516,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "pose: producer float32(3,) -> stored float32(3,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 3.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|1_id_document",
+        "sha256": "5f59a8236c7660b96ac4ca81b45235ee6f0354737512572b043d58d3202db0f4",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "pose",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|1_selfie",
+        "sha256": "7ca346a7798720f19b4cb9e25a382f4cfbcf646f310e2525ea2b7808ea58ca41",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_pose_1_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 3 of 3 elements outside, worst 0.0033893585205078125",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0033893585205078125,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "pose: producer float32(3,) -> stored float32(3,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 3.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|1_selfie",
+        "sha256": "08a59054de819d40ae453ada47eb1b812b930be9b1c7658fdd7f6def6f62cea9",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "pose",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|2_id_document",
+        "sha256": "38c9199b70b5b65f3a7ac0d84a0576193ba43ba3bdbe42c19e8fcafd6901fead",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_pose_2_id_document",
+      "comparison": "allclose rtol=0.0 atol=0.0: 3 of 3 elements outside, worst 0.0017442703247070312",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0017442703247070312,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "pose: producer float32(3,) -> stored float32(3,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 3.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|2_id_document",
+        "sha256": "8baa7a95cf7f88aaad9007b028a26261f1c7a5426fc412e6bd6ee3a34c7d41d6",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "detail": "KeyError: \"replay needs 'pose', which the retained state does not carry\"",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": true,
+          "primitive": "pose",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|2_selfie",
+        "sha256": "33ff56374857f9e6ae3e0889a2021693e0518c87bc0fc184213f537ee4af5d52",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "case": "store_gallery_v45_pose_2_selfie",
+      "comparison": "allclose rtol=0.0 atol=0.0: 3 of 3 elements outside, worst 0.0028853416442871094",
+      "consumer_id": "gallery_storage",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0028853416442871094,
+      "measurements": [
+        {
+          "basis": "dtype and shape returned by the candidate's read path",
+          "detail": "pose: producer float32(3,) -> stored float32(3,)",
+          "name": "stored_form",
+          "unit": "dtype/shape",
+          "value": 3.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "gallery_v45|pose|2_selfie",
+        "sha256": "6c4235d623a84b9c6adae6abab91996ba61e104c790c8a1d02d8cff3143c335b",
+        "shape": [
+          3
+        ],
+        "values": null
+      },
+      "tier": "primitive",
+      "unsupported_reason": "",
+      "verdict": "FAIL"
+    }
+  ],
+  "runtime": {
+    "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
+      "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-contrib-python": "4.14.0.94",
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  },
+  "verdicts": {
+    "CONTRADICTED": 0,
+    "FAIL": 19,
+    "PASS": 29,
+    "UNSUPPORTED": 0,
+    "VENDOR_BASELINE_UNAVAILABLE": 0
+  }
+}

@@ -355,4 +355,7 @@ class IdV2VVideoRunner:
 
 
 def all_runners() -> list[Any]:
-    return [IdLoraAudioRunner(), IdV2VVideoRunner()]
+    # id_v2v moved to compat/consumers/control_stream.py: its boundary is the
+    # three VACE condition streams, not the decoded source, and its fixtures
+    # are the vendor's own test_samples rather than a generated clip.
+    return [IdLoraAudioRunner()]

@@ -12,6 +12,15 @@ resolution-markers = [
 overrides = [{ name = "onnxruntime", marker = "sys_platform == 'darwin'" }]
 
 [[package]]
+name = "absl-py"
+version = "2.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/4f/d79676ab82f2e42fc3611618139f13a9c4c31d0cff4b486982047679a802/absl_py-2.5.0.tar.gz", hash = "sha256:0c996f25c0490700fadabe6351630f6111534fa0ae252cc6d2014ea3b141135f", size = 118119, upload-time = "2026-07-03T10:57:48.157Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/0a/a10b45aab35b175aded078a462dc8d0c698f5b13946e7cb0869097b78bb6/absl_py-2.5.0-py3-none-any.whl", hash = "sha256:0f17b89f2a4eaaedc4f28c622998aa690564b3012a396a4ffad0821007fe03ba", size = 137410, upload-time = "2026-07-03T10:57:46.735Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -630,6 +639,26 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044f34a13aab6859bbf40456d37d23aa286ac24cfd9a5d/executing-2.2.1.tar.gz", hash = "sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4", size = 1129488, upload-time = "2025-09-01T09:48:10.866Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
+]
+
+[[package]]
+name = "face-alignment"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "packaging" },
+    { name = "scikit-image" },
+    { name = "scipy" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.13.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/02/17/a03a71f4e5d217b5207390af6ed35fd7d6985b9c3e113ecc41126187d1da/face_alignment-1.5.0.tar.gz", hash = "sha256:d11583b54d4addeee1e16281a869a24bcac5a77b77377799234c87195c2f705c", size = 40203, upload-time = "2026-04-06T20:47:00.93Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/90/31d5bdd4e427619cd159cc12c2b49ce137fbc5a3ac0914e2026fcb5bddb4/face_alignment-1.5.0-py3-none-any.whl", hash = "sha256:41661595c8271ffe7f99b80ee0cd19eb1490a1d6d2ffc5556e02cd3d6868c918", size = 45126, upload-time = "2026-04-06T20:46:59.613Z" },
 ]
 
 [[package]]
@@ -1362,6 +1391,27 @@ wheels = [
 ]
 
 [[package]]
+name = "mediapipe"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "absl-py" },
+    { name = "certifi" },
+    { name = "flatbuffers" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "opencv-contrib-python" },
+    { name = "sounddevice" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/56/911762884caba685dc8156d0136c58196a228c2b447023cfa0cfdb32f6c5/mediapipe-1.0.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:0a9fb67957f7d28e84f485e9c6716a43367b3f6f07170f31c3f72cac1addd031", size = 33662903, upload-time = "2026-08-14T18:23:54.891Z" },
+    { url = "https://files.pythonhosted.org/packages/16/9d/515c6ebc98db21484b2b93b7403464d08fb7861b6430752801bc75d29372/mediapipe-1.0.1-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:d6050e773dc6698eb86324090f61af1ccab28a6f1e9f77d98fe0611cef707997", size = 35841411, upload-time = "2026-08-14T18:23:58.093Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/58/bdd5bada89d7a132375df05e962bf702c148b47043dca98d820d9395152b/mediapipe-1.0.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:121522251afc3c135e4b7b0c341dd5e050ad1ec87631127484f3c389ae385044", size = 37881482, upload-time = "2026-08-14T18:24:01.091Z" },
+    { url = "https://files.pythonhosted.org/packages/22/71/42365b0aec2a96dfbeb3441220fe8dccd9a833f36adfecf3aa9f211c449b/mediapipe-1.0.1-py3-none-win_amd64.whl", hash = "sha256:96dc9de6bd04a6315ef424fda5c48e0929f2d78317295e75bc32c0bceeab517b", size = 20103114, upload-time = "2026-08-14T18:24:03.861Z" },
+    { url = "https://files.pythonhosted.org/packages/49/47/8a901eade7352051ae4d7b0b070ad8a84bde9cbf3092afd69088982842bb/mediapipe-1.0.1-py3-none-win_arm64.whl", hash = "sha256:4bbbb3838a99f7fdcd3cb0e071560120df45ddc48c1ad097ef1457f8600e0e77", size = 17700960, upload-time = "2026-08-14T18:24:06.172Z" },
+]
+
+[[package]]
 name = "ml-dtypes"
 version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1859,6 +1909,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4a/1f/2bc9795047fa2c1ad2567ef78ce6dfc9a7b763fa534acee09a94da2a5b8f/open_clip_torch-3.3.0.tar.gz", hash = "sha256:904b1a9f909df8281bb3de60ab95491cd2994a509177ea4f9d6292a84fe24d6d", size = 1503380, upload-time = "2026-02-27T00:32:46.74Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/37/b5/41c315ccd94ca332ead3e832e83eee343ab245005c3e43d9d3e75eae34eb/open_clip_torch-3.3.0-py3-none-any.whl", hash = "sha256:c549ad5ed6bfc119cc11105033c0a2b9d7a2a4afeb40a58a09aab3da1a0043ce", size = 1547268, upload-time = "2026-02-27T00:32:44.902Z" },
+]
+
+[[package]]
+name = "opencv-contrib-python"
+version = "4.14.0.94"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/59/bc43b7d900de515f614fac9de8088be420a4d96fb019c9d49b53f637606e/opencv_contrib_python-4.14.0.94.tar.gz", hash = "sha256:f2e58020b9f54d68b49553a161327ae1bbc47da68e147231d444c915ee4cab4c", size = 151859592, upload-time = "2026-07-28T19:21:29.204Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/62/c2d21d9ff3cc0489dc3567fb8645506e3d1daf4d052c1d329498b73ee73b/opencv_contrib_python-4.14.0.94-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:ac2e796be65ee8eee56f4f0a6514183f193264f4dc22f9e3a648a261e37f7ebe", size = 52286667, upload-time = "2026-07-29T03:52:07.062Z" },
+    { url = "https://files.pythonhosted.org/packages/01/fb/ad8ab805989440d5defc1f00401c066b6e12054fb40c10c8fc5c16d05b82/opencv_contrib_python-4.14.0.94-cp37-abi3-macosx_14_0_x86_64.whl", hash = "sha256:8171c172e412721d5e53347cfbd393bcfbd1441d88b8c0cea50cfde0a60cf8e8", size = 39342495, upload-time = "2026-07-28T20:05:56.129Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/10/cc7683fab3ce87d0f6960bc866bbb9052e51e9c49efb5a72d2268a4afdcd/opencv_contrib_python-4.14.0.94-cp37-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9fb4deb9bcb93d41fb2a31c938f47b0d24a8e2b8418f566f939be309e3becb2f", size = 55169518, upload-time = "2026-07-28T19:12:52.617Z" },
+    { url = "https://files.pythonhosted.org/packages/db/96/0c156cac3e65b6b53eb3ba8b193aa28847f79b0d30b269293de621ba0bd0/opencv_contrib_python-4.14.0.94-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:b36cd24d7e2bd5159bc9f6572c3ccfe333640ab28e123017f366ef286cae7514", size = 78185083, upload-time = "2026-07-28T19:13:24.408Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/b0/593f335083489b48e92c04527bb883e9b4ab0bdb1db5e334bf77ce1d04f8/opencv_contrib_python-4.14.0.94-cp37-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:20f1fc01919fd2116d4fc19d9656c9137d735acdccd64207ba302a17289e5d01", size = 57172315, upload-time = "2026-07-28T19:13:47.982Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/30/af0d0868eb274ca1229e68394c15628a210720619f5aaa7f0a4ffc6b53a5/opencv_contrib_python-4.14.0.94-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:6fc25b60cc0fcc6ce9c82d14cf45921b68b9ca15b9458a708bda7874cd486527", size = 83617726, upload-time = "2026-07-28T19:14:47.445Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/d0/e8ddb8db403bad729f6d214680adb81dbb2067d0f1b84b5a706fe3c69dd4/opencv_contrib_python-4.14.0.94-cp37-abi3-win32.whl", hash = "sha256:5388c5915a759a543bd7979211c79045cd713de35d6baad5a6fdd2f4c3b359af", size = 39055135, upload-time = "2026-07-28T18:32:31.891Z" },
+    { url = "https://files.pythonhosted.org/packages/57/88/a576ae448e28f75caba8eb27ea5f0ae0f69001bfd4179ba54e8824835da8/opencv_contrib_python-4.14.0.94-cp37-abi3-win_amd64.whl", hash = "sha256:626617c1e66b2537d075e00adba62bd7566df37f7878d185e047bfd49a6d50c7", size = 47438168, upload-time = "2026-07-28T18:32:28.453Z" },
 ]
 
 [[package]]
@@ -2902,6 +2971,7 @@ dependencies = [
     { name = "onnxruntime", marker = "sys_platform == 'darwin'" },
     { name = "onnxruntime-gpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "open-clip-torch" },
+    { name = "opencv-contrib-python" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pillow-heif" },
@@ -2925,7 +2995,9 @@ dependencies = [
 compat = [
     { name = "consisid-eva-clip" },
     { name = "diffusers" },
+    { name = "face-alignment" },
     { name = "facexlib" },
+    { name = "mediapipe" },
     { name = "safetensors" },
     { name = "torchaudio" },
 ]
@@ -2958,6 +3030,7 @@ requires-dist = [
     { name = "onnxruntime", marker = "sys_platform == 'darwin'" },
     { name = "onnxruntime-gpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "open-clip-torch" },
+    { name = "opencv-contrib-python", specifier = "<5" },
     { name = "opencv-python", specifier = "<5" },
     { name = "pillow" },
     { name = "pillow-heif", specifier = ">=1.5.0" },
@@ -2981,7 +3054,9 @@ requires-dist = [
 compat = [
     { name = "consisid-eva-clip", specifier = ">=1.0.2" },
     { name = "diffusers", specifier = ">=0.40.0" },
+    { name = "face-alignment", specifier = ">=1.4.1" },
     { name = "facexlib", specifier = ">=0.3.0" },
+    { name = "mediapipe", specifier = ">=0.10.14" },
     { name = "safetensors", specifier = ">=0.8.0" },
     { name = "torchaudio", specifier = ">=2.11.0" },
 ]
@@ -3007,6 +3082,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
+]
+
+[[package]]
+name = "sounddevice"
+version = "0.5.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ec/db/0c890e2d9aab9ba284021efc02e1d3aebfecab1b611762d7434602209bcf/sounddevice-0.5.6.tar.gz", hash = "sha256:8ec9fbfde2e32f020b167e348f3ab3bac6625a5f15af524d790108ac7147a410", size = 1120094, upload-time = "2026-08-17T07:55:05.048Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/1f/62eef605172bddc1017508469a12f75bc7c4194ece35c734f822795f53b1/sounddevice-0.5.6-py3-none-any.whl", hash = "sha256:de099612311ad81e55d31ccbd83f43ea6bf4d87b48f9b6ea55a1fbcde0eee4e0", size = 32793, upload-time = "2026-08-17T07:54:57.507Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/84/85e719d49cf98b2f406d9ac9c338892286c4448eb42ef0b2625ccf159616/sounddevice-0.5.6-py3-none-macosx_10_6_x86_64.macosx_10_6_universal2.whl", hash = "sha256:e3aef00ad8b1d1740eb66d9a7671eab88a4d2b8fa4ab33498d742e63b65c309c", size = 1009647, upload-time = "2026-08-17T07:54:58.814Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/6f/6292145099f72a153a710245f46ae43e5fb6c77bec1b6086cb76c12dc280/sounddevice-0.5.6-py3-none-win32.whl", hash = "sha256:b36b807eb02abd257198bf84b2af05e4fea199a9d2f0019014169c7136d45e9c", size = 1009627, upload-time = "2026-08-17T07:55:00.401Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/3e/cbc593c31a5f0d817b3fe97e64aa8461bd0f55cb07b67ce1b776296ae336/sounddevice-0.5.6-py3-none-win_amd64.whl", hash = "sha256:7f4162f514f007b0bf25a3ccfed3f1705bc2ec311888a90232729eec4f57a4f4", size = 1009630, upload-time = "2026-08-17T07:55:02.088Z" },
+    { url = "https://files.pythonhosted.org/packages/60/a4/b0c21c9f215a6fd9606b8f8748c21212dc098e5d5a2d93068c50edcf19b4/sounddevice-0.5.6-py3-none-win_arm64.whl", hash = "sha256:c8ae19173e5f27f8c12d4b5eee2dbfe542cee125d591e663e0fb4dfb75246d45", size = 1009630, upload-time = "2026-08-17T07:55:03.689Z" },
 ]
 
 [[package]]

@@ -1,0 +1,1120 @@
+{
+  "acceptance": [
+    {
+      "boundary": {
+        "align_crop_size": [
+          512,
+          512,
+          3
+        ],
+        "device": "cuda",
+        "dtype": "torch.float16",
+        "face_kps": {
+          "sha256": "a6ffb398e6e5d18e9293b227cbf9560665164f3faa0de1e8154da6843bcc4673",
+          "shape": [
+            5,
+            2
+          ]
+        },
+        "id_cond": {
+          "dtype": "float32",
+          "sha256": "04d3b13c1a89873dd6659f2e3cffa7b5aa310c3ec170d0bb7ad2e8bc21832ba4",
+          "shape": [
+            1,
+            1280
+          ]
+        },
+        "id_vit_hidden": [
+          [
+            1,
+            577,
+            1024
+          ],
+          [
+            1,
+            577,
+            1024
+          ],
+          [
+            1,
+            577,
+            1024
+          ],
+          [
+            1,
+            577,
+            1024
+          ],
+          [
+            1,
+            577,
+            1024
+          ]
+        ]
+      },
+      "commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
+      "consumer_id": "consisid",
+      "entrypoint": "diffusers/pipelines/consisid/consisid_utils.py::process_face_embeddings_infer",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\consisid\\fixtures\\example_1.png",
+      "fixture_sha256": "434856739faadf1c89bc38d8b940fcdbe027595de89645f721d8585fc2fe2459",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/huggingface/diffusers.git",
+      "seconds": 9.23274820000006,
+      "weights": [
+        {
+          "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
+          "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05"
+        },
+        {
+          "file": "face_encoder/detection_Resnet50_Final.pth",
+          "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
+        },
+        {
+          "file": "face_encoder/parsing_bisenet.pth",
+          "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
+        },
+        {
+          "file": "face_encoder/models/antelopev2/glintr100.onnx",
+          "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+        },
+        {
+          "file": "face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "device": "cuda",
+        "dtype": "torch.float16",
+        "face_kps_image": {
+          "sha256": "5f05f9a4ae0b516c444ecb68ab067058f7c63ce9d4bc7eb030eb844396d973cf",
+          "shape": [
+            1280,
+            1280,
+            3
+          ]
+        },
+        "id_cond": {
+          "dtype": "float32",
+          "sha256": "763587b822b0ec589fe5e504143634f1017f9ed9b7c86e2c6401c43f1c2a5cf5",
+          "shape": [
+            2,
+            16,
+            2048
+          ]
+        },
+        "observed_pack": {
+          "files": {
+            "detection": {
+              "file": "scrfd_10g_bnkps.onnx",
+              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+            },
+            "genderage": {
+              "file": "genderage.onnx",
+              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+            },
+            "landmark_2d_106": {
+              "file": "2d106det.onnx",
+              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+            },
+            "landmark_3d_68": {
+              "file": "1k3d68.onnx",
+              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+            },
+            "recognition": {
+              "file": "glintr100.onnx",
+              "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+            }
+          },
+          "modules": [
+            "detection",
+            "genderage",
+            "landmark_2d_106",
+            "landmark_3d_68",
+            "recognition"
+          ],
+          "pack": "antelopev2"
+        },
+        "original_size": [
+          543,
+          543
+        ],
+        "resized_to": [
+          1280,
+          1280
+        ],
+        "retained_primitive": "embedding",
+        "selection": "largest_bbox_area",
+        "symbol_sha256": "a6166d4a34fe3fbf87d7937b90ac966b7fb1ac2876027143f7b8036228472096"
+      },
+      "commit": "2145b67f9607da6234702063692330185f374486",
+      "consumer_id": "instantid_upstream",
+      "entrypoint": "pipeline_stable_diffusion_xl_instantid.py::_encode_prompt_image_emb + draw_kps",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\instantid\\yann-lecun_resize.jpg",
+      "fixture_sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/instantX-research/InstantID.git",
+      "seconds": 3.839143299999705,
+      "weights": [
+        {
+          "file": "ip-adapter.bin",
+          "sha256": "02b3618e36d803784166660520098089a81388e61a93ef8002aa79a5b1c546e1"
+        },
+        {
+          "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
+          "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05"
+        },
+        {
+          "file": "face_encoder/detection_Resnet50_Final.pth",
+          "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
+        },
+        {
+          "file": "face_encoder/parsing_bisenet.pth",
+          "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
+        },
+        {
+          "file": "face_encoder/models/antelopev2/glintr100.onnx",
+          "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+        },
+        {
+          "file": "face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "device": "cuda",
+        "dtype": "torch.float32",
+        "id_cond": {
+          "dtype": "float32",
+          "sha256": "492cbbfda573e2f1e24a3c08ac8c0ef09a76cc3c2b7e17e46794d3323adfd158",
+          "shape": [
+            2,
+            10,
+            2048
+          ]
+        },
+        "symbol_sha256": "c11c5ea7c40c16c2ea80b04efbe10730dbcac343e48e4860cbf556e23911951b"
+      },
+      "commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
+      "consumer_id": "pulid_upstream",
+      "entrypoint": "pulid/pipeline.py::PuLIDPipeline.get_id_embedding",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\pulid\\lecun.jpg",
+      "fixture_sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/ToTheBeginning/PuLID.git",
+      "seconds": 9.247975800000859,
+      "weights": [
+        {
+          "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
+          "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05"
+        },
+        {
+          "file": "face_encoder/detection_Resnet50_Final.pth",
+          "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
+        },
+        {
+          "file": "face_encoder/parsing_bisenet.pth",
+          "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
+        },
+        {
+          "file": "face_encoder/models/antelopev2/glintr100.onnx",
+          "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+        },
+        {
+          "file": "face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "device": "cuda",
+        "id_cond": {
+          "dtype": "float32",
+          "sha256": "2ea19e22e204fe62e921c6ba1061719ad6366bbf6280585b58a7617386c50936",
+          "shape": [
+            1,
+            8,
+            4096
+          ]
+        },
+        "observed_pack": {
+          "files": {
+            "detection": {
+              "file": "scrfd_10g_bnkps.onnx",
+              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+            },
+            "genderage": {
+              "file": "genderage.onnx",
+              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+            },
+            "landmark_2d_106": {
+              "file": "2d106det.onnx",
+              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+            },
+            "landmark_3d_68": {
+              "file": "1k3d68.onnx",
+              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+            },
+            "recognition": {
+              "file": "glintr100.onnx",
+              "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+            }
+          },
+          "modules": [
+            "detection",
+            "genderage",
+            "landmark_2d_106",
+            "landmark_3d_68",
+            "recognition"
+          ],
+          "pack": "antelopev2"
+        },
+        "symbol_sha256": "21924d14cdec0db605c94b49b5bf10fd36a1085813021673c7598a3abd2fc8fc"
+      },
+      "commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
+      "consumer_id": "infiniteyou",
+      "entrypoint": "nodes.py::ExtractIDEmbedding.extract_id_embedding",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\infiniteyou\\man.jpg",
+      "fixture_sha256": "26d6e503140428fa2aaf7c2287cea3b1b67c0f2f998b8f6d9f9774be854be090",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git",
+      "seconds": 3.870324999999866,
+      "weights": [
+        {
+          "file": "image_proj_model.bin",
+          "sha256": "f85518431d7367de30b9558a939c003462a7e331e8c8b929146916dc27e471d6"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "analyzer": "reactor_core.analyzer.ReActorFaceAnalysis",
+        "analyzer_blobs": {
+          "reactor_core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reactor_core/analyzer.py": "a64321bd7917d223db675ea65f0444d1ac1c332f103c23581a4769443534429d",
+          "reactor_core/face_objects.py": "80a4c25cecb9194f60b20070a94cb9e747e97e3dc7acb0d3cc950161b579a6b8",
+          "reactor_core/inswap.py": "2cf9136dfc6d30731c34f28ce67b47505d3b0040bfba193d572e3969a5b9493f",
+          "reactor_core/meanshape_68.py": "50069c7a0115c28cdfdffacffa11d34d06dac773556fb6e52eefa36bb95078b2"
+        },
+        "analyzer_stubs": [
+          "reactor_utils.download",
+          "scripts.reactor_logger.logger"
+        ],
+        "bytes": 6064,
+        "device": "cuda",
+        "every_key_survives": true,
+        "format": "safetensors",
+        "observed_pack": {
+          "files": {
+            "attribute": {
+              "file": "genderage.onnx",
+              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+            },
+            "detection": {
+              "file": "det_10g.onnx",
+              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+            },
+            "landmark_2d": {
+              "file": "2d106det.onnx",
+              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+            },
+            "landmark_3d": {
+              "file": "1k3d68.onnx",
+              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+            },
+            "recognition": {
+              "file": "w600k_r50.onnx",
+              "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+            }
+          },
+          "modules": [
+            "attribute",
+            "detection",
+            "landmark_2d",
+            "landmark_3d",
+            "recognition"
+          ],
+          "pack": "buffalo_l"
+        },
+        "persists": [
+          "bbox",
+          "kps",
+          "det_score",
+          "landmark_3d_68",
+          "pose",
+          "landmark_2d_106",
+          "embedding",
+          "gender",
+          "age"
+        ],
+        "producer_keys_not_persisted": [],
+        "round_trip": {
+          "age": {
+            "dtype": "int64",
+            "sha256": "758a812e83b8b7270a84b2430497e08c81c6c1ea7358d86557639ad133a87f3e",
+            "shape": [],
+            "survives_round_trip": true
+          },
+          "bbox": {
+            "dtype": "float32",
+            "sha256": "2445e97dc140e66328cb5c66347abab7833a2ca8f992d7427168b8ba446bd7d5",
+            "shape": [
+              4
+            ],
+            "survives_round_trip": true
+          },
+          "det_score": {
+            "dtype": "float32",
+            "sha256": "ceb320f067b8458a8bc3496e523dad338c3773148d07585bc99492c7c05c669c",
+            "shape": [],
+            "survives_round_trip": true
+          },
+          "embedding": {
+            "dtype": "float32",
+            "sha256": "79024d87dcee3fc12526bffdc215763735c45e459f0fff57e19f08760797f43b",
+            "shape": [
+              512
+            ],
+            "survives_round_trip": true
+          },
+          "gender": {
+            "dtype": "int64",
+            "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
+            "shape": [],
+            "survives_round_trip": true
+          },
+          "kps": {
+            "dtype": "float32",
+            "sha256": "666f7e42a67aa68230c53aa20f52dc60542dd387309f92fedee7ea3e28a275d6",
+            "shape": [
+              5,
+              2
+            ],
+            "survives_round_trip": true
+          },
+          "landmark_2d_106": {
+            "dtype": "float64",
+            "sha256": "38669ba161f72e31f1768dad0c7c80b02df38805f4064a6d296697b64ddb3431",
+            "shape": [
+              106,
+              2
+            ],
+            "survives_round_trip": true
+          },
+          "landmark_3d_68": {
+            "dtype": "float64",
+            "sha256": "afbfe07a51b46eed4c28ed25174c3b3b9e969682bb99062ad65b15be20d3bd38",
+            "shape": [
+              68,
+              3
+            ],
+            "survives_round_trip": true
+          },
+          "pose": {
+            "dtype": "float32",
+            "sha256": "87aa73934455fdd17a4c3ba2aef1e5fcd1325e4e5625a1e8832e6b508ab975e5",
+            "shape": [
+              3
+            ],
+            "survives_round_trip": true
+          }
+        },
+        "symbol_sha256": "d79bad8833263e9689f6a199db5087b24b846d7d9eebf84006edd3a7e14bdaeb",
+        "vs_insightface": {
+          "age": {
+            "identical": true,
+            "max_abs_delta": 0.0
+          },
+          "bbox": {
+            "identical": true,
+            "max_abs_delta": 0.0
+          },
+          "det_score": {
+            "identical": true,
+            "max_abs_delta": 0.0
+          },
+          "embedding": {
+            "identical": false,
+            "max_abs_delta": 0.003020048141479492
+          },
+          "gender": {
+            "identical": true,
+            "max_abs_delta": 0.0
+          },
+          "kps": {
+            "identical": true,
+            "max_abs_delta": 0.0
+          },
+          "landmark_2d_106": {
+            "identical": false,
+            "max_abs_delta": 271.5546341732115
+          },
+          "landmark_3d_68": {
+            "identical": false,
+            "max_abs_delta": 748.9400536419998
+          },
+          "pose": {
+            "identical": false,
+            "max_abs_delta": 6.454024396836758
+          }
+        }
+      },
+      "commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
+      "consumer_id": "reactor",
+      "entrypoint": "reactor_utils.py::save_face_model + load_face_model",
+      "fixture_origin": "corpus:caucasian-people-kyc-photo-dataset (no image committed at this pin)",
+      "fixture_path": "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\1\\Selfie_1.jpg",
+      "fixture_sha256": "eed4b5c3e9a93d0fbcc76ccbe8272b510caa381f2f783b1e4c90e1586805b59a",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git",
+      "seconds": 4.573752800000875,
+      "weights": [
+        {
+          "file": "models/buffalo_l/det_10g.onnx",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+        },
+        {
+          "file": "models/buffalo_l/w600k_r50.onnx",
+          "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+        },
+        {
+          "file": "models/buffalo_l/1k3d68.onnx",
+          "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+        },
+        {
+          "file": "models/buffalo_l/2d106det.onnx",
+          "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+        },
+        {
+          "file": "models/buffalo_l/genderage.onnx",
+          "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "device": "cuda",
+        "dtype": "torch.float16",
+        "id_cond": {
+          "dtype": "float32",
+          "sha256": "415f2c71430f223806cf0dc667c7c7f9def98fa1e455635ae7edeffcf6d64c5c",
+          "shape": [
+            1,
+            4,
+            768
+          ]
+        },
+        "observed_embedding": {
+          "dims": 512,
+          "kind": "normed",
+          "l2_norm": 1.000000065937246
+        },
+        "observed_pack": {
+          "files": {
+            "detection": {
+              "file": "det_10g.onnx",
+              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+            },
+            "genderage": {
+              "file": "genderage.onnx",
+              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+            },
+            "landmark_2d_106": {
+              "file": "2d106det.onnx",
+              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+            },
+            "landmark_3d_68": {
+              "file": "1k3d68.onnx",
+              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+            },
+            "recognition": {
+              "file": "w600k_r50.onnx",
+              "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+            }
+          },
+          "modules": [
+            "detection",
+            "genderage",
+            "landmark_2d_106",
+            "landmark_3d_68",
+            "recognition"
+          ],
+          "pack": "buffalo_l"
+        },
+        "retained_primitive": "normed_embedding",
+        "selection": "faces[0]",
+        "symbol_sha256": "c588dac140f4bad99a0bd4c9cbe63cfa532d23e465c552ed44e54e57df5b5a10",
+        "uncond": {
+          "sha256": "49a1b5084c95f9e1261ed77326431a8cb009f18a45a810911984e1ba6a9fe4e2",
+          "shape": [
+            1,
+            4,
+            768
+          ]
+        }
+      },
+      "commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
+      "consumer_id": "ipadapter_upstream",
+      "entrypoint": "ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\ipadapter\\woman.png",
+      "fixture_sha256": "053db5ec51eb927a77da7f445f409b4d6a3e41654cba64622fc56e41ca3a2cbd",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
+      "seconds": 2.4547770000008313,
+      "weights": [
+        {
+          "file": "ip-adapter-faceid_sd15.bin",
+          "sha256": "201344e22e6f55849cf07ca7a6e53d8c3b001327c66cb9710d69fd5da48a8da7"
+        },
+        {
+          "file": "models/buffalo_l/det_10g.onnx",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+        },
+        {
+          "file": "models/buffalo_l/w600k_r50.onnx",
+          "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+        },
+        {
+          "file": "models/buffalo_l/1k3d68.onnx",
+          "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+        },
+        {
+          "file": "models/buffalo_l/2d106det.onnx",
+          "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+        },
+        {
+          "file": "models/buffalo_l/genderage.onnx",
+          "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "align_crop_size": 224,
+        "curricular_face_blobs": {
+          "uniportrait/curricular_face/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "uniportrait/curricular_face/backbone/__init__.py": "13b780c8a306cf1f6fb3b06e257471850bc8e9b465f1c6c9bfb14f4f9fd03fdb",
+          "uniportrait/curricular_face/backbone/common.py": "9006386a76061203e4b38a090ce046198ef5a6b07cf63a6222a36d1f2e0ee535",
+          "uniportrait/curricular_face/backbone/model_irse.py": "feed0828a6d135de0297bf9dcc45e980d76ac55428bad89c2886ddf06716a7e4"
+        },
+        "device": "cuda",
+        "dtype": "torch.float16",
+        "face_structure_scale": 0.0,
+        "id_cond": {
+          "dtype": "float32",
+          "sha256": "ebf4c902ea2d3d8c26b7792bff06a8aa4159b834889c463356efd80a25a202b6",
+          "shape": [
+            1,
+            16,
+            768
+          ]
+        },
+        "observed_crop_size": 224,
+        "observed_pack": {
+          "files": {
+            "detection": {
+              "file": "det_10g.onnx",
+              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+            },
+            "genderage": {
+              "file": "genderage.onnx",
+              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+            },
+            "landmark_2d_106": {
+              "file": "2d106det.onnx",
+              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+            },
+            "landmark_3d_68": {
+              "file": "1k3d68.onnx",
+              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+            },
+            "recognition": {
+              "file": "w600k_r50.onnx",
+              "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+            }
+          },
+          "modules": [
+            "detection",
+            "genderage",
+            "landmark_2d_106",
+            "landmark_3d_68",
+            "recognition"
+          ],
+          "pack": "buffalo_l"
+        },
+        "selection": "largest_bbox_area",
+        "symbol_sha256": "5f6dda9e7b8da01d409db07368d54e36398aca156ecfb0f4c26c42acb3d28ec4",
+        "uncond": {
+          "sha256": "e8df7ff135b8439527f4949f72752ae61fba35db7de8c2231160611cac94b897",
+          "shape": [
+            1,
+            16,
+            768
+          ]
+        }
+      },
+      "commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
+      "consumer_id": "uniportrait",
+      "entrypoint": "uniportrait/uniportrait_pipeline.py::UniPortraitPipeline.get_single_faceid_embeds",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\uniportrait\\1-newton.jpg",
+      "fixture_sha256": "6b5bed3bc2aa494892d44c014768a4551cc65ce23c7a68348359dfd7770174b9",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/junjiehe96/UniPortrait.git",
+      "seconds": 5.716175300000032,
+      "weights": [
+        {
+          "file": "glint360k_curricular_face_r101_backbone.bin",
+          "sha256": "aa54ae6dc9f7ac6e262809f1a81d6108e221952bf836aee4cb677ef19246c6ec"
+        },
+        {
+          "file": "uniportrait-faceid_sd15.bin",
+          "sha256": "8b79a4f39b37bc59cbc4e5d90681a33394965b3dc3ecfb0195cfe095b2bf61e4"
+        },
+        {
+          "file": "image_encoder/model.safetensors",
+          "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030"
+        }
+      ]
+    },
+    {
+      "boundary": {
+        "combiner": "torch.stack",
+        "det_size_left_behind": [
+          640,
+          640
+        ],
+        "detection_sweep": [
+          {
+            "faces": 1,
+            "fixture": "newton_0.jpg",
+            "input_size_after": [
+              640,
+              640
+            ],
+            "input_size_before": [
+              640,
+              640
+            ]
+          },
+          {
+            "faces": 1,
+            "fixture": "newton_1.jpg",
+            "input_size_after": [
+              640,
+              640
+            ],
+            "input_size_before": [
+              640,
+              640
+            ]
+          },
+          {
+            "faces": 1,
+            "fixture": "newton_2.png",
+            "input_size_after": [
+              640,
+              640
+            ],
+            "input_size_before": [
+              640,
+              640
+            ]
+          },
+          {
+            "faces": 1,
+            "fixture": "newton_3.jpg",
+            "input_size_after": [
+              640,
+              640
+            ],
+            "input_size_before": [
+              640,
+              640
+            ]
+          }
+        ],
+        "device": "cuda",
+        "encoder_unsupported": "PhotoMakerIDEncoder_CLIPInsightfaceExtendtoken.forward (model_v2.py:142) requires SDXL prompt_embeds; no SDXL checkpoint on this machine",
+        "id_embeds": {
+          "dtype": "float32",
+          "sha256": "fc1eaf905cbccb53c7d7596000a80d446d51f2656d366269bc4d812ac031660a",
+          "shape": [
+            4,
+            512
+          ]
+        },
+        "observed_embedding": {
+          "dims": 512,
+          "kind": "raw",
+          "l2_norm": 22.64125503519944
+        },
+        "observed_pack": {
+          "files": {
+            "detection": {
+              "file": "det_10g.onnx",
+              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+            },
+            "recognition": {
+              "file": "w600k_r50.onnx",
+              "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+            }
+          },
+          "modules": [
+            "detection",
+            "recognition"
+          ],
+          "pack": "buffalo_l"
+        },
+        "references": 4,
+        "retained_primitive": "embedding",
+        "selection": "faces[0]",
+        "symbol_sha256": "d9f01ca69cc9ca5bf9e55ac44ae0923024cdaf88bbd2bf1e99fba87141a208c4"
+      },
+      "commit": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
+      "consumer_id": "photomaker_v2",
+      "entrypoint": "photomaker/insightface_package.py::analyze_faces",
+      "fixture_origin": "vendor_commit",
+      "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\photomaker_v2\\newton_0.jpg, C:\\Users\\will\\dev\\sg-vendor-fixtures\\photomaker_v2\\newton_1.jpg, C:\\Users\\will\\dev\\sg-vendor-fixtures\\photomaker_v2\\newton_2.png, C:\\Users\\will\\dev\\sg-vendor-fixtures\\photomaker_v2\\newton_3.jpg",
+      "fixture_sha256": "50ae3072731e3c8ce4ac650f19843146904ee4d5729ecf0c891b4b0c46a345bb",
+      "ran": true,
+      "reason": "",
+      "repo": "https://github.com/TencentARC/PhotoMaker.git",
+      "seconds": 0.989192600000024,
+      "weights": [
+        {
+          "file": "models/buffalo_l/det_10g.onnx",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+        },
+        {
+          "file": "models/buffalo_l/w600k_r50.onnx",
+          "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+        },
+        {
+          "file": "models/buffalo_l/1k3d68.onnx",
+          "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+        },
+        {
+          "file": "models/buffalo_l/2d106det.onnx",
+          "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+        },
+        {
+          "file": "models/buffalo_l/genderage.onnx",
+          "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+        }
+      ]
+    }
+  ],
+  "declared_against_observed": [
+    {
+      "agrees": null,
+      "consumer_id": "consisid",
+      "declared": null,
+      "detail": "the acceptance builds no analyser to observe",
+      "observed": null
+    },
+    {
+      "agrees": true,
+      "consumer_id": "instantid_upstream",
+      "declared": "antelopev2",
+      "detail": "",
+      "modules": [
+        "detection",
+        "genderage",
+        "landmark_2d_106",
+        "landmark_3d_68",
+        "recognition"
+      ],
+      "observed": "antelopev2"
+    },
+    {
+      "agrees": null,
+      "consumer_id": "pulid_upstream",
+      "declared": "antelopev2",
+      "detail": "the acceptance builds no analyser to observe",
+      "observed": null
+    },
+    {
+      "agrees": true,
+      "consumer_id": "infiniteyou",
+      "declared": "antelopev2",
+      "detail": "",
+      "modules": [
+        "detection",
+        "genderage",
+        "landmark_2d_106",
+        "landmark_3d_68",
+        "recognition"
+      ],
+      "observed": "antelopev2"
+    },
+    {
+      "agrees": true,
+      "consumer_id": "reactor",
+      "declared": "buffalo_l",
+      "detail": "",
+      "modules": [
+        "attribute",
+        "detection",
+        "landmark_2d",
+        "landmark_3d",
+        "recognition"
+      ],
+      "observed": "buffalo_l"
+    },
+    {
+      "agrees": true,
+      "consumer_id": "ipadapter_upstream",
+      "declared": "buffalo_l",
+      "detail": "",
+      "modules": [
+        "detection",
+        "genderage",
+        "landmark_2d_106",
+        "landmark_3d_68",
+        "recognition"
+      ],
+      "observed": "buffalo_l"
+    },
+    {
+      "agrees": true,
+      "consumer_id": "uniportrait",
+      "declared": "buffalo_l",
+      "detail": "",
+      "modules": [
+        "detection",
+        "genderage",
+        "landmark_2d_106",
+        "landmark_3d_68",
+        "recognition"
+      ],
+      "observed": "buffalo_l"
+    },
+    {
+      "agrees": true,
+      "consumer_id": "photomaker_v2",
+      "declared": "buffalo_l",
+      "detail": "",
+      "modules": [
+        "detection",
+        "recognition"
+      ],
+      "observed": "buffalo_l"
+    },
+    {
+      "agrees": true,
+      "consumer_id": "ipadapter_upstream",
+      "declared": "normed",
+      "detail": "L2 norm 1.000000 over 512 dims",
+      "field": "embedding",
+      "observed": "normed"
+    },
+    {
+      "agrees": true,
+      "consumer_id": "uniportrait",
+      "declared": [
+        224
+      ],
+      "detail": "the crop the vendor's code produced is 224x224",
+      "field": "crop_sizes",
+      "observed": 224
+    },
+    {
+      "agrees": true,
+      "consumer_id": "photomaker_v2",
+      "declared": "raw",
+      "detail": "L2 norm 22.641255 over 512 dims",
+      "field": "embedding",
+      "observed": "raw"
+    }
+  ],
+  "determinism": {
+    "runs": 2,
+    "stable": true,
+    "unstable": [],
+    "vendors": {
+      "consisid": {
+        "digests": [
+          "f9a41c54e777a3279cd4a7c84bcb85915c14bdb659b51cb1cfbc1c8d45a33d5d",
+          "f9a41c54e777a3279cd4a7c84bcb85915c14bdb659b51cb1cfbc1c8d45a33d5d"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "infiniteyou": {
+        "digests": [
+          "f586345e112e219e15ac04d0952017db89755a462a28b71f12a1cab92802893a",
+          "f586345e112e219e15ac04d0952017db89755a462a28b71f12a1cab92802893a"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "instantid_upstream": {
+        "digests": [
+          "1b49b4ec5ffd8725c6830fdcf563f2be8be6b253e933f7ba208316eb425ec0ed",
+          "1b49b4ec5ffd8725c6830fdcf563f2be8be6b253e933f7ba208316eb425ec0ed"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "ipadapter_upstream": {
+        "digests": [
+          "8ca2a2f2acfe64b91bb56503116a0f1e625008a1bd32474c54992002d79c156b",
+          "8ca2a2f2acfe64b91bb56503116a0f1e625008a1bd32474c54992002d79c156b"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "photomaker_v2": {
+        "digests": [
+          "6b7fb0c1220395a6b1bf6d96836ce30e6a3bec105fe8abc732a25d26b4438201",
+          "6b7fb0c1220395a6b1bf6d96836ce30e6a3bec105fe8abc732a25d26b4438201"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "pulid_upstream": {
+        "digests": [
+          "010cc3a80b587c86571d4c59924b0c51bfd3982f014e558dc8dfabc2e2c8589e",
+          "010cc3a80b587c86571d4c59924b0c51bfd3982f014e558dc8dfabc2e2c8589e"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "reactor": {
+        "digests": [
+          "ee784ad800bedc80c5007b87a6de932612a5cd85c4452e42b6bae1ec7c3cb3ae",
+          "ee784ad800bedc80c5007b87a6de932612a5cd85c4452e42b6bae1ec7c3cb3ae"
+        ],
+        "reason": "",
+        "stable": true
+      },
+      "uniportrait": {
+        "digests": [
+          "2a2495d93c1d4d9f8a6ac28d6b8d496d58eeb1d328732d1cf179bba65adc11eb",
+          "2a2495d93c1d4d9f8a6ac28d6b8d496d58eeb1d328732d1cf179bba65adc11eb"
+        ],
+        "reason": "",
+        "stable": true
+      }
+    }
+  },
+  "population": {
+    "attempted_and_failed": [],
+    "declared": [
+      "anystory",
+      "consisid",
+      "id_lora",
+      "id_v2v",
+      "infiniteyou",
+      "instantcharacter",
+      "instantid",
+      "instantid_upstream",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "ipadapter_upstream",
+      "omnigen2",
+      "photomaker_v2",
+      "pulid_comfyui",
+      "pulid_upstream",
+      "qwen_image_edit_2509",
+      "reactor",
+      "umo",
+      "uniportrait",
+      "uno",
+      "uso",
+      "xverse"
+    ],
+    "not_attempted": [
+      "anystory",
+      "id_lora",
+      "id_v2v",
+      "instantcharacter",
+      "instantid",
+      "ipadapter_faceid",
+      "ipadapter_faceid_plus",
+      "omnigen2",
+      "pulid_comfyui",
+      "qwen_image_edit_2509",
+      "umo",
+      "uno",
+      "uso",
+      "xverse"
+    ],
+    "vendor_accepted": [
+      "consisid",
+      "infiniteyou",
+      "instantid_upstream",
+      "ipadapter_upstream",
+      "photomaker_v2",
+      "pulid_upstream",
+      "reactor",
+      "uniportrait"
+    ]
+  },
+  "runtime": {
+    "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
+      "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
+      "numpy": "2.5.2",
+      "onnx": "1.22.0",
+      "onnxruntime": {
+        "available_providers": [
+          "TensorrtExecutionProvider",
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "build_info": "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543fbe9, fp8-kv-cache=1, build type=Release",
+        "device": "GPU",
+        "version": "1.29.0"
+      },
+      "opencv-contrib-python": "4.14.0.94",
+      "opencv-python": "4.14.0.94",
+      "scikit-image": "0.26.0",
+      "torch": "2.13.0+cu132"
+    },
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5"
+  }
+}

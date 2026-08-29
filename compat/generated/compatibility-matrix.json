@@ -4,9 +4,10 @@
       "at_pin": true,
       "commit": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
       "consumer": "anystory",
-      "consumer_cases": 4,
+      "consumer_cases": 11,
       "derivable_or_unused": [],
       "necessary": [
+        "subject_mask",
         "whole_reference_image"
       ],
       "primitive_cases": 0,
@@ -16,10 +17,14 @@
         {
           "serves": false,
           "swap": "face_patch_substituted"
+        },
+        {
+          "serves": false,
+          "swap": "mask_from_face_bbox"
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 11
       }
     },
     {
@@ -70,7 +75,7 @@
       "at_pin": true,
       "commit": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
       "consumer": "id_v2v",
-      "consumer_cases": 1,
+      "consumer_cases": 12,
       "derivable_or_unused": [],
       "necessary": [
         "source_video_bytes"
@@ -85,14 +90,15 @@
         }
       ],
       "verdicts": {
-        "PASS": 1
+        "PASS": 3,
+        "UNSUPPORTED": 9
       }
     },
     {
       "at_pin": true,
       "commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
       "consumer": "infiniteyou",
-      "consumer_cases": 12,
+      "consumer_cases": 24,
       "derivable_or_unused": [
         "reference_pixels"
       ],
@@ -113,14 +119,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 12
+        "PASS": 24
       }
     },
     {
       "at_pin": true,
       "commit": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
       "consumer": "instantcharacter",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -135,14 +141,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "72495e806bc2ab9c41581e15ccaa1bcf83c477e8",
       "consumer": "instantid",
-      "consumer_cases": 8,
+      "consumer_cases": 16,
       "derivable_or_unused": [
         "reference_pixels"
       ],
@@ -161,14 +167,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 16
       }
     },
     {
       "at_pin": true,
       "commit": "2145b67f9607da6234702063692330185f374486",
       "consumer": "instantid_upstream",
-      "consumer_cases": 8,
+      "consumer_cases": 16,
       "derivable_or_unused": [
         "reference_pixels"
       ],
@@ -187,14 +193,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 16
       }
     },
     {
       "at_pin": true,
       "commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
       "consumer": "ipadapter_faceid",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "embedding_raw"
@@ -204,19 +210,19 @@
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
+          "serves": false,
           "swap": "stored_glintr100_substituted"
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
       "consumer": "ipadapter_faceid_plus",
-      "consumer_cases": 16,
+      "consumer_cases": 32,
       "derivable_or_unused": [],
       "necessary": [
         "embedding_raw",
@@ -229,19 +235,19 @@
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
+          "serves": false,
           "swap": "stored_glintr100_substituted"
         }
       ],
       "verdicts": {
-        "PASS": 16
+        "PASS": 32
       }
     },
     {
       "at_pin": true,
       "commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
       "consumer": "ipadapter_upstream",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "embedding_raw"
@@ -251,19 +257,19 @@
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
+          "serves": false,
           "swap": "stored_glintr100_substituted"
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
       "consumer": "omnigen2",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -278,14 +284,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "060b4fcb10b76a4554edf565d6106b7e36c968f0",
       "consumer": "photomaker_v2",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "embedding_raw"
@@ -300,14 +306,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "93e0c4c226b87b23c0009d671978bad0e77289ff",
       "consumer": "pulid_comfyui",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "embedding_raw"
@@ -322,14 +328,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
       "consumer": "pulid_upstream",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "embedding_raw"
@@ -344,14 +350,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "6b5e1f5cec987d404be5ac6657db3b9aacb56a89",
       "consumer": "qwen_image_edit_2509",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -366,14 +372,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
       "consumer": "reactor",
-      "consumer_cases": 8,
+      "consumer_cases": 12,
       "derivable_or_unused": [],
       "necessary": [
         "age",
@@ -391,19 +397,19 @@
       "status": "REPRODUCED",
       "substitutions": [
         {
-          "serves": true,
+          "serves": false,
           "swap": "stored_glintr100_substituted"
         }
       ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 12
       }
     },
     {
       "at_pin": true,
       "commit": "aada3dc32990ae82061857ebe911b2c15621571a",
       "consumer": "umo",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -418,14 +424,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
       "consumer": "uniportrait",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "kps_source_px",
@@ -437,14 +443,14 @@
       "status": "REPRODUCED",
       "substitutions": [],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "a563432dcfb4caf98df4368facb8102bf97d376c",
       "consumer": "uno",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -459,14 +465,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "6587514aa3adf8e8f46e5f7e804239651d30b32d",
       "consumer": "uso",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -481,14 +487,14 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     },
     {
       "at_pin": true,
       "commit": "65e2581aac0faffe4607881a10cc486186f6499d",
       "consumer": "xverse",
-      "consumer_cases": 4,
+      "consumer_cases": 8,
       "derivable_or_unused": [],
       "necessary": [
         "whole_reference_image"
@@ -503,12 +509,12 @@
         }
       ],
       "verdicts": {
-        "PASS": 4
+        "PASS": 8
       }
     }
   ],
   "generated_from": {
-    "cases": 146,
+    "cases": 357,
     "producer_heads": {
       "detection": "SCRFD",
       "genderage": "Attribute",
@@ -519,7 +525,31 @@
     "provenance_ok": true,
     "runtime": {
       "backends": {
+        "face-alignment": "1.5.0",
+        "imported": {
+          "PIL": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+            "version": "12.3.0"
+          },
+          "cv2": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+            "version": "4.14.0"
+          },
+          "numpy": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+            "version": "2.5.2"
+          },
+          "skimage": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+            "version": "0.26.0"
+          },
+          "torch": {
+            "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+            "version": "2.13.0+cu132"
+          }
+        },
         "insightface": "1.0.1",
+        "mediapipe": "1.0.1",
         "numpy": "2.5.2",
         "onnx": "1.22.0",
         "onnxruntime": {
@@ -532,6 +562,7 @@
           "device": "GPU",
           "version": "1.29.0"
         },
+        "opencv-contrib-python": "4.14.0.94",
         "opencv-python": "4.14.0.94",
         "scikit-image": "0.26.0",
         "torch": "2.13.0+cu132"
@@ -578,6 +609,21 @@
         "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
       },
       {
+        "file": "1k3d68.onnx",
+        "pack": "buffalo_l",
+        "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+      },
+      {
+        "file": "2d106det.onnx",
+        "pack": "buffalo_l",
+        "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+      },
+      {
+        "file": "genderage.onnx",
+        "pack": "buffalo_l",
+        "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+      },
+      {
         "file": "detection_Resnet50_Final.pth",
         "pack": "facexlib",
         "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
@@ -596,8 +642,8 @@
   },
   "primitives": [
     {
-      "breaks": 52,
-      "cases": 52,
+      "breaks": 84,
+      "cases": 84,
       "consumers": [
         "infiniteyou",
         "instantid",
@@ -610,8 +656,8 @@
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 40,
-      "cases": 40,
+      "breaks": 80,
+      "cases": 80,
       "consumers": [
         "infiniteyou",
         "instantid",
@@ -629,32 +675,8 @@
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 40,
-      "cases": 40,
-      "consumers": [
-        "infiniteyou",
-        "ipadapter_faceid_plus",
-        "uniportrait"
-      ],
-      "primitive": "patch_origin",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 40,
-      "cases": 40,
-      "consumers": [
-        "infiniteyou",
-        "ipadapter_faceid_plus",
-        "uniportrait"
-      ],
-      "primitive": "source_region_pixels",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 36,
-      "cases": 36,
+      "breaks": 71,
+      "cases": 71,
       "consumers": [
         "anystory",
         "consisid",
@@ -671,8 +693,32 @@
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 12,
-      "cases": 12,
+      "breaks": 60,
+      "cases": 60,
+      "consumers": [
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "primitive": "patch_origin",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 60,
+      "cases": 60,
+      "consumers": [
+        "infiniteyou",
+        "ipadapter_faceid_plus",
+        "uniportrait"
+      ],
+      "primitive": "source_region_pixels",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 24,
+      "cases": 24,
       "consumers": [
         "infiniteyou",
         "instantid",
@@ -683,9 +729,10 @@
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 10,
-      "cases": 10,
+      "breaks": 14,
+      "cases": 14,
       "consumers": [
+        "gallery_storage",
         "insightface_producer",
         "reactor"
       ],
@@ -694,13 +741,100 @@
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 10,
-      "cases": 10,
+      "breaks": 14,
+      "cases": 14,
       "consumers": [
+        "gallery_storage",
         "insightface_producer",
         "reactor"
       ],
       "primitive": "landmark_3d_68",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 12,
+      "cases": 12,
+      "consumers": [
+        "embedding_spaces"
+      ],
+      "primitive": "aligned_crop_112",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 12,
+      "cases": 12,
+      "consumers": [
+        "reference_sets"
+      ],
+      "primitive": "reference_vectors",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 8,
+      "cases": 8,
+      "consumers": [
+        "gallery_storage",
+        "reactor"
+      ],
+      "primitive": "age",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 8,
+      "cases": 8,
+      "consumers": [
+        "gallery_storage",
+        "reactor"
+      ],
+      "primitive": "bbox",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 8,
+      "cases": 8,
+      "consumers": [
+        "gallery_storage",
+        "reactor"
+      ],
+      "primitive": "det_score",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 8,
+      "cases": 8,
+      "consumers": [
+        "gallery_storage",
+        "reactor"
+      ],
+      "primitive": "gender",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 8,
+      "cases": 8,
+      "consumers": [
+        "gallery_storage",
+        "reactor"
+      ],
+      "primitive": "kps",
+      "survives": 0,
+      "verdict": "NECESSARY"
+    },
+    {
+      "breaks": 8,
+      "cases": 8,
+      "consumers": [
+        "gallery_storage",
+        "reactor"
+      ],
+      "primitive": "landmark_2d_106",
       "survives": 0,
       "verdict": "NECESSARY"
     },
@@ -718,59 +852,29 @@
       "breaks": 4,
       "cases": 4,
       "consumers": [
-        "reactor"
+        "gallery_storage"
       ],
-      "primitive": "age",
+      "primitive": "pose",
       "survives": 0,
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 4,
-      "cases": 4,
+      "breaks": 3,
+      "cases": 3,
       "consumers": [
-        "reactor"
+        "id_v2v"
       ],
-      "primitive": "bbox",
+      "primitive": "source_video_bytes",
       "survives": 0,
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 4,
-      "cases": 4,
+      "breaks": 3,
+      "cases": 3,
       "consumers": [
-        "reactor"
+        "anystory"
       ],
-      "primitive": "det_score",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 4,
-      "cases": 4,
-      "consumers": [
-        "reactor"
-      ],
-      "primitive": "gender",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 4,
-      "cases": 4,
-      "consumers": [
-        "reactor"
-      ],
-      "primitive": "kps",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
-      "breaks": 4,
-      "cases": 4,
-      "consumers": [
-        "reactor"
-      ],
-      "primitive": "landmark_2d_106",
+      "primitive": "subject_mask",
       "survives": 0,
       "verdict": "NECESSARY"
     },
@@ -795,25 +899,15 @@
       "verdict": "NECESSARY"
     },
     {
-      "breaks": 1,
-      "cases": 1,
-      "consumers": [
-        "id_v2v"
-      ],
-      "primitive": "source_video_bytes",
-      "survives": 0,
-      "verdict": "NECESSARY"
-    },
-    {
       "breaks": 0,
-      "cases": 12,
+      "cases": 24,
       "consumers": [
         "infiniteyou",
         "instantid",
         "instantid_upstream"
       ],
       "primitive": "reference_pixels",
-      "survives": 12,
+      "survives": 24,
       "verdict": "NOT NECESSARY"
     }
   ],

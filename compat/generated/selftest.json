@@ -1,0 +1,95 @@
+{
+  "attacks": [
+    {
+      "detail": "clean",
+      "detected": true,
+      "mechanism": "nothing changed; the checker must report clean",
+      "name": "positive_control"
+    },
+    {
+      "detail": "unexercised would become ['anystory']",
+      "detected": true,
+      "mechanism": "anystory removed from consumer-tier coverage",
+      "name": "missing_consumer"
+    },
+    {
+      "detail": "repos: upstream:insightface 000000000000 -> 7fadd420c235",
+      "detected": true,
+      "mechanism": "one pinned commit replaced with zeros",
+      "name": "changed_pin"
+    },
+    {
+      "detail": "weights: antelopev2/glintr100.onnx 000000000000 -> 4ab1d6435d63",
+      "detected": true,
+      "mechanism": "one weight digest replaced with zeros",
+      "name": "changed_weight"
+    },
+    {
+      "detail": "manifest changed",
+      "detected": true,
+      "mechanism": "manifest digest altered",
+      "name": "changed_manifest"
+    },
+    {
+      "detail": "sources: consumers/aligned_crop.py 000000000000 -> c5b63435a97b",
+      "detected": true,
+      "mechanism": "one consumer's source digest altered",
+      "name": "changed_runner_source"
+    },
+    {
+      "detail": "\"replay needs 'kps', which the retained state does not carry\"",
+      "detected": true,
+      "mechanism": "kps removed from retained state",
+      "name": "dropped_persisted_primitive"
+    },
+    {
+      "detail": "first [0.0, 0.0, 10.0, 10.0] against largest [0.0, 0.0, 100.0, 100.0]",
+      "detected": true,
+      "mechanism": "first against largest_bbox_area on a two-face detection",
+      "name": "changed_selection_rule"
+    },
+    {
+      "detail": "stack order-sensitive: True; mean order-insensitive: True",
+      "detected": true,
+      "mechanism": "set reversed through stack and through mean",
+      "name": "changed_reference_order"
+    },
+    {
+      "detail": "sources: harness/answer.py 000000000000 -> 5b8ac74fb732",
+      "detected": true,
+      "mechanism": "evidence recorded against an older harness source",
+      "name": "stale_evidence"
+    },
+    {
+      "detail": "recorded 2730103b6b9ebaf4; a swap at the same path changes it",
+      "detected": true,
+      "mechanism": "examples/yann-lecun_resize.jpg re-hashed as zeros",
+      "name": "changed_vendor_fixture"
+    },
+    {
+      "detail": "accepted ['consisid', 'infiniteyou', 'instantid_upstream', 'ipadapter_upstream', 'photomaker_v2', 'pulid_upstream', 'reactor', 'uniportrait']; ran-with-boundary ['consisid', 'infiniteyou', 'instantid_upstream', 'ipadapter_upstream', 'photomaker_v2', 'pulid_upstream', 'reactor', 'uniportrait']",
+      "detected": true,
+      "mechanism": "vendor_accepted must equal the set that actually ran and produced a boundary",
+      "name": "vendor_acceptance_not_faked"
+    },
+    {
+      "detail": "9 keys recorded; clean=True; with one lost=False",
+      "detected": true,
+      "mechanism": "reactor: age planted as lost",
+      "name": "vendor_round_trip_lossless"
+    },
+    {
+      "detail": "8 vendors measured; recorded stable=True; with one changed=False",
+      "detected": true,
+      "mechanism": "consisid: last of 2 digests replaced",
+      "name": "vendor_boundary_repeats"
+    },
+    {
+      "detail": "9 packs observed; all agree=True; with one contradicted=False",
+      "detected": true,
+      "mechanism": "infiniteyou: declared pack replaced with 'buffalo_l'",
+      "name": "vendor_pack_declaration_checked"
+    }
+  ],
+  "undetected": []
+}

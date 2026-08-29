@@ -2,9 +2,7 @@
   "manifest_version": 1,
   "population": {
     "source_unread": [
-      "omnigen2",
-      "instantcharacter",
-      "id_v2v"
+      "omnigen2"
     ],
     "total": 22,
     "unclassified": [],
@@ -126,6 +124,742 @@
       "paths": [],
       "pinned_commit": "a9ab2b62dac17743c62fc1cab8468340496d302e",
       "repo": "https://github.com/Comfy-Org/ComfyUI.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Gourieff\\Assets",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "606558ed08f16b99a29ef30b0df0b4622164c524",
+      "key": "upstream:reactor_assets",
+      "paths": [
+        {
+          "blob_sha256": "6d042c5d8d7748f08cd1494d82d542ec65164b6de13bbf88463bf03d94a6a73e",
+          "locator_only": true,
+          "note": null,
+          "path": "comfyui-reactor-node/workflows/ReActor--Build-Blended-Face-Model--v2.json",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "606558ed08f16b99a29ef30b0df0b4622164c524",
+      "repo": "https://github.com/Gourieff/Assets.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\bytedance\\InfiniteYou",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "aaa6ea5f75ba2ff58b9025fa7df45e4a139ed717",
+      "key": "upstream:infiniteyou_main",
+      "paths": [
+        {
+          "blob_sha256": "92186c9b1f94f7dc6415fc2089d2f1c30ebe52ad80048279456b66e38e34dc3e",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "aaa6ea5f75ba2ff58b9025fa7df45e4a139ed717",
+      "repo": "https://github.com/bytedance/InfiniteYou.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\facebookresearch\\sam3",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+      "key": "upstream:sam3",
+      "paths": [
+        {
+          "blob_sha256": "535c35b710580ade7d3a429417bf7d39f77ba7a34ce2053aaaa3e9ef97aba5ee",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+      "repo": "https://github.com/facebookresearch/sam3.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\DepthAnything\\Depth-Anything-V2",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+      "key": "upstream:depth_anything_v2",
+      "paths": [
+        {
+          "blob_sha256": "b69d66418e3a98495ff3600ef05a7b8c018bdaf092d128970985afaeeb37cbde",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+      "repo": "https://github.com/DepthAnything/Depth-Anything-V2.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\microsoft\\DAViD",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "20a3eb66f61d0e1caff42489c6775e142179bd46",
+      "key": "upstream:david",
+      "paths": [
+        {
+          "blob_sha256": "e1f560ccbfa90d20b324de6c51af76f7ecfcf51013ef1377510d1c07ac00a670",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "20a3eb66f61d0e1caff42489c6775e142179bd46",
+      "repo": "https://github.com/microsoft/DAViD.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\baaivision\\EVA",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "5623d08bb08a8268c7bc18e1d9b8b4bd651fe4d9",
+      "key": "upstream:eva",
+      "paths": [
+        {
+          "blob_sha256": "ede070e25f14fa353270c85feb5185b1bbf73b9decc632a07dee3d5c85d49213",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "5623d08bb08a8268c7bc18e1d9b8b4bd651fe4d9",
+      "repo": "https://github.com/baaivision/EVA.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Wan-Video\\Wan2.1",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "9737cba9c1c3c4d04b33fcad41c111989865d315",
+      "key": "upstream:wan21",
+      "paths": [
+        {
+          "blob_sha256": "0f07666030434195c69152b88b840ea4ad44c0d97fef02ba2cc5b8fe349509ba",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "9737cba9c1c3c4d04b33fcad41c111989865d315",
+      "repo": "https://github.com/Wan-Video/Wan2.1.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\ali-vilab\\VACE",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "48eb44f1c4be87cc65a98bff985a26976841e9f3",
+      "key": "upstream:vace",
+      "paths": [
+        {
+          "blob_sha256": "220d8db490705ee4f91b49a3e28cd0bc6a884060dfe7ce5fa6a0dd8f79503aa9",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "48eb44f1c4be87cc65a98bff985a26976841e9f3",
+      "repo": "https://github.com/ali-vilab/VACE.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\biubug6\\Pytorch_Retinaface",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "b984b4b775b2c4dced95c1eadd195a5c7d32a60b",
+      "key": "upstream:retinaface_pytorch",
+      "paths": [
+        {
+          "blob_sha256": "966ebaa909bde27ea33607adedd622bbf565bc8e1d41760052c03d503533091e",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "b984b4b775b2c4dced95c1eadd195a5c7d32a60b",
+      "repo": "https://github.com/biubug6/Pytorch_Retinaface.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\TreB1eN\\InsightFace_Pytorch",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "350ff7aa9c9db8d369d1932e14d2a4d11a3e9553",
+      "key": "upstream:insightface_pytorch",
+      "paths": [
+        {
+          "blob_sha256": "3342c71d594f91df25d09a6ff68afc98a7a551acc407630475ce7d9de5d8b081",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "350ff7aa9c9db8d369d1932e14d2a4d11a3e9553",
+      "repo": "https://github.com/TreB1eN/InsightFace_Pytorch.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\zllrunning\\face-parsing.PyTorch",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "d2e684cf1588b46145635e8fe7bcc29544e5537e",
+      "key": "upstream:face_parsing",
+      "paths": [
+        {
+          "blob_sha256": "7a536e04c1188e9304b20ec996606c1c92a5b7a8b22b8cd52da9c1dc78b804a0",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "d2e684cf1588b46145635e8fe7bcc29544e5537e",
+      "repo": "https://github.com/zllrunning/face-parsing.PyTorch.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\CoinCheung\\BiSeNet",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "6b4b67a8e3eb0cc23b3d7a94843a7c3c11dedca8",
+      "key": "upstream:bisenet",
+      "paths": [
+        {
+          "blob_sha256": "1f7aaebb86e71b5dadaf65ffa790fd14ae190932d18d82a1e3ec1bc62f0e1bbc",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "6b4b67a8e3eb0cc23b3d7a94843a7c3c11dedca8",
+      "repo": "https://github.com/CoinCheung/BiSeNet.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\black-forest-labs\\flux",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "802fb4713906133fcbd0d8dc5351620ca4773036",
+      "key": "upstream:flux",
+      "paths": [
+        {
+          "blob_sha256": "11ab025dd768c8480b0e07b82184040bf9699845760c30b519c5734b227b3f90",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "802fb4713906133fcbd0d8dc5351620ca4773036",
+      "repo": "https://github.com/black-forest-labs/flux.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\mlfoundations\\open_clip",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "92433b5e7d0ffd3a367737f5550738ec5c3fc69a",
+      "key": "upstream:open_clip",
+      "paths": [
+        {
+          "blob_sha256": "fe59bc251aaaefb472a6cf5120afcecdabb716fdcd07146f83b4a02427922b40",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "92433b5e7d0ffd3a367737f5550738ec5c3fc69a",
+      "repo": "https://github.com/mlfoundations/open_clip.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\openai\\CLIP",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "key": "upstream:clip",
+      "paths": [
+        {
+          "blob_sha256": "498e2b606c234f4f86b3585b03bdfd42218220f78284269da373545f49390aca",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "repo": "https://github.com/openai/CLIP.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\comfyanonymous\\ComfyUI",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "e7051b03758a1247e3adb84a5b784ffacb9a23bd",
+      "key": "upstream:comfyui_original",
+      "paths": [
+        {
+          "blob_sha256": "2d308b455597e59a3735005b6d175d5b79b65f8636e3e35aee90196abbfcc8e1",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "e7051b03758a1247e3adb84a5b784ffacb9a23bd",
+      "repo": "https://github.com/comfyanonymous/ComfyUI.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\modelscope\\DiffSynth-Studio",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "102fe9980b9375ecb6436d360297a00327472535",
+      "key": "upstream:diffsynth_studio",
+      "paths": [
+        {
+          "blob_sha256": "4b5463081425906a799774c1b4e3d1e6e299df52104e0702916a7bdc233e91fa",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "102fe9980b9375ecb6436d360297a00327472535",
+      "repo": "https://github.com/modelscope/DiffSynth-Studio.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Lightricks\\LTX-2",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "a95ab856bf29407b6b066ede0abe1846050db56c",
+      "key": "upstream:ltx2",
+      "paths": [
+        {
+          "blob_sha256": "14a29303c62b51a0e4469f7285323690395f9697446129efd180f5ec2b317206",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "a95ab856bf29407b6b066ede0abe1846050db56c",
+      "repo": "https://github.com/Lightricks/LTX-2.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\LiheYoung\\Depth-Anything",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "1d03336771fe09c5398ffdd211441e33941a97dc",
+      "key": "upstream:depth_anything_v1",
+      "paths": [
+        {
+          "blob_sha256": "f43906ba68e156b7d31f0fc758fd0b704cb7c405629660631cc8e2cbfe4b4929",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "1d03336771fe09c5398ffdd211441e33941a97dc",
+      "repo": "https://github.com/LiheYoung/Depth-Anything.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\facebookresearch\\sam2",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+      "key": "upstream:sam2",
+      "paths": [
+        {
+          "blob_sha256": "0e72a9639ec2b0287a170c0bb92399b57255b81c76c4bc2b316c699477fb41ab",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+      "repo": "https://github.com/facebookresearch/sam2.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\facebookresearch\\dinov2",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+      "key": "upstream:dinov2",
+      "paths": [
+        {
+          "blob_sha256": "94821e21bddd318d465795f3e334047c586f3c3306232ff24af9948aa37f0dcc",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+      "repo": "https://github.com/facebookresearch/dinov2.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\Yuanshi9815\\OminiControl",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "65d929e390a3f785b11e71344de082bb58a2c527",
+      "key": "upstream:ominicontrol",
+      "paths": [
+        {
+          "blob_sha256": "98a522b07a9f73b2110f514c7353d09ac17aef199eccc1a11ff696d742935e32",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "65d929e390a3f785b11e71344de082bb58a2c527",
+      "repo": "https://github.com/Yuanshi9815/OminiControl.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\google\\style-aligned",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "2faf0af7cf89a00e334d2304ef9f43d34baa0efd",
+      "key": "upstream:style_aligned",
+      "paths": [
+        {
+          "blob_sha256": "3b83888bb6d98e2677ebcb0216f0735c29a358a0f6b9a758d87f4a778b38b474",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "2faf0af7cf89a00e334d2304ef9f43d34baa0efd",
+      "repo": "https://github.com/google/style-aligned.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\TencentARC\\T2I-Adapter",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "c408b059c36e3f9ce336b66746bd606edaa5483a",
+      "key": "upstream:t2i_adapter",
+      "paths": [
+        {
+          "blob_sha256": "b8165cef5d3622ffe9fdba79694621b1f8814251ffd977405c160c0789f51189",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "c408b059c36e3f9ce336b66746bd606edaa5483a",
+      "repo": "https://github.com/TencentARC/T2I-Adapter.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\mit-han-lab\\fastcomposer",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "b9304a2e7d09ffe4036ebd8ed5656bb08d6a8ca9",
+      "key": "upstream:fastcomposer",
+      "paths": [
+        {
+          "blob_sha256": "595348bfbe3c0d9df63ef35481e51ed55bbce55b51552498a70f7dacfee3bed7",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "b9304a2e7d09ffe4036ebd8ed5656bb08d6a8ca9",
+      "repo": "https://github.com/mit-han-lab/fastcomposer.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\protossw512\\AdaptiveWingLoss",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "4b64de5b9417bc7ecc9b8862c60d1942893e2a9d",
+      "key": "upstream:adaptive_wing_loss",
+      "paths": [
+        {
+          "blob_sha256": "b32bc2acdada2deca25c647189bcf9c58c34ede3197b6a5bfbfa5156f1cff7b1",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "4b64de5b9417bc7ecc9b8862c60d1942893e2a9d",
+      "repo": "https://github.com/protossw512/AdaptiveWingLoss.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\ZHKKKe\\MODNet",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "28165a451e4610c9d77cfdf925a94610bb2810fb",
+      "key": "upstream:modnet",
+      "paths": [
+        {
+          "blob_sha256": "64657290141cb291e04ef478ed7428f7ab2c21ef53dacf2bcc039a4d38200c85",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "28165a451e4610c9d77cfdf925a94610bb2810fb",
+      "repo": "https://github.com/ZHKKKe/MODNet.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\natanielruiz\\deep-head-pose",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "f7bbb9981c2953c2eca67748d6492a64c8243946",
+      "key": "upstream:deep_head_pose",
+      "paths": [
+        {
+          "blob_sha256": "c899fedc9211a947acfcf8d7a48f9cd73f0bf51ff760c46f5f9320b4610f85f2",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "f7bbb9981c2953c2eca67748d6492a64c8243946",
+      "repo": "https://github.com/natanielruiz/deep-head-pose.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\switchablenorms\\CelebAMask-HQ",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "3f6c45df5e67130568f9459f24f8d6a5ff836d30",
+      "key": "upstream:celebamask_hq",
+      "paths": [
+        {
+          "blob_sha256": "75aa671dec9d6bedbf2204058e32f40fa9e19352c33396df29fb658b793ea2b0",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "3f6c45df5e67130568f9459f24f8d6a5ff836d30",
+      "repo": "https://github.com/switchablenorms/CelebAMask-HQ.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\zllrunning\\face-makeup.PyTorch",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "8917ca11d226e115dd34a0bf708c20b5f6fda0ba",
+      "key": "upstream:face_makeup",
+      "paths": [
+        {
+          "blob_sha256": "48440cc404083071835f251bd7640718aeb286bfd97f6afa761ccce198e0e90e",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "8917ca11d226e115dd34a0bf708c20b5f6fda0ba",
+      "repo": "https://github.com/zllrunning/face-makeup.PyTorch.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\biubug6\\Face-Detector-1MB-with-landmark",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "2b075657aef954b9426f938ac7fce100b6910fe6",
+      "key": "upstream:retinaface_1mb",
+      "paths": [
+        {
+          "blob_sha256": "6e07f8fe74b493aab40055b652ca5d299e6dbd874d6aef7c8364273aab453af5",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "2b075657aef954b9426f938ac7fce100b6910fe6",
+      "repo": "https://github.com/biubug6/Face-Detector-1MB-with-landmark.git"
+    },
+    {
+      "at_pin": true,
+      "clean": true,
+      "clone": "C:\\Users\\will\\dev\\refs\\zisianw\\FaceBoxes.PyTorch",
+      "dirty_paths": 0,
+      "exists": true,
+      "failures": [],
+      "head_commit": "22efc6a35ce21b53b66ffc8c7a01c293e503df7a",
+      "key": "upstream:faceboxes",
+      "paths": [
+        {
+          "blob_sha256": "8e37a833ad74fd24570d6004e87cb784386148cd8b5fa278c6ce73b23bf12405",
+          "locator_only": true,
+          "note": null,
+          "path": "README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        }
+      ],
+      "pinned_commit": "22efc6a35ce21b53b66ffc8c7a01c293e503df7a",
+      "repo": "https://github.com/zisianw/FaceBoxes.PyTorch.git"
     },
     {
       "at_pin": true,
@@ -528,13 +1262,13 @@
       "key": "consumer:omnigen2",
       "paths": [
         {
-          "blob_sha256": "89bec6902f29097d17db3b07bde50107e749f52ebc2e8f281c435c0392e640f4",
-          "locator_only": true,
+          "blob_sha256": "d547ed9b4da08791f4461257e2c71825487f9075aa3314361595ffe95a5b6c78",
+          "locator_only": false,
           "note": null,
-          "path": "README.md",
+          "path": "inference.py",
           "present": true,
-          "symbol": "quickstart",
-          "symbol_present": null
+          "symbol": "main",
+          "symbol_present": true
         }
       ],
       "pinned_commit": "18e6f9d5271b517fcb32e999f10df943ae9b8f20",
@@ -551,13 +1285,13 @@
       "key": "consumer:instantcharacter",
       "paths": [
         {
-          "blob_sha256": "4db05327faab7d6b7417465426622ac2f22ef7bee2b59deb1e19ed2dc579383e",
-          "locator_only": true,
+          "blob_sha256": "943985e20e0596d477b912d86464632dd72c6c5ca8c54b3cd81bf536006497d8",
+          "locator_only": false,
           "note": null,
-          "path": "README.md",
+          "path": "pipeline.py",
           "present": true,
-          "symbol": "quickstart",
-          "symbol_present": null
+          "symbol": "InstantCharacterFluxPipeline.__call__",
+          "symbol_present": true
         }
       ],
       "pinned_commit": "5f5c49a98ba15eb75caf70e60787156c6ae619b0",
@@ -650,6 +1384,24 @@
           "present": true,
           "symbol": "preprocess",
           "symbol_present": null
+        },
+        {
+          "blob_sha256": "7aaae8f7589172dcef00817291a03ab2c945422a11d7de63dad4b469ddaef3b6",
+          "locator_only": true,
+          "note": null,
+          "path": "scripts/idv2v_with_normal_depth/preprocess_with_depth.sh",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
+        },
+        {
+          "blob_sha256": "00b7edd6b7a23ea380635d9afa8bf41131e7b167ee8119119a80623364c3c26b",
+          "locator_only": true,
+          "note": null,
+          "path": "checkpoints/README.md",
+          "present": true,
+          "symbol": "",
+          "symbol_present": null
         }
       ],
       "pinned_commit": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
@@ -681,7 +1433,31 @@
   ],
   "runtime": {
     "backends": {
+      "face-alignment": "1.5.0",
+      "imported": {
+        "PIL": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\PIL\\__init__.py",
+          "version": "12.3.0"
+        },
+        "cv2": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\cv2\\__init__.py",
+          "version": "4.14.0"
+        },
+        "numpy": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\numpy\\__init__.py",
+          "version": "2.5.2"
+        },
+        "skimage": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\skimage\\__init__.py",
+          "version": "0.26.0"
+        },
+        "torch": {
+          "file": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\torch\\__init__.py",
+          "version": "2.13.0+cu132"
+        }
+      },
       "insightface": "1.0.1",
+      "mediapipe": "1.0.1",
       "numpy": "2.5.2",
       "onnx": "1.22.0",
       "onnxruntime": {
@@ -694,6 +1470,7 @@
         "device": "GPU",
         "version": "1.29.0"
       },
+      "opencv-contrib-python": "4.14.0.94",
       "opencv-python": "4.14.0.94",
       "scikit-image": "0.26.0",
       "torch": "2.13.0+cu132"
@@ -739,90 +1516,156 @@
     {
       "bytes": 260665334,
       "file": "glintr100.onnx",
+      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "recognition -- the 512-d embedding every identity claim rests on",
       "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
     },
     {
       "bytes": 16923827,
       "file": "scrfd_10g_bnkps.onnx",
+      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "detection -- bbox, det_score and the 5 keypoints the whole arcface family aligns on",
       "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
     },
     {
       "bytes": 143607619,
       "file": "1k3d68.onnx",
+      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "landmark_3d_68, and pose is derived from its output rather than emitted separately",
       "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
     },
     {
       "bytes": 5030888,
       "file": "2d106det.onnx",
+      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\2d106det.onnx",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "landmark_2d_106 -- 848 bytes per face, the second-largest retained candidate",
       "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
     },
     {
       "bytes": 1322532,
       "file": "genderage.onnx",
+      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\genderage.onnx",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "gender and age; not derivable from anything else the pass returns",
       "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
     },
     {
       "bytes": 16923827,
       "file": "det_10g.onnx",
+      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\det_10g.onnx",
       "present": true,
+      "published_by": "Gourieff/ComfyUI-ReActor README.md:452 Models Hashsum",
+      "published_sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
       "role": "detection for UniPortrait; NOT the same detector as antelopev2",
       "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
     },
     {
       "bytes": 174383860,
       "file": "w600k_r50.onnx",
+      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
       "present": true,
+      "published_by": "Gourieff/ComfyUI-ReActor README.md:466 Models Hashsum",
+      "published_sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
       "role": "buffalo_l recognition; a third embedding space alongside glintr100 and facexlib arcface",
       "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
     },
     {
+      "bytes": 143607619,
+      "file": "1k3d68.onnx",
+      "matches_published": true,
+      "pack": "buffalo_l",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\1k3d68.onnx",
+      "present": true,
+      "published_by": "Gourieff/ComfyUI-ReActor README.md:438 Models Hashsum",
+      "published_sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "role": "landmark_3d_68 for ReActor's face model; absent under PhotoMaker's allowed_modules",
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+    },
+    {
+      "bytes": 5030888,
+      "file": "2d106det.onnx",
+      "matches_published": true,
+      "pack": "buffalo_l",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\2d106det.onnx",
+      "present": true,
+      "published_by": "Gourieff/ComfyUI-ReActor README.md:445 Models Hashsum",
+      "published_sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "role": "landmark_2d_106 for ReActor's face model; absent under PhotoMaker's allowed_modules",
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+    },
+    {
+      "bytes": 1322532,
+      "file": "genderage.onnx",
+      "matches_published": true,
+      "pack": "buffalo_l",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\genderage.onnx",
+      "present": true,
+      "published_by": "Gourieff/ComfyUI-ReActor README.md:459 Models Hashsum",
+      "published_sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "role": "gender and age for ReActor's face model; absent under PhotoMaker's allowed_modules",
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+    },
+    {
       "bytes": 109497761,
       "file": "detection_Resnet50_Final.pth",
+      "matches_published": null,
       "pack": "facexlib",
-      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou",
       "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
     },
     {
       "bytes": 175367323,
       "file": "recognition_arcface_ir_se50.pth",
+      "matches_published": null,
       "pack": "facexlib",
-      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100",
       "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
     },
     {
       "bytes": 53289463,
       "file": "parsing_bisenet.pth",
+      "matches_published": null,
       "pack": "facexlib",
-      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
       "present": true,
+      "published_by": "",
+      "published_sha256": null,
       "role": "face parsing for PuLID/ConsisID masked crops",
       "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
     }
