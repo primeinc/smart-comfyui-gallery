@@ -26,12 +26,9 @@ from compat.producers.registry import Availability, Emission, every_producer
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: How many corpus photographs each producer sees. Every producer runs on the
-#: same ones, or a key difference could be a photograph difference -- and the
-#: same ones the CASE lanes run on, or the union's byte total describes a
-#: different slice from the evidence it is quoted beside. It was 2 against
-#: `loaded.CORPUS_IMAGES`'s 4, and `answer.json` printed the union's
-#: bytes-per-face next to case evidence from twice as many photographs.
+#: How many corpus photographs each producer sees. The same ones for every
+#: producer, or a key difference could be a photograph difference; and the same
+#: ones the CASE lanes use, or the byte total describes a different slice.
 PHOTOGRAPHS: Final[int] = CORPUS_IMAGES
 
 
@@ -77,11 +74,9 @@ def survey() -> dict[str, Any]:
             except (ImportError, ValueError, TypeError, RuntimeError, OSError) as problem:
                 row["ready"] = False
                 row["reason"] = f"{type(problem).__name__}: {problem}"
-                # Whatever it managed to emit before it failed is discarded.
-                # The keys were left on the row, so the artifact listed fields
-                # for a producer it also reported as not-ready -- and those
-                # keys had already been merged into the union above, which is
-                # a byte cost attributed to a pass that did not finish.
+                # Whatever it emitted before failing is discarded: keys left on
+                # the row would list fields for a producer reported not-ready,
+                # and merge a byte cost for an unfinished pass.
                 for key in row["keys"]:
                     if producer.name in emitters.get(key, []):
                         emitters[key].remove(producer.name)

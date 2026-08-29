@@ -36,10 +36,9 @@ from compat.assertions.arrays import digest
 
 HERE: Path = Path(__file__).resolve().parent
 
-#: One frame size for every generated fixture. Deliberately not square and
-#: deliberately larger than any crop the consumers ask for (336 is the biggest
-#: arcface size, 512 the biggest facexlib one), so a crop never runs off the
-#: edge and silently tests the border-fill instead of the warp.
+#: One frame size for every generated fixture, not square and larger than any
+#: crop the consumers ask for (336 arcface, 512 facexlib), so a crop never runs
+#: off the edge and tests the border-fill instead of the warp.
 FRAME_WIDTH: int = 900
 FRAME_HEIGHT: int = 1200
 
@@ -110,11 +109,9 @@ def main() -> int:
     out = HERE / "fixtures.json"
     body = json.dumps(manifest(), indent=2, sort_keys=True) + "\n"
 
-    # Diffed against the committed copy rather than silently overwritten. No
-    # module reads this file, so regenerating it and printing "wrote" was a
-    # lane that produced nothing anyone checks. As a drift check it earns its
-    # place: this module's own docstring claims every machine builds
-    # byte-identical fixtures, and this is the assertion of it.
+    # Diffed against the committed copy rather than overwritten: no module
+    # reads this file, so as a drift check it asserts the claim that every
+    # machine builds byte-identical fixtures.
     was = out.read_text(encoding="utf-8") if out.is_file() else ""
     moved = bool(was) and was != body
 

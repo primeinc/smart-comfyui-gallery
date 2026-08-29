@@ -76,6 +76,7 @@ from compat.contracts.case import (
 )
 from compat.corpus.loaded import Shot, our_face, shots
 from compat.producers import insightface_pass as producer
+from compat.storage import derivatives
 
 CONSUMER_ID: Final[str] = "consisid"
 
@@ -211,11 +212,9 @@ class ConsisIDRunner:
                 retained=("whole_reference_image",),
                 ablations=(
                     Ablation(primitive="whole_reference_image", expect_breaks=True),
-                    # Both substitutions are the finding. The arcface footprint
-                    # is what the rest of the population is served from, and a
-                    # patch twice that size is the most generous face-shaped
-                    # state a store could offer. Neither reproduces, because
-                    # facexlib re-detects and lands different landmarks.
+                    # The arcface footprint serves the rest of the population
+                    # and a patch twice its size is the most generous
+                    # face-shaped state a store could offer.
                     Ablation(
                         primitive="whole_reference_image",
                         swap="arcface_footprint_only",
@@ -255,7 +254,10 @@ class ConsisIDRunner:
         would bake in a long edge of 1024 that only this consumer wants, and
         every other whole-reference consumer asks for a different one.
         """
-        return RetainedState(whole_reference_image=self._shot(case).frame.copy())
+        frame = self._shot(case).frame.copy()
+        return RetainedState(whole_reference_image=frame).priced(
+            {"whole_reference_image": derivatives.lossless_bytes(frame)}
+        )
 
     def baseline(self, case: Case) -> Artifact:
         """The vendor's own path, memoised per case.
@@ -264,8 +266,8 @@ class ConsisIDRunner:
         measurement is compared against, so two calls returning different
         artifacts would already be a defect. Memoising is therefore free
         correctness-wise and not free otherwise: `draw_kps` allocates several
-        copies of a 4896x6528x3 canvas per call, and the measurement used to
-        trigger a second full render of it.
+        copies of a 4896x6528x3 canvas per call, and the measurement would
+        otherwise trigger a second full render of it.
         """
         if case.name not in self._baselines:
             self._baselines[case.name] = self._compute_baseline(case)
@@ -319,12 +321,9 @@ class ConsisIDRunner:
                 try:
                     produced = align_through_facexlib(pixels).astype(np.int64)
                 except (ValueError, TypeError, IndexError) as problem:
-                    # The exception is reported, not interpreted. All three of
-                    # these arrive when facexlib finds no face AND when this
-                    # probe slices wrongly, so calling every one of them "no
-                    # face" attributed a bug in the measurement to the vendor
-                    # -- and pinning `worst_fraction` to 1.0 published that
-                    # attribution as the lane's worst observation.
+                    # The exception is reported, not interpreted: all three
+                    # arrive when facexlib finds no face AND when this probe
+                    # slices wrongly.
                     reports.append(f"{label}/{how}: NOT MEASURED -- {type(problem).__name__}: {problem}")
                     continue
                 differing = int(np.count_nonzero(wanted != produced))

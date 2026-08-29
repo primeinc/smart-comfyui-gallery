@@ -51,11 +51,9 @@ CONSUMER_ID: Final[str] = "insightface_producer"
 #: real photographs rather than a fixture.
 CORPUS_IMAGES: Final[int] = 6
 
-#: What `vision/faces.py` does to a 3D landmark before it reaches storage:
-#: x and y divided by width and height and rounded to 5 places, z rounded to 2.
-#: Copied as CONSTANTS rather than as a call into the application, because the
-#: application must not be importable from here -- and because the point is to
-#: measure the policy, which means the policy has to be stated.
+#: What `vision/faces.py` does to a 3D landmark before storage: x and y
+#: divided by width and height and rounded to 5 places, z rounded to 2. Stated
+#: as constants because the point is to measure the policy.
 XY_PLACES: Final[int] = 5
 Z_PLACES: Final[int] = 2
 
@@ -190,11 +188,9 @@ class ProducerDerivationRunner:
                     retained=("landmark_3d_68",),
                     ablations=(
                         Ablation(primitive="landmark_3d_68", expect_breaks=True),
-                        # Not a removal. Removing the only key the replay
-                        # indexes shows the replay indexes it. Offering the
-                        # same value in the narrowest storable float asks the
-                        # question the schema has: how wide must the column
-                        # be.
+                        # Not a removal: offering the same value in the
+                        # narrowest storable float asks how wide the column
+                        # must be.
                         Ablation(
                             primitive="landmark_3d_68",
                             swap="half_precision",

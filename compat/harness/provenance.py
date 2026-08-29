@@ -270,17 +270,9 @@ LIBRARIES: tuple[str, ...] = (
     "face-alignment",
 )
 
-#: The modules whose arithmetic decides pixel values, recorded by the version
-#: the IMPORT actually resolves to rather than by a distribution name.
-#:
-#: Measured, not feared: installing mediapipe pulled in
-#: opencv-contrib-python 5.0.0.93 alongside opencv-python 4.14, cv2 began
-#: resolving to 5.0.0, and every aligned crop moved by one level in a handful
-#: of pixels -- 3 of 37,632 at 112, 88 of 338,688 at 336. Nothing in the
-#: identity changed, because it was watching the distribution `opencv-python`
-#: while a different distribution supplied the module. The same trap the
-#: onnxruntime note below describes: metadata describes what was installed,
-#: not what will run.
+#: The modules whose arithmetic decides pixel values, by the version the
+#: IMPORT resolves to rather than by a distribution name: two distributions can
+#: supply one module, so metadata describes what was installed.
 IMPORTED: tuple[str, ...] = ("cv2", "numpy", "skimage", "torch", "PIL")
 
 
@@ -337,10 +329,9 @@ def backend_identity() -> dict[str, Any]:
         engine["available_providers"] = list(onnxruntime.get_available_providers())
         engine["device"] = onnxruntime.get_device()
     except (ImportError, OSError, AttributeError) as why:
-        # A DLL that will not load is a real condition and must not read as
-        # "no providers": one is a broken environment, the other a CPU box,
-        # and a suite that cannot tell them apart reports the wrong reason
-        # for every UNSUPPORTED case downstream of it.
+        # A DLL that will not load must not read as "no providers": one is a
+        # broken environment, the other a CPU box, and the difference is the
+        # reason every downstream UNSUPPORTED case reports.
         engine["error"] = f"{type(why).__name__}: {why}"
     out["onnxruntime"] = engine
     return out
@@ -436,9 +427,8 @@ def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         found = where.is_file()
         measured = digest_file(where) if found else None
         # A hash WE computed proves our copy has not changed since we hashed
-        # it. It does not prove our copy is the one the vendor shipped. Where a
-        # vendor publishes the digest in its own documentation, that claim is
-        # recorded and checked, which is a different and stronger statement.
+        # it, not that it is the one the vendor shipped. A vendor-published
+        # digest is recorded and checked separately.
         published = row.get("published_sha256")
         out.append(
             {
@@ -609,11 +599,9 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
             "total": len(consumers),
             "source_unread": unread,
         },
-        # Four checks, and none excuses the others: a clone at the right commit
-        # says nothing about what the interpreter imports; neither says
-        # anything about which of OUR weights computed the numbers; and none of
-        # the three says anything about the VENDOR's own checkpoints, which is
-        # what the acceptance lane loads.
+        # Four checks, none excusing the others: a clone at the right commit,
+        # what the interpreter imports, which of OUR weights computed the
+        # numbers, and the VENDOR's own checkpoints.
         "vendor_weights": vendor_weights,
         "provenance_ok": (
             all(one.ok for one in proofs)
@@ -686,10 +674,9 @@ def main() -> int:
 
     where: Path = ROOT / "generated" / "provenance.json"
     where.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" so this file is byte-identical on every platform. Windows
-    # would otherwise translate \n to \r\n, and a reviewer hashing the
-    # evidence on Linux would get a different digest for the same run --
-    # which is indistinguishable from the evidence having changed.
+    # newline="" so this file is byte-identical on every platform: Windows
+    # would translate the line endings and a reviewer hashing the evidence
+    # elsewhere would get a different digest for the same run.
     with where.open("w", encoding="utf-8", newline="") as handle:
         handle.write(json.dumps(out, indent=2, sort_keys=True))
         handle.write("\n")

@@ -43,10 +43,9 @@ from typing import Any
 #: waiting on nothing cannot tell those apart.
 GIT_SECONDS: float = 60.0
 
-#: Where extracted sources are materialised. They are written to disk rather
-#: than exec'd from a string so the loaded object has a real module, a real
-#: `__file__`, and a traceback that points at readable lines -- and so the
-#: exact bytes that ran can be opened and compared afterwards.
+#: Where extracted sources are materialised: written to disk rather than
+#: exec'd from a string, so the loaded object has a real `__file__` and the
+#: exact bytes that ran can be opened afterwards.
 SCRATCH: Path = Path(tempfile.gettempdir()) / "compat_pinned_source"
 
 
@@ -222,10 +221,9 @@ def load_symbol(repo: Path, commit: str, path: str, symbol: str, namespace: dict
     supplied = sorted(namespace)
 
     SCRATCH.mkdir(parents=True, exist_ok=True)
-    # The full path is folded in, not just its stem. Two files named `utils.py`
-    # in different directories of one commit produced the same scratch name,
-    # and the second load overwrote the first -- so the bytes on disk this
-    # docstring offers for comparison could belong to the other symbol.
+    # The full path is folded in, not just its stem: two files named
+    # `utils.py` in one commit would produce the same scratch name and the
+    # second load would overwrite the first.
     where_from = hashlib.sha256(path.encode("utf-8")).hexdigest()[:8]
     stem = f"{Path(path).stem}__{symbol.replace('.', '_')}__{commit[:12]}__{where_from}"
     where = SCRATCH / f"{stem}.py"

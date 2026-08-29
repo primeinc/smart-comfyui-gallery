@@ -38,10 +38,9 @@ from compat.harness.run import blocking_failures
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: One shard per group of lanes that share the model packs they load. Grouped
-#: by what they LOAD, not by what they mean: `embedding_spaces` holds three
-#: recognition models and `union_storage` holds none, so pairing them costs
-#: nothing while pairing two model-heavy lanes is what broke.
+#: One shard per group of lanes that share the model packs they load, grouped
+#: by what they LOAD rather than what they mean: pairing `embedding_spaces`
+#: with a lane holding no models costs nothing.
 SHARDS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     (
         "face_family",
@@ -100,20 +99,18 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
     broken: list[str] = []
     exited: list[str] = []
     skipped: list[dict[str, Any]] = []
-    seen: dict[str, str] = {}
+    seen: set[str] = set()
     duplicated: list[str] = []
     for one in partials:
         for row in one.get("results", []):
             # `Registry` enforces "one case name, one case" INSIDE a shard
-            # (contracts/case.py:370-381) and cannot see across them. Six
-            # processes each keeping their own register is six registers, so
-            # two shards emitting the same case name went unnoticed and the
-            # later row silently decided the verdict.
+            # (contracts/case.py:370-381) and cannot see across them, so two
+            # shards emitting one name would let the later row decide.
             name = row["case"]
             if name in seen:
                 duplicated.append(name)
                 continue
-            seen[name] = row["consumer_id"]
+            seen.add(name)
             results.append(row)
         # Each shard skips in its own process, so its ledger comes back in its
         # partial. Dropping them here would put the record back where it was.
@@ -121,14 +118,9 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
         if one.get("failed"):
             broken.append(one["failed"])
         elif one.get("exit"):
-            # A shard that WROTE its partial and then exited nonzero was
-            # accepted in silence: `run_shard` recorded the code and nothing
-            # read it. Its rows are real, but whatever made it exit is not a
-            # detail the merge may drop.
-            #
-            # An exit the shard's OWN rows already account for is not repeated:
-            # reporting it said "1 shard failed" with no name attached, beside
-            # a verdict table that had already said the same thing.
+            # A shard that wrote its partial and exited nonzero has real rows,
+            # but whatever made it exit is not a detail the merge may drop. An
+            # exit its own rows already account for is not repeated.
             explains = blocking_failures(one.get("results", []))
             if explains or any(row["verdict"] == Verdict.CONTRADICTED.value for row in one.get("results", [])):
                 broken.append(f"shard {one.get('shard', '?')} exited {one['exit']}: {sorted(explains)}")
@@ -148,18 +140,12 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
         "identity": evidence_identity.identity(),
         "cases": len(results),
         # Sorted through the SAME helper the single-process executor uses, so
-        # the evidence bytes are a property of the results rather than of
-        # which entrypoint produced them. Without this the sharded file and an
-        # in-process re-run differ by ordering alone, and
-        # `attack.evidence_not_reproducible` reads that as the pipeline being
-        # non-deterministic.
+        # the evidence bytes belong to the results rather than to the
+        # entrypoint that produced them.
         "results": case_runner.canonical(results),
-        # DEDUPLICATED across shards, exactly as `contracts.case.skipped`
-        # deduplicates within one. `runners(only)` builds every runner before
-        # filtering, so all six shards construct `FaceSelectionRunner` and all
-        # six report the same undetectable photograph. Six copies of one fact
-        # is not six facts, and concatenating them made this file disagree
-        # with a single-process rebuild that holds one.
+        # DEDUPLICATED across shards, as `contracts.case.skipped` deduplicates
+        # within one: `runners(only)` builds every runner before filtering, so
+        # all six shards report the same undetectable photograph.
         "skipped": [
             dict(one)
             for one in sorted(
@@ -220,11 +206,9 @@ def main() -> int:
     print(f"duplicated case names   : {len(out['duplicated_cases'])}  {out['duplicated_cases']}")
     print(f"wrote {target}")
 
-    # Beside the evidence, never inside it. `.gitignore:156` says excluding
-    # timings is what lets `just compat attack` assert two runs produce
-    # byte-identical evidence -- but this lane, the one that actually runs the
-    # cases, never wrote the file at all, so the wall clock it strips was
-    # simply lost.
+    # Beside the evidence, never inside it: `.gitignore:156` records that
+    # excluding timings is what lets `just compat attack` compare two runs byte
+    # for byte.
     timings = generated / "timings.json"
     with timings.open("w", encoding="utf-8", newline="") as handle:
         handle.write(json.dumps({"runtime": out["runtime"], "seconds_by_case": seconds}, indent=2, sort_keys=True))
@@ -233,7 +217,7 @@ def main() -> int:
 
     blocking = blocking_failures(out["results"])
     if blocking:
-        print("\nDIVERGED -- the store did not give back what the producer emitted:")
+        print("\nBLOCKING:")
         for why, names in blocking.items():
             print(f"    {why}:")
             for one in names:

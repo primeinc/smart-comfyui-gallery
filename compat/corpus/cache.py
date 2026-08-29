@@ -1,7 +1,7 @@
 """The memo, persisted across the processes one run is split into.
 
-`compat/corpus/loaded.py` stopped this suite recomputing work inside a process
-(ab2bdef, 202.9s -> 86.7s). Then `compat/harness/sharded.py` split the
+`compat/corpus/loaded.py` stopped this suite recomputing work inside a
+process (ab2bdef). Then `compat/harness/sharded.py` split the
 population across six interpreters, because sixteen lanes holding every model
 pack at once exhausted memory -- and a memo that lives in a dict dies with its
 process. Six shards decode the same four corpus photographs, one of them
@@ -33,7 +33,7 @@ that impossible rather than unlikely.
 Upstream read for this file:
   refs/numpy/numpy/numpy/lib/_npyio_impl.py:505 `save` and :756 `_savez` append
   `.npy`/`.npz` to a PATH and leave a file OBJECT alone, so writes go through
-  an open handle and the temporary name survives the rename.
+  an open handle and the scratch name survives the rename.
   refs/numpy/numpy/numpy/lib/_npyio_impl.py:312 `load` returns an `NpzFile`
   that owns the descriptor only when it opened it, so reads take a path.
   refs/numpy/numpy/numpy/lib/_format_impl.py:157 -- an ndarray SUBCLASS is
@@ -117,11 +117,9 @@ def frame_get(sha: str) -> npt.NDArray[np.uint8] | None:
     if not where.is_file():
         return None
     try:
-        # The handle is opened here rather than by `np.load` because
+        # The handle is opened here rather than by `np.load`:
         # `_npyio_impl.load:471` calls `stack.pop_all()` before constructing
-        # `NpzFile`: when that constructor raises, a descriptor numpy opened is
-        # never closed, and on Windows the unreadable entry then cannot be
-        # deleted. Owning the handle makes the `with` close it either way.
+        # `NpzFile`, so a raising constructor leaks the descriptor.
         with where.open("rb") as handle:
             held = np.load(handle, allow_pickle=False)
     except (OSError, ValueError, EOFError, zipfile.BadZipFile):
@@ -149,18 +147,15 @@ def frame_put(sha: str, frame: npt.NDArray[np.uint8]) -> None:
             return
         os.replace(beside, where)
     except (OSError, ValueError):
-        # ValueError as well as OSError: _format_impl.write_array:860 raises it
-        # for an object array under allow_pickle=False, and _read_bytes:1128
-        # raises it on a short read. Neither may reach a caller that only asked
-        # for a value it can compute itself.
+        # ValueError as well as OSError: _format_impl.write_array:860 raises
+        # it for an object array under allow_pickle=False and _read_bytes:1128
+        # on a short read.
         beside.unlink(missing_ok=True)
 
 
 # --- our own producer's face -------------------------------------------------
-#
 # `loaded.our_face` is the observation the application would store, and five
-# consumer modules build their retained state from it. Under sharding each of
-# them is in a different process for the same photograph.
+# consumer modules build their retained state from it in five processes.
 
 
 def _parts(face: Any) -> tuple[dict[str, Any], dict[str, str]]:

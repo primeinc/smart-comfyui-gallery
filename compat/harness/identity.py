@@ -39,13 +39,9 @@ from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: Every directory whose source decides what a case computes. `harness` is
-#: included: the executor's own comparison and verdict logic is as
-#: answer-changing as any runner's.
-#: The application packages `compat/storage/gallery_v45.py` executes. Hashed
-#: whole rather than by its four import lines, because those modules import
-#: others in turn and a digest covering the entry points but not what they
-#: call has a hole in exactly the shape of the next refactor.
+#: Every directory whose source decides what a case computes, `harness`
+#: included: the executor's comparison and verdict logic is as answer-changing
+#: as any runner's. Application packages are hashed whole, not by entry point.
 APP_DIRS: Final[tuple[str, ...]] = ("vision", "db")
 
 SOURCE_DIRS: Final[tuple[str, ...]] = (

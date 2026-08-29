@@ -45,10 +45,9 @@ CONSUMER_ID: Final[str] = "face_selection"
 #: How many discriminating group photographs to exercise.
 PHOTOGRAPHS: Final[int] = 3
 
-#: How many candidates to look at before giving up. Detection on a
-#: multi-megapixel photograph is the expensive step, so the search states
-#: its own ceiling instead of scanning the whole dataset. Hitting the cap
-#: is recorded, never silently treated as 'none exist'.
+#: How many candidates to look at before giving up: detection on a
+#: multi-megapixel photograph is the expensive step. Hitting the cap is
+#: recorded, never treated as 'none exist'.
 SCAN_CEILING: Final[int] = 24
 
 
@@ -203,12 +202,9 @@ class FaceSelectionRunner:
                         retained=("face_rows", "selection_rule"),
                         ablations=(
                             Ablation(primitive="face_rows", expect_breaks=True),
-                            # Whole pixels, as an INTEGER bbox column would
-                            # hold them. The detector emits fractional
-                            # coordinates; whether the selection survives
-                            # rounding them is a schema question, and
-                            # `select_index` compares areas so it can go
-                            # either way.
+                            # Whole pixels, as an INTEGER bbox column holds
+                            # them. `select_index` compares areas, so rounding
+                            # can go either way.
                             Ablation(
                                 primitive="face_rows",
                                 swap="integer_pixels",
@@ -217,13 +213,8 @@ class FaceSelectionRunner:
                             ),
                             Ablation(primitive="selection_rule", expect_breaks=True),
                             # The rule the store kept, swapped for the other
-                            # one the manifest declares. It breaks exactly when
-                            # the two rules reach different faces on THIS
-                            # photograph -- which is a fact about the
-                            # photograph, so it is read off the detection
-                            # rather than asserted. Photographs where they
-                            # agree are the negative control the lane used to
-                            # refuse admission to.
+                            # the manifest declares: it breaks when the two
+                            # reach different faces, read off the detection.
                             Ablation(
                                 primitive="selection_rule",
                                 swap="other_selection_rule",
@@ -245,10 +236,10 @@ class FaceSelectionRunner:
     def _rows(self, case: Case) -> np.ndarray:
         """Every detected face's bbox, in detector order: what a store holds.
 
-        A row per face, not one chosen face. The retained state used to BE the
-        answer -- `retained_for` called `_chosen`, `replay` handed it straight
-        back, and the case compared the selection against itself. That is a
-        fact about `numpy.copy`. Here the store keeps the rows and the replay
+        A row per face, not one chosen face. A retained state holding the
+        chosen face would make `replay` hand back what `retained_for` was
+        given, comparing the selection against itself -- a fact about
+        `numpy.copy`. Here the store keeps the rows and the replay
         runs the selection over them, so what is under test is whether the
         stored rows are enough to reach the same face.
         """

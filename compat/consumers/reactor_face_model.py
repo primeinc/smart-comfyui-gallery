@@ -184,10 +184,8 @@ def full_observations(limit: int = 4) -> list[FullObservation]:
         faces = app.get(frame)
         if not faces:
             continue
-        # `loaded.best_face`, not highest det_score. Two rules for "our
-        # producer's face" named different people on any multi-face
-        # photograph, and this lane's must-retain evidence sat beside the
-        # storage lane's as though they described one subject.
+        # `loaded.best_face`, not highest det_score: two rules for "our
+        # producer's face" name different people on a multi-face photograph.
         best = best_face(faces)
         lmk106 = best.get("landmark_2d_106")
         if lmk106 is None or best.gender is None or best.age is None:
@@ -267,14 +265,21 @@ class ReactorFaceModelRunner:
                 )
                 for one in retained_keys()
             ),
-            # `precision.half` cannot degrade an integer, so `age` and
-            # `gender` had a removal that proved nothing and a width
-            # question that was a no-op. A decade bucket IS a storable
-            # form of an age -- coarser and cheaper, and the one a
-            # privacy-minded schema would reach for first.
+            # `precision.half` cannot degrade an integer, so the width
+            # question is a no-op for `age`. A decade bucket is a coarser
+            # storable form of one.
             Ablation(
                 primitive="age",
                 swap="decade_bucket",
+                expect_breaks=True,
+                kind="substitution",
+            ),
+            # A two-valued label has no narrower storable form, so the
+            # answerable question is whether the value reaches the boundary:
+            # offer the opposite label and see if the saved model changes.
+            Ablation(
+                primitive="gender",
+                swap="opposite_label",
                 expect_breaks=True,
                 kind="substitution",
             ),
@@ -348,7 +353,13 @@ class ReactorFaceModelRunner:
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         if ablation.swap == "decade_bucket":
             held = retained.integers("age")
-            return retained.replacing("age", (np.rint(held / 10.0) * 10).astype(held.dtype))
+            return retained.replacing("age", np.asarray(np.rint(held / 10.0) * 10, dtype=held.dtype))
+        if ablation.swap == "opposite_label":
+            held = retained.integers("gender")
+            # `np.asarray`: `1 - <0-d array>` returns a numpy SCALAR, which
+            # `RetainedState._array` rejects, and the TypeError surfaces in
+            # `replay` where it reads as the consumer breaking.
+            return retained.replacing("gender", np.asarray(1 - held, dtype=held.dtype))
         if ablation.swap == "half_precision":
             return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
         return retained.without(ablation.primitive)

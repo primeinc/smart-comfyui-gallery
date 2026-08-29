@@ -40,12 +40,9 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-#: Where the sample datasets live on this machine. The production face
-#: benchmark names the same root; this is not a second source of truth, it is
-#: the same one, and a run records the path it actually used.
-#: Overridable for the same reason the model root is: it is a fact about
-#: this machine, and a hardcoded drive letter makes the corpus lanes
-#: unrunnable anywhere else rather than reporting that it is absent.
+#: Where the sample datasets live on this machine, the same root the
+#: production face benchmark names. Overridable because a hardcoded drive
+#: letter makes the corpus lanes unrunnable elsewhere.
 DATASETS: Path = Path(os.environ.get("COMPAT_DATASETS", "C:/ComfyUI/output/sample-datasets"))
 
 #: The labelled identity set. Seven folders, one per person.
@@ -182,12 +179,9 @@ def main() -> int:
     out = Path(__file__).resolve().parent / "kyc.json"
     body = json.dumps(index, indent=2, sort_keys=True) + "\n"
 
-    # Regenerated and DIFFED against the committed copy, not merely
-    # overwritten. No module reads this file -- `loaded.shots()` scans the
-    # corpus live -- so writing it and moving on made the lane produce a
-    # decoration. Read as a drift check it says something: either the
-    # committed index and the corpus on this machine agree, or they do not and
-    # every baseline recorded against the old one describes other photographs.
+    # Regenerated and DIFFED against the committed copy: no module reads this
+    # file, so as a drift check it says whether the committed index and the
+    # corpus on this machine still agree.
     was = out.read_text(encoding="utf-8") if out.is_file() else ""
     moved = bool(was) and was != body
 

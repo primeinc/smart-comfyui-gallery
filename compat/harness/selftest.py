@@ -190,10 +190,9 @@ def missing_consumer() -> Attack:
     if not covered:
         return Attack("missing_consumer", "no consumer-tier coverage", False, "nothing to drop")
     dropped = min(covered)
-    # Through `matrices.build`, not through set arithmetic. The old row
-    # computed `declared - (covered - {dropped})` and asserted it non-empty,
-    # which holds for any non-empty `covered` and never called the code that
-    # decides whether a missing consumer is visible.
+    # Through `matrices.build`, not set arithmetic: asserting
+    # `declared - (covered - {dropped})` non-empty holds for any non-empty
+    # `covered` and calls none of the code under test.
     from compat.harness import matrices
 
     thinned = copy.deepcopy(held)
@@ -378,12 +377,9 @@ def changed_vendor_fixture() -> Attack:
     if not present:
         return Attack("changed_vendor_fixture", "no resolved fixtures", False, "nothing to corrupt")
     one = present[0]
-    # Re-hashed for real. The old row asserted `sha256 != "0" * 64`, which
-    # swaps nothing and re-hashes nothing, under a header promising
-    # "same path, other bytes -> different sha256". This fetches the bytes the
-    # index points at -- through the same reader the conformance lane uses, so
-    # a blob-only fixture works too -- checks the recorded digest against them,
-    # then flips one byte and requires the digest to move.
+    # Re-hashed for real: this fetches the bytes the index points at through
+    # the same reader the conformance lane uses, checks the recorded digest
+    # against them, then flips one byte and requires the digest to move.
     from compat.vendor import conformance
 
     blob = conformance._read(one)
@@ -412,9 +408,8 @@ def vendor_acceptance_not_faked() -> Attack:
     thing separating "the vendor's own entrypoint produced this" from "our
     adapter produced something and we called it a reference".
 
-    Over the RECORDED rows. `vendor_accepted` used to be "ran and produced a
-    boundary", which this could only check for internal consistency with the
-    field beside it. It is now "reproduced the shape upstream declares", so an
+    Over the RECORDED rows. `vendor_accepted` means "reproduced the shape
+    upstream declares" rather than "ran and produced a boundary", so an
     accepted vendor must carry an `against_upstream` row that AGREES -- and a
     vendor that ran without such a row is VENDOR_BASELINE_UNAVAILABLE and must
     not appear in the accepted set.
@@ -737,6 +732,48 @@ def changed_corpus() -> Attack:
     return Attack("changed_corpus", "one corpus photograph re-hashed", seen, detail)
 
 
+def retained_bytes_cannot_be_asserted() -> Attack:
+    """A durable size the array does not encode to must be refused.
+
+    `sizes()` prefers `_durable` over `ndarray.nbytes`, and `answer.py`
+    publishes the result as the storage cost of a primitive. Before `priced()`
+    validated, a runner naming any integer decided that cost.
+
+    Two-sided through `RetainedState.priced` itself: the encoded length is
+    accepted and a planted one is refused. A one-sided check passes against a
+    function that accepts everything.
+    """
+    import numpy as np
+
+    from compat.contracts.case import RetainedState
+    from compat.storage import derivatives
+
+    frame = (np.arange(64 * 64 * 3, dtype=np.uint8) % 251).reshape(64, 64, 3)
+    encoded = derivatives.lossless_bytes(frame)
+
+    honest = False
+    try:
+        priced = RetainedState(whole_reference_image=frame).priced({"whole_reference_image": encoded})
+        honest = priced.sizes()["whole_reference_image"] == encoded
+    except (KeyError, TypeError, ValueError):
+        honest = False
+
+    planted: list[bool] = []
+    for bad in (0, encoded + 1, frame.nbytes):
+        try:
+            RetainedState(whole_reference_image=frame).priced({"whole_reference_image": bad})
+            planted.append(False)
+        except ValueError:
+            planted.append(True)
+
+    return Attack(
+        "retained_bytes_cannot_be_asserted",
+        "a durable size that is not the array's encoded length, through RetainedState.priced",
+        honest and all(planted),
+        f"encoded {encoded} B accepted={honest}; refused 0, +1 and nbytes={planted}",
+    )
+
+
 def every_attack() -> tuple[Attack, ...]:
     return (
         positive_control(),
@@ -758,6 +795,7 @@ def every_attack() -> tuple[Attack, ...]:
         changed_corpus(),
         cache_never_crosses_identity(),
         cache_preserves_every_value_type(),
+        retained_bytes_cannot_be_asserted(),
     )
 
 

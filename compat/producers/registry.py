@@ -165,10 +165,8 @@ class FaceAlignment68:
             "3d": face_alignment.LandmarksType.THREE_D,
         }
         # `compile=False`: 1.5.0 wraps the net in `torch.compile` by default
-        # (api.py:87, :118-126) and Inductor needs MSVC, which this machine has
-        # no `cl` for -- the run died with InvalidCxxCompiler. Eager is the
-        # same arithmetic, and a compiled kernel is not what the storage
-        # question is about.
+        # (api.py:87, :118-126) and Inductor needs MSVC. Eager is the same
+        # arithmetic.
         return face_alignment.FaceAlignment(types[kind], device="cpu", flip_input=False, compile=False)
 
     def observe(self, frame: UInt8Array) -> list[Emission]:

@@ -36,22 +36,15 @@ import numpy.typing as npt
 
 from compat.assertions.arrays import digest
 
-#: The provisioned pack root. `FaceAnalysis(root=...)` appends `models/<name>`,
-#: so this is the directory ABOVE `models/`, exactly as `vision/weights.py`
-#: resolves it for the application.
-#: Overridable, because it is machine-local. `compat/primitives/build.py`
-#: states that "every machine produces byte-identical bytes, which is what
-#: lets a baseline hash recorded here mean anything on another machine" -- and
-#: this literal was duplicated into three modules, so on any other machine
-#: four vendors became UNSUPPORTED rather than erroring. One constant, one
-#: env var, and the resolved path is recorded in the evidence either way.
+#: The provisioned pack root, the directory ABOVE `models/`, as
+#: `vision/weights.py` resolves it. Machine-local, so it takes an env var and
+#: the resolved path is recorded in the evidence.
 MODELS_ROOT: Path = Path(os.environ.get("COMPAT_INSIGHTFACE_ROOT", "C:/ComfyUI/output/.AImodels/insightface"))
 PACK: str = "antelopev2"
 
-#: CPU only, deliberately. A CUDA reduction order is not fixed across driver
-#: versions, and this evidence is about what must be STORED -- a number that
-#: changes with the GPU would make every downstream digest a claim about this
-#: machine's driver rather than about the model.
+#: CPU only: a CUDA reduction order is not fixed across driver versions, and a
+#: number that changes with the GPU makes every downstream digest a claim about
+#: this machine's driver.
 PROVIDERS: tuple[str, ...] = ("CPUExecutionProvider",)
 
 #: Detection input size upstream's own `FaceAnalysis.prepare` defaults to.
@@ -105,10 +98,9 @@ class ImageReport:
 digest_array = digest
 
 
-#: One prepared pack per (root, pack), because five ONNX sessions take about
-#: ten seconds to stand up and several runners want the same producer. Keyed
-#: rather than a bare global so a test can hold a differently-configured pack
-#: without the cache handing back the wrong one.
+#: One prepared pack per (root, pack): five ONNX sessions are slow to stand up
+#: and several runners want the same producer. Keyed rather than global so a
+#: test can hold a differently-configured pack.
 _prepared: dict[tuple[str, str], Any] = {}
 
 
@@ -197,9 +189,8 @@ def inventory_face(face: Any, index: int) -> FaceReport:
     report.embedding_norm = float(np.linalg.norm(raw))
 
     # The claim under test: is the normalised vector derivable from the raw
-    # one? If it is, storing both is storing the same fact twice, and the raw
-    # form is the one to keep because the norm it carries is not recoverable
-    # from the unit vector.
+    # one? If so, the raw form is the one to keep, since its norm is not
+    # recoverable from the unit vector.
     upstream_normed = np.asarray(face.normed_embedding, dtype=np.float32).reshape(-1)
     derived = raw / np.linalg.norm(raw)
     report.normed_max_abs_diff = float(np.max(np.abs(upstream_normed - derived)))

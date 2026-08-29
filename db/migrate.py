@@ -78,22 +78,9 @@ def step(from_version: int):
     return register
 
 
-#: How to UN-do a step, by the version the step produces.
-#:
-#: Alembic calls this `downgrade` and puts it in the same file as the
-#: upgrade, which is the part worth copying: an inverse that lives
-#: somewhere else is an inverse nobody remembers to write. Ours lived in
-#: the test suite in FOUR copies, and three migrations in a row shipped
-#: with those fixtures broken -- the suite caught each one, which is the
-#: only reason it was not worse.
-#:
-#: The consumer today is the suite. Every migration test here builds
-#: today's schema and steps it BACKWARDS to the version it wants to
-#: migrate from -- which is the right shape, because a fixture written by
-#: hand drifts from schema.sql the moment either changes and `drift`
-#: would never see it. Rolling back a real upgrade is `restore` from the
-#: snapshot `migrate` takes, not this.
-#:
+#: How to UN-do a step, by the version the step produces. Migration tests
+#: build today's schema and step BACKWARDS, so a hand-written fixture cannot
+#: drift from schema.sql unseen. Rolling back a real upgrade is `restore`.
 def rebuilt(
     conn: sqlite3.Connection,
     table: str,
@@ -160,10 +147,9 @@ def rebuilt(
         )
     aside = f"{table}_rebuilding"
     reading = reading or {}
-    # Read BEFORE the rename: after it, these rows name `aside`, and
-    # after the drop they are gone. `sql IS NOT NULL` skips the indexes
-    # SQLite made itself for UNIQUE and PRIMARY KEY -- those come back
-    # with the new DDL, and replaying a NULL would be a crash.
+    # Read BEFORE the rename, after which these rows name `aside`.
+    # `sql IS NOT NULL` skips SQLite's own UNIQUE and PRIMARY KEY indexes,
+    # which the new DDL recreates.
     attached = [
         row[0]
         for row in conn.execute(
@@ -187,10 +173,8 @@ def rebuilt(
     conn.execute(f"INSERT INTO {table}({', '.join(named)}) SELECT {reads} FROM {aside}{only}")
     conn.execute(f"DROP TABLE {aside}")
     for one in attached:
-        # A rebuild that recreates an object the new DDL already made is
-        # a step that fails on its second object rather than its first,
-        # so the ones already there are skipped by name rather than by
-        # swallowing the error.
+        # Objects the new DDL already made are skipped by name rather than by
+        # swallowing the error a second CREATE would raise.
         if not _already(conn, one):
             conn.execute(one)
     for one in indexes:
@@ -630,13 +614,9 @@ def _smart_rules_get_their_own_table(conn: sqlite3.Connection) -> None:
         " SELECT id, nl_text, sql_text, created_at, created_at FROM collection"
         " WHERE kind = 'smart' AND (nl_text IS NOT NULL OR sql_text IS NOT NULL)"
     )
-    # The old table is renamed AWAY and the new one created under the
-    # final name directly: renaming new->old would leave a QUOTED table
-    # name in sqlite_master's stored DDL, which the drift check rightly
-    # counts as a different schema. legacy_alter_table for the rename,
-    # because the modern form validates the collection_file triggers
-    # whose subject is mid-rebuild -- sqlite's own escape for the
-    # 12-step dance, restored immediately after.
+    # The old table is renamed AWAY and the new one created under the final
+    # name: renaming new->old leaves a QUOTED name in sqlite_master, which the
+    # drift check counts as a different schema.
     conn.execute("PRAGMA legacy_alter_table=ON")
     conn.execute("ALTER TABLE collection RENAME TO collection_old")
     conn.execute("PRAGMA legacy_alter_table=OFF")
@@ -2101,10 +2081,9 @@ def _a_camera_has_a_finer_clock_and_one_act_has_renditions(conn: sqlite3.Connect
         " focal_35mm, orientation, gps_lat, gps_lon, gps_alt, parsed_at FROM capture_v20"
     )
     conn.execute("DROP TABLE capture_v20")
-    # Under v20 a row WITH an offset stored the INSTANT (the reader folded
-    # the zone in); from v21 `captured_at` is always the camera's wall
-    # clock with the zone beside it. The instant plus the offset is that
-    # wall clock. Rows without an offset were already wall clocks.
+    # From v21 `captured_at` is always the camera's wall clock with the zone
+    # beside it; under v20 a row with an offset stored the instant, and the
+    # instant plus the offset is that wall clock.
     conn.execute(
         "UPDATE capture SET captured_at = captured_at + tz_offset_min * 60"
         " WHERE tz_offset_min IS NOT NULL AND captured_at IS NOT NULL"
@@ -2743,13 +2722,11 @@ def analyze(conn: sqlite3.Connection) -> None:
     to a hundred thousand files and the planner's statistics describe a
     database that no longer exists.
 
-    Measured on 100k files, the people page: 17.7 ms with no statistics,
-    5.4 ms with them. The plan changes from scanning `file` to driving from
-    300 people through an index -- which is right, and which needs a page
-    cache big enough to hold the random lookups it implies. At SQLite's 2 MiB
-    default the same analyzed plan measures 60 ms, and the first reading of
-    that number here was that ANALYZE had made things worse. It had not; see
-    `connect.CACHE_KIB`. A plan is only as good as the cache under it, and a
+    With statistics the people page plan changes from scanning `file` to
+    driving from the people through an index, which needs a page cache big
+    enough to hold the random lookups it implies. Under SQLite's default
+    cache the analyzed plan is slower than the unanalyzed one, which reads as
+    ANALYZE having made things worse; see `connect.CACHE_KIB`. A plan is only as good as the cache under it, and a
     benchmark that leaves the cache at its default is measuring the default.
     """
     conn.execute("PRAGMA optimize=0x10012")
@@ -2923,11 +2900,9 @@ def _a_filesystem_identifier_is_opaque_text(conn: sqlite3.Connection) -> None:
     conn.execute("""CREATE INDEX file_sha  ON file(content_sha256)""")
     conn.execute("""CREATE INDEX file_kind ON file(kind)""")
 
-    # The triggers go with the dropped tables, so both sets are recreated
-    # from schema.sql's text -- AFTER the copy, deliberately: the name_fts
-    # insert triggers would otherwise fire per copied row and index every
-    # name twice, and DROP TABLE fires no delete trigger, so the FTS rows
-    # for these files were never removed in the first place.
+    # Triggers go with the dropped tables and are recreated from schema.sql
+    # AFTER the copy: firing name_fts inserts per copied row would index every
+    # name twice, and DROP TABLE fires no delete trigger.
     conn.execute(
         """CREATE TRIGGER folder_depth_ins AFTER INSERT ON folder BEGIN
   UPDATE folder
@@ -3063,9 +3038,10 @@ def _an_answer_is_stale_only_when_an_answer_could_have_changed(conn: sqlite3.Con
     db/resultset.py caches the whole ordered answer, valid for one
     (question, library state) pair, and library state was `PRAGMA
     data_version` -- "somebody committed something". Jobs commit per
-    item, so at 80,000 files a page cost 0.18 ms at rest and 38.26 ms
-    while a job ran, a factor of 214, and the job that runs for hours
-    writes nothing but the ledger.
+    item, so at 80,000 files a page cost 0.179 ms at rest and 37.93 ms
+    while a job ran, a factor of 211.8
+    (benchmarks/results/answer_currency.json), and the job that runs for
+    hours writes nothing but the ledger.
 
     The counter is built here the same way schema.sql builds it, from
     the tables this database actually has: everything except `job`,
@@ -3256,9 +3232,7 @@ def _a_job_can_be_a_step_of_something(conn: sqlite3.Connection) -> None:
     """
     conn.execute("ALTER TABLE job ADD COLUMN collection TEXT")
     # A REFERENCES clause on an added column is allowed only with a NULL
-    # default, which is what this wants anyway (sqlite ALTER TABLE:
-    # "if foreign key constraints are enabled and a column with a
-    # REFERENCES clause is added, the column must have a default of NULL").
+    # default, which is what this wants anyway (sqlite ALTER TABLE).
     conn.execute("ALTER TABLE job ADD COLUMN after_id INTEGER REFERENCES job(id) ON DELETE SET NULL")
     conn.execute("CREATE INDEX job_after ON job(after_id)")
     conn.execute("CREATE INDEX job_collection ON job(collection) WHERE collection IS NOT NULL")
@@ -3446,11 +3420,9 @@ def _a_keyword_is_a_thing_a_person_can_write_down(conn: sqlite3.Connection) -> N
     )
     conn.execute("CREATE INDEX file_tag_tag  ON file_tag(tag_id)")
     conn.execute("CREATE INDEX file_tag_user ON file_tag(user_id)")
-    # A keyword changes which files an answer holds, so both tables owe
-    # the staleness counter their three triggers -- the exact omission
-    # test_every_table_that_can_change_an_answer_moves_the_counter exists
-    # to catch, and did. Without them a person filters by the word they
-    # just typed and a mounted answer serves the library from before it.
+    # A keyword changes which files an answer holds, so both tables owe the
+    # staleness counter their three triggers; without them a filter on a word
+    # just typed serves the library from before it.
     for name in ("tag", "file_tag"):
         for short, verb in (("ins", "INSERT"), ("upd", "UPDATE"), ("del", "DELETE")):
             conn.execute(
@@ -3480,12 +3452,8 @@ def _a_photograph_can_be_dated_to_its_decade(conn: sqlite3.Connection) -> None:
     that is a job somebody asks for, not a migration's business.
     """
     # schema.sql's block VERBATIM, whitespace included: the drift check
-    # compares sqlite_master text, so a reflowed statement is drift.
-    # BOTH tables. The vocabulary is stated twice in the DDL -- once where
-    # a claim is recorded and once where the conclusion is -- and widening
-    # only the second one made every context item die on `CHECK constraint
-    # failed: time_precision IN` while the table it was writing to would
-    # have accepted the row.
+    # compares sqlite_master text, so a reflowed statement is drift. BOTH
+    # tables, because the DDL states the vocabulary twice.
     rebuilt(
         conn,
         "derived_media_occurrence",
@@ -3617,8 +3585,7 @@ def _a_vocabulary_states_only_what_it_can_write(conn: sqlite3.Connection) -> Non
     `time_basis` drops `first_seen`, `location_basis` drops `sidecar` and
     `inferred`, and both `time_precision` CHECKs drop `hour`.
 
-    None of the four had a writer. This is not a judgement about how
-    likely they were; it is what the code can construct:
+    None of the four had a writer. This is what the code can construct:
 
       first_seen  `judge_file`'s no-claim branch returns None when mtime
                   and btime are both absent, so the one case the word
@@ -3821,10 +3788,10 @@ def _an_expensive_pass_is_recorded_whole(conn: sqlite3.Connection) -> None:
     landmark sets had nowhere to land at all.
 
     The cost asymmetry is what decides the shape. Producing these loads
-    antelopev2's 143 MB 1k3d68 session and runs inference over every file
-    in the library; keeping them is ~3.7 KB per face. Re-deriving what was
-    already computed means reading the whole library off disk again, and
-    it is only possible at all while the originals are still there.
+    antelopev2's 1k3d68 session (143,607,619 bytes,
+    compat/generated/provenance.json) and runs inference over every file in
+    the library, while keeping them costs a few kilobytes per face.
+    Re-deriving is only possible while the originals are still there.
 
     JSON and unfiltered, rather than a column per value: an allowlist is
     what produced this defect, and a second allowlist would only move the
@@ -3880,16 +3847,53 @@ def _a_measurement_is_kept_at_the_width_it_was_measured(conn: sqlite3.Connection
     """
     import numpy as np
 
+    def plausible(values):
+        """Coordinate PAIRS, each a fraction of the frame or NaN.
+
+        NaN is admitted because the producer emits it: `vision/faces.py`
+        `_clamp01` returns nan for nan, so a legitimate row can carry one and
+        a bare [0, 1] test would reject the data this step protects.
+        """
+        if values.size % 2:
+            return False
+        return bool((np.isnan(values) | ((values >= 0.0) & (values <= 1.0))).all())
+
     rows = conn.execute("SELECT id, landmarks FROM derived_face_instance WHERE landmarks IS NOT NULL").fetchall()
+    widened = already = 0
+    skipped: list[int] = []
     for face_id, blob in rows:
         held = bytes(blob)
-        # Converted unconditionally. `user_version` is what says these bytes
-        # are float32 -- that is the whole job of a schema version -- and the
-        # step runs once, inside the transaction `migrate` opens, before the
-        # pragma advances. A byte-length guard cannot second-guess it anyway:
-        # five float32 pairs and five float64 pairs are 40 and 80 bytes, both
-        # divisible by 8, so width discriminates nothing.
-        conn.execute(
-            "UPDATE derived_face_instance SET landmarks = ? WHERE id = ?",
-            (np.frombuffer(held, dtype=np.float32).astype(np.float64).tobytes(), face_id),
+
+        # Raising here rolls the step back (migrate.py:305-316) and leaves the
+        # file at v45, which connect.py:274 refuses with no down step.
+        # Unreadable rows are skipped and counted.
+
+        # `% 8`: db/detect.py:113 writes (x, y) pairs, so a length divisible by
+        # 4 alone admits an odd float count.
+        if not held or len(held) % 8:
+            skipped.append(face_id)
+            continue
+
+        values = np.frombuffer(held, dtype=np.float32).astype(np.float64)
+        if plausible(values):
+            conn.execute(
+                "UPDATE derived_face_instance SET landmarks = ? WHERE id = ?",
+                (values.tobytes(), face_id),
+            )
+            widened += 1
+            continue
+
+        # Bytes that are float64 pairs are already the v46 shape.
+        # Checked after float32 because a float32 blob whose length divides 16
+        # also reads as in-range float64; see the tests named for this step.
+        if len(held) % 16 == 0 and plausible(np.frombuffer(held, dtype=np.float64)):
+            already += 1
+            continue
+
+        skipped.append(face_id)
+
+    if skipped or already:
+        print(
+            f"  v46 landmarks: {widened} widened, {already} already float64, "
+            f"{len(skipped)} left unconverted{': ' + ', '.join(str(one) for one in skipped[:20]) if skipped else ''}"
         )

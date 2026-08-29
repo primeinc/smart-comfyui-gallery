@@ -36,6 +36,8 @@ from typing import Any, Final
 import numpy as np
 import numpy.typing as npt
 
+from compat.assertions.arrays import digest
+
 UInt8Array = npt.NDArray[np.uint8]
 
 #: One scratch directory for the process, removed when it exits. The encoders
@@ -53,8 +55,16 @@ def _scratch_path(suffix: str) -> Path:
 
 
 def _to_pil(bgr: UInt8Array) -> Any:
+    """A PIL image from a BGR frame, or from a single-channel mask.
+
+    A 2-D uint8 array is mode "L". AnyStory's subject mask is decoded
+    single-channel (compat/consumers/masked_reference.py), and reversing a
+    third axis it does not have raises IndexError.
+    """
     from PIL import Image
 
+    if bgr.ndim == 2:
+        return Image.fromarray(bgr, mode="L")
     return Image.fromarray(bgr[:, :, ::-1])
 
 
@@ -110,3 +120,25 @@ def encoded(bgr: UInt8Array) -> tuple[UInt8Array, int]:
     with decode.open_still(target) as opened:
         opened.load()
         return _from_pil(opened), target.stat().st_size
+
+
+_ENCODED: dict[str, int] = {}
+
+
+def lossless_bytes(frame: npt.NDArray[np.uint8]) -> int:
+    """Bytes a store would hold to return this array, memoised by content.
+
+    `RetainedState.sizes()` reports `ndarray.nbytes` for an unpriced key --
+    the decoded footprint, 4.5x the encoded artifact on a corpus frame. Three
+    consumers emit `whole_reference_image`; pricing one of them left the other
+    two reporting nbytes, and `answer.py` aggregates by max, so the unpriced
+    figure won and the priced one never reached the published number.
+
+    Keyed by digest rather than by shot label because the emitters do not
+    share one: the same frame arrives through `corpus.loaded.shots` in one
+    lane and through a vendor fixture in another.
+    """
+    key = digest(frame)
+    if key not in _ENCODED:
+        _ENCODED[key] = lossless(frame)[1]
+    return _ENCODED[key]

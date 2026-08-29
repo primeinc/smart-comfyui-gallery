@@ -116,10 +116,9 @@ class EmbeddingSpaceRunner:
             for space in SPACES:
                 ablations = [
                     Ablation(primitive="aligned_crop_112", expect_breaks=True),
-                    # The crop as this application's own encoder keeps it.
+                    # The crop as this application's own encoder keeps it:
                     # `vision/thumbs` writes every raster variant as WebP at
-                    # quality 82, the avatar crop included, so a store that
-                    # kept the aligned crop would keep exactly these bytes.
+                    # quality 82, the avatar crop included.
                     Ablation(
                         primitive="aligned_crop_112",
                         swap="webp_encoded",
@@ -132,13 +131,9 @@ class EmbeddingSpaceRunner:
                     # glintr100 vector cannot stand in for this model's.
                     ablations.append(
                         Ablation(
-                            # The primitive is the RETAINED key, which is the
-                            # crop; the swap is the vector offered instead of
-                            # keeping it. `substituted_vector` named neither --
-                            # nothing retains it, so `answer.json` listed it
-                            # beside `kps` as a column and could not price it.
-                            # It survives below only as the state key the
-                            # replay reads, which is a mechanism, not a claim.
+                            # The primitive is the RETAINED key, the crop; the
+                            # swap is the vector offered instead. Below,
+                            # `substituted_vector` is a state key, not a column.
                             primitive="aligned_crop_112",
                             swap="stored_glintr100",
                             expect_breaks=True,

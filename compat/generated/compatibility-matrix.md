@@ -7,7 +7,7 @@ GENERATED. Do not edit: rebuilt from `compat/generated/*.json` by
 - provenance: **PASS**
 - consumers reproduced: **17 of 22**
 - diverged: **0** / partial: **5** / unsupported: **0** / not exercised: **0**
-- failing cases with no row below: **19**
+- failing cases with no row below: **0**
 - inputs skipped before a case was built: **1**
 
 ## Consumers
@@ -41,29 +41,29 @@ GENERATED. Do not edit: rebuilt from `compat/generated/*.json` by
 
 | primitive | verdict | breaks | survives | untested | consumers |
 | --- | --- | --- | --- | --- | --- |
-| `age` | UNPROVEN | 0 | 0 | 4 | 1 |
-| `aligned_crop_112` | UNPROVEN | 0 | 0 | 12 | 1 |
+| `age` | NECESSARY AT THIS WIDTH | 0 | 0 | 4 | 1 |
+| `aligned_crop_112` | NECESSARY AT THIS WIDTH | 0 | 0 | 12 | 1 |
 | `audio_sample_rate` | UNPROVEN | 0 | 0 | 1 | 1 |
-| `audio_waveform` | UNPROVEN | 0 | 0 | 1 | 1 |
-| `bbox` | UNPROVEN | 0 | 0 | 4 | 1 |
-| `det_score` | UNPROVEN | 0 | 0 | 4 | 1 |
-| `embedding` | UNPROVEN | 0 | 0 | 10 | 2 |
-| `embedding_raw` | UNPROVEN | 0 | 0 | 54 | 10 |
-| `face_rows` | UNPROVEN | 0 | 0 | 33 | 1 |
+| `audio_waveform` | NECESSARY AT THIS WIDTH | 0 | 0 | 1 | 1 |
+| `bbox` | NECESSARY AT THIS WIDTH | 0 | 0 | 4 | 1 |
+| `det_score` | NECESSARY AT THIS WIDTH | 0 | 0 | 4 | 1 |
+| `embedding` | NECESSARY AT THIS WIDTH | 0 | 0 | 10 | 2 |
+| `embedding_raw` | NECESSARY AT THIS WIDTH | 0 | 0 | 54 | 10 |
+| `face_rows` | NECESSARY AT THIS WIDTH | 0 | 0 | 33 | 1 |
 | `frame_dimensions` | UNPROVEN | 0 | 0 | 17 | 3 |
-| `gender` | UNPROVEN | 0 | 0 | 4 | 1 |
-| `kps` | UNPROVEN | 0 | 0 | 4 | 1 |
-| `kps_source_px` | UNPROVEN | 0 | 0 | 63 | 6 |
-| `landmark_2d_106` | UNPROVEN | 0 | 0 | 4 | 1 |
-| `landmark_3d_68` | UNPROVEN | 0 | 0 | 10 | 2 |
-| `patch_origin` | UNPROVEN | 0 | 0 | 46 | 4 |
+| `gender` | NECESSARY AT THIS WIDTH | 0 | 0 | 4 | 1 |
+| `kps` | NECESSARY AT THIS WIDTH | 0 | 0 | 4 | 1 |
+| `kps_source_px` | NECESSARY AT THIS WIDTH | 0 | 0 | 63 | 6 |
+| `landmark_2d_106` | NECESSARY AT THIS WIDTH | 0 | 0 | 4 | 1 |
+| `landmark_3d_68` | NECESSARY AT THIS WIDTH | 0 | 0 | 10 | 2 |
+| `patch_origin` | NECESSARY AT THIS WIDTH | 0 | 0 | 46 | 4 |
 | `reference_pixels` | NOT NECESSARY | 0 | 17 | 0 | 3 |
 | `reference_vectors` | CHEAPER VALUE SERVES SOMETIMES | 0 | 0 | 12 | 1 |
-| `selection_rule` | UNPROVEN | 0 | 0 | 33 | 1 |
-| `source_region_pixels` | UNPROVEN | 0 | 0 | 46 | 4 |
+| `selection_rule` | NECESSARY AT THIS WIDTH | 0 | 0 | 33 | 1 |
+| `source_region_pixels` | NECESSARY AT THIS WIDTH | 0 | 0 | 46 | 4 |
 | `source_video_bytes` | UNPROVEN | 0 | 0 | 3 | 1 |
-| `subject_mask` | UNPROVEN | 0 | 0 | 3 | 1 |
-| `whole_reference_image` | UNPROVEN | 0 | 0 | 53 | 9 |
+| `subject_mask` | NECESSARY AT THIS WIDTH | 0 | 0 | 3 | 1 |
+| `whole_reference_image` | NECESSARY AT THIS WIDTH | 0 | 0 | 53 | 9 |
 
 ## Substitutions
 
@@ -123,6 +123,7 @@ can stand in for the one a consumer actually wants.
 | `reactor` | `embedding_raw` | `half_precision` | **no** |
 | `reactor` | `embedding_raw` | `stored_glintr100` | **no** |
 | `reactor` | `gender` | `half_precision` | **no** |
+| `reactor` | `gender` | `opposite_label` | **no** |
 | `reactor` | `kps` | `half_precision` | **no** |
 | `reactor` | `landmark_2d_106` | `half_precision` | **no** |
 | `reactor` | `landmark_3d_68` | `half_precision` | **no** |
@@ -137,15 +138,6 @@ can stand in for the one a consumer actually wants.
 | `uso` | `whole_reference_image` | `preview_derivative` | **no** |
 | `xverse` | `whole_reference_image` | `face_patch` | **no** |
 | `xverse` | `whole_reference_image` | `preview_derivative` | **no** |
-
-## Failures with no consumer row
-
-Lanes that are not declared consumers in the manifest, so the table
-above has no row for them. Counted in the totals and gated in `main`.
-
-| lane | cases | verdicts |
-| --- | --- | --- |
-| `gallery_storage` | 19 | FAIL 19 |
 
 ## Skipped inputs
 

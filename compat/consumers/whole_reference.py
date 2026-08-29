@@ -52,7 +52,7 @@ Vendor preprocessing is theirs, not ours:
                 16. Recorded as `rgb_only` until the source was read.
     qwen, anystory
                 `Image.open(...).convert("RGB")` and nothing else. Qwen is
-                worth naming: the file this manifest originally cited is prose
+                worth naming: the file this manifest cites for it is prose
                 with no code, and the runnable entrypoint hands a PIL image
                 straight to the pipeline, so the vendor performs no reference
                 preprocessing whatsoever.
@@ -135,11 +135,8 @@ def whole_setups() -> dict[str, WholeSetup]:
             repo=row["repo"],
             cited=tuple(setup.get("cited", [])),
             # `preprocess` decides what the baseline computes, so it is
-            # REQUIRED rather than defaulted. This module's own docstring
-            # records a consumer that "was recorded as `rgb_only` until the
-            # pinned source was read" -- three times -- and the default that
-            # produced that reading is the one that used to sit here: an
-            # omitted field and a declared `rgb_only` were the same input.
+            # REQUIRED: a default of `rgb_only` makes an omitted field and a
+            # declared one the same input.
             preprocess=_required(setup, row["id"], "preprocess"),
             preprocess_path=str(setup.get("preprocess_path") or "uno/flux/pipeline.py"),
             # `or` would turn a DECLARED 0 into 1 MP silently. `.get(k, d)`
@@ -206,12 +203,8 @@ def vendor_preprocess(setup: WholeSetup, bgr: UInt8Array) -> UInt8Array:
         image = loaded_preprocess_ref(setup)(image, setup.long_size_single)
     elif setup.preprocess == "omnigen2_max_pixels":
         # OmniGen2@18e6f9d5271b pipeline_omnigen2.py:265 preprocesses EVERY
-        # reference; defaults max_pixels = 1024*1024 and
-        # max_input_image_side_length = 1024 (:481-482). image_processor.py
-        # :121-133 takes ratio = min(max_pixels_ratio, max_side_length_ratio,
-        # 1.0) -- never upscales -- then floors each side to a multiple of
-        # vae_scale_factor, which the pipeline sets to vae_scale_factor * 2
-        # (:176) and the processor defaults to 16 (:52).
+        # reference (max_pixels 1024*1024, side length 1024, :481-482);
+        # image_processor.py:121-133 never upscales.
         image = image.convert("RGB")
         width, height = image.size
         by_side = setup.max_side_length / max(width, height)
@@ -223,9 +216,8 @@ def vendor_preprocess(setup: WholeSetup, bgr: UInt8Array) -> UInt8Array:
         image = image.resize((new_w, new_h))
     elif setup.preprocess == "square_then_dual_resize":
         # InstantCharacter@5f5c49a98ba1 pipeline.py:379 squares the reference
-        # to its LONGER edge, then :64-65 resamples it to 384 and to 768 for
-        # two encoder paths. The boundary is the squared image: it is the last
-        # artifact before the two branches, and both are derived from it.
+        # to its LONGER edge, then :64-65 resamples it to 384 and 768. The
+        # boundary is the squared image, the last artifact before both.
         image = image.convert("RGB")
         longest = max(image.size)
         image = image.resize((longest, longest))
@@ -314,8 +306,10 @@ class WholeReferenceRunner:
         return self._previews[shot.label]
 
     def retained_for(self, case: Case) -> RetainedState:
-        pixels, _size = self._durable(self._shot(case))
-        return RetainedState(whole_reference_image=pixels)
+        pixels, encoded = self._durable(self._shot(case))
+        # The lossless artifact's own byte count, not the decoded array's.
+        # This is what a store would hold to return this picture.
+        return RetainedState(whole_reference_image=pixels).priced({"whole_reference_image": encoded})
 
     def baseline(self, case: Case) -> Artifact:
         shot = self._shot(case)

@@ -98,12 +98,9 @@ def compare(
             total=baseline.size,
         )
     if baseline.dtype != replay.dtype:
-        # Measured anyway, when the two are numerically comparable. Returning
-        # here without a number is how `det_score` came to be published as a
-        # LOST key: it round-trips exactly and widens float32 -> float64 by a
-        # deliberate choice in the reader, and `answer.py` printed the absent
-        # measurement as "worst 0". A dtype change is still a divergence; what
-        # it is not is an unmeasured one.
+        # Measured anyway when the two are numerically comparable: a dtype
+        # change is a divergence, but returning without a number lets a reader
+        # print the absent measurement as "worst 0".
         apart = _worst(baseline, replay) if baseline.shape == replay.shape else None
         return Comparison(
             equal=False,

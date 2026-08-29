@@ -75,8 +75,7 @@ class Rect:
 
 #: Answers one question: does a replay restricted to this rectangle still
 #: reproduce the baseline? Anything that raises counts as "no" at the call
-#: site, never here -- a probe that swallows its own exception cannot be told
-#: apart from one that answered.
+#: site, never here.
 Probe = Callable[[Rect], bool]
 
 
@@ -194,10 +193,9 @@ def minimum_extent(probe: Probe, start: Rect, *, limit: int | None = None) -> Mi
     probes += 1
     holds = _safe(probe, combined)
 
-    # Sides interact. Where the combination fails, give pixels back one side
-    # at a time -- largest claimed inset first, since that side took the most
-    # and is likeliest to be the one over-reaching -- rather than reporting a
-    # rectangle that was never observed to work.
+    # Sides interact, so where the combination fails, give pixels back one
+    # side at a time rather than report a rectangle never observed to work.
+    # Largest claimed inset first, since that side took the most.
     walked_back: list[str] = []
     if not holds:
         order = sorted(SIDES, key=lambda one: amounts[one], reverse=True)

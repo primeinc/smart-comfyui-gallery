@@ -247,6 +247,7 @@
         "instantid",
         "instantid_upstream"
       ],
+      "measured": false,
       "name": "reference_pixels",
       "note": "",
       "proof": [
@@ -269,86 +270,20 @@
       "uniportrait"
     ]
   },
-  "lossy_today": [
-    {
-      "bytes_per_face": 4,
-      "consumers": [
-        "insightface/antelopev2",
-        "insightface/buffalo_l"
-      ],
-      "name": "det_score",
-      "note": "returned in a wider dtype, value preserved: not a loss",
-      "proof": [
-        "dtype: every value survived exactly; only the dtype changed"
-      ],
-      "verdict": "WIDENED"
-    },
-    {
-      "bytes_per_face": 40,
-      "consumers": [
-        "insightface/antelopev2",
-        "insightface/buffalo_l"
-      ],
-      "name": "kps",
-      "note": "stored, but not returned unchanged",
-      "proof": [
-        "allclose rtol=0.0 atol=0.0: worst 0.000244141"
-      ],
-      "verdict": "LOSSY"
-    },
-    {
-      "bytes_per_face": 848,
-      "consumers": [
-        "insightface/antelopev2",
-        "insightface/buffalo_l"
-      ],
-      "name": "landmark_2d_106",
-      "note": "stored, but not returned unchanged",
-      "proof": [
-        "allclose rtol=0.0 atol=0.0: worst 0.0322266"
-      ],
-      "verdict": "LOSSY"
-    },
-    {
-      "bytes_per_face": 816,
-      "consumers": [
-        "face_alignment/68",
-        "insightface/antelopev2",
-        "insightface/buffalo_l"
-      ],
-      "name": "landmark_3d_68",
-      "note": "stored, but not returned unchanged",
-      "proof": [
-        "allclose rtol=0.0 atol=0.0: worst 0.0319824"
-      ],
-      "verdict": "LOSSY"
-    },
-    {
-      "bytes_per_face": 12,
-      "consumers": [
-        "insightface/antelopev2",
-        "insightface/buffalo_l"
-      ],
-      "name": "pose",
-      "note": "stored, but not returned unchanged",
-      "proof": [
-        "allclose rtol=0.0 atol=0.0: worst 0.00339532"
-      ],
-      "verdict": "LOSSY"
-    }
-  ],
+  "lossy_today": [],
   "must_retain": [
     {
       "bytes_per_face": 8,
       "consumers": [
         "reactor"
       ],
+      "measured": false,
       "name": "age",
       "note": "no cheaper form served: decade_bucket",
       "proof": [
-        "reactor_face_model_1_id_document: TypeError: 'age' is int64, not an array",
-        "reactor_face_model_1_selfie: TypeError: 'age' is int64, not an array",
-        "reactor_face_model_2_id_document: TypeError: 'age' is int64, not an array"
+        "reactor_face_model_1_id_document: exact_bytes: 1 of 4392 elements differ, worst 1.0",
+        "reactor_face_model_1_selfie: exact_bytes: 1 of 4392 elements differ, worst 3.0",
+        "reactor_face_model_2_id_document: exact_bytes: 1 of 4392 elements differ, worst 4.0"
       ],
       "verdict": "NECESSARY AT THIS WIDTH"
     },
@@ -357,6 +292,7 @@
       "consumers": [
         "embedding_spaces"
       ],
+      "measured": false,
       "name": "aligned_crop_112",
       "note": "no cheaper form served: stored_glintr100, webp_encoded",
       "proof": [
@@ -367,22 +303,11 @@
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 8,
-      "consumers": [
-        "id_lora"
-      ],
-      "name": "audio_sample_rate",
-      "note": "no cheaper form served: vae_rate_assumed",
-      "proof": [
-        "id_lora_reference_waveform: shape: baseline (2, 220500) against replay (2, 80000)"
-      ],
-      "verdict": "NECESSARY AT THIS WIDTH"
-    },
-    {
       "bytes_per_face": 640000,
       "consumers": [
         "id_lora"
       ],
+      "measured": false,
       "name": "audio_waveform",
       "note": "no cheaper form served: pcm_16_bit",
       "proof": [
@@ -395,6 +320,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": false,
       "name": "bbox",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -409,6 +335,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": false,
       "name": "det_score",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -424,6 +351,7 @@
         "insightface_producer",
         "reactor"
       ],
+      "measured": false,
       "name": "embedding",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -447,6 +375,7 @@
         "pulid_upstream",
         "reactor"
       ],
+      "measured": false,
       "name": "embedding_raw",
       "note": "no cheaper form served: half_precision, stored_glintr100",
       "proof": [
@@ -461,6 +390,7 @@
       "consumers": [
         "face_selection"
       ],
+      "measured": false,
       "name": "face_rows",
       "note": "no cheaper form served: integer_pixels",
       "proof": [
@@ -471,18 +401,17 @@
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 16,
+      "bytes_per_face": 8,
       "consumers": [
-        "infiniteyou",
-        "instantid",
-        "instantid_upstream"
+        "reactor"
       ],
-      "name": "frame_dimensions",
-      "note": "no cheaper form served: preview_dimensions",
+      "measured": false,
+      "name": "gender",
+      "note": "no cheaper form served: opposite_label",
       "proof": [
-        "infiniteyou_kps_render_1_id_document: shape: baseline (4032, 3024, 3) against replay (1440, 1080, ",
-        "infiniteyou_kps_render_1_selfie: shape: baseline (3088, 2316, 3) against replay (1440, 1080, ",
-        "infiniteyou_kps_render_2_id_document: shape: baseline (4000, 3000, 3) against replay (1440, 1080, "
+        "reactor_face_model_1_id_document: exact_bytes: 1 of 4392 elements differ, worst 1.0",
+        "reactor_face_model_1_selfie: exact_bytes: 1 of 4392 elements differ, worst 1.0",
+        "reactor_face_model_2_id_document: exact_bytes: 1 of 4392 elements differ, worst 1.0"
       ],
       "verdict": "NECESSARY AT THIS WIDTH"
     },
@@ -491,6 +420,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": false,
       "name": "kps",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -510,6 +440,7 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
+      "measured": false,
       "name": "kps_source_px",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -524,6 +455,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": false,
       "name": "landmark_2d_106",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -539,6 +471,7 @@
         "insightface_producer",
         "reactor"
       ],
+      "measured": false,
       "name": "landmark_3d_68",
       "note": "no cheaper form served: half_precision",
       "proof": [
@@ -556,6 +489,7 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
+      "measured": false,
       "name": "patch_origin",
       "note": "no cheaper form served: origin_at_zero",
       "proof": [
@@ -570,6 +504,7 @@
       "consumers": [
         "reference_sets"
       ],
+      "measured": false,
       "name": "reference_vectors",
       "note": "no cheaper form served: half_precision, order_reversed",
       "proof": [
@@ -584,6 +519,7 @@
       "consumers": [
         "face_selection"
       ],
+      "measured": false,
       "name": "selection_rule",
       "note": "no cheaper form served: other_selection_rule",
       "proof": [
@@ -601,6 +537,7 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
+      "measured": false,
       "name": "source_region_pixels",
       "note": "no cheaper form served: downscaled_from_336, webp_encoded",
       "proof": [
@@ -611,24 +548,11 @@
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 10395202,
-      "consumers": [
-        "id_v2v"
-      ],
-      "name": "source_video_bytes",
-      "note": "no cheaper form served: face_row",
-      "proof": [
-        "id_v2v_source_frames_cover_eyes: ValueError: these bytes are not decodable video: InvalidData",
-        "id_v2v_source_frames_woman_dancing: ValueError: these bytes are not decodable video: InvalidData",
-        "id_v2v_source_frames_woman_phone: ValueError: these bytes are not decodable video: InvalidData"
-      ],
-      "verdict": "NECESSARY AT THIS WIDTH"
-    },
-    {
-      "bytes_per_face": 946200,
+      "bytes_per_face": 24708,
       "consumers": [
         "anystory"
       ],
+      "measured": false,
       "name": "subject_mask",
       "note": "no cheaper form served: face_bbox_rectangle",
       "proof": [
@@ -639,7 +563,7 @@
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
-      "bytes_per_face": 95883264,
+      "bytes_per_face": 21466629,
       "consumers": [
         "anystory",
         "consisid",
@@ -651,6 +575,7 @@
         "uso",
         "xverse"
       ],
+      "measured": false,
       "name": "whole_reference_image",
       "note": "no cheaper form served: arcface_footprint_only, face_patch, generous_patch, preview_derivative",
       "proof": [
@@ -668,12 +593,13 @@
       "consumers": [
         "reactor"
       ],
+      "measured": true,
       "name": "age <- decade_bucket",
       "note": "",
       "proof": [
-        "reactor_face_model_1_id_document: TypeError: 'age' is int64, not an array",
-        "reactor_face_model_1_selfie: TypeError: 'age' is int64, not an array",
-        "reactor_face_model_2_id_document: TypeError: 'age' is int64, not an array"
+        "reactor_face_model_1_id_document: exact_bytes: 1 of 4392 elements differ, worst 1.0",
+        "reactor_face_model_1_selfie: exact_bytes: 1 of 4392 elements differ, worst 3.0",
+        "reactor_face_model_2_id_document: exact_bytes: 1 of 4392 elements differ, worst 4.0"
       ],
       "verdict": "SUBSTITUTE_FAILS"
     },
@@ -682,6 +608,7 @@
       "consumers": [
         "embedding_spaces"
       ],
+      "measured": true,
       "name": "aligned_crop_112 <- stored_glintr100",
       "note": "",
       "proof": [
@@ -696,6 +623,7 @@
       "consumers": [
         "embedding_spaces"
       ],
+      "measured": true,
       "name": "aligned_crop_112 <- webp_encoded",
       "note": "",
       "proof": [
@@ -710,8 +638,9 @@
       "consumers": [
         "id_lora"
       ],
+      "measured": false,
       "name": "audio_sample_rate <- vae_rate_assumed",
-      "note": "",
+      "note": "every break here is a SHAPE divergence: the substitute is a different size, which says nothing about whether it carries the information",
       "proof": [
         "id_lora_reference_waveform: shape: baseline (2, 220500) against replay (2, 80000)"
       ],
@@ -722,6 +651,7 @@
       "consumers": [
         "id_lora"
       ],
+      "measured": true,
       "name": "audio_waveform <- pcm_16_bit",
       "note": "",
       "proof": [
@@ -734,6 +664,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": true,
       "name": "bbox <- half_precision",
       "note": "",
       "proof": [
@@ -748,6 +679,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": true,
       "name": "det_score <- half_precision",
       "note": "",
       "proof": [
@@ -763,6 +695,7 @@
         "insightface_producer",
         "reactor"
       ],
+      "measured": true,
       "name": "embedding <- half_precision",
       "note": "",
       "proof": [
@@ -786,6 +719,7 @@
         "pulid_upstream",
         "reactor"
       ],
+      "measured": true,
       "name": "embedding_raw <- half_precision",
       "note": "",
       "proof": [
@@ -809,6 +743,7 @@
         "pulid_upstream",
         "reactor"
       ],
+      "measured": true,
       "name": "embedding_raw <- stored_glintr100",
       "note": "",
       "proof": [
@@ -823,6 +758,7 @@
       "consumers": [
         "face_selection"
       ],
+      "measured": true,
       "name": "face_rows <- integer_pixels",
       "note": "",
       "proof": [
@@ -839,8 +775,9 @@
         "instantid",
         "instantid_upstream"
       ],
+      "measured": false,
       "name": "frame_dimensions <- preview_dimensions",
-      "note": "",
+      "note": "every break here is a SHAPE divergence: the substitute is a different size, which says nothing about whether it carries the information",
       "proof": [
         "infiniteyou_kps_render_1_id_document: shape: baseline (4032, 3024, 3) against replay (1440, 1080, ",
         "infiniteyou_kps_render_1_selfie: shape: baseline (3088, 2316, 3) against replay (1440, 1080, ",
@@ -849,10 +786,26 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
+      "bytes_per_face": 8,
+      "consumers": [
+        "reactor"
+      ],
+      "measured": true,
+      "name": "gender <- opposite_label",
+      "note": "",
+      "proof": [
+        "reactor_face_model_1_id_document: exact_bytes: 1 of 4392 elements differ, worst 1.0",
+        "reactor_face_model_1_selfie: exact_bytes: 1 of 4392 elements differ, worst 1.0",
+        "reactor_face_model_2_id_document: exact_bytes: 1 of 4392 elements differ, worst 1.0"
+      ],
+      "verdict": "SUBSTITUTE_FAILS"
+    },
+    {
       "bytes_per_face": 40,
       "consumers": [
         "reactor"
       ],
+      "measured": true,
       "name": "kps <- half_precision",
       "note": "",
       "proof": [
@@ -872,6 +825,7 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
+      "measured": true,
       "name": "kps_source_px <- half_precision",
       "note": "",
       "proof": [
@@ -886,6 +840,7 @@
       "consumers": [
         "reactor"
       ],
+      "measured": true,
       "name": "landmark_2d_106 <- half_precision",
       "note": "",
       "proof": [
@@ -901,6 +856,7 @@
         "insightface_producer",
         "reactor"
       ],
+      "measured": true,
       "name": "landmark_3d_68 <- half_precision",
       "note": "",
       "proof": [
@@ -918,6 +874,7 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
+      "measured": true,
       "name": "patch_origin <- origin_at_zero",
       "note": "",
       "proof": [
@@ -932,6 +889,7 @@
       "consumers": [
         "reference_sets"
       ],
+      "measured": true,
       "name": "reference_vectors <- half_precision",
       "note": "",
       "proof": [
@@ -946,6 +904,7 @@
       "consumers": [
         "reference_sets"
       ],
+      "measured": true,
       "name": "reference_vectors <- order_reversed",
       "note": "fails on some arrangements and serves on others; see per-case evidence",
       "proof": [
@@ -960,6 +919,7 @@
       "consumers": [
         "face_selection"
       ],
+      "measured": true,
       "name": "selection_rule <- other_selection_rule",
       "note": "",
       "proof": [
@@ -974,6 +934,7 @@
       "consumers": [
         "aligned_crop"
       ],
+      "measured": true,
       "name": "source_region_pixels <- downscaled_from_336",
       "note": "",
       "proof": [
@@ -991,6 +952,7 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
+      "measured": true,
       "name": "source_region_pixels <- webp_encoded",
       "note": "",
       "proof": [
@@ -1005,6 +967,7 @@
       "consumers": [
         "id_v2v"
       ],
+      "measured": false,
       "name": "source_video_bytes <- face_row",
       "note": "",
       "proof": [
@@ -1015,10 +978,11 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 946200,
+      "bytes_per_face": 24708,
       "consumers": [
         "anystory"
       ],
+      "measured": true,
       "name": "subject_mask <- face_bbox_rectangle",
       "note": "",
       "proof": [
@@ -1029,10 +993,11 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 95883264,
+      "bytes_per_face": 21466629,
       "consumers": [
         "consisid"
       ],
+      "measured": true,
       "name": "whole_reference_image <- arcface_footprint_only",
       "note": "",
       "proof": [
@@ -1043,7 +1008,7 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 95883264,
+      "bytes_per_face": 21466629,
       "consumers": [
         "anystory",
         "instantcharacter",
@@ -1054,6 +1019,7 @@
         "uso",
         "xverse"
       ],
+      "measured": true,
       "name": "whole_reference_image <- face_patch",
       "note": "",
       "proof": [
@@ -1064,10 +1030,11 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 95883264,
+      "bytes_per_face": 21466629,
       "consumers": [
         "consisid"
       ],
+      "measured": true,
       "name": "whole_reference_image <- generous_patch",
       "note": "",
       "proof": [
@@ -1078,7 +1045,7 @@
       "verdict": "SUBSTITUTE_FAILS"
     },
     {
-      "bytes_per_face": 95883264,
+      "bytes_per_face": 21466629,
       "consumers": [
         "anystory",
         "instantcharacter",
@@ -1089,6 +1056,7 @@
         "uso",
         "xverse"
       ],
+      "measured": true,
       "name": "whole_reference_image <- preview_derivative",
       "note": "",
       "proof": [
@@ -1531,12 +1499,13 @@
       "swap": "order_reversed"
     }
   ],
-  "unproven": [
+  "substitutions_that_could_not_answer": [
     {
       "bytes_per_face": 8,
       "consumers": [
         "reactor"
       ],
+      "measured": false,
       "name": "age <- half_precision",
       "note": "no case answered: every substitution ended INCONCLUSIVE",
       "proof": [
@@ -1549,7 +1518,23 @@
       "consumers": [
         "reactor"
       ],
-      "name": "gender",
+      "measured": false,
+      "name": "gender <- half_precision",
+      "note": "no case answered: every substitution ended INCONCLUSIVE",
+      "proof": [
+        "the substitute reproduced the baseline in every case that ran"
+      ],
+      "verdict": "UNPROVEN"
+    }
+  ],
+  "unproven": [
+    {
+      "bytes_per_face": 8,
+      "consumers": [
+        "id_lora"
+      ],
+      "measured": false,
+      "name": "audio_sample_rate",
       "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
       "proof": [
         "no removal of this primitive produced a measurable difference"
@@ -1557,14 +1542,30 @@
       "verdict": "UNPROVEN"
     },
     {
-      "bytes_per_face": 8,
+      "bytes_per_face": 16,
       "consumers": [
-        "reactor"
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
       ],
-      "name": "gender <- half_precision",
-      "note": "no case answered: every substitution ended INCONCLUSIVE",
+      "measured": false,
+      "name": "frame_dimensions",
+      "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
       "proof": [
-        "the substitute reproduced the baseline in every case that ran"
+        "no removal of this primitive produced a measurable difference"
+      ],
+      "verdict": "UNPROVEN"
+    },
+    {
+      "bytes_per_face": 10395202,
+      "consumers": [
+        "id_v2v"
+      ],
+      "measured": false,
+      "name": "source_video_bytes",
+      "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
+      "proof": [
+        "no removal of this primitive produced a measurable difference"
       ],
       "verdict": "UNPROVEN"
     }
@@ -1575,6 +1576,7 @@
       "consumers": [
         "mediapipe/face_landmarker"
       ],
+      "measured": false,
       "name": "landmark_3d_478",
       "note": "no column",
       "proof": [
@@ -1587,6 +1589,7 @@
       "consumers": [
         "face_alignment/68"
       ],
+      "measured": false,
       "name": "landmark_2d_68",
       "note": "no column",
       "proof": [
@@ -1599,6 +1602,7 @@
       "consumers": [
         "mediapipe/face_landmarker"
       ],
+      "measured": false,
       "name": "blendshape_scores",
       "note": "no column",
       "proof": [
@@ -1611,6 +1615,7 @@
       "consumers": [
         "mediapipe/face_landmarker"
       ],
+      "measured": false,
       "name": "facial_transform_matrix",
       "note": "no column",
       "proof": [

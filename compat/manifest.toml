@@ -1019,7 +1019,7 @@ combine = "none"
 # nodes.py:59 offers image_proj_num_tokens as [8, 16] and the lane takes the
 # first; :122 passes it to Resampler as num_queries, and resampler.py:97
 # makes that the latent count the forward returns.
-key = "id_cond"
+boundary_key = "id_cond"
 tokens = 8
 cited = [
   "nodes.py:59 image_proj_num_tokens: ([8, 16], )",
@@ -1061,7 +1061,7 @@ combine = "concat_tokens"
 [consumers.acceptance_expected]
 # uniportrait/uniportrait_pipeline.py:85 UniPortraitFaceIDResampler(num_tokens=16),
 # :88 output_dim = the pipeline's own cross_attention_dim.
-key = "id_cond"
+boundary_key = "id_cond"
 tokens = 16
 cited = [
   "uniportrait/uniportrait_pipeline.py:82-88 UniPortraitFaceIDResampler(num_tokens=16, output_dim=cross_attention_dim)",
@@ -1152,7 +1152,7 @@ acceptance_dtype = "torch.float16"
 # :192-194 "torch.Size([1, 512]), torch.Size([1, 768]) -> torch.Size([1, 1280])"
 # and :200 repeats it on the return. A literal, so the whole shape is the
 # expectation rather than one axis of it.
-key = "id_cond"
+boundary_key = "id_cond"
 shape = [1, 1280]
 cited = [
   "src/diffusers/pipelines/consisid/consisid_utils.py:210-212 id_cond = torch.cat([id_ante_embedding, id_cond_vit], dim=-1) -> torch.Size([1, 1280])",
@@ -1201,7 +1201,7 @@ combine = "none"
 # pipeline_stable_diffusion_xl_instantid.py:158 and :162 both declare
 # num_tokens=16, and :169 passes it as the Resampler's num_queries. The lane
 # runs cond and uncond together, so the batch axis is 2.
-key = "id_cond"
+boundary_key = "id_cond"
 tokens = 16
 cited = [
   "pipeline_stable_diffusion_xl_instantid.py:158 load_ip_adapter_instantid(..., num_tokens=16)",
@@ -1242,7 +1242,7 @@ combine = "none"
 # builds MLPProjModel with that token count and the pipeline's own
 # cross_attention_dim, so the token axis is upstream's and the width is the
 # base model's.
-key = "id_cond"
+boundary_key = "id_cond"
 tokens = 4
 cited = [
   "ip_adapter/ip_adapter_faceid.py:121 def __init__(..., num_tokens=4, ...)",
@@ -1318,7 +1318,7 @@ unmeasured = ["v1_1 reference-set combine"]
 # dim=1; :64 returns cat([x, hidden_states], dim=1) -> 10 tokens. The lane
 # runs cond and uncond, and pipeline.py:214 concatenates them on dim=0.
 # The token axis is upstream's constant; the width is the checkpoint's.
-key = "id_cond"
+boundary_key = "id_cond"
 tokens = 10
 cited = [
   "pulid/encoders.py:6 IDEncoder(width=1280, context_dim=2048, num_token=5)",

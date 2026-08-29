@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from compat.contracts.case import settled_by_measurement
+
 ROOT: Path = Path(__file__).resolve().parent.parent
 GENERATED: Path = ROOT / "generated"
 
@@ -113,11 +115,9 @@ def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
         verdicts = Counter(one["verdict"] for one in results)
         pin = pins.get(consumer, {})
 
-        # Removals answer necessity. Substitutions answer "does the cheaper
-        # thing serve", which is a different question -- counting them
-        # together listed `face_patch_substituted` as though it were a column
-        # the database keeps. An ablation now names the primitive it touches
-        # and, for a substitution, the `swap` that replaced it.
+        # Removals answer necessity; substitutions answer whether the cheaper
+        # thing serves. An ablation names the primitive it touches and, for a
+        # substitution, the `swap` that replaced it.
         necessary: list[str] = []
         derivable: list[str] = []
         untested: list[str] = []
@@ -125,10 +125,9 @@ def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
         for result in results:
             for ablation in result["ablations"]:
                 if ablation.get("kind") == "substitution":
-                    # Keyed on the PAIR. Deduping on the swap alone let one
-                    # consumer's `serves` be decided by whichever case
-                    # iterated first, and two primitives replaced by the same
-                    # cheaper value collapsed into one row.
+                    # Keyed on the PAIR: deduping on the swap alone lets case
+                    # order decide `serves`, and collapses two primitives
+                    # replaced by the same value into one row.
                     key = (ablation["primitive"], swap_of(ablation))
                     if not any((one["primitive"], one["swap"]) == key for one in substitutions):
                         substitutions.append(
@@ -139,11 +138,9 @@ def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
                             }
                         )
                     continue
-                # None is INCONCLUSIVE, and belongs in neither column: the
+                # None is INCONCLUSIVE and belongs in neither column: the
                 # ablation showed the runner indexes the key, not that the
-                # consumer needs the value. Listing it as `necessary` is how
-                # every primitive came to read NECESSARY; listing it as
-                # `derivable` would be the same error facing the other way.
+                # consumer needs the value.
                 if ablation["observed_break"] is None:
                     if ablation["primitive"] not in untested:
                         untested.append(ablation["primitive"])
@@ -244,7 +241,7 @@ def primitive_rows(evidence: Evidence) -> list[dict[str, Any]]:
                     "inconclusive": 0,
                     "substitute_fails": 0,
                     "substitute_serves": 0,
-                    "substitute_fails_at_a_tolerance": 0,
+                    "substitute_fails_measured": 0,
                     "consumers": set(),
                     "cases": 0,
                 },
@@ -253,29 +250,13 @@ def primitive_rows(evidence: Evidence) -> list[dict[str, Any]]:
             row["consumers"].add(result["consumer_id"])
             broke = ablation["observed_break"]
             if ablation.get("kind") == "substitution":
-                # Substitutions used to be skipped outright, because the
-                # `primitive` field held the SWAP's name and counting them
-                # listed `face_patch_substituted` beside `kps`. It now holds
-                # the primitive that was degraded, so this is evidence about
-                # THIS primitive and discarding it threw away the only
+                # `primitive` holds the degraded value's name, not the swap's,
+                # so this is evidence about THIS primitive and is the only
                 # evidence most of them have.
                 if broke is not None:
                     row["substitute_fails" if broke else "substitute_serves"] += 1
-                    # HOW it broke. `exact_bytes` and `shape` cannot answer
-                    # the question the verdict claims to answer: the swap
-                    # changed a bit (`precision.narrows` guarantees that
-                    # before the case runs) or changed a size, and a
-                    # deterministic function on changed bits emits changed
-                    # bits. Measured: 418 of the breaks are `exact_bytes`, 79
-                    # are `shape`, 0 are at any tolerance.
-                    # `compare` names the method it used. Only `allclose`
-                    # weighed the difference against a number somebody chose;
-                    # `exact_bytes` and `shape` are fixed before the consumer
-                    # runs, and a break recorded as `TypeError` or
-                    # `ValueError` is an exception, not a measurement.
-                    method = str(ablation.get("detail", "")).split(":")[0]
-                    if broke and method.startswith("allclose"):
-                        row["substitute_fails_at_a_tolerance"] += 1
+                    if broke and settled_by_measurement(str(ablation.get("compare_method", ""))):
+                        row["substitute_fails_measured"] += 1
                 continue
             # `broke is None` is INCONCLUSIVE and had to be split out: the old
             # expression put it in `survives`, because None is falsy, which
@@ -320,11 +301,10 @@ def _primitive_verdict(row: dict[str, Any]) -> str:
         return "NOT NECESSARY"
     # No removal answered. Fall through to what the substitutions established.
     if row.get("substitute_fails") and not row.get("substitute_serves"):
-        # Only a substitution compared at a stated tolerance establishes this.
-        # At `exact_bytes` the answer is fixed before the consumer runs, and a
-        # claim that cannot come out the other way is not a finding -- the
-        # rule this function was written to enforce, applied to itself.
-        if not row.get("substitute_fails_at_a_tolerance"):
+        # Only a substitution whose comparison weighed the consumer's output
+        # establishes this; `shape`, `dtype` and an exception settle before the
+        # consumer runs.
+        if not row.get("substitute_fails_measured"):
             return "UNPROVEN"
         return "NECESSARY AT THIS WIDTH"
     if row.get("substitute_fails"):
@@ -382,11 +362,9 @@ def build(evidence: Evidence) -> dict[str, Any]:
         # computed only over the rows a table happens to hold is a pass rate
         # over a population that table chose.
         "unrepresented": unrepresented(evidence),
-        # Inputs no case was built from. Displayed because a `continue` that
-        # nothing reports is how a pass rate comes to be computed over
-        # whatever survived. Not blocking: a photograph our producer finds no
-        # face in is a fact about the photograph, and the reason is recorded
-        # beside it so a reader can tell that from a decode failure.
+        # Inputs no case was built from, displayed because an unreported
+        # `continue` computes a pass rate over whatever survived. Not blocking:
+        # the reason is recorded beside each one.
         "skipped": list(evidence.cases.get("skipped", [])),
         "totals": {
             "declared": len(consumers),
@@ -536,11 +514,9 @@ def report(out: dict[str, Any]) -> None:
     )
 
 
-#: Totals that must be zero for the matrix to be clean. Named once so the
-#: gate and `attack.attack_positive_control` cannot disagree about what clean
-#: means -- the control used to re-implement `not_exercised == 0` on its own
-#: and therefore could not fail while the gate passed, nor notice the four
-#: conditions the gate later gained.
+#: Totals that must be zero for the matrix to be clean, named once so the gate
+#: and `attack.attack_positive_control` cannot disagree about what clean
+#: means.
 BLOCKING: tuple[str, ...] = (
     "not_exercised",
     "diverged",
@@ -573,10 +549,8 @@ def main() -> int:
         print(f"wrote {GENERATED / name}")
 
     # Red on the same conditions the case runner reds on, and on failures this
-    # table has no row for. Gating only on `not_exercised` is how
-    # `compatibility-matrix.md` came to publish "22 of 22 reproduced" beside a
-    # cases.json holding 19 FAIL: every one of those failures belonged to a
-    # lane with no row, so no total moved and the lane exited 0.
+    # table has no row for: a failure in a lane with no row moves no total, so
+    # gating on `not_exercised` alone exits 0 over it.
     if out["skipped"]:
         print(f"\nskipped inputs ({len(out['skipped'])}):")
         for row in out["skipped"]:

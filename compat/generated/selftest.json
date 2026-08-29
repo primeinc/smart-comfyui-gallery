@@ -37,7 +37,7 @@
     },
     {
       "applicable": true,
-      "detail": "sources: consumers/aligned_crop.py 000000000000 -> d1aaf84d5712",
+      "detail": "sources: consumers/aligned_crop.py 000000000000 -> c0b61798e521",
       "detected": true,
       "mechanism": "one consumer's source digest altered",
       "name": "changed_runner_source"
@@ -65,7 +65,7 @@
     },
     {
       "applicable": true,
-      "detail": "sources: harness/answer.py 000000000000 -> 3173a03afd54",
+      "detail": "sources: harness/answer.py 000000000000 -> 88ef3a359406",
       "detected": true,
       "mechanism": "evidence recorded against an older harness source",
       "name": "stale_evidence"
@@ -135,10 +135,10 @@
     },
     {
       "applicable": true,
-      "detail": "as recorded: clean; corruptions caught: {'undeclared': True, 'over_bound': True, 'stale_declaration': True}",
+      "detail": "encoded 237 B accepted=True; refused 0, +1 and nbytes=[True, True, True]",
       "detected": true,
-      "mechanism": "a removed, tightened or stale [[storage_divergence]] row must red the cases lane",
-      "name": "storage_divergence_declaration_holds"
+      "mechanism": "a durable size that is not the array's encoded length, through RetainedState.priced",
+      "name": "retained_bytes_cannot_be_asserted"
     }
   ],
   "undetected": []

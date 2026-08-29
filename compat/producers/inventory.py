@@ -24,16 +24,9 @@ from compat.producers import insightface_pass as producer
 HERE: Path = Path(__file__).resolve().parent
 GENERATED: Path = HERE.parent / "generated"
 
-#: Images per identity, per capture role. Two of each covers the role axis for
-#: every identity without turning an inventory into a benchmark.
-#:
-#: DELIBERATELY A WIDER SLICE than `corpus.loaded.CORPUS_IMAGES`, and the one
-#: place in the suite where that is right. This lane answers "which keys does
-#: the producer ever emit", and a key that appears on one face in twenty is
-#: still a key the store must have room for -- so it wants every identity and
-#: both roles, where the case lanes want the SAME four photographs the union's
-#: byte totals were measured on. The slice is recorded in the artifact so the
-#: difference is a fact a reader can see rather than one they have to notice.
+#: Images per identity, per capture role. A WIDER SLICE than
+#: `corpus.loaded.CORPUS_IMAGES` on purpose, because this lane answers which
+#: keys the producer ever emits; the slice is recorded in the artifact.
 PER_ROLE: int = 2
 
 
@@ -70,10 +63,8 @@ def run(per_role: int = PER_ROLE) -> dict[str, Any]:
     worst_normed = max((face.normed_max_abs_diff or 0.0) for face in faces) if faces else 0.0
 
     return {
-        # The photographs this inventory actually saw, by content. Three lanes
-        # select a corpus slice and two of them now share one selector; this
-        # one does not, on purpose, and an artifact that does not say which
-        # images it read cannot be compared with one that does.
+        # The photographs this inventory saw, by content: three lanes select a
+        # corpus slice and this one does not share the others' selector.
         "corpus_slice": {
             "per_role": per_role,
             "images": len(chosen),
@@ -106,9 +97,8 @@ def run(per_role: int = PER_ROLE) -> dict[str, Any]:
             }
         },
         # `seconds` is dropped for the same reason the case evidence drops it:
-        # it is a fact about this machine, not about the observation, and
-        # leaving it in means two identical passes can never be compared. It
-        # was the ONLY thing that changed between consecutive runs.
+        # a fact about this machine, not the observation, and the only thing
+        # that changes between consecutive runs.
         "images": [{key: value for key, value in asdict(one).items() if key != "seconds"} for one in reports],
     }
 

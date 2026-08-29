@@ -245,11 +245,11 @@ class IdV2VControlStreamRunner:
     def _unavailable(self, stream: str, label: str) -> NotImplementedError:
         """Why this stream cannot be compared, with both facts and in order.
 
-        The checkpoint check used to come first and raise on its own, so an
-        absent weight was recorded as the reason -- and the nine UNSUPPORTED
-        rows in `cases.json` read as "install SAM3 / DepthAnything / DAVID and
-        these will run". They will not: the line after the check raised
-        unconditionally, for every stream but `decoded_source_frames`, whether
+        The unimplemented stream is named before the absent weight. Reporting
+        the weight alone makes the nine UNSUPPORTED rows in `cases.json` read
+        as "install SAM3 / DepthAnything / DAVID and these will run". They
+        will not: nothing here derives any stream but `decoded_source_frames`,
+        whether
         or not the weight was there.
 
         So the unimplemented derivation is stated first, because it is the

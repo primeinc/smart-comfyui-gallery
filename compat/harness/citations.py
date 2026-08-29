@@ -186,8 +186,8 @@ def check(consumer_id: str, field: str, text: str, clone: Path, commit: str) -> 
             held.detail = f"inside {one}, defined at line {at}"
             return held
 
-    # Where does it actually live? A near miss is the common case and the
-    # distance is what makes it obviously an off-by-one rather than a guess.
+    # Where does it actually live? A near miss is the common case, and the
+    # distance separates an off-by-one from a guess.
     near = ""
     for one in wanted:
         at = [i + 1 for i, line in enumerate(lines) if one in line]
@@ -231,9 +231,8 @@ def check_entrypoint(consumer_id: str, text: str, clone: Path, commit: str) -> C
     leaf = symbol.rsplit(".", 1)[-1]
 
     # A shell script has no `def`, so the name is required as literal text.
-    # Deliberately NOT fuzzy: a case-folded, separator-stripped match would
-    # let `quickstart` pass against any "Quick Start" heading anywhere in a
-    # README, which is a weaker gate pretending to be a stronger one.
+    # NOT fuzzy: a case-folded match would let `quickstart` pass against any
+    # "Quick Start" heading.
     if not path.endswith(".py"):
         if leaf in text_of:
             held.verdict = "OK"
@@ -262,12 +261,9 @@ def survey() -> dict[str, Any]:
 
     upstreams = manifest.get("upstreams", {})
     for consumer in manifest.get("consumers", []):
-        # A consumer whose entrypoint lives in another upstream -- ConsisID in
-        # diffusers, ID-LoRA in ComfyUI -- declares `entrypoint_in`, and its
-        # paths resolve against THAT repository at THAT pin. Resolving them
-        # against the consumer's own clone reports a file the vendor never
-        # claimed was there as missing, which is a bug in the checker rather
-        # than a defect in the manifest.
+        # A consumer whose entrypoint lives in another upstream declares
+        # `entrypoint_in`, and its paths resolve against THAT repository at
+        # THAT pin rather than against its own clone.
         host = consumer.get("entrypoint_in")
         source = upstreams[host] if host else consumer
         clone = provenance.clone_dir(refs_root, source["repo"])
@@ -276,12 +272,8 @@ def survey() -> dict[str, Any]:
         entry = consumer.get("entrypoint")
         if entry:
             rows.append(check_entrypoint(consumer["id"], entry, clone, commit))
-        # `acceptance_expected.cited` is resolved with the other two. It was
-        # the newest citation surface and the only one no lane checked, and it
-        # is what the vendor acceptance verdict is measured against. consisid
-        # cited `models/consisid_utils.py:192-194`, a path absent from the
-        # pinned diffusers commit; the code it names is at
-        # src/diffusers/pipelines/consisid/consisid_utils.py:210-212.
+        # `acceptance_expected.cited` is what the vendor acceptance verdict
+        # is measured against, so it resolves with the other two.
         expected = consumer.get("acceptance_expected") or {}
         for field, cited in (
             ("consumer", consumer.get("cited", [])),

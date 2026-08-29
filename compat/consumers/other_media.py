@@ -5,11 +5,9 @@ written as though every identity fact lives on a face row. It conditions on a
 recording, and nothing the face lane produces can serve it however complete
 that lane becomes.
 
-`id_v2v` used to live here too, and this module carried a 147-line
-`IdV2VVideoRunner` that `all_runners` never instantiated -- dead, leaking a
-`tempfile.mkdtemp` per construction, and described in this docstring as though
-it ran. Its boundary is the three VACE condition streams rather than the
-decoded source, so it belongs to `compat/consumers/control_stream.py`, and the
+`id_v2v` is not here. Its boundary is the three VACE condition streams rather
+than the decoded source, so it belongs to
+`compat/consumers/control_stream.py`, and the
 dead copy is gone.
 
     id_lora   LTXVReferenceAudio.execute, ComfyUI@a9ab2b62dac1
@@ -61,10 +59,9 @@ VAE_SAMPLE_RATE: Final[int] = 44100
 #: nodes_lt.py:867 tooltip: "~5 seconds recommended (training duration)".
 CLIP_SECONDS: Final[float] = 5.0
 
-#: A capture rate that is NOT the VAE's, so the resample branch is the one
-#: under test. `torchaudio.functional.resample` returns the waveform untouched
-#: when the rates match (functional.py:1473-1474), and so does the node, so
-#: equal rates would exercise neither.
+#: A capture rate that is NOT the VAE's, so the resample branch is under test:
+#: `torchaudio.functional.resample` returns the waveform untouched when the
+#: rates match (functional.py:1473-1474), and so does the node.
 CAPTURE_SAMPLE_RATE: Final[int] = 16000
 
 SEED: Final[int] = 20260828
@@ -159,15 +156,13 @@ class IdLoraAudioRunner:
                         expect_breaks=True,
                         kind="substitution",
                     ),
-                    # The rate is not decoration. Without it the node cannot
-                    # know whether to resample, and a clip replayed at the
-                    # wrong rate is the same voice at the wrong pitch -- which
-                    # nothing downstream would flag.
+                    # Without the rate the node cannot know whether to
+                    # resample, and a clip replayed at the wrong one is the
+                    # same voice at the wrong pitch.
                     Ablation(primitive="audio_sample_rate", expect_breaks=True),
                     # The rate the VAE wants, offered as though it were the
-                    # rate the clip was captured at. A store that kept the
-                    # waveform and the WRONG rate is the same voice at the
-                    # wrong pitch, and that is what this measures.
+                    # capture rate: a store keeping the waveform and the wrong
+                    # rate is the same voice at the wrong pitch.
                     Ablation(
                         primitive="audio_sample_rate",
                         swap="vae_rate_assumed",

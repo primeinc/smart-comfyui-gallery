@@ -20,7 +20,7 @@ Seven attacks, each on a different load-bearing claim:
                          result above is the attack and not a broken machine
 
 Nothing here writes to the repository. Manifests and evidence are copied to a
-temporary directory, mutated there, and the real checks are run against the
+scratch directory, mutated there, and the real checks are run against the
 copy -- an attack that damaged the tree to prove a point would be a worse
 failure than the one it was testing for.
 
@@ -235,10 +235,9 @@ def attack_population_shrunk(where: Path) -> Attack:
 def attack_evidence_not_reproducible() -> Attack:
     """Two runs of the same inputs must produce the same evidence bytes.
 
-    Not a corruption like the others -- an assertion the suite could not make
-    at all until timings were moved out of `cases.json`. Every run used to
-    rewrite it with fresh wall clocks, so "the evidence is unchanged" was
-    never checkable and a diff between two runs was pure noise.
+    Not a corruption like the others. It requires wall clocks to stay out of
+    `cases.json`: a file rewritten with fresh timings on every run makes "the
+    evidence is unchanged" uncheckable and a diff between two runs noise.
 
     Re-runs the case executor in-process, with `COMPAT_CACHE=0` so the
     producer and the decoder actually run, and compares the serialisation it
@@ -255,14 +254,9 @@ def attack_evidence_not_reproducible() -> Attack:
     )
     on_disk = (GENERATED / "cases.json").read_text(encoding="utf-8")
 
-    # The rebuild runs with the persistent store OFF. `corpus/cache.py` holds
-    # decoded frames and the producer's faces across processes, so a rebuild
-    # that could read it would be handed the first run's own answers back and
-    # would re-execute neither cv2.imdecode nor the ONNX pass -- the two parts
-    # of this pipeline most able to be non-deterministic, and the two this
-    # attack exists to watch. Cache-off against a file written cache-on is
-    # also the stronger comparison: it asserts the producer is deterministic
-    # AND that the store did not change what it produced.
+    # The rebuild runs with the persistent store OFF: a rebuild that could
+    # read `corpus/cache.py` would be handed the first run's answers and
+    # re-execute neither cv2.imdecode nor the ONNX pass.
     was = os.environ.get("COMPAT_CACHE")
     os.environ["COMPAT_CACHE"] = "0"
     try:
@@ -301,9 +295,8 @@ def attack_positive_control(repo_root: Path) -> Attack:
     result = provenance.verify_all(provenance.load_manifest(), repo_root)
     built = matrices.build(matrices.Evidence.load())
     # Through `matrices.blocking`, the same function the matrix lane gates on.
-    # This used to test `not_exercised == 0` on its own, which meant it could
-    # not fail while that lane passed, and it silently kept testing one
-    # condition after the lane grew four more.
+    # A control re-implementing one of its conditions cannot fail while that
+    # lane passes, and does not follow the lane when it gains more.
     bad = matrices.blocking(built)
     out.detected = bool(result["provenance_ok"]) and not bad
     out.observed = (

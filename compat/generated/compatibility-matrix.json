@@ -594,6 +594,11 @@
           "swap": "half_precision"
         },
         {
+          "primitive": "gender",
+          "serves": false,
+          "swap": "opposite_label"
+        },
+        {
           "primitive": "kps",
           "serves": false,
           "swap": "half_precision"
@@ -915,10 +920,10 @@
       "inconclusive": 4,
       "primitive": "age",
       "substitute_fails": 4,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -929,10 +934,10 @@
       "inconclusive": 12,
       "primitive": "aligned_crop_112",
       "substitute_fails": 20,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 20,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -943,7 +948,7 @@
       "inconclusive": 1,
       "primitive": "audio_sample_rate",
       "substitute_fails": 1,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 0,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "UNPROVEN"
@@ -957,10 +962,10 @@
       "inconclusive": 1,
       "primitive": "audio_waveform",
       "substitute_fails": 1,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 1,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -971,10 +976,10 @@
       "inconclusive": 4,
       "primitive": "bbox",
       "substitute_fails": 4,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -985,10 +990,10 @@
       "inconclusive": 4,
       "primitive": "det_score",
       "substitute_fails": 4,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1000,10 +1005,10 @@
       "inconclusive": 10,
       "primitive": "embedding",
       "substitute_fails": 10,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 10,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1023,10 +1028,10 @@
       "inconclusive": 54,
       "primitive": "embedding_raw",
       "substitute_fails": 85,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 85,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1037,10 +1042,10 @@
       "inconclusive": 33,
       "primitive": "face_rows",
       "substitute_fails": 33,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 33,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1053,24 +1058,24 @@
       "inconclusive": 17,
       "primitive": "frame_dimensions",
       "substitute_fails": 14,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 0,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "UNPROVEN"
     },
     {
       "breaks": 0,
-      "cases": 8,
+      "cases": 12,
       "consumers": [
         "reactor"
       ],
       "inconclusive": 4,
       "primitive": "gender",
-      "substitute_fails": 0,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails": 4,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1081,10 +1086,10 @@
       "inconclusive": 4,
       "primitive": "kps",
       "substitute_fails": 4,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1100,10 +1105,10 @@
       "inconclusive": 63,
       "primitive": "kps_source_px",
       "substitute_fails": 59,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 59,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1114,10 +1119,10 @@
       "inconclusive": 4,
       "primitive": "landmark_2d_106",
       "substitute_fails": 4,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1129,10 +1134,10 @@
       "inconclusive": 10,
       "primitive": "landmark_3d_68",
       "substitute_fails": 10,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 10,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1146,10 +1151,10 @@
       "inconclusive": 46,
       "primitive": "patch_origin",
       "substitute_fails": 46,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 46,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1162,7 +1167,7 @@
       "inconclusive": 0,
       "primitive": "reference_pixels",
       "substitute_fails": 0,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 0,
       "substitute_serves": 0,
       "survives": 17,
       "verdict": "NOT NECESSARY"
@@ -1176,7 +1181,7 @@
       "inconclusive": 12,
       "primitive": "reference_vectors",
       "substitute_fails": 17,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 17,
       "substitute_serves": 3,
       "survives": 0,
       "verdict": "CHEAPER VALUE SERVES SOMETIMES"
@@ -1190,10 +1195,10 @@
       "inconclusive": 33,
       "primitive": "selection_rule",
       "substitute_fails": 33,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 33,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1207,10 +1212,10 @@
       "inconclusive": 46,
       "primitive": "source_region_pixels",
       "substitute_fails": 51,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 51,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1221,7 +1226,7 @@
       "inconclusive": 3,
       "primitive": "source_video_bytes",
       "substitute_fails": 3,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 0,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "UNPROVEN"
@@ -1235,10 +1240,10 @@
       "inconclusive": 3,
       "primitive": "subject_mask",
       "substitute_fails": 3,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails_measured": 3,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1256,11 +1261,11 @@
       ],
       "inconclusive": 53,
       "primitive": "whole_reference_image",
-      "substitute_fails": 100,
-      "substitute_fails_at_a_tolerance": 0,
+      "substitute_fails": 95,
+      "substitute_fails_measured": 31,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     }
   ],
   "skipped": [
@@ -1378,42 +1383,16 @@
     "diverged": 0,
     "not_exercised": 0,
     "partial": 5,
-    "primitives_unproven": 21,
+    "primitives_unproven": 3,
     "primitives_unproven_names": [
-      "age",
-      "aligned_crop_112",
       "audio_sample_rate",
-      "audio_waveform",
-      "bbox",
-      "det_score",
-      "embedding",
-      "embedding_raw",
-      "face_rows",
       "frame_dimensions",
-      "gender",
-      "kps",
-      "kps_source_px",
-      "landmark_2d_106",
-      "landmark_3d_68",
-      "patch_origin",
-      "selection_rule",
-      "source_region_pixels",
-      "source_video_bytes",
-      "subject_mask",
-      "whole_reference_image"
+      "source_video_bytes"
     ],
     "reproduced": 17,
     "skipped_inputs": 1,
-    "unrepresented_failures": 19,
+    "unrepresented_failures": 0,
     "unsupported": 0
   },
-  "unrepresented": [
-    {
-      "cases": 19,
-      "lane": "gallery_storage",
-      "verdicts": {
-        "FAIL": 19
-      }
-    }
-  ]
+  "unrepresented": []
 }

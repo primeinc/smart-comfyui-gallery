@@ -1,8 +1,8 @@
 """What a compatibility case is, and what a run of one records.
 
 The shape follows ONNX's backend test suite -- read at
-onnx/onnx@f9b25fb1a5302ef0c833bef8c917cc7f031feb6b,
-`onnx/backend/test/case/test_case.py` and `docs/OnnxBackendTest.md` -- which is
+onnx/onnx@f9b25fb1a5302ef0c833bef8c917cc7f031feb6b onnx/backend/test/case/test_case.py
+and onnx/onnx@f9b25fb1a5302ef0c833bef8c917cc7f031feb6b docs/OnnxBackendTest.md -- which is
 the same problem: a suite each external implementation runs to prove it still
 satisfies a contract, where the cases ARE the specification rather than a
 document about it.
@@ -206,6 +206,41 @@ class RetainedState:
 
     def __init__(self, **values: object) -> None:
         self._values: dict[str, object] = {key: one for key, one in values.items() if one is not None}
+        #: Encoded bytes for keys whose runner knows what a store would hold.
+        #: Set through `priced()`, not the constructor: runners build this over
+        #: a dynamic key, which any named parameter here could collide with.
+        self._durable: dict[str, int] = {}
+
+    def priced(self, durable: dict[str, int]) -> RetainedState:
+        """This state, with the encoded size of each named array.
+
+        Each size must equal `compat.storage.derivatives.lossless_bytes` of
+        the value it names; a size that does not is rejected. `sizes()`
+        prefers these over `ndarray.nbytes`, so an unchecked number would be a
+        storage cost the runner asserts rather than one derived from the
+        array.
+
+        Raises KeyError for a name this state does not hold, TypeError for a
+        value that is not an array, and ValueError for a size that is not the
+        array's encoded length.
+        """
+        from compat.storage import derivatives
+
+        for name, claimed in durable.items():
+            if name not in self._values:
+                raise KeyError(f"priced {name!r}, which this state does not hold: {sorted(self._values)}")
+            value = self._values[name]
+            if not isinstance(value, np.ndarray):
+                raise TypeError(f"priced {name!r}, which is {type(value).__name__} rather than an array")
+            actual = derivatives.lossless_bytes(value)
+            if claimed != actual:
+                raise ValueError(
+                    f"priced {name!r} at {claimed:,} B; the array encodes to {actual:,} B. "
+                    f"A durable size is the artifact's length, not a number the runner chooses"
+                )
+        held = RetainedState(**self._values)
+        held._durable = {**self._durable, **durable}
+        return held
 
     def has(self, key: str) -> bool:
         return key in self._values
@@ -215,11 +250,19 @@ class RetainedState:
 
     def without(self, key: str) -> RetainedState:
         """This state minus one primitive. The ablation operator."""
-        return RetainedState(**{name: one for name, one in self._values.items() if name != key})
+        held = {name: one for name, one in self._values.items() if name != key}
+        return RetainedState(**held).priced({k: v for k, v in self._durable.items() if k != key})
 
     def replacing(self, key: str, value: object) -> RetainedState:
-        """This state with one primitive degraded rather than removed."""
-        return RetainedState(**{**self._values, key: value})
+        """This state with one primitive degraded rather than removed.
+
+        The replaced key loses its durable price: the substitute is a
+        different artifact and the encoded size of the original is not its
+        size.
+        """
+        return RetainedState(**{**self._values, key: value}).priced(
+            {k: v for k, v in self._durable.items() if k != key}
+        )
 
     def sizes(self) -> dict[str, int]:
         """Bytes each retained value occupies, by key.
@@ -235,10 +278,25 @@ class RetainedState:
         happens to emit a key of the same name. Scalars and tuples are sized
         by their Python object where no buffer exists, which is honest for a
         two-integer origin and irrelevant beside a 36 MB frame.
+
+        ENCODED WHERE THE RUNNER KNOWS IT, decoded otherwise. `ndarray.nbytes`
+        is the in-memory footprint and a store holds encoded bytes: measured
+        2026-08-29 on one corpus frame, nbytes 95,883,264 against 21,466,629
+        for the lossless PNG `compat/storage/derivatives.lossless` produces
+        from it, a 4.5x overstatement. A runner that has encoded the artifact
+        passes the real figure as `_durable` and it is preferred here.
+
+        A key with no `_durable` entry is still priced by `nbytes`, which is
+        an upper bound rather than a storage cost. `producer_union.json`
+        prices only the keys a producer emits, which is why sixteen of the
+        twenty-three names in `must_retain` reported 0 bytes before this
+        existed -- including the picture.
         """
         out: dict[str, int] = {}
         for key, value in self._values.items():
-            if isinstance(value, np.ndarray):
+            if key in self._durable:
+                out[key] = self._durable[key]
+            elif isinstance(value, np.ndarray):
                 out[key] = value.nbytes
             elif isinstance(value, (bytes, bytearray, memoryview)):
                 out[key] = len(bytes(value))
@@ -358,6 +416,17 @@ class RetainedState:
         return value
 
 
+def settled_by_measurement(method: str) -> bool:
+    """Whether a comparison weighed the consumer's OUTPUT.
+
+    `shape` and `dtype` return before any value is compared
+    (compat/assertions/arrays.py), and an ablation that raised records "".
+    None of the three observes what the consumer produced. `exact_bytes` and
+    `allclose` both do, and either can come out the other way.
+    """
+    return method == "exact_bytes" or method.startswith("allclose")
+
+
 @dataclass(frozen=True)
 class Ablation:
     """One retained primitive removed, and what that did.
@@ -376,6 +445,10 @@ class Ablation:
     primitive: str
     expect_breaks: bool
     kind: str = "removal"
+    #: `assertions.arrays.Comparison.method`, or "" when the ablation raised.
+    #: `shape`, `dtype` and an exception settle before the consumer compares
+    #: values; `exact_bytes` and `allclose` are measurements of its output.
+    compare_method: str = ""
     """`removal` takes the primitive away and asks whether the replay still
     works -- that is the necessity test, and a primitive nothing misses is
     derivable rather than durable.

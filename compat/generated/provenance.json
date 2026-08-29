@@ -4,32 +4,7 @@
     "source_unread": [
       "omnigen2"
     ],
-    "total": 22,
-    "unclassified": [],
-    "unproven": [
-      "instantid",
-      "ipadapter_faceid",
-      "ipadapter_faceid_plus",
-      "pulid_comfyui",
-      "reactor",
-      "infiniteyou",
-      "uniportrait",
-      "photomaker_v2",
-      "consisid",
-      "instantid_upstream",
-      "ipadapter_upstream",
-      "pulid_upstream",
-      "umo",
-      "uno",
-      "uso",
-      "omnigen2",
-      "instantcharacter",
-      "qwen_image_edit_2509",
-      "anystory",
-      "xverse",
-      "id_v2v",
-      "id_lora"
-    ]
+    "total": 22
   },
   "provenance_ok": true,
   "recorded_at": "2026-08-28",

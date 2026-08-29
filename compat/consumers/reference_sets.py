@@ -197,11 +197,10 @@ def _reversal_observable(how: str, arrangement: str) -> bool:
                     from three references up, and storing "the centroid" is
                     not well defined unless the summation order is fixed too.
 
-                    This row previously cited "119 of 512 elements differing
-                    with a worst absolute difference of 0.0 -- below the
-                    printed precision but present in the bytes". The 0.0 was
-                    not precision: `arrays.py` widened float32 through int64
-                    and truncated every difference under 1 to zero. The claim
+                    A worst absolute difference of 0.0 over differing
+                    elements is not sub-precision: widening float32 through
+                    int64 truncates every difference under 1 to zero
+                    (`compat/assertions/arrays.py`). The claim
                     holds; the number quoted for it was destroyed, and is
                     re-derivable now that the comparator widens by kind.
     """
@@ -282,10 +281,8 @@ class ReferenceSetRunner:
                     retained=("reference_vectors",),
                     ablations=(
                         Ablation(primitive="reference_vectors", expect_breaks=True),
-                        # Width, not presence. Removing the only
-                        # key the replay indexes shows it is
-                        # indexed; halving it asks how wide the
-                        # column has to be.
+                        # Width, not presence: halving the float asks
+                        # how wide the column has to be.
                         Ablation(
                             primitive="reference_vectors",
                             swap="half_precision",

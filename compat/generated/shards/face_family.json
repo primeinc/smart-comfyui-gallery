@@ -4,66 +4,66 @@
   "identity": {
     "application": {
       "db/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "db/analysis.py": "b6dc7d6ba2d6311f2f51207a86f8ba1ab380d40ea1c6c2e69acdceb0cac86d9b",
-      "db/authored.py": "4d038e88511129a3bd48f9d7c3052e43ca9e3592142c3ba639547f08a7ffdf77",
-      "db/build.py": "8812409a39d9073055dc96affd0dbb6c49b9476b6ed3b888e2be6fd27f62bdf3",
-      "db/capture.py": "776b7c470fa406438718164dfc717eee7244bc890c9f9610f997e5eafa562d8f",
-      "db/catalog.py": "1332f06e89956a769376abe22b26a652a7daf71e880040e5a8886e0d970c1798",
-      "db/collection_rules.py": "2ec297b0b6d435d1bf0289505e184be142f8555aa71b3c9fd52c7b6adefb9e37",
-      "db/collections.py": "8f6be1fd679533ccf95bc4d543cdb8d2d78caf49b75d577cca371bec7d3736e1",
-      "db/connect.py": "cbdf33c07a65d2b812df45981fedbecf1df4276e594dae4038b437b172ce1548",
-      "db/context.py": "744d1f01ee25a09931860478a7335f2e8d725541b9f2c65783a84844bb60655d",
-      "db/derived.py": "50b3c388ce992fb8afe0b9e61b123645ace9c2b981ca4c01b375753cd95b80a3",
-      "db/detect.py": "c07d7b10e2dbc9f0fe68faa66c1150742ac17be631dbaef86aa8d3bef0668480",
-      "db/discovery.py": "904fbd4260fb5efa52ccbfa002e73e876807985fe496fc35afd19c4dc41e8347",
-      "db/events.py": "61230c39b8bf176b6df17ca97e7788d8a5eec020fd40dba53eeff83bfbe63e64",
+      "db/analysis.py": "807a58ea2c0be34be6b0ee1cf22b91d74540aef9c17af15feddcda94bc39dbbc",
+      "db/authored.py": "d9e49557b7d5e436567c0c3ea7b9c2fbe7a754baf3f1e2241be1ac105629f776",
+      "db/build.py": "1960a7e692c3c6358aa4626d62ef8394c626aeed1c7509b7b3ee9d0bc6b77778",
+      "db/capture.py": "48afd3426cf2a04622e260c82301c875ae4756ab7569c257d657196f26ac0913",
+      "db/catalog.py": "139b568f13598daf2083fa4631c01373d778c335a0e997dd42bbf707a306a83d",
+      "db/collection_rules.py": "d67aafedbf817a5acf0457906435f34a4b255fae7914c8ec0b6edb989e22b165",
+      "db/collections.py": "ed9b240f4fb4e18b5a52196dceb8f4ca9f47c55b86e2d5d7713d7a20ecc70651",
+      "db/connect.py": "93300f6b42bbd22b382474da04b908aa66ce02874abd14bd48446ae578c098d0",
+      "db/context.py": "a2bbf3526c4ab23fdf7d78ce4d5840e16c2e29b43bc173e5fa5e21a8391f9fe1",
+      "db/derived.py": "c9f89637dab76b603b0b4bb72b9a91d05abfdea1bc06f41d113e0c1b62faa8ba",
+      "db/detect.py": "9a5d8b6832dd3b8579b3d0f64af06d2f1c3e212cff3e9810079824b61bd34548",
+      "db/discovery.py": "87ee7b0480aa43f30194a7c41865e4a087153164201405df7b22441600606aaf",
+      "db/events.py": "1e2b90d0d8e0845b4e5fbee4c060f9575e4c707bfdbaf9a1d599aed73378b234",
       "db/evolution.py": "06f33ff27acc74dd4ddfcc82f6167c64a0eaba0296c7a8640942c0c63e5a7203",
       "db/exif_labels.py": "c1b73b0e982be15a19e8214a65b11c5063455d3b7eda214f6385f455fd3f9395",
-      "db/facets.py": "4caada65ee386ab7d9e18294d8a512ec1f2e7e1f19c2fa1a6e8a28932eb12b24",
-      "db/graph.py": "b313dead1870caf78b5ab380bd55ff5a1e9f56b095ffe45db27b07a7182380d7",
-      "db/grouping.py": "7fedc5bfa56ac5f8f0670edc68f5f59e8f7f3068c2453014ac546c13c6e49ec4",
-      "db/ingest.py": "794d851ed758567a407759ca73d49697cf15b48e4ffc37bfece95c317eea829b",
-      "db/inspecting.py": "8cfecdb4e33e872408e5853d4f3de4d1ebbd0de3c4042efc6b6dce83ece73746",
-      "db/jobs.py": "05401344d511c75139c4d0ff3719d6ffee15eedd0f55c25633f7f47254498a24",
+      "db/facets.py": "2b82ad13b318b5d69096efe2ac4f3906e7816063c34d3b07a93e204fd01aafda",
+      "db/graph.py": "71a51d5fd5f70077a48c7b8cfefd409907dc7f73dc828177b7554a9461a47e28",
+      "db/grouping.py": "537fbe8dd089713e5c7a7e08d10ed57a9c29313e19cfecd108a6a531b2d601b6",
+      "db/ingest.py": "efec76fdfcb19a5ca76a4b79272abda24b26711612e0a26a2330effd1df5a521",
+      "db/inspecting.py": "cda3537ef75e518c7b23b6846beb36706bb0e744bb6ea41af02dda9ce4c40636",
+      "db/jobs.py": "c1144158d06a99209f34f124635445f629046e96c5945d8fdc7b9db9ed28319f",
       "db/ledger.py": "b78f8462334977c1e1dc466a6d411236756ce80649c6f48f435222f435f7b898",
-      "db/library.py": "99d66631931ebb2327881391cb1af1cbcb3e4f8586aeea34ac1ef211901a985e",
-      "db/lineage.py": "a2b2021126a88df68990ee1f5eed2cfe98ae599b92aa9e267d60733215d849c3",
-      "db/migrate.py": "52801a625077a1b04e5f546b6bdeecefc2227480df5fb7688513ed4f8cd9eb99",
-      "db/naming.py": "1465bf01ea0c061556fd43dbfd5410a0f2d4963c8af663f546713019bb3dd5e4",
-      "db/oriented.py": "5656403a550e11f5aaa24ddf2423047350c1a50339b19d813554672994c31739",
-      "db/pages.py": "feb9501b7f1dfd2d5fa29e71e133b54675d0f9888345c67c2ab0a64083f0d966",
-      "db/places.py": "191e66c7a949e59c3ca429a8be58af11f7fd3f6d8cc4ae65a750e3376bd54fc1",
-      "db/planning.py": "5ef2c85d1724edf2b2bc5efa64e94df90304996e63bc5ebf4a767d7565fb2ba1",
-      "db/probe.py": "0480f82e1a21d8a9bcc836dafb17ffc3fe285352c74f385ccb17fb9d87873100",
+      "db/library.py": "4ff6f2cd3c585284e31a2f8c03ad50b6f5fe0aec70bd9ef5908af6731f44722b",
+      "db/lineage.py": "d593d12852a57cf83cef9548531fb0a814c5f25f41dcb1ce1d260211762c1443",
+      "db/migrate.py": "bc0801425334d0cccc4b6b7218d152e693744c50839ba03ea924f9840f7cdb56",
+      "db/naming.py": "057e413b3582955cd2ddc38f17c1a50ce301d6b89d280e9f428c1847b09c0abb",
+      "db/oriented.py": "8ca8ee42885b2dec5e6e78e45b2b43dd898652e2740fd40dcd96d2a7f6d97f39",
+      "db/pages.py": "1305c3c8efb18f5060b507ed00d79bf9d999b3c8aa7fd9be1c9db725dbc21851",
+      "db/places.py": "aa9756781311a1b43a7097c29a0aed2e8239417772d96f37ecca0d45848531cc",
+      "db/planning.py": "ab226e83baae2c985ff1f62e372f23ac956c978ab936ef8613e3cd4bb5a04c50",
+      "db/probe.py": "01e4b8eeea9e786c523a2be79a3d5c0e18ed6f49a9e00ee0c32647094d033123",
       "db/prompt_sections.py": "906e03e91ed3569c7f2c61c0b7bbe2bb166bf09066970c1808097fe094d8611e",
-      "db/prompts.py": "6428fa14c8f9dcf045f50066442891d70dafa09cdbfe83fa6f75155f41012994",
-      "db/rendering.py": "a6110c5798359b0d94956c53f42227e4f9acd003a17885f8b37bc46e912fc28f",
-      "db/resultset.py": "03d9272d163785b8d9e93d949a459d76fc609fe8d751e1f0b0a9f4ffe15c459b",
-      "db/retrieval.py": "d699416eca45a9739bc080a48e297f40e3c55e626ebbd9c24ccbd02e8da867b5",
-      "db/runner.py": "17741ca60b032d43eb81e00264a4d019d0a773669f9670edfbbfedbb01394f8d",
-      "db/sample.py": "a1b707ae004d90fd58bf8ac973831e36d2948aad90681f34ad1ed736d5cf9fb6",
-      "db/scan.py": "9918e927cb89544bed2d699a90366be228f6fdbf0ca3cf7148b9d176f307d47b",
-      "db/scheduling.py": "7c527c829b59abcf60f3eb3bd7183dfb8f20d7be0e7faa545415af4a749e6a51",
-      "db/settings.py": "50c48103d01ec1f6441f983179948b1e49929197f560e8ddc10d80805a70e4f2",
-      "db/similarity.py": "b79ded54bd496667d7804e5d5c73d1999bcbd4d5b5a5ce9e5369bc66aa31c356",
-      "db/stories.py": "cb1f279e4c4068cf35c5bef0baf813136b8e78d2c2ca1f10c064bf9b8797d959",
-      "db/verdicts.py": "2a5e5fd447c430e31b8b4cc96d658394f90a9fb09402b8754f4295754a2de018",
+      "db/prompts.py": "b13eedc41492f21cdf775c096945193d70c596a25e8e0dc3dec1d951755a5bed",
+      "db/rendering.py": "b6cb2c50cfe816cc64001d2366070226eb600835080f80f3e8babb3a6ca0269a",
+      "db/resultset.py": "3746d2f7395a81cf33a6e1758a363e6d3589543f6a181c84f20c50759af01315",
+      "db/retrieval.py": "58be5aeb0a0b1c7513f06e224ab3d90023e62db41f522cda5fa4b034dc6c0d12",
+      "db/runner.py": "4e701d9b9fd2dddec79bf1ed9295e2079324ab2a64df4e36b9fea05600680a9b",
+      "db/sample.py": "e4b29259a83f932c541b398f934b49dd1dcaf20ed9879638cdebb6f9cb325fcb",
+      "db/scan.py": "7ad83a04804a558739f368878e03713598b40df4dcd64823ee487b60a554f3af",
+      "db/scheduling.py": "d79fee618ff9490e0e702cc840074f096386871386c54cc1303657f933598ca6",
+      "db/settings.py": "9fc80cd605be17467363a652a35c4e1a943716003d2e4ed64e52e4c294427ae8",
+      "db/similarity.py": "7ebefc092115074ea95cf30c15317f0138bbfd4812174169a6ce874a2eb2a541",
+      "db/stories.py": "1a8cfb58bc9f693ea0156f364546e916997467cc62dc82da6a830ca442a13f33",
+      "db/verdicts.py": "eaa804ed17f1e202b21ed7275f3792a7efad6b0af06cc633a187bedf17225606",
       "db/views.py": "380af36f3b8651cce9dfe66dc06f70c1aa64b671d49fa99fd9a53ad0f1662151",
-      "db/vocabulary.py": "c07b7b6e56544e14ded77869f7986e9e9163ae53852e6504e53bbbcd4aae501a",
-      "db/when.py": "7fc553204e3234e8a8db331dae70e42aa74522085435d45b145c35c48414d2a1",
+      "db/vocabulary.py": "5293ea961d6bb5478691a1d66eaa9396ff0d5cf9cb25e2bc6d0a0b7a4908c877",
+      "db/when.py": "9a93924ba95886f0afef480845b956e6505c9074a56b520063feb7a6d0438a42",
       "vision/__init__.py": "e15d5ffa596a2a41d9765e795ef603b2801e1170caa9cb87e66320079ca3d406",
-      "vision/captions.py": "d0d9f275d4518ab2900bdffb86f88bd4e9260ea201f3979a5732af0fb02b0c01",
-      "vision/decode.py": "7968c198094fa2ac933da2b12ce34c022f8c4ae01bfe2cd03edf505858a3fb44",
-      "vision/derive.py": "a885c928faebf3077c34c2610f39754173616d5b3dadad2878aac7f67a586116",
+      "vision/captions.py": "51843bfce211a5ad7d90adb3befea02d560ac72c557e1bf318a139a542733ded",
+      "vision/decode.py": "4dc4cda8b791a2409a6540d050b729be4408d12bf962dfb87cde0e82fb6a8ba7",
+      "vision/derive.py": "0401da6fdd2e1414427a13d2379e68efd63cca8444633783567f3adc92554a59",
       "vision/dupes.py": "a04f0a548dabc8c66022dcf593518bdb73b660ec47ec923120decfac3bc9b6c5",
-      "vision/faces.py": "d321df16cbbb890b2e356c0dabab9ac359914089cd32a58c86f7d90ef178a4db",
-      "vision/faiss_index.py": "fa28fc66324e70b26ff736a78ae12364b4c3f39932254d5af49c6c5243c3c593",
-      "vision/faiss_runtime.py": "8f0eda4de24f0355e6a7d117fac459fb611ba311d91aad529e7c42e22d9b3ab9",
-      "vision/semantic/__init__.py": "bfd78e0409d53e52d648e65f688a35be11f302be281a4d5ebd8c0cbad7f2c4de",
-      "vision/semantic/openclip.py": "b0353384628a66d3a531b99d50a3ff8615e0751b750ae7a9a703ffd2ccf1ca74",
-      "vision/semantic/qwen_vl.py": "6b6f47b5e31fb1b3d54215df79ab70209da1d1f9636b52d6af52c320f140dd5b",
-      "vision/sniff.py": "e4feaaa835be75d3ba2e03fbb70ebb1d17920384d9293fc7b00a0352b6fbf272",
-      "vision/thumbs.py": "81774027e70958dfce8e26090279f71855582d963e4c450c032634d559ee5980",
+      "vision/faces.py": "9c72bb3617c0bff49c1ff4c8e992a0bc1851bef91e4b37e0de9c1db874f6e3cf",
+      "vision/faiss_index.py": "58a086427b3f26319ae3cf21d05707ea5d9246002b47e5b9a5e1265ad77a884c",
+      "vision/faiss_runtime.py": "871a22567b3e7f6a137783580a746b2562db5043bb507e996c658ec0cf15f0cd",
+      "vision/semantic/__init__.py": "226e6fff3f135866f10c66c43429875fc9e807c0a9ddaedeb39913603a3eafad",
+      "vision/semantic/openclip.py": "654ebf0b09c0378827397e2abd700bd4db76e20da8d283cded6163930170b247",
+      "vision/semantic/qwen_vl.py": "84c571935e50a25fae1c50f2f3cef2801e3a8dedcac5f9df34d4a88fcfbda519",
+      "vision/sniff.py": "2b0ee31555a7e3a7e02e0e48e5923d45b60d61e6f084e73647d2ca1b2a9f1a07",
+      "vision/thumbs.py": "a10c4c1afc51c25a48b79506450275fe5ad6cf9b587348909176c04683157c7a",
       "vision/weights.py": "888e2638db6111bd9ebacb187c25864c3cb4862f89692f86ab435cb642f75f39"
     },
     "corpus": {
@@ -173,8 +173,8 @@
       "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_8.jpg": "52cec87f14e7aeaf0eeacc52f25e3a8a42260291a233bed3d188491e5213e169",
       "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_9.jpg": "7c36358199af2f2994ccdb763dde64ebad361327920544d48d7fff3f92e13bc7"
     },
-    "digest": "c87d5c6077e8ea9c30360965e0c930c6c3a3651a6be4a350f5ff84be05afbd1a",
-    "manifest": "cc851e041d10a50abab3646bb6a5dbdc8f6a4a98345de5be0ae0d2294a5807a2",
+    "digest": "b118c73fcb40c254887ed9815f8d3dc1a48221c0e3cf5484d0c4c0e950278448",
+    "manifest": "977b49fa39008d14208af2ad4ca525579fb22cf28ba0ee3454e2ff9de1aeeb58",
     "repos": {
       "consumer:anystory": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
       "consumer:consisid": "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e",
@@ -286,56 +286,56 @@
     },
     "sources": {
       "assertions/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "assertions/arrays.py": "23bd8a6beca17a696822ce7c12edcd59499de0401fcd7303df4735f41beea78f",
-      "assertions/minimize.py": "33753282d1971557d6e91405cd127c0a5b05afd446fe945dda4515746360a4d4",
+      "assertions/arrays.py": "33dd4b9f7c6fd1216e7de44bff32e95f76153c98c151950d569e9773988150af",
+      "assertions/minimize.py": "8ad9284cf180f417c8aa88d2a0ddd1c071cb4969b5a6bdd54a20e616f774785e",
       "consumers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "consumers/aligned_crop.py": "d1aaf84d571288d8edf433cc1e78584ba45409b8c5c4902082be8829e097d1f1",
-      "consumers/consisid_facexlib.py": "3ecae5f9ef83dcde229cb4b8ea312066df6ab7945e8297d5f4b8441efde093c2",
-      "consumers/control_stream.py": "e542ef8718b7f452e40d06808afdb005694b4b49cbdd466543b892669dd30fab",
-      "consumers/embedding_spaces.py": "5ec0436dce88d47e66105744bde0544667f36b11a8cb380af3f344f92209bbe5",
-      "consumers/face_family.py": "fb02865a0fed2556f85e76e771f2f92dc04d374017ef659d1438ea459a9da331",
-      "consumers/face_selection.py": "1b22be82ab2a49f8755ef108ad7e8b1469986d808b4444894468f4ab8467a039",
-      "consumers/gallery_storage.py": "c823537d68215540f74ab8b6220ba6a268e5543fc40c85c1613ecae9fa08e99e",
-      "consumers/masked_reference.py": "584a35c6e151e5117e29adac2d992c1f0cbc56d2729b402132fa595f9df59a2e",
-      "consumers/other_media.py": "f321f32c4efd178cc92012fd05fa37f0f1e3cc67426503c9eaf8871418016a0e",
-      "consumers/producer_derivations.py": "9d09d0458c230dfc030b6c1949e853c23daf791ded193030003380cd38e1e7f8",
-      "consumers/reactor_face_model.py": "a5239f1a882ff4b10b41a4f5e7916f888750b6b6b8cd31ad471595c0f2ddb790",
-      "consumers/reference_sets.py": "9f6174c931ca8f01ffa211196bcc5d0dce03d2ff9be46898ed5534b1ecb8ea3c",
-      "consumers/whole_reference.py": "c7edaa2ae4cbea13081ebbb73d667832a96473fa2affef9805ab79567468155b",
+      "consumers/aligned_crop.py": "c0b61798e5218faa7eb6ff3c0296ee07dad6fdfe084f987411685b86aea85c20",
+      "consumers/consisid_facexlib.py": "18f6f8739f8f8addc55faac33e44225eea0c94965b746374ca20120942133213",
+      "consumers/control_stream.py": "8cff9c19c0acd0d6f10900ff2ee6b88eb408a547f0eea3d97588063c8738f366",
+      "consumers/embedding_spaces.py": "a30d0241aee5d05ad7262ff4d4e3fb12b65933ba098aa5f968920bab5199a149",
+      "consumers/face_family.py": "1b498ee3aa34a6b418f6dcd95d0bd8f19f1c927c4316201c0a3bd9af949b9def",
+      "consumers/face_selection.py": "49eb48cddff73677d922bac51cc30cc0518c1e7a8378fde975a177dcb62577e5",
+      "consumers/gallery_storage.py": "f871d087f1d95a75bba8390a6d60bca1245d4081c16624744cc0317c7d94d0da",
+      "consumers/masked_reference.py": "a0649466fad92472da8025e54ab33b85fd1a3a6dd4f93d96b5aae495daf78b86",
+      "consumers/other_media.py": "3ee6eaf8081c9b2483145f47cd08cdb68bbe6ed7b9be4a1146f6fb2f281771ce",
+      "consumers/producer_derivations.py": "d4d1710d5dd3d5b268296734e2039239b230939b21d42e6c64a89984ede34071",
+      "consumers/reactor_face_model.py": "e493621d0b30730d6984a5d44eb324bd3782ef81eaaeebcd4b509da4bb58cb3a",
+      "consumers/reference_sets.py": "633fc4d5481e581531d74f87b3faf4ece5602a8427ed5efde850852081ce2bd2",
+      "consumers/whole_reference.py": "7c58bfb227c1458718c71b83e18f51e2162c42c85068ce5e1c06dc56abaeccef",
       "contracts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "contracts/case.py": "1a8c660dada242a768ec533d34b42fd662bf613fcfbd44e7c5152b63dc9ff1c2",
+      "contracts/case.py": "68957a8a0ae76e65b441d872c1a21342d54b9d00e7094d4dc7b2c81179a2ca98",
       "corpus/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "corpus/cache.py": "a9005fb53768167942f2622f97d515952262c28ea32fad4dd06c2cf510b2e3b8",
+      "corpus/cache.py": "2746b2d95debf033630be4da3dac85bac1651a1b5bc98033a2d2ce65569cfcd6",
       "corpus/groups.py": "6830804559c7959c0bbd11e0fe1078362a8ca7bbc70ff2d658ae6df2d0919f15",
-      "corpus/index.py": "b84cae442d2ae12a7209f18d787aba53a7221e34b6efe0d463c26bdebf0cc478",
+      "corpus/index.py": "ebcfc5e6315cb99518a9890a5db9125fb0d9d20d7e0df59a21cf65a8d3c7d53b",
       "corpus/kyc.json": "2ab07f40d84c55e9b93273810b6f7e28aaf55c965f82705e396195cd1847cc19",
       "corpus/loaded.py": "899b42e1b120c4bb44aa76e186afc3e0c4f73e6bd886566bd831f3d25384b6df",
       "harness/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "harness/answer.py": "3173a03afd54ba03f4b4e6aff119bad8fa2cb8dd3a21f14f39bfcbc4fc13a411",
-      "harness/attack.py": "066e017105e29a9a53244564a2a50a7edbe6ad2255ea60e4e53791e52a822e0e",
-      "harness/citations.py": "a15fb2d55d0afeb4c2580a5b6d5f1d6732aeb3512f7212a2525f63d57b1e961e",
-      "harness/identity.py": "e5575871d6a31c33164da2c5460fab7ebf40091a654ee5d5bb30305bfbbded5a",
-      "harness/matrices.py": "eb0ce898e267331a42a4387652296986d7115d63d6ec8c85342aa0ada4b54418",
-      "harness/pinned_source.py": "bea1547f290f71a56e8e4850b20a6442d5b2ce6a3d90158fd754d9270f5d6f9c",
-      "harness/provenance.py": "2cf8ccc9e9b39b336f5050f972edcf27c40b683d94ff24a7d8dc7e61ab49b3ec",
-      "harness/run.py": "9dc1d0b1b4ec41b43cfa8a34725ab2648850b679fb628eeac088e20b84118205",
-      "harness/selftest.py": "e4c2dd2da09563c7fd53f0a4cc6ed89c6a76f1e7bb14caba1f48f2b5041534c5",
-      "harness/sharded.py": "e13e35c46b761dc3b0ffa6f3bd608fecbb861c9c5beb6813be3e8dd85ece681e",
+      "harness/answer.py": "88ef3a3594065290723c95c9bc78aba3f80d716c334fbf6295a085c8986877aa",
+      "harness/attack.py": "3b62844c1424bf6a515ad43d0c657d0531230c93c0b991e0edbd5e184049382e",
+      "harness/citations.py": "5812e3dfb8ad76f532c117c6bbe9e521a2e0f6e92662d7e301eeedcd189dc9d0",
+      "harness/identity.py": "30f786b143132120dcfea971030a044c20465bcc3d3bb97847a85c935e593fb0",
+      "harness/matrices.py": "fb209db0bfdfa4d6e4b58009975ab5d5b04f5c5c9a83bc17d0c457ed9ecde787",
+      "harness/pinned_source.py": "00c9279f4b601dba6f044b7f4047e56e5a11c605945cccfe87c0e58d1ea5788c",
+      "harness/provenance.py": "a329b2ce9b487d3a384d803339f2eb984eed99be24b4e06e5c0ccd568b3d6e83",
+      "harness/run.py": "a20eba48cd3084f64d4199f077dab43b8b8deaa905ac0103bf79a8f62cd6960c",
+      "harness/selftest.py": "5b0fd24100e1c4c054ee05dc79177602782d1930f6b8efbe96f5ef369e2a1d0f",
+      "harness/sharded.py": "42759594f00fd76e958ee055a0bfe75099c17844138f003dc5688b4ee1dd1249",
       "primitives/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "primitives/build.py": "6c72ba9c07117c47b55627f5765cf7b7fc7ae662135427a311085f74f763c403",
+      "primitives/build.py": "41d163546e4201679b477507cb404af0b62fc4b6a2901b2157c0d0a32b0f6ce7",
       "primitives/fixtures.json": "1444067a86b2595fb3dadf3b7823187b7f3a3877f27fdeaf91b71b372fa7a43c",
       "producers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "producers/insightface_pass.py": "bbfd7413d0c6dfc35d692963064fd99de7fd6bd84555ffe1e00dd6bae62c4f9c",
-      "producers/inventory.py": "eab7bb60e24366b2455b46ae4bd69b4ac18ac887f3f73b4f0ca301af2e942e16",
-      "producers/registry.py": "cbae70fa87e1d37abfeb0ccc8c1897c81a11f2fed8865c609e44b78820f8bcbf",
-      "producers/union.py": "182e40fb632ca187e481ada43eb24c2a70ae35bfdb67ca47d8c233f3d4f5c4c8",
+      "producers/insightface_pass.py": "b3ebbd7853cfb2550dad0586fd67faa54de7c3ed1a089c957b0c453adc557b2c",
+      "producers/inventory.py": "1df71199b92814c0998986f84671127befbe8a35b05112a6f396af8670080422",
+      "producers/registry.py": "188298332318b253ff90c6eaf4cf362f489de91c3acdef70b9e951431f56441d",
+      "producers/union.py": "a0419fe960b807d2aa68d25f562a8c208949813890296163f7274e6368d44959",
       "storage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "storage/contract.py": "0408cf9626b1fd8ec3059979e5ae34d7ab5db03ee5fe9b43d3548a6cab09b463",
-      "storage/derivatives.py": "4b2e7722973e14a7181b12c3140cb7c998181cab3881d376d981bab6ca316274",
-      "storage/gallery_v45.py": "fe9d81f81b2ab276b969207040317b35758200174f73dcf69b2eb79145fa10fe",
+      "storage/derivatives.py": "dd87a17649b286aa39abb895d313923ee6ff644b42ba3a06805bf277966885bd",
+      "storage/gallery_v45.py": "56acf1d59537fccfc723c499dcf6cecd16eed00cf8529fa4ebaa022ac0cc93e3",
       "storage/precision.py": "8205921c83d0d0dd0dc50e7fa806ac61c592e278f37e4e4eee2c4a87e046d7c1",
       "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "vendor/acceptance.py": "852cc3520c892aef30722628eaaa5b2b44c7a8f3e907b93e3fc7f28aed5efe4c",
+      "vendor/acceptance.py": "f596fffe528b091f3f0b2ab25806e612ea215d99301784719e73bdf390f34d72",
       "vendor/conformance.py": "a5fde3fbd11117d1f16f0e3c63e20a3f6928435197b5340794c3b91838314425",
       "vendor/fixtures.py": "5fb1625c84205bfc7b7e57d051d7e269daf5f0b460c7e14ab69dc894c90ab195"
     },
@@ -413,6 +413,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -422,6 +423,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -431,6 +433,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -440,6 +443,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 37632 of 37632 elements differ, worst 225.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -449,6 +453,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 31095 of 37632 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -458,6 +463,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 26065 of 37632 elements differ, worst 15.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -508,6 +514,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -517,6 +524,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -526,6 +534,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -535,6 +544,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 37456 of 37632 elements differ, worst 208.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -544,6 +554,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 31116 of 37632 elements differ, worst 15.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -553,6 +564,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 25713 of 37632 elements differ, worst 89.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -603,6 +615,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -612,6 +625,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -621,6 +635,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -630,6 +645,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 37632 of 37632 elements differ, worst 192.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -639,6 +655,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 29337 of 37632 elements differ, worst 12.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -648,6 +665,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 12071 of 37632 elements differ, worst 7.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -698,6 +716,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -707,6 +726,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -716,6 +736,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -725,6 +746,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 37493 of 37632 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -734,6 +756,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 29272 of 37632 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -743,6 +766,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 22899 of 37632 elements differ, worst 28.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -793,6 +817,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -802,6 +827,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -811,6 +837,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -820,6 +847,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 37186 of 37632 elements differ, worst 224.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -829,6 +857,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 29590 of 37632 elements differ, worst 12.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -838,6 +867,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 8606 of 37632 elements differ, worst 9.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -888,6 +918,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -897,6 +928,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -906,6 +938,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -915,6 +948,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 37561 of 37632 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -924,6 +958,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 29814 of 37632 elements differ, worst 15.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -933,6 +968,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 11182 of 37632 elements differ, worst 14.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -983,6 +1019,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -992,6 +1029,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.1959466002881527",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1001,6 +1039,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.826618194580078e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1054,6 +1093,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1063,6 +1103,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.3304576259106398",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1072,6 +1113,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 6.052851676940918e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1125,6 +1167,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1134,6 +1177,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.8659220188856125",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1143,6 +1187,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.003329038619995e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1196,6 +1241,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1205,6 +1251,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.0679511222988367",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1214,6 +1261,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.5672059059143066e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1267,6 +1315,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1276,6 +1325,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 2.4816781654953957",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1285,6 +1335,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 5.854666233062744e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1338,6 +1389,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1347,6 +1399,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 2.487569435557816",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1356,6 +1409,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 2.8908252716064453e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1409,6 +1463,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1418,6 +1473,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1427,6 +1483,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (4032, 3024, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1436,6 +1493,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1516 of 36578304 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1445,6 +1503,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -1502,6 +1561,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1511,6 +1571,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1520,6 +1581,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (3088, 2316, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1529,6 +1591,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 695 of 21455424 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1538,6 +1601,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -1595,6 +1659,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1604,6 +1669,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1613,6 +1679,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (4000, 3000, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1622,6 +1689,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 977 of 36000000 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1631,6 +1699,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -1688,6 +1757,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1697,6 +1767,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1706,6 +1777,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (6528, 4896, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1715,6 +1787,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 5498 of 95883264 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1724,6 +1797,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -1781,6 +1855,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1790,6 +1865,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1799,6 +1875,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (1600, 1280, 3) against replay (1440, 1152, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1808,6 +1885,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 294 of 6144000 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1817,6 +1895,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -1874,6 +1953,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1883,6 +1963,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1892,6 +1973,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'preview_dimensions' substitute is identical to the retained 'frame_dimensions'; no degradation was applied and nothing could be observed",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1901,6 +1983,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 577 of 6220800 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -1910,6 +1993,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -1967,6 +2051,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -1976,6 +2061,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -1985,6 +2071,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009014606475830078",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2038,6 +2125,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2047,6 +2135,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2056,6 +2145,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009448528289794922",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2109,6 +2199,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2118,6 +2209,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2127,6 +2219,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 510 of 512 elements differ, worst 0.0009241104125976562",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2180,6 +2273,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2189,6 +2283,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2198,6 +2293,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009298324584960938",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2251,6 +2347,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2260,6 +2357,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2269,6 +2367,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 511 of 512 elements differ, worst 0.0013937950134277344",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2322,6 +2421,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2331,6 +2431,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2340,6 +2441,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (4032, 3024, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2349,6 +2451,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1516 of 36578304 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2358,6 +2461,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -2415,6 +2519,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2424,6 +2529,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2433,6 +2539,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (3088, 2316, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2442,6 +2549,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 695 of 21455424 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2451,6 +2559,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -2508,6 +2617,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2517,6 +2627,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2526,6 +2637,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (4000, 3000, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2535,6 +2647,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 977 of 36000000 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2544,6 +2657,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -2601,6 +2715,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2610,6 +2725,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2619,6 +2735,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (6528, 4896, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2628,6 +2745,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 5498 of 95883264 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2637,6 +2755,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -2694,6 +2813,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2703,6 +2823,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2712,6 +2833,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'preview_dimensions' substitute is identical to the retained 'frame_dimensions'; no degradation was applied and nothing could be observed",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2721,6 +2843,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 96 of 3096768 elements differ, worst 153.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2730,6 +2853,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -2787,6 +2911,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2796,6 +2921,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2805,6 +2931,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009014606475830078",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2858,6 +2985,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2867,6 +2995,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2876,6 +3005,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009448528289794922",
           "expect_breaks": true,
           "kind": "substitution",
@@ -2929,6 +3059,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -2938,6 +3069,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -2947,6 +3079,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 510 of 512 elements differ, worst 0.0009241104125976562",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3000,6 +3133,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3009,6 +3143,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -3018,6 +3153,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009298324584960938",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3071,6 +3207,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3080,6 +3217,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -3089,6 +3227,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009667873382568359",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3142,6 +3281,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3151,6 +3291,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -3160,6 +3301,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0008182525634765625",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3213,6 +3355,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3222,6 +3365,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3231,6 +3375,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (4032, 3024, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3240,6 +3385,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1516 of 36578304 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3249,6 +3395,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -3306,6 +3453,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3315,6 +3463,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3324,6 +3473,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (3088, 2316, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3333,6 +3483,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 695 of 21455424 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3342,6 +3493,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -3399,6 +3551,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3408,6 +3561,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3417,6 +3571,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (4000, 3000, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3426,6 +3581,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 977 of 36000000 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3435,6 +3591,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -3492,6 +3649,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3501,6 +3659,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3510,6 +3669,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (6528, 4896, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3519,6 +3679,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 5498 of 95883264 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3528,6 +3689,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -3585,6 +3747,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3594,6 +3757,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3603,6 +3767,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "shape",
           "detail": "shape: baseline (1460, 1460, 3) against replay (1440, 1440, 3)",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3612,6 +3777,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 116 of 6394800 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3621,6 +3787,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -3678,6 +3845,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3687,6 +3855,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'frame_dimensions', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3696,6 +3865,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'preview_dimensions' substitute is identical to the retained 'frame_dimensions'; no degradation was applied and nothing could be observed",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3705,6 +3875,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 304 of 884547 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3714,6 +3885,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: byte-identical",
           "expect_breaks": false,
           "kind": "removal",
@@ -3771,6 +3943,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3780,6 +3953,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.19965387135744095",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3789,6 +3963,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.1350722312927246e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3842,6 +4017,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3851,6 +4027,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.208062581717968",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3860,6 +4037,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.965944051742554e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3913,6 +4091,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3922,6 +4101,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.19190648570656776",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3931,6 +4111,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.3898820877075195e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -3984,6 +4165,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -3993,6 +4175,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.1778278946876526",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4002,6 +4185,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.5180320739746094e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4071,6 +4255,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4080,6 +4265,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.20813053101301193",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4089,6 +4275,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.886967897415161e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4142,6 +4329,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4151,6 +4339,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4160,6 +4349,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4169,6 +4359,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 150528 of 150528 elements differ, worst 226.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4178,6 +4369,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 124255 of 150528 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4187,6 +4379,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 104926 of 150528 elements differ, worst 16.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4237,6 +4430,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4246,6 +4440,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4255,6 +4450,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4264,6 +4460,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 149852 of 150528 elements differ, worst 212.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4273,6 +4470,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 124564 of 150528 elements differ, worst 15.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4282,6 +4480,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 103042 of 150528 elements differ, worst 89.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4332,6 +4531,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4341,6 +4541,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4350,6 +4551,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4359,6 +4561,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 150528 of 150528 elements differ, worst 193.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4368,6 +4571,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 116909 of 150528 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4377,6 +4581,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 48150 of 150528 elements differ, worst 7.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4427,6 +4632,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4436,6 +4642,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4445,6 +4652,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4454,6 +4662,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 149965 of 150528 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4463,6 +4672,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 117448 of 150528 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4472,6 +4682,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 90523 of 150528 elements differ, worst 35.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4538,6 +4749,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4547,6 +4759,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4556,6 +4769,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4565,6 +4779,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 149793 of 150528 elements differ, worst 244.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4574,6 +4789,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 122971 of 150528 elements differ, worst 18.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4583,6 +4799,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 61792 of 150528 elements differ, worst 20.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4633,6 +4850,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4642,6 +4860,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4651,6 +4870,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4660,6 +4880,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 196580 of 196608 elements differ, worst 229.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4669,6 +4890,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 160416 of 196608 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4678,6 +4900,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 141610 of 196608 elements differ, worst 89.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4728,6 +4951,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4737,6 +4961,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4746,6 +4971,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4755,6 +4981,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 195486 of 196608 elements differ, worst 201.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4764,6 +4991,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 161784 of 196608 elements differ, worst 14.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4773,6 +5001,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 136891 of 196608 elements differ, worst 90.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4823,6 +5052,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4832,6 +5062,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4841,6 +5072,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4850,6 +5082,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 196608 of 196608 elements differ, worst 197.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4859,6 +5092,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 153790 of 196608 elements differ, worst 14.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4868,6 +5102,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 71487 of 196608 elements differ, worst 42.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4918,6 +5153,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4927,6 +5163,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4936,6 +5173,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -4945,6 +5183,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 195504 of 196608 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4954,6 +5193,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 152999 of 196608 elements differ, worst 11.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -4963,6 +5203,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 114761 of 196608 elements differ, worst 35.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5029,6 +5270,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5038,6 +5280,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5047,6 +5290,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5056,6 +5300,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 181215 of 196608 elements differ, worst 244.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5065,6 +5310,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 148462 of 196608 elements differ, worst 23.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5074,6 +5320,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 77726 of 196608 elements differ, worst 60.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5124,6 +5371,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5133,6 +5381,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5142,6 +5391,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5151,6 +5401,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 338687 of 338688 elements differ, worst 227.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5160,6 +5411,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 279338 of 338688 elements differ, worst 14.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5169,6 +5421,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 235941 of 338688 elements differ, worst 16.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5219,6 +5472,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5228,6 +5482,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5237,6 +5492,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5246,6 +5502,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 337181 of 338688 elements differ, worst 214.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5255,6 +5512,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 279887 of 338688 elements differ, worst 15.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5264,6 +5522,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 232033 of 338688 elements differ, worst 89.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5314,6 +5573,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5323,6 +5583,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5332,6 +5593,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5341,6 +5603,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 338688 of 338688 elements differ, worst 194.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5350,6 +5613,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 262553 of 338688 elements differ, worst 12.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5359,6 +5623,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 107513 of 338688 elements differ, worst 7.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5409,6 +5674,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5418,6 +5684,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5427,6 +5694,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5436,6 +5704,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 337482 of 338688 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5445,6 +5714,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 264067 of 338688 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5454,6 +5724,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 203671 of 338688 elements differ, worst 45.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5520,6 +5791,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5529,6 +5801,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5538,6 +5811,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5547,6 +5821,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 337035 of 338688 elements differ, worst 244.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5556,6 +5831,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 276578 of 338688 elements differ, worst 20.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5565,6 +5841,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 138375 of 338688 elements differ, worst 24.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5615,6 +5892,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5624,6 +5902,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.19965387135744095",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5633,6 +5912,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.1350722312927246e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5686,6 +5966,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5695,6 +5976,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.208062581717968",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5704,6 +5986,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.965944051742554e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5757,6 +6040,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5766,6 +6050,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.19190648570656776",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5775,6 +6060,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.3898820877075195e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5828,6 +6114,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5837,6 +6124,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.1778278946876526",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5846,6 +6134,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.5180320739746094e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5915,6 +6204,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5924,6 +6214,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.20813053101301193",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5933,6 +6224,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.886967897415161e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -5986,6 +6278,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -5995,6 +6288,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.19965387135744095",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6004,6 +6298,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.1350722312927246e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6057,6 +6352,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6066,6 +6362,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.208062581717968",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6075,6 +6372,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.965944051742554e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6128,6 +6426,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6137,6 +6436,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.19190648570656776",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6146,6 +6446,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.3898820877075195e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6199,6 +6500,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6208,6 +6510,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.1778278946876526",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6217,6 +6520,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.5180320739746094e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6286,6 +6590,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6295,6 +6600,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.20813053101301193",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6304,6 +6610,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.886967897415161e-05",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6357,6 +6664,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6366,6 +6674,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.798434495925903",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6375,6 +6684,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009589195251464844",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6428,6 +6738,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6437,6 +6748,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.948025703430176",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6446,6 +6758,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009531974792480469",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6499,6 +6812,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6508,6 +6822,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.2315757274627686",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6517,6 +6832,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009434223175048828",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6570,6 +6886,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6579,6 +6896,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.551276206970215",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6588,6 +6906,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009307861328125",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6641,6 +6960,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6650,6 +6970,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.220901012420654",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6659,6 +6980,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0008118152618408203",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6712,6 +7034,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6721,6 +7044,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 5.163954973220825",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6730,6 +7054,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009713172912597656",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6783,6 +7108,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6792,6 +7118,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -6801,6 +7128,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009014606475830078",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6854,6 +7182,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6863,6 +7192,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -6872,6 +7202,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009448528289794922",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6925,6 +7256,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -6934,6 +7266,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -6943,6 +7276,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 510 of 512 elements differ, worst 0.0009241104125976562",
           "expect_breaks": true,
           "kind": "substitution",
@@ -6996,6 +7330,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7005,6 +7340,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7014,6 +7350,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009298324584960938",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7067,6 +7404,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7076,6 +7414,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7085,6 +7424,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0008182525634765625",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7138,6 +7478,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7147,6 +7488,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7156,6 +7498,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0008702278137207031",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7209,6 +7552,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7218,6 +7562,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7227,6 +7572,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009014606475830078",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7280,6 +7626,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7289,6 +7636,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7298,6 +7646,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009448528289794922",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7351,6 +7700,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7360,6 +7710,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7369,6 +7720,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 510 of 512 elements differ, worst 0.0009241104125976562",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7422,6 +7774,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7431,6 +7784,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7440,6 +7794,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009298324584960938",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7493,6 +7848,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7502,6 +7858,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7511,6 +7868,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0008859634399414062",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7564,6 +7922,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7573,6 +7932,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'stored_glintr100' substitute is identical to the retained 'embedding_raw'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -7582,6 +7942,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0008702278137207031",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7635,6 +7996,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7644,6 +8006,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.798434495925903",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7653,6 +8016,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009589195251464844",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7706,6 +8070,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7715,6 +8080,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.948025703430176",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7724,6 +8090,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009531974792480469",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7777,6 +8144,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7786,6 +8154,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 4.2315757274627686",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7795,6 +8164,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009434223175048828",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7848,6 +8218,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding_raw', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7857,6 +8228,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 3.551276206970215",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7866,6 +8238,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 512 of 512 elements differ, worst 0.0009307861328125",
           "expect_breaks": true,
           "kind": "substitution",
@@ -7919,6 +8292,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'bbox', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7928,6 +8302,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7937,6 +8312,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'det_score', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7946,6 +8322,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_3d_68', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7955,6 +8332,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_2d_106', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7964,6 +8342,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7973,6 +8352,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'gender', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7982,6 +8362,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'age', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -7991,6 +8372,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 8 of 4392 elements differ, worst 225.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8000,6 +8382,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 21 of 4392 elements differ, worst 250.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8009,6 +8392,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 2 of 4392 elements differ, worst 204.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8018,6 +8402,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 416 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8027,6 +8412,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 439 of 4392 elements differ, worst 254.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8036,6 +8422,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1050 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8045,6 +8432,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'gender'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8054,6 +8442,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'age'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8063,12 +8452,23 @@
           "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "TypeError: 'age' is int64, not an array",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 1.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
           "primitive": "age",
           "swap": "decade_bucket",
+          "verdict": "PASS"
+        },
+        {
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 1.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "gender",
+          "swap": "opposite_label",
           "verdict": "PASS"
         }
       ],
@@ -8122,6 +8522,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'bbox', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8131,6 +8532,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8140,6 +8542,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'det_score', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8149,6 +8552,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_3d_68', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8158,6 +8562,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_2d_106', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8167,6 +8572,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8176,6 +8582,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'gender', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8185,6 +8592,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'age', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8194,6 +8602,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 8 of 4392 elements differ, worst 178.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8203,6 +8612,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 20 of 4392 elements differ, worst 245.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8212,6 +8622,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 3 of 4392 elements differ, worst 250.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8221,6 +8632,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 422 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8230,6 +8642,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 431 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8239,6 +8652,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1031 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8248,6 +8662,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'gender'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8257,6 +8672,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'age'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8266,12 +8682,23 @@
           "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "TypeError: 'age' is int64, not an array",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 3.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
           "primitive": "age",
           "swap": "decade_bucket",
+          "verdict": "PASS"
+        },
+        {
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 1.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "gender",
+          "swap": "opposite_label",
           "verdict": "PASS"
         }
       ],
@@ -8325,6 +8752,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'bbox', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8334,6 +8762,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8343,6 +8772,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'det_score', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8352,6 +8782,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_3d_68', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8361,6 +8792,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_2d_106', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8370,6 +8802,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8379,6 +8812,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'gender', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8388,6 +8822,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'age', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8397,6 +8832,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 7 of 4392 elements differ, worst 240.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8406,6 +8842,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 21 of 4392 elements differ, worst 244.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8415,6 +8852,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 2 of 4392 elements differ, worst 38.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8424,6 +8862,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 416 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8433,6 +8872,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 435 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8442,6 +8882,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1024 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8451,6 +8892,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'gender'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8460,6 +8902,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'age'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8469,12 +8912,23 @@
           "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "TypeError: 'age' is int64, not an array",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 4.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
           "primitive": "age",
           "swap": "decade_bucket",
+          "verdict": "PASS"
+        },
+        {
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 1.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "gender",
+          "swap": "opposite_label",
           "verdict": "PASS"
         }
       ],
@@ -8528,6 +8982,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'bbox', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8537,6 +8992,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8546,6 +9002,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'det_score', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8555,6 +9012,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_3d_68', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8564,6 +9022,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'landmark_2d_106', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8573,6 +9032,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'embedding', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8582,6 +9042,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'gender', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8591,6 +9052,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'age', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8600,6 +9062,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 8 of 4392 elements differ, worst 160.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8609,6 +9072,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 20 of 4392 elements differ, worst 193.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8618,6 +9082,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 2 of 4392 elements differ, worst 126.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8627,6 +9092,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 422 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8636,6 +9102,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 425 of 4392 elements differ, worst 254.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8645,6 +9112,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 1041 of 4392 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8654,6 +9122,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'gender'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8663,6 +9132,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: the 'half_precision' substitute is identical to the retained 'age'; no degradation was applied and nothing could be observed",
           "expect_breaks": false,
           "kind": "substitution",
@@ -8672,12 +9142,23 @@
           "verdict": "INCONCLUSIVE"
         },
         {
-          "detail": "TypeError: 'age' is int64, not an array",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 4.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
           "primitive": "age",
           "swap": "decade_bucket",
+          "verdict": "PASS"
+        },
+        {
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1 of 4392 elements differ, worst 1.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "gender",
+          "swap": "opposite_label",
           "verdict": "PASS"
         }
       ],
@@ -8731,6 +9212,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8740,6 +9222,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8749,6 +9232,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8758,6 +9242,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 150528 of 150528 elements differ, worst 226.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8767,6 +9252,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 124255 of 150528 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8776,6 +9262,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 104926 of 150528 elements differ, worst 16.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8826,6 +9313,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8835,6 +9323,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8844,6 +9333,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8853,6 +9343,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 149852 of 150528 elements differ, worst 212.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8862,6 +9353,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 124564 of 150528 elements differ, worst 15.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8871,6 +9363,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 103042 of 150528 elements differ, worst 89.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8921,6 +9414,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8930,6 +9424,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8939,6 +9434,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -8948,6 +9444,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 150528 of 150528 elements differ, worst 193.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8957,6 +9454,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 116909 of 150528 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -8966,6 +9464,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 48150 of 150528 elements differ, worst 7.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -9016,6 +9515,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -9025,6 +9525,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -9034,6 +9535,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -9043,6 +9545,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 149965 of 150528 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -9052,6 +9555,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 117448 of 150528 elements differ, worst 13.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -9061,6 +9565,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 90523 of 150528 elements differ, worst 35.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -9111,6 +9616,7 @@
       "__test__": false,
       "ablations": [
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'source_region_pixels', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -9120,6 +9626,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'kps_source_px', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -9129,6 +9636,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "",
           "detail": "INCONCLUSIVE: \"replay needs 'patch_origin', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
@@ -9138,6 +9646,7 @@
           "verdict": "INCONCLUSIVE"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 150528 of 150528 elements differ, worst 254.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -9147,6 +9656,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 129109 of 150528 elements differ, worst 16.0",
           "expect_breaks": true,
           "kind": "substitution",
@@ -9156,6 +9666,7 @@
           "verdict": "PASS"
         },
         {
+          "compare_method": "exact_bytes",
           "detail": "exact_bytes: 91176 of 150528 elements differ, worst 28.0",
           "expect_breaks": true,
           "kind": "substitution",

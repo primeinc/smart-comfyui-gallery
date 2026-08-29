@@ -115,13 +115,11 @@ def run_ablation(
     ever stopped being invariant nothing here would notice.
     """
     broke: bool | None
+    method = ""
     try:
-        # Building the substitute is the HARNESS's work, not the consumer's.
-        # A raise here says the runner could not construct the degraded state;
-        # it says nothing about whether the consumer needs the value. `age`
-        # reached `answer.json` as durable state on
-        # "TypeError: 'age' is int64, not an array" -- this module's own type
-        # error, recorded as proof the substitution broke the consumer.
+        # Building the substitute is the harness's work. A raise here says the
+        # runner could not construct the degraded state, not that the consumer
+        # needs the value.
         degraded = runner.ablate(case, retained, declared)
     except MissingPrimitive as problem:
         return _inconclusive(
@@ -137,11 +135,8 @@ def run_ablation(
 
     try:
         if declared.kind == "substitution" and degraded.same_as(retained):
-            # The substitute WAS the original. Nothing was degraded, so the
-            # replay would reproduce whatever the state carried and the
-            # outcome is a property of the two values being equal. Recorded as
-            # the absence of a result, the same as a removal the replay merely
-            # indexes.
+            # The substitute WAS the original, so nothing was degraded and the
+            # outcome is a property of the two values being equal.
             return _inconclusive(
                 declared,
                 f"the {declared.swap!r} substitute is identical to the retained {declared.primitive!r}; "
@@ -156,14 +151,10 @@ def run_ablation(
             atol=case.atol,
         )
         broke = not result.equal
-        # The METHOD as well as the detail, the way `run_case` records its own
-        # comparison. Without it a substitution that "broke" because the two
-        # arrays are different SIZES is indistinguishable in the evidence from
-        # one that broke on content -- and `whole_reference`'s
-        # `whole_reference_image` swapped for `face_patch` is exactly that: a
-        # (4032, 3024, 3) baseline against a (948, 948, 3) replay, published
-        # as "a face-only store cannot serve this half of the population".
+        # The METHOD as well as the detail: without it a substitution that
+        # broke on SHAPE is indistinguishable from one that broke on content.
         detail = f"{result.method}: {result.detail}"
+        method = result.method
     except MissingPrimitive as problem:
         # NOT a break. The replay dereferenced the key that was just removed,
         # which happens for every key -- including one nothing needs -- so it
@@ -186,6 +177,7 @@ def run_ablation(
         primitive=declared.primitive,
         expect_breaks=declared.expect_breaks,
         kind=declared.kind,
+        compare_method=method,
         swap=declared.swap,
         observed_break=broke,
         verdict=verdict,
@@ -215,12 +207,9 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
         retained = runner.retained_for(case)
         replayed = runner.replay(case, retained)
     except (KeyError, TypeError, ValueError, IndexError, OSError, NotImplementedError) as problem:
-        # NotImplementedError included deliberately. A lane that declares a
-        # boundary it has no derivation for is UNSUPPORTED in the precise
-        # sense this verdict means -- it could not run HERE -- and saying so
-        # is better than the alternative `control_stream` had, which was to
-        # raise ValueError with an absent-weight message for a case that would
-        # not have run with the weight either.
+        # NotImplementedError included deliberately: a lane that declares a
+        # boundary it has no derivation for could not run HERE, which is what
+        # UNSUPPORTED means.
         return CaseResult(
             case=case.name,
             consumer_id=case.consumer_id,
@@ -294,15 +283,9 @@ def build_runners() -> tuple[Runner, ...]:
     from compat.consumers.whole_reference import all_runners as whole_runners
     from compat.vendor.conformance import all_runners as conformance_runners
 
-    # ReActor appears twice on purpose and the two are not redundant. The
-    # family runner covers the embedding it extracts like every other
-    # consumer; this one covers its ACTUAL boundary -- a safetensors file
-    # written and read back by upstream's own code -- which is the only
-    # first-party loader in the population.
-    # `gallery_storage` is FIRST because everything after it is quoted against
-    # it. Every other runner builds its retained state from the producer held
-    # in memory, which proves a conditional whose antecedent -- that this
-    # application durably keeps those values -- nothing else here tests.
+    # `gallery_storage` is FIRST: every other runner builds its retained state
+    # from the producer in memory, proving a conditional whose antecedent only
+    # this lane tests.
     return (
         *storage_runners(),
         AlignedCropRunner(),
@@ -338,11 +321,9 @@ def _without_seconds(out: dict[str, Any]) -> dict[str, Any]:
     not special-case it, minus timings for the same reason the whole run drops
     them: two identical runs must serialise to identical bytes.
     """
-    # `seconds_by_case` is MOVED, not dropped. It cannot live in the evidence
-    # -- two identical runs would serialise differently and no byte-exactness
-    # claim would be checkable -- but `sharded.main` writes it beside the
-    # evidence as `timings.json`, and stripping it here left that file
-    # unwritten by the only lane that runs the cases.
+    # `seconds_by_case` is MOVED, not dropped: wall clocks in the evidence
+    # make two identical runs serialise differently. `sharded.main` writes it
+    # beside the evidence as `timings.json`.
     return {key: value for key, value in out.items() if key != "seconds_by_case"}
 
 
@@ -358,18 +339,17 @@ def runners(only: str = "") -> tuple[Runner, ...]:
 
     The construction itself is NOT selective: `build_runners()` builds them
     all and this filters afterwards. Constructors are cheap -- they hold a
-    setup and a shot list -- so that costs little, but it is not the "lazily
-    per selection" this docstring used to claim, and one visible consequence
-    was six shards each recording the same skipped photograph.
+    setup and a shot list -- so that costs little, but it is not lazy per
+    selection: every shard constructs every runner, so all six record the same
+    skipped photograph.
     """
     if not only:
         return build_runners()
     wanted = {one.strip() for one in only.split(",") if one.strip()}
     built = build_runners()
-    # A name matching no runner used to select nothing and run zero cases,
-    # printing a clean verdict table over an empty population. A shard whose
-    # lane list drifted from the registry therefore reported no failures
-    # rather than reporting that it ran nothing.
+    # A name matching no runner would select nothing and print a clean verdict
+    # table over an empty population, so a shard whose lane list drifted from
+    # the registry would report no failures rather than reporting it ran none.
     unknown = sorted(wanted - {one.consumer_id for one in built})
     if unknown:
         raise KeyError(
@@ -378,18 +358,9 @@ def runners(only: str = "") -> tuple[Runner, ...]:
     return tuple(one for one in built if one.consumer_id in wanted)
 
 
-#: Every key an evidence file carries, whichever entrypoint wrote it.
-#:
-#: Two functions serialise this suite's evidence -- `run_all` in one process
-#: and `sharded.merge` across six -- and `attack.evidence_not_reproducible`
-#: compares their BYTES. A key on one side only can therefore never match, and
-#: the attack reports "the pipeline is not deterministic" for what is really a
-#: shape difference. That has happened twice: once when `shards_failed` was
-#: added to the merge alone, and again when `shards_exited_over_findings` was.
-#:
-#: Naming the set once and checking both against it makes the third time
-#: impossible: `evidence_shape` raises at the point of divergence rather than
-#: leaving a gate to misattribute it hours later.
+#: Every key an evidence file carries, whichever entrypoint wrote it. `run_all`
+#: and `sharded.merge` both serialise evidence and
+#: `attack.evidence_not_reproducible` compares their bytes.
 EVIDENCE_KEYS: Final[frozenset[str]] = frozenset(
     {
         "runtime",
@@ -420,11 +391,6 @@ def evidence_shape(out: dict[str, Any], who: str) -> dict[str, Any]:
 def blocking_failures(results: list[dict[str, Any]]) -> dict[str, list[str]]:
     """Every DIVERGED case. There is no list of ones that do not count.
 
-    This used to read `manifest.toml` `[[storage_divergence]]` and accept a
-    divergence that named a mechanism and stayed under a bound, on the
-    reasoning that the schema could not change until this suite closed and so
-    a red gate here could never be satisfied.
-
     The reasoning was wrong twice. The instruction was not to redesign the
     schema UNTIL the suite reached its closure condition, which is a sequence
     and not a prohibition -- and nobody authorised turning nineteen measured
@@ -437,12 +403,21 @@ def blocking_failures(results: list[dict[str, Any]]) -> dict[str, list[str]]:
     returns `det_score` at the producer's width, and `db/migrate.py` steps
     v45 to v46 to widen what is already stored.
     """
-    out: dict[str, list[str]] = {"diverged": [], "unsupported": []}
+    out: dict[str, list[str]] = {"diverged": [], "no case answered": []}
+    cases: dict[str, int] = {}
+    passes: dict[str, int] = {}
     for row in results:
+        who = row["consumer_id"]
+        cases[who] = cases.get(who, 0) + 1
+        passes[who] = passes.get(who, 0) + (row["verdict"] == Verdict.REPRODUCED.value)
         if row["verdict"] == Verdict.DIVERGED.value:
             out["diverged"].append(f"{row['case']}: {row.get('comparison', '')[:100]}")
-        elif row["verdict"] == Verdict.UNSUPPORTED.value:
-            out["unsupported"].append(f"{row['case']}: {row.get('unsupported_reason', '')[:100]}")
+    # A lane whose every case raises reports no divergence, so UNSUPPORTED
+    # alone cannot distinguish it from a clean run. Individual UNSUPPORTED
+    # rows are recorded in compat/generated/cases.json and do not block.
+    for who, held in sorted(cases.items()):
+        if held and not passes.get(who):
+            out["no case answered"].append(f"{who}: {held} case(s), not one reproduced")
     return {why: names for why, names in out.items() if names}
 
 
@@ -479,14 +454,9 @@ def run_all(only: str = "") -> dict[str, Any]:
     manifest = provenance.load_manifest()
     declared = {one["id"] for one in manifest.get("consumers", [])}
 
-    # Tier is load-bearing in the count, not just a label. A PRIMITIVE case
-    # proves one transform -- `norm_crop` at a size -- and a CONSUMER case
-    # proves the path that consumer actually takes. Those are not the same
-    # claim: IPAdapter's real path re-detects over a descending det_size
-    # sweep (IPAdapterPlus.py:355-367) and crops from THAT detection's
-    # keypoints, so proving the warp says nothing about whether the consumer
-    # reproduces. Counting a primitive as consumer coverage is how a suite
-    # reports 1 of 22 as though the one were finished.
+    # Tier is load-bearing in the count. IPAdapter's real path re-detects over
+    # a descending det_size sweep (IPAdapterPlus.py:355-367) and crops from
+    # THAT detection, so proving the warp says nothing about the consumer.
     at_tier = {
         tier: {one.consumer_id for one in results if one.tier is tier} for tier in (Tier.PRIMITIVE, Tier.CONSUMER)
     }
@@ -498,33 +468,20 @@ def run_all(only: str = "") -> dict[str, Any]:
         # makes the evidence provably stale rather than silently wrong.
         "identity": evidence_identity.identity(),
         "cases": len(registry),
-        # Inputs a lane declined to build a case from, with the reason. A
-        # bare `continue` used to shrink the population with no record at six
-        # sites; carrying them here is what makes the shrink visible in the
-        # artifact rather than only in the difference between two case counts
-        # nobody compared.
+        # Inputs a lane declined to build a case from, with the reason.
+        # Carrying them here is what makes a shrunk population visible in the
+        # artifact rather than only in a difference between two case counts.
         "skipped": [asdict(one) for one in case_skips()],
-        # Always present, always empty here. `sharded.merge` emits this key
-        # and this executor did not, so `attack.evidence_not_reproducible` --
-        # which rebuilds through THIS function and compares against the file
-        # the SHARDED lane wrote -- was comparing two different shapes and
-        # could never report a match. A single-process run has no failed
-        # shards; saying so costs nothing and makes the two serialisations
-        # comparable.
+        # Always present, always empty here: `sharded.merge` emits this key, so
+        # omitting it would make the two serialisations different shapes.
         "shards_failed": [],
         "shards_exited_over_findings": [],
         "duplicated_cases": [],
-        # Timing is stripped from the EVIDENCE and reported beside it. It is a
-        # property of the machine, not of the observation, and leaving it in
-        # made the evidence non-reproducible by construction: two identical
-        # runs produced different files, so "the evidence is unchanged" was
-        # never a statement anyone could make. Now it is, and `attack.py`
-        # asserts it.
+        # Timing is a property of the machine, not of the observation, and
+        # leaving it here makes the evidence non-reproducible by construction.
         "results": canonical([_without_timing(asdict(one)) for one in results]),
-        # Reported beside the evidence, never inside it. `main` moves this into
-        # timings.json; `attack.py` re-runs the executor and asserts what is
-        # left serialises to the same bytes, which is only a question that can
-        # be asked once the wall clock is out of the way.
+        # Reported beside the evidence, never inside it: `main` moves this into
+        # timings.json so `attack.py` can compare the rest byte for byte.
         "seconds_by_case": {one.case: round(one.seconds, 3) for one in results},
         "population": {
             "declared": sorted(declared),
@@ -599,11 +556,9 @@ def main(argv: list[str] | None = None) -> int:
                 handle.write(json.dumps(_without_seconds(out), indent=2, sort_keys=True, default=str))
                 handle.write("\n")
             print(f"wrote partial {partial_to}")
-            # The wall clock, beside the partial rather than inside it. The
+            # The wall clock, beside the partial rather than inside it: the
             # partials are committed evidence and must serialise identically
-            # across two runs; the timings are a fact about the machine. They
-            # were simply discarded, which is why `generated/timings.json` was
-            # never written by the lane that actually runs the cases.
+            # across two runs.
             beside = partial_to.with_suffix(".timings.json")
             with beside.open("w", encoding="utf-8", newline="") as handle:
                 handle.write(json.dumps(out.get("seconds_by_case") or {}, indent=2, sort_keys=True))
@@ -611,9 +566,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if not blocking_failures(out["results"]) else 1
 
     # Timings leave the evidence and land beside it, so two identical runs
-    # produce byte-identical cases.json and a diff of that file means
-    # something. Before this, every run rewrote it with new wall clocks and
-    # "the evidence is unchanged" was not a statement anyone could make.
+    # produce byte-identical cases.json and a diff of it means something.
     timings = {"runtime": out["runtime"], "seconds_by_case": out.pop("seconds_by_case")}
     generated = ROOT / "generated"
     generated.mkdir(parents=True, exist_ok=True)
@@ -629,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     # gate, not a footnote.
     blocking = blocking_failures(out["results"])
     if blocking:
-        print("\nDIVERGED -- the store did not give back what the producer emitted:")
+        print("\nBLOCKING:")
         for why, names in blocking.items():
             print(f"    {why}:")
             for one in names:

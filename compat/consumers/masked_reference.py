@@ -51,6 +51,7 @@ from compat.contracts.case import (
     note_skip,
 )
 from compat.harness import provenance
+from compat.storage import derivatives
 
 CONSUMER_ID: Final[str] = "anystory"
 
@@ -177,12 +178,9 @@ def face_box_mask(pair: Pair) -> tuple[UInt8Array, bool]:
     bgr = pair.image[:, :, ::-1].copy()
     found = producer.analysis().get(bgr)
     if not found:
-        # Full frame, and the caller is TOLD it is a fallback. AnyStory's
-        # example 1 is a cartoon sheep: there is no face to box, so the
-        # substitute becomes the most generous one available. The case still
-        # has to break under it, which is a stronger result than breaking
-        # under a tight box -- but reporting it as "a face rectangle" would
-        # be a claim about a detection that did not happen.
+        # Full frame, and the caller is TOLD it is a fallback: AnyStory's
+        # example 1 is a cartoon sheep with no face to box. Reporting it as "a
+        # face rectangle" would claim a detection that did not happen.
         out[:, :] = 255
         return out, False
     best = max(found, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
@@ -240,7 +238,13 @@ class MaskedReferenceRunner:
 
     def retained_for(self, case: Case) -> RetainedState:
         pair = self._pair(case)
-        return RetainedState(whole_reference_image=pair.image.copy(), subject_mask=pair.mask.copy())
+        image, mask = pair.image.copy(), pair.mask.copy()
+        return RetainedState(whole_reference_image=image, subject_mask=mask).priced(
+            {
+                "whole_reference_image": derivatives.lossless_bytes(image),
+                "subject_mask": derivatives.lossless_bytes(mask),
+            }
+        )
 
     def _artifact(self, name: str, image: UInt8Array, mask: UInt8Array) -> Artifact:
         # The boundary artifact is the pair, flattened together: a case that
@@ -250,12 +254,9 @@ class MaskedReferenceRunner:
         return Artifact(
             name=name,
             dtype=str(joined.dtype),
-            # The shape of `joined`, which is 1-D. It recorded
-            # `(image.size, mask.size)` -- the two contributions, not the
-            # artifact -- while `contracts/case.py:117` says shape is kept
-            # separately precisely so a shape failure is distinguishable from a
-            # value failure. A comparison reporting "baseline (a, b) against
-            # replay (c, d)" would have been naming a shape neither array had.
+            # The shape of `joined`, which is 1-D, not the two contributions:
+            # `contracts/case.py:117` keeps shape separately so a shape failure
+            # is distinguishable from a value failure.
             shape=joined.shape,
             sha256=digest(joined),
             values=joined,

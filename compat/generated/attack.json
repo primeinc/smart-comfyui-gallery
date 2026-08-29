@@ -1,5 +1,5 @@
 {
-  "all_detected": true,
+  "all_detected": false,
   "attacks": [
     {
       "detected": true,
@@ -32,7 +32,7 @@
       "notes": [
         "patch_origin <- origin_at_zero: exact_bytes: 37632 of 37632 elements differ, worst 225.0"
       ],
-      "observed": "0 removal(s) and 506 substitution(s) broke their replay, e.g. aligned_crop_112_1_id_document on patch_origin <- origin_at_zero",
+      "observed": "0 removal(s) and 498 substitution(s) broke their replay, e.g. aligned_crop_112_1_id_document on patch_origin <- origin_at_zero",
       "targets": "a primitive whose removal or degradation broke the replay"
     },
     {
@@ -44,11 +44,11 @@
       "targets": "generated/cases.json results"
     },
     {
-      "detected": true,
+      "detected": false,
       "expected": "a second run serialises to the same bytes as the first",
       "name": "evidence_not_reproducible",
       "notes": [],
-      "observed": "a second run reproduced all 823,542 bytes of the evidence",
+      "observed": "the two runs differ from byte 1,851: '794d851ed758567a407759ca73d49697cf15b48e4ffc37bfec' against '01b29616bd7b7c34ab27ae86685c9bb7aa32dc69ffd7e9a5b4'",
       "targets": "generated/cases.json"
     },
     {
@@ -60,11 +60,11 @@
       "targets": "generated/producer_inventory.json against the live producer"
     },
     {
-      "detected": true,
+      "detected": false,
       "expected": "provenance PASSES and the matrix reports every consumer exercised",
       "name": "positive_control",
       "notes": [],
-      "observed": "provenance PASS; 17/22 reproduced; blocking totals: none",
+      "observed": "provenance PASS; 16/22 reproduced; blocking totals: {'primitives_unproven': 20}",
       "targets": "the real manifest and the real evidence"
     }
   ],

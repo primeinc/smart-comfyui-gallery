@@ -41,6 +41,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
+from compat.contracts.case import settled_by_measurement
 from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
@@ -57,6 +58,9 @@ class Primitive:
     proof: list[str] = field(default_factory=list)
     bytes_per_face: int = 0
     note: str = ""
+    #: Whether any recorded break weighed the consumer's output rather than
+    #: settling on shape, dtype or an exception.
+    measured: bool = False
 
 
 def _read(name: str) -> dict[str, Any]:
@@ -152,10 +156,9 @@ def necessity() -> dict[str, Primitive]:
             held = out.setdefault(name, Primitive(name=name, verdict="UNTESTED"))
             if row["consumer_id"] not in held.consumers:
                 held.consumers.append(row["consumer_id"])
-            # None is INCONCLUSIVE and is NOT False. `bool(observed_break)`
-            # would fold "the ablation could not answer" into "the replay
-            # survived", publishing an untested primitive as DERIVABLE -- a
-            # positive claim, made on nothing.
+            # None is INCONCLUSIVE, not False: `bool(observed_break)` would
+            # fold "could not answer" into "survived" and publish an untested
+            # primitive as DERIVABLE.
             broke = one["observed_break"]
             if broke is None:
                 untested_somewhere[name] = True
@@ -175,11 +178,9 @@ def necessity() -> dict[str, Primitive]:
                 "which says nothing about whether the value carries the information"
             )
 
-        # The byte cost the whole artifact exists to total. The producer
-        # union prices the keys a PRODUCER emits; `retained_bytes` prices what
-        # a lane actually held. A name in neither is 0 because nothing
-        # measured it, which is a different statement from "it is free" and
-        # the reason the fallback is a measurement rather than a default.
+        # The producer union prices the keys a PRODUCER emits; `retained_bytes`
+        # prices what a lane held. A name in neither is 0 because nothing
+        # measured it, which is not the same as free.
         held.bytes_per_face = int(union.get(name, {}).get("bytes", 0)) or measured.get(name, 0)
 
         broke = broke_somewhere.get(name, False)
@@ -226,6 +227,7 @@ def substitutions() -> dict[tuple[str, str], Primitive]:
     out: dict[tuple[str, str], Primitive] = {}
     broke_somewhere: dict[tuple[str, str], bool] = {}
     survived_somewhere: dict[tuple[str, str], bool] = {}
+    methods: dict[tuple[str, str], set[str]] = {}
 
     for row in cases["results"]:
         for one in row.get("ablations", []):
@@ -239,11 +241,17 @@ def substitutions() -> dict[tuple[str, str], Primitive]:
             if broke is not None:
                 broke_somewhere[key] = broke_somewhere.get(key, False) or broke
                 survived_somewhere[key] = survived_somewhere.get(key, False) or not broke
+            if broke:
+                # Over EVERY row. `proof` is capped at three quotes for
+                # display, so a verdict read from it is a sample.
+                method = str(one.get("compare_method", ""))
+                methods.setdefault(key, set()).add(method)
+                held.measured = held.measured or settled_by_measurement(method)
             if broke and len(held.proof) < 3:
                 held.proof.append(_quote(row, one))
 
     for key, held in out.items():
-        if _shape_only(held.proof):
+        if methods.get(key) and methods[key] <= {"shape"}:
             held.note = (held.note + "; " if held.note else "") + (
                 "every break here is a SHAPE divergence: the substitute is a different size, "
                 "which says nothing about whether it carries the information"
@@ -290,11 +298,9 @@ def store_returns() -> set[str]:
         parts = str(row.get("baseline", {}).get("name") or "").split("|")
         if len(parts) < 2:
             continue
-        # Size, not shape. A scalar the store returned faithfully has shape
-        # () and must count as returned; `np.prod(())` is 1, which is the
-        # right answer. Only a zero-LENGTH array means nothing came back --
-        # `gallery_storage.retained_for` builds exactly that, `np.zeros(0)`,
-        # for a key the candidate had no column for.
+        # Size, not shape: a scalar returned faithfully has shape () and
+        # `np.prod(())` is 1, so only a zero-LENGTH array means nothing came
+        # back.
         size = 1
         for one in tuple(row.get("replay", {}).get("shape") or ()):
             size *= int(one)
@@ -410,8 +416,8 @@ def corroboration() -> list[dict[str, Any]]:
     `stored_vector_agreement` measurement is the independent fact: two vectors
     that really differ have a cosine well below 1.
 
-    A break with near-identical vectors, or no break with clearly different
-    ones, is UNCORROBORATED -- the verdict and the measurement disagree, and
+    A break with near-identical vectors, or no break with vectors that
+    differ, is UNCORROBORATED -- the verdict and the measurement disagree, and
     the manifest field they both depend on is the thing to suspect.
 
     The `order_reversed` swap is checked the same way against
@@ -455,9 +461,8 @@ def corroboration() -> list[dict[str, Any]]:
                 )
 
             # `order_reversed` predicts from `_reversal_observable`, a rule over
-            # two strings that touches no vector. `reversal_observed` asks the
-            # same question of the arrays. A rule that survives only because
-            # nothing checked it is the shape this whole pass removes.
+            # two strings that touches no vector; `reversal_observed` asks the
+            # same question of the arrays.
             if one.get("swap") == "order_reversed" and "reversal_observed" in held:
                 observed = bool(held["reversal_observed"])
                 out.append(
@@ -512,9 +517,8 @@ def declared_against_derived() -> dict[str, Any]:
     for consumer, names in declared.items():
         ran = exercised.get(consumer, set())
         # `reference_pixels` is retained by NOTHING on purpose: `face_family`
-        # ablates it to show `draw_kps` never consults pixels, and it is
-        # declared `expect_breaks=False`. A name whose whole point is that it
-        # is absent must not be reported as state the manifest forgot.
+        # ablates it to show `draw_kps` never consults pixels, so it must not
+        # be reported as state the manifest forgot.
         extra = sorted(ran - set(names) - {"reference_pixels"})
         if extra:
             undeclared[consumer] = extra
@@ -546,21 +550,15 @@ def build() -> dict[str, Any]:
     for one in swapped.values():
         by_verdict[one.verdict].append(one)
 
-    # MUST RETAIN is not "a removal broke" any more, and pretending otherwise
-    # emptied it. Removing the one key a replay indexes shows the replay
-    # indexes it, so every removal here ends INCONCLUSIVE; what establishes
-    # that a value must be kept is that no CHEAPER form of it serves. A
-    # primitive whose every substitute failed is exactly that, and it belongs
-    # in the durable set beside one a removal happened to break.
-    #
-    # `matrices._primitive_verdict` reads the same two sources and calls this
-    # NECESSARY AT THIS WIDTH. The two views must not disagree about what the
-    # evidence says.
+    # Removing the one key a replay indexes shows only that the replay indexes
+    # it, so what establishes that a value must be kept is that no cheaper form
+    # of it serves. `matrices._primitive_verdict` must agree.
     fails: dict[str, list[Primitive]] = defaultdict(list)
     serves: dict[str, set[str]] = defaultdict(set)
     for (primitive, swap), one in swapped.items():
         if one.verdict == "SUBSTITUTE_FAILS":
-            fails[primitive].append(one)
+            if one.measured:
+                fails[primitive].append(one)
         elif one.verdict == "SUBSTITUTE_SERVES":
             serves[primitive].add(swap)
 
@@ -583,12 +581,16 @@ def build() -> dict[str, Any]:
 
     keep = sorted(by_verdict["NECESSARY"] + by_width, key=lambda one: one.name)
     drop = sorted(by_verdict["DERIVABLE"], key=lambda one: one.name)
-    # Minus anything the substitutions settled. A primitive whose removal
-    # proved nothing and whose every cheaper form failed IS proven, and
-    # listing it in both places published it as durable state and as an open
-    # question in the same artifact.
+    # Minus anything the substitutions settled: a primitive whose removal
+    # proved nothing and whose every cheaper form failed is proven, and must
+    # not appear as an open question too.
     settled = {one.name for one in keep}
-    unproven = sorted((one for one in by_verdict["UNPROVEN"] if one.name not in settled), key=lambda one: one.name)
+    open_rows = sorted((one for one in by_verdict["UNPROVEN"] if one.name not in settled), key=lambda one: one.name)
+    # A primitive and a (primitive, swap) pair are different entities.
+    # `substitutions()` names a pair "<primitive> <- <swap>"; counting both
+    # under one key is why this file reported 7 where the matrix reported 5.
+    unproven = [one for one in open_rows if " <- " not in one.name]
+    unanswered_swaps = [one for one in open_rows if " <- " in one.name]
     ruled_out = sorted(by_verdict["SUBSTITUTE_FAILS"], key=lambda one: one.name)
     cheaper_serves = sorted(by_verdict["SUBSTITUTE_SERVES"], key=lambda one: one.name)
 
@@ -609,11 +611,11 @@ def build() -> dict[str, Any]:
         # The manifest's own `retained` column beside what the ablations
         # derived. Two answers to this suite's question, in one repository.
         "declared_against_derived": declared_against_derived(),
-        # Primitives whose every ablation was INCONCLUSIVE. Held apart from
-        # both `must_retain` and `derivable`, because the evidence supports
-        # neither: the replay indexed the key it had been denied, which is
-        # true of any key at all.
+        # Primitives whose every ablation was INCONCLUSIVE, held apart from
+        # both `must_retain` and `derivable` because the evidence supports
+        # neither.
         "unproven": [asdict(one) for one in unproven],
+        "substitutions_that_could_not_answer": [asdict(one) for one in unanswered_swaps],
         "derivable": [asdict(one) for one in drop],
         "substitutes_that_fail": [asdict(one) for one in ruled_out],
         "substitutes_that_serve": [asdict(one) for one in cheaper_serves],
@@ -643,6 +645,13 @@ def main() -> int:
         print(f"  {one['name']:<28} {one['note'][:78]}")
     if not out["unproven"]:
         print("  (none: every ablation asked a question it could answer)")
+
+    swaps = out["substitutions_that_could_not_answer"]
+    print(f"\nSUBSTITUTIONS THAT COULD NOT ANSWER ({len(swaps)})")
+    for one in swaps:
+        print(f"  {one['name']:<28} {one['note'][:78]}")
+    if not swaps:
+        print("  (none)")
 
     print(f"\nDERIVABLE -- removal broke nothing ({len(out['derivable'])})")
     for one in out["derivable"]:
@@ -702,20 +711,20 @@ def main() -> int:
         handle.write(json.dumps(out, indent=2, sort_keys=True, default=str))
         handle.write("\n")
     print(f"\nwrote {target}")
-    # Two ways this lane can be publishing something it did not establish.
-    #
     # A substitution whose verdict disagrees with its own measurement is a
     # manifest field asserting something the vectors do not support.
-    #
-    # And the manifest's `retained` column disagreeing with the set this lane
-    # derived is the suite's own question answered twice, differently, in one
-    # repository -- 12 declared names against 21 derived, disagreeing on 19,
-    # and in two vocabularies. Neither is automatically the wrong one; both
-    # being published side by side without comparison is the defect.
     uncorroborated = [one for one in out["substitution_corroboration"] if not one["corroborated"]]
     bad: list[str] = []
     if uncorroborated:
         bad.append(f"{len(uncorroborated)} substitution verdict(s) uncorroborated by measurement")
+    # An empty durable set is this lane producing no answer, which is a
+    # different state from a small one. Exiting 0 on it is the shape the
+    # storage lane had at 36 UNSUPPORTED, 0 PASS and exit 0.
+    if not out["must_retain"]:
+        bad.append(
+            f"MUST RETAIN is empty over {len(out['unproven'])} unproven primitive(s) and "
+            f"{len(out['substitutes_that_fail'])} failed substitution(s): this lane produced no answer"
+        )
     if bad:
         print("\nanswer NOT clean:")
         for one in bad:

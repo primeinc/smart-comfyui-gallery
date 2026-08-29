@@ -61,10 +61,9 @@ from compat.harness import provenance
 from compat.producers import insightface_pass as producer
 from compat.storage import derivatives, precision
 
-#: Where the packs live. Same root the application resolves through
-#: `vision/weights.py`, so the suite and the product read the same files.
-#: The same root `producers/insightface_pass.py` resolves, not a second
-#: copy of the literal: three modules held it and only one was overridable.
+#: Where the packs live: the root `vision/weights.py` resolves for the
+#: application and `producers/insightface_pass.py` resolves here, so the suite
+#: and the product read the same files.
 PACK_ROOT: Final[Path] = producer.MODELS_ROOT
 
 
@@ -110,10 +109,8 @@ def vendor_setups() -> dict[str, VendorSetup]:
     for row in manifest.get("consumers", []):
         setup = row.get("vendor_setup")
         # A whole-reference row carries a `kind` and belongs to
-        # `whole_reference.py`. Without this filter every one of them would
-        # inherit the `embedding = "raw"` default and generate an embedding
-        # case for a consumer that never computes one -- a case that would
-        # pass, and mean nothing.
+        # `whole_reference.py`; without this filter each would inherit the
+        # `embedding = "raw"` default and generate a meaningless case.
         if not setup or setup.get("kind") in {"whole_reference", "whole_reference_masked"}:
             continue
         out[row["id"]] = VendorSetup(
@@ -333,9 +330,8 @@ def upstream_draw_kps(consumer_id: str) -> Any:
     if consumer_id not in _renderers:
         repo, commit, path = _kps_source(consumer_id)
         # `PIL` is bound to the PACKAGE, not to PIL.Image: upstream writes
-        # `PIL.Image.fromarray(...)`, so binding the submodule here resolves
-        # that to `Image.Image.fromarray` and fails on the last line of a
-        # function that had already done all its work.
+        # `PIL.Image.fromarray(...)`, which binding the submodule would resolve
+        # to `Image.Image.fromarray`.
         fn, proof = pinned_source.load_symbol(
             repo,
             commit,
@@ -474,11 +470,9 @@ def kps_ablations() -> tuple[Ablation, ...]:
     return (
         Ablation(primitive="kps_source_px", expect_breaks=True),
         Ablation(primitive="frame_dimensions", expect_breaks=True),
-        # The size of the picture the STORE keeps rather than the size of
-        # the one the detector saw. `vision/thumbs` caps its largest raster
-        # variant at 1440, so a schema that recorded the derivative's
-        # geometry would record this -- and `draw_kps` renders onto a canvas
-        # of exactly these dimensions.
+        # The size of the picture the STORE keeps rather than the one the
+        # detector saw: `vision/thumbs` caps its largest raster variant at 1440
+        # and `draw_kps` renders onto a canvas of these dimensions.
         Ablation(
             primitive="frame_dimensions",
             swap="preview_dimensions",
@@ -491,10 +485,9 @@ def kps_ablations() -> tuple[Ablation, ...]:
             expect_breaks=True,
             kind="substitution",
         ),
-        # Inverted on purpose: this one must NOT break. `draw_kps` reads the
-        # reference image for its shape only, so substituting the pixels has
-        # to leave the output identical -- and if it ever does not, the claim
-        # "no source pixels required" is false and the storage design changes.
+        # Inverted on purpose: `draw_kps` reads the reference image for its
+        # shape only, so substituting the pixels must leave the output
+        # identical or the "no source pixels required" claim is false.
         Ablation(primitive="reference_pixels", expect_breaks=False),
     )
 
@@ -587,10 +580,9 @@ class FaceFamilyRunner:
         kps = np.asarray(best.kps, dtype=np.float32)
 
         if kind == "embedding":
-            # The vector that would have to be stored for THIS consumer. For
-            # most that is the glintr100 one already in the database; for
-            # PhotoMaker and InfiniteYou it is a second vector in a second
-            # space, which is exactly what the substitution ablation costs out.
+            # The vector that would have to be stored for THIS consumer: for
+            # most, the glintr100 one already in the database; for PhotoMaker
+            # and InfiniteYou, a second vector in a second space.
             crop = norm_crop112(shot.frame, kps)
             return RetainedState(
                 embedding_raw=embed_with(self.setup.embedding_model, crop),
@@ -614,8 +606,8 @@ class FaceFamilyRunner:
         measurement is compared against, so two calls returning different
         artifacts would already be a defect. Memoising is therefore free
         correctness-wise and not free otherwise: `draw_kps` allocates several
-        copies of a 4896x6528x3 canvas per call, and the measurement used to
-        trigger a second full render of it.
+        copies of a 4896x6528x3 canvas per call, and the measurement would
+        otherwise trigger a second full render of it.
         """
         if case.name not in self._baselines:
             self._baselines[case.name] = self._compute_baseline(case)

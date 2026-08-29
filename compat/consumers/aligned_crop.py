@@ -61,11 +61,8 @@ from compat.storage import derivatives, precision
 SIZES: Final[tuple[int, ...]] = (112, 224, 256, 336)
 
 #: This lane is `norm_crop` at four sizes over real geometry, not one vendor.
-#: It answered to `ipadapter_faceid_plus` -- a manifest consumer that has its
-#: own `FaceFamilyRunner` -- so two different runners' rows aggregated under
-#: one name, `sharded.merge`'s cross-shard duplicate check could not separate
-#: them, and `sharded.SHARDS` listed a lane called `aligned_crop` that matched
-#: no runner at all and put this one in the model-heavy shard instead.
+#: Its own consumer_id, so its rows do not aggregate under a manifest consumer
+#: that has its own `FaceFamilyRunner`.
 CONSUMER_ID: Final[str] = "aligned_crop"
 
 #: Corpus images used for real geometry. Two identities and both capture
@@ -255,10 +252,9 @@ class AlignedCropRunner:
                     Ablation(primitive="source_region_pixels", expect_breaks=True),
                     Ablation(primitive="kps_source_px", expect_breaks=True),
                     Ablation(primitive="patch_origin", expect_breaks=True),
-                    # The store kept the patch and forgot where it came
-                    # from; and the store kept the region through its own
-                    # WebP encoder. Both are things a schema can actually
-                    # do, and neither is a key the runner merely indexes.
+                    # A store that kept the patch and forgot its origin, and
+                    # one that kept the region through its own WebP encoder:
+                    # both are things a schema can do.
                     Ablation(
                         primitive="patch_origin",
                         swap="origin_at_zero",
@@ -271,10 +267,9 @@ class AlignedCropRunner:
                         expect_breaks=True,
                         kind="substitution",
                     ),
-                    # Width, not presence. A removal shows only that the
-                    # replay indexes the key; halving the float asks how
-                    # wide the column must be, and answers differently
-                    # for a coordinate than for a whole picture.
+                    # Width, not presence: a removal shows only that the replay
+                    # indexes the key, while halving the float asks how wide the
+                    # column must be.
                     Ablation(
                         primitive="kps_source_px",
                         swap="half_precision",
@@ -286,10 +281,8 @@ class AlignedCropRunner:
                     ablations.append(
                         Ablation(
                             # The retained key under question is the source
-                            # region: can a 256 crop come off the 336 one
-                            # instead of off the source? `aligned_crop_256`
-                            # named an output, not a column, so it reached
-                            # `answer.json` as durable state with no size.
+                            # region: can a 256 crop come off the 336 one rather
+                            # than off the source?
                             primitive="source_region_pixels",
                             swap="downscaled_from_336",
                             expect_breaks=True,
@@ -471,12 +464,9 @@ class AlignedCropRunner:
             try:
                 produced = self.replay(case, trial)
             except cv2.error:
-                # The ONE failure that legitimately means "this extent is too
-                # small": the warp could not be performed on it. Every other
-                # exception is a bug in the probe, and returning False for it
-                # told the search this extent does not reproduce -- inflating
-                # the reported `minimum_patch_extent` by however far the bug
-                # reached, with nothing in the evidence saying so.
+                # The ONE failure that means "this extent is too small": the
+                # warp could not be performed. Any other exception is a probe
+                # bug, and reading it as a failure inflates the reported extent.
                 return False
             if produced.values is None:
                 return False

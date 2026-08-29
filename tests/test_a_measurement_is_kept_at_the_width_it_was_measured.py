@@ -43,12 +43,9 @@ from tests.staging import NOW, fresh_schema
 DATASETS = pathlib.Path(os.environ.get("COMPAT_DATASETS", "C:/ComfyUI/output/sample-datasets"))
 KYC = DATASETS / "caucasian-people-kyc-photo-dataset" / "files"
 
-#: `models_dir` as `sg_web/home.py:49` means it -- the directory the app is
+#: `models_dir` as `sg_web/home.py:49` means it: the directory the app is
 #: pointed at, NOT the insightface root inside it. `vision/weights.py:112`
-#: joins `INSIGHTFACE_SUBDIR` onto this, and insightface's own FaceAnalysis
-#: then looks for `<that>/models/<pack>`; naming the inner directory here
-#: makes the backend look one level too deep and report the pack absent when
-#: it is present.
+#: joins `INSIGHTFACE_SUBDIR` onto this.
 MODELS = pathlib.Path(os.environ.get("SG_MODELS_DIR", "C:/ComfyUI/output/.AImodels"))
 
 #: What must exist for the real detector to run, spelled the way the loader
@@ -79,14 +76,8 @@ def photographs(limit: int = 2) -> list[pathlib.Path]:
 CORPUS = photographs()
 
 #: The SAME narrow filter `vision/faces.py:55-57` declares, restated where
-#: pytest can see it. `pytest.ini` sets `filterwarnings = error`, and pytest
-#: wraps each test in `catch_warnings`, which resets the module-level filter
-#: the application installs at import -- so a warning the app has already
-#: reasoned about and silenced at its source comes back as an error here.
-#:
-#: Module and message, never a bare `ignore`: insightface 1.0.1 aligns through
-#: skimage's pre-2.2 `estimate()` API and skimage 0.26 deprecates it with a
-#: FutureWarning on EVERY alignment. Every other warning stays fatal.
+#: pytest can see it: `catch_warnings` resets the filter the application
+#: installs at import. Module and message, so other warnings stay fatal.
 pytestmark = pytest.mark.filterwarnings(
     "ignore:.*`estimate` is deprecated.*:FutureWarning:insightface.utils.face_align"
 )
@@ -160,6 +151,41 @@ def test_a_dense_landmark_keeps_every_digit_the_detector_gave_it(path):
     moved = values[values != np.round(values, 5)]
     assert moved.size, (
         f"{path.name}: every stored coordinate is already exact at 5 decimal places, so this "
+        f"photograph cannot tell a rounded write from an unrounded one"
+    )
+
+
+@pytest.mark.slow
+@needs_the_real_thing
+@pytest.mark.parametrize("path", CORPUS, ids=lambda one: one.parent.name)
+def test_a_depth_landmark_keeps_every_digit_the_detector_gave_it(path):
+    """`round(x, 5)` on x/y and `round(z, 2)` on depth are gone from 1k3d68.
+
+    Both halves, because they were two separate roundings at two separate
+    widths and a test covering only x/y passes with the depth one reinstated.
+    Depth is asserted on its own: z is not normalized -- it stays in the
+    model's pixel-scaled units (vision/faces.py:491-497) -- so it is the one
+    coordinate whose magnitude makes 2 decimal places a real loss.
+    """
+    found, _ = detections(path)
+    dense = [one.attributes["landmark_3d_68"] for one in found if one.attributes and "landmark_3d_68" in one.attributes]
+    assert dense, f"{path.name}: no detection carried landmark_3d_68"
+
+    points = np.asarray(dense[0], dtype=np.float64)
+    assert points.ndim == 2, f"{path.name}: landmark_3d_68 is {points.shape}, expected (N, 3)"
+    assert points.shape[1] == 3, f"{path.name}: landmark_3d_68 is {points.shape}, expected (N, 3)"
+
+    flat = points[:, :2].ravel()
+    moved = flat[flat != np.round(flat, 5)]
+    assert moved.size, (
+        f"{path.name}: every stored x/y is already exact at 5 decimal places, so this "
+        f"photograph cannot tell a rounded write from an unrounded one"
+    )
+
+    depth = points[:, 2]
+    deep = depth[depth != np.round(depth, 2)]
+    assert deep.size, (
+        f"{path.name}: every stored depth is already exact at 2 decimal places, so this "
         f"photograph cannot tell a rounded write from an unrounded one"
     )
 
@@ -252,10 +278,9 @@ def test_the_stored_keypoint_is_the_one_the_detector_produced(db, a_library):
     produced, (width, height) = detections(path)
     (blob,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (written[0],)).fetchone()
     held = bytes(blob)
-    # Checked BEFORE the reshape. A float32 blob is 40 bytes, which reshapes
-    # to (5,) and raises `cannot reshape array of size 5 into shape (2)` --
-    # a crash three lines from the fact, naming neither the width nor the
-    # value. The test must say what is wrong with the row, not fall over it.
+    # Checked BEFORE the reshape: a float32 blob reshapes to (5,) and raises
+    # `cannot reshape array of size 5 into shape (2)`, naming neither the width
+    # nor the value.
     assert len(held) % (2 * 8) == 0, (
         f"the stored blob is {len(held)} bytes, which is not whole float64 pairs; "
         f"a float32 write path stores half this and loses source pixels on every read"
@@ -323,6 +348,126 @@ def test_the_v46_step_widens_a_stored_keypoint_without_moving_it(db, tmp_path):
     assert len(bytes(after)) == original.size * 8, "the blob was not widened"
     widened = np.frombuffer(bytes(after), dtype=np.float64).reshape(-1, 2)
     assert np.array_equal(widened, original.astype(np.float64)), "widening moved the value"
+
+
+@pytest.mark.slow
+def test_the_v46_step_leaves_an_already_widened_row_alone(db, tmp_path):
+    """A float64 blob is already the v46 shape. Skip it, never reinterpret it.
+
+    Reading one as float32 does not raise: 80 bytes become 20 values spanning
+    -5.0e-05 to 1.828125, written back as 160. And the step must not RAISE
+    either -- `migrate` rolls back and re-raises, leaving the file at v45,
+    which `db/connect.py` then refuses with no down step. One bad row would
+    brick the database.
+    """
+    already_wide = np.array(
+        [[0.3125, 0.5], [0.61, 0.5], [0.5, 0.6875], [0.375, 0.8125], [0.5625, 0.8125]],
+        dtype=np.float64,
+    )
+    face_id = _one_face(db, tmp_path, "already_wide", already_wide.tobytes())
+
+    migrate.STEPS[45](db)
+
+    (after,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    assert bytes(after) == already_wide.tobytes(), "an already-float64 row was rewritten"
+
+
+@pytest.mark.slow
+def test_the_v46_step_leaves_a_ragged_blob_alone(db, tmp_path):
+    """A blob that is not whole float32 PAIRS is skipped, not converted.
+
+    44 bytes is eleven floats: divisible by 4 and unreshapeable to (N, 2). A
+    `% 4` guard admits it and writes back 88 bytes of malformed float64.
+    """
+    face_id = _one_face(db, tmp_path, "ragged", bytes(44))
+
+    migrate.STEPS[45](db)
+
+    (held,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    assert len(bytes(held)) == 44, f"a ragged blob was rewritten to {len(bytes(held))} bytes"
+
+    # Both lengths are caught by `len(held) % 8`. 37 also proves the check is
+    # load-bearing: `np.frombuffer` raises on a non-multiple-of-4, and a raise
+    # rolls the migration back and leaves the database unopenable at v45.
+    other = _one_face(db, tmp_path, "unaligned", bytes(37))
+
+    migrate.STEPS[45](db)
+
+    (after,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (other,)).fetchone()
+    assert len(bytes(after)) == 37, f"an unaligned blob was rewritten to {len(bytes(after))} bytes"
+
+
+@pytest.mark.slow
+def test_the_v46_step_refuses_an_infinite_coordinate(db, tmp_path):
+    """NaN is admitted; an infinity is not.
+
+    `vision/faces.py` `_clamp01` returns nan for nan, so a legitimate row can
+    carry one. It cannot carry an infinity, and a check that filters on
+    `np.isfinite` drops both before testing the range -- so an all-infinity
+    blob and one mixing inf with real coordinates both pass.
+    """
+    both = np.array([[0.5, float("inf")], [0.25, 0.75]], dtype=np.float32)
+    face_id = _one_face(db, tmp_path, "infinite", both.tobytes())
+
+    migrate.STEPS[45](db)
+
+    (after,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    assert bytes(after) == both.tobytes(), "a row carrying an infinity was widened"
+
+
+@pytest.mark.slow
+def test_the_v46_step_widens_a_row_carrying_a_nan(db, tmp_path):
+    """A NaN coordinate is the producer's own output and must not block the row."""
+    held = np.array([[0.5, float("nan")], [0.25, 0.75]], dtype=np.float32)
+    face_id = _one_face(db, tmp_path, "with_nan", held.tobytes())
+
+    migrate.STEPS[45](db)
+
+    (after,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    assert len(bytes(after)) == held.size * 8, "a row carrying a NaN was left at float32"
+
+
+@pytest.mark.slow
+def test_a_small_float64_blob_is_widened_again(db, tmp_path):
+    """The limit of reinterpretation, pinned as behaviour rather than prose.
+
+    `user_version` is what says a blob is float32, so the step reads it that
+    way first. A float64 blob whose magnitudes fall in [2**-16, 2**-8) has
+    high words that read as float32 in [0, 1), so it passes `plausible` and is
+    widened again, doubling the point count. Reaching this needs float64 at
+    v45, which one build wrote before the version bump landed.
+
+    Asserted so the gap is discoverable and so closing it fails here.
+    """
+    small = np.array([[2.0**-16, 2.0**-10], [2.0**-9, 2.0**-12]], dtype=np.float64)
+    face_id = _one_face(db, tmp_path, "small_wide", small.tobytes())
+
+    migrate.STEPS[45](db)
+
+    (after,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    assert len(bytes(after)) == len(small.tobytes()) * 2, (
+        "the step no longer widens a small float64 blob; the gap this pins is closed and "
+        "this test should assert the row is left alone"
+    )
+
+
+@pytest.mark.slow
+def test_the_v46_step_is_idempotent(db, tmp_path):
+    """Running it twice leaves the same bytes.
+
+    It cannot raise, so an operator who re-runs a partially applied upgrade
+    must not get a second widening on top of the first.
+    """
+    original = np.array([[0.25, 0.5], [0.75, 0.125]], dtype=np.float32)
+    face_id = _one_face(db, tmp_path, "twice", original.tobytes())
+
+    migrate.STEPS[45](db)
+    (once,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    migrate.STEPS[45](db)
+    (twice,) = db.execute("SELECT landmarks FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+
+    assert bytes(once) == bytes(twice), "a second run moved the value"
+    assert np.array_equal(np.frombuffer(bytes(twice), dtype=np.float64).reshape(-1, 2), original.astype(np.float64))
 
 
 @pytest.mark.slow

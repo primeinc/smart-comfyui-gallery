@@ -81,16 +81,15 @@ GIT_SECONDS: Final[float] = 60.0
 CONSISID_MODELS: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures" / "consisid"
 
 #: PuLID's own ID adapter, from guozinan/PuLID -- the repo its README Model Zoo
-#: names. `get_id_embedding` runs the adapter (pipeline.py:210-214), so without
-#: this the method stops short of what it returns.
+#: names. `get_id_embedding` runs the adapter (pipeline.py:210-214).
 #:
-#: v1, NOT v1.1, and the pairing is the point. `pulid/pipeline.py` builds
-#: `IDEncoder` (encoders.py) whose keys are `id_adapter.body.*`;
-#: `pulid/pipeline_v1_1.py` builds `IDFormer` (encoders_transformer.py) whose
-#: keys are `id_adapter.id_embedding_mapping.*`. Loading v1.1 weights into the
-#: v1 encoder fails on every key. v1 is also the path with NO substitutions:
-#: it takes `img2tensor` from pulid/utils.py, while v1.1 takes it from basicsr,
-#: which is not installed here and would have to be stood in for.
+#: v1, NOT v1.1: `pulid/pipeline.py` builds `IDEncoder` (encoders.py) with
+#: `id_adapter.body.*` keys while `pulid/pipeline_v1_1.py` builds `IDFormer`
+#: (encoders_transformer.py) with `id_adapter.id_embedding_mapping.*`, so v1.1
+#: weights fail on every key.
+#: v1 is also the path with no substitutions: it takes `img2tensor` from
+#: pulid/utils.py, while v1.1 takes it from basicsr, which is not installed
+#: here.
 PULID_WEIGHT: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures" / "pulid" / "pulid_v1.bin"
 
 #: Everything downloaded from a vendor's own published tree, kept outside this
@@ -601,10 +600,9 @@ def _vendor_blob(clone: Path, commit: str, path: str, into: str, name: str) -> P
     done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
     if done.returncode != 0:
         return None
-    # The cache is checked AGAINST the pin, not instead of it. A hit used to
-    # return early and the row still recorded `fixture_origin="vendor_commit"`
-    # -- so a file edited, truncated or left over from another commit was
-    # published as the vendor's committed bytes. The blob read is cheap; the
+    # The cache is checked AGAINST the pin, not instead of it: a hit that
+    # returned early would publish a file edited, truncated or left over from
+    # another commit as the vendor's committed bytes. The blob read is cheap; the
     # claim it supports is not.
     if where.is_file() and where.read_bytes() == done.stdout:
         return where
@@ -1991,7 +1989,10 @@ def against_upstream(rows: list[Acceptance]) -> list[dict[str, Any]]:
                 }
             )
             continue
-        held = (row.boundary or {}).get(expected["key"])
+        # `row.boundary` is the dict the runners in this module write, keyed
+        # "id_cond". It is a different namespace from `[[consumers]].boundary`
+        # in compat/manifest.toml, which holds upstream's own names.
+        held = (row.boundary or {}).get(expected["boundary_key"])
         shape = list(held.get("shape", [])) if isinstance(held, dict) else None
         if not shape:
             out.append(
@@ -1999,18 +2000,20 @@ def against_upstream(rows: list[Acceptance]) -> list[dict[str, Any]]:
                     "consumer_id": row.consumer_id,
                     "stated": True,
                     "agrees": False,
-                    "detail": f"the run recorded no {expected['key']!r} shape to compare",
+                    "detail": f"the run recorded no {expected['boundary_key']!r} shape to compare",
                 }
             )
             continue
         if "shape" in expected:
             agrees = shape == list(expected["shape"])
-            detail = f"{expected['key']} {shape} against upstream's {list(expected['shape'])}"
+            detail = f"{expected['boundary_key']} {shape} against upstream's {list(expected['shape'])}"
         else:
             # The token axis is the second-to-last: [batch, tokens, width].
             tokens = shape[-2] if len(shape) >= 2 else None
             agrees = tokens == int(expected["tokens"])
-            detail = f"{expected['key']} {shape} carries {tokens} tokens, upstream declares {expected['tokens']}"
+            detail = (
+                f"{expected['boundary_key']} {shape} carries {tokens} tokens, upstream declares {expected['tokens']}"
+            )
         out.append(
             {
                 "consumer_id": row.consumer_id,
@@ -2126,7 +2129,7 @@ def main(argv: list[str] | None = None) -> int:
         handle.write("\n")
     print(f"wrote {target}")
 
-    # Three ways this lane can be wrong, and it used to gate on one. A vendor
+    # Three ways this lane can be wrong, and it gates on all three. A vendor
     # that raised and a boundary that will not repeat are both fatal to
     # "LAYER ONE: the reference itself is known to run" -- reporting them and
     # exiting 0 is the shape of a suite reporting success it did not earn.

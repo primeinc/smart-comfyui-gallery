@@ -92,21 +92,9 @@ class GalleryStorageRunner:
                         atol=0.0,
                         exact_bytes=False,
                         retained=(key,),
-                        # No ablation. The retained state here holds exactly
-                        # one key, so removing it and then reading it back
-                        # cannot come out any way but "broke" -- for every
-                        # key, including one nothing needs. That vacuous
-                        # experiment was the SOLE necessity evidence behind
-                        # pose, age, gender, bbox, det_score, kps and
-                        # landmark_2d_106 in `answer.json`.
-                        #
-                        # This lane's real finding is conservation, and the
-                        # case verdict already carries it: baseline is the
-                        # producer's value, replay is what the candidate gave
-                        # back, and a divergence between them is the whole
-                        # measurement. Necessity is a different question and
-                        # belongs to the consumer lanes that actually replay
-                        # a consumer's boundary.
+                        # No ablation: with one key retained, removing and
+                        # reading it back can only come out "broke". This lane
+                        # measures conservation, which the verdict carries.
                         measurements=("stored_form",),
                         note=candidate.described,
                     )
