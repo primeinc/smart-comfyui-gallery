@@ -56,10 +56,14 @@ The rules above apply to docstrings. A docstring is not a place for implementati
 
 A check no hook runs does not gate anything. Wire a new check into the hook, and prove it can fail.
 
-### A test that passes alone and fails in parallel
+### A test that passes alone and fails in the suite
 
-That is evidence of a race, not evidence against a defect. Serial execution beating a race is what a race looks like from outside.
+"Passes alone" says the cause is something the rest of the run supplies. It does not say what. Ordering, shared state and timing all fit that symptom, and choosing between them by argument costs a commit per guess.
 
-`test_every_picture_carries_the_correction` failed five pushes with `assert 1 == 3` and passed alone in 2.92s each time. It waited for `[data-person-pictures]`, the container, then counted `[data-person-picture]`, the shells that arrive inside it. The count read whatever had rendered. `expect(...).to_have_count()` retries, and was already on the next line for a different locator.
+`test_every_picture_carries_the_correction` asserted a count of 3 and read 1. It was diagnosed as a race and given `expect(...).to_have_count()`, which retries where the previous `wait_for_selector` plus an immediate count did not. It read 1. It was then diagnosed as contention and given a thirty second timeout. It read 1, and the failure output said `63 × locator resolved to 1 element` — the count never moved, so waiting longer was never going to change it.
 
-Wait for the thing being asserted, not for its container. Reading does not catch this one either: the prose is right, the code is right, and only the ordering is wrong.
+The cause was order. `live` is module-scoped (tests/conftest.py), so one server and one library serve every test in the file. Two of those tests deny a picture each, and a denial is a DELETE keyed on `(file_id, person_id)` that undo does not restore (db/derived.py `withdraw_attribution`). Run after both, the control sees 1. `just prove-push` selects with pytest-testmon, which does not order tests by position in the file.
+
+Running the three node ids in that order reproduces it serially, in 35s, with no parallelism at all. The measurement that settled it was printed in the failure output of the first wrong diagnosis, two commits earlier.
+
+Give a check its own state, or prove the order it needs.
