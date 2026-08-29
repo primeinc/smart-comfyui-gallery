@@ -107,8 +107,10 @@ def test_every_picture_carries_the_correction(page: Page, live: Live):
     held = live.prepared
     assert isinstance(held, dict)
     page.goto(f"/p/{held['person']}")
-    page.wait_for_selector("[data-person-pictures]", timeout=10_000)
-    assert _shells(page) == FILES
+    # `to_have_count` and not a count off `_shells`: waiting for
+    # `[data-person-pictures]` waits for the CONTAINER, and the shells inside it
+    # arrive after. Counting at that moment reads whatever has rendered so far.
+    expect(page.locator("[data-person-picture]")).to_have_count(FILES)
     expect(page.locator("[data-person-not-here]")).to_have_count(FILES)
 
 
@@ -129,8 +131,7 @@ def test_saying_it_takes_that_picture_off_the_person(page: Page, live: Live):
     # and it holds across a reload, because it is a record and not a
     # thing the browser drew
     page.reload()
-    page.wait_for_selector("[data-person-pictures]", timeout=10_000)
-    assert _shells(page) == was - 1
+    expect(page.locator("[data-person-picture]")).to_have_count(was - 1)
 
 
 def test_undo_says_what_it_actually_undoes(page: Page, live: Live):
