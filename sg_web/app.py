@@ -171,10 +171,20 @@ def what_this_can_do(request: Request) -> Template:
 
 
 def _covers(newest: list) -> list[str]:
-    """Which of the recent stretch the hero tile shows. A library too
-    small to stride shows what it has, in order."""
+    """Which of the recent stretch the hero tile shows, as ADDRESSES.
+
+    Through `thumbs.asset_url`, like every other surface that draws a
+    picture. The template used to build `/thumb/{{ slug }}` itself, which
+    it cannot do correctly: that route is the honest fallback for a file
+    ingest has not hashed, and a page spelling it asks for the slow path
+    on every picture that HAS been hashed. A library too small to stride
+    shows what it has, in order.
+    """
+    from vision import thumbs
+
     reach = newest if len(newest) < COVER_REACH else newest[::COVER_STRIDE]
-    return [row[0] for row in reach[:COVERS]]
+    found = [thumbs.asset_url(row[3], row[0], medium=row[4]) for row in reach[:COVERS]]
+    return [one for one in found if one]
 
 
 @get("/", sync_to_thread=True)
@@ -208,7 +218,12 @@ def front(state: State, request: Request) -> Response | Template:
                     "people": people,
                     "collections": collections_held,
                     "artifacts": artifacts,
-                    "newest": _rows(newest[:NEWEST_STRIP], ("slug", "name", "mtime")),
+                    # The first three columns, named. The row carries the sha and
+                    # the kind as well now, because the browser's covers go
+                    # through `thumbs.asset_url` -- but the machine's strip
+                    # is the strip it has always been, and widening it here
+                    # would change a contract nothing asked to change.
+                    "newest": _rows([row[:3] for row in newest[:NEWEST_STRIP]], ("slug", "name", "mtime")),
                 },
                 headers=VARIES,
             )

@@ -77,6 +77,14 @@ class Gap:
 #: each one is still served. An entry whose address stops being served
 #: disappears rather than 404ing, which is the failure that matters.
 #:
+#: Being SERVED is not enough to be a surface either, and that cost two
+#: more entries. /clusterings and /views answer 200 to a browser and hand
+#: it raw JSON -- listing them offered a person a door onto a wall of
+#: braces. They are recorded as machine reads in sglint/policy.py
+#: UNSURFACED instead, with the page a person actually goes to. The crawl
+#: in tests/test_the_shell_mounts_every_surface.py is what caught it:
+#: every link every page emits has to land a person on a page.
+#:
 #: What this does NOT hold: a page added tomorrow with no entry here will
 #: not appear. That is a real gap and it is named rather than papered
 #: over -- sglint's SG010 is what catches an unreachable surface, and it
@@ -96,8 +104,6 @@ SAID: dict[str, tuple[str, str]] = {
     "/models": ("Models", "the checkpoints these pictures were made with"),
     "/loras": ("LoRAs", "the adapters, and what each one was used on"),
     "/workflows": ("Workflows", "the graphs behind the generated files"),
-    "/clusterings": ("Face groupings", "each run of the face clusterer, and what it disagreed with"),
-    "/views": ("Saved views", "the questions kept from the filter bar"),
     "/what": ("What this can do", "this page"),
 }
 

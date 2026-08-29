@@ -47,8 +47,13 @@ LIST_MOST = 120
 
 # --- the grid --------------------------------------------------------------
 
+#: The sha and the kind come with the row because a caller drawing these
+#: needs `vision/thumbs.py asset_url`, which takes both -- and a template
+#: that builds `/thumb/<slug>` itself cannot know whether the file has
+#: been hashed, so it asks for the slow route on every picture that has.
 NEWEST_FIRST = (
-    "SELECT e.slug, f.name, f.mtime FROM file f JOIN entity e ON e.id = f.id"
+    "SELECT e.slug, f.name, f.mtime, f.content_sha256, f.kind"
+    " FROM file f JOIN entity e ON e.id = f.id"
     " WHERE f.missing_since IS NULL ORDER BY f.mtime DESC LIMIT ?"
 )
 

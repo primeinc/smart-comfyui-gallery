@@ -1033,18 +1033,28 @@ def _page_shapes(templates: typing.Iterable[pathlib.Path]) -> list[Finding]:
     # A recorded decision about a page that is gone says a choice was
     # taken about something that does not exist, which is worse than no
     # note at all.
-    names = {source.name for source in templates}
-    found.extend(
-        Finding(
-            REPO_ROOT / "sglint" / "policy.py",
-            1,
-            0,
-            "SG502",
-            f"{held} is recorded as owning its document but is not a template",
+    #
+    # Against THIS REPOSITORY's templates, not against whatever set the
+    # caller passed. `_page_shapes` is handed arbitrary template lists --
+    # sglint's own tests build two files in a tmp_path to prove the rule
+    # bites -- and reading the record against those said `field.html is
+    # recorded but is not a template` about a directory that was never
+    # meant to hold it. A rule that fires on its own test fixtures is a
+    # rule nobody can trust the output of.
+    here = REPO_ROOT / "sg_web" / "templates"
+    if here.is_dir():
+        names = {source.name for source in here.glob("*.html")}
+        found.extend(
+            Finding(
+                REPO_ROOT / "sglint" / "policy.py",
+                1,
+                0,
+                "SG502",
+                f"{held} is recorded as owning its document but is not a template",
+            )
+            for held in policy.OWN_DOCUMENT
+            if held not in names
         )
-        for held in policy.OWN_DOCUMENT
-        if held not in names
-    )
     return found
 
 

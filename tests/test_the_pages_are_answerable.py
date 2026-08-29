@@ -242,7 +242,7 @@ def test_the_front_page_shows_the_newest_first(library):
     conn = library["conn"]
     rows = pages.newest(conn)
     assert len(rows) == 12
-    mtimes = [mtime for _, _, mtime in rows]
+    mtimes = [row[2] for row in rows]
     assert mtimes == sorted(mtimes, reverse=True)
     assert "file_recent" in " ".join(plan(conn, pages.NEWEST_FIRST, (60,))), "the partial index is not being used"
     assert_no_growing_scan(conn, pages.NEWEST_FIRST, (60,))

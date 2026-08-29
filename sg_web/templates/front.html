@@ -42,7 +42,7 @@
     <a class="door door-wide" href="/g">
       {% if newest %}
       <span class="door-covers" aria-hidden="true">
-        {% for slug in newest %}<img src="/thumb/{{ slug }}" alt="" loading="lazy">{% endfor %}
+        {% for at in newest %}<img src="{{ at }}" alt="" loading="lazy">{% endfor %}
       </span>
       {% endif %}
       <span class="door-words">

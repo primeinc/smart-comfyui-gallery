@@ -480,6 +480,15 @@ UNSURFACED = {
     "/ws/events/frames": "the console's ledger feed, the same way",
     # Machine reads on purpose: a person reaches the same facts through a page.
     "/ways": "the query vocabulary, for a client building a question by hand",
+    "/clusterings": (
+        "every face-clustering run as JSON. A person reads the same facts as sentences: the "
+        "People page's empty state says where each run stands, and "
+        "/operations/clusterings/{left}/against/{right} shows two of them side by side"
+    ),
+    "/views": (
+        "the saved questions as JSON. A person meets them where they were saved -- the filter "
+        "bar offers them by name, and each one opens as the question it stands for"
+    ),
     "/timeline/at": "a moment lookup for a client driving the timeline itself",
     "/timeline/density": "the same, at bin resolution",
     "/timeline/pictures": "the same, over a span",
