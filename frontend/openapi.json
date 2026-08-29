@@ -7933,6 +7933,26 @@
                 "deprecated": false
             }
         },
+        "/what": {
+            "get": {
+                "summary": "WhatThisCanDo",
+                "operationId": "WhatWhatThisCanDo",
+                "responses": {
+                    "200": {
+                        "description": "Request fulfilled, document follows",
+                        "headers": {},
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "deprecated": false
+            }
+        },
         "/g/field/against": {
             "get": {
                 "summary": "FieldAgainst",

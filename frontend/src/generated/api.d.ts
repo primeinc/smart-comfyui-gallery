@@ -1624,6 +1624,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/what": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** WhatThisCanDo */
+        get: operations["WhatWhatThisCanDo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/g/field/against": {
         parameters: {
             query?: never;
@@ -7505,6 +7522,26 @@ export interface operations {
                             [key: string]: unknown;
                         } | unknown[];
                     };
+                };
+            };
+        };
+    };
+    WhatWhatThisCanDo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request fulfilled, document follows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
         };

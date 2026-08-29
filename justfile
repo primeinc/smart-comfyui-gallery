@@ -118,10 +118,12 @@ prove:
 # do that, however carefully the cleanup is ordered, because the ordering
 # only holds when the cleanup runs at all.
 #
-# Two false failures on every push is how a gate stops being read, so the
-# honest move is to say which two and why rather than leave them red.
-# They pass in a real checkout, which is where they mean something:
-# `just test-slow` runs them.
+# So they are deselected from the worktree pass and RUN IN THE CHECKOUT
+# at the end of this recipe. The gate still runs them -- a test the gate
+# never runs is not gating anything -- and it runs them in the only place
+# they can answer: both ask whether this machine has an environment
+# beside the source and whether the handover would find it, which is a
+# question about the installation and not about the commit.
 [doc('Pre-push gate: skip a proven tree, else run the affected slice of the suite')]
 [script]
 prove-push: web::build
@@ -171,7 +173,20 @@ prove-push: web::build
       -p pytest-testmon --testmon --testmon-forceselect
     settled=$?
     if [ -f "$pushed/.testmondata" ]; then cp "$pushed/.testmondata" "$root/.testmondata"; fi
-    exit $settled
+    # The two deselected above, run HERE, in the checkout. Deselecting
+    # them from the worktree pass is not the same as not running them: a
+    # test the gate never runs is not gating anything.
+    #
+    # The checkout is also the only place they mean anything. Both ask
+    # whether THIS machine has an environment beside the source and
+    # whether the handover would find it -- a question about the
+    # installation, which no commit can change and no temporary copy of
+    # the source can answer.
+    cd "$root"
+    "$root/{{ python }}" -m pytest       "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it"       "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets"       -q --no-header
+    handover=$?
+    if [ "$settled" -ne 0 ]; then exit $settled; fi
+    exit $handover
 
 # The PWA's rasters, drawn from the mark: icons, the iOS splash set,
 # and the install-sheet screenshots photographed off the real app over
