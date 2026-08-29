@@ -555,22 +555,13 @@ def test_the_module_returns_identities_and_the_route_addresses_them(planned):
     assert view["links"]["search"].startswith("/search")
 
 
-# The only test here that changes the library on disk -- it replaces one
-# file's bytes and deletes another -- and `Stage.restore` compares the
-# library's (size, mtime) listing before anything else, so a mismatch
-# sends the NEXT test down the rebuild path: a whole fresh application,
-# library, scan and plan, 0.41s against the 0.01s a restore costs.
+# The only test here that changes the library on disk -- it replaces one file's
+# bytes and deletes another -- and `Stage.restore` compares the library's
+# (size, mtime) listing, so a mismatch sends the NEXT test down the rebuild path.
 #
-# It used to answer that by being last in the file. That is not an
-# ordering anything guarantees: pytest-testmon selects by coverage and
-# runs what it selected in ITS order, which put this seventh of nine
-# under `just prove-push` and cost the module a rebuild `_rebuilt_none`
-# then reported against whichever test happened to end the run.
-#
-# So it puts the library back instead, which holds in every order. Both
-# mutations are recoverable: `_listing` keys on (size, mtime), the bytes
-# are known, and `os.utime` restores a stamp -- so the deleted file goes
-# back as the same file, not merely as one with the same name.
+# It puts the library back rather than relying on running last, which no
+# ordering guarantees. Both mutations are recoverable: `_listing` keys on
+# (size, mtime), the bytes are known, and `os.utime` restores a stamp.
 def test_the_view_is_immune_to_the_live_library_moving_on(planned, request):
     """The relation changes, a file is replaced, a file is gone: the view
     over the frozen plan reads frozen hashes and frozen bytes only --

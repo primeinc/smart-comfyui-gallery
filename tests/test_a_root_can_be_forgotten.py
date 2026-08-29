@@ -39,10 +39,9 @@ def _host(tmp_path_factory):
     """One booted application, two roots, and the person's work on one of
     them -- registered, scanned and SNAPSHOTTED ONCE.
 
-    The scans are what this used to cost. Two `/roots` posts and two
-    sweeps per test is a tenth of a second of setup in front of tests
-    that answer in a hundredth, and every one of them was rebuilding the
-    identical library. Snapshotting after the scan (the shape
+    The scans are what this costs. Two `/roots` posts and two sweeps per
+    test would rebuild the identical library in front of every one of them,
+    so snapshotting after the scan (the shape
     tests/test_a_walk_says_what_it_is_doing.py uses) hands each test the
     scanned world back instead.
 

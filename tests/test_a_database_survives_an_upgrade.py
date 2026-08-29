@@ -1120,8 +1120,8 @@ def test_a_connection_that_cannot_be_prepared_closes_its_handle(monkeypatch):
     is open and unnamed: sglint SG103 cannot reach it, because db/connect.py
     is the one file where raw sqlite3.connect is allowed. A pragma that
     raises in there -- WAL conversion timing out against another process,
-    a read-only open refused a write pragma -- used to drop the handle,
-    and it leaked exactly like a connection a caller forgot.
+    a read-only open refused a write pragma -- must not drop the handle,
+    or it leaks exactly like a connection a caller forgot.
 
     The unraisable hook is the assertion: a ResourceWarning from a
     finalizer is not raised at the leak, so `pytest.warns` would not see

@@ -110,16 +110,13 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
         elif len(pool) > 1:
             result[key] = Resolution(Outcome.AMBIGUOUS, None)
 
-    # Pass 3 -- in-place replacement. Only now, with every content match
-    # already claimed, does a row still sitting unclaimed at this exact path
-    # mean the bytes there were overwritten. Running this before pass 2 would
-    # be path-trust again: after a swap both paths still resolve, and each
-    # would be called a replacement while the bytes went to the wrong row.
+    # Pass 3 -- in-place replacement. With every content match already claimed,
+    # a row still sitting unclaimed at this exact path means the bytes there
+    # were overwritten; before pass 2 this would call a swap a replacement.
     #
-    # The entity continues, so the address survives. Derived work is
-    # invalidated by the changed hash; authored state is kept, because
-    # silently dropping somebody's rating is worse than keeping a stale one
-    # and the alternative breaks the URL.
+    # The entity continues, so the address survives: derived work is
+    # invalidated by the changed hash, and authored state is kept rather than
+    # dropping somebody's rating.
     for key in observed:
         if key in result:
             continue
@@ -148,14 +145,12 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
 
 # --- walking a real directory ---------------------------------------------
 
-#: Suffix to `file.kind`. A suffix that is not here is not media and is
-#: skipped: the library indexes pictures, not the .txt sitting beside them.
+#: Suffix to `file.kind`; a suffix that is not here is not media and is skipped.
 #: Every suffix here is DECODABLE by this install -- the rule vision/decode.py
-#: states, held by tests/test_every_claimed_suffix_is_supported.py. Stills
-#: through Pillow and its shipped plugins, RAW through LibRaw, moving
-#: pictures through PyAV. `animated_image` for .gif/.apng is provisional by
-#: suffix; ingest refines it from the decoded frame count, because an
-#: animated WebP/AVIF/PNG wears the same suffix as its still sibling.
+#: states, held by tests/test_every_claimed_suffix_is_supported.py -- with
+#: `animated_image` for .gif/.apng provisional by suffix and refined by ingest
+#: from the decoded frame count, because an animated WebP/AVIF/PNG wears the
+#: same suffix as its still sibling.
 KIND_BY_SUFFIX = {
     # stills Pillow decodes natively or via registered plugins
     ".png": "image",
@@ -541,23 +536,14 @@ def survey(conn, root_id: int, root_path, now: float | None = None, watch=None) 
     """Walk the tree and hash what changed, WITHOUT writing anything.
 
     This is the long half of a scan -- `sha256_of` reads every changed
-    file off the disk -- and it used to run inside the same savepoint as
-    the writes. SQLite has one write lane per database, so a scan of a
-    new root (where every directory is created, opening the transaction
-    on the first one) held that lane for as long as the hashing took.
-    Everything else that writes was dead meanwhile: the background
-    worker could not even claim a job, and each attempt raised
-    `database is locked`.
-
-    Nothing here writes, so nothing here holds the lane. The reads are
-    two statements taken up front.
+    file off the disk. Nothing here writes, so nothing here holds
+    SQLite's single write lane; the reads are two statements taken up
+    front.
 
     `watch(folders, files, hashed)` is called as the walk goes, if given.
-    This is the long half and it used to be silent: a person scanning a
-    large root watched a request hang with nothing to look at, while
-    every cheaper sweep that followed reported itself. The callback is
-    how the walk says what it is doing without this module knowing what
-    a job is.
+    The callback is how the walk says what it is doing without this
+    module knowing what a job is, so a person scanning a large root is
+    not left watching a request hang.
     """
     del now  # nothing here is dated; the write phase carries the clock
     root_path = os.fspath(root_path)
@@ -765,13 +751,13 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     resolutions, missing = resolve_scan(conn, {k: v.sha for k, v in observed.items()}, roots=roots)
     counts = dict.fromkeys(Outcome, 0)
 
-    # 1. Missing first. A path is exclusive only while the bytes are there, so
+    # 1. Missing first: a path is exclusive only while the bytes are there, so
     #    marking the departed rows is what frees their names for whatever now
-    #    stands in the same place. Departing IS a population change: the
-    #    file's interpretation goes stale with it -- deleting any event that
-    #    claimed the picture and advancing the currentness generation, so a
-    #    hypothesis over the old population stops being current in the same
-    #    transaction that shrank it.
+    #    stands in the same place.
+    #    Departing IS a population change: the file's interpretation goes stale
+    #    with it, deleting any event that claimed the picture and advancing the
+    #    currentness generation, so a hypothesis over the old population stops
+    #    being current in the same transaction that shrank it.
     for file_id in missing:
         told = conn.execute(
             "UPDATE file SET missing_since = ? WHERE id = ? AND missing_since IS NULL",
@@ -813,12 +799,12 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         if before != after:
             changed.append((key, resolution.file_id))
 
-    # 2. Park the names of everything that moved. Two files that exchange
-    #    names are each other's obstacle: whichever is written first collides
-    #    with the one still holding the target name. The parked name uses '?',
-    #    which Windows forbids in a filename, so it cannot collide with a real
-    #    row -- and every row is parked under its own id, so not with each
-    #    other either.
+    # 2. Park the names of everything that moved: two files that exchange names
+    #    are each other's obstacle, so whichever is written first collides with
+    #    the one still holding the target name.
+    #    The parked name uses '?', which Windows forbids in a filename, and
+    #    every row is parked under its own id, so two parked names cannot
+    #    collide either.
     #    Only rows that are actually going somewhere need parking, so this
     #    reads the loaded state rather than asking the database once per file.
     for key, file_id in changed:
@@ -945,13 +931,11 @@ def scan(conn, root_id: int, root_path, now: float, watch=None) -> ScanResult:
     # The folder writes belong inside the same savepoint as the file writes:
     # observe_tree creates, renames and marks folders missing, and a failure
     # during apply_scan would otherwise leave those standing.
-    # The walk and every hash happen OUTSIDE the savepoint. SQLite has one
-    # write lane per database file, and this used to hold it for the whole
-    # survey -- `sha256_of` reading every changed file off the disk -- so a
-    # scan of a new root made every other writer wait minutes. The
-    # background worker could not even claim a job; it got `database is
-    # locked` and reported it as a crash. Reads do not take the lane, so
-    # only the second half of this function does.
+    # The walk and every hash happen OUTSIDE the savepoint, because SQLite has
+    # one write lane per database file and holding it across the whole survey
+    # -- `sha256_of` reading every changed file off the disk -- makes every
+    # other writer wait minutes.
+    # Reads do not take the lane, so only the second half of this function does.
     held = survey(conn, root_id, root_path, now, watch)
     with _one_write(conn, "scan"):
         observed, hashed = record(conn, root_id, held, now)

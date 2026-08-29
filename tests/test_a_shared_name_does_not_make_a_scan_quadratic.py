@@ -5,15 +5,11 @@ DSC00001; a folder.jpg per artist. Every one of those slugifies to the
 same seed, and `entity.slug` must still be unique -- so `mint` picks
 `cover`, then `cover-2`, then `cover-3`.
 
-It used to find that number by asking "is `cover-2` taken? is `cover-3`
-taken?" one SELECT at a time, which costs n reads for the nth file and
-n^2 for the library. Measured on this tree before the fix: 4,000 files
-all called cover.png held SQLite's one write lane for 16.8 seconds
-against 0.6 for 4,000 distinct names, and the total quadrupled with
-every doubling -- so twenty thousand albums was minutes of held lane,
-and SQLite has exactly one write lane per database. Every write from a
-route during that window does not wait, it fails: `busy_timeout` is
-5000 ms.
+Finding that number by asking "is `cover-2` taken? is `cover-3` taken?"
+one SELECT at a time costs n reads for the nth file and n^2 for the
+library, and the reads are taken while SQLite's one write lane is held.
+Every write from a route during that window does not wait, it fails:
+`busy_timeout` is 5000 ms.
 
 Counted rather than timed, on purpose. A timing assertion on a shape
 like this measures the machine as much as the code, and a gate that

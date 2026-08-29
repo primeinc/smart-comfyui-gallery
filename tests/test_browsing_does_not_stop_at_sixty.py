@@ -90,27 +90,13 @@ def _open(page: Page, extra: str = "") -> None:
     expect(page.locator("[data-grid][data-endless]")).to_have_count(1)
 
 
-#: THE PAGE MAY RELOAD ITSELF UNDER A READ. Cause, found by recording
-#: `framenavigated` while reproducing it:
+#: THE PAGE MAY RELOAD ITSELF UNDER A READ: the authored surface settles by
+#: asking `/g/locate/{slug}` and calls `window.location.reload()` if that
+#: answers with an error (frontend/src/authored.ts:113-121).
 #:
-#:     frontend/src/authored.ts:113-121 -- the authored surface settles by
-#:     asking `/g/locate/{slug}`, and calls `window.location.reload()` if
-#:     that answers with an error. It is deliberate ("the URL owns the
-#:     state"), so the harness has to tolerate it.
-#:
-#: It is a SAME-URL reload, which is why it leaves no trace anybody would
-#: notice: `page.url` never changes and only the original navigation is
-#: ever recorded, because the reload had started but not committed when
-#: the read ran. What it does leave is
-#:
-#:     Page.evaluate: Execution context was destroyed
-#:
-#: `expect(...)` retries across it and `page.evaluate` does not, so a
-#: read through `_pages_held` or `_cells` can die where a locator would
-#: simply re-read. The first read after `_open` is an `expect` for
-#: exactly this reason; the rest are only safe because the ingest in
-#: `prepare` makes `/g/locate` answer. Take the ingest away and the
-#: failure comes straight back one read later -- measured.
+#: `expect(...)` retries across that reload and `page.evaluate` does not, so
+#: the first read after `_open` is an `expect` and the rest depend on the
+#: ingest in `prepare` making `/g/locate` answer.
 def _cells(page: Page) -> int:
     return page.evaluate("() => document.querySelectorAll('[data-cells] > *').length")
 
@@ -147,14 +133,9 @@ def _ended(page: Page) -> bool:
 
 #: Consecutive animation frames of `idle` that end a round of work.
 #:
-#: More than one, because `idle` happens twice: `pump` re-arms itself a
-#: frame after finishing when it appended with more in reach
-#: (frontend/src/endless.ts:216), so there is an idle gap in the MIDDLE
-#: of the work as well as at the end.
-#: Five, not three. Three was measured and is SLOWER: the settle returns
-#: while the loader is still between frames of work, so the next scroll
-#: aims at a position that is still moving and the round has to be paid
-#: again. Whole module: 15.4s at five, 16.0s at three.
+#: More than one, because `idle` happens twice: `pump` re-arms itself a frame
+#: after finishing when it appended with more in reach (endless.ts:216). Below
+#: five the settle returns while the loader is still between frames of work.
 STILL_FOR = 5
 
 #: Frames to allow work to BEGIN before giving up on this scroll.
@@ -190,13 +171,11 @@ _ROUNDS = itertools.count()
 def _settled(page: Page, timeout: int = 15_000) -> None:
     """Wait for a round of loading to have STARTED and finished.
 
-    Waiting on a count is how this harness raced the very fetch it
-    triggered: a scroll arriving mid-fetch used to be dropped, so the
-    count never moved and the test timed out on a gallery that was
-    working correctly. The loader says what it is doing
-    (`data-endless`), which is a fact about the loader rather than a
-    guess at how long it needs -- but "idle" is ambiguous between
-    not-yet-started and finished, so both edges are watched.
+    Waiting on a count races the very fetch it triggered, because a scroll
+    arriving mid-fetch can be dropped and the count never moves. The loader
+    says what it is doing (`data-endless`), which is a fact about the loader
+    rather than a guess at how long it needs -- but "idle" is ambiguous
+    between not-yet-started and finished, so both edges are watched.
 
     The counters are primed INSIDE the poll, keyed on the round number,
     rather than by an `evaluate` before it. `wait_for_function` re-runs

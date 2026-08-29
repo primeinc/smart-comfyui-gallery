@@ -1,11 +1,7 @@
 """A 128-bit file identifier survives, exactly.
 
-Python 3.12 changed what Windows reports:
-
-    On Windows, st_ino may now be up to 128 bits, depending on the file
-    system. Previously it would not be above 64 bits, and larger file
-    identifiers would be arbitrarily packed.
-        -- cpython Doc/library/os.rst, versionchanged:: 3.12
+On Windows, `st_ino` may be up to 128 bits from Python 3.12, depending on
+the file system (cpython Doc/library/os.rst:3466, versionchanged:: 3.12).
 
 SQLite's INTEGER is a signed 64-bit quantity (sqlite/sqlite
 src/sqliteInt.h:1031 LARGEST_INT64), and a bound parameter above it

@@ -17,9 +17,9 @@ from tests.staging import fresh_schema
 
 @pytest.fixture
 def db():
-    # The claims here are about `places.place`'s own transaction shape,
-    # which :memory: carries exactly as a file does -- and the schema
-    # master copy costs 0.5ms where `build()` to disk cost ~60ms.
+    # The claims here are about `places.place`'s own transaction shape, which
+    # :memory: carries exactly as a file does, and a copy of the schema master
+    # is cheaper than building one on disk.
     return fresh_schema()
 
 

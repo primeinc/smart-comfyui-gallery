@@ -41,20 +41,9 @@ from tests.staging import NOW, fresh_db
 
 SCHEMA = pathlib.Path(__file__).resolve().parents[1] / "db" / "schema.sql"
 
-#: The only tables that may leave an answer alone. Written out so the
-#: set is a decision somebody made, not whatever the code happens to do.
-#:
-#: Named for what they have in common, which is not where they came
-#: from: nothing in them can change what a page would ANSWER. Most are
-#: operational -- a job queued, an item finished, a ledger line, a
-#: schedule saying when a collection next starts -- and invalidating
-#: every cached answer because a worker picked up a thumbnail is how a
-#: busy library never serves a warm one.
-#:
-#: `saved_view` is authored rather than operational and belongs here for
-#: the same reason: it remembers a QUESTION. Asking one again returns
-#: whatever the library says at the time, so writing one down changes no
-#: answer -- and a trigger on it would be the schema claiming otherwise.
+#: The only tables that may leave an answer alone: nothing in them can change
+#: what a page would ANSWER. `saved_view` remembers a QUESTION, and asking one
+#: again returns whatever the library says at the time.
 CHANGES_NO_ANSWER = {"job", "job_item", "job_event", "schedule", "saved_view"}
 
 

@@ -264,8 +264,8 @@ def test_an_unknown_derive_fails_the_item_by_name_never_runs_a_guess(db, tmp_pat
 
 def test_the_integrity_sweep_names_a_file_with_no_recorded_hash(db, tmp_path):
     """A bare 'hash' job reaching a sha-less row is a finding about the
-    row -- there is nothing to verify against -- never the TypeError crash
-    loop the message slice used to raise."""
+    row -- there is nothing to verify against -- never a TypeError out of
+    the message slice."""
     file_id = _scanned_file_without_a_hash(db, tmp_path)
     job_id = jobs.submit(db, "hash", 0.0, items=[file_id])
     turn = runner.run_next(db, "w1", 1.0)

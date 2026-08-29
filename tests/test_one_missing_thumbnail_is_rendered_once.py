@@ -111,8 +111,8 @@ def test_four_cells_wanting_one_picture_render_it_once(tmp_path, served, monkeyp
 
     def counted(state, sha, variant, target):
         renders.append(0.0)
-        # Held until the other three are AT the gate, not for a spell in
-        # which they probably got there. Four askers, one of them here.
+        # Held until the other three are AT the gate, not for a spell that
+        # only allows them to arrive. Four askers, one of them here.
         _queued(4)
         return real(state, sha, variant, target)
 

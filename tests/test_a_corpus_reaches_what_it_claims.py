@@ -100,8 +100,8 @@ def test_the_lockfile_records_which_files_have_pixels_and_is_right():
     """
     locked = json.loads(sourced.LOCKFILE.read_text(encoding="utf-8"))
     on_disk = {one.name: path for one, path in sourced.specimens()}
-    # Decoding 35 real files costs ~1.1s and depends only on their bytes
-    # and the decoders; the measurement is cached under that exact key.
+    # Decoding 35 real files depends only on their bytes and the decoders,
+    # so the measurement is cached under that exact key.
     rendered = json.loads(
         staging.corpus_measurement(
             sourced.IMAGES,

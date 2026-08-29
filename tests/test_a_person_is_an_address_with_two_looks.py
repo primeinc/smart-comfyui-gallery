@@ -535,10 +535,9 @@ def test_the_cluster_job_mints_a_person_for_an_unnamed_group(faces):
     people = client.get("/people").json()
     assert len(people) == 1, "one group of two faces; the singleton stays a face"
     minted = people[0]
-    # NULL, not the string "(unnamed)". The index used to coalesce, which
-    # made a placeholder indistinguishable from somebody actually named
-    # that -- and left the page unable to tell which of its cards are the
-    # work still to do.
+    # NULL, not the string "(unnamed)": coalescing would make a placeholder
+    # indistinguishable from somebody actually named that, and leave the page
+    # unable to tell which of its cards are the work still to do.
     assert minted["name"] is None
     assert minted["slug"].startswith("person-"), "an unnamed person is still addressable"
     assert minted["pictures"] == 2
@@ -611,11 +610,11 @@ def test_the_cluster_job_runs_every_embedding_space(faces):
     """The job mints addressable people for EVERY space's run, though
     only one run is primary.
 
-    ONE item, both spaces. They used to be one item each, enumerated at
-    submit -- which is right for a job somebody presses on its own and
-    wrong for a step in a chain: queued behind face detection, the
-    spaces do not exist yet, so it queued zero items and settled `done`
-    having clustered nothing. The spaces are found when the item runs.
+    ONE item, both spaces. One item per space, enumerated at submit, is
+    right for a job somebody presses on its own and wrong for a step in a
+    chain: queued behind face detection, the spaces do not exist yet, so it
+    would queue zero items and settle `done` having clustered nothing. The
+    spaces are found when the item runs.
     """
     _second_space(faces, ("ana_1.png", "ana_2.png"), seed=9, box=0.6)
 

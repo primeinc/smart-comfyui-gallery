@@ -308,13 +308,9 @@ def test_a_changed_source_claim_deletes_the_interpretation(interpreted):
         finally:
             connect.close(conn)
     finally:
-        # The clock goes back, because `Stage.restore` compares the
-        # library by (size, mtime) and rebuilds the whole world -- a
-        # fresh application, library, scan and interpretation -- when it
-        # differs. Left moved, this one line cost the NEXT test 0.28s
-        # against the 0.01s a restore costs. `utime` rewrites no bytes,
-        # so the file keeps its identity and the restored snapshot still
-        # describes it.
+        # The clock goes back, because `Stage.restore` compares the library by
+        # (size, mtime) and rebuilds the whole world when it differs. `utime`
+        # rewrites no bytes, so the restored snapshot still describes the file.
         os.utime(moved, ns=(was.st_atime_ns, was.st_mtime_ns))
 
 

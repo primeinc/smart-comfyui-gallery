@@ -518,7 +518,7 @@ def test_a_portrait_raw_is_turned_once(portrait):
 @pytest.mark.skipif(not PORTRAIT_CR2.exists(), reason="the 5D Mark III sample set is not on this machine")
 def test_a_raws_embedded_preview_is_the_same_picture_as_its_development(portrait):
     """The shortcut `open_bounded` takes for RAW, checked against the long
-    way round, on the file most likely to expose it.
+    way round, on a portrait frame where an extra turn would show.
 
     Developing this sensor costs 1398 ms; decoding the JPEG the camera
     embedded costs 47 -- but only if the preview is the same picture. The

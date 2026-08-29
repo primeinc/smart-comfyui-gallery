@@ -38,26 +38,21 @@ RRF_K = 60
 #: Where a ranking stops answering, as a fraction of the distance from
 #: one space's median score to its best.
 #:
-#: A ranking never ends on its own. Every space scores every file it
-#: holds, a text encoder maps ANY phrase somewhere, and the nearest
-#: neighbours of that somewhere always exist -- so without a cut the
-#: answer to a question is the library in a different order.
+#: A ranking never ends on its own: every space scores every file it holds and
+#: a text encoder maps ANY phrase somewhere, so without a cut the answer to a
+#: question is the library in a different order.
 #:
-#: No ABSOLUTE cosine can make the cut. Measured over a real 3,748-file
+#: No ABSOLUTE cosine can make the cut -- measured over a real 3,748-file
 #: library, the nonsense phrase `xyzzy plugh frobnitz` scored higher on
-#: OpenCLIP (max .263, mean .210) than `a photograph of a mountain
-#: landscape` (max .218, mean .084): a floor would have kept the
-#: nonsense whole and discarded the answer. Cross-space agreement is no
-#: better -- `asdfgh jkl zxcvbn` and `a car on a road` shared the same
-#: 15% of their top hundred.
+#: OpenCLIP (max .263, mean .210) than `a photograph of a mountain landscape`
+#: (max .218, mean .084), and `asdfgh jkl zxcvbn` shared 15% of its top hundred
+#: with `a car on a road`.
 #:
 #: What DOES carry between phrases is the shape of one phrase's own
-#: distribution: a head standing clear of its own middle, or no head.
-#: That is scale-free, needs no per-model constant, and survives a new
-#: space being configured tomorrow. Half the span is where the same
-#: measurements put real phrases at 15-267 files out of 3,627 and
-#: nonsense at 250-322 -- neither pretending to reject the nonsense,
-#: which nothing can, nor paginating the library fifty times over.
+#: distribution: a head standing clear of its own middle, or no head, which is
+#: scale-free and needs no per-model constant. Half the span put real phrases
+#: at 15-267 files out of 3,627 and nonsense at 250-322 in the same
+#: measurements.
 HEAD_SPAN = 0.5
 
 

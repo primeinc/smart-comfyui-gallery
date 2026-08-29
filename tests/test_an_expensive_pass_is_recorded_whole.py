@@ -2,13 +2,11 @@
 
 A face pass is the expensive thing in this application: antelopev2 loads a
 143 MB 1k3d68 session to derive head pose and two dense landmark sets, and
-all of it is ~3.7 KB per face to keep. `db/detect.py` used to copy `age`
-and `sex` off the attribute dict and drop the rest on the line that read
-them -- so `pose_yaw`, `pose_pitch` and `pose_roll` were NULL in every row
-the schema had ever held, and anything discarded could only come back by
-reading the whole library off disk again.
+all of it is ~3.7 KB per face to keep. Anything `db/detect.py` drops on the
+line that reads the attribute dict can only come back by reading the whole
+library off disk again.
 
-These hold the storage contract that replaced it: the record is complete
+These hold the storage contract: the record is complete
 and unfiltered, the promoted columns are promotions OUT of it rather than a
 filter in front of it, and pose lands on the axis it names.
 """

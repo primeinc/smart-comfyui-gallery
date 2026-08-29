@@ -66,12 +66,10 @@ def _cell_addresses(page: Page, timeout: float = 15.0) -> list[str]:
     right; the test simply cannot assume the document it is reading
     outlives the read.
 
-    The retry has to be on the READ. It was on an `expect` in front of
-    it, which retries across a navigation and so proved a cell was
-    attached at SOME instant -- never that it was still there at the
-    instant of the one-shot `evaluate_all` after it. The reload landing
-    in that gap failed as "Execution context was destroyed, most likely
-    because of a navigation", about one run in eight.
+    The retry has to be on the READ. An `expect` in front of it retries
+    across a navigation, so it proves a cell was attached at SOME instant --
+    never that it was still there at the instant of the one-shot
+    `evaluate_all` after it, which is where a reload destroys the context.
     """
     ended = time.monotonic() + timeout
     while True:

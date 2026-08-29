@@ -187,13 +187,9 @@ def _claims(stage: Stage) -> None:
 
 @pytest.fixture(scope="module")
 def _grouped(tmp_path_factory):
-    # One rebuild, declared. `test_a_departed_file...` REMOVES two
-    # pictures, and a removed file cannot be put back as the same file --
-    # the identity a rescan reads is not in the bytes. Moving it last was
-    # tried and it fails there: the tests around it are one sequence
-    # about a library shrinking, so its position is part of what it
-    # proves. The next test therefore pays one rebuild, and the number is
-    # exact so a SECOND one is still caught.
+    # One rebuild, declared: `test_a_departed_file...` REMOVES two pictures,
+    # and a removed file cannot be put back as the same file. The count is
+    # exact, so a SECOND rebuild is still caught.
     with staged(tmp_path_factory, "events", _library, _claims, rebuilds=1) as stage:
         yield stage
 

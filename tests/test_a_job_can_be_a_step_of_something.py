@@ -387,9 +387,9 @@ def test_an_unknown_sweep_name_is_still_refused(tmp_path, console):
 def test_a_later_step_sees_what_an_earlier_one_produced(tmp_path, console):
     """The flaw putting the steps in order does not fix by itself.
 
-    `cluster_faces` used to enumerate embedding spaces at SUBMIT time.
-    Queued behind `detect_faces`, there were none yet -- so it queued
-    zero items and settled `done` having clustered nothing, which is the
+    `cluster_faces` must not enumerate embedding spaces at SUBMIT time.
+    Queued behind `detect_faces`, there are none yet -- so it would queue
+    zero items and settle `done` having clustered nothing, which is the
     exact failure the ordering exists to prevent: a library with no
     people in it and no row that looks wrong.
 

@@ -858,10 +858,10 @@ def test_a_rating_is_between_one_and_five(db):
 def test_a_claim_about_the_whole_frame_carries_no_coordinates(db):
     """A claim either points at a region or it does not.
 
-    A `localizable` flag and a five-clause CHECK used to approximate this,
-    and left a third state where a claim half-pointed at somewhere. It is
-    structural now: `region_id` is present or NULL, and the combination the
-    CHECK existed to reject cannot be written.
+    A `localizable` flag and a five-clause CHECK would only approximate it
+    and leave a third state where a claim half-points at somewhere. It is
+    structural: `region_id` is present or NULL, and the rejected combination
+    cannot be written.
     """
     tree(db)
     a_file(db, 421, 1, "q.png")
@@ -1212,9 +1212,9 @@ def test_a_missing_file_does_not_hold_its_path_against_a_live_one(db):
     """A path is exclusive only while the bytes are there.
 
     The missing row keeps its last known path so the app can say where the
-    file used to be. Enforcing uniqueness over that stale path meant a
-    directory whose contents had been swapped out failed to scan at all: the
-    departed row still owned the name the arriving file needed.
+    file was last seen. Enforcing uniqueness over that stale path stops a
+    directory whose contents were swapped out from scanning at all: the
+    departed row would still own the name the arriving file needs.
     """
     tree(db)
     a_file(db, 9, 1, "dusk.png", sha="aa")
@@ -1469,8 +1469,8 @@ def test_folder_depth_is_maintained_by_the_database(db):
         "a reparented folder kept its old depth"
     )
 
-    # Reparenting moves a subtree. This test used to reparent a leaf, so the
-    # descendants stayed one level wrong and nothing said so.
+    # Reparenting moves a subtree, so this reparents a folder with descendants:
+    # a leaf would leave them one level wrong with nothing to say so.
     entity(db, 321, "folder", "deeper")
     entity(db, 322, "folder", "deepest")
     db.execute("INSERT INTO folder(id,root_id,parent_id,name,depth) VALUES(321,1,320,'deeper',0)")
@@ -1661,7 +1661,7 @@ def test_an_entity_cannot_change_what_it_is(db):
 
 
 def test_a_role_cannot_be_updated_into_a_lie(db):
-    """The insert-side rule with the statement that used to undo it."""
+    """The insert-side rule, held against the UPDATE that would undo it."""
     tree(db)
     a_file(db, 9, 1, "a.png")
     an_artifact(db, 600, "camera", "X-T5")

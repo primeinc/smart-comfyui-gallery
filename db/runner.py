@@ -35,11 +35,9 @@ _logger = logging.getLogger(__name__)
 #: What a handler is allowed to fail with, per item. Everything else is a
 #: defect in the handler, not a fact about the item.
 #:
-#: EOFError is raised where a decoder ran out of input: a fact about the
-#: file, never a defect in the code reading it. pillow_heif 1.1.0 raises the
-#: builtin out of `Image.load()` ("Decoder plugin generated an error:
-#: Unexpected end of file") at db/oriented.py:137 -- outside vision/decode.py,
-#: so there is no decoder boundary to translate it at. PyAV's
+#: EOFError is raised where a decoder ran out of input, which is a fact about
+#: the file: pillow_heif 1.1.0 raises the builtin out of `Image.load()` at
+#: db/oriented.py:137, outside vision/decode.py, and PyAV's
 #: `EOFError(FFmpegError, builtins.EOFError)` (PyAV-Org/PyAV@040da79
 #: av/error.pyi:59) is not an OSError either.
 #:
@@ -122,11 +120,9 @@ class Report:
     def _finish(self) -> None:
         """End the open phase, saying how long it took.
 
-        The duration is the point. `phase.finished` used to carry nothing,
-        so anything that wanted to know where a job's time went had to
-        pair the events up itself and subtract their `at` stamps -- which
-        made "what is slow" a question you could only answer by writing a
-        program, and every consumer wrote a different one.
+        The duration is the point: without it on the event, anything that
+        wanted to know where a job's time went would have to pair the events
+        up itself and subtract their `at` stamps.
 
         Measured with `perf_counter` rather than the ledger's clock. That
         clock is whatever the turn was given: `time.time` when a worker
@@ -542,28 +538,15 @@ def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False)
     return made
 
 
-#: How many thumbnails to render at once, and why this number.
+#: How many thumbnails to render at once. libvips already uses every core for
+#: ONE image (../refs/libvips/libvips/doc/using-threads.md, "Threads"), but the
+#: win is across files: on 32 pictures of 4000x3000, throughput per file rose
+#: from 4.70/sec at one in flight to 28.20 at eight, then fell to 25.47 at
+#: sixteen as the two thread pools oversubscribed.
 #:
-#: libvips already uses every core to calculate ONE image
-#: (../refs/libvips/libvips/doc/using-threads.md, "Threads"), so the
-#: obvious reading is that a second file in flight can only fight the
-#: first. Measured, that is wrong: one thumbnail is not enough work to
-#: fill sixteen cores, and the win is across files rather than inside
-#: one. On 32 pictures of 4000x3000, per file:
-#:
-#:      1 in flight    4.70 files/sec   1.0x
-#:      2              9.72             2.1x
-#:      4             17.99             3.8x
-#:      8             28.20             6.0x   <- the knee
-#:     12             27.74             5.9x
-#:     16             25.47             5.4x
-#:
-#: Past the knee the two thread pools oversubscribe and it gets slower,
-#: so this is half the cores rather than all of them -- the measured
-#: best on a 16-core machine -- and never fewer than two, because one
-#: would silently turn the whole thing back off. libvips is documented
-#: thread-safe for this: images are immutable and shareable, and only
-#: the drawing operators and Regions are not.
+#: Half the cores rather than all of them, never fewer than two. libvips is
+#: documented thread-safe for this: images are immutable and shareable, and
+#: only the drawing operators and Regions are not.
 def thumbs_in_flight() -> int:
     return max(2, min(8, (os.cpu_count() or 2) // 2))
 
@@ -1059,8 +1042,8 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
         # whichever neighbour union-find walked in through. Chains are
         # real: A~B and B~C within threshold with A and C far apart put
         # two admittedly-different pictures in one "duplicate" group.
-        # A member the canonical checks reject is dropped -- related,
-        # perhaps, but not a duplicate this pass can claim.
+        # A member the canonical checks reject is dropped: related, but
+        # not a duplicate this pass can claim.
         best = max(members, key=lambda m: (_pixels(conn, by_id[m], m), by_id[m][4], -m))
         kept = [
             member
@@ -1138,9 +1121,9 @@ def submit_ingest(conn, now: float, *, everything: bool = False, folder_id: int 
     `folder_id` bounds it to one folder AND EVERYTHING UNDER IT, which
     is what makes `everything` usable at all on a real library.
     Re-reading is how this application corrects itself -- improving a
-    parser is a re-parse, and the sniffer that decides a file's KIND is
-    the part most likely to improve -- but "re-read all eighty thousand
-    files" is a cost nobody pays to fix one folder of album tracks. A
+    parser is a re-parse, and so is improving the sniffer that decides a
+    file's KIND -- but "re-read all eighty thousand files" is a cost
+    nobody pays to fix one folder of album tracks. A
     correction that is too expensive to apply is not a correction.
     """
     items = ingest_items(conn, everything=everything, folder_id=folder_id)
@@ -1228,12 +1211,11 @@ def submit_cluster(conn, now: float) -> int:
 
     ONE item, and the spaces are found when it RUNS rather than now.
 
-    They used to be enumerated here, one item each. That is correct for
-    a job somebody presses on its own and wrong for a step in a chain,
-    which is the shape this now has to work in: queued behind
-    `detect_faces`, the spaces do not exist yet, so the enumeration
-    found none, the job queued zero items, and it settled `done` having
-    clustered nothing.
+    Enumerating them here, one item each, is correct for a job somebody
+    presses on its own and wrong for a step in a chain, which is the shape
+    this has to work in: queued behind `detect_faces`, the spaces do not
+    exist yet, so the enumeration finds none, the job queues zero items,
+    and it settles `done` having clustered nothing.
 
     That is the exact failure the ordering exists to prevent -- a
     library with no people in it and no row that looks wrong -- and
@@ -1802,17 +1784,10 @@ def run_next(
     except sqlite3.OperationalError as busy:
         if getattr(busy, "sqlite_errorname", "") not in BUSY:
             raise
-        # Another writer holds the lane. SQLite has ONE, and a long
-        # write -- a scan of a new root walks and commits once -- holds
-        # it well past `busy_timeout`. Nothing has gone wrong: there is
-        # no turn to take right now, which is what None already means
-        # here and what the worker already waits on.
-        #
-        # Raising instead produced a traceback every few seconds saying
-        # "a worker turn died; the job's lease will be reclaimed" --
-        # both halves false, because the claim is what failed, so no job
-        # was claimed and no lease exists. A log that reports healthy
-        # backpressure as a crash teaches people to ignore it.
+        # Another writer holds the lane: SQLite has ONE, and a long write --
+        # a scan of a new root walks and commits once -- holds it well past
+        # `busy_timeout`. Nothing has gone wrong, and there is no turn to
+        # take right now, which is what None already means here.
         _logger.info("the database is busy; no turn this pass (%s)", busy)
         return None
     if claimed is None:

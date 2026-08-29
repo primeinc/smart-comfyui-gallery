@@ -1,10 +1,9 @@
 """Re-reading, bounded to the folder you are looking at.
 
 Improving a parser is a re-parse of the database -- the schema says so
-at `param_key` -- and the sniffer that decides a file's KIND is the part
-most likely to improve, because it has to keep up with what cameras,
-phones and generators actually write. So the application has to be able
-to re-read.
+at `param_key` -- and the sniffer that decides a file's KIND has to keep up
+with what cameras, phones and generators actually write. So the application
+has to be able to re-read.
 
 It always could, over EVERYTHING. That is a price nobody pays to fix one
 folder of album tracks, and a correction too expensive to apply is not a
@@ -88,10 +87,9 @@ def test_it_says_where_it_got_to_without_leaving_the_page(page: Page, live: Live
     expect(button).to_be_visible()
     was = page.url
     button.click()
-    # `wait_for_function`, NOT `expect(...).to_have_text`. The evaluation
-    # runs on every animation frame, so it sees the words within ~16ms of
-    # them being written; `expect` polls on a ~100ms timer and answers
-    # late. Measured, both ways: 0.57s here against 0.93s.
+    # `wait_for_function`, NOT `expect(...).to_have_text`: the evaluation runs
+    # on every animation frame, so it sees the words as they are written, where
+    # `expect` polls on a timer and answers late.
     page.wait_for_function(
         "() => /read \\d+ again/.test(document.querySelector('[data-folder-reread]').textContent)",
         timeout=30_000,
