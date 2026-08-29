@@ -8,18 +8,13 @@ libvips is the fast path and takes whatever it can read. It decodes and
 resizes as one streaming operation using each format's own shrink-on-load,
 so nothing materialises at full size. That matters most for PNG, which is
 what an image generator writes and which Pillow cannot shrink during
-decode at all. Measured over 40 real ComfyUI PNGs, both variants rendered
-per file:
-
-    Pillow, method 2       141.7 ms      137.8 KiB
-    libvips, effort 2       88.4 ms      138.2 KiB
-    libvips, effort 0       66.2 ms      171.8 KiB
+decode at all.
 
 `effort` is the same libwebp dial Pillow calls `method`, so thumbs.METHOD
 governs both and 2 is the same choice for the same reason: it matches the
-default's output size at a fraction of its cost. Concurrency was swept
-from 1 to 16 and changed nothing at these sizes -- the gain is the
-decoder, not stolen cores, so parallelism above this will not fight it.
+default's output size at a fraction of its cost. The gain here is the
+decoder rather than stolen cores, so raising concurrency above this will
+not fight it.
 
 Pillow answers for the rest, and the rest is not small. This build of
 libvips refuses Canon raws outright ("Old-style JPEG compression support

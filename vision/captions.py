@@ -30,12 +30,13 @@ MOST_TOKENS = 40
 
 #: How many pictures go through the model at once.
 #:
-#: Measured on a 3070 Ti over 48 real pictures (`just bench captions`):
-#: 3.62 pictures/sec at one, 12.81 at eight, 15.72 at sixteen -- and
-#: every caption identical to the ones captioned alone. Sixteen is where
-#: the curve flattens; past it the batch is mostly a longer wait for
-#: whoever asked the job to stop, since cancellation is checked between
-#: ITEMS and a batch runs inside one.
+#: Read off benchmarks/results/caption_batch.json, 48 real pictures on a
+#: 3070 Ti (`just bench captions` regenerates it): 3.62 pictures/sec at
+#: one, 12.81 at eight, 15.72 at sixteen, every float32 row reporting
+#: same_as_baseline 1.0 -- identical captions to the ones captioned alone.
+#: Sixteen is where the curve flattens; past it the batch is mostly a
+#: longer wait for whoever asked the job to stop, since cancellation is
+#: checked between ITEMS and a batch runs inside one.
 BATCH = 16
 _WEIGHTS = ("model.safetensors", "pytorch_model.bin")
 _SNAPSHOT_FILES = ("config.json", "preprocessor_config.json", "tokenizer_config.json", "vocab.txt")
@@ -110,15 +111,20 @@ class BlipCaptioner:
         torch.nn.Module.to(loaded, self.device)
         # HALF PRECISION ON A GPU.
         #
-        # Measured (`just bench captions`, 48 real pictures, 3070 Ti):
-        # 15.72 pictures/sec batched in float32, 21.28 in float16, and
-        # peak VRAM 1702 MB down to 905. Together with batching that is
-        # 3.62 -> 21.28, near enough six times.
+        # From benchmarks/results/caption_batch.json (48 real pictures,
+        # 3070 Ti): 15.72 pictures/sec batched in float32, 21.28 in
+        # float16, and peak VRAM 1702.0 MB down to 905.4. Together with
+        # batching that is 3.62 -> 21.28, near enough six times.
         #
-        # It is not free and the benchmark says so: 47 of 48 captions
-        # come out identical and one differs, because rounding moved a
-        # logit far enough to flip a token. NEITHER IS THE CORRECT ONE --
-        # fp32 is not ground truth here, only the other arithmetic.
+        # It is not free and the benchmark says so: same_as_baseline drops
+        # to 0.979 -- 47 of 48 captions identical, one differing, because
+        # rounding moved a logit far enough to flip a token. NEITHER IS
+        # THE CORRECT ONE: fp32 is not ground truth here, only the other
+        # arithmetic.
+        #
+        # Half precision alone does not do it: the unbatched fp16 row
+        # reports same_as_baseline 1.0, and every divergent row is fp16 and
+        # batched. The cost belongs to the combination, not to the dtype.
         #
         # And this checkpoint is the CHEAP BASELINE on purpose: a short
         # descriptive sentence for every picture in a library, from a

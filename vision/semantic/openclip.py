@@ -34,17 +34,32 @@ PROVIDER = "openclip"
 MODEL = "ViT-B-32"
 CHECKPOINT = "laion2b_s34b_b79k"
 
-#: Pictures per encoder pass. Throughput plateaus here: measured over 512
-#: generated PNGs, batch 64 through 256 sit within 5% of each other while
-#: peak VRAM climbs 775 -> 1246 MB, so past this the memory is spent for
-#: nothing (`just bench clip-batch`).
+#: Pictures per encoder pass. Throughput plateaus here while memory does
+#: not. Read off benchmarks/results/openclip_batch.json, 512 generated PNGs
+#: on an RTX 3070 Ti at 16 workers (`just bench clip-batch` regenerates it):
+#:
+#:     batch 64    375.9 img/s     774.7 MB peak
+#:     batch 128   400.5 img/s     933.9 MB
+#:     batch 256   395.2 img/s    1246.3 MB
+#:
+#: So 64 to 256 spans 6.5% of throughput for 1.6x the VRAM. Past 64 the
+#: memory buys almost nothing.
 BATCH = 64
 
-#: Threads for the CLIP transform inside one batch. It plateaus at 8 on a
-#: 16-core machine -- 8.13 ms per image serially, 1.83 at 8 workers, 1.80
-#: at 16 -- and the job already keeps about 7 cores busy on its own, so
-#: asking for all of them would be taking them from the decoders. Capped
-#: rather than scaled to the machine for that reason.
+#: Threads for the CLIP transform inside one batch, and the job already
+#: keeps about 7 cores busy on its own, so asking for all of them would be
+#: taking them from the decoders. Capped rather than scaled to the machine
+#: for that reason.
+#:
+#: Preprocess milliseconds per image at batch 64, same file:
+#:
+#:     1 worker    7.28        8 workers   1.85
+#:     2 workers   5.06       16 workers   1.83
+#:     4 workers   2.83
+#:
+#: 8 is where it flattens; 16 buys 1%. The transform is bit-identical
+#: across widths regardless (`preprocess_equivalence`, max_abs_difference
+#: 0.0 at 2/4/8/16), so the thread count cannot change a vector.
 BATCH_WORKERS = 8
 
 
@@ -369,17 +384,27 @@ class ClipBackend:
         it immediately, so what accumulates is the small thing and what
         exists at once is one frame per thread.
 
-        Measured against calling encode_media in a loop, per image:
+        Against encoding one picture at a time, per image, read off
+        benchmarks/results/openclip_batch.json:
 
-            preprocess    8.13 ms  ->  1.83 ms   threads, bit-identical
-            inference     7.00 ms  ->  1.17 ms   batch 64
+            preprocess    7.28 ms  ->  1.85 ms   batch 64, 1 -> 8 workers
+            inference     6.78 ms  ->  1.17 ms   batch 1 -> batch 64
             copy back     one per image -> one per batch
 
         Threads help because PIL's resize and torch's normalise both drop
-        the GIL, and the tensors they produce are identical to the serial
-        ones -- checked, not assumed. Batch 64 is where throughput
-        plateaus on this hardware; 128 and 256 are within 5% and cost
-        VRAM (`just bench clip-batch`).
+        the GIL, and the tensors they produce are bit-identical to the
+        serial ones -- `preprocess_equivalence` in that file reports
+        max_abs_difference 0.0 at 2, 4, 8 and 16 workers.
+
+        The VECTORS are not bit-identical across batch widths, which is a
+        different claim and the file records it separately:
+        `vector_equivalence` gives max_abs_difference 2.2e-03 and minimum
+        cosine 0.99995 against batch 1. Batching moves the last bits of a
+        vector; it does not move the preprocessing.
+
+        Batch 64 is where throughput flattens on this hardware -- 375.9,
+        400.5 and 395.2 img/s at 64, 128 and 256, a 6.5% spread for 1.6x
+        the VRAM (`just bench clip-batch`).
 
         Nothing is pinned and no second stream is used. Both are needed
         together to overlap a copy with a kernel, and there is nothing

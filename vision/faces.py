@@ -247,12 +247,23 @@ class OpenCVFaceBackend(FaceBackend):
         featureless, embed into one generic region, and chain unrelated
         clusters together. `detect_max_side` caps the detection input:
         images larger than N px on their longest side are downscaled first,
-        keeping large faces inside YuNet's ~10-300px training band
-        (measured: >=300px-face recall 55%->97%, false positives 7x down,
-        detection 3.7x faster — docs/FACE_CLUSTERING.md). 0 disables the
-        cap. A forced `embedder` whose weights are missing raises instead
-        of silently falling back. `provision` lets a missing file be
-        fetched from its registry -- a job's right, never a request's."""
+        keeping large faces inside YuNet's ~10-300px training band. 0
+        disables the cap. A forced `embedder` whose weights are missing
+        raises instead of silently falling back. `provision` lets a missing
+        file be fetched from its registry -- a job's right, never a
+        request's.
+
+        The cap's effect, read off the two recorded runs over the same 824
+        ground-truth faces -- benchmarks/results/face_detection_recall_native.json
+        (policy_max_side 0) against face_detection_recall_ms1600.json
+        (policy_max_side 1600):
+
+            >=300px band recall     0.5534  ->  0.9709
+            false positives            336  ->  49
+            ms per image, detect      61.5  ->  32.9
+
+        Those files are the evidence; the numbers above are read from them
+        rather than restated from memory."""
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise BackendUnavailable("this OpenCV build lacks FaceDetectorYN/FaceRecognizerSF")
         try:
@@ -287,15 +298,26 @@ class OpenCVFaceBackend(FaceBackend):
         # invalidation.is_stale compares version strings exactly, so nothing
         # re-indexed, and cluster_faces then built one cosine graph over two
         # incompatible regimes -- undetectable by _single_dim, since the
-        # dimension does not change. The same benchmark that justifies the
-        # 1600 cap measured a 2x recall difference between those regimes.
+        # dimension does not change. The two regimes are not
+        # interchangeable: over the same 824 faces the >=300px band recalls
+        # 0.5534 uncapped against 0.9709 at 1600
+        # (benchmarks/results/face_detection_recall_native.json and
+        # face_detection_recall_ms1600.json).
         base = "yunet-2023mar+arcface-glintr100" if embedder == "arcface" else "yunet-2023mar+sface-2021dec-v2"
         self.model_version = f"{base}-ms{detect_max_side}"
-        # Operating points from the labeled three-way A/B sweep
-        # (benchmarks/face_embedder_ab.py, 175 faces / 31 identities):
-        # glintr100 pairwise-F1 is flat 0.926-0.933 across 0.30-0.50; 0.48
-        # keeps near-peak F1 (0.931) at the sweep's best precision (0.968).
-        # sface peaks narrowly near 0.45-0.55.
+        # 0.48 is what the pipeline benchmark selects on its own. Over the
+        # KYC dataset (7 known identities, truth held only in memory so no
+        # path can leak it), `just bench faces-validate` sweeps method x
+        # threshold and records both `chosen` and `labels_best` as
+        # chinese-whispers at 0.48 -- benchmarks/results/face_pipeline_validation.json.
+        #
+        # 0.40, 0.48 and 0.55 all reach pair_f1 1.0 there; 0.48 and 0.40
+        # leave fewer faces alone than 0.55 (alone_share 0.032 against
+        # 0.043), and 0.60 breaks a cluster (pair_f1 0.9826). So the band is
+        # wide and 0.48 sits inside it rather than on an edge.
+        #
+        # sface takes 0.55: a different embedder with its own geometry, and
+        # that sweep is not in this file's evidence.
         self.default_cluster_threshold = 0.48 if embedder == "arcface" else 0.55
         # Model creation logs native "setPreferableTarget ... not supported"
         # WARNs from inside OpenCV on some builds; not actionable, so hold
@@ -577,20 +599,21 @@ def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: 
         return _insightface_apps[cache_key]
     try:
         # Every pack head loads: genderage (age/sex), 2d106det (dense
-        # 106-pt 2D landmarks), 1k3d68 (3D 68-pt + pitch/yaw/roll pose,
-        # a 143MB session — the cost of keeping the pack's data
-        # first-class). All of it persists per face in
-        # FaceDetection.attributes.
+        # 106-pt 2D landmarks), 1k3d68 (3D 68-pt + pitch/yaw/roll pose).
+        # All of it persists per face in FaceDetection.attributes.
         #
-        # Providers are PER STAGE, from measurement on the dev box:
-        # detection runs dynamic input shapes (SCRFD '?' dims), where the
-        # CUDA EP re-tunes conv algos per shape and loses to CPU (205ms
-        # CPU vs 280-440ms CUDA per image); recognition is a heavy
-        # ResNet100 at a fixed 112x112, where CUDA wins 4.4x (14.6ms vs
-        # 64.5ms per face). So detection + genderage stay on CPU and the
-        # recognition session gets _ort_providers(providers) (CUDA when
-        # the installed build offers it; the ort_providers setting
-        # overrides).
+        # 1k3d68 is the expensive one to keep first-class: 143,607,619 bytes
+        # on disk against 5,030,888 for 2d106det and 1,322,532 for genderage
+        # (antelopev2 pack). Those are file sizes, not the resident size of
+        # the ORT sessions they become.
+        #
+        # Providers are PER STAGE, and the split is structural: detection
+        # runs dynamic input shapes (SCRFD '?' dims), where the CUDA EP
+        # re-tunes conv algorithms per distinct shape; recognition is a
+        # ResNet100 at a fixed 112x112, which gives the EP one shape to tune
+        # once. So detection + genderage stay on CPU and the recognition
+        # session gets _ort_providers(providers) (CUDA when the installed
+        # build offers it; the ort_providers setting overrides).
         app = FaceAnalysis(
             name=weights_module.PACK,
             root=root,

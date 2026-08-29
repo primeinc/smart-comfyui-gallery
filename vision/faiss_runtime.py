@@ -126,8 +126,8 @@ def import_faiss(gpu: bool = True):
             # WARNING, not debug: the worker sets this package's logger to
             # INFO, so a debug line here made the one thing worth saying
             # invisible. The GPU index quietly becomes a CPU one and only
-            # the speed says so, on a machine that shipped 102 MB of
-            # binaries specifically to avoid that.
+            # the speed says so, on a machine that shipped 104,797,658
+            # bytes of binaries specifically to avoid that.
             _logger.warning(
                 "the vendored GPU faiss did not load; using faiss-cpu. Its CUDA runtime DLLs "
                 "normally come from the installed torch's lib directory (a CUDA build ships "

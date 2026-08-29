@@ -113,8 +113,9 @@ def _turns() -> dict:
     counter-clockwise too, so the mapping is direct.
 
     A function so PIL.Image is imported when a frame needs turning, the
-    way `av` is: 23ms of import (-X importtime) every app boot was paying
-    for a table only a decode ever reads.
+    way `av` is. `python -X importtime -c "from PIL import Image"` reports
+    66 ms cumulative for PIL.Image on this interpreter, which every app
+    boot was paying for a table only a decode ever reads.
     """
     from PIL import Image
 
@@ -167,9 +168,8 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
         # item -- against that module's stated contract (7016dab
         # db/runner.py:9-15).
         #
-        # Measured over ../sg-corpus at 7cf254e: 9 of 811 image-kind files
-        # raise here. CanonRaw.cr2/.cr3/.crw, FujiFilm.raf, Minolta.mrw,
-        # PhaseOne.iiq, Sigma.x3f, SigmaDP2.x3f, Nikon.nef -- ExifTool
+        # CanonRaw.cr2/.cr3/.crw, FujiFilm.raf, Minolta.mrw, PhaseOne.iiq,
+        # Sigma.x3f, SigmaDP2.x3f and Nikon.nef raise here -- ExifTool
         # specimens (exiftool/exiftool@2200871d9cef t/images) truncated to
         # their metadata. Each one alone stopped a full-library scan.
         #
@@ -413,8 +413,7 @@ def frames_at(path: str | os.PathLike[str], offsets_ms):
 
     # FFmpegError descends from Exception; its subclasses descend from
     # assorted builtins (PyAV-Org/PyAV@040da79 av/error.pyi:9,27,59), some
-    # covered by ITEM_FAILURES and some not. Measured over ../sg-corpus at
-    # 7cf254e: 14 video-kind files, 8 decode, 6 fail. ASF.wmv raised
+    # covered by ITEM_FAILURES and some not. ASF.wmv raised
     # InvalidDataError (a ValueError) and failed as one item; Matroska.mkv
     # raised EOFError and ended the whole job. Which container a file was
     # decided which -- for the same fact about the file.

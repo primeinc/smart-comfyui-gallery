@@ -72,19 +72,12 @@ AVATAR_CONTEXT = 2.0
 QUALITY = 82
 
 #: libwebp's speed/size dial, 0 fastest to 6 smallest. Pillow's default
-#: for stills is 4 (python-pillow/Pillow src/PIL/WebPImagePlugin.py:294),
-#: which on this workload is the single most expensive phase there is --
-#: encoding cost the same 200-280 ms whether the source was 22 megapixels
-#: or 0.03, because it depends on the encoder's effort and not on the
-#: picture. Measured over the real library, `just bench thumbs-phases`:
-#:
-#:     method 0   171 ms/file   5.83 files/sec   132.5 KiB cached
-#:     method 2   215 ms/file   4.65 files/sec   102.8 KiB
-#:     method 4   368 ms/file   2.72 files/sec    99.4 KiB
-#:
-#: 2 buys 1.7x the throughput for 3.4% more disk. 0 buys a further 1.25x
-#: for 29% more, which is the wrong trade for a cache that is written
-#: once and read forever.
+#: for stills is 4 (python-pillow/Pillow src/PIL/WebPImagePlugin.py:294).
+#: Encoding cost depends on the encoder's effort rather than on the
+#: picture, so it does not fall away for small sources the way decode and
+#: resize do. 2 trades a little size for a lot of throughput against that
+#: default, which is the right direction for a cache written once and read
+#: forever.
 METHOD = 2
 
 
