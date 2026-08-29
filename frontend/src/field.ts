@@ -39,7 +39,9 @@ import { pin as keep, type Pin, board as pinned, unpin } from "./workspace";
 
 /** Below this on-screen width a picture is drawn as its own average
  *  colour: the thumbnail would be a smear, and ten thousand smears cost
- *  more than ten thousand rectangles. */
+ *  more than ten thousand rectangles. Its OWN average, measured off the
+ *  loaded thumbnail -- a picture nothing has seen yet gets the empty
+ *  tone instead, never a made-up one. */
 const TINY = 26;
 
 /** How much of the viewport a picture must cover before it IS the page. */
@@ -122,6 +124,11 @@ interface Node {
   time: Box;
   box: Box;
   from: Box;
+  /** This picture's own average colour, measured off the thumbnail once
+   *  it lands. Empty until then, and empty is drawn as empty: there used
+   *  to be a hash of the slug here, which gave every unloaded file a
+   *  plausible photographic olive or plum and made a field halfway
+   *  through loading look like a field of dark photographs. */
   tint: string;
   img: HTMLImageElement | null;
   full: HTMLImageElement | null;
@@ -190,12 +197,6 @@ const lerpBox = (a: Box, b: Box, t: number): Box => ({
  *  the slug so it is stable across reloads and two pictures beside each
  *  other rarely land on the same one -- a field of one grey is a field
  *  with no shape in it. */
-function seeded(slug: string): string {
-  let h = 0;
-  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) | 0;
-  return `hsl(${Math.abs(h) % 360} 14% 22%)`;
-}
-
 /** What a canvas can read out of a stylesheet: the tokens, resolved. */
 function token(root: HTMLElement, name: string): string {
   return getComputedStyle(root).getPropertyValue(name).trim() || "#888";
@@ -218,7 +219,8 @@ function averaged(img: HTMLImageElement): string | null {
     return `rgb(${r ?? 0} ${g ?? 0} ${b ?? 0})`;
   } catch {
     // A picture from somewhere else would throw here rather than answer
-    // wrongly. The seeded colour is already on the node.
+    // wrongly. The caller leaves the average empty, and an empty average
+    // is drawn as the empty tone.
     return null;
   }
 }
@@ -283,6 +285,12 @@ export function mountField(root: ParentNode): void {
   const sheetOpen = findElement(stage, "[data-field-open]", HTMLAnchorElement);
   const clock = findElement(stage, "[data-field-clock]", HTMLElement);
   const count = findElement(stage, "[data-field-count]", HTMLElement);
+  /** The search box. Written to whenever the answer changes under the
+   *  reader, so the words in it are always the question on screen. */
+  const ask = stage.querySelector<HTMLInputElement>('[data-field-ask] input[name="q"]');
+  /** What the gestures do, which is not the same sentence everywhere:
+   *  inside a card the way out is the thing worth saying. */
+  const hint = stage.querySelector<HTMLElement>("[data-field-hint]");
 
   let nodes: Node[] = [];
   // Three arrangements, and BOARD is a different kind of thing from the
@@ -339,6 +347,16 @@ export function mountField(root: ParentNode): void {
    *  every later one arrives under a camera the reader is holding. */
   let settled = false;
 
+  /** The question on screen. Starts as the one the address asks and
+   *  changes when a reader goes into a card, without a page load. */
+  let standing: URLSearchParams = fromAddress();
+
+  /** The board this answer was entered FROM, and the camera it was
+   *  entered at -- so coming back out lands where you left rather than
+   *  at a fitted board you have to find your place in again. Null when
+   *  the canvas is showing the question the address asked. */
+  let came: { card: Card; cam: Camera } | null = null;
+
   // ── where the pictures come from ──────────────────────────────────
 
   /** One node, with every drawing field at rest. */
@@ -367,7 +385,7 @@ export function mountField(root: ParentNode): void {
       time: { x: 0, y: 0, w: 0, h: 0 },
       box: { x: 0, y: 0, w: 0, h: 0 },
       from: { x: 0, y: 0, w: 0, h: 0 },
-      tint: seeded(slug),
+      tint: "",
       img: null,
       full: null,
       state: "cold",
@@ -384,13 +402,27 @@ export function mountField(root: ParentNode): void {
    * page of it is not a smaller version of the picture, it is a
    * different and wrong one.
    */
-  /** The question this page is asking, as the field asks it. */
-  function question(): URLSearchParams {
+  /** The question the ADDRESS asks: where this page started. */
+  function fromAddress(): URLSearchParams {
     const asked = new URLSearchParams(window.location.search);
     // Not part of the question the field asks: it has no pages, no page
     // size, and `view` is which surface is drawing, not what is in it.
     for (const drop of ["page", "size", "view"]) asked.delete(drop);
     return asked;
+  }
+
+  /**
+   * The question this canvas is answering RIGHT NOW.
+   *
+   * State, not the address. Going into a card used to be
+   * `location.href = "/field?..."` -- a page load, which threw away the
+   * board, the camera and every picture already decoded, and made "zoom
+   * out and go somewhere else" a thing this surface could say and not
+   * do. The question is a variable, so going in is a fetch and coming
+   * back out is putting the old one back.
+   */
+  function question(): URLSearchParams {
+    return new URLSearchParams(standing);
   }
 
   async function fetchAnswer(): Promise<void> {
@@ -470,10 +502,19 @@ export function mountField(root: ParentNode): void {
       // fell inside it and how many of those it did not name, and a
       // canvas that drew nine hundred of four thousand without saying so
       // would be lying about how dense that stretch of time is.
-      if (count) {
-        count.textContent = cut
+      // Not while the BOARD is on screen. A window that lands after the
+      // reader has come back out is answering the address's question
+      // behind the board, and writing its count over "2 on the board"
+      // describes something nobody is looking at.
+      if (count && mode !== "board") {
+        const many = cut
           ? `${nodes.length.toLocaleString()} of the ${(held.held ?? 0).toLocaleString()} here — zoom in for the rest`
           : `${nodes.length.toLocaleString()} of ${total.toLocaleString()}`;
+        // Inside a card, WHICH card. The count alone answers "how many
+        // am I looking at" and leaves "what am I in" to memory, and the
+        // whole point of going into a card without a page load is that
+        // there is somewhere to come back to.
+        count.textContent = came ? `${came.card.pin.name} · ${many}` : many;
         count.hidden = false;
       }
       const first = !settled;
@@ -1174,6 +1215,17 @@ export function mountField(root: ParentNode): void {
       want(n);
     }
 
+    // Where a picture is drawn as a colour, WHICH colour depends on
+    // whether anything has seen it. A loaded one is its own average, and
+    // that is a true small version of it. One that has not arrived is
+    // the page's empty tone -- because the fallback was a hash of the
+    // slug, which produced a plausible photographic olive or plum per
+    // file and made a field still loading look like a field of dark
+    // pictures. A colour that looks like data and is not is worse than
+    // an obvious blank.
+    const waiting = token(stage, "--sunken");
+    const colourOf = (n: Node): string => (n.state === "warm" && n.tint ? n.tint : waiting);
+
     for (const n of nodes) {
       const b = n.box;
       const sx = (b.x - cam.x) * k + width / 2;
@@ -1185,7 +1237,7 @@ export function mountField(root: ParentNode): void {
       // One of several near-identical copies: the edges of the ones
       // underneath, so a stack reads as a stack at any zoom.
       if (n.copies > 1 && sw > TINY) {
-        hand.fillStyle = n.tint;
+        hand.fillStyle = colourOf(n);
         hand.globalAlpha = 0.5;
         for (let i = Math.min(n.copies - 1, 3); i > 0; i--) {
           hand.fillRect(sx + i * 3, sy - i * 3, sw, sh);
@@ -1195,7 +1247,7 @@ export function mountField(root: ParentNode): void {
 
       const picture = n === page && n.full ? n.full : n.img;
       if (sw < TINY || !picture) {
-        hand.fillStyle = n.tint;
+        hand.fillStyle = colourOf(n);
         hand.fillRect(sx, sy, sw, sh);
       } else {
         hand.drawImage(picture, sx, sy, sw, sh);
@@ -1508,7 +1560,13 @@ export function mountField(root: ParentNode): void {
   /** Whether one picture has become the page, and the chrome that says so. */
   function settle(): void {
     let found: Node | null = null;
-    for (const n of nodes) {
+    // Never on the BOARD. The board arranges answers, not pictures, and
+    // the pictures behind it belong to whatever question the address
+    // asked -- so a node from that answer happening to cover the frame
+    // put a photograph's sheet, with its name and its date, over a
+    // surface showing two cards. There is no picture on the board to be
+    // the page.
+    for (const n of mode === "board" ? [] : nodes) {
       if (n.box.h * cam.k >= height * PAGE_COVER && n.box.w * cam.k >= width * 0.4) {
         found = n;
         break;
@@ -1634,18 +1692,105 @@ export function mountField(root: ParentNode): void {
   }
 
   /**
-   * Go into what a card stands for.
+   * Go into what a card stands for -- HERE, on this canvas.
    *
-   * A pinned question opens as the field for that question -- the same
-   * canvas, a different answer in it. A pinned photograph opens as its
-   * own page, because there is nothing to arrange about one picture.
+   * The card is not a bookmark to a page somewhere else. It is the
+   * question, and going into it swaps the answer under the same camera:
+   * a fetch, not a navigation. That is what makes the way back out
+   * possible at all. A pinned photograph is the one exception, because
+   * there is nothing to arrange about one picture and everything known
+   * about it is a page this canvas does not draw.
    */
   function openCard(card: Card): void {
-    // Every kind but a picture is a QUESTION, and the field is what
-    // answers a question -- so a person, an album and a folder all open
-    // the same way, with their own clause in the address.
-    window.location.href =
-      card.pin.kind === "picture" ? `/i/${card.pin.at}` : `/field${card.pin.at ? `?${card.pin.at}` : ""}`;
+    if (card.pin.kind === "picture") {
+      window.location.href = `/i/${card.pin.at}`;
+      return;
+    }
+    if (card.pin.kind === "compare") {
+      // A comparison IS its answer: three numbers and the pictures that
+      // differ, already on the card. There is no larger version of it to
+      // go into, and the two questions it holds are each their own card.
+      say("a comparison is already showing what it found — go into either side instead");
+      return;
+    }
+    came = { card, cam: { ...cam } };
+    standing = new URLSearchParams(card.pin.at);
+    fresh();
+    setMode("rank");
+    // The pill says what is being asked. A canvas that changed its
+    // answer and left the old words in the search box would be telling
+    // the reader they are somewhere they are not.
+    if (ask) ask.value = standing.get("q") ?? "";
+    void fetchAnswer();
+  }
+
+  /**
+   * Back out to the board, at the card you went in through.
+   *
+   * The gesture is zooming out past the whole answer. There is nothing
+   * beyond the whole answer to see, so the wheel had nothing left to do
+   * there -- and "keep pushing out and you end up further out" is the
+   * one instruction this surface never has to teach.
+   */
+  function leaveCard(): void {
+    const back = came;
+    came = null;
+    standing = fromAddress();
+    fresh();
+    if (ask) ask.value = standing.get("q") ?? "";
+    setMode("board");
+    loadBoard();
+    measure();
+    if (back) {
+      cam = { ...back.cam };
+      anchor();
+      draw();
+    } else fit();
+    tally();
+    void fetchAnswer();
+  }
+
+  /** Everything about the answer that was on screen, forgotten. Anything
+   *  left behind here is one answer's state showing through another's:
+   *  a count from the question before, an axis built from its moments, a
+   *  picture still filling the frame. */
+  function fresh(): void {
+    nodes = [];
+    samples = [];
+    runs = [];
+    covering = null;
+    cut = false;
+    whole = false;
+    settled = false;
+    total = 0;
+    span = [0, 0];
+    page = null;
+    hovering = null;
+    hoverCard = null;
+    flight = null;
+    morphAt = 0;
+    if (sheet) sheet.hidden = true;
+    stage.dataset.fieldPage = "none";
+    peek(null, 0, 0);
+  }
+
+  /** Which arrangement is on screen, said in all three places that have
+   *  to agree: the canvas, the stylesheet's root, and the buttons. */
+  function setMode(wanted: "rank" | "time" | "board"): void {
+    mode = wanted;
+    stage.dataset.fieldMode = mode;
+    if (hint) {
+      hint.textContent = came
+        ? `inside ${came.card.pin.name} — zoom out to go back to the board`
+        : mode === "board"
+          ? "drag a card to move it · drop one on another to hold them against each other · push into a card to go in"
+          : "drag to move · scroll to zoom · push into a picture to open it";
+    }
+    const shellNow = stage.parentElement;
+    if (shellNow) shellNow.dataset.arrangement = mode;
+    for (const other of stage.querySelectorAll("[data-field-mode]")) {
+      other.setAttribute("aria-pressed", String(other.getAttribute("data-field-mode") === mode));
+    }
   }
 
   board.addEventListener("pointerdown", (event) => {
@@ -1824,6 +1969,15 @@ export function mountField(root: ParentNode): void {
       // -- so it zooms harder per unit. A plain wheel zooms too, because
       // this surface has nothing else for a wheel to do.
       const by = Math.exp(-pixels(event) * (event.ctrlKey ? 0.01 : 0.0022));
+      // Already as far out as this answer goes. Pushing out from there
+      // means something when you came in through a card: it is the way
+      // back to the board, and it is the same gesture that brought you
+      // in, run backwards. On the answer the ADDRESS asked for there is
+      // nowhere further out to be, so it stops.
+      if (came && by < 1 && cam.k <= fitScale() * 1.002) {
+        leaveCard();
+        return;
+      }
       // The stops. Out is FIT -- there is nothing beyond the whole answer
       // worth showing, and letting it shrink past that just puts the
       // library in a corner. In is one picture at a comfortable size;
@@ -1856,9 +2010,20 @@ export function mountField(root: ParentNode): void {
     // there are rows. On the canvas-only page there is nothing to
     // show instead, and the button is not rendered.
     if (wanted === "grid") return;
+    // Asking for the board while INSIDE a card is the same request as
+    // zooming out of it: put the address's question back, and land on
+    // the card that was gone into. Switching the mode alone would leave
+    // this canvas showing the board with a card's question still
+    // standing behind it, so the next Pin would keep the wrong one.
+    if (wanted === "board" && came) {
+      leaveCard();
+      resize();
+      tick();
+      return;
+    }
     if (wanted !== mode) {
       for (const n of nodes) n.from = { ...n.box };
-      mode = wanted;
+      setMode(wanted);
       // The board is a different set of things, not a rearrangement of
       // the same ones, so it is read rather than morphed into.
       if (mode === "board") loadBoard();
@@ -1878,7 +2043,6 @@ export function mountField(root: ParentNode): void {
       }
       measure();
       morphAt = mode === "board" ? 0 : performance.now();
-      stage.dataset.fieldMode = mode;
     }
     // A canvas sized while it was display:none measured zero, so the
     // first paint after coming back has to re-read the box.

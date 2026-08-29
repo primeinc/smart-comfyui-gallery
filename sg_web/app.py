@@ -1980,10 +1980,47 @@ def _template_engine() -> JinjaTemplateEngine:
     # while saying whose problem it is. Local, so nothing else in this
     # module stops being checked -- which a file-wide rule override
     # would have cost.
-    cast("dict[str, object]", environment.globals)["static_v"] = _static_version()
+    cast("dict[str, object]", environment.globals)["static_v"] = _StaticVersion()
     engine = JinjaTemplateEngine.from_environment(environment)
     activity.register(engine)
     return engine
+
+
+class _StaticVersion:
+    """The cache-buster, RE-READ rather than remembered.
+
+    It used to be one string computed while the engine was built, which
+    is correct for a deploy and wrong for every minute of development:
+    rebuilding a bundle under a server that was already running changed
+    the bytes at `/static/build/app.js` and left the `?v=` on it exactly
+    as it was, so the browser was told the URL had not changed and went
+    on holding the build from before the edit. New templates against an
+    old bundle, and nothing anywhere says so -- the page simply stops
+    doing what the source it was written against says it does.
+
+    Kept for a second at a time, because a page render stamps this on
+    half a dozen URLs and walking `static/` once per URL would be six
+    walks to answer the same question. A second is far below how long it
+    takes to alt-tab and reload, and far above how long a render takes.
+
+    An object rather than a function, so `{{ static_v }}` keeps working:
+    Jinja renders it by calling `__str__`.
+    """
+
+    #: How long one reading stands, in seconds.
+    HOLD = 1.0
+
+    def __init__(self) -> None:
+        self._said = ""
+        self._at = 0.0
+
+    @override
+    def __str__(self) -> str:
+        now = time.monotonic()
+        if not self._said or now - self._at > self.HOLD:
+            self._said = _static_version()
+            self._at = now
+        return self._said
 
 
 def _static_version() -> str:

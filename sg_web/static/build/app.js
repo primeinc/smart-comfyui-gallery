@@ -5580,11 +5580,6 @@
     w: lerp(a.w, b.w, t),
     h: lerp(a.h, b.h, t)
   });
-  function seeded(slug) {
-    let h = 0;
-    for (let i = 0; i < slug.length; i++) h = h * 31 + slug.charCodeAt(i) | 0;
-    return `hsl(${Math.abs(h) % 360} 14% 22%)`;
-  }
   function token(root, name) {
     return getComputedStyle(root).getPropertyValue(name).trim() || "#888";
   }
@@ -5632,6 +5627,8 @@
     const sheetOpen = findElement(stage, "[data-field-open]", HTMLAnchorElement);
     const clock = findElement(stage, "[data-field-clock]", HTMLElement);
     const count = findElement(stage, "[data-field-count]", HTMLElement);
+    const ask2 = stage.querySelector('[data-field-ask] input[name="q"]');
+    const hint = stage.querySelector("[data-field-hint]");
     let nodes = [];
     let mode = "rank";
     let cards = [];
@@ -5657,6 +5654,8 @@
     let asking = false;
     let asked4 = 0;
     let settled = false;
+    let standing = fromAddress();
+    let came = null;
     function made(key, slug, name, kind, thumb, ar, moment, dated, copies) {
       return {
         key,
@@ -5672,16 +5671,19 @@
         time: { x: 0, y: 0, w: 0, h: 0 },
         box: { x: 0, y: 0, w: 0, h: 0 },
         from: { x: 0, y: 0, w: 0, h: 0 },
-        tint: seeded(slug),
+        tint: "",
         img: null,
         full: null,
         state: "cold"
       };
     }
-    function question2() {
+    function fromAddress() {
       const asked5 = new URLSearchParams(window.location.search);
       for (const drop of ["page", "size", "view"]) asked5.delete(drop);
       return asked5;
+    }
+    function question2() {
+      return new URLSearchParams(standing);
     }
     async function fetchAnswer() {
       const asked5 = question2();
@@ -5731,8 +5733,9 @@
         whole = true;
         covering = [after, before];
         cut = (held3.more ?? 0) > 0;
-        if (count) {
-          count.textContent = cut ? `${nodes.length.toLocaleString()} of the ${(held3.held ?? 0).toLocaleString()} here \u2014 zoom in for the rest` : `${nodes.length.toLocaleString()} of ${total.toLocaleString()}`;
+        if (count && mode !== "board") {
+          const many = cut ? `${nodes.length.toLocaleString()} of the ${(held3.held ?? 0).toLocaleString()} here \u2014 zoom in for the rest` : `${nodes.length.toLocaleString()} of ${total.toLocaleString()}`;
+          count.textContent = came ? `${came.card.pin.name} \xB7 ${many}` : many;
           count.hidden = false;
         }
         const first = !settled;
@@ -6194,6 +6197,8 @@
         if (b.x + b.w < left || b.x > right || b.y + b.h < top || b.y > bottom) continue;
         want(n);
       }
+      const waiting = token(stage, "--sunken");
+      const colourOf = (n) => n.state === "warm" && n.tint ? n.tint : waiting;
       for (const n of nodes) {
         const b = n.box;
         const sx = (b.x - cam.x) * k + width / 2;
@@ -6202,7 +6207,7 @@
         const sh = b.h * k;
         if (sx + sw < -40 || sx > width + 40 || sy + sh < -40 || sy > height + 40) continue;
         if (n.copies > 1 && sw > TINY) {
-          hand.fillStyle = n.tint;
+          hand.fillStyle = colourOf(n);
           hand.globalAlpha = 0.5;
           for (let i = Math.min(n.copies - 1, 3); i > 0; i--) {
             hand.fillRect(sx + i * 3, sy - i * 3, sw, sh);
@@ -6211,7 +6216,7 @@
         }
         const picture = n === page && n.full ? n.full : n.img;
         if (sw < TINY || !picture) {
-          hand.fillStyle = n.tint;
+          hand.fillStyle = colourOf(n);
           hand.fillRect(sx, sy, sw, sh);
         } else {
           hand.drawImage(picture, sx, sy, sw, sh);
@@ -6438,7 +6443,7 @@
     }
     function settle2() {
       let found2 = null;
-      for (const n of nodes) {
+      for (const n of mode === "board" ? [] : nodes) {
         if (n.box.h * cam.k >= height * PAGE_COVER && n.box.w * cam.k >= width * 0.4) {
           found2 = n;
           break;
@@ -6520,7 +6525,68 @@
       return null;
     }
     function openCard(card) {
-      window.location.href = card.pin.kind === "picture" ? `/i/${card.pin.at}` : `/field${card.pin.at ? `?${card.pin.at}` : ""}`;
+      if (card.pin.kind === "picture") {
+        window.location.href = `/i/${card.pin.at}`;
+        return;
+      }
+      if (card.pin.kind === "compare") {
+        say2("a comparison is already showing what it found \u2014 go into either side instead");
+        return;
+      }
+      came = { card, cam: { ...cam } };
+      standing = new URLSearchParams(card.pin.at);
+      fresh();
+      setMode("rank");
+      if (ask2) ask2.value = standing.get("q") ?? "";
+      void fetchAnswer();
+    }
+    function leaveCard() {
+      const back = came;
+      came = null;
+      standing = fromAddress();
+      fresh();
+      if (ask2) ask2.value = standing.get("q") ?? "";
+      setMode("board");
+      loadBoard();
+      measure();
+      if (back) {
+        cam = { ...back.cam };
+        anchor();
+        draw4();
+      } else fit2();
+      tally();
+      void fetchAnswer();
+    }
+    function fresh() {
+      nodes = [];
+      samples = [];
+      runs = [];
+      covering = null;
+      cut = false;
+      whole = false;
+      settled = false;
+      total = 0;
+      span = [0, 0];
+      page = null;
+      hovering = null;
+      hoverCard = null;
+      flight = null;
+      morphAt = 0;
+      if (sheet) sheet.hidden = true;
+      stage.dataset.fieldPage = "none";
+      peek(null, 0, 0);
+    }
+    function setMode(wanted) {
+      mode = wanted;
+      stage.dataset.fieldMode = mode;
+      if (hint) {
+        hint.textContent = came ? `inside ${came.card.pin.name} \u2014 zoom out to go back to the board` : mode === "board" ? "drag a card to move it \xB7 drop one on another to hold them against each other \xB7 push into a card to go in" : "drag to move \xB7 scroll to zoom \xB7 push into a picture to open it";
+      }
+      const shellNow = stage.parentElement;
+      if (shellNow) shellNow.dataset.arrangement = mode;
+      for (const other of stage.querySelectorAll("[data-field-mode]")) {
+        other.setAttribute("aria-pressed", String(other.getAttribute("data-field-mode") === mode));
+      }
     }
     board2.addEventListener("pointerdown", (event) => {
       dragging = true;
@@ -6656,6 +6722,10 @@
         const my = event.clientY - rect.top;
         const before = toWorld(mx, my);
         const by = Math.exp(-pixels(event) * (event.ctrlKey ? 0.01 : 22e-4));
+        if (came && by < 1 && cam.k <= fitScale() * 1.002) {
+          leaveCard();
+          return;
+        }
         cam.k = clamp(cam.k * by, fitScale(), 14);
         const after = toWorld(mx, my);
         cam.x += before.x - after.x;
@@ -6675,9 +6745,15 @@
       }
       if (shell) shell.dataset.arrangement = wanted;
       if (wanted === "grid") return;
+      if (wanted === "board" && came) {
+        leaveCard();
+        resize();
+        tick();
+        return;
+      }
       if (wanted !== mode) {
         for (const n of nodes) n.from = { ...n.box };
-        mode = wanted;
+        setMode(wanted);
         if (mode === "board") loadBoard();
         if (count) {
           if (mode === "board") {
@@ -6690,7 +6766,6 @@
         }
         measure();
         morphAt = mode === "board" ? 0 : performance.now();
-        stage.dataset.fieldMode = mode;
       }
       resize();
       fit2();
