@@ -323,7 +323,7 @@ check: web::fresh gates
 
 [parallel]
 [private]
-gates: api::check lint fmt-check web::types types-python web::unit db-check
+gates: api::check lint fmt-check web::types types-python web::unit db-check prose
 
 # Comment and docstring prose, against CONTRIBUTING.md. Vale reads Python
 # through tree-sitter, so it sees comments and docstrings and not string
@@ -336,9 +336,6 @@ gates: api::check lint fmt-check web::types types-python web::unit db-check
 # Exit 1 is a finding and 2 is Vale itself failing; they are reported apart so
 # a broken config cannot read as a clean tree. A missing binary fails here
 # rather than passing silently.
-# NOT in `gates` yet: the tree still has findings, and a gate wired in
-# while it cannot pass blocks every commit. It joins `gates` in the commit
-# that clears the last one.
 [private]
 [script]
 prose:
