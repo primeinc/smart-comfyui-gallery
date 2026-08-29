@@ -455,6 +455,43 @@ STDERR_SHOWN: int = 200
 SHELL_TEMPLATE = "base.html"
 EXTENDS_SHELL = '{% extends "base.html" %}'
 
+#: Pages that own their whole document on purpose, and why.
+#:
+#: Recorded rather than exempted quietly. The shell is the right default
+#: -- a page that skipped it by accident would be missing the navigation,
+#: the notice and the activity surface, and nothing would say so -- but
+#: "every page extends the shell" is a rule about pages that SCROLL, and
+#: it cannot describe a surface whose whole job is one canvas the size of
+#: the window.
+#: A job kind no console button starts, and what starts it instead.
+#:
+#: Not every capability belongs on a button. A kind here is reached by
+#: doing the thing it belongs to, and the entry names that thing so the
+#: claim can be checked rather than trusted -- SG012 checks both halves,
+#: that the kind still exists and that what is said to start it still
+#: does.
+STARTED_ELSEWHERE: dict[str, str] = {
+    "walk": (
+        "queued by `catch_up` as its first step (db/runner.py). Walking the roots alone finds "
+        "files and reads none of them, which settles `done` having apparently done nothing; "
+        "'bring the library up to date' is the affordance, and it walks first."
+    ),
+    "story_plan": (
+        "queued by opening a sitting that has no story yet -- /stories/sessions/{id}, which IS "
+        "the session card's link on the timeline (sg_web/templates/_timeline_session.html). "
+        "Telling a story is something done to one sitting, never a sweep over the library."
+    ),
+}
+
+OWN_DOCUMENT: dict[str, str] = {
+    "field.html": (
+        "the canvas surface. A rail above a camera and a pager below it is a canvas in a box, "
+        "which is the thing this page exists to stop being -- so it carries its destinations as "
+        "a launcher over the picture plane instead, and the crawl in "
+        "tests/test_the_shell_mounts_every_surface.py accepts either shell"
+    ),
+}
+
 #: The functions that open a connection meant to outlive the call, and why.
 #: SG103 takes returning or yielding as a transfer; it does not take storing
 #: one, because that would let any leak be hidden inside an object. Every
@@ -577,9 +614,9 @@ NOT_A_REFERENCE: frozenset[tuple[str, str]] = frozenset(
         ("derived_face_instance", "id"),
         ("derived_annotation", "id"),
         ("region", "id"),
-        # A verdict names the producer it judged, and must NOT reference
-        # it: the derived layer is disposable and a judgement has to
-        # outlive being rebuilt. A foreign key with any ON DELETE is
+        # A verdict names the producer it judged and must NOT reference
+        # it: a re-run replaces the judged row and the verdict has to
+        # survive that. A foreign key with any ON DELETE is
         # wrong in both directions here -- CASCADE deletes the human's
         # words with the machine's, SET NULL erases which model was
         # judged, which is the only thing that makes the verdict

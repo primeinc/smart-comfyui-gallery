@@ -65,16 +65,76 @@ class Finding:
 #:
 #: The saving was 0.08s. `walked` below is where the real one is, and it
 #: is keyed on the tree OBJECT, so it cannot go stale.
+#: Files that would not parse, and why. Written by `parsed`, reported by
+#: `rule_sources_parse`.
+#:
+#: A linter that dies on the first bad file is worse than no linter: one
+#: unreadable file took down all twenty-one rules over every other file,
+#: and the only output was a traceback from inside `ast.parse` that named
+#: `<unknown>` rather than the path. Every rule in this module now runs
+#: over everything that CAN be read, and the file that cannot becomes a
+#: finding like any other defect.
+_UNPARSEABLE: dict[pathlib.Path, str] = {}
+
+#: What a caller gets for a file that will not parse. Empty, so a rule
+#: walking it finds nothing rather than crashing -- and never silently:
+#: SG011 reports the file, so "no findings here" can only ever mean the
+#: file was read.
+_NOTHING = ast.Module(body=[], type_ignores=[])
+
+
 @functools.cache
 def _parsed_as_of(source: pathlib.Path, _stamp: tuple[int, int]) -> ast.Module:
-    return ast.parse(source.read_text(encoding="utf-8"))
+    try:
+        text = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as why:
+        _UNPARSEABLE[source] = f"cannot be read: {why}"
+        return _NOTHING
+    try:
+        return ast.parse(text)
+    except SyntaxError as why:
+        where = f" at line {why.lineno}" if why.lineno else ""
+        _UNPARSEABLE[source] = f"{why.msg}{where}"
+        return _NOTHING
+    except ValueError as why:
+        # A null byte, or a source too deeply nested for the compiler.
+        # `ast.parse` raises these outside SyntaxError.
+        _UNPARSEABLE[source] = str(why)
+        return _NOTHING
 
 
 def parsed(source: pathlib.Path) -> ast.Module:
     """The file's tree, parsed once per (mtime, size): a file rewritten
-    under the linter re-parses itself and nothing else."""
-    held = source.stat()
+    under the linter re-parses itself and nothing else.
+
+    NEVER RAISES. A file that will not parse comes back empty and is
+    recorded in `_UNPARSEABLE` for SG011 to report, because one bad file
+    must not be able to stop every rule from running over every good one.
+    """
+    try:
+        held = source.stat()
+    except OSError as why:
+        _UNPARSEABLE[source] = f"cannot be read: {why}"
+        return _NOTHING
     return _parsed_as_of(source, (held.st_mtime_ns, held.st_size))
+
+
+def rule_sources_parse(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG011: every Python file this repository owns parses.
+
+    Runs first, and reads everything, so the answer to "why did the
+    linter say nothing about that file" is always in the output rather
+    than in a traceback. A file that cannot be parsed cannot be checked,
+    and a check that was never made must not look like a check that
+    passed.
+    """
+    for source in every_source():
+        parsed(source)
+    return [
+        Finding(source, 1, 0, "SG011", f"does not parse, so no rule can read it -- {why}")
+        for source, why in sorted(_UNPARSEABLE.items())
+        if source.is_relative_to(root)
+    ]
 
 
 #: Walked trees, keyed on the tree itself.
@@ -257,8 +317,19 @@ def every_source() -> tuple[pathlib.Path, ...]:
     """Every .py file this repository owns, discovered rather than listed."""
     found: list[pathlib.Path] = []
     for current, subdirs, names in os.walk(REPO_ROOT):
-        subdirs[:] = sorted(d for d in subdirs if d not in policy.NOT_OURS)
-        found.extend(pathlib.Path(current) / name for name in sorted(names) if name.endswith(".py"))
+        here = pathlib.Path(current)
+        # A virtualenv is not ours whatever it is CALLED. `NOT_OURS` named
+        # `.venv`, so a second environment beside it -- `.venv-compat`,
+        # built by another session -- was walked as repository source, and
+        # one third-party test file in it (mediapipe's
+        # text_embedder_test.py, which carries a partial-differential sign)
+        # killed the whole linter with a traceback naming `<unknown>`.
+        # Twenty-one rules over every other file stopped running because of
+        # a file we do not own and would never check. `pyvenv.cfg` is what
+        # makes a directory an environment (PEP 405), so that is what this
+        # asks rather than guessing at names.
+        subdirs[:] = sorted(d for d in subdirs if d not in policy.NOT_OURS and not (here / d / "pyvenv.cfg").is_file())
+        found.extend(here / name for name in sorted(names) if name.endswith(".py"))
     return tuple(found)
 
 
@@ -940,13 +1011,40 @@ def _page_shapes(templates: typing.Iterable[pathlib.Path]) -> list[Finding]:
                     line = lowered[: lowered.index(word)].count("\n") + 1
                     found.append(Finding(source, line, 0, "SG502", f"a fragment carrying {word} is a page"))
             continue
-        if source.name == policy.SHELL_TEMPLATE:
+        if source.name == policy.SHELL_TEMPLATE or source.name in policy.OWN_DOCUMENT:
             continue
-        if not held.lstrip().startswith(policy.EXTENDS_SHELL):
+        # Past any leading Jinja comment. The rule is that a page EXTENDS
+        # the shell, not that its first bytes are the tag -- and a page
+        # whose first lines say what it is and why was read as a page that
+        # extends nothing, which punishes the one habit this codebase most
+        # wants to encourage.
+        opens = held.lstrip()
+        while opens.startswith("{#"):
+            shut = opens.find("#}")
+            if shut == -1:
+                break
+            opens = opens[shut + 2 :].lstrip()
+        if not opens.startswith(policy.EXTENDS_SHELL):
             found.append(Finding(source, 1, 0, "SG502", f"a page that does not open with {policy.EXTENDS_SHELL}"))
         if "<!doctype" in lowered:
             line = lowered[: lowered.index("<!doctype")].count("\n") + 1
             found.append(Finding(source, line, 0, "SG502", "a page carrying its own document; the shell owns it"))
+
+    # A recorded decision about a page that is gone says a choice was
+    # taken about something that does not exist, which is worse than no
+    # note at all.
+    names = {source.name for source in templates}
+    found.extend(
+        Finding(
+            REPO_ROOT / "sglint" / "policy.py",
+            1,
+            0,
+            "SG502",
+            f"{held} is recorded as owning its document but is not a template",
+        )
+        for held in policy.OWN_DOCUMENT
+        if held not in names
+    )
     return found
 
 
@@ -1503,6 +1601,123 @@ def _reachable_text(root: pathlib.Path) -> str:
     return "\n".join(parts)
 
 
+def _queued_by(root: pathlib.Path) -> dict[str, set[str]]:
+    """Which job kind each `submit_*` puts on the queue.
+
+    Read from the source rather than declared, because the console's
+    vocabulary and the worker's differ ON PURPOSE: the console offers
+    "faces" and "thumbs", the worker runs `detect_faces` and `hash`.
+    Comparing those two name sets directly would assert a correspondence
+    this application deliberately does not have.
+
+    Both modules that submit are read. `db/prompts.py` has its own
+    `submit_embed`, and reading only `db/runner.py` makes `embed_prompts`
+    look unstartable when its button is right there beside the others.
+    """
+    found: dict[str, set[str]] = {}
+    for name in ("runner", "prompts"):
+        source = root / "db" / f"{name}.py"
+        if not source.is_file():
+            continue
+        tree = parsed(source)
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef) or not node.name.startswith("submit_"):
+                continue
+            body = ast.unparse(node)
+            kinds = set(re.findall(r"""jobs\.submit\(\s*conn,\s*['"]([a-z_]+)['"]""", body))
+            kinds |= set(re.findall(r"""kind\s*=\s*['"]([a-z_]+)['"]""", body))
+            found[f"{name}.{node.name}"] = kinds
+    return found
+
+
+def rule_job_kind_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG012: a job the worker can run that nobody can start.
+
+    A job kind is a capability in the fullest sense -- a handler, a
+    queue, a ledger and tests -- and a kind with no way to start one is
+    as unshipped as a button nobody drew.
+
+    Three things, because a register is only worth what its weakest half
+    is worth: every kind is startable or recorded; every recorded kind
+    still exists; and the thing each record POINTS AT still exists. The
+    third is what stops the register decaying into prose -- "the session
+    card starts this" stays readable and reassuring long after the
+    session card stops doing it.
+
+    This lived in a test that read `inspect.getsource`, which SG007
+    rightly refuses: a check over the source belongs here, where it runs
+    on every commit rather than only when somebody runs the slow suite.
+    """
+    runner = root / "db" / "runner.py"
+    console = root / "sg_web" / "operations.py"
+    if not runner.is_file() or not console.is_file():
+        return []
+    at = (console, 1, 0)
+    found: list[Finding] = []
+
+    handlers = set(re.findall(r"""^\s+['"]([a-z_]+)['"]:""", _handlers_block(runner), re.MULTILINE))
+    if not handlers:
+        # POSITIVE CONTROL. "No handlers found" is a fact about this
+        # rule's reading, never about the application, and the two must
+        # never be confused.
+        return [Finding(runner, 1, 0, "SG012", "HANDLERS could not be read, so no gap found here means nothing")]
+
+    queued = _queued_by(root)
+    if not any(queued.values()):
+        return [
+            Finding(runner, 1, 0, "SG012", "no submit_* appears to queue a kind; this rule is misreading the source")
+        ]
+
+    text = console.read_text(encoding="utf-8")
+    reachable: set[str] = set()
+    for module, called in re.findall(r"\b(runner|prompts)\.(submit_\w+|catch_up)\b", text):
+        if called == "catch_up":
+            # The ordered run of all of them: it reaches whatever every
+            # submit reaches.
+            reachable |= {kind for kinds in queued.values() for kind in kinds}
+        else:
+            reachable |= queued.get(f"{module}.{called}", set())
+
+    found.extend(
+        Finding(
+            runner, 1, 0, "SG012", f"`{kind}` is a job the worker runs and nothing starts; add a launcher or record it"
+        )
+        for kind in sorted(handlers - reachable - set(policy.STARTED_ELSEWHERE))
+    )
+    found.extend(
+        Finding(runner, 1, 0, "SG012", f"`{kind}` is recorded as started elsewhere but is not a job kind any more")
+        for kind in sorted(set(policy.STARTED_ELSEWHERE) - handlers)
+    )
+
+    # What each record points at, still there.
+    markup = _reachable_text(root)
+    if "story_plan" in policy.STARTED_ELSEWHERE and "/stories/sessions/" not in markup:
+        found.append(
+            Finding(
+                *at,
+                "SG012",
+                "story_plan is recorded as started by opening a sitting, but nothing builds /stories/sessions/",
+            )
+        )
+    if "walk" in policy.STARTED_ELSEWHERE and '"catch_up"' not in text and "'catch_up'" not in text:
+        found.append(
+            Finding(*at, "SG012", "walk is recorded as catch_up's first step, but there is no catch_up launcher")
+        )
+    return found
+
+
+def _handlers_block(runner: pathlib.Path) -> str:
+    """The text of `db/runner.py HANDLERS`, and nothing else. Read as
+    text rather than imported: importing the worker to ask what it can do
+    loads torch."""
+    text = runner.read_text(encoding="utf-8")
+    at = text.find("HANDLERS")
+    if at == -1:
+        return ""
+    shut = text.find("\n}", at)
+    return text[at:shut] if shut != -1 else ""
+
+
 def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     """SG010: something the application can do that no surface reaches.
 
@@ -1573,10 +1788,12 @@ def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
+    rule_sources_parse,
     rule_spawns,
     rule_templates_parse,
     rule_one_owner,
     rule_capability_has_a_way_in,
+    rule_job_kind_has_a_way_in,
     rule_tests_run_things,
     rule_sql_structure,
     rule_connection_lifetime,

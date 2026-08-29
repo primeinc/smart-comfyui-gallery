@@ -7025,6 +7025,7 @@
       pane.dataset.paneMode = mode;
       pane.setAttribute("role", mode === "overlay" ? "dialog" : "region");
       pane.setAttribute("aria-label", title);
+      pane.tabIndex = -1;
       if (mode === "overlay") pane.setAttribute("aria-modal", "true");
       pane.innerHTML = `
       <header class="pane-bar" data-pane-bar>
@@ -7052,6 +7053,7 @@
       open.push(pane);
       requestAnimationFrame(() => {
         pane.setAttribute("data-pane-in", "");
+        pane.focus({ preventScroll: true });
         settle2();
       });
       const body = pane.querySelector("[data-pane-body]");
@@ -7214,12 +7216,12 @@
     };
     deck.addEventListener("pointerup", drop);
     deck.addEventListener("pointercancel", drop);
-    document.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape" || !open.length) return;
-      const top = open[open.length - 1];
-      if (!top) return;
+    deck.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const pane = closestFrom(event.target, ".pane", HTMLElement);
+      if (!pane) return;
       event.preventDefault();
-      shut(top);
+      shut(pane);
     });
     settle2();
   }

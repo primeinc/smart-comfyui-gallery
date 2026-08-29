@@ -62,6 +62,11 @@ export function mountPanes(root: ParentNode): void {
     pane.dataset.paneMode = mode;
     pane.setAttribute("role", mode === "overlay" ? "dialog" : "region");
     pane.setAttribute("aria-label", title);
+    // Focusable, so the keyboard follows the pane in. Without this the
+    // reader's focus stays behind on the canvas: Tab walks the surface
+    // underneath, and Escape -- which the deck listens for -- never
+    // reaches the deck at all.
+    pane.tabIndex = -1;
     if (mode === "overlay") pane.setAttribute("aria-modal", "true");
     pane.innerHTML = `
       <header class="pane-bar" data-pane-bar>
@@ -98,6 +103,7 @@ export function mountPanes(root: ParentNode): void {
     // to do nothing for half a second reads as a control that is broken.
     requestAnimationFrame(() => {
       pane.setAttribute("data-pane-in", "");
+      pane.focus({ preventScroll: true });
       // AFTER the attribute, not before: `settle` counts panes that are
       // actually in, so calling it first found none and the canvas never
       // made room for a dock.
@@ -356,16 +362,24 @@ export function mountPanes(root: ParentNode): void {
   deck.addEventListener("pointerup", drop);
   deck.addEventListener("pointercancel", drop);
 
-  // Escape closes the newest pane, the way every layered surface behaves.
-  // Not through the key registry: this is the dismissal of whatever is on
-  // top, which the registry's own dispatch already exempts dialogs from,
-  // and it must keep working while a pane holds focus.
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !open.length) return;
-    const top = open[open.length - 1];
-    if (!top) return;
+  // Escape closes the pane the key was pressed in, the way every layered
+  // surface behaves.
+  //
+  // ON THE DECK, not on the document. A second document keydown listener
+  // is the exact defect the key registry exists to prevent -- two
+  // keyboards that cannot see each other's claims -- and this one was
+  // excused in a comment rather than fixed. It does not need the
+  // document: a pane takes focus when it opens, so the keystroke starts
+  // inside the pane and reaches the deck by bubbling, and the pane it
+  // reaches from is the pane to close. That is also more correct than
+  // "the newest": with two panes open, Escape now shuts the one you are
+  // actually in.
+  deck.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const pane = closestFrom(event.target, ".pane", HTMLElement);
+    if (!pane) return;
     event.preventDefault();
-    shut(top);
+    shut(pane);
   });
 
   settle();
