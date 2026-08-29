@@ -146,11 +146,11 @@ def active_jobs(context: Mapping[str, Any]) -> list[dict]:
 def library_size(context: Mapping[str, Any]) -> int | None:
     """The shell's `library_size()`: how many files this library holds.
 
-    The rail's foot used to be empty space under four links. Both of the
-    self-hosted libraries this application is a peer of put the state of
-    the collection there instead -- PhotoPrism its storage, immich its
-    BottomInfo -- because a frame that never says how much it is holding
-    makes a library of four files look like a library of four thousand.
+    The rail's foot carries the state of the collection, where both of
+    the self-hosted libraries this application is a peer of put it --
+    PhotoPrism its storage, immich its BottomInfo -- because a frame that
+    never says how much it is holding makes a library of four files look
+    like a library of four thousand.
 
     ONE indexed count, deliberately: this runs on every page render, and
     the coverage read that would say what is still UNDONE is six queries

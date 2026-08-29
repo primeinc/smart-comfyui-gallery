@@ -406,8 +406,9 @@ class NovelAIAdapter:
     """NovelAI: tEXt Software=NovelAI, Description + Comment JSON.
 
     NovelAI's writer is closed source; the reference for the field layout
-    is receyuki/stable-diffusion-prompt-reader@32b2eea (its NovelAI
-    parser), corroborated by real exports in this suite's fixtures."""
+    is receyuki/stable-diffusion-prompt-reader@32b2eea
+    sd_prompt_reader/format/novelai.py:92-110, corroborated by real
+    exports in this suite's fixtures."""
 
     tool = "NovelAI"
 
@@ -532,8 +533,9 @@ class DrawThingsAdapter:
     """Draw Things: JSON inside XMP exif:UserComment.
 
     Draw Things is closed source; the reference for the layout is
-    receyuki/stable-diffusion-prompt-reader@32b2eea (its DrawThings
-    parser), corroborated by real exports in this suite's fixtures."""
+    receyuki/stable-diffusion-prompt-reader@32b2eea
+    sd_prompt_reader/format/drawthings.py:20-30, corroborated by real
+    exports in this suite's fixtures."""
 
     tool = "Draw Things"
 

@@ -58,7 +58,9 @@ buildkitd.toml
 
 # Test artifacts
 compose-test.yaml
-SmartGallery
+# Anchored: unanchored, this matched any directory of that name at any
+# depth, including .vale/styles/SmartGallery.
+/SmartGallery
 temp
 
 # AI DAM (WI-31): provisioned model weights and derived caches — never commit

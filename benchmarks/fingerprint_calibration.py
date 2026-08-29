@@ -14,8 +14,8 @@ Classes, by product intent:
     duplicate   the same picture as files actually rot: re-encodes,
                 resizes, double-JPEG. MUST group.
     variant     recognisably the same shot, touched: crops, brightness,
-                a watermark. The product's "likely variant" tier --
-                reported, not scored as either positive or negative.
+                a watermark. Reported, not scored as either positive
+                or negative.
     edited      meaningfully changed content: a quarter of the frame
                 replaced, half composited from another picture. Must NOT
                 group as a duplicate.

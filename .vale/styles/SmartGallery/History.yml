@@ -1,0 +1,10 @@
+extends: existence
+message: "'%s' is change history; git records it, comments state current behaviour."
+level: error
+ignorecase: true
+tokens:
+  - used to
+  - previously
+  - formerly
+  - originally
+  - we decided

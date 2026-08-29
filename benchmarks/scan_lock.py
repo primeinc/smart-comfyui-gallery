@@ -4,19 +4,13 @@ There is exactly one write lane per database file. Whatever holds it,
 every other writer waits -- and `busy_timeout` is 5000 ms
 (db/connect.py), after which they do not wait, they fail.
 
-A scan used to hold that lane for its whole duration, hashing included.
-`sha256_of` reads every changed file off the disk, so the lane was held
-for as long as it took to read the library. On a first scan of a new
-root -- where every directory is created, opening the transaction on the
-first one -- nothing else in the application could write until the last
-byte was hashed. The background worker could not even claim a job; it
-got `database is locked` every few seconds and reported it as a crash.
-
-The walk writes nothing now (db/scan.py `survey`), so the lane is taken
-only for the rows (`record` + `apply_scan`). This measures both halves
-separately against real roots, because the ratio between them IS the
-change, and the absolute write figure is what decides whether the lane
-is still held past `busy_timeout` on a large library.
+The walk writes nothing (db/scan.py `survey`), so the lane is taken only
+for the rows (`record` + `apply_scan`). Hashing is the expensive half --
+`sha256_of` reads every changed file off the disk -- and it happens
+outside the lane. This measures both halves separately against real
+roots: the ratio between them says how much of a scan is lane-free, and
+the absolute write figure is what decides whether the lane is still held
+past `busy_timeout` on a large library.
 
 Run through `just bench scan-lock`.
 """

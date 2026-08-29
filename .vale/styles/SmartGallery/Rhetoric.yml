@@ -1,0 +1,11 @@
+extends: existence
+message: "'%s' is emphasis or persuasion, not a fact."
+level: error
+ignorecase: true
+tokens:
+  - obviously
+  - clearly
+  - unfortunately
+  - of course
+  - needless to say
+  - it is worth noting

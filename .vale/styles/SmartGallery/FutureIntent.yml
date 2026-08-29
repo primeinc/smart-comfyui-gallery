@@ -1,0 +1,11 @@
+extends: existence
+message: "'%s' is future intent; comments describe the code as it is."
+level: error
+ignorecase: true
+tokens:
+  - eventually
+  - someday
+  - for now
+  - temporary
+  - TODO
+  - FIXME

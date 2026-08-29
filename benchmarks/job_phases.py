@@ -20,10 +20,10 @@ time gives the mean cores this process kept busy, which is the contention
 question and costs nothing; GPU utilisation comes from nvidia-smi,
 because pynvml is not installed and is not worth a dependency here.
 
-The database is a temporary one. The library's roots are scanned
-read-only into it, so a benchmark can never write to a real run's
-gallery.db, and every job starts from an empty cache instead of skipping
-work already done.
+The database is built for the run and discarded with it. The library's
+roots are scanned read-only into it, so a benchmark can never write to a
+real run's gallery.db, and every job starts from an empty cache instead
+of skipping work already done.
 """
 
 from __future__ import annotations
@@ -176,14 +176,10 @@ def run(conn, models_dir: str, owner: str, job: str, home: pathlib.Path) -> dict
     def heard(event) -> None:
         # The runner's own vocabulary: an item settles as `item.done` or
         # `item.failed`, and its phases arrive as `item.observed`
-        # (db/runner.py:1186, :1206, :1242). Guessing at "item.finished"
-        # collected nothing at all and reported no latencies rather than
-        # an error, which is the quiet kind of wrong.
-        # Every report is spoken TWICE: once immediately marked `pending`,
-        # while the transaction that produced it may still roll back, and
-        # once as the committed ledger row (db/runner.py Report). Counting
-        # both attributed 184% of the wall clock to one phase, which is
-        # the useful kind of impossible number. The row is the history.
+        # (db/runner.py:1186, :1206, :1242). Every report is spoken
+        # TWICE -- once marked `pending`, while the transaction that
+        # produced it may still roll back, and once as the committed
+        # ledger row (db/runner.py Report) -- and only the row counts.
         if event.get("pending"):
             return
         kind = event.get("type")

@@ -1,0 +1,13 @@
+extends: existence
+message: "'%s' is speculation; state what is verifiable or delete it."
+level: error
+ignorecase: true
+tokens:
+  - probably
+  - likely
+  - hopefully
+  - presumably
+  - apparently
+  - perhaps
+  - we think
+  - it seems

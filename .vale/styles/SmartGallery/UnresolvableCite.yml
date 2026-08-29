@@ -1,0 +1,6 @@
+extends: existence
+message: "'%s' names no file; cite org/repo@sha path:line."
+level: error
+nonword: true
+raw:
+  - '[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{7,40}(?![0-9a-f])(?![:\s]+[A-Za-z0-9._/-]*[A-Za-z0-9_/-])'

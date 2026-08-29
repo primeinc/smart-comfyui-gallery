@@ -1,0 +1,6 @@
+extends: occurrence
+message: "Comment block runs to %d sentences; the limit is two."
+level: error
+scope: comment.line
+max: 2
+token: '[.!?](?: |$)'

@@ -174,11 +174,11 @@ def _covers(newest: list) -> list[str]:
     """Which of the recent stretch the hero tile shows, as ADDRESSES.
 
     Through `thumbs.asset_url`, like every other surface that draws a
-    picture. The template used to build `/thumb/{{ slug }}` itself, which
-    it cannot do correctly: that route is the honest fallback for a file
-    ingest has not hashed, and a page spelling it asks for the slow path
-    on every picture that HAS been hashed. A library too small to stride
-    shows what it has, in order.
+    picture, rather than a template spelling `/thumb/{{ slug }}` itself:
+    that route is the honest fallback for a file ingest has not hashed,
+    and a page spelling it asks for the slow path on every picture that
+    HAS been hashed. A library too small to stride shows what it has, in
+    order.
     """
     from vision import thumbs
 
@@ -191,11 +191,11 @@ def _covers(newest: list) -> list[str]:
 def front(state: State, request: Request) -> Response | Template:
     """The front door: where you are and what you can do from here.
 
-    A BROWSER GETS A PLACE TO STAND, not a redirect. It used to bounce to
-    /g, which answered "what is in this library" with four thousand
-    thumbnails before asking whether that was the question. The gallery
-    is one of eight things a person opens this application to do, and
-    landing in it made the other seven feel like somewhere else.
+    A BROWSER GETS A PLACE TO STAND, not a bounce to /g, which answers
+    "what is in this library" with four thousand thumbnails before asking
+    whether that was the question. The gallery is one of eight things a
+    person opens this application to do, and landing in it makes the
+    other seven feel like somewhere else.
 
     So this says what the library holds, what is running, and what needs
     a person -- and then offers the ways in, each one an address that

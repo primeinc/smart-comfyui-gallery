@@ -325,6 +325,34 @@ check: web::fresh gates
 [private]
 gates: api::check lint fmt-check web::types types-python web::unit db-check
 
+# Comment and docstring prose, against CONTRIBUTING.md. Vale reads Python
+# through tree-sitter, so it sees comments and docstrings and not string
+# literals or code.
+#
+# `--no-global` is load-bearing. Vale always loads a per-user config last and
+# lets it override, so without this a developer's own file changes what this
+# gate reports.
+#
+# Exit 1 is a finding and 2 is Vale itself failing; they are reported apart so
+# a broken config cannot read as a clean tree. A missing binary fails here
+# rather than passing silently.
+# NOT in `gates` yet: the tree still has findings, and a gate wired in
+# while it cannot pass blocks every commit. It joins `gates` in the commit
+# that clears the last one.
+[private]
+[script]
+prose:
+    if ! command -v vale >/dev/null 2>&1; then
+      echo "vale is not installed; the prose gate cannot run (scoop install vale)" >&2
+      exit 1
+    fi
+    vale --no-global --minAlertLevel=error db vision sg_web metaparse sglint story_renderers tests benchmarks
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+      echo "vale exited 2: its own configuration or runtime failed, not the tree" >&2
+    fi
+    exit "$rc"
+
 # What could not be made to fit ten seconds. Not less important --
 # repo-check is what keeps a clone honest, and `types-elsewhere` is the
 # only thing that reads the platforms this machine is not. Measured:

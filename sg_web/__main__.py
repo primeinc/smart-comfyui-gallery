@@ -183,9 +183,9 @@ def reachable() -> list[str]:
 
     found: list[str] = []
     try:
-        # The address that would be used to reach the outside world --
-        # which is the one a phone on the same network wants. No packet
-        # is sent; a connected UDP socket only fixes the local end.
+        # The address the kernel routes toward the outside world -- which
+        # is the one a phone on the same network wants. No packet is sent;
+        # a connected UDP socket only fixes the local end.
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             probe.connect(("10.255.255.255", 1))
             found.append(probe.getsockname()[0])
