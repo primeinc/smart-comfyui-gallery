@@ -512,9 +512,19 @@
     cursor: pointer;
   }
 
+  /* The right edge is a VARIABLE, not a declaration, because something
+     fixed may be parked there. A layer is not a specificity tiebreak: a
+     plain `.stage { padding: ... }` in a later layer beats
+     `.stage:has(> #timeline-swap) { padding-right: ... }` in an earlier
+     one no matter how specific the second is -- so the timeline's
+     reservation for its scrubber was silently wiped by a shorthand, the
+     zoom presets ran under a fixed 60px column, and the last of them was
+     completely covered. A custom property cannot be reset by a shorthand
+     and is chosen by specificity wherever it is set, so the reservation
+     survives whatever any layer says about padding. */
   .stage {
     padding: 14px 16px;
-    padding-right: calc(var(--rail-width) + 22px);
+    padding-right: var(--stage-right, calc(var(--rail-width) + 22px));
   }
 
   .degraded {
@@ -3643,7 +3653,7 @@
    under the thumb shows as a card, and the window lands on pictures */
   .stage:has(> #timeline-swap) {
     --scrubber: 60px;
-    padding-right: calc(var(--scrubber) + 16px);
+    --stage-right: calc(var(--scrubber) + 16px);
   }
   /* --- the scrubber: the whole library at the right edge --------------------- */
   .scrubber {
@@ -6563,6 +6573,9 @@
   /* --- the stage ----------------------------------------------------------- */
   .stage {
     padding: var(--gutter);
+    /* After the shorthand, and reading the same variable: whatever is
+       parked at the right edge keeps its room. */
+    padding-right: var(--stage-right, var(--gutter));
   }
   .grid {
     gap: 6px;
