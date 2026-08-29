@@ -7,13 +7,14 @@ slicing, valid for one (question, library state) pair. Library state was
 is what FTS5 uses for its own structure cache (sqlite/sqlite
 ext/fts5/fts5_index.c fts5IndexDataVersion) and it is fine there,
 because the thing FTS5 re-reads is one small record. Here the cached
-thing is the whole library:
+thing is the whole library (benchmarks/results/answer_currency.json,
+twenty rounds per size):
 
-    files    at rest    while a job commits    factor
-    1,000    0.19 ms         0.64 ms            3.4x
-   10,000    0.18 ms         4.29 ms           23.8x
-   40,000    0.18 ms        19.04 ms          105.9x
-   80,000    0.18 ms        38.26 ms          214.4x
+    files    at rest     while a job commits    factor
+    1,000    0.192 ms          0.65 ms            3.4x
+   10,000    0.178 ms          4.24 ms           23.8x
+   40,000    0.186 ms         18.32 ms           98.4x
+   80,000    0.179 ms         37.93 ms          211.8x
 
 Flat at rest, linear in motion, and jobs commit per item. Traced, the
 job that runs for hours over a large library writes ONLY the ledger: a

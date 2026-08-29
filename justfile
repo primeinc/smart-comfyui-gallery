@@ -346,6 +346,19 @@ prose:
       echo "vale is not installed; the prose gate cannot run (scoop install vale)" >&2
       exit 1
     fi
+    # Banded, on the same grounds as [tool.ruff].required-version in
+    # pyproject.toml: a linter that gains rules on an upgrade rewrites the
+    # tree. The floor is where the features this gate needs landed --
+    # code-aware Python linting and per-style severity are both 3.17.0 -- and
+    # the ceiling keeps a major release from arriving unread.
+    have=$(vale --version | rg -o '[0-9]+\.[0-9]+\.[0-9]+')
+    major=${have%%.*}
+    rest=${have#*.}
+    minor=${rest%%.*}
+    if [ "$major" -ne 3 ] || [ "$minor" -lt 19 ]; then
+      echo "vale $have is outside the supported band >=3.19,<4" >&2
+      exit 1
+    fi
     vale --no-global --minAlertLevel=error db vision sg_web metaparse sglint story_renderers tests benchmarks
     rc=$?
     if [ "$rc" -eq 2 ]; then

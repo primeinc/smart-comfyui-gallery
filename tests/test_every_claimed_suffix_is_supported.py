@@ -267,10 +267,10 @@ def _fixture_key() -> str:
 def _cached(suffix: str, write):
     """`write`, but encoding the bytes at most once per machine.
 
-    Writing the 74 samples costs 1.478s measured -- 47% of a 3.17s
-    module -- and every byte of it is deterministic: 0.218s each for
-    .heifs and .heics, 0.138s for the h263 .3gp, 0.122s for the PSD.
-    Copying them back is a millisecond apiece.
+    Writing the 74 samples is the bulk of this module's run time, and
+    every byte of it is deterministic -- the .heifs and .heics pair, the
+    h263 .3gp and the PSD are the expensive encodes. Copying them back is
+    a millisecond apiece.
 
     Under `.pytest_cache`, so `--cache-clear` reaches it, and named by
     `_fixture_key` so an edited writer or an upgraded encoder writes a
@@ -444,9 +444,9 @@ PORTRAIT_CR2 = pathlib.Path("C:/ComfyUI/output/sample-datasets/RAW/2013-02-10/66
 def portrait():
     """What developing this sensor SAYS, measured once and cached.
 
-    LibRaw takes ~1.4 s over this frame and the claims below are about
-    numbers that development yields -- the sizes each way round, and how
-    well the embedded preview correlates with it. Those are a constant of
+    Developing this frame with LibRaw is slow, and the claims below are
+    about numbers that development yields -- the sizes each way round, and
+    how well the embedded preview correlates with it. Those are a constant of
     (these bytes, this decoder), so they are cached on exactly that: any
     change under db/, metaparse/ or vision/ re-measures them, which is
     every module either claim runs through.

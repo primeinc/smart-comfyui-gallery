@@ -143,11 +143,10 @@ class _Served:
 class _Servers:
     """A booted application server, ready BEFORE the module that wants it.
 
-    A boot costs ~1.9s -- an interpreter, uvicorn, litestar and this
-    application's forty-five modules -- and the suite boots one per
-    browser module. Measured over the whole suite: twenty-three boots,
-    ~44s, a fifth of a 224s run spent waiting for a process to become
-    able to answer. With a spare: 224.01s -> 206.83s and 200.24s.
+    A boot is an interpreter, uvicorn, litestar and this application's
+    modules, and the suite boots one per browser module -- so without a
+    spare the run spends that whole cost waiting for a process to become
+    able to answer.
 
     None of that boot belongs to the module that asked for it. The
     application starts on an EMPTY home, and the module's library is
@@ -297,13 +296,12 @@ def _servers(request, tmp_path_factory):
     anything, and a spare booted for them is a subprocess spent on nobody.
 
     Here, and not earlier. `pytest_configure` runs before collection, so
-    starting the boot there would have ~0.6s of conftest and module
-    importing to hide behind rather than only chromium's 0.37s. Probed
-    by booting unconditionally at configure: the first setup went 2.27s
-    -> 2.08/2.09/2.17s and the wall barely moved, because the boot is a
-    subprocess compiling and importing the same application while
-    collection imports playwright, PIL and numpy -- both want the CPU,
-    so overlapping them buys a fraction of the window. Not worth an
+    starting the boot there would have conftest and module importing to
+    hide behind as well as chromium's launch. Probed by booting
+    unconditionally at configure: the wall barely moved, because the boot
+    is a subprocess compiling and importing the same application while
+    collection imports playwright, PIL and numpy -- both want the CPU, so
+    overlapping them buys a fraction of the window. Not worth an
     unconditional spare, nor the predicate that would be needed to guess
     at configure time whether this run drives a browser at all.
     """

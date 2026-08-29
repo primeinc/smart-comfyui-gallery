@@ -28,21 +28,18 @@ misread as "pinning does not help here".
 `--trace` writes a Chrome trace through torch.profiler so the overlap can
 be READ rather than inferred from a total. Wall clock says whether this
 got faster; the trace says WHY, and the two are different questions.
-Running it is what corrected the explanation here. Measured on a 3070 Ti,
-eight batches of 64:
+Running it is what corrected the explanation here.
 
-                              pageable      pinned
-    aten::to, CPU total       314.081 ms    4.946 ms
-    Memcpy HtoD, CUDA          50.149 ms   48.901 ms
-    self CUDA total           473.679 ms  472.105 ms
-
-The GPU-side copy is the same either way. What pinning removes is a
+The GPU-side copy costs the same either way. What pinning removes is a
 HOST-side block: a pageable copy stages through an internal pinned buffer
-and holds the calling thread for 310 ms across those eight batches, so
-the copy stream can never issue ahead of the main one. Pinned drops that
-to 4.9 ms and the copies start overlapping the kernels. The earlier claim
-that the two "hide the copy" between them described the effect and got
-the mechanism wrong.
+and holds the calling thread until the transfer is done, so the copy
+stream can never issue ahead of the main one. Pinned releases the thread
+and the copies start overlapping the kernels, which is what
+benchmarks/results/openclip_transfer.json records under
+`exposed_copy_ms_per_batch` for the double buffered pipeline: 6.49
+pageable against 1.74 pinned, on a 3070 Ti at eight batches of 64. The
+earlier claim that the two "hide the copy" between them described the
+effect and got the mechanism wrong.
 """
 
 from __future__ import annotations

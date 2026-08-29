@@ -61,11 +61,10 @@ def corpus(db: pathlib.Path, wanted: int, under: str | None) -> list[tuple[int, 
     `under`.
 
     The filter is not a convenience. The CLIP transform's first step is a
-    resize to 224, and its cost is linear in the SOURCE megapixels: 105 ms
-    from 22 MP, 6.3 ms from 1 MP, 0.3 ms from 224x224. A corpus of camera
-    JPEGs and a corpus of generated PNGs therefore answer two different
-    questions about the same encoder, and a sweep that silently picks one
-    reports the other's conclusion.
+    resize to 224, and its cost is linear in the SOURCE megapixels. A
+    corpus of camera JPEGs and a corpus of generated PNGs therefore answer
+    two different questions about the same encoder, and a sweep that
+    silently picks one reports the other's conclusion.
 
     Video is excluded: its representative frame costs a seek and a decode
     that would dominate a measurement about the encoder.
