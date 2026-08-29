@@ -238,11 +238,9 @@ def test_an_untouched_library_exports_an_empty_document(untouched):
 def test_both_exports_are_offered_before_anything_has_been_judged(untouched):
     """The defect this test found when it was written.
 
-    Both links first went inside the verdict panel, which only renders
-    once somebody has judged something -- so on a fresh library there
-    was no way out at all, which is the case where a person is most
-    likely to be deciding whether they trust this with their pictures.
-    They live in their own section now.
+    Inside the verdict panel they would render only once somebody has
+    judged something, leaving a fresh library with no way out at all. They
+    live in their own section.
     """
     page = untouched.get("/operations", headers={"accept": "text/html"}).text
     assert "data-operations-export" in page

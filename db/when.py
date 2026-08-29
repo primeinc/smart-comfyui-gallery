@@ -333,11 +333,11 @@ CAMERA = "camera: "
 #: A conflict between the file's own claims (its name and its folder).
 FILE = "file: "
 
-#: Stamped names, most specific first. Each grammar yields Y M D and,
-#: when it carries them, h m s and ms. Searched anywhere in the name:
-#: `IMG_`, `PXL_`, `Screenshot ` and `VID-` prefixes all precede the
-#: digits. Ranges are checked afterwards, so a thirteen-digit epoch
-#: does not read as the year 1686.
+#: Stamped names, most specific first; each grammar yields Y M D and, when it
+#: carries them, h m s and ms. Searched anywhere in the name, since `IMG_`,
+#: `PXL_`, `Screenshot ` and `VID-` prefixes all precede the digits, and ranges
+#: are checked afterwards so a thirteen-digit epoch does not read as the year
+#: 1686.
 _NAME_STAMPS = (
     # 20230610_142301, 20230610T142301, 20260821_17h30m02s313ms, PXL_20230610_142301123
     re.compile(
@@ -438,10 +438,8 @@ def folder_when(folders: list[str]) -> tuple[float, str] | None:
 
     A folder is often the ONLY date a scanned or exported photograph has,
     and it is frequently coarser than a day: `1998/`, `2003-07/`, `1970s/`.
-    This used to answer with a day or with nothing, so every one of those
-    fell through to mtime -- dating a photograph by when it was last
-    copied. Measured on the corpus: six Commons photographs from 1964 to
-    1989, and every folder-dated scan.
+    Answering only at day precision drops every one of those to mtime,
+    dating a photograph by when it was last copied.
 
     FINEST WINS, and a coarse answer is still an answer. The chain form
     `2013/02/10` is read at whatever depth it reaches: `2013/02` is a
@@ -500,18 +498,12 @@ def folder_day(folders: list[str]) -> float | None:
     return held[0] if held is not None and held[1] == "day" else None
 
 
-#: How wide a claim at each precision is, in seconds. DERIVED, not typed.
+#: How wide a claim at each precision is, in seconds. DERIVED, not typed: the
+#: calendar constant is stated ONCE and everything else multiplies from it.
 #:
-#: Written out by hand it was wrong twice over: this table said a decade was
-#: 315_569_520 while db/pages.py said 315_576_000, and a year 31_556_952
-#: against 31_557_600 -- the Gregorian mean against the Julian one, for the
-#: same word, three files apart. Four copies of the same table existed and
-#: no two had to agree.
-#:
-#: So the calendar constant is stated ONCE and everything else multiplies
-#: from it. `year` and `month` are means on purpose: a claim's window is
-#: used to ask whether a finer reading falls INSIDE it, and a mean month
-#: answers that for every month without needing the calendar.
+#: `year` and `month` are means on purpose, because a claim's window answers
+#: whether a finer reading falls INSIDE it and a mean month answers that for
+#: every month without needing the calendar.
 SECOND = 1.0
 MINUTE = 60.0 * SECOND
 HOUR = 60.0 * MINUTE
@@ -552,11 +544,7 @@ def judge_file(
     contain a stamped name's moment is a `file: ` conflict between the
     file's own claims (the name, being finer, stands). With no claim the
     occurrence is the earliest known existence: the smaller of mtime and
-    btime, an instant, basis naming which.
-
-    The folder used to be read as a day or not at all, so `1998/` and
-    `2003-07/` were no claim and the file fell to mtime -- which dates a
-    scanned photograph by when somebody last copied it."""
+    btime, an instant, basis naming which."""
     stamp = name_stamp(name)
     dated = folder_when(folders)
     supports: list[str] = []

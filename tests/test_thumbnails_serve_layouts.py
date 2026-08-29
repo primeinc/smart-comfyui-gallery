@@ -41,15 +41,14 @@ def test_thumb_and_preview_are_contained_to_their_edges(tmp_path):
 
 
 def test_a_tiny_source_is_cached_at_its_own_size(tmp_path):
-    """It used to be enlarged to 512, and that was the most expensive
-    thing the pipeline did to small files.
+    """A source under both edges is cached at its own size.
 
     Encoding is priced by the pixels handed to the encoder, not by the
-    source, so blowing a 200x150 animation up to 1440 cost 173 ms per
-    file to store detail that was never in it. Nothing needed the
-    enlargement: every grid cell is `object-fit: cover` and the lightbox
-    is `object-fit: contain` (gallery.css:97-100), so the browser scales
-    a small picture to its cell for free.
+    source, so enlarging a small picture stores detail that was never in
+    it. Nothing needs the enlargement: every grid cell is
+    `object-fit: cover` and the lightbox is `object-fit: contain`
+    (gallery.css:97-100), so the browser scales a small picture to its
+    cell for free.
     """
     speck = Image.new("RGB", (64, 32), (10, 200, 30))
     thumbs.put(tmp_path, SHA, speck)
@@ -318,7 +317,7 @@ def test_a_face_free_cadence_is_refined_until_the_face_is_found(tmp_path):
 
     def write(root):
         target = root / "clip.mp4"
-        # 6s at 5fps; green only inside 2.8s..3.8s -- between cadence points.
+        # 6s at 5fps; green only on frames 14..19, between cadence points.
         colors = [(0, 255, 0) if 14 <= n <= 19 else (0, 0, 255) for n in range(30)]
         _clip(target, colors)
         return target

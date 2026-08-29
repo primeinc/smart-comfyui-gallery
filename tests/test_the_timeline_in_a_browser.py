@@ -224,14 +224,9 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
         server.on_message(from_server)
 
     page.route_web_socket("**/ws/jobs", route)
-    # The page's own clock, so the reconnect is OBSERVED rather than
-    # waited out. `feed.onclose` re-opens after RECONNECT_MS
-    # (frontend/src/timeline.ts, 2000ms) -- a real delay for a real
-    # browser, and two seconds of a test watching a timer it already
-    # believes in. What is under test is that the second connection's
-    # SNAPSHOT resynchronises the page, never how long the gap before it
-    # is. The only other timer this page arms is `liveTimer`, which a
-    # drag drives and nothing here drags.
+    # The page's own clock, so the reconnect is OBSERVED rather than waited
+    # out: `feed.onclose` re-opens after RECONNECT_MS (timeline.ts). What is
+    # under test is the second connection's SNAPSHOT, not the gap before it.
     page.clock.install()
     page.goto(f"/timeline?start={JUNE_10}&end={JUNE_10 + 86400}")
     page.wait_for_selector("[data-strip] .bin", timeout=10_000)
@@ -242,18 +237,9 @@ def test_a_missed_terminal_delta_is_recovered_by_the_next_snapshot(page: Page, l
     job_id = api.post("/jobs/events").json()["id"]
     assert _settled(api, job_id) == "done"
 
-    # The socket must be SHUT before the clock is moved: `run_for` fires
-    # the timers that exist when it runs, and the reconnect timer is
-    # armed by `onclose`. Advancing first left nothing to advance, the
-    # page went on to wait the real two seconds, and the test took 2.47s
-    # instead of 0.18s -- one run in five. `sockets["lost"]` is set in
-    # the route handler on the same line that closes it, so it is the
-    # fact to wait on rather than a guess at when the delta lands.
-    # Waited through Playwright, not through `time.sleep`. The route
-    # handler runs on the sync API's dispatcher, and that only turns
-    # while the test is inside a Playwright call -- a bare sleep loop
-    # holds the thread, `sockets["lost"]` is never set, and this waited
-    # out its own deadline every time (15.1s, eight runs for eight).
+    # The socket must be SHUT before the clock moves: `run_for` fires only the
+    # timers armed when it runs, and `onclose` arms the reconnect. Waited
+    # through Playwright, whose dispatcher only turns inside a Playwright call.
     ended = time.monotonic() + 15
     while sockets["lost"] is None:
         assert time.monotonic() < ended, "the terminal delta never arrived to be withheld"

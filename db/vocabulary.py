@@ -25,7 +25,7 @@ Two rules keep it honest.
 finds candidate VALUES to offer. Which media match is
 db/resultset.py's, through `scope_of`, and no surface built on this
 module may answer that question a second way -- one definition of "these
-videos" or eventually one of them says 412 and the other 407.
+videos", or one of them says 412 and the other 407.
 
 **A dimension is curated, not discovered.** The schema deliberately
 records arbitrary `file_param` keys, because tools emit arbitrary
@@ -114,14 +114,14 @@ class Dimension:
     #: How choosing SEVERAL values reads.
     #:
     #:   ""      one at a time; choosing another replaces it
-    #:   "any"   several, OR'd -- the only sane reading for a dimension a
-    #:           file has exactly ONE of. "image or video". AND there
-    #:           would ask for a file that is two things at once and
-    #:           always answer nothing.
-    #:   "both"  several, and BOTH readings are real, so the surface
-    #:           offers the choice. A picture carries several LoRAs and
-    #:           several people at once, so "any of these" and "all of
-    #:           these" are questions somebody genuinely asks separately.
+    #:   "any"   several, OR'd -- the only reading for a dimension a file
+    #:           has exactly ONE of, as in "image or video"; AND would ask
+    #:           for a file that is two things at once and always answer
+    #:           nothing
+    #:   "both"  several, and BOTH readings are real, so the surface offers
+    #:           the choice: a picture carries several LoRAs and several
+    #:           people at once, so "any of these" and "all of these" are
+    #:           questions somebody genuinely asks separately
     #:
     #: Which is right is a fact about the dimension, not a preference, so
     #: it is stated once here rather than guessed at by each surface.
@@ -269,13 +269,12 @@ DIMENSIONS: tuple[Dimension, ...] = (
     # --- media ---------------------------------------------------------
     #: Two spellings of one question, on purpose.
     #:
-    #: `kind=` is a GalleryQuery scope and every bookmark, saved
-    #: collection and cross-surface link uses it -- so it stays, and
-    #: stays described, or those chips would print a raw key. But a scope
-    #: holds ONE value, and "image or video" is the most ordinary
-    #: multi-select there is. The surface writes `media.kind`, which
-    #: can be OR'd. Both compose; asking one thing twice is redundant
-    #: rather than wrong.
+    #: `kind=` is a GalleryQuery scope and every bookmark, saved collection
+    #: and cross-surface link uses it, so it stays described or those chips
+    #: print a raw key.
+    #: A scope holds ONE value and "image or video" is an ordinary
+    #: multi-select, so the surface writes `media.kind`, which can be OR'd;
+    #: both compose, and asking one thing twice is redundant rather than wrong.
     Dimension(
         key="kind",
         label="kind",

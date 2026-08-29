@@ -34,29 +34,22 @@ import dataclasses
 #: How many verdicts a producer needs before a rate is shown at all.
 #:
 #: Not a statistical threshold -- with a biased sample there is no honest
-#: one -- but the point below which the number is obviously noise and
-#: showing it would invite a decision it cannot support.
+#: one -- but the point below which the number is noise and showing it
+#: would invite a decision it cannot support.
 ENOUGH = 10
 
 
-#: What a verdict export carries WITHOUT being asked, and the reason the
-#: list is this short.
+#: What a verdict export carries WITHOUT being asked: a producer identity,
+#: what kind of claim it was, the verdict, the bytes it was about, and when.
+#: An export can leave the machine with none of the media leaving with it.
 #:
-#: Verdicts are the cheapest valuable thing this application accumulates
-#: and the easiest to share safely: "this model got these 41 wrong" is
-#: an eval set, and it can leave the machine with none of the media
-#: leaving with it. So the default is a producer identity, what kind of
-#: claim it was, the verdict, the bytes it was about, and when.
+#: What is NOT here is the point -- no paths, no file names, no folder, no
+#: person's name, no embeddings, no note, because a note is free text that
+#: can hold anything at all and is opt-in per field.
 #:
-#: What is NOT here is the point. No paths, no file names, no folder, no
-#: person's name, no embeddings, no note. A note is free text somebody
-#: typed and can hold anything at all, so it is opt-in per field rather
-#: than something an export decides on their behalf.
-#:
-#: The content hash IS in the default, deliberately: without something
-#: joinable a row cannot be checked against a picture, and an eval set
-#: nobody can verify is not one. It names the bytes and nothing else --
-#: no path, and no way back to a name.
+#: The content hash IS in the default: without something joinable a row
+#: cannot be checked against a picture, and it names the bytes and nothing
+#: else -- no path, and no way back to a name.
 EXPORTED = ("judged", "verdict", "model_id", "model_version", "annotation_kind", "sha256", "other_sha256", "at")
 
 #: Fields whose VALUE an export withholds until asked for by name.

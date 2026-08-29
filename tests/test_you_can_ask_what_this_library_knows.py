@@ -124,10 +124,9 @@ def test_the_two_halves_of_the_vocabulary_are_one_list(page: Page, live: Live, u
     Nothing in a row says which it is -- that distinction is ours, and
     it decides which control opens, not what a person reads."""
     page.goto("/g")
-    # A broad letter, on purpose: this is where the tail used to lose.
-    # There are forty-one curated dimensions and thirty rows, so ranked
-    # purely by match quality the list filled with names and the long
-    # tail was unreachable again -- inside the thing built to reach it.
+    # A broad letter, on purpose: ranked purely by match quality the list
+    # fills with curated names and the long tail is unreachable, inside the
+    # thing built to reach it.
     _find(page, "o")
     found = _rows(page)
     assert any(one["param"] is None for one in found), f"no curated dimension offered: {found}"

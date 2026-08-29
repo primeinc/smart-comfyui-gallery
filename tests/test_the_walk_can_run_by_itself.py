@@ -66,15 +66,8 @@ FILES = 4
 #: The dwell these tests run the slideshow at, in seconds.
 #:
 #: The claim is that it steps ON ITS OWN, not that it waits a particular
-#: length of time -- so the dwell is margin, and a second of it per step
-#: is four seconds of a test watching a timer it already believes in.
-#: `viewer.ts` honours any positive value (`every()`, :581), and half a
-#: second is still more than twice what a step costs: each one is a
-#: remount measured at ~200 ms in this same module.
-#: 0.35, not 0.5. Still comfortably clear of the ~200ms a step costs --
-#: the margin is what stops a slow remount reading as a missed step -- and
-#: the whole module measured 12.0s at 0.5 against 10.6s and 11.0s at this,
-#: green both times. Below this the margin stops being one.
+#: length of time, so the dwell is margin over the remount a step costs.
+#: `viewer.ts` honours any positive value (`every()`, :581).
 STEP = 0.35
 
 

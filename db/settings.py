@@ -15,30 +15,18 @@ from __future__ import annotations
 
 import typing
 
-#: Whether a held Alt turns the viewer's wheel into a step through the
-#: walk rather than a zoom, and nothing else. "none" leaves the wheel to
-#: zoom alone.
+#: Whether a held Alt turns the viewer's wheel into a step through the walk
+#: rather than a zoom; "none" leaves the wheel to zoom alone.
 #:
-#: Two modifiers are deliberately NOT offered, because three booleans on a
-#: WheelEvent are not three interchangeable answers:
+#: `ctrl` is not offered because a trackpad pinch reaches the page as a wheel
+#: event with `ctrlKey` set (MDN, Element: wheel event; MouseEvent.ctrlKey),
+#: and `shift` is not offered because a browser reads shift+wheel as
+#: horizontal scroll.
 #:
-#: `ctrl` is unsafe. A trackpad pinch reaches the page as a wheel event
-#: with `ctrlKey` set -- that is how browsers deliver pinch-to-zoom (MDN,
-#: Element: wheel event; MouseEvent.ctrlKey) -- so a ctrl walk would mean
-#: pinching a photograph skipped to the next one.
-#:
-#: `shift` is already spoken for: a browser reads shift+wheel as
-#: horizontal scroll, and taking it would swallow a gesture the person may
-#: have meant for the page.
-#:
-#: Alt is the one nothing else has claimed, which is the whole reason it
-#: is the default and now the only choice. The unchosen modifiers keep
-#: whatever the browser does with them -- the viewer calls preventDefault
-#: only for the gestures it actually acts on (frontend/src/viewer.ts).
-#:
-#: Spelled as a Literal so the browser is typed against the same closed
-#: set the registry validates writes with -- one vocabulary, two readers,
-#: the way db/ledger.py owns the event types.
+#: The unchosen modifiers keep whatever the browser does with them, because
+#: the viewer calls preventDefault only for the gestures it acts on
+#: (frontend/src/viewer.ts). Spelled as a Literal so the browser is typed
+#: against the same closed set the registry validates writes with.
 WheelModifier = typing.Literal["alt", "none"]
 WHEEL_MODIFIERS: tuple[WheelModifier, ...] = typing.get_args(WheelModifier)
 
@@ -77,17 +65,17 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     # it, edits usually do not. Free text validated at submit; 32+ is
     # refused there because random pairs average 32 bits apart.
     "dupe_threshold": ("4", None),
-    # The joint image/text models semantic search runs on: a comma list
-    # of "[provider:]<reference>", each reference in its provider's own
-    # grammar. A bare entry means openclip ("<model>/<pretrained-tag>"
-    # from open_clip.list_pretrained()); "qwen:<org>/<repo>[@revision]"
-    # names a Qwen3-VL EMBEDDING checkpoint by its Hugging Face repo id
-    # (retrieval-trained, e.g. Qwen/Qwen3-VL-Embedding-2B -- never the
-    # -Instruct chat family, which shares the backbone but not the
-    # training). Every entry is its own immutable space searched
-    # independently, rankings fused by rank. Changing an entry is a new
-    # space: existing embeddings keep their producer and the embed job
-    # fills the new space fresh.
+    # The joint image/text models semantic search runs on: a comma list of
+    # "[provider:]<reference>", each reference in its provider's own grammar.
+    # A bare entry means openclip ("<model>/<pretrained-tag>" from
+    # open_clip.list_pretrained()); "qwen:<org>/<repo>[@revision]" names a
+    # Qwen3-VL EMBEDDING checkpoint by its Hugging Face repo id
+    # (retrieval-trained, Qwen/Qwen3-VL-Embedding-2B -- never the -Instruct
+    # chat family, which shares the backbone but not the training), and every
+    # entry is its own immutable space searched independently with rankings
+    # fused by rank.
+    # Changing an entry is a new space: existing embeddings keep their producer
+    # and the embed job fills the new space fresh.
     "semantic_model": ("ViT-B-32/laion2b_s34b_b79k", None),
     # The second opinion on every pHash dupe candidate: a pair also has
     # to agree within this many dHash bits, or "off" to trust pHash
@@ -105,20 +93,16 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     "dupe_dhash_verify": ("8", None),
     # The cosine similarity at which two faces are taken to be the same
     # person. "auto" is the measured per-embedder operating point
-    # (db/derived.py SAME_PERSON) and is what this should stay unless
-    # somebody is deliberately experimenting: the spaces are not
-    # comparable and one number is wrong for all but one of them.
+    # (db/derived.py SAME_PERSON); the spaces are not comparable and one
+    # number is wrong for all but one of them, with
+    # docs/FACE_CLUSTERING.md:71-74 putting SFace's 0.363 applied to ArcFace
+    # at a top-cluster share of 0.963.
     #
-    # Getting it wrong is not a small error. docs/FACE_CLUSTERING.md
-    # measures SFace's 0.363 applied to ArcFace at a top-cluster share
-    # of 0.963 -- essentially the whole library welded into one person.
-    #
-    # It is safe to try anyway, and that is why it is offered: the
-    # threshold is part of a run's identity
-    # (schema.sql derived_face_run_identity), so clustering at a new one
-    # writes a NEW run beside the old rather than over it. The previous
-    # grouping is still there and can be made primary again. Read at
-    # submit and pinned into the payload, so changing it mid-job cannot
+    # The threshold is part of a run's identity (schema.sql
+    # derived_face_run_identity), so clustering at a new one writes a NEW run
+    # beside the old rather than over it and the previous grouping can be made
+    # primary again.
+    # Read at submit and pinned into the payload, so changing it mid-job cannot
     # give two embedding spaces two different answers in one run.
     "face_cluster_threshold": ("auto", None),
     # Which held key makes the viewer's wheel walk to the next picture

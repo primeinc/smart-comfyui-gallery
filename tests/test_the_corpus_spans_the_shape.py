@@ -81,18 +81,8 @@ def measured() -> dict:
 
 
 #: Every state that is not "the application read a real file and produced
-#: the thing". PARTIAL is in here deliberately.
-#:
-#: PARTIAL means the file is present and the reader got less than all of
-#: it, and for a while it passed this gate -- which made it the same
-#: escape hatch as the allowed-exceptions table, wearing a word that
-#: sounded like progress. It hid a real finding: `.ari` sat PARTIAL
-#: because a genuine CC0 Arri frame was in the corpus and LibRaw refused
-#: it, and the answer was that LibRaw has no ARRI decoder and the
-#: application should never have claimed the suffix.
-#:
-#: A reader that gets less than all of a file it claims is a defect. It
-#: fails here.
+#: the thing". PARTIAL means the file is present and the reader got less than
+#: all of it, which is a defect in a reader claiming the suffix.
 NOT_REACHED = ("UNSATISFIED", "UNKNOWN_NOT_MEASURED", "PARTIAL")
 
 

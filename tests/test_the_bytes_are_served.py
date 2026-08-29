@@ -276,10 +276,9 @@ def test_a_video_thumbnail_is_a_poster_frame_at_the_clips_own_size(served):
     """This clip is 320x180, under both derivative edges, so both are the
     poster frame as decoded.
 
-    They used to be enlarged to 512 and 1440. Nothing asked for that --
-    the grid is `object-fit: cover` and the lightbox `object-fit:
-    contain` -- and encoding the invented pixels was the most expensive
-    phase in the pipeline for small sources.
+    Neither is enlarged to 512 or 1440. Nothing asks for that -- the grid
+    is `object-fit: cover` and the lightbox `object-fit: contain` -- and
+    encoding invented pixels is the expensive phase for small sources.
     """
     client, slugs, _ = served
 

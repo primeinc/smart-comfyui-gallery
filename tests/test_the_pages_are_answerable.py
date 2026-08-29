@@ -629,12 +629,9 @@ def test_moving_the_files_behind_the_apps_back_disturbs_no_page(library):
         == "moved"
     ), "the file did not follow its bytes"
 
-    # Put the tree back. `library` compares the master's listing and
-    # rebuilds the whole thing when it differs, so a move left standing
-    # is a rebuild the NEXT test pays for. A rename keeps the file, so
-    # moving them home restores the listing exactly. Not a `finally`: if
-    # an assertion above failed the world really is unknown, and the
-    # rebuild is what should happen.
+    # Put the tree back: `library` compares the master's listing and rebuilds
+    # when it differs, and a rename keeps the file so moving them home restores
+    # the listing exactly. Not a `finally`, so a failure above leaves a rebuild.
     (root / "portraits").mkdir()
     for path in sorted((root / "moved").iterdir()):
         path.rename(root / "portraits" / path.name)

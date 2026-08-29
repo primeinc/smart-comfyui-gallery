@@ -1,7 +1,7 @@
 """Three ways a browser was served yesterday's build.
 
-The bundles are the files most likely to change and were the ones least
-protected. Each of these was a hole nothing failed on:
+The bundles change with every TypeScript edit. Each of these was a hole
+nothing failed on:
 
   * `static_v`, the cache-buster stamped onto every script and stylesheet
     URL, read only the files sitting DIRECTLY in `static/`. The bundles
@@ -51,7 +51,7 @@ def _version_of(static: pathlib.Path) -> str:
 
 
 def _one_level(static: pathlib.Path) -> str:
-    """What it used to do."""
+    """The one-level read, kept as the control."""
     newest = max((p.stat().st_mtime_ns for p in static.iterdir() if p.is_file()), default=0)
     return str(newest // 1_000_000)
 

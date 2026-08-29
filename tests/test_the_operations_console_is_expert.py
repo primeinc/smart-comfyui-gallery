@@ -159,11 +159,10 @@ def test_a_turn_is_a_typed_append_only_history_with_item_starts_and_phases(db):
 def test_a_finished_phase_says_how_long_it_took(db):
     """`phase.finished` carries its own duration.
 
-    It used to carry nothing, so anything that wanted to know where a
-    job's time went had to pair the started/finished events itself and
-    subtract their `at` stamps. That made "which phase is slow" a
-    question only a program could answer, and every consumer wrote a
-    different program.
+    Without it, anything that wanted to know where a job's time went would
+    have to pair the started/finished events itself and subtract their `at`
+    stamps, which makes "which phase is slow" a question only a program can
+    answer.
 
     The duration is `perf_counter`, not the ledger's clock. This test
     pins `at` to NOW for every row, so a clock-derived elapsed would be

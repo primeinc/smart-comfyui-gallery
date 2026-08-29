@@ -257,8 +257,8 @@ def test_an_unreadable_backlog_reconnects_instead_of_dropping_its_rows(page: Pag
     else exactly as the server said it -- and the real message never
     reaches the page.
 
-    A backlog is the case that cannot heal itself. A missing event
-    eventually shows up as a gap between two ids the page holds, and the
+    A backlog is the case that cannot heal itself. A missing event shows up
+    as a gap between two ids the page holds, and the
     console fetches it; a missing backlog leaves nothing on either side to
     notice, and if the socket then goes quiet -- as it does here, the job
     being finished -- those rows are simply gone. So the only sound answer

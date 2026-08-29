@@ -241,14 +241,11 @@ def front(state: State, request: Request) -> Response | Template:
                 # library says what it is by showing some of itself,
                 # not by printing its own row count.
                 #
-                # STRIDED, not the newest eight. The newest eight of
-                # this library are eight frames of one sitting -- the
-                # same prompt at eight seeds -- and eight near-identical
-                # thumbnails say "one picture" where the tile is meant
-                # to say "a library". Walking the recent stretch and
-                # taking every Nth one costs the same indexed walk and
-                # crosses several sittings. A library too small to
-                # stride shows what it has, in order.
+                # STRIDED, not the newest eight: the newest eight are
+                # often eight seeds of one prompt, so walking the recent
+                # stretch and taking every Nth one crosses several
+                # sittings for the same indexed walk. A library too small
+                # to stride shows what it has, in order.
                 "newest": _covers(newest),
             },
             headers=VARIES,
@@ -408,16 +405,14 @@ class JobDeltaFrame(Wire):
     doing: str | None
 
 
-#: What arrives on /ws/jobs. Discriminated on `type` -- not `frame`,
-#: which is what /ws/events uses: there an event row already HAS a `type`
-#: column and the discriminant needed another name. A job delta does not,
-#: so the plain word is free here. Narrowing works the same, and a browser
-#: narrows to the arm it is handling and cannot read a job list off a
-#: delta.
+#: What arrives on /ws/jobs, discriminated on `type` rather than the `frame`
+#: /ws/events uses: an event row already HAS a `type` column and needed
+#: another name for its discriminant, and a job delta does not. A browser
+#: narrows to the arm it is handling and cannot read a job list off a delta.
 #:
 #: Not an OpenAPI path -- a socket has none -- so this is carried into the
-#: contract by job_frames() below. The browser's type is generated from
-#: that, never written twice.
+#: contract by job_frames() below, and the browser's type is generated from
+#: that rather than written twice.
 JobFrame = JobsSnapshotFrame | JobDeltaFrame
 
 
@@ -1317,18 +1312,16 @@ def asset_bytes(state: State, shard: FromPath[str], name: FromPath[str]) -> File
         raise NotFoundException(f"/thumbs/{shard}/{name} names no variant")
     target = home.thumbs_dir(pathlib.Path(state.home)) / shard / name
     if not target.is_file():
-        # A MISS RENDERS, exactly as the slug route always did.
+        # A MISS RENDERS, exactly as the slug route does.
         #
         # The surface emits this URL for anything ingest has hashed,
         # which is not the same set as "anything the thumbs job has
-        # rendered" -- so 404ing here would give a fresh library a grid
-        # of broken pictures where it used to give a slow one. This is
-        # the ONLY path that opens a connection, and after the precache
-        # job it is never taken.
+        # rendered", so 404ing here would give a fresh library a grid of
+        # broken pictures. This is the ONLY path that opens a connection,
+        # and after the precache job it is never taken.
         #
         # By CONTENT, not by slug: the cache is keyed on the bytes, so
-        # any present file carrying them will do, which is the whole
-        # reason it is content-addressed.
+        # any present file carrying them will do.
         from vision import derive
 
         try:
@@ -1995,16 +1988,14 @@ def _template_engine() -> JinjaTemplateEngine:
         loader=FileSystemLoader(str(pathlib.Path(__file__).resolve().parent / "templates")),
         undefined=StrictUndefined,
         autoescape=True,
-        # Compiled templates, kept between processes. A template is
-        # compiled on first render, and the gallery's first page was
-        # 0.13s of which ~0.04 was that -- paid once per process, so by
-        # every served run's boot and by every test process that renders
-        # a page. A bucket is keyed on sha1(name|filename) and carries
-        # sha1(source), so editing a template resets it, and `bc_magic`
-        # carries the Python version, so an interpreter upgrade does too
+        # Compiled templates, kept between processes, so a template is
+        # compiled once rather than on the first render of every served
+        # run and every test process. A bucket is keyed on
+        # sha1(name|filename) and carries sha1(source), and `bc_magic`
+        # carries the Python version, so editing a template or upgrading
+        # the interpreter resets it and the worst case is a miss
         # (pallets/jinja@3.1.6 src/jinja2/bccache.py:35-43, 65-82,
-        # 152-181). Nothing stale can be loaded; the worst case is a
-        # miss and the compile that would have happened anyway.
+        # 152-181).
         bytecode_cache=FileSystemBytecodeCache(str(cache)) if cache else None,
     )
     # every stylesheet and script URL carries the newest mtime under
@@ -2029,14 +2020,12 @@ def _template_engine() -> JinjaTemplateEngine:
 class _StaticVersion:
     """The cache-buster, RE-READ rather than remembered.
 
-    It used to be one string computed while the engine was built, which
-    is correct for a deploy and wrong for every minute of development:
-    rebuilding a bundle under a server that was already running changed
-    the bytes at `/static/build/app.js` and left the `?v=` on it exactly
-    as it was, so the browser was told the URL had not changed and went
-    on holding the build from before the edit. New templates against an
-    old bundle, and nothing anywhere says so -- the page simply stops
-    doing what the source it was written against says it does.
+    One string computed while the engine is built is correct for a deploy
+    and wrong for every minute of development: rebuilding a bundle under a
+    running server changes the bytes at `/static/build/app.js` and leaves
+    the `?v=` on it exactly as it was, so the browser is told the URL has
+    not changed and goes on holding the build from before the edit -- new
+    templates against an old bundle, with nothing anywhere saying so.
 
     Kept for a second at a time, because a page render stamps this on
     half a dozen URLs and walking `static/` once per URL would be six
@@ -2067,12 +2056,11 @@ def _static_version() -> str:
     """The newest mtime of anything served under `static/`, in millis.
 
     `rglob`, not `iterdir`: the value is stamped onto
-    `/static/build/*.js` as well as onto the stylesheets beside it, and
-    a walk one directory deep could not see the bundles. Editing only
-    TypeScript therefore left the cache-buster exactly where it was, so
-    a browser holding yesterday's `gallery.js` was told the URL had not
-    changed and went on holding it -- the one failure this value exists
-    to prevent, on the files most likely to change.
+    `/static/build/*.js` as well as onto the stylesheets beside it, and a
+    walk one directory deep would not see the bundles. Editing only
+    TypeScript would then leave the cache-buster where it was, so a
+    browser holding yesterday's `gallery.js` would be told the URL had
+    not changed -- the one failure this value exists to prevent.
     """
     static = pathlib.Path(__file__).resolve().parent / "static"
     newest = max((p.stat().st_mtime_ns for p in static.rglob("*") if p.is_file()), default=0)

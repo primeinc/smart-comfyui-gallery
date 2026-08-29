@@ -301,9 +301,8 @@ def test_a_neighborhood_is_bounded(shelves):
     [(0, 1), (-3, 1), (1, 1), (7, 7), (resultset.NEIGHBORHOOD_MOST, 23), (resultset.NEIGHBORHOOD_MOST + 1, 23)],
 )
 def test_a_window_width_is_clamped_at_both_ends(shelves, asked, want):
-    """Every boundary, because the constant's comment used to claim a
-    refusal while the code clamped, and neither had been proved at 0, at
-    a negative, at 1, at the maximum or past it.
+    """Every boundary -- 0, a negative, 1, the maximum and past it -- because
+    the code clamps rather than refusing.
 
     23 is the whole answer, so anything at or above it yields 23: an
     answer cannot lend more members than it has.

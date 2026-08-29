@@ -15,8 +15,8 @@ works. One missing bundle wearing as many hats as there are surfaces.
 
 The launcher's other refusal is about the interpreter rather than the
 tree, and has the opposite shape: it does not refuse, it hands the
-command to `.venv` and waits. `python -m sg_web` from a PATH whose python
-is a shim used to die on `import uvicorn`.
+command to `.venv` and waits, so `python -m sg_web` from a PATH whose
+python is a shim does not die on `import uvicorn`.
 
 So this module asks what the others cannot:
 

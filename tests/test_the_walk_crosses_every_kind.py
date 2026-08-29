@@ -69,8 +69,7 @@ KIND_OF = {
 #: The kinds with no picture to take -- the COMPLEMENT of
 #: `vision/thumbs.py PICTURED` within the kind vocabulary, computed so a
 #: sixth kind cannot be in neither set and quietly uncovered by the
-#: assertions below. These are the cells that used to ask for a raster
-#: the route refuses.
+#: assertions below. These are the cells that must not ask for a raster.
 UNPICTURED = set(facets.KINDS) - set(thumbs.PICTURED)
 
 

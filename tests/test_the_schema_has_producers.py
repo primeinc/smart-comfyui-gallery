@@ -1517,8 +1517,7 @@ def test_a_probe_complaint_on_an_animated_image_survives_the_capture_read(db, a_
 def test_a_prompt_routed_through_another_node_is_still_found(db, a_library, tmp_path):
     """A workflow that runs its prompt through a primitive, a concat or a
     wildcard node keeps the words a node or two upstream. Reading only the
-    literal reports an empty prompt for the workflows most likely to have an
-    interesting one."""
+    literal reports an empty prompt for every one of them."""
     nodes = a_graph()
     nodes["30"] = {"class_type": "PrimitiveString", "inputs": {"value": "a castle assembled from wildcards"}}
     nodes["6"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["10", 1], "text": ["30", 0]}}
@@ -1752,8 +1751,7 @@ def test_a_detectors_own_numbers_can_be_stored(db, a_library):
                 "region": region_id,
                 "det_score": numpy.float32(0.987),
                 # `dim` is not passed: it describes the vector, so it is taken
-                # from it. Passing one without an embedding used to be accepted
-                # and describes nothing.
+                # from it. One without an embedding describes nothing.
                 "embedding": numpy.random.rand(128).astype(numpy.float32).tobytes(),
                 "age": numpy.int32(34),
                 "landmarks": numpy.array([[1.5, 2.5]], dtype=numpy.float32).tobytes(),

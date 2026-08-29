@@ -1,4 +1,4 @@
-"""What the surface tells you about itself, and what it used to get wrong.
+"""What the surface tells you about itself, in its own words.
 
 Every test here is a defect somebody found by LOOKING at the page. None
 of them was caught by a test, because each one is about what a sentence

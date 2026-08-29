@@ -74,10 +74,8 @@ def _drained(api, timeout=90.0) -> None:
 def _gallery(page: Page) -> None:
     page.goto("/g")
     # Kept, though `_keep_cell`'s `hover` would wait by itself: hover's
-    # actionability check also waits for the cell to be STABLE, and on a
-    # grid whose pictures are still arriving that costs more than asking
-    # once whether the cells are there. Measured over the module: 12.2s
-    # with this line, 13.0s without it.
+    # actionability check also waits for the cell to be STABLE, which on a
+    # grid whose pictures are still arriving is the slower wait.
     page.wait_for_selector("[data-grid] a.cell", timeout=15_000)
 
 

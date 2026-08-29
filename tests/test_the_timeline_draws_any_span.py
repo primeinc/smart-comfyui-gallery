@@ -26,15 +26,8 @@ from tests.test_the_timeline_is_a_surface import NOW, _drain
 PICTURES = 9
 
 #: The fixture spans, in `db/when.py`'s units. These BUILD the libraries
-#: below; they are not expected answers, so taking them from the module
-#: under test is not circular -- it is the only way "5 years" here means
-#: the same five years the surface draws.
-#:
-#: It said `YEAR = 365.25 * 86_400`, the JULIAN year. `when.YEAR` is the
-#: Gregorian mean, 31_556_952. A third spelling lived in
-#: `tests/test_empty_time_does_not_get_the_pixels.py` as `365 * DAY`.
-#: Three values for one word across the tests of one surface, none of
-#: them the one the code uses.
+#: below and are not expected answers, so taking them from the module under
+#: test is the only way "5 years" here means the five years the surface draws.
 SPANS = {
     "5 minutes": 5 * when.MINUTE,
     "5 days": 5 * when.DAY,

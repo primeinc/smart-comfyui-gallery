@@ -377,19 +377,14 @@ def test_the_inspector_stays_as_it_was_arranged(page: Page, live: Live, unbroken
 def test_the_filmstrip_spans_the_whole_viewer(page: Page, live: Live, unbroken):
     """The strip under the picture is as wide as the STAGE, open or shut.
 
-    It used to be asserted as the width of the whole viewer, on the stated
-    grounds that the grid said so -- `"filmstrip filmstrip"` across both
-    columns. That area does not exist and the grep for it is empty: the
-    grid declares `"stage inspector"`, and the full width came from
-    `position: absolute` on `.viewer`, which ignores columns. The span was
-    incidental, not declared, and what it bought was four thumbnails drawn
-    underneath an opaque panel, where they can be neither seen nor
-    clicked. A neighbourhood is only a neighbourhood where it is
-    reachable, so the strip lives in the stage's column and this measures
-    that.
+    Not the width of the whole viewer: the grid declares
+    `"stage inspector"` and there is no `"filmstrip filmstrip"` area, so a
+    full-width strip would only come from `position: absolute` on `.viewer`
+    and would draw thumbnails under an opaque panel. A neighbourhood is only
+    a neighbourhood where it is reachable, so the strip lives in the stage's
+    column and this measures that.
 
-    Shut, the stage IS the viewer, so the old number still holds there --
-    which is why the closed case is unchanged.
+    Shut, the stage IS the viewer, so the two widths agree there.
     """
     _open_page(page, live, "a_big.png")
     page.wait_for_selector("[data-filmstrip]")
@@ -715,10 +710,9 @@ def test_zooming_a_small_source_does_not_fetch_a_worse_original(page: Page, live
 
 @pytest.mark.parametrize(("where", "open_it"), OPENERS)
 def test_a_pan_cannot_lose_the_photograph(page: Page, live: Live, where, open_it, unbroken):
-    """Dragged hard enough, the picture used to leave the stage entirely
-    and there was no way back but Escape. Pan is bounded by the overhang:
-    a zoomed picture can be pushed exactly to its own edge and no
-    further, so some of it is always on screen."""
+    """Pan is bounded by the overhang: a zoomed picture can be pushed
+    exactly to its own edge and no further, so some of it is always on
+    screen however hard it is dragged."""
     open_it(page, live, "a_big.png")
     _actual(page)
     stage = page.evaluate("() => document.querySelector('[data-stage]').getBoundingClientRect().toJSON()")

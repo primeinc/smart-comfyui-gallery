@@ -1,5 +1,5 @@
-"""The linter can fail -- the controls the structural rules used to
-carry as tests, now aimed at sglint itself.
+"""The linter can fail -- the structural rules' own controls, aimed at
+sglint itself.
 
 Every rule is an absence ("nothing does X"), and a sweep that
 understood nothing would report the same absence. So each rule is fed
@@ -572,7 +572,7 @@ def test_the_response_contract_rule_can_fail():
     a machine cannot say the JSON half in its signature, and OpenAPI reads
     the declaration instead.
 
-    `redirecting` is here as the case that used to pass and should not.
+    `redirecting` is here as the case a signature alone lets through.
     Litestar builds one response schema from the whole annotation, so a
     union that mixes a JSON arm with a page or a redirect reaches the
     document as `application/json: {schema: {}}` -- measured on v2.24.0
@@ -677,11 +677,11 @@ def test_the_connection_lifetime_rule_can_fail():
 
 
 def test_the_structural_schema_sweeps_hold_and_each_can_fail():
-    """SG710, SG711, SG712: three sweeps that used to be pytest.
+    """SG710, SG711, SG712: three sweeps decidable from the DDL alone.
 
-    Each is decidable from the DDL alone -- build it in memory, ask the
-    PRAGMAs -- so each moved to the linter, and each is bent here to prove
-    the new gate has teeth rather than being a green sweep nobody can fail.
+    Each builds the DDL in memory and asks the PRAGMAs, and each is bent
+    here to prove the gate has teeth rather than being a green sweep nobody
+    can fail.
     """
     from sglint import schema_rules
 
@@ -724,7 +724,7 @@ def test_the_structural_schema_sweeps_hold_and_each_can_fail():
 
 
 def test_the_vocabulary_and_handler_rules_hold_and_can_fail(tmp_path):
-    """SG713 and SG415: two parities that used to be pytest.
+    """SG713 and SG415: two parities the linter reads off the source.
 
     SG713 compared `console.RENDERINGS` with `ledger.EventType` -- two
     module-level literals. SG415 asked Python for a handler's SOURCE and
@@ -765,8 +765,8 @@ def test_the_vocabulary_and_handler_rules_hold_and_can_fail(tmp_path):
 
 
 def test_the_page_shape_rule_can_fail(tmp_path):
-    """SG502: template inheritance and document shape, which used to be a
-    pytest that walked the template directory reading files."""
+    """SG502: template inheritance and document shape, over a tree this
+    test builds."""
     where = tmp_path / "templates"
     where.mkdir()
     shell = where / policy.SHELL_TEMPLATE
