@@ -1,38 +1,35 @@
 # Git hooks, so the gates run without anybody remembering to run them --
 # and so no gate re-derives a proof that already exists.
 #
-# Three tiers, the shape every large CI converges on (Google TAP, Meta's
-# predictive selection, Microsoft's THEO): verification scope follows
-# change scope, and the FULL proof runs exactly once, asynchronously,
-# never inside anybody's write path.
+# Verification scope follows change scope, and the full proof runs once,
+# outside anybody's write path:
 #
-#   per commit   `just check`       6.0s measured: lint, format, types over
-#                                   BOTH languages, web unit
-#   per push     `just prove-push`  an already-proven tree passes in
-#                                   milliseconds; else the AFFECTED slice
-#                                   of the suite (pytest-testmon, selected
-#                                   by measured coverage)
-#   the proof    `just prove`       check-deep + the whole suite, run when
-#                                   waiting is cheap; on green it records
-#                                   the tree hash in .proven-tree, which
-#                                   is what lets a push skip
+#   per commit   `just check`       lint, format, types over both
+#                                   languages, web unit
+#   per commit   `just test`        the fast lane: everything that does
+#                                   not drive a browser, boot a server or
+#                                   open a database
+#   per push     `just prove-push`  an already-proven tree exits at once;
+#                                   otherwise the testmon-selected slice
+#   the proof    `just prove`       check-deep + the whole suite; on green
+#                                   it records the tree hash in
+#                                   .proven-tree, which is what lets a
+#                                   push skip
 #
-# The first shape of this file ran check-deep + the whole suite on every
-# push: ~6.5 measured minutes on a developer machine per push, re-bought
-# even when nothing changed since the last green run.
+# `just check` does NOT depend on `just test`, so the per-commit tier
+# needs both named here. A check that exists but is unreachable from the
+# hook is not a check. `just budget` holds each lane to its own clock.
 #
 # `LEFTHOOK=0 git commit` skips, deliberately and visibly.
 #
-# ---------------------------------------------------------------------------
-# THE PER-COMMIT GATE IS ON commit-msg, NOT pre-commit. THIS IS LOAD-BEARING.
-# ---------------------------------------------------------------------------
+# The per-commit gate is on commit-msg, not pre-commit.
 #
-# On `pre-commit`, lefthook REVERTS THE WORKING TREE, runs the jobs against
-# the staged content, and restores afterwards -- and on success it does this
-# SILENTLY.
+# On `pre-commit`, lefthook reverts the working tree, runs the jobs against
+# the staged content, and restores afterwards. On success it prints nothing.
 #
-# The mechanism, lefthook v2.1.10, internal/run/controller/controller.go,
-# the newGuard call in RunHook:
+# The mechanism, lefthook v2.1.10 (evilmartians/lefthook, tag v2.1.10,
+# 8d9cfec5f52367af6374a5430b4e9568844856e5),
+# internal/run/controller/controller.go, the newGuard call in RunHook:
 #
 #     newGuard(
 #         c.git, c.logger, c.filesToStage,
@@ -60,47 +57,34 @@
 # not ignored. The only stash-adjacent key that exists is `stage_fixed`,
 # which does the opposite.
 #
-# Measured in a scratch repo, one variable. Worktree holds "four", index
-# holds "three" (status `MM`), the only job is `cat a.txt`:
+# To reproduce: a scratch repo whose worktree holds "four" and whose index
+# holds "three" (status `MM`), with one job that is `cat a.txt`. Under
+# `pre-commit` the job reads "three"; add `--no-stage-fixed` and it reads
+# "four". Nothing is printed either way -- lefthook logs the git command
+# only when it errors, so the revert is silent on success.
 #
-#   lefthook run pre-commit                    job saw "three"  <- REVERTED
-#   lefthook run pre-commit --no-stage-fixed   job saw "four"   <- untouched
+# commit-msg is not in `HookUsesStagedFiles`, so its guard is constructed
+# with stashUnstagedChanges=false and the revert cannot happen: by
+# construction, with no flag to forget.
 #
-# It printed nothing either way. The only reason this was ever visible here
-# is that it FAILED: lefthook logs the git command only when it errors.
+# The revert buys this repository nothing anyway. It exists so a hook
+# reading a partially staged file sees staged content rather than
+# staged+unstaged. Every lane in `just check` walks the whole tree --
+# `ruff check .`, `ruff format --check .`, `biome lint`, `tsc -p frontend`,
+# `ty check`, `pyrefly check` -- and not one takes `{staged_files}`.
 #
-# commit-msg is not in `HookUsesStagedFiles`, so the guard is constructed
-# with stashUnstagedChanges=false and the revert cannot happen -- by
-# construction, with no flag to forget. Measured the same way: with a stale
-# .git/index.lock present, which makes any stash attempt fail loudly,
-# pre-commit died at the stash before running a single job while commit-msg
-# ran its job and exited 0.
+# It can also deadlock. `git commit -a` holds .git/index.lock, the guard's
+# revert needs that same lock, and the hook subtree then sits at zero CPU
+# until the parent git is killed, leaving the lock behind so the next
+# commit wedges identically.
 #
-# The revert also bought this repository NOTHING. It exists so a hook reading
-# a partially staged file sees staged content rather than staged+unstaged.
-# Every lane in `just check` walks the WHOLE TREE -- `ruff check .`,
-# `ruff format --check .`, `biome lint frontend/src sg_web/static`,
-# `tsc -p frontend`, `ty check`, `pyrefly check`. Not one takes
-# `{staged_files}`. Hiding the developer's unstaged work so a whole-tree
-# checker can check the whole tree minus that work is pure cost.
+# commit-msg gets the same trigger (every commit, `-m` and `-a` included)
+# and aborts the commit identically on non-zero exit.
 #
-# The cost was real: three commits wedged in seven minutes. `git commit -a`
-# holds .git/index.lock, the guard's revert needs that same lock, and the
-# hook subtree then sits at zero CPU until the parent git is killed --
-# leaving the lock behind so the NEXT commit wedges identically. Recovery
-# meant killing six process trees and deleting .git/index.lock by hand.
-#
-# commit-msg gets the same trigger (every commit, `-m` and `-a` included) and
-# aborts the commit identically on non-zero exit. The gate reads the working
-# tree rather than the index, which for whole-tree checkers is what it was
-# always effectively doing.
-#
-# This mirrors what `prove-push` already decided in the justfile: "The
-# worktree, not a stash: a gate that moves the developer's files to inspect
-# them can lose them." pre-commit was the one place that had not caught up.
-#
-# DO NOT move this block back to `pre-commit:` to make it "conventional".
-# There is no config-only version of that which does not revert the tree.
+# `prove-push` in the justfile states the same invariant for its own tier:
+# "The worktree, not a stash: a gate that moves the developer's files to
+# inspect them can lose them." There is no config-only way to hold that on
+# `pre-commit`.
 
 min_version: 1.10.0
 
@@ -110,14 +94,20 @@ min_version: 1.10.0
 assert_lefthook_installed: true
 
 commit-msg:
-  # Sequential: `just check` already runs its own lanes in parallel and
-  # rebuilds sg_web/static/build first, and two of those at once would walk
-  # the same directory.
+  # Sequential: `just check` and `just test` each rebuild
+  # sg_web/static/build first and `check` runs its own lanes in parallel,
+  # so two at once would walk the same directory.
+  #
+  # Two jobs, not one aggregate recipe: when this goes red the name in the
+  # output says which lane failed without reading further.
   piped: true
   jobs:
     - name: gate
       run: just check
       fail_text: "`just check` failed. Fix it or LEFTHOOK=0 to commit anyway."
+    - name: fast tests
+      run: just test
+      fail_text: "`just test` failed. Fix it or LEFTHOOK=0 to commit anyway."
 
 pre-push:
   jobs:

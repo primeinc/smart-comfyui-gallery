@@ -1,11 +1,9 @@
 """Shared pytest behaviour for the greenfield suite.
 
-One hook and two fixtures. The hook marks EVERY test slow: `just test`
-and `just check` are each held to ten seconds, and there is no test here
-that fits -- the cheapest one opens a database, and the rest serve the
-application or drive a browser. A fast lane holding a handful of them
-would be a lane whose green says nothing about the suite, so the fast
-lane holds nothing and `just test-slow` holds the suite.
+One hook and two fixtures. The hook marks a test slow when its fixture
+closure contains a browser, a `live` server or a database; see
+SLOW_FIXTURES below for the criterion and the counted split. `just test`
+runs what is left, `just test-slow` runs the marked set.
 
 Of the fixtures, one closes every in-memory database a test
 opened. The other, `live`, is the browser tests' server: the application
@@ -46,24 +44,45 @@ if typing.TYPE_CHECKING:
     import httpx
 
 
+#: Requesting any of these is what makes a test slow: a browser process, a
+#: server in a subprocess, or a database. Derived from the test's own fixture
+#: closure rather than written on modules by hand, so a new browser test is
+#: slow the moment it asks for a page and no list is maintained anywhere.
+#:
+#: `_servers` is deliberately NOT here. Every collected test requests it
+#: transitively and it boots nothing unless `sg_browser_modules` is non-zero,
+#: so it does not discriminate.
+SLOW_FIXTURES = frozenset(
+    {
+        "browser",
+        "browser_type",
+        "context",
+        "launch_browser",
+        "page",
+        "playwright",
+        "_module_page",
+        "live",
+        "db",
+        "_stage",
+    }
+)
+
+
 def pytest_collection_modifyitems(session, items):
-    """Every collected test is slow, whatever its module says.
+    """Mark slow the tests that drive a browser, boot a server, or open a database.
 
-    Written here rather than as `pytestmark` in sixty files: "how long
-    may a lane take" is one repository-wide policy, and sixty copies of
-    it are sixty chances for a new module to be born into the wrong
-    lane by saying nothing.
+    The criterion is the test's own fixture closure, so a test is in the
+    right lane the moment it asks for a page or a database and no list is
+    maintained anywhere. `pytest --fixtures-per-test` prints the closure
+    this reads, which is how the split is recounted.
 
-    Collection also answers whether this run will drive a browser at
-    all, which is what lets the server pool start booting before
-    anything asks for it -- see `_servers`. Starting it HERE instead,
-    the earliest the answer exists, was measured and is flat: nothing
-    pytest does between collection and the first fixture is long enough
-    to hide any of a 1.45s boot behind
-    (test_an_answer_can_be_described 5.41s -> 5.31/5.31/5.39s).
+    Collection also answers whether this run will drive a browser at all,
+    which is what lets the server pool start booting before anything asks for
+    it -- see `_servers`.
     """
     for item in items:
-        item.add_marker(pytest.mark.slow)
+        if SLOW_FIXTURES.intersection(item.fixturenames):
+            item.add_marker(pytest.mark.slow)
     # How many modules will ask the pool for a server: one per module,
     # because `live` is module-scoped. Both the first boot and whether a
     # spare is worth starting behind it follow from this.
