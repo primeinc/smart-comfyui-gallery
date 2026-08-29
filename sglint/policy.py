@@ -463,6 +463,99 @@ EXTENDS_SHELL = '{% extends "base.html" %}'
 #: "every page extends the shell" is a rule about pages that SCROLL, and
 #: it cannot describe a surface whose whole job is one canvas the size of
 #: the window.
+#: A capability nothing in the interface reaches, and why that is the
+#: right answer today. Anything absent from here must be reachable;
+#: anything here must still exist. Both halves are checked, so a stale
+#: exemption is a finding and a new unsurfaced capability is a finding.
+#:
+#: Recording it is the point. A gap nobody wrote down is indistinguishable
+#: from a gap nobody noticed, which is how a compare tray came to ship
+#: fully built, styled, tested, and openable only by pressing a letter
+#: nothing on screen mentioned.
+UNSURFACED = {
+    # Infrastructure. Nothing should link to these.
+    "/health": "a liveness probe for whatever runs the process",
+    "/favicon.ico": "the browser asks for it; no page links to it",
+    "/ws/jobs/frames": "the shell's activity feed connects by attribute, not by a written address",
+    "/ws/events/frames": "the console's ledger feed, the same way",
+    # Machine reads on purpose: a person reaches the same facts through a page.
+    "/ways": "the query vocabulary, for a client building a question by hand",
+    "/timeline/at": "a moment lookup for a client driving the timeline itself",
+    "/timeline/density": "the same, at bin resolution",
+    "/timeline/pictures": "the same, over a span",
+    "/stories/snapshots": "one frozen snapshot by id, for a client walking a plan",
+    # Reached by an address the SERVER hands the client, so the string
+    # check below cannot see it.
+    "/search": "linked from the evolution surface as view.links.search (frontend/src/evolution.ts)",
+    # The sweeps, in their machine spelling. Nothing in the interface posts
+    # to these: a person starts the same work from the operations console,
+    # which posts to /operations/jobs/{kind} and is answered by LAUNCHERS
+    # (sg_web/operations.py). Every one of these twelve has an entry there,
+    # so the CAPABILITY is reachable and only this address is not.
+    #
+    # Kept rather than deleted because they are the API a script uses, and
+    # the console's own route takes a kind rather than a path. If one is
+    # ever dropped from LAUNCHERS, its work stops being reachable by
+    # pointing and this record becomes the wrong answer.
+    "/jobs/verify": "console sweep `verify`",
+    "/jobs/faces": "console sweep `faces`",
+    "/jobs/annotate": "console sweep `annotate`",
+    "/jobs/catch-up": "console sweep `catch_up`",
+    "/jobs/thumbs": "console sweep `thumbs`",
+    "/jobs/phash": "console sweep `phash`",
+    "/jobs/embed": "console sweep `embed`",
+    "/jobs/embed_prompts": "console sweep `embed_prompts`",
+    "/jobs/dupes": "console sweep `dupes`",
+    "/jobs/context": "console sweep `context`",
+    "/jobs/events": "console sweep `events`",
+    "/jobs/cluster": "console sweep `cluster`",
+}
+
+#: Capabilities that are not addresses. Same contract as above -- recorded
+#: with the evidence, so nobody has to rediscover them -- and each says
+#: what would have to happen first, because none of these can be surfaced
+#: by drawing something.
+#:
+#: That is the useful part. "No affordance" reads like a decision somebody
+#: could reverse this afternoon; every one of these is blocked further
+#: back, and saying where stops the next person starting at the wrong end.
+UNSURFACED_BEYOND_ROUTES = {
+    "face age/sex/pose": (
+        "vision/faces.py computes them and derived_face_instance stores them. "
+        "Blocked at the contract: sg_web/media_view.py Person carries slug, name, href and a count, "
+        "so there is nothing for a surface to draw until the wire says it"
+    ),
+    "lineage": (
+        "db/lineage.py is called only from tests, so file_derivation is never written. "
+        "The inspector's parents and children rows already exist and read it, and are therefore "
+        "structurally always empty -- built correctly against a table production never fills"
+    ),
+    "watched folders": (
+        "db/jobs.py watch_folder and unwatch_folder have no route, so there is no address for a control to post to"
+    ),
+    "face_across_runs": (
+        "db/pages.py has no caller for it; the clusterings compare page renders `disagreements` instead, "
+        "which is run-level. Per-face divergence needs the route to ask for it"
+    ),
+    "comments": (
+        "db/authored.py comment and edit_comment have no caller and nothing reads the table. "
+        "Not a missing edit button: there is no write path and no read path, so the whole capability "
+        "is behind a route that does not exist"
+    ),
+    "job kinds sample_frames, remix, zip": (
+        "db/jobs.py JobKind declares fourteen kinds; db/runner.py HANDLERS implements eleven. "
+        "These three are words with nothing behind them and never have been: `git log -S` over "
+        "db/runner.py finds no commit that ever added a handler for one, where the same search "
+        "finds b0e3083 for walk. Nothing should draw a control for them -- there is no code to run. "
+        "They are held in place by db/schema.sql:664, the CHECK on job.kind, which SG709 pins "
+        "JobKind equal to, so dropping them from the Literal alone trips that rule instead. "
+        "Removing them is jobs.py, schema.sql, a new migration step and console.py -- a database "
+        "contract change. Two traps for whoever does it: the four occurrences in db/migrate.py are "
+        "frozen history and must not be edited, and schema.sql:768 and :780 carry `remix` in a "
+        "different vocabulary, the derivation kinds, which this has nothing to do with"
+    ),
+}
+
 #: A job kind no console button starts, and what starts it instead.
 #:
 #: Not every capability belongs on a button. A kind here is reached by

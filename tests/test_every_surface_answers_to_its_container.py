@@ -57,6 +57,7 @@ FINGER = 44
 #: unreachable, and this is what IS reachable.
 SURFACES = (
     "/",
+    "/what",
     "/g",
     "/field",
     "/timeline",

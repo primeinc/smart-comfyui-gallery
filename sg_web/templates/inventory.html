@@ -1,0 +1,89 @@
+{#- Everything this library can do, on one page.
+
+    Not documentation. A door register: every line is a thing the
+    application actually does, and where it is, and the ones at the foot
+    are the things it does that nothing on screen reaches -- each with
+    the reason, because a gap somebody wrote down is a decision and a gap
+    nobody wrote down is an accident waiting to be rediscovered.
+
+    Read from the application itself (sg_web/inventory.py): the route
+    table, the console's launcher table, the settings registry, and the
+    same recorded decisions sglint holds the tree to. Nothing here is
+    typed out twice, so nothing here can quietly stop being true. -#}
+{% extends "base.html" %}
+{% block title %}What this can do &middot; Steadfast{% endblock %}
+{% block body %}
+<main class="stage inventory">
+
+  <header class="inventory-head">
+    <h1>What this can do</h1>
+    <p>Every way in, every sweep, every setting &mdash; and at the foot, the things it can do
+      that nothing on screen reaches, with the reason for each.</p>
+  </header>
+
+  <section class="inventory-part">
+    <h2>Ways in</h2>
+    <p class="inventory-about">Surfaces. Each one answers a different question about the same library.</p>
+    <ul class="inventory-rows">
+      {% for one in held.surfaces %}
+      <li>
+        <a class="inventory-row" href="{{ one.at }}">
+          <b>{{ one.name }}</b>
+          <span>{{ one.about }}</span>
+          <code>{{ one.at }}</code>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="inventory-part">
+    <h2>Work it can start</h2>
+    <p class="inventory-about">The sweeps, from the console's own table &mdash; these are the buttons, not a
+      description of them. Every one is on <a href="/operations#panel-running">Operations</a>.</p>
+    <ul class="inventory-rows">
+      {% for one in held.sweeps %}
+      <li>
+        <a class="inventory-row" href="{{ one.at }}">
+          <b>{{ one.name }}</b>
+          <span>{{ one.about }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="inventory-part">
+    <h2>What you can change</h2>
+    <p class="inventory-about">Every setting the library models. All of them have a considered default;
+      nothing here needs touching for it to work.</p>
+    <ul class="inventory-rows">
+      {% for one in held.settings %}
+      <li>
+        <a class="inventory-row" href="{{ one.at }}">
+          <b>{{ one.name }}</b>
+          <span>{{ one.about }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {#- The part that makes the rest of the page worth having. Anybody can
+      list what works. -#}
+  <section class="inventory-part inventory-gaps">
+    <h2>Not on any screen</h2>
+    <p class="inventory-about">Things this application can do that nothing here reaches. Each one is a
+      decision with a reason, so it can be argued with rather than rediscovered.
+      <b class="num">{{ held.gaps | length }}</b> of them.</p>
+    <ul class="inventory-rows">
+      {% for one in held.gaps %}
+      <li class="inventory-row inventory-gap">
+        <b>{{ one.name }}</b>
+        <span>{{ one.why }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</main>
+{% endblock %}

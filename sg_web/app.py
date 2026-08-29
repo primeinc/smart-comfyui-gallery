@@ -77,6 +77,7 @@ from sg_web import (
     folder_view,
     gallery,
     home,
+    inventory,
     keyword_view,
     media,
     media_authored,
@@ -143,6 +144,25 @@ COVER_REACH = COVERS * COVER_STRIDE
 #: numbers must not drift into each other: a caller of this address gets
 #: the strip it has always got.
 NEWEST_STRIP = 12
+
+
+@get("/what", sync_to_thread=False)
+def what_this_can_do() -> Template:
+    """The door register, as a page.
+
+    A capability that ships with tests, styling and no visible entry
+    point is unshipped, and nobody ever decides that -- it happens
+    because nothing in the application is in a position to notice. This
+    is that position: every way in, every sweep, every setting, and the
+    things it can do that nothing on screen reaches, each with its
+    reason.
+
+    Every line is read from the application (sg_web/inventory.py) rather
+    than written out, so a surface that stops being served, a sweep that
+    is dropped, or a setting that is added cannot leave this page
+    describing an older application.
+    """
+    return Template(template_name="inventory.html", context={"held": inventory.held()}, headers=VARIES)
 
 
 def _covers(newest: list) -> list[str]:
@@ -2290,6 +2310,7 @@ def build_app(home_dir: str | None = None, *, worker: bool = True) -> Litestar:
             gallery.gallery,
             gallery.grid_fragment,
             gallery.field_page,
+            what_this_can_do,
             gallery.field_against,
             gallery.field_shape,
             gallery.field_window,

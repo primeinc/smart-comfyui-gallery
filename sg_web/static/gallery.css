@@ -7712,7 +7712,6 @@
     font-size: var(--t-lead);
     font-weight: var(--w-strong);
     letter-spacing: -0.015em;
-    text-transform: capitalize;
   }
   .settings-about {
     margin: 3px 0 var(--s4);
@@ -7981,5 +7980,135 @@
   .front-machine > span:last-child {
     font-size: var(--t-small);
     color: var(--ink-muted);
+  }
+
+  /* ==========================================================================
+     THE DOOR REGISTER
+
+     Every line is a thing this application does. The rows are a grid
+     whose middle column takes the slack, so a name and its address stay
+     in their own columns at any width and only the description reflows
+     -- and below the point where three columns stop fitting, each row
+     becomes three stacked lines rather than a table squeezed until its
+     words break.
+     ========================================================================== */
+
+  .inventory {
+    max-width: 980px;
+    /* The rows answer to THIS box, not to the window. The page has a rail
+       beside it on a desk and none on a phone, so the width the rows
+       actually get and the width of the viewport are different numbers --
+       and a container query is the one that asks the right one. Without
+       this the query below matches nothing and a narrow screen gets three
+       columns squeezed until the words break. */
+    container-type: inline-size;
+  }
+  .inventory-head h1 {
+    margin: 0;
+    font-size: var(--t-h1);
+    font-weight: var(--w-strong);
+    letter-spacing: -0.03em;
+  }
+  .inventory-head p {
+    margin: 6px 0 var(--s6);
+    max-width: 68ch;
+    font-size: var(--t-lead);
+    line-height: 1.5;
+    color: var(--ink-muted);
+  }
+
+  .inventory-part {
+    margin-bottom: var(--s6);
+  }
+  .inventory-part h2 {
+    margin: 0;
+    font-size: var(--t-h3);
+    font-weight: var(--w-strong);
+    letter-spacing: -0.02em;
+  }
+  .inventory-about {
+    margin: 4px 0 var(--s4);
+    max-width: 72ch;
+    font-size: var(--t-small);
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  .inventory-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .inventory-row {
+    display: grid;
+    grid-template-columns: minmax(9em, 15em) minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: var(--s3);
+    padding: 11px var(--s4);
+    background: var(--panel);
+  }
+  /* THE ROW is the link, not the name inside it. As an anchor around
+     four words it measured 308x24 on a phone: comfortable under a mouse,
+     and under a thumb a line of text you have to aim at. It is also what
+     a person means when they reach for it. Measured before and after --
+     37 controls under the floor, then none. */
+  .inventory-rows li + li > .inventory-row,
+  .inventory-row + .inventory-row {
+    border-top: 1px solid var(--line);
+  }
+  a.inventory-row {
+    /* WCAG 2.2 2.5.5 Target Size (Enhanced). The padding already carries
+       it where the words fit on one line; this holds it where they do
+       not shrink to. */
+    min-height: 44px;
+    align-content: center;
+    text-decoration: none;
+    color: inherit;
+  }
+  a.inventory-row:hover {
+    background: var(--panel-high);
+  }
+  .inventory-row b {
+    font-size: var(--t-body);
+    font-weight: var(--w-strong);
+    color: var(--ink);
+  }
+  a.inventory-row:hover b {
+    color: var(--brand);
+  }
+  .inventory-row > span {
+    font-size: var(--t-small);
+    line-height: 1.5;
+    color: var(--ink-muted);
+  }
+  .inventory-row code {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: var(--t-mono-micro, 11.5px);
+    color: var(--ink-faint);
+  }
+
+  /* The gaps read differently on purpose: nothing here is a link,
+     because there is nowhere to go -- that is what makes it a gap. The
+     reason takes the width the address column would have had. */
+  .inventory-gaps .inventory-rows {
+    background: var(--sunken);
+  }
+  .inventory-gap {
+    grid-template-columns: minmax(9em, 15em) minmax(0, 1fr);
+    background: transparent;
+  }
+  .inventory-gap b {
+    color: var(--ink-2, var(--ink));
+  }
+
+  @container (max-width: 640px) {
+    .inventory-row,
+    .inventory-gap {
+      grid-template-columns: 1fr;
+      gap: 2px;
+    }
   }
 }

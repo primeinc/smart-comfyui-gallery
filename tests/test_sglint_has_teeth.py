@@ -42,7 +42,7 @@ def test_every_capability_is_reachable_or_recorded():
 
     # Every recorded address is one the application actually serves.
     addresses = "\n".join(p.read_text(encoding="utf-8") for p in (rules.REPO_ROOT / "sg_web").glob("*.py"))
-    for path in rules.UNSURFACED:
+    for path in policy.UNSURFACED:
         assert f'"{path}' in addresses, f"{path} is recorded as unsurfaced but nothing serves it"
 
     # Declared-versus-implemented is SG713's question, checked against the
