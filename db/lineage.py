@@ -83,11 +83,9 @@ def open_intents(conn) -> list[tuple]:
     ).fetchall()
 
 
-#: Relationships where the two files are interchangeable, so both directions
-#: are the same statement. Everything else in `file_relation.kind` reads one
-#: way round -- a video HAS a proxy, a photograph HAS a sidecar -- and writing
-#: the reverse as well asserted something false: after relating a video to its
-#: proxy, "give me the proxy for this file" answered with the video.
+#: Relationships where the two files are interchangeable, so both directions are
+#: the same statement. Every other `file_relation.kind` reads one way round -- a
+#: video HAS a proxy, a photograph HAS a sidecar -- so the reverse row is false.
 _SYMMETRIC = frozenset({"raw_pair"})
 
 

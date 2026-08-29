@@ -324,15 +324,9 @@ def _insert_face(
     elif hasattr(pose, "get"):
         yaw, pitch, roll = (pose.get(axis) for axis in ("yaw", "pitch", "roll"))
     else:
-        # Refused by name rather than unpacked, for the same reason a
-        # det_score outside 0..1 is refused in `record_faces`: the schema
-        # cannot catch this one at all. A triple is ambiguous between the
-        # two orders in play -- InsightFace emits [pitch, yaw, roll]
-        # (deepinsight/insightface model_zoo/landmark.py:111) and these
-        # columns are yaw-first -- so a positional unpack writes pitch into
-        # `pose_yaw`, and three REAL columns hold plausible degrees either
-        # way. There is no value to check and no constraint to fire; the
-        # only defence is refusing the shape that carries no axis names.
+        # Refused by name rather than unpacked: a triple is ambiguous between the two
+        # orders in play -- InsightFace emits [pitch, yaw, roll] (deepinsight/insightface
+        # model_zoo/landmark.py:111) and these columns are yaw-first. No CHECK can see it.
         raise TypeError(
             f"face pose arrived as {type(pose).__name__}, which has no axis names: "
             f"pass a mapping keyed yaw/pitch/roll. A triple is ambiguous -- the "
@@ -343,11 +337,9 @@ def _insert_face(
         import json
 
         attributes = json.dumps(attributes, separators=(",", ":"), sort_keys=True)
-    # `dim` describes `embedding`, so it is taken from it rather than trusted
-    # from a caller. The schema checks the two agree; deriving it here means
-    # nobody has to be told twice. The space id travels with the embedding
-    # for the same reason: a vector whose producing space is unknown cannot
-    # be compared with anything.
+    # `dim` describes `embedding`, so it is taken from it rather than trusted from a
+    # caller, and the schema checks the two agree. The space id travels with the
+    # embedding for the same reason: a vector of unknown space compares with nothing.
     space_id = None
     if embedding is not None:
         from . import similarity
@@ -632,11 +624,9 @@ def recluster(
 #: one. Named once so submitters and the runner cannot drift apart on it.
 DEFAULT_METHOD = "chinese-whispers"
 
-#: Cosine similarity at which two vectors are taken to be the same face, per
-#: embedding space; the spaces are not comparable, so one number for all of them
-#: is wrong for all but one. docs/FACE_CLUSTERING.md:42-45 states these values
-#: and :71-74 what a mismatched threshold does to top-cluster share (0.963 at
-#: 0.363, 0.462 at 0.45, 0.036 at 0.6).
+#: Cosine similarity at which two vectors are taken to be the same face, per embedding
+#: space; the spaces are not comparable. docs/FACE_CLUSTERING.md:42-45 states these
+#: values and :71-74 what a mismatched threshold does to top-cluster share.
 SAME_PERSON = {
     "opencv/yunet+arcface": 0.48,
     "opencv/yunet+sface": 0.55,
@@ -710,12 +700,9 @@ def cluster(
     if threshold is None:
         threshold = threshold_for(model_id)
     run_id = run_for(conn, model_id, model_version, method, threshold, now)
-    # The space id IS the clustering input's identity: rows are selected
-    # by which immutable space produced them, never by reconstructing a
-    # meaning from the duplicated model columns. After a producer or
-    # preprocess upgrade the current identity is a new space id, old rows
-    # keep their old one, and they simply stop being input -- never
-    # relabeled, never mixed.
+    # The space id is the clustering input's identity: rows are selected by which
+    # immutable space produced them, never by reading the duplicated model columns. A
+    # producer or preprocess upgrade mints a new space id, so old rows stop being input.
     current = similarity.face_space_of(conn, model_id, model_version)
     rows = []
     if current is not None:
@@ -734,10 +721,9 @@ def cluster(
 
     vectors = np.vstack([np.frombuffer(raw, dtype=np.float32) for _, raw in rows])
     face_ids = [int(row[0]) for row in rows]
-    # Through the shared index layer -- the same resident manager the
-    # dupes job searches -- so face similarity is not its own FAISS
-    # consumer. Align mutates the live space to exactly these rows;
-    # device policy is the manager's configuration, not an argument.
+    # Through the shared index layer -- the same resident manager the dupes job
+    # searches -- so face similarity is not its own FAISS consumer. Align mutates the
+    # live space to exactly these rows; device policy is the manager's configuration.
     manager = similarity.manager_for(conn)
     at = {face_id: position for position, face_id in enumerate(face_ids)}
     key = similarity.align(conn, manager, space, face_ids, lambda wanted: vectors[[at[int(v)] for v in wanted]], now)
@@ -794,26 +780,21 @@ def cluster(
     return made
 
 
-#: A cluster holding more than this share of every face in the library has
-#: chained: it is not a person, it is everybody who resembles somebody who
-#: resembles somebody. The repo's own measurements show the shape -- at a
-#: threshold a tenth too loose the top cluster held 96% of the library
-#: (docs/FACE_CLUSTERING.md, Chaining).
+#: A cluster holding more than this share of every face in the library has chained:
+#: everybody who resembles somebody who resembles somebody, not a person. At a threshold
+#: a tenth too loose the top cluster held 96% (docs/FACE_CLUSTERING.md, Chaining).
 CHAINED = 0.5
 
 #: And the other end: a run where nearly everything is alone has not grouped
 #: anything, it has renamed faces.
 ALL_ALONE = 0.95
 
-#: Faces measured when judging a run. The silhouette is a mean over faces, so
-#: a random sample of faces estimates it; each sampled face is still measured
-#: against every grouped face, which is what the definition requires. This
-#: caps the cost of judging a run regardless of library size.
+#: Faces measured when judging a run, capping the cost regardless of library size. The
+#: silhouette is a mean over faces, so a random sample estimates it, and each sampled
+#: face is still measured against every grouped face as the definition requires.
 SILHOUETTE_SAMPLE = 20_000
-#: Rows per block when the silhouette matrices are walked: the peak
-#: allocation is block x faces, and 4096 keeps it in tens of megabytes
-#: at library scale. It was typed four times across the two loops,
-#: which had to be edited in step.
+#: Rows per block when the silhouette matrices are walked; the peak allocation is
+#: block x faces.
 _BLOCK = 4096
 #: One page of annotation search hits -- the same size as a grid page
 #: (db/resultset.py DEFAULT_PAGE_SIZE), stated here because this module
@@ -825,12 +806,9 @@ _ANNOTATIONS_PAGE = 60
 #: should not become what the library shows without somebody saying so.
 GOOD_ENOUGH = 0.10
 
-#: Faces before the statistical gates apply at all. Under this, they misfire
-#: by construction: one person's two photographs are most of a three-face
-#: library ("chained"), and a single cluster has no silhouette -- the number
-#: is only defined between two clusters and n-1 (Rousseeuw). A library this
-#: small is judged by the person looking at it, so any run that grouped
-#: something is eligible and the usual ranking picks among them.
+#: Faces before the statistical gates apply at all: under this they misfire by construction,
+#: since two photographs are most of a three-face library ("chained") and the silhouette is
+#: defined only between two clusters and n-1 (Rousseeuw). Below it, any run that grouped is eligible.
 JUDGEABLE = 20
 
 
@@ -961,11 +939,9 @@ def health(conn, run_id: int) -> dict:
     np.add.at(centres, index, unit)
     centres /= np.maximum(np.linalg.norm(centres, axis=1, keepdims=True), 1e-12)
 
-    # SAMPLED above a limit: the coefficient is a mean over faces, so a
-    # random sample of faces estimates it. Each sampled face is still
-    # measured against EVERY grouped face -- the definition needs the mean
-    # distance to whole clusters, and swapping in centroids is how the
-    # previous, wrong version of this number was made.
+    # Sampled above a limit: the coefficient is a mean over faces, so a random sample
+    # estimates it. Each sampled face is still measured against every grouped face,
+    # because the definition needs the mean distance to whole clusters, not to centroids.
     picked = np.arange(len(labels))
     if len(picked) > SILHOUETTE_SAMPLE:
         picked = np.random.default_rng(0).choice(len(labels), SILHOUETTE_SAMPLE, replace=False)
@@ -984,11 +960,9 @@ def health(conn, run_id: int) -> dict:
 
     silhouette = 0.0
     if len(ids) > 1:
-        # Sum of cosine distances from each sampled face to each cluster,
-        # accumulated in column blocks so the sample-by-faces matrix is
-        # never held whole. Grouped faces are sorted by cluster first so a
-        # block's per-cluster sums fall out of one `reduceat` instead of a
-        # Python loop over clusters.
+        # Sum of cosine distances from each sampled face to each cluster, accumulated in
+        # column blocks so the sample-by-faces matrix is never held whole. Grouped faces
+        # are sorted by cluster first, so a block's per-cluster sums fall out of `reduceat`.
         by_cluster = np.argsort(index, kind="stable")
         sorted_unit, sorted_index = unit[by_cluster], index[by_cluster]
         sums = np.zeros((len(sample), len(ids)), dtype=np.float64)
@@ -1053,10 +1027,9 @@ def agreement(conn, run_id: int) -> dict:
         "  JOIN derived_face_instance fi ON fi.file_id = pa.file_id"
         "  JOIN derived_face_membership m ON m.face_id = fi.id"
         "  JOIN derived_face_cluster c ON c.id = m.cluster_id AND c.run_id = ?"
-        # Positive claims only. A denial says two faces are NOT the same
-        # person, so counting it here would read as evidence that they
-        # are -- the measure would improve every time somebody corrected
-        # the thing it measures.
+        # Positive claims only: a denial says two faces are not the same person, so
+        # counting it here would read as evidence that they are, and the measure would
+        # improve every time somebody corrected the thing it measures.
         " WHERE pa.stance = 'is'",
         (run_id,),
     ).fetchall()
@@ -1095,10 +1068,9 @@ def _adopt_if_better(conn, run_id: int, model_id: str, threshold) -> None:
         return
     if _disqualified(health(conn, run_id)):
         return
-    # Among runs that are sound, prefer the one at the threshold this embedder
-    # was actually measured at; a run at another threshold is one somebody
-    # asked for to compare against, not a default. If a better-scoring run
-    # exists at that threshold already, leave it alone.
+    # Among sound runs, prefer the one at the threshold this embedder was measured at;
+    # a run at another threshold is one somebody asked for to compare against, not a
+    # default. A better-scoring run already at that threshold is left alone.
     if threshold is not None and abs(float(threshold) - threshold_for(model_id)) > 1e-9:
         return
     make_primary(conn, run_id)
@@ -1230,19 +1202,16 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
     Returns the number of clusters named.
     """
     boxes = {row[0]: row[1:] for row in conn.execute("SELECT id, x, y, w, h FROM region")}
-    # The file is part of the moment's identity: an assertion whose sample
-    # row belongs to ANOTHER file must never vote, however its offset reads
-    # -- nothing shipped writes that shape, and this keeps a future buggy
-    # writer at a silent skip instead of a cross-file mislabel.
+    # The file is part of the moment's identity: an assertion whose sample row belongs
+    # to another file never votes, however its offset reads. A writer that produced
+    # that shape is held to a silent skip rather than a cross-file mislabel.
     moments = {
         row[0]: (row[1], row[2], row[3], row[4])
         for row in conn.execute("SELECT id, file_id, kind, offset_ms, page_index FROM derived_media_sample")
     }
-    # Positive claims VOTE; negative ones VETO. Read apart, because they
-    # are different acts: "she is in this" proposes a name for a cluster,
-    # and "that is not her" refuses one -- and a denial that merely
-    # failed to vote would be indistinguishable from never having been
-    # said, which is what deleting the claim already meant.
+    # Positive claims vote, negative ones veto: one proposes a name for a cluster and
+    # the other refuses one. Read apart, because a denial that merely failed to vote
+    # would be indistinguishable from never having been said.
     assertions: dict[int, list[tuple[int, int | None, int | None]]] = {}
     denied: dict[int, list[tuple[int, int | None]]] = {}
     for person_id, file_id, sample_id, region_id, stance in conn.execute(
@@ -1272,13 +1241,9 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
         claims = assertions.get(file_id, ())
         for person, on_sample, box in claims:
-            # A claim about one frame says nothing about another. Two frames
-            # of a video can hold a face in the same part of the picture, so
-            # without this the box match reaches across moments and a video of
-            # two people mislabels the same way a photograph of two people did.
-            # Compared as MOMENTS, not row ids: a rebuild under a new policy
-            # token mints fresh sample rows for the same frame, and the claim
-            # is about the frame, never about the token that chose it.
+            # A claim about one frame says nothing about another: two frames of a video
+            # can hold a face in the same part of the picture. Compared as moments, not
+            # row ids, because a rebuild mints fresh sample rows for the same frame.
             if on_sample is not None and moments.get(on_sample) != moments.get(sample_id, ()):
                 continue
             if box is not None:
@@ -1298,11 +1263,9 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
 
     named = 0
     for cluster_id, people in votes.items():
-        # A vetoed name is not a name. Applied AFTER the vote rather than
-        # by filtering the claims, so a cluster whose only proposal was
-        # refused ends up UNNAMED rather than named by whatever came
-        # second -- an unnamed cluster is a question the People page can
-        # put to somebody, and a wrong name is not.
+        # A vetoed name is not a name, applied after the vote rather than by filtering
+        # the claims, so a cluster whose only proposal was refused ends up unnamed
+        # rather than named by whatever came second.
         allowed = people - vetoes.get(cluster_id, set())
         if len(allowed) != 1:
             continue
@@ -1319,12 +1282,9 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         "   JOIN derived_face_instance fi ON fi.id = m.face_id"
         "   JOIN derived_face_cluster c ON c.id = m.cluster_id"
         "  WHERE c.person_id IS NOT NULL AND c.run_id = ?"
-        # A denial stops the ATTRIBUTION too, not only the naming. A
-        # cluster can be correctly named and still hold one face from a
-        # picture that person is not in -- which is exactly the case
-        # somebody is correcting -- and without this the name comes back
-        # on that picture through the file attribution even though the
-        # cluster was refused it.
+        # A denial stops the attribution too, not only the naming. A correctly named
+        # cluster can still hold one face from a picture that person is not in, and
+        # without this the name returns on that picture through the file attribution.
         "    AND NOT EXISTS (SELECT 1 FROM person_assertion pa"
         "                     WHERE pa.person_id = c.person_id AND pa.file_id = fi.file_id"
         "                       AND pa.stance = 'is_not')",
@@ -1588,18 +1548,13 @@ def search_annotations(conn, text: str, limit: int = _ANNOTATIONS_PAGE) -> list[
 
 # --- taking the expensive thing with you -------------------------------------
 
-#: A person's faces in the PRIMARY run, each with the provenance that
-#: makes the numbers mean something.
-#:
-#: A naked 512-float vector recreates exactly the opaque dependency an
-#: export is supposed to escape: without the producer, the preprocessing
-#: and the dimensions it cannot be compared with anything, reproduced,
-#: or checked. `similarity_space` is that identity and it is immutable
-#: by trigger, so what comes back describes itself.
-#:
-#: `content_sha256` is the join back to a photograph. No path -- the
-#: bytes are what identify a picture in any library that holds it, and a
-#: path is a fact about this machine.
+#: A person's faces in the primary run, each with the provenance that makes the numbers
+#: mean something: a naked vector without producer, preprocessing and dimensions cannot be
+#: compared, reproduced or checked. `similarity_space` is that identity, immutable by trigger.
+
+#: `content_sha256` is the join back to a photograph, and there is no path: the bytes
+#: identify a picture in any library that holds it, where a path is a fact about this
+#: machine.
 FACES_OF = (
     "SELECT s.key AS space, s.representation, s.dimensions, s.metric,"
     "       s.producer, s.producer_version, s.preprocess, s.preprocess_version,"

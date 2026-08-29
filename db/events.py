@@ -38,6 +38,13 @@ the history INSIDE a session and become phase boundaries in a later
 slice (parent_id already waits). CaptureSessionGrouper clusters camera
 media over a wider gap. A calendar day is deliberately NOT a grouper.
 
+PRECISION GATES THE GAP. A member enters gap arithmetic at the finest
+CONSISTENT reading it has -- its refined moment, the estimate inside its
+claim, when one exists, else the claim itself -- and only when that
+granule fits inside the gap. A bare day-fine date with nothing to refine
+it is not minutes from anything, and 'insufficient temporal precision' is
+the answer.
+
 Regrouping keeps only each grouper's LATEST run: events are rebuildable
 interpretations, not history.
 """
@@ -52,14 +59,9 @@ from vision.decode import RAW_SUFFIXES
 
 from . import context, naming, when
 
-#: How coarse each precision is, in seconds. A member enters gap
-#: arithmetic at the finest CONSISTENT reading it has: its refined
-#: moment (the estimate inside its claim) when one exists, else its
-#: claim -- and only when that granule fits inside the gap. A bare
-#: day-fine date with nothing to refine it cannot be minutes from
-#: anything; 'insufficient temporal precision' is then the answer.
-#: `db/when.py SPAN`, not a copy: how wide a claim is does not get to be
-#: two different numbers depending on which module is asking.
+#: How coarse each precision is, in seconds: `db/when.py` SPAN itself and not a
+#: copy, so how wide a claim is cannot be two numbers at once. The module
+#: docstring states how a granule enters gap arithmetic.
 _GRANULE = when.SPAN
 
 
@@ -181,11 +183,9 @@ def _gapped(held: list[context.Occurrence], kind: str, gap: float) -> list[Group
     made.extend(
         _proposed_instant(kind, _flat(members)) for members in _split(instants, lambda act: act[0].instant_at, gap)
     )
-    # on the wall clock every act is placed at its finest consistent
-    # reading -- the refined second inside a claimed minute when the
-    # finish implies one -- then the generator's own counter; file ids
-    # only break what both left tied. Gaps and intervals use the same
-    # reading: the signal is there, so it is used.
+    # On the wall clock every act is placed at its finest consistent reading,
+    # then the generator's own counter, and file ids break only what both left
+    # tied. Gaps and intervals use that same reading.
     walls = sorted(
         (act for act in acts if act[0].instant_at is None and act[0].local_at is not None),
         key=lambda act: (_moment(act[0]), order(act[0]), act[0].file_id),
@@ -334,10 +334,9 @@ def regroup_one(conn, grouper, now: float) -> int:
         generation, policy = held_state
         if policy != context.POLICY_VERSION:
             raise ValueError("the interpretation is from an older policy; run the context job first")
-        # STABLE is not COMPLETE: a paused context job holds the
-        # generation still over a mostly-uninterpreted library, and a
-        # hypothesis proven over that silence would stay current
-        # indefinitely. Coverage is part of what the run proves.
+        # STABLE is not COMPLETE: a paused context job holds the generation
+        # still over a mostly-uninterpreted library, so coverage is part of
+        # what the run proves.
         have, present = context.coverage(conn)
         if have != present:
             raise ValueError(

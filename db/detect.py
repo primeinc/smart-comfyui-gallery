@@ -27,10 +27,9 @@ from __future__ import annotations
 
 from . import derived, oriented
 
-#: Detections below this confidence are recorded nowhere. YuNet reports down
-#: to its own floor of 0.5, and on the 105-photo labelled set the band
-#: between 0.5 and 0.7 contained only non-faces -- wallpaper and hair --
-#: while every real face cleared 0.7.
+#: Detections below this confidence are recorded nowhere. YuNet reports down to
+#: its own floor of 0.5, and on the 105-photo labelled set the band between 0.5
+#: and 0.7 held only non-faces -- wallpaper and hair -- while real faces cleared.
 FLOOR = 0.7
 
 
@@ -65,12 +64,9 @@ def harvest(
         image = oriented.for_model(conn, file_id, path)
     sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     if sha is None:
-        # A file can reach detection before anything hashed it, and every
-        # derived row here keys its staleness on the content hash. The
-        # computed sha lands on the file row in the same transaction --
-        # thrown away, every byproduct written here was born stale
-        # (`source_sha256 IS NOT content_sha256` against NULL) and every
-        # staleness sweep recomputed it until a scan wrote the sha.
+        # A file can reach detection before anything hashed it, and every derived
+        # row keys staleness on the content hash (`source_sha256 IS NOT
+        # content_sha256`), so the sha lands on the file row in this transaction.
         from . import scan
 
         sha = scan.sha256_of(path)
@@ -81,10 +77,9 @@ def harvest(
         from vision import thumbs
 
         thumbs.put_all(pathlib.Path(thumbs_dir), sha, image)
-    # The frame is decoded and upright; hashing it later means decoding
-    # again -- same doctrine as the thumbnail byproduct. Whole file only:
-    # a video sample's frame is one moment, not the file's identity, and
-    # `record_hash` needs the sha the row may not have yet.
+    # The frame is decoded and upright; hashing it later means decoding again.
+    # Whole file only: a video sample's frame is one moment, not the file's
+    # identity, and `record_hash` needs the sha the row may not have yet.
     if sample_id is None:
         from vision import dupes
 
@@ -107,22 +102,15 @@ def harvest(
             # a reader multiplies by the frame size, and float32 loses up to
             # 2.4e-4 source pixels (compat/consumers/gallery_storage.py).
             record["landmarks"] = np.asarray(found.landmarks, dtype=np.float64).tobytes()
-        # EVERYTHING the backend said, then promotions out of it. Not an
-        # allowlist: this copied `age` and `sex` and dropped pose and two
-        # dense landmark sets on the line that read them, so three columns
-        # that exist were NULL in every row ever written and the detector's
-        # most expensive output went nowhere. An allowlist cannot be right
-        # here -- it can only be wrong later, when a backend emits something
-        # nobody thought to name and the only way back is re-reading the
-        # library.
+        # Everything the backend said, then promotions out of it. Not an
+        # allowlist: what a backend emits and nobody thought to name is
+        # recoverable only by reading the whole library again.
         traits = found.attributes or {}
         if traits:
             record["attributes"] = traits
-        # Promoted because a facet filters on them and JSON extraction is not
-        # an index. `pose` unpacks BY KEY: the source array is
-        # [pitch, yaw, roll] and the columns are yaw-first, so a positional
-        # copy swaps two of three into plausible-looking degrees that no
-        # constraint can catch.
+        # Promoted because a facet filters on them and JSON extraction is not an
+        # index. `pose` unpacks by key: the source array is [pitch, yaw, roll]
+        # and the columns are yaw-first, so a positional copy swaps two of three.
         if "age" in traits:
             record["age"] = int(traits["age"])
         if "sex" in traits:
@@ -149,9 +137,8 @@ def harvest(
 
 
 #: How many extra moments a face-free video is granted beyond its cadence.
-#: Refinement bisects the widest gaps first, so the budget spreads across
-#: the whole video rather than crowding its start; when it runs out, the
-#: cadence's answer stands.
+#: Refinement bisects the widest gaps first, so the budget spreads across the
+#: whole video; when it runs out, the cadence's answer stands.
 REFINE_MOST = 32
 
 
@@ -209,10 +196,9 @@ def harvest_video(
     look({offset: sample_id for sample_id, offset, _ in chosen})
     looked = sorted(offset for _, offset, _ in chosen)
 
-    # The budget counts every bisect row this file has ever been granted,
-    # not this run's: otherwise each re-run of a face-free video deepens
-    # the refinement by another REFINE_MOST, and a job re-submitted enough
-    # times converges on decoding the whole file frame by frame.
+    # The budget counts every bisect row this file has been granted, not this
+    # run's: otherwise each re-run of a face-free video deepens the refinement
+    # by another REFINE_MOST and converges on decoding the whole file.
     budget = REFINE_MOST - sum(1 for _, _, policy in chosen if policy == "bisect")
     while found == 0 and budget > 0 and looked:
         fresh = sample.refine(conn, file_id, path, looked, budget=budget)

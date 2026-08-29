@@ -45,6 +45,39 @@ and why these statements live here rather than there.
 Grouping is deliberately absent: group-aware page breaks change the
 page count, every anchor, and the meaning of an ordinal. It arrives
 when its effect on page boundaries is defined, not before.
+
+`_SEEN` carries the rewind half of the currency key. `answer_generation`
+lives in the database file, so restoring a snapshot over a running
+process rewinds it, and `PRAGMA data_version` cannot see the rewind: it
+counts a connection's own observations, which only ever go up. The count
+of observed rewinds goes into the projection cache key, which is
+otherwise process-lifetime, so every key minted after a restore is new
+and no old key can match an answer computed from data that is gone.
+
+`NAMED` selects the names one page of cells needs. `content_sha256` is
+in it because the thumbnail's identity resolves once for the whole page:
+the derivative cache is content-addressed (vision/thumbs.py `path_for`),
+so a cell's `src` points straight at an immutable file rather than at a
+route that resolves the slug again, and width/height ride along because
+the justified grid needs the proportion before the image loads. `copies`
+counts the files the dupe job put in one file's group, itself included,
+and is NULL for a file no group holds; it marks rather than collapses,
+because the answer's total, its ordinals and the rail's map are all
+statements about members. `moment` is the interpretation -- the wall
+clock when one was claimed, the knowable instant otherwise -- falling
+back to `file.mtime`, which is NOT NULL, so the column never is, while
+`dated` says which of the two it is, because mtime is when the file was
+written and not when the photograph happened. It is not `first_seen_at`:
+a bulk import stamps forty thousand pictures with one afternoon, which
+is no position on an axis of when things happened.
+
+`COLUMN_ORDERS` holds the expression each table heading orders on, one
+row per column rather than one branch per column. Every expression may
+be NULL, and that is the point: a sound has no pixels and a photograph
+has no length, so those files sort last and say so by position rather
+than being dropped or called zero. A sort never narrows the answer --
+every join in `COLUMN_JOINS` is a LEFT join, so asking for "by sampler"
+over a library of photographs orders them and keeps them.
 """
 
 from __future__ import annotations
@@ -59,17 +92,9 @@ import typing
 
 from . import naming
 
-#: The COLUMN a table heading orders by, and the expression it orders on.
-#: One row per column rather than one branch per column: a sort is a closed
-#: vocabulary with one implementation each.
-#:
-#: Every expression may be NULL, and that is the point: a sound has no pixels
-#: and a photograph has no length, so those files sort LAST and say so by
-#: position rather than being dropped or called zero.
-#:
-#: A sort NEVER narrows the answer -- every join below is a LEFT join, so
-#: asking for "by sampler" over a library of photographs orders them and
-#: keeps them.
+#: The column a table heading orders by, and the expression it orders on; a
+#: sort is a closed vocabulary with one implementation each. NULL sorts last
+#: and every join is a LEFT join, both covered in the module docstring.
 COLUMN_ORDERS: dict[str, str] = {
     "name": "f.name COLLATE NOCASE",
     "kind": "f.kind",
@@ -95,12 +120,9 @@ COLUMN_ORDERS: dict[str, str] = {
     "rating": "r.rating",
 }
 
-#: What each sortable column needs joined to be reachable, keyed by the
-#: alias the expression above uses. Written once and shared, because two
-#: columns off one table must not join it twice.
-#:
-#: `?` is the actor, and the only one here: a sort by somebody else's
-#: rating is not a thing this offers.
+#: What each sortable column needs joined to be reachable, keyed by the alias
+#: the expression above uses; written once and shared, so two columns off one
+#: table do not join it twice. `?` is the actor, and the only argument here.
 COLUMN_JOINS: dict[str, str] = {
     "g": " LEFT JOIN generation g ON g.file_id = f.id",
     "ck": (
@@ -115,41 +137,33 @@ COLUMN_JOINS: dict[str, str] = {
     "r": " LEFT JOIN rating r ON r.file_id = f.id AND r.user_id = ?",
 }
 
-#: Which alias each column's expression reaches through, and how many
-#: arguments that join binds. Derived from the expression rather than
-#: restated, so a column cannot name a join it does not use.
+#: Which alias each column's expression reaches through, and how many arguments
+#: that join binds. Derived from the expression rather than restated, so a
+#: column cannot name a join it does not use.
 COLUMN_JOIN_OF: dict[str, str] = {
     name: expression.split(".", 1)[0].split()[-1]
     for name, expression in COLUMN_ORDERS.items()
     if expression.split(".", 1)[0].split()[-1] in ("g", "ck", "cam", "cap", "r")
 }
 
-#: Each column, ascending and descending. A person who clicks a heading
-#: twice means "the other way round", so both directions are real sorts
-#: with their own spelling -- a URL that could only say "by size" would
-#: make the second click unspellable, and the question lives in the URL.
+#: Each column, ascending and descending. A second click on a heading means
+#: "the other way round", so both directions are real sorts with their own
+#: spelling; the question lives in the URL and every answer has to be spellable.
 COLUMN_SORTS = tuple(one for name in COLUMN_ORDERS for one in (name, f"{name}-desc"))
 
-#: The orders a query may ask for. "similarity" requires a phrase; the
-#: time sorts follow the file table's own indexes; the moment sorts
-#: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
-#: timeline link opened -- with uninterpreted files last, never dropped;
-#: the column sorts are what a table heading asks for.
+#: The orders a query may ask for: "similarity" needs a phrase, the time sorts
+#: follow the file table's own indexes, the column sorts a table heading. The
+#: moment sorts follow db/context.py HUMAN_MOMENT, uninterpreted files last, not dropped.
 SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity", *COLUMN_SORTS)
 
-#: How much of a ranking is the ANSWER. `head` keeps the files that
-#: stand above their space's own middle (db/retrieval.py `head`); `all`
-#: keeps the whole ranked library, offered to whoever wants it.
-#: Only a phrase ranks anything, so only a phrase carries a depth.
+#: How much of a ranking is the answer: `head` keeps the files that stand above
+#: their space's own middle (db/retrieval.py `head`), `all` keeps the whole
+#: ranked library. Only a phrase ranks anything, so only a phrase carries a depth.
 DEPTHS = ("head", "all")
 
-#: What a file can be, as the ONE Literal. db/schema.sql constrains
-#: `file.kind` to exactly this list and sglint SG709 holds this
-#: declaration against that CHECK (sglint/policy.py WIRE_VOCABULARIES);
-#: the wire type in sg_web/media_view.py imports it rather than
-#: restating it -- five Python copies of the tuple existed, one of them
-#: the one the browser contract is generated from, and only two were
-#: held together by anything.
+#: What a file can be, as the one Literal. db/schema.sql constrains `file.kind`
+#: to exactly this list, sglint SG709 holds the declaration against that CHECK
+#: (sglint/policy.py WIRE_VOCABULARIES), and sg_web/media_view.py imports it.
 MediaKind = typing.Literal["image", "animated_image", "video", "audio", "document"]
 
 #: The file kinds a query may filter to -- DERIVED: a bare Literal's
@@ -205,23 +219,20 @@ class GalleryQuery:
     #: here. Never model=/lora=/role= -- one entity, one facet.
     artifact: str | None = None
     kind: str | None = None  # filter: one file kind
-    #: Authored facets: the asking ACTOR's own judgement, composable like
-    #: any predicate. The actor never rides the URL -- it binds at answer
-    #: time and lives in the projection identity, so two people asking
-    #: "favorite=1" share a spelling and never an answer.
+    #: Authored facets: the asking actor's own judgement, composable like any
+    #: predicate. The actor never rides the URL; it binds at answer time and
+    #: lives in the projection identity, so one spelling is never one answer.
     favorite: bool | None = None  # True: favorited; False: NOT favorited
     rating_min: int | None = None  # at least this many stars from the actor, 1..5
     text: str | None = None  # the semantic phrase; implies sort=similarity
-    #: Registered metadata predicates (db/context.py owns the
-    #: vocabulary): each composes like any other facet, timed and
-    #: semantic alike. Canonically ordered, so two spellings of one
-    #: conjunction are one question.
+    #: Registered metadata predicates (db/context.py owns the vocabulary): each
+    #: composes like any other facet, timed and semantic alike. Canonically
+    #: ordered, so two spellings of one conjunction are one question.
     facets: tuple = ()
     sort: str = "newest"
-    #: Semantic only: `head` (the default) answers with the files that
-    #: stand above the middle of what each space said, `all` with the
-    #: whole ranked library. Two depths are two questions, never two
-    #: views of one -- the fingerprint carries it.
+    #: Semantic only: `head` answers with the files that stand above the middle
+    #: of what each space said, `all` with the whole ranked library. Two depths
+    #: are two questions, never two views of one, and the fingerprint carries it.
     depth: str = "head"
     size: int = DEFAULT_PAGE_SIZE
 
@@ -354,23 +365,15 @@ def fingerprint(query: GalleryQuery) -> str:
 
 # --- data currency ----------------------------------------------------------
 
-#: One read-only monitor connection per database file, held for the
-#: process. `PRAGMA data_version` is only comparable to itself on the
-#: same connection, so the connection that answers it must never be a
-#: per-request one.
+#: One read-only monitor connection per database file, held for the process.
+#: `PRAGMA data_version` is only comparable to itself on the same connection,
+#: so the connection that answers it is never a per-request one.
 _MONITORS: dict[str, sqlite3.Connection] = {}
 _MONITOR_LOCK = threading.Lock()
 
-#: Per database file, the highest generation this process has seen, and
-#: how many times that number has gone BACKWARDS.
-#:
-#: `answer_generation` lives in the file, so restoring a snapshot over a
-#: running process rewinds it, and `PRAGMA data_version` cannot see that:
-#: it counts a connection's OWN observations, which only ever go up.
-#:
-#: The rewind count goes in the projection cache key, which is otherwise
-#: process-lifetime, so every key minted after a restore is new and no old
-#: key can match an answer computed from data that no longer exists.
+#: Per database file, the highest generation this process has seen and how many
+#: times that number has gone backwards. The rewind count keys the projection
+#: cache; the module docstring says why `PRAGMA data_version` cannot supply it.
 _SEEN: dict[str, tuple[int, int]] = {}
 
 
@@ -399,16 +402,14 @@ def close_monitors() -> int:
     return len(held)
 
 
-# `_SEEN` is deliberately NOT cleared above. It is the rewind epoch, and
-# the projection cache it protects outlives any monitor: forgetting the
-# highest generation seen would reset the epoch, and every key minted
-# before a restore would start matching again.
+# `_SEEN` is deliberately not cleared above: it is the rewind epoch, and the
+# projection cache it protects outlives any monitor, so forgetting the highest
+# generation seen would let every key minted before a restore match again.
 
 
-# The PROCESS owns these, not an application instance: `_MONITORS` is
-# module state, so two Litestar apps in one process share it and a
-# shutdown hook on either would close the other's monitors. atexit is the
-# lifetime that actually matches.
+# The process owns these, not an application instance: `_MONITORS` is module
+# state, so two Litestar apps in one process share it and a shutdown hook on
+# either would close the other's monitors. atexit matches that lifetime.
 atexit.register(close_monitors)
 
 
@@ -445,10 +446,9 @@ def currency(conn) -> str:
 
     where = _database_file(conn)
     if not where:
-        # One connection, so its own row counter is the whole story --
-        # and it counts LEDGER rows too, which the file path now
-        # ignores. Harmless: an in-memory database is a test or a probe,
-        # never a run somebody is browsing while a job writes.
+        # One connection, so its own row counter is the whole story, and it
+        # counts ledger rows the file path ignores. An in-memory database is a
+        # test or a probe, never a run somebody browses while a job writes.
         return f"mem{id(conn)}.{conn.total_changes}"
     with _MONITOR_LOCK:
         monitor = _MONITORS.get(where)
@@ -468,24 +468,28 @@ def currency(conn) -> str:
 
 @dataclasses.dataclass(frozen=True)
 class Projection:
+    """One materialized ordered answer and the identities that key it.
+
+    ``answer`` is the identity of the ordered answer itself, as against
+    ``currency``, which is the identity of the library generation it was
+    computed from. ``data_version`` moves on every commit -- a favorite, a
+    rating -- while most commits leave most answers untouched, so a client
+    holding (currency, answer) can tell "the library moved but this answer did
+    not", and adopt the new currency in place, from "the answer really
+    changed", and redraw, without anyone teaching it which tables affect which
+    queries.
+    """
+
     fingerprint: str
     currency: str
-    #: The identity of the ORDERED ANSWER itself, as against `currency`,
-    #: which is the identity of the library generation it was computed
-    #: from. `data_version` moves on EVERY commit -- a favorite, a
-    #: rating -- while most commits leave most answers untouched; a
-    #: client holding (currency, answer) can tell "the library moved but
-    #: this answer did not" (adopt the new currency in place) from "the
-    #: answer really changed" (redraw), without anyone teaching it which
-    #: tables affect which queries.
+    #: The identity of the ordered answer itself; see the class docstring.
     answer: str
     ids: tuple[int, ...]  # file ids, answer order
     ordinal: dict[int, int]  # file id -> 0-based position
     provenance: dict | None  # similarity only: participants/contributors/missing
-    #: similarity only: file id -> how far it stands from the middle of
-    #: what a space said toward that space's best, 0..1. Empty for a
-    #: timed answer, where no space was asked anything and there is no
-    #: such quantity to report.
+    #: similarity only: file id -> how far it stands from the middle of what a
+    #: space said toward that space's best, 0..1. Empty for a timed answer,
+    #: where no space was asked anything and no such quantity exists.
     relevance: dict[int, float] = dataclasses.field(default_factory=dict)
 
 
@@ -494,27 +498,8 @@ _PROJECTIONS: dict[tuple[str, str, str], Projection] = {}
 _PROJECTION_LOCK = threading.Lock()
 
 #: The names one page of cells needs, id-keyed; order is restored from the
-#: projection slice, so this query carries none.
-#:
-#: `content_sha256` is here because THE THUMBNAIL'S IDENTITY IS RESOLVED ONCE
-#: for the whole page: the derivative cache is content-addressed
-#: (vision/thumbs.py `path_for`), so a cell's `src` points straight at an
-#: immutable file rather than at a route that resolves the slug again.
-#: width/height ride along because the grid is justified and needs the
-#: proportion before the image loads.
-#:
-#: `copies` is how many files the dupe job put in this one's group, itself
-#: included, and NULL for a file no group holds; it marks rather than
-#: collapses, because the answer's total, its ordinals and the rail's map are
-#: all statements about MEMBERS.
-#:
-#: `moment` is the interpretation -- the wall clock when one was claimed, the
-#: knowable instant otherwise -- falling back to `file.mtime`, which is NOT
-#: NULL, so this column never is; `dated` says WHICH of the two it is, because
-#: mtime is when the FILE was written and not when the photograph happened.
-#: NOT `first_seen_at`: a bulk import stamps forty thousand pictures with one
-#: afternoon, which is useless as a position on an axis of WHEN THINGS
-#: HAPPENED.
+#: projection slice, so this query carries none. The module docstring says what
+#: each column that is not self-evident is for.
 NAMED = (
     "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256, f.width, f.height,"
     " (SELECT count(*) FROM derived_dupe_group m WHERE m.group_id = dg.group_id) AS copies,"
@@ -588,21 +573,18 @@ class _Bound:
     collection_id: int | None
     person_id: int | None
     face_run_id: int | None
-    #: The artifact facet, bound: the stable entity id plus the
-    #: artifact's OWN kind, which privately decides whether membership
-    #: means file_artifact or generation.workflow_id. Nothing above this
-    #: module ever sees that split.
+    #: The artifact facet, bound: the stable entity id plus the artifact's own
+    #: kind, which privately decides whether membership means file_artifact or
+    #: generation.workflow_id. Nothing above this module sees that split.
     artifact_id: int | None
     artifact_kind: str | None
     #: WHOSE judgement the authored facets mean. Set only when the query
     #: carries one, so questions without an authored facet stay one
     #: cached projection however many actors ask them.
     actor_id: int | None
-    #: A SMART collection scope, bound: the rule's own question as an
-    #: inner _Bound plus its take. The rule owns MEMBERSHIP (evaluated to
-    #: a set); the outer question still owns the ordered answer --
-    #: `collection_id` stays None for smart, because collection_file
-    #: holds nothing to EXISTS against.
+    #: A smart collection scope, bound: the rule's own question as an inner
+    #: _Bound plus its take. The rule owns membership and the outer question the
+    #: ordered answer; `collection_id` stays None, collection_file holding no row.
     rule: tuple[_Bound, int | None] | None = None
 
 
@@ -640,10 +622,9 @@ def bind(conn, query: GalleryQuery, actor_id: int | None = None) -> _Bound:
     if held["album"] is not None:
         kind = conn.execute("SELECT kind FROM collection WHERE id = ?", (held["album"],)).fetchone()[0]
         if kind == "smart":
-            # A smart collection's membership is its RULE's answer. No
-            # typed rule yet -- migrated prose, or nothing -- stays an
-            # UNEVALUATED collection, never an empty one; a rule whose
-            # references rot is BROKEN, never empty (db/collection_rules).
+            # A smart collection's membership is its rule's answer. A
+            # collection with no typed rule is unevaluated and one whose
+            # references rot is broken, neither empty (db/collection_rules).
             from . import collection_rules
 
             spelled = live.get("album") or query.album or str(held["album"])
@@ -769,10 +750,9 @@ def _bound_fingerprint(bound: _Bound) -> str:
             # was computed first under the other's address.
             "depth": query.depth,
             "size": query.size,
-            # A smart scope's identity is its BOUND rule (recursively
-            # fingerprinted -- ids, pinned actor, run) plus its take: two
-            # collections with one rule are one membership question, and
-            # an edited rule is a different one.
+            # A smart scope's identity is its bound rule (recursively
+            # fingerprinted -- ids, pinned actor, run) plus its take, so two
+            # collections with one rule are one membership question.
             "rule": None if bound.rule is None else [_bound_fingerprint(bound.rule[0]), bound.rule[1]],
         },
         sort_keys=True,
@@ -840,10 +820,9 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
             )
             args.extend((bound.person_id, bound.face_run_id))
     if bound.artifact_id is not None:
-        # The artifact's canonical relation, decided by ITS kind: a
-        # workflow attaches through generation, weights and equipment
-        # through file_artifact -- role-blind, and EXISTS makes a LoRA
-        # stacked at two ordinals one media member.
+        # The artifact's canonical relation, decided by its own kind: a workflow
+        # attaches through generation, weights and equipment through
+        # file_artifact, where EXISTS makes a twice-stacked LoRA one member.
         if bound.artifact_kind == "workflow":
             where.append("EXISTS (SELECT 1 FROM generation g WHERE g.file_id = f.id AND g.workflow_id = ?)")
         else:
@@ -864,10 +843,9 @@ def _eligibility(bound: _Bound) -> tuple[list[str], list[object], bool]:
     if query.facets:
         from . import facets as facets_module
 
-        # Through `clauses`, never `predicate` in a loop: repeating a key
-        # with `any` means OR and has to arrive here as ONE clause. A
-        # loop that appended each predicate separately would AND them,
-        # and "image or video" would silently answer nothing.
+        # Through `clauses`, never `predicate` in a loop: repeating a key with
+        # `any` means OR and arrives here as one clause. Appending each
+        # predicate separately would AND them, so "image or video" answers none.
         for sql, values in facets_module.clauses(query.facets):
             where.append(sql)
             args.extend(values)
@@ -878,18 +856,14 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
     """The ordered walk over `_eligibility`'s membership. The walk stays
     on the file table's own time index; the whole statement runs once
     per library change, never once per page."""
-    # The ORDERING CONTRACT: (mtime, id) both in the sort's direction --
-    # the same contract file_in_folder_by_time carries, so global and
-    # folder-scoped questions tie identically. The indexes implement
-    # this spelling (file_recent is (mtime DESC, id DESC), schema v6),
-    # never the reverse: bending the tiebreak to fit an index once
-    # silently changed real answer identities and ordinals.
+    # The ordering contract: (mtime, id) both in the sort's direction, as
+    # file_in_folder_by_time carries it, so global and folder-scoped questions tie
+    # identically. The indexes implement it (file_recent is (mtime DESC, id DESC), schema v6).
     where, args, _ = _eligibility(bound)
     if bound.query.sort in ("moment", "moment-newest"):
-        # The human moment, not the filesystem's: what a timeline link
-        # means by "this day" is the order its pictures come back in.
-        # LEFT JOIN keeps membership identical to the other sorts; a
-        # file with no interpretation sorts last and says so by position.
+        # The human moment, not the filesystem's: what a timeline link means by
+        # "this day" is the order its pictures come back in. LEFT JOIN keeps
+        # membership identical; an uninterpreted file sorts last by position.
         from .context import HUMAN_MOMENT, POLICY_VERSION
 
         order = "ASC" if bound.query.sort == "moment" else "DESC"
@@ -901,19 +875,15 @@ def _timed_ids(conn, bound: _Bound) -> list[int]:
         )
         return [row[0] for row in conn.execute(sql, args)]
     if bound.query.sort in COLUMN_SORTS:
-        # A table heading. The ORDERING CONTRACT is the same one the time
-        # sorts keep: the column, then `f.id` IN THE SAME DIRECTION, so
-        # the order is TOTAL. Two files of equal size must not swap
-        # between two reads of one answer -- an ordinal that moves is a
-        # filmstrip that walks somewhere else and a page that shows a
-        # picture twice.
+        # A table heading, under the ordering contract the time sorts keep: the
+        # column, then `f.id` in the same direction, so the order is total. Two
+        # files of equal size never swap between two reads of one answer.
         name, _, backwards = bound.query.sort.partition("-")
         order = "DESC" if backwards else "ASC"
         column = COLUMN_ORDERS[name]
-        # A LEFT join, so ordering by a column most files do not have
-        # keeps them: a photograph has no sampler, sorts last, and says
-        # so by position. Narrowing here would change what the answer
-        # HOLDS with no chip on screen admitting it.
+        # A LEFT join, so ordering by a column most files do not have keeps
+        # them: a photograph has no sampler, sorts last, and says so by
+        # position. Narrowing here would change what the answer holds.
         alias = COLUMN_JOIN_OF.get(name)
         joined = COLUMN_JOINS[alias] if alias else ""
         # The actor binds in the JOIN, which comes before the WHERE, so
@@ -989,10 +959,9 @@ def _fused_ids(
     if constrained:
         allowed = {row[0] for row in conn.execute(f"SELECT f.id FROM file f WHERE {' AND '.join(where)}", args)}
     if members is not None:
-        # A smart scope's membership INTERSECTS the outer eligibility --
-        # evaluated to a set precisely so a rule's person and the
-        # viewer's person stay a conjunction instead of one field
-        # overwriting the other.
+        # A smart scope's membership intersects the outer eligibility, evaluated
+        # to a set so a rule's person and the viewer's person stay a conjunction
+        # instead of one field overwriting the other.
         allowed = members if allowed is None else allowed & members
     if allowed is not None and not allowed:
         # An empty scope needs no encoder and has no honest
@@ -1012,11 +981,9 @@ def _fused_ids(
         allowed=None if allowed is None else set(allowed),
     )
     ranked = found["results"]
-    # `head` keeps what stands above the middle of what each space
-    # said; `all` keeps the ranking whole. Retrieval decided WHICH
-    # files answer -- it holds the per-space distributions this cannot
-    # see -- and this module decides whether the question wanted only
-    # those. A ranking is not an answer until something ends it.
+    # `head` keeps what stands above the middle of what each space said, `all`
+    # keeps the ranking whole. Retrieval decides which files answer, holding the
+    # per-space distributions this cannot see; the depth decides how many.
     kept = ranked if query.depth == "all" else [row for row in ranked if row["answers"]]
     fused = [row["file_id"] for row in kept]
     provenance = {key: found[key] for key in ("participants", "contributors", "missing")}
@@ -1390,16 +1357,13 @@ def _located(conn, bound: _Bound, held: Projection, position: int) -> dict:
     disagree about what comes next.
     """
     neighbours = [held.ids[at] if 0 <= at < len(held.ids) else None for at in (position - 1, position + 1)]
-    # The two ENDS come along, because a walk that wraps needs an address
-    # for them and this is the only read that holds the whole ordered
-    # answer. Free: `held.ids` is already in hand, and the four ids go
-    # through the one `_named` the neighbours were already paying for.
-    #
-    # Whether wrapping happens is not decided here. It is how a person
-    # arranged their viewer (frontend/src/workspace.ts), it changes no
-    # membership and belongs in no fingerprint; the server's part is
-    # spelling where the ends ARE.
+    # The two ends come along, because a walk that wraps needs an address for
+    # them and this is the only read that holds the whole ordered answer;
+    # `held.ids` is already in hand and the four ids ride the one `_named`.
     ends = [held.ids[0], held.ids[-1]] if held.ids else []
+    # Whether wrapping happens is not decided here: it is how a person arranged
+    # their viewer (frontend/src/workspace.ts), it changes no membership and
+    # belongs in no fingerprint, and the server's part is spelling where the ends are.
     wanted = [one for one in [*neighbours, *ends] if one is not None]
     named = {row["id"]: row["slug"] for row in _named(conn, wanted, 0)}
     return {
@@ -1429,14 +1393,12 @@ def locate(
         return None if position is None else _located(conn, bound, held, position)
 
 
-#: The widest neighborhood a caller may ask for. CLAMPED, not refused: a strip
-#: is a convenience and an absurd `count` still has an obvious best answer, the
-#: same reasoning as a collection's `take` (db/collection_rules.py). Zero and
-#: negatives clamp UP to one, because a window of nothing is not a window.
+#: The widest neighborhood a caller may ask for, clamped rather than refused:
+#: a strip is a convenience and an absurd `count` still has an obvious best
+#: answer, the same reasoning as a collection's `take` (db/collection_rules.py).
 NEIGHBORHOOD_MOST = 51
-#: The filmstrip a viewer opens with when it does not ask: seven each
-#: side of the member fills the strip on ordinary windows without
-#: paying for the ceiling above.
+#: The filmstrip a viewer opens with when it does not ask: seven each side of
+#: the member fills the strip on ordinary windows without paying the ceiling.
 NEIGHBORHOOD_DEFAULT = 15
 
 
@@ -1475,12 +1437,12 @@ def neighborhood(
         if position is None:
             return None
         told = _located(conn, bound, held, position)
+        # Zero and negatives clamp up to one: a window of nothing is not a window.
         take = min(max(1, count), NEIGHBORHOOD_MOST)
         start = max(0, min(position - take // 2, max(0, len(held.ids) - take)))
-        # No caption: `FilmstripItem` renders a 64-pixel square and says
-        # in its own docstring that it carries neither a uuid nor a
-        # model caption. Hydrating one to throw it away is a join per
-        # walk step.
+        # No caption: `FilmstripItem` renders a 64-pixel square and says in its
+        # own docstring that it carries neither a uuid nor a model caption.
+        # Hydrating one to throw it away is a join per walk step.
         items = _named(conn, held.ids[start : start + take], start, held.relevance, said=False)
         return {
             **told,
@@ -1595,10 +1557,9 @@ def _named(conn, ids, start: int, relevance: dict[int, float] | None = None, *, 
     from . import derived, settings
     from .context import HUMAN_MOMENT, POLICY_VERSION
 
-    # `dict[str, object]`, stated: a member row is a heterogeneous record
-    # -- ids, names, a hex uuid, a caption filled in below, a float
-    # relevance -- and inferring the value type from the literal gives
-    # `said` the type `None`, which the caption pass then cannot write to.
+    # `dict[str, object]`, stated: a member row is a heterogeneous record of
+    # ids, names, a hex uuid, a caption and a float relevance. Inferred from the
+    # literal, `said` takes the type `None` and the caption pass cannot write it.
     held: dict[int, dict[str, object]] = {
         row[0]: {
             "id": row[0],

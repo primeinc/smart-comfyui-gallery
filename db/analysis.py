@@ -59,10 +59,8 @@ BREAKDOWNS: tuple[str, ...] = (
     "has.generation",
     "people.person",
     "generation.checkpoint",
-    # NOT `generation.lora`: LoRAs have their own panel, with the weight
-    # each was applied at, which is a strictly better telling of the same
-    # fact. Two panels counting one thing side by side is not twice the
-    # information, it is a reader wondering which one is wrong.
+    # Not `generation.lora`: the LoRA panel counts them already, and carries
+    # the weight each was applied at.
     "generation.tool",
     "generation.sampler",
     "generation.scheduler",
@@ -146,16 +144,18 @@ class Weighted:
 
 @dataclasses.dataclass(frozen=True)
 class Analysis:
-    """Everything said about one answer."""
+    """Everything said about one answer.
+
+    ``terms`` stands apart from ``prompts`` because it is a separate claim: an
+    exact prompt count is a fact, a term count is a reading of a comma
+    convention, and folding them together would let the reading borrow the
+    fact's certainty.
+    """
 
     total: int
     breakdowns: tuple[Breakdown, ...]
     prompts: tuple[PromptUse, ...]
-    #: The terms that recur across those prompts. A separate field, not
-    #: folded into `prompts`, because it is a separate CLAIM: an exact
-    #: prompt count is a fact and a term count is a reading of a comma
-    #: convention, and mixing them would let the reading borrow the
-    #: fact's certainty.
+    #: The terms that recur across those prompts; see the class docstring.
     terms: tuple[TermUse, ...]
     loras: tuple[Weighted, ...]
     #: How many distinct prompts the answer holds, beyond those listed.
@@ -183,14 +183,8 @@ _PROMPT_TEXTS = (
     " GROUP BY p.id"
 )
 
-#: Every LoRA in the answer, with the strengths it was applied AT.
-#:
-#: The weights come back as one column and the middle one is taken here.
-#: SQLite has no percentile function, and the obvious spelling -- a
-#: correlated subquery ordering one artifact's weights and taking the
-#: middle by OFFSET -- needs to reach the outer alias from two levels
-#: down, which SQLite refuses ("no such column: a.id"). One column and
-#: one line of Python is the honest version of the same answer.
+#: Every LoRA in the answer, with the strengths it was applied at. The weights
+#: arrive as one group_concat column and `_median` takes the middle.
 _LORAS = (
     "SELECT a.id, a.name, COUNT(DISTINCT f.id),"
     " group_concat(fa.model_weight), MIN(fa.model_weight), MAX(fa.model_weight)"
@@ -206,6 +200,11 @@ def _median(spelled: str | None) -> float | None:
 
     Median rather than mean: one picture at 1.5 must not move what
     "usually" means for a LoRA applied at 0.8 forty times.
+
+    The weights arrive as one group_concat column because SQLite has no
+    percentile function, and a correlated subquery ordering one artifact's
+    weights and taking the middle by OFFSET has to reach the outer alias from
+    two levels down, which SQLite refuses ("no such column: a.id").
     """
     if not spelled:
         return None
@@ -251,16 +250,8 @@ def prompts(
 #: term. The number is a strength, not part of what was asked for.
 _WEIGHTED = re.compile(r"^[(\[{]+\s*(.*?)\s*(?::\s*-?\d+(?:\.\d+)?\s*)?[)\]}]+$")
 
-#: A LoRA or embedding reference, ANYWHERE in a fragment. Not a term: it
-#: is an ARTIFACT, counted by `loras` with the strengths it was used at,
-#: and letting it in here would report the same fact twice under two
-#: different kinds of claim.
-#:
-#: Removed rather than rejected, because it does not arrive on its own.
-#: A1111 writes `a castle on a hill <lora:filmGrain:0.35>` -- one
-#: comma-free fragment with the reference glued to the end of it -- so a
-#: rule that only refused a fragment that was ENTIRELY a reference left
-#: every one of them inside a term.
+#: A LoRA or embedding reference anywhere in a fragment, removed rather than
+#: refused because A1111 glues it to the end of prose; see `term_of`.
 _ARTIFACT = re.compile(r"<[^>]*>")
 
 
@@ -279,8 +270,11 @@ def term_of(raw: str) -> str | None:
     - **An `<...>` reference is not a term, wherever it sits.** It names
       an artifact, and `loras` already counts those WITH their strengths
       -- counting it here too would report one fact twice under two
-      kinds of claim. It is REMOVED rather than refused, because it does
-      not arrive alone: A1111 writes it glued to the end of the prose.
+      kinds of claim. It is removed rather than refused, because it does
+      not arrive alone: A1111 writes `a castle on a hill
+      <lora:filmGrain:0.35>`, one comma-free fragment with the reference
+      glued to the end, so a rule refusing only a fragment that is
+      entirely a reference leaves every one of them inside a term.
     - **Case is not meaning.** Folded, so `Rim Light` and `rim light`
       are one term.
     """
@@ -386,17 +380,13 @@ def analyze(
         held = discovery.breakdown(conn, query, key, actor_id=actor_id, models_dir=models_dir, now=now, most=MOST)
         if not held.options:
             continue
-        # A breakdown with ONE value covering the whole answer says
-        # nothing: asking `has.generation=1` and being shown "AI
-        # generated: yes, 100%" is the question read back as an answer.
-        # It is dropped rather than drawn, which is also what stops a
-        # filtered analysis being half bars at 100%.
+        # A breakdown whose one value covers the whole answer reads the
+        # question back as an answer, so it is dropped rather than drawn.
         if len(held.options) == 1 and held.options[0].count >= total:
             continue
-        # How many members carry this dimension AT ALL. Not the answer's
-        # total: "18 of 684 have a camera" and "18 of 18 are a Canon" are
-        # different sentences, and a share drawn against the wrong one is
-        # a bar that lies quietly.
+        # How many members carry this dimension at all, not the answer's total:
+        # "18 of 684 have a camera" and "18 of 18 are a Canon" are different
+        # sentences, and a share drawn against the wrong one lies.
         covered = sum(each.count for each in held.options)
         made.append(
             Breakdown(

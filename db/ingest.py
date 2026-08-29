@@ -47,16 +47,9 @@ _logger = logging.getLogger(__name__)
 #: PNG text chunks that carry a whole workflow graph rather than a value.
 _GRAPH_SLOTS = ("workflow", "prompt")
 
-#: What each parser owns, and therefore what it has to be able to take back.
-#:
-#: Without this a re-parse could only add. A file first read by an adapter
-#: that found three LoRAs and then re-read by a corrected one that finds one
-#: kept all three, because `INSERT OR REPLACE` touches only the keys the new
-#: parse produced; a field that stopped being emitted stayed in `file_param`
-#: with `param_key.occurrences` still counting it. The stale rows are
-#: indistinguishable from real ones -- neither table carries which parser
-#: wrote it -- so "improving a parser is a re-parse of the database rather
-#: than a re-read of every file on disk" was not true of anything.
+#: What each parser owns, and therefore what a re-parse has to take back before it
+#: writes. `INSERT OR REPLACE` touches only the keys the new parse produced, and
+#: neither `file_param` nor `param_key` records which parser wrote a row.
 _OWNED = {
     "generation": {
         "sources": ("generation", "container"),
@@ -181,12 +174,9 @@ def prompt(conn, text: str, now: float) -> int | None:
     row = conn.execute("SELECT id FROM prompt WHERE text_hash = ?", (digest,)).fetchone()
     if row:
         return row[0]
-    # Seeded from the words, because a prompt has something to read and the
-    # address is where that shows. `prompt-558a568843` is the hash wearing a
-    # slash -- the shape the plan retires the `💬 #C89B1` badge for, put back
-    # by the only entity that had no name to seed from and did have text.
-    # Six words is enough to recognise one and short enough to be a URL; the
-    # collision suffix in `mint` handles two prompts that open alike.
+    # Seeded from the words, because a prompt has something to read and the address is
+    # where that shows. Six words recognises one and stays URL-sized; `mint`'s collision
+    # suffix handles two prompts that open alike.
     prompt_id = mint(conn, "prompt", " ".join(text.split()[:6]) or f"prompt-{digest[:10]}")
     conn.execute(
         "INSERT INTO prompt(id, text, text_hash, created_at) VALUES(?, ?, ?, ?)",
@@ -308,24 +298,19 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
     should load it once.
     """
     retract(conn, file_id, "generation")
-    # Loaded ONCE. `parse_file` is `load_raw` followed by `parse_raw`
-    # (metaparse/adapters.py:730-743), so calling it and then loading the
-    # same file again read every text chunk twice -- and on a generated
-    # PNG those chunks are the whole workflow, which is why each read
-    # cost 23 ms and this step was 61% of ingest.
-    #
-    # `allow_stealth` is not passed, exactly as `parse_file(path)` did not
-    # pass it: the LSB pixel scan is for detail views, never bulk
-    # indexing, and skipping it is what keeps this off the pixels.
+    # Loaded once: `parse_file` is `load_raw` followed by `parse_raw`
+    # (metaparse/adapters.py:730-743), so calling it and then loading the same file
+    # again reads every text chunk twice, and on a generated PNG those are the workflow.
+
+    # `allow_stealth` is not passed: the LSB pixel scan is for detail views, never
+    # bulk indexing, and skipping it keeps this step off the pixels.
     raw = load_raw(path) if held is None else held
     parsed = metaparse.parse_raw(raw) if raw is not None else None
 
     reader = f"metaparse/{parsed.tool}" if parsed is not None else None
-    # The text the adapter actually read, so the claim is about this carrier
-    # rather than about its name. Marking only `_GRAPH_SLOTS` said every
-    # A1111 `parameters` chunk was un-understood -- while the whole recipe
-    # had just been read out of it -- so the backlog "what does nothing
-    # understand yet" listed the files that parsed best.
+    # The text the adapter actually read, so the claim is about this carrier rather
+    # than about its name. Marking only `_GRAPH_SLOTS` would call an A1111
+    # `parameters` chunk un-understood with the whole recipe read out of it.
     consumed = (parsed.raw or "").strip() if parsed is not None else ""
     if raw is not None:
         for slot, value in raw.text.items():
@@ -348,10 +333,9 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
         ):
             if _param(conn, file_id, "container", key, value):
                 out.params += 1
-        # ...and the two the file row carries in its own right, because "the
-        # pixels on disk" is not a searchable string, it is what every layout
-        # decision and every "the recipe asked for 832x1216 and got this"
-        # comparison reads. The decode has already happened.
+        # ...and the two the file row carries in its own right: the pixels on disk drive
+        # layout and the "asked for 832x1216, got this" comparison, neither a searchable
+        # string. The decode has already happened.
         if raw.width and raw.height:
             conn.execute(
                 "UPDATE file SET width = ?, height = ? WHERE id = ?",
@@ -363,12 +347,9 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
     typed = GenerationParams.from_parsed(parsed)
     out.tool, out.detection = typed.tool, typed.detection
 
-    # ComfyUI writes its graphs as PNG text chunks -- Comfy-Org/ComfyUI@
-    # a9ab2b6 nodes.py:1701-1706 add_text("prompt", ...) plus extra_pnginfo
-    # ("workflow") -- and metaparse reads text, so its adapter only names
-    # the tool. Every ComfyUI picture therefore arrived with a tool and
-    # nothing else: no seed, steps, cfg, sampler, checkpoint or LoRA rows.
-    # The graph is right there in the chunk; db/graph.py reads it.
+    # ComfyUI writes its graphs as PNG text chunks (Comfy-Org/ComfyUI@a9ab2b6 nodes.py:1701-1706,
+    # add_text "prompt" plus extra_pnginfo "workflow"), and metaparse reads text, so its
+    # adapter names only the tool. The graph is in the chunk, and db/graph.py reads it.
     if raw is not None:
         recipe = graph_module.read(raw.text.get("prompt") or raw.text.get("workflow") or "")
         if recipe is not None:
@@ -385,10 +366,9 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
         workflow_id = artifact(conn, "workflow", f"graph-{naming.short_sha(graph_sha)}", now, sha=graph_sha)
         out.artifacts.append(("workflow", "graph"))
 
-    # What the tool said it loaded, with the role it loaded it into and the hash
-    # it recorded, kept per entry rather than joined into one string. A hash is
-    # what lets a weight file in this library be the same weight file as the one
-    # on disk, and the role is what tells a checkpoint from its LoRA.
+    # What the tool said it loaded, with the role and the hash it recorded, kept per
+    # entry rather than joined into one string. The hash matches a weight file here to
+    # the one on disk, and the role tells a checkpoint from its LoRA.
     stated = {}
     for entry in getattr(typed, "artifacts", ()) or ():
         role = entry.get("role")
@@ -396,10 +376,9 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
         if not role or not name:
             continue
         digest = str(entry.get("hash") or "").strip() or None
-        # The role says how the weights were USED; the artifact row says
-        # what they ARE. A refiner is checkpoint weights in the refiner
-        # role -- the same file used as base elsewhere is one artifact,
-        # two roles -- and the role-match trigger states this mapping.
+        # The role says how the weights were used; the artifact row says what they are.
+        # A refiner is checkpoint weights in the refiner role, so the same file used as
+        # base elsewhere is one artifact in two roles, and the role-match trigger says so.
         artifact_id = artifact(conn, "checkpoint" if role == "refiner" else role, name, now, quoted=digest)
         ordinal = stated.get(role, 0)
         stated[role] = ordinal + 1
@@ -457,11 +436,9 @@ def generation(conn, file_id: int, path, now: float, out: Ingested, held=None) -
             now,
         ),
     )
-    # The roles. A prompt AS WRITTEN is the generator's own
-    # `original_<param>` (db/prompts.py ORIGINAL_ROLES), interned through
-    # the same dedupe as the prompt it ran; the parameter stays in
-    # file_param below as the evidence. No parameter, no row -- silence
-    # is not a claim that written == ran.
+    # The roles: a prompt as written is the generator's own `original_<param>` (db/prompts.py
+    # ORIGINAL_ROLES), interned through the same dedupe as the prompt it ran, the parameter
+    # kept in file_param as evidence. No parameter, no row: silence is not a claim.
     prompts_module.assign(conn, file_id, "effective", positive)
     prompts_module.assign(conn, file_id, "negative", negative)
     prompts_module.assign(conn, file_id, "unsampler", prompt(conn, str(typed.extra.get("unsamplerprompt") or ""), now))
@@ -531,14 +508,13 @@ def _really_animated(path) -> bool | None:
         return None
 
 
-#: WHO read a file, recorded on every file this module reads -- the half of
-#: freshness `ingested_sha256` cannot express, since that column says which
-#: BYTES were read and not which reader read them.
-#:
-#: BUMP THIS when a change here or in what this module calls would write
-#: something DIFFERENT for the same bytes, never for a refactor or a speed-up:
-#: a bump re-reads every file in the library. Dated rather than numbered, so two
-#: branches that both bump it cannot silently agree on "4".
+#: Who read a file, recorded on every file this module reads: the half of freshness
+#: `ingested_sha256` cannot express, since that column says which bytes were read and
+#: not which reader read them.
+
+#: Bump this when a change here or in what this module calls would write something
+#: different for the same bytes, never for a refactor or a speed-up, since a bump
+#: re-reads every file. Dated rather than numbered, so two branches cannot collide.
 READER = "ingest/2026-08-24"
 
 
@@ -558,10 +534,9 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
 
     from .runner import report
 
-    # Imported here rather than at module scope: the runner imports this
-    # module inside its handler, and a link back at import time would
-    # close the loop. Outside a job `report()` is the silent one, so this
-    # costs nothing and needs no branch.
+    # Imported here rather than at module scope: the runner imports this module inside
+    # its handler, and a link back at import time would close the loop. Outside a job
+    # `report()` is the silent one, so this needs no branch.
     told = report()
 
     _decode.ensure_decoders()
@@ -571,12 +546,9 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
         kind = conn.execute("SELECT kind FROM file WHERE id = ?", (file_id,)).fetchone()[0]
     kind = str(kind)
 
-    # The suffix proposed this kind; the bytes get the casting vote. A
-    # library accumulates liars -- an MP4 exported as .jpg, a HEIC renamed
-    # on share -- and routing them by suffix feeds the wrong reader, then
-    # records "unreadable" about a perfectly good file. The sniff is a
-    # 512-byte read (vision/sniff.py, patterns from whatwg/mimesniff@39aa535
-    # mimesniff.bs:792-1157); the reader that follows is the proof.
+    # The suffix proposed this kind; the bytes get the casting vote, because an MP4 exported
+    # as .jpg routed by suffix feeds the wrong reader and records "unreadable" about a readable
+    # file. A 512-byte read (vision/sniff.py, patterns from whatwg/mimesniff@39aa535 mimesniff.bs:792-1157).
     suffix_claimed = None
     told.phase("sniffing")
     sniffed = sniff_module.sniff_path(path)
@@ -591,23 +563,13 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             kind = "image" if family == "image" else family
             conn.execute("UPDATE file SET kind = ? WHERE id = ?", (kind, file_id))
 
-    # Named on its own because it is the step that reads what MADE the
-    # picture -- a generator's whole workflow, embedded in the file's own
-    # text chunks -- and that is a parse whose cost tracks the size of the
-    # recipe rather than the size of the image. Without the name it was
-    # billed to `sniffing`, which is a 512-byte read and could not
-    # honestly have cost 48 ms.
+    # Named on its own: this step parses a generator's whole workflow out of the file's
+    # own text chunks, and its cost tracks the size of the recipe rather than the image.
+    # Without the name it is billed to `sniffing`, which is a 512-byte read.
     told.phase("reading-generation", kind=kind)
-    # A CLIP carries its recipe too, one container along.
-    #
-    # metaparse was Pillow-only, so every generated video in every library
-    # had its workflow sitting in the file and no row anywhere: "AI
-    # generated video" was answerable and always empty -- not because the
-    # filter was wrong, but because nothing had ever written the
-    # generation row. ComfyUI writes `workflow` and `prompt` as container
-    # metadata tags, JSON-encoded, exactly as it writes them into a PNG's
-    # text chunks, so `load_raw_video` hands them back in the same shape
-    # and every adapter reads a clip without knowing anything changed.
+    # A clip carries its recipe too, one container along: ComfyUI writes `workflow` and
+    # `prompt` as JSON-encoded container metadata tags exactly as it writes them into a
+    # PNG's text chunks, so `load_raw_video` hands them back in the same shape.
     held = load_raw_video(path) if kind in _MOVING else load_raw(path)
     generation(conn, file_id, path, now, out, held=held)
 
@@ -618,12 +580,9 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     if suffix_claimed is not None:
         _param(conn, file_id, "container", "SuffixClaimed", suffix_claimed)
 
-    # Inside the branch, not before it. Opened before, this phase stayed
-    # open through everything that follows for a still -- which never
-    # probes -- and reported 24 ms of "probing" for files that do not
-    # reach a container reader at all. The same mistake `sniffing` made
-    # one step earlier and `encoding` made in the embed job: a phase
-    # opened outside the work it names bills whatever comes next.
+    # Inside the branch, not before it: a phase opened outside the work it names bills
+    # whatever comes next, so a still -- which never reaches a container reader -- would
+    # report time under "probing".
     if kind in _PROBED:
         told.phase("probing", kind=kind)
         container = probe_module.read(path)
@@ -648,10 +607,9 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
     retract(conn, file_id, "camera")
     conn.execute("DELETE FROM capture WHERE file_id = ?", (file_id,))
 
-    # Only where a camera could have written any. Running it on a video or a
-    # PDF meant `unreadable` reported "Pillow cannot open this" for every one
-    # of them -- true, uninteresting, and it buried the message from the
-    # reader that could.
+    # Only where a camera could have written any: on a video or a PDF, `unreadable`
+    # reports "Pillow cannot open this" and buries the message from the reader that
+    # can open it.
     if kind in ("image", "animated_image"):
         told.phase("checking-animation")
         # The suffix guessed; the decoded file answers. An animated WebP,
@@ -672,18 +630,14 @@ def one(conn, file_id: int, path, now: float, *, kind: str | None = None) -> Ing
             found = capture_module.read(path)
         else:
             found = capture_module.read_video(path)
-        # First complaint stands: an animated image was already probed
-        # above, and the capture read's silence must not erase why the
-        # container reader could not read it -- duration would stay NULL
-        # with nothing saying why.
+        # First complaint stands: an animated image was already probed above, and the
+        # capture read's silence must not erase why the container reader could not read
+        # it, which would leave duration NULL with nothing saying why.
         out.unreadable = out.unreadable or found.unreadable
         if found.orientation in capture_module.TRANSPOSED:
-            # The decode reports the stored frame; the tag says to turn it a
-            # quarter. Storing the stored size files every portrait photograph
-            # in the library as landscape -- the same defect the video probe
-            # handles for a display matrix, and it needs the same answer here.
-            # SQLite reads both sides from the row as it was, so this really
-            # is a swap.
+            # The decode reports the stored frame; the tag says to turn it a quarter, so
+            # storing the stored size files a portrait photograph as landscape. SQLite
+            # reads both sides from the row as it was, so this really is a swap.
             conn.execute("UPDATE file SET width = height, height = width WHERE id = ?", (file_id,))
         if not found.is_empty:
             capture_module.store(conn, file_id, found, now, mint)

@@ -9,6 +9,24 @@ every deletion is one a person asked for by name.
 recomputed; the name a person gave it cannot, so the name lives on the
 person and `person_assertion` records the claim against the file.
 Recomputing the derived tables leaves both standing.
+
+The export queries under "taking it with you" are keyed by `content_sha256` and
+never by a row id, which is the whole difference between an export and a dump:
+ids belong to one database file and mean nothing in the next one, while a hash
+names the same photograph in any library that holds it, so what comes back reads
+against a rebuilt library, a moved one, or somebody else's copy of the same
+pictures. `SAID` lists only the files carrying something authored, because a
+library is mostly pictures nobody has said anything about and a page of
+`rating: null` buries the rows that are the point. `APPEARS` carries `stance`,
+because a negative is a claim here rather than the absence of one: "not her" has
+to survive a rebuild and constrain the next clustering exactly as a positive
+does, and an export that dropped the negatives hands back a library that makes
+the same mistake again. `KEYWORDED` is its own query rather than a
+`group_concat` beside the collections, because a keyword holds SPACES -- "new
+york" is one word here -- while the collections ride a space-joined list of slugs
+that splits back apart; it carries both `tag`, the identity a filter is built
+from, and `label`, what somebody typed, so a reader never has to re-fold one into
+the other and possibly fold it differently.
 """
 
 from __future__ import annotations
@@ -78,11 +96,10 @@ def unfavourite(conn, file_id: int, user_id: int) -> None:
 
 
 # --- one picture's authored state, as desired facts ------------------------
-#
-# The write interface is DESIRED STATE, never a toggle: "favorite = true"
-# retried after a network hiccup lands where it already was, where a
-# toggle retried lands on the opposite of what the person asked. Every
-# operation is idempotent by the primitives beneath it.
+
+# The write interface is DESIRED STATE, never a toggle, and every operation is
+# idempotent by the primitives beneath it: a retried "favorite = true" lands
+# where it already was, where a retried toggle lands on the opposite.
 
 
 @dataclasses.dataclass(frozen=True)
@@ -480,16 +497,14 @@ def deny_person(conn, person_id: int, file_id: int, user_id: int | None, now: fl
     # Who said it, read before it is taken away -- after the delete
     # nothing records which model's output was corrected.
     said_so = derived.attributing_producers(conn, person_id, file_id)
-    # And take the name off the picture NOW. The claim constrains the
-    # next clustering run; `derived_file_person` is what the page reads,
-    # so leaving it would show the picture contradicting what somebody
-    # just said until a re-run that may never come.
+    # And take the name off the picture NOW: `derived_file_person` is what the
+    # page reads, so leaving it shows the picture contradicting what somebody
+    # just said until a re-run the claim only constrains once it happens.
     gone = derived.withdraw_attribution(conn, person_id, file_id)
     if not gone:
-        # Nothing was attributed, so no model got this wrong. Denying a
-        # person no run ever put here is a claim about the picture and
-        # not a judgement of anything -- recording one would put a
-        # correction against a producer that never spoke.
+        # Nothing was attributed, so no model got this wrong. Denying a person
+        # no run ever put here is a claim about the picture, and a correction
+        # recorded here would land against a producer that never spoke.
         return
     for model_id, model_version in said_so:
         retract_person_feedback(conn, person_id, file_id, model_id, model_version, user_id)
@@ -540,10 +555,9 @@ def reject_duplicate(conn, file_id: int, other_file_id: int, user_id: int | None
         model_id="perceptual",
         model_version="phash64",
     )
-    # And take them apart NOW. The page reads `derived_dupe_group`, so
-    # leaving them together would show the two pictures somebody just
-    # said were different sitting in one group until a sweep that may
-    # never come.
+    # And take them apart NOW: the page reads `derived_dupe_group`, so leaving
+    # them together shows two pictures somebody just called different sitting
+    # in one group until the next sweep.
     return int(
         conn.execute(
             "DELETE FROM derived_dupe_group WHERE file_id = ? AND group_id IN"
@@ -759,10 +773,9 @@ def feedback(
     return int(cursor.lastrowid or 0)
 
 
-#: One actor's standing verdict on one producer's claim about one file.
-#: The newest wins: a person who changes their mind has changed it, and
-#: the older row stays as what they thought before -- this table is a
-#: record of judgements, not a settings store.
+#: One actor's standing verdict on one producer's claim about one file. The
+#: newest wins and the older row stays: this table is a record of judgements,
+#: not a settings store.
 _STANDING = (
     "SELECT verdict FROM feedback"
     " WHERE target_kind = 'annotation' AND file_id = ? AND annotation_kind = ?"
@@ -802,18 +815,8 @@ def retract_feedback(conn, file_id: int, annotation_kind: str, model_id, model_v
 
 # --- taking it with you ------------------------------------------------------
 
-#: What somebody SAID about their own pictures, keyed by the bytes.
-#:
-#: By `content_sha256` and never by a row id, which is the whole
-#: difference between an export and a dump: ids belong to one database
-#: file and mean nothing in the next one, while a hash names the same
-#: photograph in any library that holds it. What comes back can be read
-#: against a rebuilt library, or a moved one, or somebody else's copy of
-#: the same pictures.
-#:
-#: Only files carrying SOMETHING authored. A library is mostly pictures
-#: nobody has said anything about, and listing a hundred thousand rows
-#: of `rating: null` would bury the few hundred that are the point.
+#: What somebody SAID about their own pictures, keyed by the bytes; only the
+#: files carrying something authored. The module docstring states why.
 SAID = (
     "SELECT * FROM ("
     "  SELECT f.content_sha256 AS sha256, f.name,"
@@ -832,13 +835,8 @@ SAID = (
     " ORDER BY name"
 )
 
-#: Who is in a picture, and who is NOT.
-#:
-#: `stance` rides along because a negative is a CLAIM here rather than
-#: the absence of one -- "not her" has to survive a rebuild and
-#: constrain the next clustering, exactly as a positive does. An export
-#: that dropped the negatives would hand back a library that starts
-#: making the same mistake again.
+#: Who is in a picture, and who is NOT; `stance` carries the negative claim.
+#: The module docstring states why.
 APPEARS = (
     "SELECT f.content_sha256 AS sha256, e.slug AS person, a.stance,"
     "       r.x, r.y, r.w, r.h"
@@ -849,16 +847,8 @@ APPEARS = (
     " ORDER BY f.name, e.slug"
 )
 
-#: The keywords on each picture.
-#:
-#: Its own query rather than a `group_concat` beside the collections,
-#: because a keyword holds SPACES -- "new york" is one word here -- and
-#: the collections ride a space-joined list of slugs that split back
-#: apart. Joining tags that way would export one keyword as two.
-#:
-#: Both spellings: `tag` is the identity a filter is built from, `label`
-#: is what somebody typed. A reader that kept only the label would have
-#: to re-fold it and might fold it differently.
+#: The keywords on each picture, in both spellings and in their own query.
+#: The module docstring states why.
 KEYWORDED = (
     "SELECT f.content_sha256 AS sha256, t.tag, t.label"
     "  FROM file_tag ft"

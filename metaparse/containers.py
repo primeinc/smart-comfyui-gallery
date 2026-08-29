@@ -2,6 +2,18 @@
 
 One Image.open per file; every adapter then works off the same RawMetadata
 snapshot, so detection never re-reads the file.
+
+``VIDEO_METADATA_KEYS`` names the container tags a generator's own payload
+arrives in. ComfyUI writes ``workflow``, ``prompt`` and ``extra_pnginfo`` as
+JSON-encoded container tags, and asks ffmpeg for ``movflags=use_metadata_tags``
+so an mp4 keeps custom tags at all
+(refs/Comfy-Org/ComfyUI/comfy_api/latest/_input_impl/video_types.py:41-44,
+:93-100). Those are the same payloads it writes into a PNG's tEXt chunks, so
+``load_raw_video`` lands them in ``RawMetadata.text`` and an adapter that reads
+a generated picture reads a generated clip without knowing a container changed.
+``comment`` and ``description`` are the general-purpose fields other tools
+reach for, A1111-style infotext among them, and the adapters sniff a payload's
+shape.
 """
 
 import contextlib
@@ -34,10 +46,9 @@ def decode_user_comment(value) -> str | None:
         return None
     prefix, data = value[:8], value[8:]
     if prefix.startswith(b"UNICODE"):
-        # The spec leaves byte order to the writer: piexif emits UTF-16BE,
-        # some tools emit UTF-16LE. Both often decode "successfully" (ASCII
-        # read with the wrong order becomes CJK codepoints), so keep the
-        # decode with the highest share of printable-ASCII characters.
+        # The spec leaves byte order to the writer: piexif emits UTF-16BE, some
+        # tools UTF-16LE, and both decode without raising. Keep the decode with
+        # the higher share of printable-ASCII characters.
         best = None
         for enc in ("utf-16-be", "utf-16-le"):
             try:
@@ -60,6 +71,15 @@ def decode_user_comment(value) -> str | None:
 
 @dataclass
 class RawMetadata:
+    """One file's container metadata, snapshotted by a single open.
+
+    ``exif_state`` records what happened when EXIF was looked for: "present",
+    "absent", or "failed". Only "absent" lets a caller skip re-opening the file
+    (db/ingest.py); a bool would fold "there is none" together with "the read
+    threw" and read a damaged file as a clean one carrying nothing. It defaults
+    to "failed" so a RawMetadata built outside ``load_raw`` licenses no skip.
+    """
+
     path: str = ""
     format: str = ""  # PIL format name: PNG / JPEG / WEBP / GIF ...
     width: int = 0
@@ -73,14 +93,7 @@ class RawMetadata:
     maker_note: str | None = None
     xmp: str | None = None
     gif_comment: str | None = None
-    #: What happened when EXIF was looked for: "present", "absent", or
-    #: "failed". Three states and not a bool, because only ONE of them
-    #: lets a caller skip re-opening the file, and a bool would have to
-    #: fold "there is none" together with "the read threw" -- which reads
-    #: a damaged file as a clean one carrying nothing.
-    #:
-    #: "failed" is the default so a RawMetadata built anywhere else never
-    #: licenses a skip it has not earned.
+    #: "present", "absent", or "failed"; see the class docstring.
     exif_state: str = "failed"
     _stealth_text: str | None = None
     _stealth_checked: bool = False
@@ -192,20 +205,8 @@ def load_raw(filepath: str, want_stealth: bool = False, image=None) -> RawMetada
         return None
 
 
-#: Container-metadata keys that carry a generator's own payload.
-#:
-#: ComfyUI writes `workflow`, `prompt` and `extra_pnginfo` as container
-#: metadata tags, JSON-encoded, and asks ffmpeg for
-#: `movflags=use_metadata_tags` so an mp4 keeps custom tags at all
-#: (refs/Comfy-Org/ComfyUI/comfy_api/latest/_input_impl/video_types.py:41-44,
-#: :93-100). They are the SAME payloads it writes into a PNG's tEXt
-#: chunks, which is why they land in `RawMetadata.text` here: every
-#: adapter that already reads a generated picture then reads a generated
-#: clip without knowing a container changed.
-#:
-#: `comment` and `description` are the general-purpose fields other
-#: tools reach for -- A1111-style infotext arrives there -- and the
-#: adapters already know how to sniff a payload's shape.
+#: Container-metadata keys that carry a generator's own payload; the module
+#: docstring names the source for each.
 VIDEO_METADATA_KEYS = ("workflow", "prompt", "extra_pnginfo", "parameters", "comment", "description", "Comment")
 
 
@@ -246,11 +247,9 @@ def load_raw_video(filepath: str) -> RawMetadata | None:
             found.update(strings(container.metadata))
 
             for key, value in found.items():
-                # Case-folded lookup, because a container normalises tag
-                # names on its own terms: mp4 hands back `Comment` where
-                # the writer wrote `comment`, and an adapter looking for
-                # the lower-case one would find nothing in a file that
-                # plainly has it.
+                # A container normalises tag names on its own terms: mp4 hands
+                # back `Comment` where the writer wrote `comment`, so the
+                # lookup is case-folded.
                 if key in VIDEO_METADATA_KEYS or key.lower() in VIDEO_METADATA_KEYS:
                     raw.text[key.lower() if key.lower() in VIDEO_METADATA_KEYS else key] = value
 

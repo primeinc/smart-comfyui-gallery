@@ -89,12 +89,10 @@ _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 #: Every kind of collection, per db/schema.sql collection.kind.
 CollectionKind = typing.Literal["album", "flag", "smart"]
 
-#: The kinds a person fills by listing files. A `smart` collection is
-#: born from a rule instead, through its own seam. The runtime tuple is
-#: the type's own members, so the check and the type cannot drift; that
-#: a listed kind is a collection kind is proved where create_listed
-#: hands one to collection().
+#: The kinds a person fills by listing files; a `smart` collection is born from
+#: a rule instead, through its own seam.
 ListedKind = typing.Literal["album", "flag"]
+#: The type's own members, so the runtime tuple and the type cannot drift.
 LISTED: tuple[ListedKind, ...] = typing.get_args(ListedKind)
 
 

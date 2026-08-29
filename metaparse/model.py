@@ -22,6 +22,16 @@ CANONICAL_KEYS = (
 
 @dataclass
 class ParsedMetadata:
+    """One render's generation metadata, normalized across tools.
+
+    ``artifacts`` holds every weight file the render used, one record per file
+    with the keys "name", "role", "hash", "weight". It carries the tools that
+    state this plainly -- SwarmUI writes a whole ``sui_models`` manifest with a
+    sha256 per file -- so the role and the hash reach a consumer alongside the
+    name. A1111-family tools name theirs inside the prompt instead, and
+    ``extract_networks`` reads those.
+    """
+
     tool: str  # display name, e.g. "SwarmUI", "A1111 / Forge"
     positive: str = ""
     negative: str = ""
@@ -29,16 +39,7 @@ class ParsedMetadata:
     extra: dict[str, object] = field(default_factory=dict)  # tool-specific leftovers
     raw: str = ""  # the embedded text as found (infotext or JSON)
     detection: str = "marker"  # "marker" | "heuristic" | "stealth"
-    #: Every weight file the render used, as records: {"name", "role",
-    #: "hash", "weight"}. A tool that states this -- SwarmUI writes a whole
-    #: `sui_models` manifest with a sha256 per file -- should not have it
-    #: flattened into one comma-joined string, which is what happened: the
-    #: role and every hash were thrown away, so a checkpoint and the LoRA
-    #: applied to it were indistinguishable and neither could be matched to
-    #: the file on disk it came from.
-    #:
-    #: A1111-family tools name theirs inside the prompt instead, and
-    #: `extract_networks` reads those; this is for tools that say it plainly.
+    #: Weight files the render used; see the class docstring.
     artifacts: list[dict] = field(default_factory=list)
 
     @property

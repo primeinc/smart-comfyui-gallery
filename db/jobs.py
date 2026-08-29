@@ -26,6 +26,14 @@ reclaimed instead of stranding it as `running` forever, and `fence` is what
 makes that safe: reclaiming increments it, and every write by a worker is
 conditional on still holding the fence it was given. The evicted worker's
 writes then fail rather than corrupting the job it no longer owns.
+
+``FILE_ITEMS`` names the kinds whose `job_item.item_id` is a file id. Guessing
+is unsafe rather than merely imprecise: `cluster_faces` and `events` number
+their items 0, 1, 2 as indices into a payload, so a lookup assuming every item
+id were a file would put a real picture's name beside item 2 of a clustering
+run. Its readers are db/runner.py, where the ledger names an item, and
+db/inspecting.py, where the console links one; both apply one exception, that
+`hash` with `derive=groups` runs a single item that is not a file either.
 """
 
 from __future__ import annotations
@@ -37,16 +45,13 @@ from dataclasses import dataclass
 from . import ledger
 
 #: What a job is doing and how it is going, per db/schema.sql job.kind and
-#: job.state. Here rather than at a web seam because the table owns them:
-#: a value outside either is already impossible in the database, and the
-#: browser gets the closed set as a union instead of `string`.
+#: job.state. The table owns them, so a value outside either is impossible in
+#: the database and the browser gets a closed union instead of `string`.
 JobState = typing.Literal["queued", "running", "done", "failed", "cancelled"]
 
-#: The settled subset of JobState -- what `settle` will accept and what
-#: nothing publishes after. Declared beside the vocabulary it subsets;
-#: five copies of this tuple existed (two of them each named TERMINAL)
-#: and a sixth state marked terminal here would have left every one of
-#: them silently short.
+#: The settled subset of JobState -- what `settle` accepts and what nothing
+#: publishes after. Declared beside the vocabulary it subsets, so marking a
+#: state terminal cannot leave a separate copy of the tuple short.
 TERMINAL: tuple[JobState, ...] = ("done", "failed", "cancelled")
 #: The same subset as a SQL `IN (...)` list, built from TERMINAL so a
 #: statement cannot drift from the guard. Interpolated, never bound:
@@ -72,20 +77,9 @@ JobKind = typing.Literal[
     "embed_prompts",
 ]
 
-#: The kinds whose `job_item.item_id` IS a file id.
-#:
-#: Beside `JobKind` because it is a fact ABOUT the vocabulary, and it
-#: was written down twice -- once in db/runner.py so the ledger could
-#: name an item, once in db/inspecting.py so the console could link one
-#: -- which is two places to forget when a kind is added.
-#:
-#: Guessing is unsafe rather than merely imprecise: `cluster_faces` and
-#: `events` number their items 0, 1, 2 as indices into a payload, so a
-#: lookup that assumed every item id were a file would put a real
-#: picture's name beside item 2 of a clustering run.
-#:
-#: `hash` is here with one exception its readers apply: `derive=groups`
-#: runs a single item that is not a file either.
+#: The kinds whose `job_item.item_id` is a file id, beside `JobKind` because it
+#: is a fact about the vocabulary. The module docstring names the readers, why
+#: a reader cannot guess this, and the `hash` exception.
 FILE_ITEMS = frozenset({"scan", "hash", "embed", "detect_faces", "context", "annotate"})
 
 #: Where one unit of a job stands, per db/schema.sql job_item.state.
@@ -200,16 +194,22 @@ def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, 
     for the gap between the two -- observed live once per-request
     connection setup widened it -- and an off-switch committed before the
     claim must never lose to that gap.
+
+    A step whose predecessor has not finished is not runnable, however queued it
+    looks. The predicate lives in `runnable` because it is evaluated twice, once
+    to pick the row and once under the write lock to re-check it, and a gate
+    applied in only one of those places is a gate two workers can race through.
+
+    The claim is one statement. As a SELECT and then an UPDATE it is not a claim
+    at all: two workers both read the same queued row, both increment the fence,
+    both read it back as the same number and `_held` passes for both, verified
+    with two connections on a real file. The predicate is repeated inside the
+    UPDATE rather than trusting the subquery, so whichever writer takes the lock
+    second re-evaluates it against what the first committed and sees a job that
+    is no longer runnable.
     """
-    # A step whose predecessor has not finished is not runnable, however
-    # queued it looks. `done` specifically, not merely settled: a step
-    # after a failed one must not run, which is what makes a failure stop
-    # its dependents and nothing else.
-    #
-    # Inside `runnable` rather than beside it, because the predicate is
-    # evaluated twice -- once to pick the row and once, under the write
-    # lock, to re-check it. A gate applied in only one of those places is
-    # a gate two workers can race through.
+    # `done` specifically, not merely settled: a step after a failed one must
+    # not run, which makes a failure stop its dependents and nothing else.
     runnable = (
         "(state = 'queued' OR (state = 'running' AND lease_until < ?))"
         " AND (after_id IS NULL OR EXISTS"
@@ -226,15 +226,9 @@ def claim(conn, owner: str, now: float, *, kinds=None, gate=None) -> tuple[int, 
         gate_filter = " AND COALESCE((SELECT value FROM setting WHERE key = ?), ?) = 'on'"
         gate_args = list(gate)
 
-    # One statement. As a SELECT then an UPDATE this was not a claim at all:
-    # two workers both read the same queued row, both incremented the fence,
-    # both read it back as the same number, and `_held` passed for both --
-    # verified with two connections on a real file. The fence only excludes
-    # anybody if the row is taken and stamped in a single write.
-    #
-    # The predicate is repeated inside the UPDATE rather than trusting the
-    # subquery: whichever writer gets the lock second re-evaluates it against
-    # what the first committed, and sees a job that is no longer runnable.
+    # One statement: the fence excludes anybody only if the row is taken and
+    # stamped in a single write, and the docstring states what splitting it
+    # costs.
     row = conn.execute(
         "UPDATE job SET state = 'running', owner = ?, fence = fence + 1,"
         " attempt = attempt + 1, lease_until = ?, heartbeat_at = ?,"
@@ -514,10 +508,9 @@ def count_now(conn, job_id: int, fence: int, items: list[int]) -> int:
             "INSERT INTO job_item(job_id, item_id, state) VALUES(?, ?, 'pending')",
             [(job_id, item) for item in items],
         )
-    # No ledger row of its own. `job_event.type` is a closed CHECK and a
-    # new member is a schema change; the fact this would announce -- the
-    # total is known now -- already reaches every subscriber in the
-    # progress delta the runner sends on the next observable change.
+    # No ledger row of its own: `job_event.type` is a closed CHECK and a new
+    # member is a schema change. The fact it would announce, that the total is
+    # known, reaches every subscriber in the runner's next progress delta.
     return len(items)
 
 

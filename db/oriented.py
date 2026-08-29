@@ -91,9 +91,8 @@ def open_upright(path, orientation: int | None = None) -> Image.Image:
     from vision import decode
 
     # The handle goes with the `with`, never with the garbage collector:
-    # load() closes it only for formats whose plugin allows (PSD and GIF
-    # keep it for seeking), so the picture returned is always a copy in
-    # memory -- a memcpy beside the decode it just paid for.
+    # load() closes it only for formats whose plugin allows it (PSD and GIF
+    # keep it for seeking), so what is returned is always a copy in memory.
     with decode.open_still(path) as opened:
         opened.load()
         turned = upright(opened, orientation)

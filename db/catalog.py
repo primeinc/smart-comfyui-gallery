@@ -61,29 +61,17 @@ from . import resultset, vocabulary
 #: stops well before this; what is past it is reachable by typing more.
 MOST = 30
 
-#: The `source` values that are a camera's own plumbing rather than
-#: anything somebody asks about. Not a denylist of KEYS -- the schema
-#: already records where each key came from, so this is one fact about
-#: eight sources instead of a hand-written list of forty spellings that
-#: goes stale the first time a new camera writes a new tag.
-#:
-#: They are RANKED DOWN, never hidden: `StripOffsets` is a real fact
-#: about a real file and somebody debugging a camera import has every
-#: right to ask about it. It simply must not be offered before the
-#: things people actually search for.
+#: The `source` values that are a camera's own plumbing rather than anything
+#: somebody asks about; by source, not by key, so a new camera's new tag needs
+#: no new spelling here. Ranked down, never hidden.
 PLUMBING = ("exif", "iptc", "container", "filesystem")
 
 #: A key ending `.<digits>` is one member of a positional family.
 _INDEXED = re.compile(r"^(?P<stem>.+)\.(?P<at>\d+)$")
 
-#: The share of a full list kept for keys nothing here named.
-#:
-#: Not a tweak. Forty-one curated dimensions against thirty rows means a
-#: broad search fills the list with names, and the long tail is
-#: unreachable again for exactly the person who cannot name what they
-#: want -- the defect this module exists to fix, reproducing itself
-#: inside the fix. The tail keeps this share whenever it has anything to
-#: put in it, and gives back what it does not use.
+#: The share of a full list reserved for keys nothing here named, so the curated
+#: dimensions cannot fill the list and leave the long tail unreachable. The tail
+#: holds this share whenever it has anything to put in it, and gives back the rest.
 SHARE = 0.4
 
 #: Where a field's usefulness stops growing with its value count. Two to
@@ -152,10 +140,9 @@ def _readable(key: str) -> str:
     `aliases`, so somebody who knows it still finds it by typing it.
     """
     spaced = re.sub(r"[_.\-]+", " ", key)
-    # Two rules, because camel case has two seams. `focalPlane` breaks
-    # after the lower-case run; `XResolution` breaks INSIDE an
-    # upper-case run, before the last capital that starts a word -- and
-    # only the first rule would have given "Focal Plane XResolution".
+    # Two rules, because camel case has two seams: `focalPlane` breaks after the
+    # lower-case run, `XResolution` breaks inside an upper-case run before the
+    # last capital that starts a word.
     spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", spaced)
     spaced = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", spaced)
     return spaced.strip() or key
@@ -242,12 +229,9 @@ def _curated(kind: str | None) -> list[Field]:
     return made
 
 
-#: Every discovered key in the answer, with what it would cut it by.
-#: One statement, one scan of the long tail's table: how many files in
-#: the answer carry each key, and how many values they hold between
-#: them. The family collapse happens in Python over the ~100 rows this
-#: returns rather than in SQL, because "a trailing dot and digits" is a
-#: rule about spelling and reads as one here.
+#: Every discovered key in the answer, with what it would cut it by: one scan of
+#: the long tail's table for how many files carry each key and how many values
+#: they hold. The family collapse over a trailing dot and digits happens in Python.
 _DISCOVERED = (
     "SELECT fp.source, fp.key, COUNT(DISTINCT f.id), COUNT(DISTINCT fp.value_text) FROM file f"
     " JOIN file_param fp ON fp.file_id = f.id"
@@ -260,10 +244,9 @@ _DISCOVERED = (
 #: fraction of the same denominator, taken on the same connection.
 _COUNTED = "SELECT COUNT(*) FROM file f WHERE f.missing_since IS NULL {scope}"
 
-#: The observed type of every key, from the registry the trigger keeps.
-#: Read whole: it is one row per (source, key) and there are hundreds,
-#: not thousands, and joining it into the aggregate above would make a
-#: scan of the widest table carry a lookup it does not need.
+#: The observed type of every key, from the registry the trigger keeps. Read
+#: whole, one row per (source, key), rather than joined into the aggregate
+#: above, which would make a scan of the widest table carry a lookup.
 _KINDS = "SELECT source, key, value_kind FROM param_key"
 
 
@@ -285,13 +268,21 @@ def discovered(
     The size comes back with the fields because it is the denominator
     they are ranked by, and taking it here means one `scope_of` and one
     connection rather than a second read that could straddle a commit.
+
+    A field is numeric when its kind is `number` exactly. `param.num` reads
+    `fp.value_num`, the column the schema fills whenever a value parses as one,
+    so it can offer the comparisons a number has; `param.is` reads `value_text`
+    and can only mean equals, because over text 9 is more than 30. `mixed` stays
+    on `param.is`: a family where some values parsed as numbers and some did not
+    cannot be compared as numbers without dropping the rest. schema.sql CHECKs
+    `value_kind IN ('text','number','mixed')`, so a longer list of numeric kinds
+    would be guessing at kinds the column cannot hold.
     """
     conjunct, args, _ = resultset.scope_of(conn, query, actor_id, models_dir=models_dir, now=now)
     kinds = {(source, key): kind for source, key, kind in conn.execute(_KINDS)}
-    # The answer's size from the SAME conjunct, so the ratios below are
-    # a fraction of the thing they were counted against. Not
-    # `resultset.describe`, which builds the whole ordered answer to
-    # hand back a length -- this needs the number, not the order.
+    # The answer's size from the SAME conjunct, so the ratios below are a
+    # fraction of what they were counted against. Not `resultset.describe`,
+    # which builds the whole ordered answer to hand back a length.
     total = int(conn.execute(_COUNTED.replace("{scope}", conjunct), args).fetchone()[0])
 
     held: dict[tuple[str, str], dict] = {}
@@ -315,18 +306,7 @@ def discovered(
         # A family whose members disagree about their type is mixed,
         # which is exactly what the lattice means.
         kind = "mixed" if len(one["kinds"]) > 1 else next(iter(one["kinds"]))
-        # A number-kinded key gets the comparisons a number has, through
-        # `param.num` -- which reads `fp.value_num`, the column the
-        # schema fills whenever a value parses as one. `param.is` reads
-        # `value_text` and can only mean equals: over text, 9 is more
-        # than 30.
-        #
-        # `mixed` stays on `param.is`. A family where some values parsed
-        # as numbers and some did not cannot be compared as numbers
-        # without quietly dropping the rest.
-        # `number` exactly: schema.sql CHECKs `value_kind IN
-        # ('text','number','mixed')`, so a longer list here would be
-        # guessing at kinds the column cannot hold.
+        # `number` exactly; the docstring names the column and the CHECK.
         numeric = kind == "number"
         made.append(
             Field(
@@ -413,14 +393,9 @@ def catalog(
     return shown, max(0, len(order) - len(shown))
 
 
-#: What ONE discovered key holds across this answer, most used first.
-#:
-#: `LIKE`, not `=`: a positional family is offered as one field, so its
-#: values are its members' values together -- `used_wildcards.0` and
-#: `.3` both answer "which wildcards did these use". The stem is
-#: matched exactly OR followed by a dot and digits, and the escape is
-#: explicit because a metadata key is a string some tool chose and may
-#: hold `%` or `_` (`Exif_Offset` does).
+#: What ONE discovered key holds across this answer, most used first. `LIKE` and
+#: not `=` because a positional family is one field, so the stem matches exactly or
+#: followed by a dot and digits; the escape is explicit because a key may hold `%` or `_` (`Exif_Offset`).
 _VALUES = (
     "SELECT fp.value_text, COUNT(DISTINCT f.id) FROM file f"
     " JOIN file_param fp ON fp.file_id = f.id"

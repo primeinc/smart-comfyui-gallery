@@ -34,12 +34,8 @@ def _imagehash_version() -> str:
 
 
 #: The perceptual-hash space: 64 hamming bits per picture, produced by
-#: imagehash.phash (vision/dupes.py perceptual) over the repo's oriented
-#: frame -- for a video, the poster frame (db/runner.py _perceptual_item).
-#: The preprocess token is part of the representation's identity: the
-#: same hash algorithm over a differently chosen or differently oriented
-#: frame is a different number, and tests pin what "v1" means. Bump it
-#: when the frame policy meaningfully changes.
+#: imagehash.phash (vision/dupes.py perceptual) over the repo's oriented frame
+#: -- for a video, the poster frame (db/runner.py _perceptual_item).
 PHASH = SpaceSpec(
     key="perceptual.phash64",
     representation="binary",
@@ -48,13 +44,15 @@ PHASH = SpaceSpec(
     producer="imagehash.phash",
     producer_version=_imagehash_version(),
     preprocess="smartgallery.perceptual-frame",
+    # Part of the representation's identity: the same algorithm over a
+    # differently chosen or differently oriented frame is a different number,
+    # so a changed frame policy is a new token that tests pin.
     preprocess_version="v1",
 )
 
-#: The difference-hash space: a DIFFERENT algorithm over the same frame,
-#: so a different space -- two values sharing one provenance row is how
-#: dHash bits got labeled as pHash output. Recorded for future retrieval
-#: work; nothing searches it yet.
+#: The difference-hash space: a DIFFERENT algorithm over the same frame, so a
+#: different space rather than a second value on one provenance row. Nothing
+#: searches it.
 DHASH = SpaceSpec(
     key="perceptual.dhash64",
     representation="binary",
@@ -303,11 +301,9 @@ def align(conn, manager: IndexManager, spec: SpaceSpec, ids, fetch, now: float, 
 
 # -- the live path: producers note, the runner applies after commit ---------
 
-#: Pending index mutations live ON the connection (db/connect.py
-#: Connection.pending), applied only after the commit that made their
-#: rows durable: every runner turn ends in exactly one of
-#: apply_pending/discard_pending, close() discards whatever is left, and
-#: a connection that dies any other way takes its notes with it.
+#: Pending index mutations live ON the connection (db/connect.py Connection.pending),
+#: applied only after the commit that made their rows durable; every runner turn ends
+#: in exactly one of apply_pending/discard_pending, and close() discards the rest.
 
 
 def pending(conn) -> list:

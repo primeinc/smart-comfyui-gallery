@@ -238,10 +238,9 @@ def counts(query: resultset.GalleryQuery) -> dict[str, int]:
     return made
 
 
-#: Whether the phrase somebody typed names a person this library knows.
-#:
-#: NAMED only. An unnamed cluster's slug is `person-<short-id>`, which
-#: nobody types, and matching one would be matching an accident.
+#: Whether the phrase somebody typed names a person this library knows, named
+#: people only. An unnamed cluster's slug is `person-<short-id>`, which nobody
+#: types.
 _NAMED_PEOPLE = (
     "SELECT p.name, e.slug FROM person p JOIN entity e ON e.id = p.id WHERE p.name IS NOT NULL AND trim(p.name) <> ''"
 )

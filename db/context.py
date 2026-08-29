@@ -48,6 +48,16 @@ a source-table trigger referencing a derived table breaks the
 drop-derived-and-reindex contract. A stale context is DELETED, never
 silently served; the explicit context job makes it current again.
 Nothing expensive starts by itself.
+
+The occurrence ladder is one statement, applied to whichever files the caller
+names, with basis and certainty recorded beside every value they explain.
+`place_id` stays NULL until an explicit resolver or an authored assertion mints
+real place identity; GPS alone never does. Each temporal CLAIM is its own row:
+the capture act at capture time, the generation act at the time db/when.py
+settles from every claim the file carries. The context keeps the one primary
+human-timeline interpretation, and these rows exist so a grouper reads the time
+of ITS OWN claim -- a photograph edited by a generator years later is 2023 in the
+capture story and 2026 in the generation story.
 """
 
 from __future__ import annotations
@@ -56,43 +66,28 @@ import dataclasses
 
 ORIGINS = ("captured", "generated", "mixed", "imported")
 
-#: What `db/when.py` can actually put in a Verdict, and nothing else. A
-#: seventh member, `first_seen`, was declared here for years and no code
-#: path could reach it: `judge_file`'s no-claim branch returns None when
-#: mtime and btime are both absent, so the one case the word named writes
-#: no row at all. `derived_media_occurrence.basis` never listed it and
-#: `db/planning.py _BASES` never held it -- this tuple was the only place
-#: in the application that claimed the rung existed.
+#: What `db/when.py` can actually put in a Verdict, and nothing else. A member
+#: here that `derived_media_occurrence.basis` and `db/planning.py _BASES` do not
+#: also hold names a rung no code path can reach.
 TIME_BASES = ("capture", "embedded", "filename", "folder", "btime", "mtime")
 
-#: Two, matching the two branches below (`_CONTEXT`'s location_basis is
-#: assigned in exactly one expression). `sidecar` and `inferred` were
-#: names for readers nobody wrote: sidecar ingest carries generation
-#: parameters and never a location, and nothing infers one from content.
+#: Two, matching the two branches below: `_CONTEXT`'s location_basis is assigned
+#: in exactly one expression. Sidecar ingest carries generation parameters and
+#: never a location, and nothing infers a location from content.
 LOCATION_BASES = ("gps", "authored")
 
 #: WHICH MEANING of the ladder is current; bump when the interpretation itself
-#: changes meaning. Every reader binds THIS constant, never the version a
-#: database happens to remember, so rows stamped with another version stay
-#: invisible until the context job re-interprets them.
+#: changes meaning. Every reader binds THIS constant, so rows stamped with
+#: another version stay invisible until the context job re-interprets them.
 POLICY_VERSION = 9
 
-#: The human timeline's one axis, defined ONCE: the wall clock when one
-#: was claimed, the knowable instant otherwise. The day facet and the
-#: timeline shelves compose around this same fragment, so the link and
-#: the shelf cannot drift apart.
+#: The human timeline's one axis, defined ONCE: the wall clock when one was
+#: claimed, the knowable instant otherwise. The day facet and the timeline
+#: shelves compose around this same fragment, so they cannot drift apart.
 HUMAN_MOMENT = "COALESCE(mc.local_at, mc.instant_at)"
 
-#: The whole ladder, one statement, applied to whichever files the
-#: caller names. Basis and certainty recorded beside every value they
-#: explain; place_id stays NULL until an explicit resolver or an
-#: authored assertion mints real place identity -- GPS alone never does.
-#: Each temporal CLAIM as its own row: the capture act at capture time,
-#: the generation act at the time the judge (db/when.py) settles from
-#: every claim the file carries. The context keeps the ONE primary
-#: human-timeline interpretation; these exist so a grouper reads the
-#: time of ITS OWN claim -- a photograph edited by a generator years
-#: later is 2023 in the capture story and 2026 in the generation story.
+#: The whole ladder, one statement, applied to whichever files the caller names.
+#: The module docstring states what each occurrence row means.
 _OCCUR_CAPTURE = """
 INSERT INTO derived_media_occurrence(file_id, kind, local_at, instant_at,
   tz_offset_min, basis, certainty, supports, conflicts, finished_at, act_key,
@@ -263,10 +258,9 @@ def _interpret(conn, now: float, file_id: int | None = None, *, file_ids: list[i
                 capture.precision,
             )
         elif generation is not None:
-            # the human timeline takes the finest CONSISTENT reading: the
-            # second the finish implies, when it sits inside the claimed
-            # minute -- said so in the supports; the occurrence row keeps
-            # the claim itself, with the estimate beside it
+            # the human timeline takes the finest CONSISTENT reading: the second
+            # the finish implies, when it sits inside the claimed minute, said so
+            # in the supports; the occurrence row keeps the claim itself
             refined = generation.refined_at
             time = (
                 refined if refined is not None else generation.local_at,
@@ -496,10 +490,9 @@ class Occurrence:
     act_key: str | None = None
     #: the file's name, for a grouper to rank renditions of one act
     name: str = ""
-    #: the claim refined by an estimate that lands inside it (a
-    #: generation's finish-implied second inside its claimed minute):
-    #: the finest consistent reading, and what a grouper sequences,
-    #: gaps and bounds by
+    #: the claim refined by an estimate that lands inside it, such as a
+    #: generation's finish-implied second inside its claimed minute: the finest
+    #: consistent reading, and what a grouper sequences, gaps and bounds by
     refined_at: float | None = None
 
 
@@ -517,14 +510,12 @@ SELECT o.file_id, e.uuid, o.kind, o.local_at, o.instant_at, o.time_precision, o.
 def _refined(local_at, precision, estimated_at) -> float | None:
     from . import when
 
-    # `db/when.py SPAN`, not a copy of it. This was a fourth hand-written
-    # table of the same numbers and two of the four disagreed about how
-    # long a year is.
-    #
-    # Minus the precisions that cannot contain a finer reading: a claim
-    # already at the second has nothing to refine INTO it. The coarse end
-    # does -- a photograph claimed to 1998 by its folder is exactly the
-    # case a finer signal should refine.
+    # `db/when.py SPAN`, not a copy of it: one table holds how long each
+    # precision lasts.
+
+    # Minus the precisions that cannot contain a finer reading: a claim already
+    # at the second has nothing to refine INTO it, where a photograph claimed to
+    # 1998 by its folder is exactly the case a finer signal refines.
     span = when.SPAN.get(precision) if precision not in ("second", "subsecond") else None
     if span is None or local_at is None or estimated_at is None:
         return None

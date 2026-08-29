@@ -73,18 +73,14 @@ def _target(conn, target_id: int | None) -> dict | None:
     return {"id": target_id, "kind": row[0], "slug": row[1]}
 
 
-#: What each missing-only sweep would still queue, counted the way the
-#: sweep counts (db/runner.py submit_*): present files with no record for
-#: their current bytes. Embed is per configured space at the checkpoint
-#: the cache pins, so it needs the models directory; without one it is
-#: not counted rather than guessed.
+#: What each missing-only sweep would still queue, counted the way the sweep
+#: counts (db/runner.py submit_*): present files with no record for their
+#: current bytes.
 _PRESENT = "SELECT count(*) FROM file f WHERE f.missing_since IS NULL"
 _PICTURE = vocabulary.PICTURE_SQL
 _MISSING = {
     # Stale by BYTES or by READER, the same rule the sweep queues on
-    # (db/runner.py submit_ingest). Counted differently from what is
-    # queued would make the console say "0 missing" beside a sweep that
-    # is about to read the whole library.
+    # (db/runner.py submit_ingest).
     "ingest": _PRESENT + " AND (f.ingested_sha256 IS NULL OR f.ingested_sha256 IS NOT f.content_sha256"
     "        OR f.ingested_by IS NOT ?)",
     "faces": _PRESENT + _PICTURE + " AND NOT EXISTS (SELECT 1 FROM derived_face_scan s WHERE s.file_id = f.id"
@@ -135,7 +131,9 @@ def _embed_missing(conn, models_dir: str) -> dict[str, int]:
 def coverage(conn, models_dir: str | None = None) -> dict:
     """Present files, and how many each missing-only sweep still has to
     do -- the console's answer to "is the library done". `embed` is the
-    most any one space still lacks; `embed_spaces` says which."""
+    most any one space still lacks and `embed_spaces` says which; it is
+    counted per configured space at the checkpoint the cache pins, so
+    without a models directory it is left out rather than guessed."""
     from . import context, similarity
 
     held = {

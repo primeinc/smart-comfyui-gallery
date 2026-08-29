@@ -26,10 +26,8 @@ hours later every day and be running at noon by the end of the week.
 
 from __future__ import annotations
 
-#: The collections a schedule may name. Not free text: a typo would be a
-#: schedule that never runs anything and looks exactly like one that
-#: does, and the runner is the only thing that knows what a collection
-#: is made of.
+#: The collections a schedule may name, closed rather than free text. A typo
+#: would be a schedule that runs nothing and looks exactly like one that does.
 RUNNABLE = ("catch up",)
 
 

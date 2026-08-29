@@ -74,20 +74,20 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
     alternately, for ever. A row nobody looked for is unexamined, not gone.
     Passing None means "I walked everything", which is only true of
     `scan_all`.
+
+    A stored ``content_sha256`` of NULL means "never hashed", not "different
+    bytes", and it equals nothing. Pass 1 settles such a row, because pass 2
+    skips NULL candidates and pass 3 would then report REPLACED -- the verdict
+    that says the bytes were overwritten, which re-invalidates the row's derived
+    work -- on every scan for the life of the row.
     """
     rows = {(r[1], r[2]): (r[0], r[3]) for r in conn.execute("SELECT id, folder_id, name, content_sha256 FROM file")}
     result: dict[tuple[int, str], Resolution] = {}
     settled: set[int] = set()
 
-    # Pass 1 -- same place, same bytes. Nothing to reconcile, no hashing beyond
-    # what the caller already had to do to fill `observed`.
-    #
-    # A stored hash of NULL means "never hashed", not "different bytes". It
-    # never equals anything, so the row fell past pass 2 (which skips NULL
-    # candidates) into pass 3 and was reported REPLACED -- on every scan,
-    # for the life of the row, because the hash was never acquired either.
-    # REPLACED is what says the bytes were overwritten, so the whole library
-    # re-invalidated its derived work every pass.
+    # Pass 1 -- same place, same bytes, or a stored hash of NULL. Nothing to
+    # reconcile, and no hashing beyond what the caller already had to do to fill
+    # `observed`.
     for key, sha in observed.items():
         row = rows.get(key)
         if row and (row[1] is None or row[1] == sha):
@@ -110,13 +110,9 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
         elif len(pool) > 1:
             result[key] = Resolution(Outcome.AMBIGUOUS, None)
 
-    # Pass 3 -- in-place replacement. With every content match already claimed,
-    # a row still sitting unclaimed at this exact path means the bytes there
-    # were overwritten; before pass 2 this would call a swap a replacement.
-    #
-    # The entity continues, so the address survives: derived work is
-    # invalidated by the changed hash, and authored state is kept rather than
-    # dropping somebody's rating.
+    # Pass 3 -- in-place replacement: with every content match already claimed, a
+    # row still unclaimed at this exact path had its bytes overwritten. The entity
+    # continues, so the changed hash invalidates derived work and authored state stays.
     for key in observed:
         if key in result:
             continue
@@ -146,11 +142,8 @@ def resolve_scan(conn, observed: dict[tuple[int, str], str | None], *, roots=Non
 # --- walking a real directory ---------------------------------------------
 
 #: Suffix to `file.kind`; a suffix that is not here is not media and is skipped.
-#: Every suffix here is DECODABLE by this install -- the rule vision/decode.py
-#: states, held by tests/test_every_claimed_suffix_is_supported.py -- with
-#: `animated_image` for .gif/.apng provisional by suffix and refined by ingest
-#: from the decoded frame count, because an animated WebP/AVIF/PNG wears the
-#: same suffix as its still sibling.
+#: Every suffix here is decodable by this install -- the rule vision/decode.py states,
+#: held by tests/test_every_claimed_suffix_is_supported.py.
 KIND_BY_SUFFIX = {
     # stills Pillow decodes natively or via registered plugins
     ".png": "image",
@@ -177,6 +170,8 @@ KIND_BY_SUFFIX = {
     ".jpx": "image",
     ".mpo": "image",
     ".psd": "image",
+    # `animated_image` here is provisional by suffix, refined by ingest from the
+    # decoded frame count: an animated WebP/AVIF/PNG wears its still sibling's suffix.
     ".gif": "animated_image",
     ".apng": "animated_image",
     # the RAW family, via LibRaw
@@ -401,17 +396,9 @@ def ensure_folder(
         ).fetchone()
     taken_over = False
     if row and fs_id is not None and row[1] is not None and row[1] != fs_id:
-        # The name matches and the filesystem says these are different
-        # directories. Rename `Archive` to `Zoo` and create a fresh
-        # `Archive`, and os.walk hands us the new one first (it sorts), so
-        # adopting the name match here handed the new directory the old
-        # one's entity, its slug and its watched-folder row -- while the real
-        # one, met later, minted a second entity and lost its address.
-        #
-        # So the old row stands aside rather than being overwritten. It is
-        # marked missing, which frees the name; if it is met further along
-        # under its new name, the fs_id branch above claims it back and
-        # clears the mark.
+        # The name matches but the filesystem says these are different directories, so the
+        # old row stands aside rather than hand over its entity, slug and watched-folder row.
+        # Marking it missing frees the name; the fs_id branch above reclaims it by fs_id.
         conn.execute(
             "UPDATE folder SET missing_since = COALESCE(?, unixepoch()) WHERE id = ?",
             (now, row[0]),
@@ -419,11 +406,9 @@ def ensure_folder(
         row, taken_over = None, True
 
     if row is None and not taken_over:
-        # A directory that went away and came back. Nothing is competing for
-        # the name, so reclaiming the row is what keeps its address alive --
-        # and it is only safe here, where no live row wanted it. The
-        # take-over case above must never reach this, or it would hand the
-        # new directory the row it just stood aside.
+        # A directory that went away and came back: nothing is competing for the name,
+        # so reclaiming the row keeps its address alive. The take-over case above must
+        # never reach here, or it would hand the new directory the row it stood aside.
         if parent_id is None:
             row = conn.execute(
                 "SELECT id, fs_id FROM folder WHERE root_id = ? AND parent_id IS NULL"
@@ -569,12 +554,9 @@ def survey(conn, root_id: int, root_path, now: float | None = None, watch=None) 
     hashed = 0
 
     for current, subdirs, names in os.walk(root_path):
-        # A leading dot means "not the user's content", and the app puts its
-        # own state directly inside the library root: caches, downloaded
-        # weights, the root marker. Measured against a real library, 5998 of
-        # the 11775 media files under it live in dot-directories -- and 5992
-        # of those are the thumbnail cache, which would have entered the
-        # gallery as photographs and outnumbered the real ones.
+        # A leading dot means "not the user's content", and the app puts its own
+        # state directly inside the library root: caches, downloaded weights, the
+        # root marker. The thumbnail cache lives there and is media by suffix.
         subdirs[:] = sorted(d for d in subdirs if not d.startswith("."))
         kept = sorted(n for n in names if not n.startswith("."))
         if os.path.normcase(current) not in seen:
@@ -600,11 +582,9 @@ def survey(conn, root_id: int, root_path, now: float | None = None, watch=None) 
             # an INSERT rather than a SELECT.
             held = fs_id(info.st_ino)
             previous = stored.get((os.path.normcase(current), name))
-            # `previous[3] is not None` is part of the test: a row that has
-            # never been hashed has nothing to reuse, and returning its NULL
-            # here is what made the missing hash permanent -- the shortcut
-            # kept handing back NULL for as long as size, mtime and fs_id
-            # held still, which for an untouched file is forever.
+            # `previous[3] is not None` is part of the test: a row that has never been
+            # hashed has nothing to reuse. Without it the shortcut hands back NULL for
+            # as long as size, mtime and fs_id hold still, which an untouched file does.
             if previous is not None and previous[3] is not None and previous[:3] == (info.st_size, info.st_mtime, held):
                 sha = previous[3]
             else:
@@ -623,11 +603,9 @@ def survey(conn, root_id: int, root_path, now: float | None = None, watch=None) 
                 fs_id=held,
                 kind=kind,
             )
-            # Per FILE, and the CALLER decides how often that is worth
-            # acting on. Reporting per directory instead looks thriftier
-            # and says nothing: a library is often one flat folder, and
-            # 900 files in one of them produced exactly one report, at
-            # the end, which is the silence this exists to break.
+            # Per file, and the caller decides how often that is worth acting on.
+            # Per directory would report once, at the end, for a library that is
+            # one flat folder.
             if watch is not None:
                 watch(len(dirs), len(files), hashed)
     return Survey(dirs=dirs, files=files, hashed=hashed)
@@ -653,12 +631,9 @@ def record(conn, root_id: int, held: Survey, now: float | None = None) -> tuple[
         if folder_id is not None:
             observed[(folder_id, name)] = found
 
-    # Directories that were there last time and are not there now. Marked,
-    # never deleted -- deleting cascades to every file beneath and takes the
-    # ratings with it, and a folder that has gone missing is exactly as
-    # ambiguous as a file that has. `scan` refuses to run at all against a
-    # root it cannot read, which is what keeps an unplugged drive from
-    # arriving here as an empty tree.
+    # Directories that were there last time and are not now, marked rather than deleted:
+    # deleting cascades to every file beneath and takes the ratings with it. `scan` refuses
+    # a root it cannot read, so an unplugged drive never arrives here as an empty tree.
     standing = set(folder_ids.values())
     for (folder_id,) in conn.execute(
         "SELECT id FROM folder WHERE root_id = ? AND missing_since IS NULL", (root_id,)
@@ -751,13 +726,9 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
     resolutions, missing = resolve_scan(conn, {k: v.sha for k, v in observed.items()}, roots=roots)
     counts = dict.fromkeys(Outcome, 0)
 
-    # 1. Missing first: a path is exclusive only while the bytes are there, so
-    #    marking the departed rows is what frees their names for whatever now
-    #    stands in the same place.
-    #    Departing IS a population change: the file's interpretation goes stale
-    #    with it, deleting any event that claimed the picture and advancing the
-    #    currentness generation, so a hypothesis over the old population stops
-    #    being current in the same transaction that shrank it.
+    # 1. Missing first: a path is exclusive only while the bytes are there, so marking
+    #    the departed rows frees their names. Departing is a population change, so the
+    #    file's interpretation goes stale (db/context.py) in the transaction that shrank it.
     for file_id in missing:
         told = conn.execute(
             "UPDATE file SET missing_since = ? WHERE id = ? AND missing_since IS NULL",
@@ -766,11 +737,9 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         if told.rowcount:
             context_module.stale(conn, file_id)
 
-    # What the rows already say, so a scan can tell a file that changed from a
-    # file it merely looked at again. Without this every matched row was
-    # rewritten on every pass: at 80,000 files an unchanged rescan spent 3.3
-    # seconds issuing 80,000 UPDATEs that set each column to the value it
-    # already held, against 154 ms of actually deciding anything.
+    # What the rows already say, so a scan can tell a file that changed from a file it
+    # merely looked at again. Without it every matched row is rewritten on every pass,
+    # each UPDATE setting every column to the value it already held.
     was = {
         row[0]: row[1:]
         for row in conn.execute(
@@ -799,14 +768,12 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
         if before != after:
             changed.append((key, resolution.file_id))
 
-    # 2. Park the names of everything that moved: two files that exchange names
-    #    are each other's obstacle, so whichever is written first collides with
-    #    the one still holding the target name.
-    #    The parked name uses '?', which Windows forbids in a filename, and
-    #    every row is parked under its own id, so two parked names cannot
-    #    collide either.
-    #    Only rows that are actually going somewhere need parking, so this
-    #    reads the loaded state rather than asking the database once per file.
+    # 2. Park the names of everything that moved: two files that exchange names are
+    #    each other's obstacle, so whichever is written first collides with the one
+    #    still holding the target name.
+
+    # The parked name uses '?', which Windows forbids in a filename, and every row is
+    # parked under its own id, so two parked names cannot collide either.
     for key, file_id in changed:
         if was.get(file_id, (None, None))[:2] != key:
             conn.execute("UPDATE file SET name = ? WHERE id = ?", (f"?parked-{file_id}", file_id))
@@ -836,10 +803,8 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
             ),
         )
 
-    # 3b. Everything else that was seen is still where it was, and only
-    #     `last_seen_at` has moved on. One statement over the ids rather than
-    #     one statement each: this is the difference between a rescan of an
-    #     unchanged library costing 3.3 seconds and costing 50 milliseconds.
+    # 3b. Everything else that was seen is still where it was, and only `last_seen_at`
+    #     has moved on. One statement over the ids, batched, rather than one each.
     rewritten = {file_id for _, file_id in changed}
     untouched = [file_id for _, file_id in moves if file_id not in rewritten]
     if untouched:
@@ -852,10 +817,9 @@ def _apply(conn, observed: dict, now: float, hashed: int, roots) -> ScanResult:
                 (now, *batch),
             )
 
-    # 4. New rows last, once every name they might want has been vacated.
-    #    AMBIGUOUS lands here too: it becomes a new file rather than being
-    #    resolved onto one of the candidates, because guessing would move
-    #    somebody else's ratings onto this picture.
+    # 4. New rows last, once every name they might want has been vacated. AMBIGUOUS
+    #    lands here too, minting a new file rather than guessing a candidate and
+    #    moving somebody else's ratings onto this picture.
     for (folder_id, name), resolution in resolutions.items():
         if resolution.outcome in (Outcome.UNIQUE_MATCH, Outcome.REPLACED):
             continue
@@ -900,15 +864,9 @@ class RootOffline(Exception):
     """The root could not be read, so nothing can be concluded about it."""
 
 
-#: How often a walk says where it is, in files. Every directory would
-#: be a write per folder, and a library of ten-thousand-file folders
-#: would report once an aeon; this is a number of files, so the cadence
-#: follows the work rather than the shape of the tree.
-#:
-#: Here rather than beside either caller, because there are two now --
-#: the request that walks inline and the worker that claims a queued one
-#: -- and a person watching should not be told about their library at
-#: two different rates depending on which asked.
+#: How often a walk says where it is, counted in files, so the cadence follows the
+#: work rather than the shape of the tree. Shared by both callers -- the request that
+#: walks inline and the worker that claims a queued one -- so they report at one rate.
 WALK_EVERY = 250
 
 
@@ -928,15 +886,13 @@ def scan(conn, root_id: int, root_path, now: float, watch=None) -> ScanResult:
             f"unreachable root and an emptied one look the same from here."
         )
     conn.execute("UPDATE root SET online = 1 WHERE id = ?", (root_id,))
-    # The folder writes belong inside the same savepoint as the file writes:
-    # observe_tree creates, renames and marks folders missing, and a failure
-    # during apply_scan would otherwise leave those standing.
-    # The walk and every hash happen OUTSIDE the savepoint, because SQLite has
-    # one write lane per database file and holding it across the whole survey
-    # -- `sha256_of` reading every changed file off the disk -- makes every
-    # other writer wait minutes.
-    # Reads do not take the lane, so only the second half of this function does.
+    # The walk and every hash happen outside the savepoint: SQLite has one write lane
+    # per database file, and holding it across the survey -- `sha256_of` reading every
+    # changed file off the disk -- makes every other writer wait. Reads take no lane.
     held = survey(conn, root_id, root_path, now, watch)
+    # The folder writes belong inside the same savepoint as the file writes, because
+    # observe_tree creates, renames and marks folders missing, and a failure during
+    # apply_scan would otherwise leave those standing.
     with _one_write(conn, "scan"):
         observed, hashed = record(conn, root_id, held, now)
         return apply_scan(conn, observed, now, hashed=hashed, roots={root_id})
@@ -954,10 +910,9 @@ def scan_all(conn, now: float) -> ScanResult:
     A root that cannot be read is skipped and marked offline. It is not
     observed as empty, so nothing under it is concluded to be gone.
     """
-    # Every root surveyed first, with no lane held, for the same reason
-    # `scan` does it: the hashing is the long part and it writes nothing.
-    # Which roots are reachable is decided here too, so the write half
-    # never stats a disk.
+    # Every root surveyed first with no lane held, as `scan` does: the hashing is the
+    # long part and writes nothing. Reachability is decided here too, so the write
+    # half never stats a disk.
     surveyed: list[tuple[int, Survey | None]] = []
     for root_id, path in conn.execute("SELECT id, path FROM root").fetchall():
         surveyed.append((root_id, survey(conn, root_id, path, now) if os.path.isdir(path) else None))

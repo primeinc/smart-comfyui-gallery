@@ -24,6 +24,24 @@ Two rules hold the composition honest:
   records the new bytes, not whenever re-embedding gets around to it.
   (A file with no recorded content hash cannot vouch for any embedding
   and is likewise excluded -- the staleness doctrine of db/derived.py.)
+
+- A ranking never ends on its own: every space scores every file it holds
+  and a text encoder maps ANY phrase somewhere, so without a cut the answer
+  to a question is the library in a different order. No ABSOLUTE cosine can
+  make that cut: over the real library the nonsense phrase `xyzzy plugh
+  frobnitz` scored higher on OpenCLIP (max .263) than `a photograph of a
+  mountain landscape` (max .218), so a floor would keep the nonsense and
+  discard the answer (tests/test_a_search_is_a_set.py). What DOES carry
+  between phrases is the shape of one phrase's own distribution: a head
+  standing clear of its own middle, or no head, which is scale-free and
+  needs no per-model constant, and `HEAD_SPAN` cuts there.
+
+WHICH files answer is decided per space, on that space's own scores, and
+the heads UNION. Fused RRF values measure agreement rather than
+relatedness -- a file first in every ranking scores the same whether its
+cosine is .40 or .05 -- so the cut cannot be made on them, and union rather
+than intersection because the reason to configure a second space is that
+either can surface what the other missed.
 """
 
 from __future__ import annotations
@@ -35,24 +53,9 @@ import statistics
 #: and is deliberately not a setting until measurement says otherwise.
 RRF_K = 60
 
-#: Where a ranking stops answering, as a fraction of the distance from
-#: one space's median score to its best.
-#:
-#: A ranking never ends on its own: every space scores every file it holds and
-#: a text encoder maps ANY phrase somewhere, so without a cut the answer to a
-#: question is the library in a different order.
-#:
-#: No ABSOLUTE cosine can make the cut -- measured over a real 3,748-file
-#: library, the nonsense phrase `xyzzy plugh frobnitz` scored higher on
-#: OpenCLIP (max .263, mean .210) than `a photograph of a mountain landscape`
-#: (max .218, mean .084), and `asdfgh jkl zxcvbn` shared 15% of its top hundred
-#: with `a car on a road`.
-#:
-#: What DOES carry between phrases is the shape of one phrase's own
-#: distribution: a head standing clear of its own middle, or no head, which is
-#: scale-free and needs no per-model constant. Half the span put real phrases
-#: at 15-267 files out of 3,627 and nonsense at 250-322 in the same
-#: measurements.
+#: Where a ranking stops answering, as a fraction of the distance from one
+#: space's median score to its best; the module docstring states why the cut is
+#: relative rather than absolute and cites the measurements behind it.
 HEAD_SPAN = 0.5
 
 
@@ -228,10 +231,9 @@ def query(
     #: that could not answer, and the page must not call it degraded
     unmatched: dict[str, str] = {}
     for provider, model, configured in choices(conn):
-        # A mutable checkpoint (a Hugging Face branch) resolves to the
-        # cached immutable commit BEFORE anything is keyed by it: the
-        # registry rows were minted by the embed path post-pin, so an
-        # unpinned probe would look for a space that never existed.
+        # A mutable checkpoint (a Hugging Face branch) resolves to the cached
+        # immutable commit BEFORE anything is keyed by it, because the embed
+        # path mints registry rows post-pin.
         checkpoint = semantic.pin(provider, models_dir, model, configured)
         name = semantic.space(provider, model, checkpoint, 1).key
         participants.append(name)
@@ -298,18 +300,12 @@ def query(
     # accumulate, and its embedding ids differ per space by design.
     fused = rrf([[file_id for file_id, _ in ranked] for _, ranked in per_space])
 
-    # WHICH files answer is decided per space, on that space's own
-    # scores, and the heads UNION: fused RRF values measure agreement,
-    # not relatedness -- a file first in every ranking scores the same
-    # whether its cosine is .40 or .05 -- so the cut cannot be made on
-    # them. Union rather than intersection because the whole reason to
-    # configure a second space is that either can surface what the
-    # other missed; one space's confident answer is an answer.
+    # Per space, on that space's own scores, and the heads UNION; the module
+    # docstring states why the cut cannot be made on fused values.
     answering: set[int] = set()
-    #: file id -> how far it stands from a space's middle toward that
-    #: space's best, its best such standing across the spaces. The same
-    #: quantity `head` cuts on, so a surface that shows it explains
-    #: where the answer ended.
+    #: file id -> how far it stands from a space's middle toward that space's
+    #: best, its best such standing across the spaces. The same quantity `head`
+    #: cuts on, so a surface showing it explains where the answer ended.
     standing: dict[int, float] = {}
     for _, ranked in per_space:
         scores = [score for _, score in ranked]

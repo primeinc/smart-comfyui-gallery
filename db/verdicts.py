@@ -25,46 +25,39 @@ error bar.
 about a correlation in a biased sample. It is worth showing and it is
 worth being able to click into; it is not worth a sentence that says
 `because`.
+
+**An export leaves the machine with none of the media in it.** `EXPORTED`
+carries a producer identity, what kind of claim it was, the verdict, the bytes
+it was about, and when. What is NOT there is the point -- no paths, no file
+names, no folder, no person's name, no embeddings, and no note, because a note
+is free text that can hold anything at all and is opt-in per field. The content
+hash IS in the default: without something joinable a row cannot be checked
+against a picture, and it names the bytes and nothing else -- no path, and no
+way back to a name.
 """
 
 from __future__ import annotations
 
 import dataclasses
 
-#: How many verdicts a producer needs before a rate is shown at all.
-#:
-#: Not a statistical threshold -- with a biased sample there is no honest
-#: one -- but the point below which the number is noise and showing it
-#: would invite a decision it cannot support.
+#: How many verdicts a producer needs before a rate is shown at all. Not a
+#: statistical threshold -- with a biased sample there is no honest one -- but
+#: the point below which the number is noise.
 ENOUGH = 10
 
 
-#: What a verdict export carries WITHOUT being asked: a producer identity,
-#: what kind of claim it was, the verdict, the bytes it was about, and when.
-#: An export can leave the machine with none of the media leaving with it.
-#:
-#: What is NOT here is the point -- no paths, no file names, no folder, no
-#: person's name, no embeddings, no note, because a note is free text that
-#: can hold anything at all and is opt-in per field.
-#:
-#: The content hash IS in the default: without something joinable a row
-#: cannot be checked against a picture, and it names the bytes and nothing
-#: else -- no path, and no way back to a name.
+#: What a verdict export carries WITHOUT being asked; the module docstring
+#: states what is deliberately absent, and why the content hash is not.
 EXPORTED = ("judged", "verdict", "model_id", "model_version", "annotation_kind", "sha256", "other_sha256", "at")
 
-#: Fields whose VALUE an export withholds until asked for by name.
-#:
-#: The key is always there and the shape is fixed -- a route's answer has
-#: to describe itself or nothing downstream can be typed against it
-#: (sglint SG413) -- so what is opt-in is the CONTENT, which is the part
-#: that could carry anything. A null note says "not asked for" and
-#: carries nothing either way.
+#: Fields whose VALUE an export withholds until asked for by name. The key is
+#: always there and the shape is fixed (sglint SG413), so what is opt-in is the
+#: CONTENT; a null note says "not asked for" and carries nothing either way.
 BY_REQUEST = ("note",)
 
-#: Every column the export reads, and the shape it hands back. LEFT JOIN
-#: because `feedback`'s pointers are ON DELETE SET NULL on purpose: a
-#: judgement outlives the derived thing it judged, and a row whose file
-#: is gone still says a model got something wrong.
+#: Every column the export reads, and the shape it hands back. LEFT JOIN because
+#: `feedback`'s pointers are ON DELETE SET NULL on purpose: a judgement outlives
+#: the derived thing it judged, and a row whose file is gone still counts.
 EXPORT = (
     "SELECT f.target_kind AS judged, f.verdict, f.model_id, f.model_version,"
     "       f.annotation_kind, one.content_sha256 AS sha256,"

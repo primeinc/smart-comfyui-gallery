@@ -122,10 +122,9 @@ FILESYSTEM = "filesystem: "
 #: SwarmUI's default output name: `[hour][minute][request_time_inc]-...`
 #: (refs/mcmonkeyprojects/SwarmUI src/Core/Settings.cs:399).
 _SWARM_NAME = re.compile(r"^(\d{2})(\d{2})(\d{3})-")
-#: Stamped names. Every clock field is Swarm's RequestTime, so the name
-#: is the generator's own second. The `T` and the `h..m..s..ms` are the
-#: markers: no default Swarm name has either, so the grammars never
-#: collide.
+#: Stamped names; every clock field is Swarm's RequestTime, so the name is the
+#: generator's own second. The `T` and the `h..m..s..ms` are the markers: no
+#: default Swarm name carries either, so the grammars never collide.
 _SWARM_STAMPS = (
     re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?P<order>\d{3})?-"),
     re.compile(r"^(\d{4})(\d{2})(\d{2})_(\d{2})h(\d{2})m(\d{2})s(?P<ms>\d{3})ms_"),
@@ -172,10 +171,9 @@ class Verdict:
         outside the claim (then it is a conflict, already named)."""
         if self.estimated_at is None or self.local_at is None:
             return None
-        # `_SPAN` minus the precisions that cannot contain a finer reading:
-        # a claim already at the second has nothing to refine INTO it. The
-        # coarse end does -- a photograph claimed to 1998 by its folder is
-        # refined by any consistent finer signal the file carries.
+        # `_SPAN` minus the precisions that cannot contain a finer reading: a
+        # claim already at the second has nothing to refine into it, while one
+        # claimed to 1998 by its folder takes any consistent finer signal.
         span = _SPAN.get(self.precision) if self.precision not in ("second", "subsecond") else None
         if span is None:
             return None
@@ -333,11 +331,9 @@ CAMERA = "camera: "
 #: A conflict between the file's own claims (its name and its folder).
 FILE = "file: "
 
-#: Stamped names, most specific first; each grammar yields Y M D and, when it
-#: carries them, h m s and ms. Searched anywhere in the name, since `IMG_`,
-#: `PXL_`, `Screenshot ` and `VID-` prefixes all precede the digits, and ranges
-#: are checked afterwards so a thirteen-digit epoch does not read as the year
-#: 1686.
+#: Stamped names, most specific first; each yields Y M D and, where carried, h m
+#: s and ms. Searched anywhere in the name (`IMG_`, `PXL_`, `Screenshot `, `VID-`
+#: precede the digits), ranges checked after so a 13-digit epoch is not year 1686.
 _NAME_STAMPS = (
     # 20230610_142301, 20230610T142301, 20260821_17h30m02s313ms, PXL_20230610_142301123
     re.compile(
@@ -367,17 +363,9 @@ _FOLDER_YEAR = re.compile(r"^(\d{4})$")
 #: A folder naming a DECADE: `1970s`, `1970's`.
 _FOLDER_DECADE = re.compile(r"^(\d{3})0'?s$", re.IGNORECASE)
 
-#: Which years a four-digit number is allowed to be.
-#:
-#: It was `range(1990, 2101)`, which is a DIGITAL camera's lifetime, and this
-#: application holds photographs. Measured against the corpus: six of the
-#: Commons photographs are from 1964, 1965, 1977, 1978, 1982 and 1989, and
-#: every one of them had its folder or filename date thrown away and fell
-#: back to mtime -- a 1964 photograph dated by when somebody last copied it.
-#:
-#: 1826 is the earliest surviving photograph, so nothing older can be a
-#: capture year. The lower bound is what stops `1234` reading as a date;
-#: it does not need to be recent to do that.
+#: Which years a four-digit number is allowed to be. 1826 is the earliest
+#: surviving photograph, so nothing older is a capture year, and the lower bound
+#: exists to stop `1234` reading as a date rather than to be recent.
 _YEARS = range(1826, 2101)
 
 
@@ -498,12 +486,9 @@ def folder_day(folders: list[str]) -> float | None:
     return held[0] if held is not None and held[1] == "day" else None
 
 
-#: How wide a claim at each precision is, in seconds. DERIVED, not typed: the
-#: calendar constant is stated ONCE and everything else multiplies from it.
-#:
-#: `year` and `month` are means on purpose, because a claim's window answers
-#: whether a finer reading falls INSIDE it and a mean month answers that for
-#: every month without needing the calendar.
+#: How wide a claim at each precision is, in seconds, derived rather than typed
+#: so the calendar constant is stated once. `year` and `month` are means: a
+#: claim's window answers whether a finer reading falls inside it.
 SECOND = 1.0
 MINUTE = 60.0 * SECOND
 HOUR = 60.0 * MINUTE

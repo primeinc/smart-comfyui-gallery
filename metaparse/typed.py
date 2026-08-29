@@ -92,9 +92,8 @@ class GenerationParams:
     version: str | None = None
     loras: list[dict] = field(default_factory=list)  # [{"name": ..., "weight": ...}]
     #: Every weight file the render used, with its role and content hash, for
-    #: tools that state it. Carried through from ParsedMetadata rather than
-    #: rebuilt: SwarmUI writes a full manifest with a sha256 per file, and
-    #: rediscovering that from a comma-joined string is not possible.
+    #: tools that state it. Carried through from ParsedMetadata, whose records
+    #: hold detail no comma-joined name string can be reconstructed into.
     artifacts: list[dict] = field(default_factory=list)
     extra: dict[str, object] = field(default_factory=dict)  # unmapped keys, verbatim
 

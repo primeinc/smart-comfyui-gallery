@@ -51,42 +51,67 @@ GROUPS: tuple[tuple[str, str], ...] = (
     ("time", "time"),
     ("generation", "generation"),
     ("camera", "camera"),
-    #: LAST, and deliberately last: the long tail nothing here
-    #: curated. A dimension above is a fact this application
-    #: understands well enough to name in a person's words; a
-    #: `param_key` row is a string some tool wrote. Four hundred
-    #: discovered keys in the drawer would bury the twenty that mean
-    #: something, so they live behind their own heading.
+    #: Last: the long tail nothing here curated, where a `param_key` row is a
+    #: string some tool wrote rather than a fact this application names in a
+    #: person's words.
     ("advanced", "advanced metadata"),
 )
 
-#: Every file kind -- `db/facets.py KINDS`, not a copy of it (this was
-#: the third Python copy of the tuple). A dimension that names no kinds
-#: applies to all of them, which is the default because most questions
-#: are cross-media: favorite, rating, folder, album, people, place and
-#: date mean the same thing about a photograph, a video and a document.
+#: Every file kind, read from `db/facets.py KINDS` rather than copied. Naming
+#: no kinds means every kind, which is the default: favorite, rating, folder,
+#: album, people, place and date mean one thing across every medium.
 EVERY_KIND = tuple(facets_module.KINDS)
 
-#: The kinds that have pixels -- width, height and aspect are facts
-#: about these and about nothing else. `vision/thumbs.py PICTURED`
-#: states the same three and cannot import them: vision must not import
-#: db (vision/semantic/__init__.py states the rule), so the pair is held
-#: by test_the_kinds_with_pixels_are_one_set instead.
+#: The kinds that have pixels; width, height and aspect are facts about these alone.
+#: `vision/thumbs.py PICTURED` restates them because vision must not import db
+#: (vision/semantic/__init__.py states the rule); test_the_kinds_with_pixels_are_one_set pairs them.
 VISUAL = ("image", "animated_image", "video")
 #: The kinds that have a length.
 TIMED = ("animated_image", "video", "audio")
 
-#: VISUAL as the SQL conjunct every pixels-only sweep appends, over the
-#: file alias `f`. BUILT from the tuple: six hand-written copies of this
-#: clause existed across db/inspecting.py and db/runner.py, and
-#: db/inspecting.py's own comment records what happens when the count
-#: and the queue disagree about what a picture is.
+#: VISUAL as the SQL conjunct every pixels-only sweep appends, over the file
+#: alias `f`. Built from the tuple so a count and a queue cannot disagree about
+#: what a picture is (db/inspecting.py, db/runner.py).
 PICTURE_SQL = " AND f.kind IN (" + ", ".join(f"'{one}'" for one in VISUAL) + ")"
 
 
 @dataclasses.dataclass(frozen=True)
 class Dimension:
-    """One filterable fact, described once."""
+    """One filterable fact, described once.
+
+    ``carried`` is "scope" or "facet". A scope has its own URL parameter, one
+    value, established semantics and smart-collection compatibility; a facet
+    uses the repeatable ``f=key:op:value`` spelling. The interface hides the
+    distinction and each dimension keeps whichever it has, because respelling
+    ``folder=`` as a facet breaks every bookmark and every saved collection to
+    no one's benefit.
+
+    ``multi`` says how choosing SEVERAL values reads, which is a fact about the
+    dimension rather than a per-surface preference:
+
+        ""      one at a time; choosing another replaces it
+        "any"   several, OR'd -- the only reading for a dimension a file has
+                exactly one of, as in "image or video", where AND asks for a
+                file that is two things at once and always answers nothing
+        "both"  several, and both readings are real, so the surface offers the
+                choice: a picture carries several LoRAs and several people at
+                once, so "any of these" and "all of these" are questions
+                somebody asks separately
+
+    ``offered`` is False for the dimensions another surface links with rather
+    than a person picking off a list: a timeline bar opens ``context.moment``
+    between two epoch seconds at a ``context.granule`` fine enough for its
+    width, and a session opens ``event.id``. Those values are a machine's
+    arithmetic about one bar, and they are still described here because a chip
+    that arrives in the URL has to read as words -- one registry labels chips
+    and lists filters, so the two cannot drift apart.
+
+    ``discover`` is ``SELECT value, label, COUNT(*)``: the candidate values
+    reachable from a question, counted, with ``{scope}`` marking where the
+    ResultSet's membership conjunct goes over the file alias ``f``. None means
+    the values are not enumerable -- a free number, a date -- and the surface
+    offers a control rather than a list.
+    """
 
     #: The URL spelling: a GalleryQuery field name when `carried` is
     #: "scope", a db/facets.py registry key when it is "facet".
@@ -95,12 +120,7 @@ class Dimension:
     label: str
     #: Which section of the filter surface it appears in.
     group: str
-    #: "scope" -- its own URL parameter, one value, established
-    #: semantics and smart-collection compatibility. "facet" -- the
-    #: repeatable `f=key:op:value` spelling. The interface hides the
-    #: distinction; the implementation keeps whichever it already has,
-    #: because rewriting `folder=` into a facet for tidiness would break
-    #: every bookmark and every saved collection to no one's benefit.
+    #: "scope" or "facet"; see the class docstring.
     carried: str
     #: What the values are: int | num | text | date | bool | slug | id.
     #: "id" is an entity id whose chip must be resolved to a name.
@@ -111,38 +131,11 @@ class Dimension:
     kinds: tuple[str, ...] = ()
     #: A short sentence for the surface, where the label alone misleads.
     note: str = ""
-    #: How choosing SEVERAL values reads.
-    #:
-    #:   ""      one at a time; choosing another replaces it
-    #:   "any"   several, OR'd -- the only reading for a dimension a file
-    #:           has exactly ONE of, as in "image or video"; AND would ask
-    #:           for a file that is two things at once and always answer
-    #:           nothing
-    #:   "both"  several, and BOTH readings are real, so the surface offers
-    #:           the choice: a picture carries several LoRAs and several
-    #:           people at once, so "any of these" and "all of these" are
-    #:           questions somebody genuinely asks separately
-    #:
-    #: Which is right is a fact about the dimension, not a preference, so
-    #: it is stated once here rather than guessed at by each surface.
+    #: How choosing SEVERAL values reads: "", "any" or "both"; see the class docstring.
     multi: str = ""
-    #: Whether the filter surface LISTS this dimension.
-    #:
-    #: False for the links another surface makes rather than a person:
-    #: a timeline bar opens `context.moment` between two epoch seconds
-    #: at a `context.granule` fine enough for its width, and a session
-    #: opens `event.id`. Nobody picks those off a list -- there is no
-    #: list, the values are a machine's arithmetic about one bar. They
-    #: are still described here, because when one arrives in the URL its
-    #: chip has to read as words, and "the thing that labels chips" and
-    #: "the thing that lists filters" being two registries is how the
-    #: labels went stale in the first place.
+    #: Whether the filter surface LISTS this dimension; see the class docstring.
     offered: bool = True
-    #: SELECT value, label, COUNT(*) -- the candidate values reachable
-    #: from a question, counted. `{scope}` is where the ResultSet's
-    #: membership conjunct goes, over the file alias `f`. None means the
-    #: values are not enumerable (a free number, a date) and the surface
-    #: offers a control rather than a list.
+    #: SELECT value, label, COUNT(*) over the candidate values; see the class docstring.
     discover: str | None = None
     #: For `id` kinds: SELECT id, name over a `json_each` array of ids.
     #: A chip that said "#412" would be the database's answer to a
@@ -209,14 +202,9 @@ DIMENSIONS: tuple[Dimension, ...] = (
         ops=("gte",),
         note="at least this many stars",
     ),
-    #: The keyword. Last of the "mine" group to be built and the first
-    #: thing most people reach for -- a word you typed because it is the
-    #: word you will look for.
-    #:
-    #: `multi="both"` and it is the dimension that makes the distinction
-    #: worth offering: "beach AND sunset" and "beach OR sunset" are both
-    #: ordinary questions about keywords, where for `kind` only one of
-    #: them means anything.
+    #: The keyword: a word somebody typed because it is the word they will look
+    #: for. `multi="both"` because "beach AND sunset" and "beach OR sunset" are
+    #: both ordinary questions, where for `kind` only the OR reading means anything.
     Dimension(
         key="tag",
         label="keyword",
@@ -267,14 +255,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         ),
     ),
     # --- media ---------------------------------------------------------
-    #: Two spellings of one question, on purpose.
-    #:
-    #: `kind=` is a GalleryQuery scope and every bookmark, saved collection
-    #: and cross-surface link uses it, so it stays described or those chips
-    #: print a raw key.
-    #: A scope holds ONE value and "image or video" is an ordinary
-    #: multi-select, so the surface writes `media.kind`, which can be OR'd;
-    #: both compose, and asking one thing twice is redundant rather than wrong.
+    #: Two spellings of one question, because a scope holds one value and "image or
+    #: video" needs two: `kind=` for bookmarks and saved collections, `media.kind` for the drawer.
     Dimension(
         key="kind",
         label="kind",
@@ -327,10 +309,8 @@ DIMENSIONS: tuple[Dimension, ...] = (
         note="seconds",
     ),
     # --- people --------------------------------------------------------
-    #: As with `kind`: the scope is what a person's own page links with,
-    #: the facet is what the drawer writes -- because "Hannah or Lelly"
-    #: and "Hannah AND Lelly" are both real questions about a
-    #: photograph, and a scope can express neither.
+    #: As with `kind`, two spellings: a scope expresses neither "Hannah or Lelly" nor
+    #: "Hannah AND Lelly", so a person's page links the scope and the drawer writes the facet.
     Dimension(key="person", label="person", group="people", carried="scope", value_kind="slug", offered=False),
     Dimension(
         key="people.person",
@@ -430,11 +410,9 @@ DIMENSIONS: tuple[Dimension, ...] = (
             " AND mc.policy_version = {policy} AND mc.time_conflicts IS NOT NULL)"
         ),
     ),
-    #: The three another surface links WITH, never a person from a list.
-    #: A timeline bar opens a half-open window of the human moment at a
-    #: granule fine enough for its width; a session opens its own
-    #: members. Described so their chips read as words; not offered,
-    #: because there is no list of epoch seconds anybody wants.
+    #: The three another surface links WITH: a timeline bar opens a half-open
+    #: window of the human moment at a granule fine enough for its width, and a
+    #: session opens its own members. Described so their chips read as words.
     Dimension(
         key="context.moment",
         label="moment",

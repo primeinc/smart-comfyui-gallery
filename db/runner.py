@@ -13,6 +13,21 @@ takes the worker turn down with it: the job stays `running`, the lease
 runs out, and the work is reclaimed rather than marked broken by a bug in
 the code that judged it. A runner that converted every exception into an
 item error would turn its own defects into permanent verdicts about files.
+
+`ITEM_FAILURES` is that expected set. EOFError belongs in it because a
+decoder out of input states a fact about the file: pillow_heif 1.1.0 raises
+the builtin out of `Image.load()` at db/oriented.py:137, outside
+vision/decode.py, and PyAV's `EOFError(FFmpegError, builtins.EOFError)`
+(PyAV-Org/PyAV@040da79 av/error.pyi:59) is not an OSError either. Measured
+over ../sg-corpus at 7cf254e, one truncated HEIC ended a scan of 901 items,
+and three decoders (rawpy, PyAV, pillow_heif) raised outside the tuple;
+docs/CORPUS_FINDINGS.md records both.
+
+`DEFECT_LIMIT` bounds the other side. A defect expires the lease so the job
+is reclaimed and the item retried, which answers a crashed process or a GPU
+that went away, and livelocks on a deterministic fault: the same item is
+picked first, dies the same way, and the job never advances past it while
+the rest of the items wait behind it and the job reports `failed 0`.
 """
 
 from __future__ import annotations
@@ -32,40 +47,19 @@ from . import connect, jobs, ledger, naming, vocabulary
 
 _logger = logging.getLogger(__name__)
 
-#: What a handler is allowed to fail with, per item. Everything else is a
-#: defect in the handler, not a fact about the item.
-#:
-#: EOFError is raised where a decoder ran out of input, which is a fact about
-#: the file: pillow_heif 1.1.0 raises the builtin out of `Image.load()` at
-#: db/oriented.py:137, outside vision/decode.py, and PyAV's
-#: `EOFError(FFmpegError, builtins.EOFError)` (PyAV-Org/PyAV@040da79
-#: av/error.pyi:59) is not an OSError either.
-#:
-#: Measured over ../sg-corpus at 7cf254e: one truncated HEIC ended a scan of
-#: 901 items -- the outcome the module docstring above forbids. Three
-#: decoders (rawpy, PyAV, pillow_heif) raised outside this tuple; see
-#: docs/CORPUS_FINDINGS.md.
+#: What a handler is allowed to fail with, per item; everything else is a
+#: defect in the handler, not a fact about the item. The module docstring
+#: names the decoders that raise outside this tuple.
 ITEM_FAILURES = (OSError, ValueError, RuntimeError, LookupError, EOFError, sqlite3.Error)
 
-#: How many turns one item may cost the job before the runner stops
-#: believing the defect is transient. A defect expires the lease so the
-#: job is reclaimed and the item retried, which is the correct answer to
-#: a crashed process or a GPU that went away, and a livelock for a
-#: deterministic fault: the same item is picked first, dies the same way,
-#: and the job never advances past it. Job #83 spent 86 hours and 100
-#: attempts on one .mp4 whose decoder backend no longer existed, holding
-#: 668 items behind it while reporting `failed 0`.
-#:
-#: Three, not one: a lease lapse costs a turn without proving anything
-#: about the item, so the first repeat must still be free.
+#: How many turns one item may cost the job before the runner stops believing
+#: the defect is transient. Three and not one: a lease lapse costs a turn
+#: without proving anything about the item, so the first repeat stays free.
 DEFECT_LIMIT = 3
 
-#: SQLite saying somebody else is writing. By NAME, not by message: the
-#: driver carries the result code as `sqlite_errorname` (Python 3.11+),
-#: and the strings behind these are "database is locked" and "database
-#: table is locked" (sqlite/sqlite src/main.c:1667-1668) -- which a
-#: future release is free to word differently and a matcher on prose
-#: would then silently stop recognising.
+#: SQLite saying somebody else is writing: "database is locked" and "database
+#: table is locked" (sqlite/sqlite src/main.c:1667-1668). Matched by
+#: `sqlite_errorname` (Python 3.11+), never by that prose, which a release may reword.
 BUSY = frozenset({"SQLITE_BUSY", "SQLITE_LOCKED"})
 
 
@@ -252,13 +246,15 @@ def submit_faces(
     return jobs.submit(conn, "detect_faces", now, payload=payload, items=items)
 
 
-#: The files a sweep would take, asked as a question rather than
-#: answered at submit. A step in a chain has to ask it when it RUNS: the
-#: step before it has not gone yet, so the files it will find do not
-#: exist and the derivations it will make are not there to be missing.
 def face_items(conn, *, everything: bool = False) -> list[int]:
     """Every present picture and video no detector has looked at for its
-    current bytes -- or all of them, said so."""
+    current bytes -- or all of them, said so.
+
+    The files a sweep would take, asked as a question rather than answered at
+    submit. A step in a chain has to ask it when it runs: the step before it
+    has not gone yet, so the files it will find do not exist and the
+    derivations it will make are not there to be missing.
+    """
     sql = "SELECT f.id FROM file f WHERE f.missing_since IS NULL" + vocabulary.PICTURE_SQL
     if not everything:
         sql += (
@@ -465,11 +461,9 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
         derive.put_all(cache, *mine)
         return
 
-    # Reported ONCE, against the item that triggered it, and named so it
-    # cannot be read as this item's own cost -- the same accounting
-    # `_Ahead` states for batched encoding. The others render no phase of
-    # their own, which is true: by their turn the file is already there
-    # and they take the `already-cached` return above.
+    # Reported once, against the item that triggered it, and named so it cannot
+    # be read as this item's own cost -- the accounting `_Ahead` states for
+    # batched encoding. The others render no phase; they take `already-cached`.
     told.phase("rendering-thumbnails-together", pictures=len(alongside) + 1, variants=len(thumbs.EDGES))
 
     def rendered(one):
@@ -486,10 +480,9 @@ def _thumbs_item(conn, file_id: int, payload: dict, now: float) -> None:
                 continue
             why = done.exception()
             if why is not None:
-                # A picture rendered AHEAD is speculative. Its failure
-                # says nothing about the item being worked, and reporting
-                # it here would blame the wrong file -- it meets its own
-                # failure, attributed to itself, when its turn comes.
+                # A picture rendered ahead is speculative: its failure says
+                # nothing about the item being worked, and blaming this item
+                # would name the wrong file. It fails again on its own turn.
                 _logger.info("job #%d: rendering ahead skipped a picture (%s)", told.job_id, why)
 
 
@@ -538,25 +531,25 @@ def submit_embed(conn, now: float, *, models_dir: str, everything: bool = False)
     return made
 
 
-#: How many thumbnails to render at once. libvips already uses every core for
-#: ONE image (../refs/libvips/libvips/doc/using-threads.md, "Threads"), but the
-#: win is across files: on 32 pictures of 4000x3000, throughput per file rose
-#: from 4.70/sec at one in flight to 28.20 at eight, then fell to 25.47 at
-#: sixteen as the two thread pools oversubscribed.
-#:
-#: Half the cores rather than all of them, never fewer than two. libvips is
-#: documented thread-safe for this: images are immutable and shareable, and
-#: only the drawing operators and Regions are not.
 def thumbs_in_flight() -> int:
+    """How many thumbnails to render at once.
+
+    libvips already uses every core for one image
+    (../refs/libvips/libvips/doc/using-threads.md, "Threads"), but the win is
+    across files: on 32 pictures of 4000x3000, throughput per file rose from
+    4.70/sec at one in flight to 28.20 at eight, then fell to 25.47 at sixteen
+    as the two thread pools oversubscribed.
+
+    Half the cores rather than all of them, never fewer than two. libvips is
+    documented thread-safe for this: images are immutable and shareable, and
+    only the drawing operators and Regions are not.
+    """
     return max(2, min(8, (os.cpu_count() or 2) // 2))
 
 
-#: How many source megapixels one batch may decode. The count alone is
-#: not a bound: 64 pictures is 66 megapixels of generated PNG and 1400 of
-#: camera raw, and only one of those fits in memory or in a reasonable
-#: wait. Set so a batch of ordinary 1-2 MP generated images fills on
-#: count while a batch of raws fills on size, and the item leading either
-#: one stays responsive to a cancel.
+#: How many source megapixels one batch may decode; a count alone is no bound,
+#: since 64 pictures is 66 megapixels of generated PNG and 1400 of camera raw.
+#: Generated images fill on count, raws on size, and the lead item answers a cancel.
 BATCH_MEGAPIXELS = 160.0
 
 
@@ -617,6 +610,18 @@ class _Ahead:
         Encoding this one alone either reproduces the failure -- and it
         is then honestly this item's -- or succeeds, and the bad picture
         is met on its own turn.
+
+        The catch around the batch is narrower than ITEM_FAILURES. That tuple
+        includes sqlite3.Error, and catching it here turns a threading defect
+        into a silent fallback: every batch raising ProgrammingError, every
+        batch discarded, every item encoded alone, and nothing above INFO in
+        the log. A defect propagates and takes the turn down, which is the rule
+        this module states at the top.
+
+        The batch's cost is reported once, against the item that triggered it.
+        Writing its duration against every member's ledger would attribute
+        64 x 50 ms to a kernel that took 50 ms and put the ledger past wall
+        clock.
         """
         from . import detect, oriented
 
@@ -626,39 +631,30 @@ class _Ahead:
         # different shape, so a video item never leads a batch and never
         # joins one; it stays on the single path.
         if batch is not None and media.kind != "video":
-            # Resolved HERE, on the connection's own thread. sqlite
-            # refuses cross-thread use, so the workers are handed paths
-            # and orientation tags and never a cursor. Including the
-            # TRIGGERING item's: handing `media.frame` to a worker looks
-            # right and is not, because that closure reads `capture` for
-            # the orientation tag.
+            # Resolved on the connection's own thread: sqlite refuses
+            # cross-thread use, so a worker is handed paths and orientation
+            # tags, never a cursor -- `media.frame` closes over `capture`.
             upcoming = [item for item in jobs.pending(conn, told.job_id) if item != file_id]
-            # The item that LEADS the batch is charged first. It is in the
-            # batch and it decodes like any other member, so leaving it
-            # out made the stated bound a bound on the followers: a 100
-            # megapixel leader and 150 of followers formed a 250
-            # megapixel batch under a limit of 160.
+            # The item leading the batch is charged first: it decodes like any
+            # other member, and a budget that skipped it would bound only the
+            # followers (a 100 MP leader plus 150 of followers under a 160 cap).
             mine = conn.execute("SELECT width, height FROM file WHERE id = ?", (file_id,)).fetchone()
             budget = BATCH_MEGAPIXELS - _megapixels(mine)
             for item in upcoming[: openclip_batch() - 1]:
                 row = conn.execute("SELECT kind, width, height FROM file WHERE id = ?", (item,)).fetchone()
                 if row is None or row[0] == "video":
                     continue
-                # Bounded by PIXELS as well as by count. Sixty-four
-                # 22-megapixel raws is a gigabyte and a half of decode
-                # inside one item, and the item that leads a batch pays
-                # for all of it: cancellation is checked BETWEEN items,
-                # so an unbounded batch is also an unbounded wait for
-                # somebody who asked the job to stop.
-                #
-                # A leader already over the whole budget still encodes,
-                # alone: one picture is the smallest batch there is, and
-                # refusing it would be refusing to embed a large file.
+                # Bounded by pixels as well as by count: sixty-four
+                # 22-megapixel raws is a gigabyte and a half of decode charged
+                # to the leader, and a cancel is only read between items.
                 budget -= _megapixels(row[1:])
                 if budget < 0:
                     break
                 together.append((item, detect.path_of(conn, item), oriented.orientation_of(conn, item)))
 
+        # A leader already over the whole budget forms no batch and encodes
+        # alone: one picture is the smallest batch there is, and refusing it
+        # would be refusing to embed a large file.
         if batch is None or not together:
             told.phase("encoding", kind=media.kind)
             return encoder.encode_media(media)
@@ -668,32 +664,16 @@ class _Ahead:
 
         mine = framer_for(media.path, oriented.orientation_of(conn, file_id))
         framers = [mine, *[framer_for(path, tag) for _item, path, tag in together]]
-        # Reported ONCE, against the item that triggered it, and named so
-        # it cannot be read as that item's own cost: `pictures` says how
-        # many it covered. The other items in the batch report no encode
-        # phase at all, which is true -- they performed none.
-        #
-        # The alternative, writing the batch's duration against all 64
-        # item ledgers, would attribute 64 x 50 ms to a kernel that took
-        # 50 ms. This project has already produced one 184%-of-wall-clock
-        # table by double-counting; a second would be a choice.
+        # Reported once, against the item that triggered it, and named so it
+        # cannot be read as that item's own cost; `pictures` says how many it
+        # covered. The others report no encode phase, having performed none.
         told.phase("batch-encoding", pictures=len(framers))
         try:
             vectors = batch(framers)
         except (OSError, ValueError) as why:
-            # Narrower than ITEM_FAILURES on purpose. What a batch may
-            # legitimately fail with is what a bad PICTURE raises -- an
-            # unreadable file, a corrupt image -- and the honest response
-            # is to encode this one alone so the failure is attributed to
-            # whichever item actually owns it.
-            #
-            # ITEM_FAILURES includes sqlite3.Error, and catching that
-            # here turned a threading DEFECT into a silent fallback:
-            # every batch raised ProgrammingError, every batch was
-            # discarded, every item was then encoded alone, and the job
-            # ran four times slower than before with nothing in the log
-            # above INFO. A defect must propagate and take the turn down,
-            # which is the rule this module states at the top.
+            # Narrower than ITEM_FAILURES on purpose: a batch may legitimately
+            # fail with what a bad picture raises, and encoding alone hands the
+            # failure to the item that owns it (see this method's docstring).
             _logger.warning(
                 "job #%d: a batch of %d failed (%s); encoding this item alone",
                 told.job_id,
@@ -783,21 +763,17 @@ def _embed_item(conn, file_id: int, payload: dict, now: float) -> None:
     kind, sha = conn.execute("SELECT kind, content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
     path = detect.path_of(conn, file_id)
     if sha is None:
-        # The staleness contract keys on the file's recorded bytes, so the
-        # hash computed here is persisted the way detection persists its
-        # own (db/detect.py) -- an embedding of bytes the file row cannot
-        # vouch for would be excluded from retrieval as unverifiable.
+        # The staleness contract keys on the file's recorded bytes, so this
+        # hash is persisted the way detection persists its own (db/detect.py).
+        # Retrieval excludes an embedding of bytes the row cannot vouch for.
         sha = scan.sha256_of(path)
         conn.execute("UPDATE file SET content_sha256 = ? WHERE id = ?", (sha, file_id))
 
     @functools.cache
     def representative_frame():
-        # Its own phase, because it is lazy and therefore lands wherever
-        # the adapter happens to ask for it. Without this the decode was
-        # billed to "encoding" -- 92% of the job under a name that made
-        # it look like the model's fault, when the model is a fifth of it.
-        # Named from inside so an adapter that never asks for a frame
-        # never reports a decode it did not do.
+        # Its own phase, because it is lazy and lands wherever the adapter asks
+        # for it; folded into "encoding" the decode reads as the model's cost.
+        # Named from inside, so an adapter that asks for no frame reports none.
         told = report()
         resuming = told.phase_now
         told.phase("decoding", kind=kind)
@@ -843,10 +819,9 @@ def submit_dupes(conn, now: float) -> int:
         threshold = int(raw)
     except ValueError as bad:
         raise ValueError(f"dupe_threshold must be a number of bits, not {raw!r}") from bad
-    # 31, not 64: two unrelated 64-bit hashes disagree on 32 bits on
-    # average, so radius 32 admits the average random pair -- range_search
-    # would materialize the O(n^2) all-pairs result and wedge the job on a
-    # MemoryError no item failure catches. The dial stops before the cliff.
+    # 31, not 64: two unrelated 64-bit hashes disagree on 32 bits on average, so
+    # radius 32 admits the average random pair, and range_search then materializes
+    # the O(n^2) all-pairs result and wedges on a MemoryError no item failure catches.
     if not 0 <= threshold <= 31:
         raise ValueError(f"dupe_threshold must be 0..31 bits, not {threshold}: at 32 random pairs match")
     verify_raw = settings_module.value(conn, "dupe_dhash_verify")
@@ -906,12 +881,9 @@ def warm_similarity(conn, now: float) -> None:
     from . import retrieval
 
     for provider, model, checkpoint in retrieval.choices(conn):
-        # Probed with the checkpoint as configured. A provider whose
-        # checkpoint is a mutable ref mints its spaces under the PINNED
-        # commit (vision/semantic seam `pin`), which this boot-time warm
-        # cannot resolve without a models_dir -- those spaces warm on
-        # the first query instead, the same "slower first use, never a
-        # refusal" contract a failed warm already has.
+        # Probed with the checkpoint as configured; a mutable ref mints its
+        # spaces under the pinned commit (vision/semantic seam `pin`), which a
+        # warm without a models_dir cannot resolve. Those warm on first query.
         found = retrieval._space_of(conn, provider, model, checkpoint)
         if found is None:
             continue
@@ -1037,13 +1009,9 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
     for members in grouped.values():
         if len(members) < 2:
             continue
-        # A group means "every member is a duplicate of the best" -- so
-        # every member is checked against the BEST, not just against
-        # whichever neighbour union-find walked in through. Chains are
-        # real: A~B and B~C within threshold with A and C far apart put
-        # two admittedly-different pictures in one "duplicate" group.
-        # A member the canonical checks reject is dropped: related, but
-        # not a duplicate this pass can claim.
+        # A group means every member is a duplicate of the best, so each is
+        # checked against the best rather than whichever neighbour union-find
+        # walked in through: A~B and B~C can still leave A and C far apart.
         best = max(members, key=lambda m: (_pixels(conn, by_id[m], m), by_id[m][4], -m))
         kept = [
             member
@@ -1052,12 +1020,9 @@ def _dupe_groups_item(conn, item: int, payload: dict, now: float) -> None:
             or (
                 dupes.hamming(by_id[member][1], by_id[best][1]) <= threshold
                 and agreed(member, best)
-                # And not a pair somebody has already said is not one
-                # picture. A group is a GUESS -- pHash sees composition,
-                # so two photographs of one scene a second apart are
-                # close in it -- and a correction that survived only
-                # until the next sweep would be a chore repeated for
-                # ever (db/authored.py `reject_duplicate`).
+                # And not a pair somebody has already said is not one picture
+                # (db/authored.py `reject_duplicate`). A group is a guess --
+                # pHash sees composition -- so the correction outlives a sweep.
                 and (min(member, best), max(member, best)) not in rejected
             )
         ]
@@ -1139,11 +1104,9 @@ def ingest_items(conn, *, everything: bool = False, folder_id: int | None = None
     where = "WHERE missing_since IS NULL"
     args: list = []
     if not everything:
-        # Stale by BYTES or by READER. The second is what makes a fixed
-        # parser repair the library on its own: every file read by an
-        # older reader is due, and the ordinary sweep -- the one a worker
-        # already runs for what is missing -- picks them up with nobody
-        # asked to do anything.
+        # Stale by bytes or by reader: a fixed parser repairs the library on its
+        # own, because every file read by an older reader is due and the sweep a
+        # worker already runs for what is missing picks them up unasked.
         where += " AND (ingested_sha256 IS NULL OR ingested_sha256 IS NOT content_sha256 OR ingested_by IS NOT ?)"
         args.append(READER)
     if folder_id is None:
@@ -1165,11 +1128,9 @@ def _ingest_item(conn, file_id: int, payload: dict, now: float) -> None:
     report().phase("reading-metadata")
     out = ingest.one(conn, file_id, detect.path_of(conn, file_id), now)
     if out.unreadable is not None:
-        # Ingest retracts what it wrote last time BEFORE it re-reads, in
-        # this same transaction -- so a file whose bytes cannot be opened
-        # must RAISE here: the runner's rollback then restores the recipe
-        # a dead read could not replace, and the failure lands on the
-        # item instead of committing the destruction as success.
+        # Ingest retracts what it wrote last time before it re-reads, in this
+        # same transaction, so a file whose bytes cannot be opened has to raise
+        # here. The rollback restores the recipe a dead read could not replace.
         raise ValueError(out.unreadable)
 
 
@@ -1268,13 +1229,13 @@ def _cluster_space(conn, space, payload: dict, now: float) -> None:
 
     told = report()
     model_id, model_version = space
-    # Method and threshold pinned once and passed to BOTH calls: recomputing
-    # the run identity from separately-spelled defaults is how a drift makes
-    # the DELETE below clear a different run's attributions.
-    # What somebody asked for, else what was measured for this embedder.
-    # `.get`, because a job queued before this setting existed has no
-    # such key and must still cluster at the measured point.
+    # What somebody asked for, else what was measured for this embedder;
+    # `.get` because a job queued without this key must still cluster at the
+    # measured point.
     asked = payload.get("threshold")
+    # Method and threshold pinned once and passed to both calls below:
+    # recomputing the run identity from separately-spelled defaults lets the
+    # DELETE clear a different run's attributions.
     pinned = derived.threshold_for(model_id) if asked is None else float(asked)
     told.phase("clustering", model_id=model_id, model_version=model_version, threshold=pinned)
     derived.cluster(conn, model_id, model_version, now, method=derived.DEFAULT_METHOD, threshold=pinned)
@@ -1454,25 +1415,22 @@ def _caption_with_lookahead(conn, told, captioner, file_id: int, kind: str, fram
         try:
             held = oriented.for_model(conn, item, path)
         except (OSError, ValueError):
-            # Its own turn will fail it, by its own name, with its own
-            # error. Dropping it from the batch is not deciding anything
-            # about it.
+            # Its own turn will fail it, by its own name, with its own error;
+            # dropping it from the batch decides nothing about it.
             continue
         frames.append(held)
         kept.append(item)
 
-    # Reported ONCE, against the item that triggered it, and named so it
-    # cannot be read as that item's own cost: `pictures` says how many it
-    # covered. The others report no captioning phase at all, which is
-    # true -- they performed none.
+    # Reported once, against the item that triggered it, and named so it cannot
+    # be read as that item's own cost; `pictures` says how many it covered. The
+    # others report no captioning phase, having performed none.
     told.phase("batch-captioning", model=captioner.model_id, pictures=len(frames))
     try:
         said = captioner.describe_many(frames)
     except (OSError, ValueError) as why:
-        # Narrower than ITEM_FAILURES on purpose. What a batch may
-        # legitimately fail with is what a bad PICTURE raises; catching
-        # sqlite3.Error here once turned a threading defect into a silent
-        # fallback that ran four times slower with nothing in the log.
+        # Narrower than ITEM_FAILURES on purpose: a batch may legitimately fail
+        # with what a bad picture raises, while sqlite3.Error is a defect that
+        # has to propagate rather than fall back silently.
         _logger.warning(
             "job #%d: a caption batch of %d failed (%s); captioning this item alone", told.job_id, len(frames), why
         )
@@ -1500,10 +1458,9 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
         try:
             captioner = captions_module.captioner_for(key[0], key[1], provision=True)
         except (LookupError, OSError, ValueError) as why:
-            # Held, so every item of this job fails by the same name at
-            # once instead of re-attempting a download per picture --
-            # OSError is what from_pretrained raises for a repository that
-            # is not there (transformers utils/hub.py), an item failure too.
+            # Held, so every item of this job fails by the same name instead of
+            # re-attempting a download per picture. OSError is what
+            # from_pretrained raises for a missing repo (transformers utils/hub.py).
             _CAPTIONERS[key] = why
             _logger.exception("annotate: no captioner for caption_model=%s", key[1])
             raise
@@ -1532,9 +1489,9 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
     )
     moments = 0
     if kind == "video":
-        # a clip is also captioned at its sampled moments -- the same
-        # persisted rows detection looks at (db/sample.py), so a caption
-        # says which second it describes and a re-run finds its own work
+        # a clip is also captioned at its sampled moments -- the same persisted
+        # rows detection looks at (db/sample.py), so a caption says which second
+        # it describes and a re-run finds its own work
         from . import sample
 
         sample.frames(conn, file_id, path)
@@ -1560,12 +1517,8 @@ def _annotate_item(conn, file_id: int, payload: dict, now: float) -> None:
 
 
 #: kind -> handler(conn, item_id, payload, now). The names are the schema's:
-#: `job.kind` carries a CHECK of exactly these words (db/schema.sql, the
-#: `job` table), so a typo is an IntegrityError at submit, never a job that
-#: queues and waits forever.
-#:
-#: The table, not a line number: this said :493-495, which is a recursive
-#: CTE over collection parents and has been for a while.
+#: `job.kind` carries a CHECK of exactly these words (db/schema.sql, the `job`
+#: table), so a typo is an IntegrityError at submit, not a job that waits.
 def submit_context(conn, now: float, *, everything: bool = False) -> int | None:
     """Interpret every present file whose interpretation is missing --
     never made, staled by a source change (db/context.py stale), or made
@@ -1629,11 +1582,9 @@ def _embed_prompts_item(conn, prompt_id: int, payload: dict, now: float) -> None
     prompts.embed_item(conn, prompt_id, payload, now)
 
 
-#: What an item is called, for the ledger. One indexed lookup on a
-#: connection that is already open, next to per-item work measured in
-#: tens of milliseconds -- and it is the difference between a console
-#: that says "item 41 started" a hundred thousand times and one that
-#: says which picture it is on.
+#: What an item is called, for the ledger: one indexed lookup on a connection
+#: that is already open, beside per-item work measured in tens of milliseconds.
+#: Without it a console says "item 41 started" rather than naming the picture.
 _ITEM_NAME = "SELECT name FROM file WHERE id = ?"
 
 
@@ -1672,10 +1623,9 @@ def _walk_item(conn, index: int, payload: dict, now: float) -> None:
     seen = {"spoken": 0}
 
     def watch(folders: int, files: int, hashed: int) -> None:
-        # Phase reports, not checkpoints: a checkpoint is the ITEM
-        # boundary and this whole walk is one item. Throttled the way the
-        # request path throttles, so a large root does not spend its time
-        # writing about itself.
+        # Phase reports, not checkpoints: a checkpoint is the item boundary and
+        # this whole walk is one item. Throttled the way the request path
+        # throttles, so a large root does not spend its time writing about itself.
         if files - seen["spoken"] < scan_module.WALK_EVERY:
             return
         seen["spoken"] = files
@@ -1784,25 +1734,21 @@ def run_next(
     except sqlite3.OperationalError as busy:
         if getattr(busy, "sqlite_errorname", "") not in BUSY:
             raise
-        # Another writer holds the lane: SQLite has ONE, and a long write --
-        # a scan of a new root walks and commits once -- holds it well past
-        # `busy_timeout`. Nothing has gone wrong, and there is no turn to
-        # take right now, which is what None already means here.
+        # Another writer holds the lane: SQLite has one, and a long write -- a
+        # scan of a new root walks and commits once -- holds it past
+        # `busy_timeout`. Nothing has gone wrong; None already means no turn.
         _logger.info("the database is busy; no turn this pass (%s)", busy)
         return None
     if claimed is None:
         return None
     job_id, fence = claimed
 
-    # Anything a previous turn of this job computed ahead is dropped: the
-    # items it covered may have been worked by another worker since, and
-    # a vector held across a lease lapse is a guess about a file nobody
-    # has looked at recently. Recomputing is the cheap half of this.
-    #
-    # Captions the same, and for the same reason: a sentence held across
-    # a lease lapse is a claim about bytes that may have changed, and a
-    # caption records the `source_sha256` it was made from.
+    # Anything a previous turn computed ahead is dropped: the items it covered
+    # may have been worked by another worker since, and a vector held across a
+    # lease lapse is a guess about a file nobody has looked at recently.
     _ahead.forget(job_id)
+    # A sentence held across a lease lapse is a claim about bytes that may have
+    # changed, and a caption records the `source_sha256` it was made from.
     _said.forget(job_id)
 
     kind, raw, attempt, lease_until = conn.execute(
@@ -1894,15 +1840,13 @@ def run_next(
         return {"job": job_id, "state": "failed", "did": 0}
     payload = json.loads(raw) if raw else {}
 
-    # A lazy step works out its units NOW, holding the lease. Submitted
-    # with no items and no total, it could not know them: the step before
-    # it had not run, so the files it will read did not exist yet.
-    #
-    # `total IS NULL` is the marker rather than an empty item list,
-    # because "nothing to do" and "not decided yet" have to be different
-    # rows -- a job that really has no work settles `done` over zero
-    # items and must not be re-counted every time it is claimed.
+    # A lazy step works out its units now, holding the lease: submitted with no
+    # items and no total it could not know them, because the step before it had
+    # not run and the files it will read did not exist yet.
     counter = COUNTERS.get(payload.get("count_when_claimed", ""))
+    # `total IS NULL` is the marker rather than an empty item list: "nothing to
+    # do" and "not decided yet" are different rows, and a job that really has no
+    # work settles `done` over zero items without being re-counted each claim.
     if counter is not None and jobs.not_yet_counted(conn, job_id):
         found = jobs.count_now(conn, job_id, fence, counter(conn, payload))
         committed()
@@ -1910,12 +1854,12 @@ def run_next(
 
     did = failed = 0
     for item in jobs.pending(conn, job_id):
+        # `should_stop` is how a shutting-down worker leaves a long job at an
+        # item boundary instead of holding the exit hostage.
         if (budget is not None and did >= budget) or (should_stop is not None and should_stop()):
-            # A deliberate stop, not a death: the lease is expired on the
-            # spot so the very next turn -- any process -- resumes the job
-            # instead of waiting out a liveness timeout meant for crashes.
-            # `should_stop` is how a shutting-down worker leaves a long
-            # job at an item boundary instead of holding the exit hostage.
+            # A deliberate stop, not a death: the lease is expired on the spot
+            # so the very next turn, in any process, resumes the job rather than
+            # waiting out a liveness timeout meant for crashes.
             jobs.pause(conn, job_id, fence, tick())
             note(
                 "job.paused",
@@ -1946,15 +1890,13 @@ def run_next(
         # The start is committed BEFORE the handler runs -- a 47-second
         # decode is then a console row saying so, not a frozen bar.
         named = _item_named(conn, kind, item)
-        # A defect is a claim that the WORKER broke, so the item is left
-        # pending and retried. Repeated on the same item it stops being
-        # that claim: the fault is deterministic and belongs to the item,
-        # and every further turn is one the rest of the job does not get.
-        # Settled here as a failure -- with the defect quoted, because
-        # "gave up after 3 attempts" without the AttributeError is the
-        # counting, not the cause.
+        # A defect is a claim that the worker broke, so the item is left pending
+        # and retried. Repeated on one item the fault is deterministic and every
+        # further turn is one the rest of the job does not get.
         lost = ledger.defects_for_item(conn, job_id, item)
         if len(lost) >= DEFECT_LIMIT:
+            # The defect is quoted: a count of dead turns without the error that
+            # killed them is the counting, not the cause.
             why = f"{len(lost)} worker turns died on this item; last: {lost[-1]['message']}"
             moved = jobs.finish_item(conn, job_id, fence, item, error=why)
             failed += 1
@@ -1970,10 +1912,9 @@ def run_next(
                     **({"item_name": named} if named else {}),
                 },
             )
-            # Settled, so it counts the way the ITEM_FAILURES path counts:
-            # `did` is items this turn disposed of, `failed` the subset
-            # that failed, and "3 items, 1 failed" only reads correctly
-            # if the failure is one of the three.
+            # Settled, so it counts the way the ITEM_FAILURES path counts: `did`
+            # is items this turn disposed of and `failed` the subset that failed,
+            # so "3 items, 1 failed" only reads if the failure is one of the three.
             did += 1
             jobs.heartbeat(conn, job_id, fence, tick())
             committed()
@@ -2000,11 +1941,8 @@ def run_next(
             handler(conn, item, payload, now)
         except ITEM_FAILURES as why:
             # The dead handler's half-finished writes ride the same open
-            # transaction as the failure record about to be committed --
-            # dropped first, so the record carries the verdict and nothing
-            # the handler did not live to finish. Its noted index
-            # mutations die with it: rows that never became durable must
-            # never reach a live index.
+            # transaction as the failure record, so they are dropped first. Its
+            # noted index mutations die with it; no undurable row reaches an index.
             conn.rollback()
             similarity_module.discard_pending(conn)
             told.close()
@@ -2073,11 +2011,9 @@ def run_next(
         did += 1
         jobs.heartbeat(conn, job_id, fence, tick())
         committed()
-        # The commit succeeded, so the item's representation writes are
-        # durable -- NOW they may reach the resident indexes. A crash in
-        # the gap is safe: the index lags committed truth until the next
-        # align repairs it, which is the one direction the invariant
-        # permits (it may lag SQLite, never lead it).
+        # The commit succeeded, so the item's representation writes are durable
+        # and may now reach the resident indexes. A crash in the gap is safe:
+        # an index may lag committed truth, never lead it, and align repairs it.
         similarity_module.apply_pending(conn)
         spoke("running", moved)
 
@@ -2112,12 +2048,9 @@ def _keep(conn, told: Report, unspoken: list[dict]) -> None:
     )
 
 
-#: How a lazy step works out its units when it is claimed.
-#:
-#: Keyed by a name in the payload rather than by kind, because a kind
-#: does not decide this: `scan` submitted on its own knows its files at
-#: submit and should, so a person pressing the button is told "nothing
-#: to do" then and not four jobs later.
+#: How a lazy step works out its units when it is claimed. Keyed by a name in
+#: the payload rather than by kind: `scan` submitted on its own knows its files
+#: at submit, so a person pressing the button is told "nothing to do" then.
 COUNTERS: dict[str, Callable[..., list[int]]] = {
     "ingest": lambda conn, payload: ingest_items(conn, everything=bool(payload.get("everything"))),
     "faces": lambda conn, payload: face_items(conn, everything=bool(payload.get("everything"))),

@@ -115,10 +115,8 @@ def drift(path: pathlib.Path) -> list[str]:
         out = [f"only in the built file: {n}" for n in sorted(set(built) - set(fresh))]
         out += [f"missing from the built file: {n}" for n in sorted(set(fresh) - set(built))]
         out += [f"differs: {n}" for n in sorted(set(built) & set(fresh)) if built[n] != fresh[n]]
-        # The pragmas too, which this check existed to catch and could not see:
-        # it read `name, sql FROM sqlite_master` only, so a file stamped with the
-        # wrong version -- the exact thing the stamps were added for -- was
-        # reported as in sync.
+        # The pragmas too: a file stamped with the wrong version has drifted from
+        # the DDL even when every object in sqlite_master matches.
         if stamps(live) != stamps(fresh_conn):
             out.append(f"stamped {stamps(live)}, the DDL stamps {stamps(fresh_conn)}")
         return out
@@ -150,10 +148,8 @@ def build(path: pathlib.Path, *, force: bool = False) -> None:
 
     conn = connect(path)
     conn.executescript(schema_sql())
-    # The DDL stamps both itself. Re-stamping here is what let schema.sql say
-    # v1 while connect.py said v3 for two versions without anything failing:
-    # every database this function produced was correct, and every database
-    # built from the DDL any other way was two versions behind and unopenable.
+    # The DDL stamps both PRAGMAs itself and this verifies rather than re-stamps,
+    # so a database built from the DDL by any other route carries the same stamps.
     stamped = conn.execute("PRAGMA user_version").fetchone()[0]
     app = conn.execute("PRAGMA application_id").fetchone()[0]
     if stamped != USER_VERSION or app != APPLICATION_ID:

@@ -92,12 +92,9 @@ def frozen_main(member: dict, role: str) -> str:
     return prompt_sections.main(held["text"], prompt_sections_grammar(generation.get("tool")))
 
 
-#: Precisions fine enough that event order is evidence of sequence.
-#:
-#: `decade`, `year`, `month` and `day` are deliberately absent and stay
-#: absent: two photographs both claimed to 1998 say nothing about which
-#: came first, and a story that narrated them in file order would be
-#: inventing a sequence out of a folder name.
+#: Precisions fine enough that event order is evidence of sequence. `decade`,
+#: `year`, `month` and `day` stay absent: two photographs both claimed to 1998
+#: say nothing about which came first.
 _SEQUENCED = {"hour", "minute", "second", "subsecond"}
 
 
@@ -288,10 +285,9 @@ class SemanticEngine:
     def identity(self) -> tuple[str, str]:
         from vision import semantic
 
-        # (space key, digest of the QUERY policy): everything that turns a
-        # text into a vector for this provider/model/checkpoint -- Qwen's
-        # query instruction included, which its stored-media policy omits.
-        # The same token keys stored prompt vectors (db/prompts.py).
+        # (space key, digest of the QUERY policy): everything that turns a text
+        # into a vector for this provider/model/checkpoint, Qwen's query
+        # instruction included. The same token keys stored prompt vectors (db/prompts.py).
         space = semantic.space(self.provider, self.model, self.checkpoint, 1)
         return (space.key, semantic.policy_hash(self.provider, self.model, self.checkpoint))
 
@@ -384,11 +380,9 @@ class GenerationHistoryPlanner:
     defaults: typing.ClassVar[dict] = {"phase_threshold": 0.5}
 
     def __init__(self, similarity: PromptSimilarity | None = None, settings: dict | None = None):
-        # One constructor shape for every planner, because the caller
-        # picks the class at runtime and constructs it the same way
-        # (`request_plan` below). `uses_similarity = True` is what tells
-        # that caller to bring an engine; this is what happens when it
-        # does not, instead of an AttributeError several phases later.
+        # One constructor shape for every planner, because `request_plan` picks
+        # the class at runtime and constructs it the same way. `uses_similarity
+        # = True` tells that caller to bring an engine; this is the miss.
         if similarity is None:
             raise ValueError("GenerationHistoryPlanner compares prompts and needs a similarity engine")
         self.similarity = similarity
@@ -434,11 +428,12 @@ class GenerationHistoryPlanner:
         def cosine(a: int, b: int) -> float:
             return sparse[slot[a]][slot[b]]
 
-        # Written vs run: a member carrying both the prompt as written (role
-        # original) and the prompt the generator ran (role effective) is compared
-        # with ITSELF, and a substantial rewrite is a claim about that member
-        # rather than a boundary. Its own embed call, so the batch-scoped lexical
-        # oracle's vocabulary for the effective prompts is untouched.
+        # Written vs run: a member carrying both role original and role effective
+        # is compared with ITSELF, so a substantial rewrite is a claim about that
+        # member rather than a boundary.
+
+        # Its own embed call, so the batch-scoped lexical oracle's vocabulary for
+        # the effective prompts is untouched.
         pairs: list[tuple[int, str, str]] = []
         for i, one in enumerate(members):
             by_role = {p["role"]: p for p in ((one.get("generation") or {}).get("prompts") or [])}
@@ -455,12 +450,12 @@ class GenerationHistoryPlanner:
             for j, (i, _, _) in enumerate(pairs):
                 rewritten[i] = grid[2 * j][2 * j + 1]
 
-        # A member with no prompt evidence is placed by chronology and
-        # asserts nothing about prompts: in a sequenced plan it joins the
-        # running phase (it is not a boundary), so phases stay contiguous
-        # and the phase list IS the chronology; without chronology it is
-        # its own family, grouped with nothing. Its OTHER facts (seed,
-        # artifacts, parameters) stay in every comparison they belong to.
+        # A member with no prompt evidence asserts nothing about prompts: in a
+        # sequenced plan it joins the running phase rather than opening one, so
+        # phases stay contiguous; without chronology it is its own family.
+
+        # Its OTHER facts -- seed, artifacts, parameters -- stay in every
+        # comparison they belong to.
         groups = (
             _sequential_phases(cosine, threshold, known, len(members))
             if sequenced
@@ -561,10 +556,9 @@ class GenerationHistoryPlanner:
             else:
                 label = "Prompt evidence gap"
             if number > 1:
-                # Sequenced: the previous phase came BEFORE, so a change has
-                # a direction. Unsequenced: the family listed before is
-                # merely another family, and the only honest claim is that
-                # the two DIFFER -- symmetric facts, no before/after.
+                # Sequenced: the previous phase came BEFORE, so a change has a
+                # direction. Unsequenced: the family listed before is merely
+                # another family, and the only claim is that the two DIFFER.
                 previous = groups[number - 2]
                 changed = _artifact_change(members, previous, indexes, refs, sequenced)
                 if changed is not None:
@@ -1366,11 +1360,9 @@ class StoryPlan(typing.TypedDict):
     subjects: frozenset[str]
 
 
-#: The durable vocabulary of a StoryPlan v1 -- FROZEN. These constants
-#: describe what a v1 document may contain and never track the running
-#: code: a v1 row written today must still parse as v1 after a v2 exists,
-#: or the "immutable historical artifact" is a row that rots. Adding a
-#: claim kind, a planner, or a key is a v2.
+#: The durable vocabulary of a StoryPlan v1 -- FROZEN. These constants describe
+#: what a v1 document may contain and never track the running code, so a v1 row
+#: still parses as v1 after a v2 exists; adding a claim kind or a key is a v2.
 STORY_PLAN_V1: StoryPlanFlat = {
     "version": 1,
     "planners": frozenset({"generation_history"}),
@@ -1407,16 +1399,13 @@ STORY_PLAN_V3: StoryPlanFlat = {
     "claims": STORY_PLAN_V2["claims"] | frozenset({"prompt_rewrite"}),
 }
 
-#: StoryPlan v4 -- FROZEN. v3 plus the capture vocabulary: the
-#: `capture_history` planner over a `capture_session`, whose claims are
-#: the camera's clock and optics -- a pause, a lens change, a burst, the
-#: exposure range, the equipment in hand, renditions of one act, clips.
+#: StoryPlan v4 -- FROZEN. v3 plus the capture vocabulary: the `capture_history`
+#: planner over a `capture_session`, claiming the camera's clock and optics -- a
+#: pause, a lens change, a burst, exposure range, equipment, renditions, clips.
 STORY_PLAN_V4: StoryPlan = {
-    # Spelled out, not spread: v4 is the version where `settings` stops
-    # being one flat frozenset and becomes a set per planner, so V3 is a
-    # StoryPlanFlat and this is a StoryPlan, and `**STORY_PLAN_V3` would
-    # be carrying the old shape in. Every other key is overridden below;
-    # `unsupported` is the one that rides across unchanged.
+    # Spelled out, not spread: `settings` is one flat frozenset in V3, a set per
+    # planner here, so V3 is a StoryPlanFlat and `**STORY_PLAN_V3` would carry
+    # that shape in. Every other key is overridden below, `unsupported` rides across.
     "version": 4,
     "unsupported": STORY_PLAN_V3["unsupported"],
     "planners": STORY_PLAN_V3["planners"] | frozenset({"capture_history"}),
@@ -1429,11 +1418,9 @@ STORY_PLAN_V4: StoryPlan = {
     },
     "subjects": STORY_PLAN_V3["subjects"] | frozenset({"capture_session"}),
 }
-#: StoryPlan v5 -- FROZEN. v4 plus the file vocabulary: the
-#: `file_history` planner over a `file_session`, whose claims are what
-#: the files said about themselves -- the basis their dates rest on, a
-#: filesystem that disputes a name, a mix of media kinds -- beside the
-#: shared pause, burst and clip claims.
+#: StoryPlan v5 -- FROZEN. v4 plus the file vocabulary: the `file_history`
+#: planner over a `file_session`, claiming what the files said about themselves
+#: -- date basis, a filesystem that disputes a name, a mix of media kinds.
 STORY_PLAN_V5: StoryPlan = {
     **STORY_PLAN_V4,
     "version": 5,
@@ -1445,19 +1432,17 @@ STORY_PLAN_V5: StoryPlan = {
     },
     "subjects": STORY_PLAN_V4["subjects"] | frozenset({"file_session"}),
 }
-#: StoryPlan v6 -- FROZEN. v5 plus `seen`: what a captioning model said
-#: about a phase's members, frozen in the snapshot's annotations. Every
-#: planner may emit it; the facts are how many members carry a caption
-#: and which models spoke.
+#: StoryPlan v6 -- FROZEN. v5 plus `seen`: what a captioning model said about a
+#: phase's members, frozen in the snapshot's annotations, emittable by every
+#: planner, holding how many members carry a caption and which models spoke.
 STORY_PLAN_V6: StoryPlan = {
     **STORY_PLAN_V5,
     "version": 6,
     "claims": STORY_PLAN_V5["claims"] | frozenset({"seen"}),
 }
-#: StoryPlan v7 -- FROZEN. v6 plus `located`: where a phase's members
-#: happened, from the place each member froze (a person's word; GPS
-#: alone names no place). Facts are how many members carry a place and
-#: the leaf names they carry.
+#: StoryPlan v7 -- FROZEN. v6 plus `located`: where a phase's members happened,
+#: from the place each member froze, GPS alone naming no place. The facts are
+#: how many members carry a place and the leaf names they carry.
 STORY_PLAN_V7: StoryPlan = {
     **STORY_PLAN_V6,
     "version": 7,
@@ -2108,10 +2093,9 @@ def plan_item(conn, _item: int, payload: dict, now: float) -> None:
         )
     from . import prompts
 
-    # The loaded engine behind the durable prompt-vector cache: frozen
-    # texts are answered by text hash under the engine's own text space,
-    # computed once where missing (db/prompts.py cached). A planner that
-    # compares no prompts never loads weights.
+    # The loaded engine behind the durable prompt-vector cache: frozen texts are
+    # answered by text hash under the engine's own text space, computed once
+    # where missing (db/prompts.py cached).
     if maker.uses_similarity:
         planner = maker(prompts.cached(conn, engine, engine.load(), now), payload["settings"])
     else:

@@ -107,6 +107,23 @@ def spherical_kmeans(
     people, decided before it runs. That is a real disadvantage on a library
     nobody has counted, and a real advantage when you already know -- and
     the reason to keep both rather than pick one.
+
+    With no count given, k is the number of connected components holding two
+    or more faces, so k-means answers the question the graph methods were
+    asked. Every distinct label would count singletons too, putting k close to
+    the number of faces, which is renaming rather than clustering.
+
+    The dataset being clustered IS the training set, which upstream calls out
+    as the case where its training-size guards do not apply: below
+    `min_points_per_centroid * k` FAISS warns ("This may still be ok if the
+    dataset to index is as small as the training set"), and above
+    `max_points_per_centroid * k`, 256 by default, it silently subsamples the
+    training data,
+    which here would mean clustering on part of the library. Both knobs are
+    ClusteringParameters fields settable through this constructor
+    (facebookresearch/faiss.wiki@1354fdb FAQ.md, "Can I ignore WARNING
+    clustering XXX points to YYY centroids?"; Faiss-building-blocks page,
+    "Additional options").
     """
     import numpy as np
 
@@ -115,14 +132,7 @@ def spherical_kmeans(
     unit = similarity.normalise(vectors)
     n = unit.shape[0]
     if people is None:
-        # No count given: take the one the graph implies, so k-means answers
-        # the same question the graph methods were asked rather than a
-        # different one nobody chose.
-        #
-        # Groups of two or more, NOT every distinct label. A face nothing
-        # matched is a singleton, and counting those made k almost equal to
-        # the number of faces -- 732 centroids for 834 points, which FAISS
-        # warns about because it is not clustering, it is renaming.
+        # Groups of two or more, NOT every distinct label; see the docstring.
         from collections import Counter
 
         sizes = Counter(connected_components(graph))
@@ -130,16 +140,8 @@ def spherical_kmeans(
     people = max(1, min(people, n))
 
     faiss = _faiss()
-    # The dataset being clustered IS the training set, which upstream calls
-    # out as the case where its training-size guards do not apply: below
-    # `min_points_per_centroid * k` it warns ("This may still be ok if the
-    # dataset to index is as small as the training set"), and above
-    # `max_points_per_centroid * k` -- 256 by default -- it silently
-    # subsamples the training data, which here would mean clustering on part
-    # of the library. Both knobs are ClusteringParameters fields settable
-    # through this constructor. (facebookresearch/faiss.wiki@1354fdb FAQ.md,
-    # "Can I ignore WARNING clustering XXX points to YYY centroids?";
-    # Faiss-building-blocks page, "Additional options".)
+    # Both per-centroid knobs are widened because the dataset being clustered
+    # IS the training set; the docstring cites the upstream wiki for each.
     kmeans = faiss.Kmeans(
         int(unit.shape[1]),
         people,

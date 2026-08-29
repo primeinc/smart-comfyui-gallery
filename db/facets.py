@@ -23,13 +23,9 @@ import re
 from . import context, when
 from .context import HUMAN_MOMENT, ORIGINS
 
-#: `CASE mc.time_precision WHEN ... END`, BUILT from `db/when.py SPAN` rather
-#: than restated: the vocabulary is `db/schema.sql`'s and the widths are
-#: `when.SPAN`'s, and neither is this module's to copy.
-#:
-#: Interpolated, never bound: these are float literals derived from a
-#: frozen dict at import, not input, and a CASE cannot take parameters
-#: for its branches.
+#: `CASE mc.time_precision WHEN ... END`, built from `when.SPAN` widths over `db/schema.sql`'s
+#: vocabulary rather than restating either. Interpolated and never bound: a CASE takes no
+#: parameters for its branches, and these float literals come from a frozen dict, not input.
 _GRANULE_CASE = (
     "CASE mc.time_precision" + "".join(f" WHEN '{name}' THEN {width!r}" for name, width in when.SPAN.items()) + " END"
 )
@@ -60,37 +56,32 @@ class _Spec:
     #: the VALUE always bound.
     template: str
     choices: tuple[str, ...] | None = None
-    #: Whether a text value has an identity narrower than the bytes
-    #: typed. `tag` does: "Sunset" and "sunset" are one keyword, so both
-    #: spellings must fold to one Facet or they are two questions with
-    #: two fingerprints, two cached answers and one of them empty.
+    #: Whether a text value has an identity narrower than the bytes typed. `tag`
+    #: does: "Sunset" and "sunset" are one keyword, and unfolded they are two
+    #: questions with two fingerprints and two cached answers, one of them empty.
     folded: bool = False
 
 
-#: `any` compares like `eq`. What makes it different is not the
-#: comparison but the ASSEMBLY: several `any` clauses on one key become
-#: one OR'd group (see `clauses`), where several `eq` clauses stay
+#: `any` compares like `eq`; the difference is assembly. Several `any` clauses on
+#: one key become one OR'd group (see `clauses`), where several `eq` clauses stay
 #: separate conjuncts.
 _OP_SQL = {"eq": "=", "any": "=", "gte": ">=", "lt": "<", "lte": "<="}
 
 #: The operator whose repeats mean "or", not "and".
 ANY = "any"
 
-#: The vocabulary, closed: each key names where the fact lives and how
-#: it may be asked. Adding a key here is the WHOLE work of adding a
-#: gallery filter -- URL spelling, canonical qs, fingerprint, timed
-#: walk and pre-RRF eligibility all follow.
+#: The vocabulary, closed: each key names where the fact lives and how it may be
+#: asked. Adding a key here is the whole work of adding a gallery filter -- URL
+#: spelling, canonical qs, fingerprint, timed walk and pre-RRF eligibility follow.
 REGISTRY: dict[str, _Spec] = {
     "capture.iso": _Spec(
         "int",
         ("eq", "gte", "lte"),
         "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.iso {op} ?)",
     ),
-    #: A word somebody typed on a picture. A FACET rather than a scope
-    #: because a picture wears several at once, which makes both
-    #: readings real: repeated `eq` asks for all of them, repeated `any`
-    #: for any of them, and both are questions people actually ask.
-    #: Stored normalised, so the value here is folded to match.
+    #: A word somebody typed on a picture, a facet rather than a scope because a
+    #: picture wears several at once: repeated `eq` asks for all of them, repeated
+    #: `any` for any of them. Stored normalised, so the value here is folded to match.
     "tag": _Spec(
         "text",
         ("eq", "any"),
@@ -114,10 +105,9 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy} AND mc.origin {op} ?)",
         choices=ORIGINS,
     ),
-    #: The timeline's own link into the gallery: one LOCAL calendar day,
-    #: by the same coalesce the timeline aggregates -- the wall clock
-    #: when one was claimed, the instant otherwise. /timeline links here
-    #: instead of ever becoming a second media membership engine.
+    #: The timeline's link into the gallery: one local calendar day, by the same
+    #: coalesce the timeline aggregates -- the wall clock when one was claimed, the
+    #: instant otherwise. /timeline links here rather than holding its own membership.
     "context.local_day": _Spec(
         "date",
         ("eq", "gte", "lte"),
@@ -127,11 +117,9 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy}"
         " AND strftime('%Y-%m-%d', " + HUMAN_MOMENT + ", 'unixepoch') {op} ?)",
     ),
-    #: The surface's link: a bin of the human moment, as epoch seconds
-    #: on the SAME axis the density is counted on -- so a bar of 14
-    #: pictures opens a gallery of exactly those 14. The axis is REAL
-    #: (a claimless file's moment is its fractional mtime), so a link is
-    #: the half-open [at, at+width) the count uses, never [at, at+width-1].
+    #: A bin of the human moment in epoch seconds, on the axis the density is counted on,
+    #: so a bar of N opens a gallery of exactly those N. The axis is real -- a claimless
+    #: file's moment is its fractional mtime -- so the link is the half-open [at, at+width).
     "context.moment": _Spec(
         "int",
         ("gte", "lt", "lte"),
@@ -147,11 +135,9 @@ REGISTRY: dict[str, _Spec] = {
         "EXISTS (SELECT 1 FROM derived_media_context mc WHERE mc.file_id = f.id"
         " AND mc.policy_version = {policy} AND (mc.time_conflicts IS NOT NULL) {op} ?)",
     ),
-    #: How fine a claim is, in seconds of granule: a day-precision claim
-    #: is 86400, a subsecond one a millisecond. `lte:<bin width>` is
-    #: exactly "fine enough for this bin" (db/pages.py _FINE_ENOUGH), so a
-    #: bar's link opens the pictures the bar counted and no coarser claim
-    #: that happens to sit inside its window.
+    #: How fine a claim is, in seconds of granule: a day-precision claim is 86400, a
+    #: subsecond one a millisecond. `lte:<bin width>` is "fine enough for this bin"
+    #: (db/pages.py _FINE_ENOUGH), so a bar's link excludes coarser claims inside it.
     "context.granule": _Spec(
         "int",
         ("lte",),
@@ -176,10 +162,9 @@ REGISTRY: dict[str, _Spec] = {
         " AND r.context_generation = (SELECT generation FROM derived_context_state)"
         " AND r.context_policy_version = {policy})",
     ),
-    #: WAS THIS MADE BY A MODEL, asked as the fact rather than as
-    #: `context.origin`: origin has a fourth value, `mixed`, so `origin=generated`
-    #: drops mixed files and repeated facets are ANDed. It also answers before
-    #: the context job has run, because the generation row is written by ingest.
+    #: Was this made by a model, asked as the fact rather than as `context.origin`,
+    #: whose fourth value `mixed` is dropped by `origin=generated` and cannot be ANDed
+    #: back. It answers before the context job runs, since ingest writes generation.
     "has.generation": _Spec(
         "int",
         ("eq",),
@@ -209,20 +194,15 @@ REGISTRY: dict[str, _Spec] = {
         " AND mc.policy_version = {policy} AND mc.place_id IS NOT NULL)) {op} ?",
     ),
     # --- the resources, by role ----------------------------------------
-    #: An artifact BY ROLE, as a repeatable facet, because the `artifact`
-    #: scope holds exactly one and "this checkpoint with that LoRA" is
-    #: the ordinary question. The value is the artifact's entity id: the
-    #: stable identity, since renaming a model is a thing people do and
-    #: a bookmark must survive it. The chip says the name
-    #: (db/vocabulary.py), never the number.
-    #:
-    #: Repeating one key ANDs, so two LoRAs mean "both were applied".
+    #: An artifact by role, repeatable because the `artifact` scope holds exactly one.
+    #: The value is its entity id, so a bookmark survives a rename (db/vocabulary.py).
     "generation.checkpoint": _Spec(
         "int",
         ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_artifact fa WHERE fa.file_id = f.id"
         " AND fa.role = 'checkpoint' AND fa.artifact_id {op} ?)",
     ),
+    #: Repeating one key ANDs, so two LoRAs mean both were applied.
     "generation.lora": _Spec(
         "int",
         ("eq", "any"),
@@ -295,28 +275,18 @@ REGISTRY: dict[str, _Spec] = {
         ("eq", "gte", "lte"),
         "EXISTS (SELECT 1 FROM capture cap WHERE cap.file_id = f.id AND cap.exposure_time {op} ?)",
     ),
-    #: WHICH MEDIUM, as a facet, so it can be OR'd.
-    #:
-    #: `kind=` is also a GalleryQuery scope, and stays one: every
-    #: bookmark, every smart collection and every other surface's link
-    #: spells it that way, and rewriting them would break all of it to no
-    #: one's benefit. But a scope holds exactly ONE value, so "image or
-    #: video" was unaskable -- and it is the most ordinary multi-select
-    #: there is. The filter surface writes this; the scope keeps working;
-    #: both compose, and asking one thing twice is merely redundant.
+    #: Which medium, as a facet, so it can be OR'd: a scope holds one value, leaving
+    #: "image or video" unaskable. `kind=` stays a GalleryQuery scope that bookmarks,
+    #: smart collections and other surfaces' links spell, and the two compose.
     "media.kind": _Spec(
         "text",
         ("eq", "any"),
         "f.kind {op} ?",
         choices=KINDS,
     ),
-    #: WHO IS IN IT, as a facet, so several people can be asked for at
-    #: once -- either "any of these" or "all of these", which are both
-    #: real questions about a photograph and mean opposite things.
-    #:
-    #: Bound to the PRIMARY clustering, exactly as the `person` scope is
-    #: (db/resultset.py bind), so the two cannot disagree about which
-    #: answer they are reading.
+    #: Who is in it, as a facet, so several people can be asked for at once -- "any of
+    #: these" or "all of these". Bound to the primary clustering exactly as the `person`
+    #: scope is (db/resultset.py bind), so the two cannot disagree about which run they read.
     "people.person": _Spec(
         "int",
         ("eq", "any"),
@@ -324,10 +294,9 @@ REGISTRY: dict[str, _Spec] = {
         " JOIN derived_face_run fr ON fr.id = fp.run_id AND fr.is_primary = 1"
         " WHERE fp.file_id = f.id AND fp.person_id {op} ?)",
     ),
-    #: THE LONG TAIL, asked by name: `param_key` registers every key any tool
-    #: emitted into `file_param`. These stay OUT of the curated sections, because
-    #: a dimension is a fact this application names in a person's words and a
-    #: `param_key` row is a string some tool wrote.
+    #: The long tail, asked by name: `param_key` registers every key any tool emitted
+    #: into `file_param`. These stay out of the curated sections, where a dimension is
+    #: a fact named in a person's words rather than a string some tool wrote.
     "param.has": _Spec(
         "text",
         ("eq", "any"),
@@ -341,20 +310,17 @@ REGISTRY: dict[str, _Spec] = {
         ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key = ? AND fp.value_text {op} ?)",
     ),
-    #: The same long tail asked as a NUMBER (`steps=30` with `gte`): separate
-    #: from `param.is` because it reads `fp.value_num`, where `fp.value_text`
-    #: would compare as strings and 9 would beat 30. A key whose value never
-    #: parsed matches nothing, and `param_key.value_kind` stops it being OFFERED.
+    #: The same long tail asked as a number (`steps=30` with `gte`), reading
+    #: `fp.value_num` where `fp.value_text` would compare as strings and 9 beat 30. A key
+    #: whose value never parsed matches nothing, and `param_key.value_kind` never offers it.
     "param.num": _Spec(
         "numpair",
         ("eq", "gte", "lte"),
         "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key = ? AND fp.value_num {op} ?)",
     ),
     # --- the bytes, which every medium has -----------------------------
-    #: `file.width`/`file.height` are the PIXELS ON DISK, never what a
-    #: recipe asked for (that is `generation.width`, and the two
-    #: differing is the interesting part -- db/schema.sql says so at the
-    #: column).
+    #: `file.width`/`file.height` are the pixels on disk, never what a recipe asked for;
+    #: that is `generation.width`, and db/schema.sql says so at the column.
     "media.width": _Spec(
         "int",
         ("eq", "gte", "lte"),
@@ -608,8 +574,7 @@ def predicate(held: Facet) -> tuple[str, list]:
     """The registered SQL for one facet -- structure from the closed
     registry, the value or values bound."""
     spec = REGISTRY[held.key]
-    # {policy} is the RUNNING interpretation policy, read at call time:
-    # after a software upgrade the old rows are honestly invisible here
-    # exactly as they are on the timeline, until the context job runs.
+    # {policy} is the running interpretation policy, read at call time, so rows
+    # written under an older one stay invisible here until the context job runs.
     # An int constant from code, never request data -- still structure.
     return spec.template.format(op=_OP_SQL[held.op], policy=int(context.POLICY_VERSION)), bound_values(held)

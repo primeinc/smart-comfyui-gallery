@@ -18,11 +18,9 @@ import re
 
 from .scan import mint, slugify
 
-#: Exactly 32 hex characters by FULLMATCH -- bytes.fromhex skips ASCII
-#: whitespace, so a length check after decoding lets spaces hide inside
-#: a 32-character spelling and decode to 15 bytes. The lesson was paid
-#: for and recorded twice (db/collection_rules.py, db/resultset.py)
-#: before the two copies became this one.
+#: Exactly 32 hex characters by FULLMATCH: bytes.fromhex skips ASCII whitespace,
+#: so a length check after decoding lets spaces hide inside a 32-character
+#: spelling and decode to 15 bytes.
 UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
 
 #: A sha256's spelling. The bare pattern exists beside the compiled rule
@@ -31,10 +29,9 @@ UUID_HEX = re.compile(r"[0-9a-fA-F]{32}")
 SHA256_HEX_PATTERN = "[0-9a-f]{64}"
 SHA256_HEX = re.compile(f"^{SHA256_HEX_PATTERN}$")
 
-#: How many hex characters a short identity hash keeps: 64 bits, wide
-#: enough that a library-sized set of identities has no collision worth
-#: naming. Seven modules cut the digest by hand; two other widths exist
-#: on purpose and are named at their sites (vision/semantic, db/ingest).
+#: How many hex characters a short identity hash keeps, 64 bits' worth. Two
+#: other widths exist on purpose and are named at their own sites
+#: (vision/semantic, db/ingest).
 SHORT_HASH_HEX = 16
 
 #: How many characters of a content hash a MESSAGE shows -- enough to
@@ -115,11 +112,9 @@ def rename(conn, entity_id: int, new_name: str, now: float) -> str:
         suffix += 1
         slug = f"{base}-{suffix}"
 
-    # `retired_at` is in the primary key, and `now` is whatever the caller
-    # passed -- a batch rename computes it once, so two entities of one kind
-    # releasing the same slug in one pass collided and the second raised. The
-    # key needs to be distinct, not the timestamp to be exact: nudge forward
-    # to the first instant this (kind, slug) is free.
+    # `retired_at` is in the primary key and a batch rename computes `now` once,
+    # so two entities of one kind releasing the same slug in one pass would
+    # collide. The key needs distinctness, not an exact timestamp.
     while conn.execute(
         "SELECT 1 FROM slug_history WHERE kind = ? AND slug = ? AND retired_at = ?",
         (kind, old, now),

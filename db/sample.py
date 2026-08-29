@@ -28,8 +28,7 @@ from . import derived, probe
 
 #: Two seconds. Close enough that a person entering and leaving a shot is
 #: caught, far enough apart that an hour of video is 1,800 samples and not
-#: 108,000 -- the difference between a job somebody waits for and a job
-#: nobody finishes.
+#: 108,000.
 EVERY_MS = 2_000
 
 #: A sampler that reads the whole file would make the cost of deciding the

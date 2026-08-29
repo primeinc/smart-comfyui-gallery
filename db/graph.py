@@ -29,6 +29,22 @@ scheduler/positive/negative/latent_image/denoise (:1596-1611), KSamplerAdvanced
 spells its seed `noise_seed` (:1625-1641), EmptyLatentImage takes width and
 height (:1245-1254), SaveImage takes `images` (:1659-1672) and VAEDecode takes
 `samples` (:316-330).
+
+A custom sampler takes no prompt input at all: it takes a GUIDER, and the
+conditioning hangs off that. Every flux workflow in
+comfyanonymous/ComfyUI_examples@f9431bb000ce is shaped SamplerCustomAdvanced ->
+BasicGuider -> FluxGuidance -> CLIPTextEncode, so a reader consulting only
+`positive` finds no prompt in 11 of them. A BasicGuider holds ONE chain and it
+is the positive one, so the negative is read only from a guider that declares
+one (CFGGuider).
+
+`_ERASERS` names the nodes that discard the words they are given, and the walk
+stops at one rather than reporting erased text. `ConditioningZeroOut` is how a
+workflow says it has no negative prompt: it takes the POSITIVE conditioning and
+zeroes it, so the link exists and the text behind it is real, and following it
+puts the positive prompt in the negative field of the ComfyUI_examples
+workflows sd3_anime_example, sd3_controlnet_example and
+sd3.5_large_canny_controlnet_example.
 """
 
 from __future__ import annotations
@@ -125,14 +141,8 @@ _ONE_SIDE: tuple[str, ...] = (
 #: decided by the slot the link arrived on, never by order.
 _BOTH_SIDES: tuple[str, str] = ("positive", "negative")
 
-#: Nodes that DISCARD the words they are given. Walking through one reports
-#: the text it erased, which is worse than reporting nothing.
-#:
-#: `ConditioningZeroOut` is how a workflow says it has no negative prompt: it
-#: takes the POSITIVE conditioning and zeroes it, so the link exists and the
-#: text behind it is real, and following it put the positive prompt in the
-#: negative field of three ComfyUI_examples workflows -- sd3_anime_example,
-#: sd3_controlnet_example, sd3.5_large_canny_controlnet_example.
+#: Nodes that DISCARD the words they are given; the module docstring names the
+#: workflows a walk through one misreports.
 _ERASERS: frozenset[str] = frozenset({"ConditioningZeroOut"})
 
 
@@ -252,10 +262,8 @@ def _samplers(graph: _Graph) -> list[str]:
         node_id
         for node_id in graph.nodes
         if "sampler" in graph.kind(node_id).lower()
-        # `guider` is here because a custom sampler has none of the others:
-        # SamplerCustomAdvanced takes noise, guider, sampler, sigmas and a
-        # latent, so this listed it as not-a-sampler and a graph without a
-        # SaveImage node to walk back from lost it entirely.
+        # `guider` is here because SamplerCustomAdvanced takes noise, guider,
+        # sampler, sigmas and a latent, and none of the other names.
         and any(name in graph.inputs(node_id) for name in ("positive", "steps", "noise_seed", "seed", "guider"))
     ]
 
@@ -315,16 +323,9 @@ def read(payload) -> Recipe | None:
             if onward is not None:
                 setattr(out, side, graph.text_of(onward[0], None, onward[1]))
 
-        # A custom sampler takes no prompt at all: it takes a GUIDER, and the
-        # conditioning hangs off that. Every flux workflow in
-        # comfyanonymous/ComfyUI_examples@f9431bb000ce is shaped this way --
-        # SamplerCustomAdvanced -> BasicGuider -> FluxGuidance ->
-        # CLIPTextEncode -- and reading only `positive` reported no prompt
-        # for 11 of them.
-        #
-        # A BasicGuider holds ONE chain, and it is the positive one. Asking
-        # it for a negative would hand back the positive prompt, so the
-        # negative is only read from a guider that has one (CFGGuider).
+        # A custom sampler takes a GUIDER in place of a prompt, and a
+        # BasicGuider holds the positive chain only; the module docstring names
+        # the node shape and its source.
         if not out.positive and not out.negative:
             guider = _linked(held.get("guider"))
             if guider is not None:

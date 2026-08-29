@@ -69,11 +69,8 @@ from vision import decode
 from .exif_labels import label_for
 
 #: Tags that become columns on `capture`, so they are not also long tail.
-#:
-#: INT rather than the enum it is spelled with. These are tested against
-#: the raw integer keys of an EXIF dict, and the set really does hold
-#: Base, GPS and IFD members together -- inferred as `set[Base]` it was
-#: a claim the very next statement broke.
+#: Annotated `set[int]` rather than by enum: the members are Base, GPS and IFD
+#: alike, and the set is tested against the raw integer keys of an EXIF dict.
 _CLAIMED: set[int] = {
     ExifTags.Base.DateTimeOriginal,
     ExifTags.Base.OffsetTimeOriginal,
@@ -122,29 +119,33 @@ _PREFIXED_TEXT = {
 #: file. Everything else is a reading, and one reading is enough to keep.
 _NOT_A_FINDING = frozenset({"params", "binaries", "unrecorded", "homeless", "unreadable"})
 
-#: Orientations that turn the frame a quarter, so the stored width and height
-#: are not the displayed ones. 5 through 8 all do
-#: (exiftool/exiftool@2200871 lib/Image/ExifTool/Exif.pm:291-300); 2 and 4 mirror
-#: without turning, and 3 is a half turn.
+#: Orientations that turn the frame a quarter, so the stored width and height are
+#: not the displayed ones: 5 through 8 all do, 2 and 4 mirror without turning, 3 is
+#: a half turn (exiftool/exiftool@2200871 lib/Image/ExifTool/Exif.pm:291-300).
 TRANSPOSED = frozenset({5, 6, 7, 8})
 
-#: The most entries one IFD is read with. The format's own ceiling is
-#: 65535 (the count is a uint16); this is a policy about attacker-
-#: supplied bytes -- a real camera or editor writes dozens of entries,
-#: and a count in the thousands is a corrupt or hostile structure worth
-#: refusing before the 12-bytes-per-entry walk, not a picture.
+#: The most entries one IFD is read with; the format's own ceiling is 65535,
+#: because the count is a uint16. This is a policy about attacker-supplied
+#: bytes, refusing a corrupt structure before the per-entry walk.
 _MOST_IFD_ENTRIES = 4096
 
-#: How many leading bytes are searched for the Canon CNDA thumbnail.
-#: The atom sits inside `CNTH` under `moov/udta`, which Canon writes at
-#: the head of the file; four megabytes covers every observed layout
-#: while keeping the read bounded on files where the atom is absent.
+#: How many leading bytes are searched for the Canon CNDA thumbnail. The atom
+#: sits inside `CNTH` under `moov/udta`, which Canon writes at the head of the
+#: file, so the read stays bounded on files where the atom is absent.
 _CNDA_SEARCH_BYTES = 4_000_000
 
 
 @dataclass
 class Capture:
-    """What one photograph says about how it was taken."""
+    """What one photograph says about how it was taken.
+
+    ``unrecorded`` holds the tags the camera wrote with no value in them: a
+    rational over zero, or a string that is only spaces and NULs. They are
+    absent from the database on purpose, and kept apart from ``homeless``
+    because "there is no value" and "this value has no home" are different
+    problems of which only the second is a defect -- folded together, the blank
+    padding fills ``homeless`` and hides the entries that mean something.
+    """
 
     captured_at: float | None = None
     tz_offset_min: int | None = None
@@ -170,13 +171,7 @@ class Capture:
     params: list[tuple[str, str, float | None]] = field(default_factory=list)
     #: (slot, payload) for tags that are binary and stay binary.
     binaries: list[tuple[str, bytes]] = field(default_factory=list)
-    #: Tags the camera wrote with no value in them: a rational over zero, or
-    #: a string that is only spaces and NULs. Absent from the database on
-    #: purpose, and kept apart from `homeless` because "there is no value"
-    #: and "we cannot store this value" are different problems and only the
-    #: second is a defect. Measured on a real library, folding them together
-    #: put 28 tag names in `homeless` -- all of them blank padding -- which
-    #: is enough noise to hide the one entry that would have meant something.
+    #: Tags the camera wrote with no value in them; see the class docstring.
     unrecorded: list[str] = field(default_factory=list)
     #: Tags with no home at all. Empty is the contract.
     homeless: list[tuple[str, str]] = field(default_factory=list)
@@ -387,10 +382,9 @@ def _tag_value(tag, value) -> Held | None:
         return Held("unrecorded")
     label = label_for(tag, value)
     if label is not None:
-        # Both columns, because they answer different questions: the phrase is
-        # what a person searches for and reads, the code is what stays
-        # comparable. Storing only the number makes "Flash = 89" a fact nobody
-        # can use; storing only the phrase throws away the ordering.
+        # Both columns: the phrase is what a person searches for and reads, the
+        # number is what stays comparable. "Flash = 89" alone is a fact nobody
+        # can use, and the phrase alone throws away the ordering.
         return Held("text", text=label, number=float(value))
     scalar = _scalar(value)
     if scalar is not None:
@@ -532,12 +526,9 @@ def _read_image(image: Image.Image, path, out: Capture) -> Capture:
         out.subsec_ms = _subsec_ms(merged.get(ExifTags.Base.SubsecTimeOriginal))
         out.body_serial = _text(merged.get(ExifTags.Base.BodySerialNumber))
         out.maker_tz_offset_min = canon_time_zone(_tiff_bytes(image, path))
-        # 0x8827 is int16u, so it cannot express an ISO above 65535 and a body
-        # shooting higher writes 65535 there and the real figure in
-        # RecommendedExposureIndex (int32u)
+        # 0x8827 is int16u, so a body shooting above 65535 writes 65535 there and
+        # the real figure in RecommendedExposureIndex, int32u
         # (exiftool/exiftool@2200871 lib/Image/ExifTool/Exif.pm:2145-2154).
-        # Preferring 0x8827 unconditionally therefore files every high-ISO
-        # frame in the library at exactly 65535.
         iso = merged.get(ExifTags.Base.ISOSpeedRatings)
         # Count is -1: a body may write several values. The first is the one
         # the picture was taken at.
@@ -564,11 +555,9 @@ def _read_image(image: Image.Image, path, out: Capture) -> Capture:
             altitude = _number(gps.get(ExifTags.GPS.GPSAltitude))
             if altitude is not None:
                 # GPSAltitudeRef is a byte, not a letter, and Exif 3.0 gives it
-                # four values, not two: 0/1 are above/below the ellipsoid and
-                # 2/3 above/below the sea-level reference
-                # (exiftool/exiftool@2200871 lib/Image/ExifTool/GPS.pm:113-116).
-                # Testing only for 1 stores a below-sea-level frame as above it.
-                #
+                # four values: 0/1 above/below the ellipsoid, 2/3 above/below the
+                # sea-level reference (exiftool/exiftool@2200871 lib/Image/ExifTool/GPS.pm:113-116).
+
                 # GPSAltitude is rational64u -- unsigned -- so the sign lives
                 # entirely in the reference, and abs() keeps a file that wrote
                 # one anyway from cancelling it out.

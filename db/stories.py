@@ -93,11 +93,10 @@ class SnapshotRef:
 
 
 # --- the evidence Seam -------------------------------------------------------
-#
-# Each Adapter answers one question about a set of member files and
-# returns {file_id: bundle}. The snapshot Module chooses them and owns
-# assembly; adding OCR later, or swapping a caption producer, changes
-# one Adapter and nothing downstream learns where OCR happens.
+
+# Each Adapter answers one question about a set of member files and returns
+# {file_id: bundle}; the snapshot Module chooses them and owns assembly, so a
+# new or swapped Adapter reaches nothing downstream.
 
 
 class _Evidence(typing.Protocol):

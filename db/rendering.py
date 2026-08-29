@@ -30,6 +30,12 @@ The v1 grammar is FROZEN in `STORY_RENDER_V1`: a v1 row written today
 parses as v1 after a v2 exists. The renderer declares which input
 versions it reads as literals, and the document records which it read.
 
+`COMPATIBILITY` states what each renderer VERSION reads, frozen per version
+forever, so changing the inputs a renderer accepts is an Interface change and
+a new version. A stored render names its version and `violations()` holds the
+inputs it says it read to this map, so a later version can never reinterpret
+what an earlier one produced.
+
 What `violations()` proves is ATTRIBUTION -- every block names the
 Claim or members it rests on, and those belong to the block's own
 phase. It does not prove ENTAILMENT: a block citing a prompt-similarity
@@ -66,10 +72,9 @@ FORMAT_VERSION = 1
 PROFILES = ("memory", "technical", "compact")
 LOCALES = ("en",)
 
-#: Words that assert an order in time -- defense in depth behind the
-#: structural rule (no directional Claim without chronology). A hit
-#: inside a frozen evidence name (an artifact called "AfterDetail") is
-#: evidence, not narration, and is exempt.
+#: Words that assert an order in time, behind the structural rule that a
+#: directional Claim needs chronology. A hit inside a frozen evidence name (an
+#: artifact called "AfterDetail") is evidence rather than narration, and exempt.
 _SEQUENCING = re.compile(
     r"\b(first|firstly|then|later|finally|next|earlier|before|after|afterwards|subsequently|previous|previously"
     r"|followed|following|began|ended|started|last|new|initial|initially|eventually|subsequent)\b",
@@ -84,13 +89,8 @@ class RenderRef:
     reused: bool
 
 
-#: What each renderer VERSION reads -- FROZEN, per version, forever.
-#: Changing the inputs a renderer accepts is an Interface change and is
-#: a new version; a stored render names its version, and `violations()`
-#: holds the inputs it says it read to this map, so a later version can
-#: never reinterpret what an earlier one produced. Template v1 read
-#: Plan v1 and v2; v2 stopped reading Plan v1, whose producer wrote
-#: directed claims for unsequenced families, and learned Plan v3.
+#: What each renderer VERSION reads -- FROZEN, per version, forever; the module
+#: docstring states the rule this map holds renders to.
 COMPATIBILITY: dict[tuple[str, int], dict[str, frozenset[int]]] = {
     ("template", 1): {"snapshot": frozenset({1}), "plan": frozenset({1, 2})},
     ("template", 2): {"snapshot": frozenset({1}), "plan": frozenset({2, 3})},
@@ -298,10 +298,9 @@ def _day_label(snapshot: dict) -> tuple[str | None, bool]:
 
 # --- the exact grammar -------------------------------------------------------
 
-#: The durable vocabulary of a StoryRender v1 -- FROZEN. Describes what
-#: a v1 document may contain and never tracks the running code: a v1
-#: row written today must still parse as v1 after a v2 exists. Adding a
-#: renderer, a profile, a block kind, or a key is a v2.
+#: The durable vocabulary of a StoryRender v1 -- FROZEN; it describes what a v1
+#: document may contain and never tracks the running code. Adding a renderer, a
+#: profile, a block kind, or a key is a v2.
 STORY_RENDER_V1 = {
     "version": 1,
     "renderers": frozenset({"template"}),
@@ -696,12 +695,9 @@ def heroes(conn, words: dict, frozen: dict, most: int = CARD_HEROES) -> list[dic
             continue
         held = naming.by_uuid(conn, member["file_uuid"])
         slug = held[1] if held and held[0] == "file" else None
-        # The same address the story PAGE uses, which is content-addressed
-        # (sg_web/story_view.py, vision/thumbs.py asset_url). This wrote
-        # `/thumb/<slug>` while claiming in its docstring to address them
-        # the way the page does -- so the card and the page pointed at two
-        # different URLs for one picture, one of them costing a slug
-        # lookup per hero, and neither cache hit the other's entry.
+        # The same content-addressed URL the story PAGE uses
+        # (sg_web/story_view.py, vision/thumbs.py asset_url), so a card and the
+        # page share one cache entry per picture.
         sha, _slug, medium = _addressable(conn, slug) if slug else (None, None, None)
         address = thumbs.asset_url(sha, slug, medium=medium) if slug else None
         told.append({"name": member["name"], "thumbnail": address})

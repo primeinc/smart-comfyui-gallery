@@ -31,10 +31,8 @@ import json
 from . import facets as facets_module
 from . import naming
 
-#: What this build AUTHORS. Reading is wider: `_KNOWN_VERSIONS` -- a
-#: stored v1 rule keeps meaning exactly what it meant, and "versioned"
-#: means the reader dispatches on the version instead of quietly
-#: reinterpreting old rows under a new shape.
+#: What this build authors; `_KNOWN_VERSIONS` is what it reads. The reader
+#: dispatches on the version, so a stored v1 rule keeps the meaning it had.
 RULE_VERSION = 3
 
 _KNOWN_VERSIONS = (1, 2, 3)
@@ -52,7 +50,14 @@ class UnavailableCollectionRule(ValueError):
 
 @dataclasses.dataclass(frozen=True)
 class CollectionRule:
-    """One smart collection's membership question, durable form."""
+    """One smart collection's membership question, durable form.
+
+    ``facets`` carries the registered metadata predicates (db/facets.py) a
+    gallery question holds, saved as membership, and is empty in a v1 or v2
+    rule. It never carries `event.id`: a session is a run's hypothesis over one
+    interpretation, so a rule holding one answers nothing the day the runs
+    regroup -- an empty collection wearing a saved view's clothes.
+    """
 
     version: int
     folder_uuid: bytes | None
@@ -67,12 +72,8 @@ class CollectionRule:
     sort: str | None
     take: int | None
     actor_id: int | None
-    #: v3: registered metadata predicates (db/facets.py), the facets a
-    #: gallery question carries, saved as membership. Always empty in a
-    #: v1 or v2 rule. Never `event.id`: a session is a run's hypothesis
-    #: over one interpretation, and a rule holding one would answer
-    #: nothing the day the runs regroup -- an empty collection wearing a
-    #: saved view's clothes.
+    #: v3: registered metadata predicates (db/facets.py); see the class
+    #: docstring.
     facets: tuple = ()
 
 
@@ -121,14 +122,9 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
         raise refuse(f"rating_min names the minimum stars, 1..5, not {rule.rating_min!r}")
     if rule.take is not None and (type(rule.take) is not int or rule.take < 1):
         raise refuse(f"take is a rank to stop at, at least 1, not {rule.take!r}")
-    # No ceiling. `take` names the LAST RANK that belongs, and the rule
-    # is applied by slicing an ordered list (db/resultset.py
-    # `_rule_members`), so a number larger than the library costs
-    # nothing and means the only thing it can mean: all of them. The
-    # old 1..10000 bound refused questions it could have answered --
-    # against a 3,748-file library every number above 2,995 named the
-    # same set -- and it announced itself only by rejecting whatever a
-    # person had already typed.
+    # No ceiling: `take` names the last rank that belongs and the rule is
+    # applied by slicing an ordered list (db/resultset.py `_rule_members`), so
+    # a number larger than the library means all of them.
     if rule.text is not None:
         if not isinstance(rule.text, str) or not rule.text.strip():
             raise refuse("a semantic rule's phrase must be a non-empty string")
@@ -153,10 +149,9 @@ def validate(rule: CollectionRule, refuse: type[Exception]) -> CollectionRule:
 #: is recorded once instead of twice).
 _UUID_HEX = naming.UUID_HEX
 
-#: The durable vocabulary, EXACT per version: a stored rule carrying a
-#: key this build does not understand means something this build cannot
-#: evaluate -- BROKEN, never "evaluated after quietly throwing that
-#: meaning away". Fail-closed is the whole point of a typed rule.
+#: The durable vocabulary, exact per version: a stored rule carrying a key this
+#: build does not understand is broken, never evaluated with that meaning
+#: thrown away.
 _TOP_KEYS = frozenset({"v", "where", "select"})
 _WHERE_KEYS = {
     1: frozenset({"folder", "person", "kind", "favorite", "rating_min"}),
@@ -312,10 +307,9 @@ def load(conn, collection_id: int) -> CollectionRule | None:
     version, told, actor_id = row
     try:
         held = json.loads(told)
-        # The reader is per-version and the shape is EXACT: v1 has no
-        # artifact key (one appearing there is corruption, not an
-        # upgrade), v2 requires it, and a key from any future this build
-        # does not understand refuses instead of evaluating without it.
+        # The reader is per-version and the shape is exact: v1 has no artifact
+        # key, v2 requires it, and a key this build does not understand refuses
+        # instead of evaluating without it.
         where, select = _versioned_shape(int(version), held)
         artifact_stored = None if int(version) == 1 else _stored_uuid(where["artifact"], "artifact")
         facets_stored = _stored_facets(where["facets"]) if int(version) >= 3 else ()

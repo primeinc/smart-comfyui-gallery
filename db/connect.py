@@ -18,24 +18,21 @@ import time
 
 SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 
-#: Must equal the `PRAGMA user_version` stamped at the end of schema.sql,
-#: pinned by test_the_database_states_its_version. A bump also needs a
-#: db/migrate.py step off the version left behind, or an existing database
-#: cannot be opened (test_every_version_left_behind_has_a_step_off_it).
+#: Must equal the `PRAGMA user_version` stamped at the end of schema.sql
+#: (test_the_database_states_its_version). A bump needs a db/migrate.py step off
+#: the version left behind (test_every_version_left_behind_has_a_step_off_it).
 USER_VERSION = 46
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.
 CACHE_KIB = 65_536
-#: How many values one `IN (?,?,...)` batch binds -- the ONE batching constant.
-#: The ceiling is SQLITE_MAX_VARIABLE_NUMBER, a compile-time choice defaulting to
-#: 32766 (sqlite/sqlite@b09c88c14 src/sqliteLimit.h:189-191), so `_prepared` asks
-#: the linked library (Connection.getlimit) and refuses a build that grants less.
+#: How many values one `IN (?,?,...)` batch binds. `_prepared` asks the linked
+#: library via getlimit and refuses a build granting less than
+#: SQLITE_MAX_VARIABLE_NUMBER's default 32766 (sqlite/sqlite@b09c88c14 src/sqliteLimit.h:189-191).
 PARAM_BATCH = 900
-#: How long a connection waits out another process's lock, in seconds:
-#: the WAL conversion's own wait (`_ensure_wal`) and the busy_timeout
-#: every statement gets. One duration, two units, stated once so the two
-#: waits cannot drift apart.
+#: How long a connection waits out another process's lock, in seconds: the WAL
+#: conversion's own wait (`_ensure_wal`) and the busy_timeout every statement
+#: gets. One duration, two units, so the two waits cannot drift apart.
 LOCK_WAIT_SECONDS = 5.0
 
 
@@ -177,7 +174,22 @@ def connect(path, *, read_only: bool = False, autocommit: bool = False, cross_th
 
 
 def _prepared(conn: Connection, *, journal: bool) -> Connection:
-    """Every per-connection setting, applied once, to every connection."""
+    """Every per-connection setting, applied once, to every connection.
+
+    `synchronous` is set here because its default is a compile-time choice
+    rather than SQLite's: this Python ships DEFAULT_WAL_SYNCHRONOUS=2, so every
+    commit fsyncs, and another interpreter behaves differently for reasons
+    nothing in this repo controls.
+
+    NORMAL is safe under WAL, not merely faster. The fsyncs move to checkpoint
+    rather than disappearing -- the WAL is synced before its content is written
+    into the database, and the database is synced before the WAL is deleted
+    (sqlite/sqlite@b09c88c14 src/wal.c:2175-2188) -- so a crashed process cannot
+    corrupt the file, while a power loss can cost the last few transactions.
+    That is the side of the trade a library takes whose durable facts are
+    re-derivable from disk and whose authored rows are written one at a time by
+    a person.
+    """
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute(f"PRAGMA busy_timeout={int(LOCK_WAIT_SECONDS * 1000)}")
     # The batching sites bind PARAM_BATCH values in one statement; the
@@ -187,37 +199,17 @@ def _prepared(conn: Connection, *, journal: bool) -> Connection:
         raise RuntimeError(
             f"this SQLite grants {granted} bound parameters per statement; batching assumes {PARAM_BATCH}"
         )
-    # Negative N means approximately abs(N*1024) BYTES rather than a page count
+    # Negative N means approximately abs(N*1024) bytes rather than a page count
     # (sqlite/sqlite@b09c88c14 src/pcache.c:284-288), so this is 64 MiB. The
-    # 2 MiB default decides which query plans are viable on a library-sized
-    # database, not merely how fast they run.
+    # 2 MiB default decides which query plans are viable, not merely their speed.
     conn.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
     if journal:
-        # journal_mode is a write: setting it on a read-only connection raises,
-        # and the mode is a property of the file anyway, not of the connection.
-        #
-        # Asked only when it would change something. The conversion takes an
-        # exclusive lock and `busy_timeout` does not cover it, so several
-        # processes opening one library at once raced and all but one died in
-        # `connect` itself with "database is locked" -- before doing any work,
-        # on a database that was about to be fine. Setting a mode the file is
-        # already in is a no-op that never reaches the locking path
-        # (sqlite/sqlite@b09c88c14 src/vdbe.c:8096, which guards it on eNew!=eOld).
+        # journal_mode is a write and a property of the file rather than the
+        # connection: setting it on a read-only connection raises. `_ensure_wal`
+        # holds the locking argument and its citation.
         _ensure_wal(conn)
-        # Set explicitly because the default is a COMPILE-TIME choice, not
-        # SQLite's: this Python ships DEFAULT_WAL_SYNCHRONOUS=2, so every
-        # commit fsyncs, and a different interpreter would behave differently
-        # for reasons nothing in this repo controls.
-        #
-        # NORMAL is safe here, not merely faster. Under WAL the fsyncs move to
-        # checkpoint rather than disappearing: the WAL is synced before its
-        # content is written into the database, and the database is synced
-        # before the WAL is deleted (sqlite/sqlite@b09c88c14 src/wal.c:2175-2188).
-        # So a crashed process cannot corrupt the file; a power loss can cost
-        # the last few transactions. For a library whose durable facts are
-        # re-derivable from disk, and whose authored rows are written one at a
-        # time by a person, that is the right side of the trade -- and it is a
-        # trade, which is why it is stated rather than assumed.
+        # Set explicitly rather than left to a compile-time default; the
+        # docstring states the durability trade and its citation.
         conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
