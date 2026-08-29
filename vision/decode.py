@@ -43,37 +43,9 @@ _logger = logging.getLogger(__name__)
 #: file, never the scan around it.
 TIMEOUT = 30.0
 
-#: The RAW family, decoded through LibRaw.
-#:
-#: Started as immich's list (immich-app/immich@f88fb62
-#: server/src/utils/mime-types.ts:4-35) and was described here as "LibRaw's
-#: coverage spelled as suffixes". It is not that. immich's table maps a
-#: suffix to the MIME types it serves; whether LibRaw decodes the bytes is
-#: a different question, and the two disagree.
-#:
-#: `.cin` and `.ari` were the disagreements, and both are gone.
-#:
-#: immich spells them `image/x-phantom-cin` and `image/x-arriflex-ari` --
-#: a high-speed camera's video format and a cinema camera's -- and LibRaw
-#: decodes neither. Searched LibRaw@HEAD src/, internal/ and libraw/:
-#: `cineon` 0 hits; `phantom` 1, which is "DJI Phantom4 Pro/Pro+" at
-#: cameralist.cpp:310; `\bARRI\b|ARRIFLEX|\bAlexa\b` 0. A bare `arri`
-#: search returns 3 and every one is the word `barrier`.
-#:
-#: Controls in the same trees with the same flags, because 0 hits alone
-#: is not absence: a format LibRaw really does read leaves a trail --
-#: Sigma 102 hits across 7 files, Hasselblad 16 files including its own
-#: decoder and model module, Phase One 15.
-#:
-#: The corpus HAD a real Arri Alexa Mini frame, CC0 from raw.pixls.us,
-#: and LibRaw answered `Unsupported file format or not RAW file`. That
-#: read as a corpus problem for as long as the claim stood. It was the
-#: claim.
-#:
-#: `.cap` (Phase One) and `.k25` (Kodak DC25 -- cameralist.cpp:513,
-#: identify.cpp:3256) stay: LibRaw reads both. Neither has a sample in
-#: the corpus, and that is a corpus gap the ledger reports, not a claim
-#: to edit.
+#: The RAW family, decoded through LibRaw. Drawn from immich's suffix table
+#: (immich-app/immich@f88fb62 server/src/utils/mime-types.ts:4-35), without
+#: `.ari`, `.cin`, `.psd` and `.raw`.
 RAW_SUFFIXES = frozenset(
     {
         ".3fr",
@@ -161,27 +133,9 @@ def open_still(path: str | os.PathLike[str]) -> Image.Image:
         import rawpy
         from rawpy._rawpy import LibRawError
 
-        # LibRawError descends from Exception and nothing else
-        # (letmaik/rawpy@326494be83cb rawpy/_rawpy.pyx:346), so it falls
-        # outside ITEM_FAILURES (7016dab db/runner.py:36) and a file
-        # LibRaw cannot read ended the whole job instead of failing as one
-        # item -- against that module's stated contract (7016dab
-        # db/runner.py:9-15).
-        #
-        # CanonRaw.cr2/.cr3/.crw, FujiFilm.raf, Minolta.mrw, PhaseOne.iiq,
-        # Sigma.x3f, SigmaDP2.x3f and Nikon.nef raise here -- ExifTool
-        # specimens (exiftool/exiftool@2200871d9cef t/images) truncated to
-        # their metadata. Each one alone stopped a full-library scan.
-        #
-        # Translated, not swallowed: the file still fails. `_raw_preview`
-        # below already treats LibRawError as expected.
-        #
-        # ValueError, not OSError, and the difference is load-bearing: both
-        # are in ITEM_FAILURES so the job survives either way, but the
-        # thumbnail route turns ValueError into a 404 and anything else
-        # into a 500 (sg_web/app.py:1216-1227). derive.py:257 raises
-        # ValueError for the same situation. A file with no picture in it
-        # is a 404, not a defect.
+        # LibRawError descends from Exception alone (letmaik/rawpy@326494be83cb
+        # rawpy/_rawpy.pyx:346), so it falls outside db/runner.py ITEM_FAILURES.
+        # ValueError, not OSError: the thumbnail route answers that with a 404.
         try:
             with rawpy.imread(os.fspath(path)) as raw:
                 rendered = raw.postprocess(user_flip=0)
@@ -410,23 +364,9 @@ def frames_at(path: str | os.PathLike[str], offsets_ms):
     import av
     from av.error import FFmpegError
 
-    # FFmpegError descends from Exception; its subclasses descend from
-    # assorted builtins (PyAV-Org/PyAV@040da79 av/error.pyi:9,27,59), some
-    # covered by ITEM_FAILURES and some not. ASF.wmv raised
-    # InvalidDataError (a ValueError) and failed as one item; Matroska.mkv
-    # raised EOFError and ended the whole job. Which container a file was
-    # decided which -- for the same fact about the file.
-    #
-    # Every FFmpegError is translated, not only the uncovered ones: one
-    # rule cannot drift out of step with a taxonomy in another package.
-    # Translated here, like the LibRawError above, so format knowledge
-    # stays in one layer and db/runner.py need not import av.
-    #
-    # To ValueError for the reason `open_still` states: the thumbnail route
-    # answers 404 for a ValueError and 500 for anything else. Translating
-    # these to OSError instead turned a truncated mp4 into a 500 with a
-    # traceback, which is the exact regression
-    # test_a_file_with_no_decodable_frame_is_a_404_not_a_500 exists to catch.
+    # FFmpegError subclasses descend from assorted builtins (PyAV-Org/PyAV@040da79
+    # av/error.pyi:9,27,59), so the container decides whether a failure is in
+    # ITEM_FAILURES. All are translated to ValueError, which the thumbnail route answers with a 404.
     try:
         with av.open(os.fspath(path), "r", timeout=TIMEOUT) as container:
             if not container.streams.video:

@@ -49,18 +49,9 @@ from vision import thumbs
 _logger = logging.getLogger(__name__)
 
 
-#: Priority between a browser waiting on a cell and the precache queue.
-#:
-#: A request is work someone is blocked on; the precache queue is a guess
-#: about what will be wanted later, and it renders several at a time, so
-#: it fills every core while guessing. Widening the queue therefore slows
-#: the page a person is looking at. The speculative side stands aside.
-#:
-#: An Event rather than a lock or a semaphore, because the two sides want
-#: different things: the request must not wait, and the queue only has to
-#: not start another picture. A render already running is not interrupted
-#: -- there is nothing to interrupt it with -- so the most this costs a
-#: request is the tail of the pictures already in flight.
+#: Priority between a browser waiting on a cell and the precache queue: the
+#: queue stops starting pictures while a request is outstanding. An Event, not
+#: a lock, so the request never waits and a running render is not interrupted.
 class _Waiting:
     """How many people are blocked on a picture, and a gate that is open
     exactly when nobody is."""

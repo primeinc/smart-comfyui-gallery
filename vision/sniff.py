@@ -34,21 +34,9 @@ HEAD = 512
 #: AVIF live inside ISO-BMFF exactly as MP4 does; Canon's CR3 too.
 _STILL_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heif", b"mif1", b"msf1", b"avif", b"avis", b"crx "}
 
-#: ftyp brands that are sound in a movie's container.
-#:
-#: mimesniff does not make this distinction -- its MP4 walk returns
-#: "video/mp4" for every ISO-BMFF file it recognises (mimesniff.bs:1146)
-#: -- and for a browser choosing a decoder that is fine, because an
-#: <audio> and a <video> element take the same container. It is not fine
-#: here: `kind` decides whether a file has a picture, and calling an
-#: album track a video minted it a thumbnail address, sent the renderer
-#: looking for a frame that does not exist, and answered a grid of
-#: 500s. This is the same extension `_STILL_BRANDS` already makes to the
-#: same walk, for the same reason and one family over.
-#:
-#: Apple's audio brands only. `mp42` and `isom` are deliberately absent:
-#: they are used by both, so the brand does not say, and the container
-#: reader is what settles it.
+#: ftyp brands that are sound in a movie's container, extending mimesniff's
+#: MP4 walk, which returns "video/mp4" for all of them (mimesniff.bs:1146).
+#: `mp42` and `isom` are absent: both kinds use them, so the brand does not say.
 _SOUND_BRANDS = {b"M4A ", b"M4B ", b"M4P ", b"F4A ", b"F4B "}
 
 

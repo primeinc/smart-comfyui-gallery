@@ -3,8 +3,8 @@
 OpenCLIP trains an image encoder and a text encoder into the SAME vector
 space: embed every picture once, and a typed phrase becomes a query
 vector against those stored image vectors. The API here is v3's exactly
-(refs/mlfoundations/open_clip@92433b5, README "Usage" +
-src/open_clip/model.py:326-341): `create_model_and_transforms` returns
+(mlfoundations/open_clip@92433b5 src/open_clip/model.py:326-341, and the
+README "Usage"): `create_model_and_transforms` returns
 the model and the inference transform, `encode_image` / `encode_text`
 take `normalize=True` so inner product IS the cosine, and `model.eval()`
 is mandatory -- models construct in train mode. `torch.no_grad` wraps
@@ -34,16 +34,8 @@ PROVIDER = "openclip"
 MODEL = "ViT-B-32"
 CHECKPOINT = "laion2b_s34b_b79k"
 
-#: Pictures per encoder pass. Throughput plateaus here while memory does
-#: not. Read off benchmarks/results/openclip_batch.json, 512 generated PNGs
-#: on an RTX 3070 Ti at 16 workers (`just bench clip-batch` regenerates it):
-#:
-#:     batch 64    375.9 img/s     774.7 MB peak
-#:     batch 128   400.5 img/s     933.9 MB
-#:     batch 256   395.2 img/s    1246.3 MB
-#:
-#: So 64 to 256 spans 6.5% of throughput for 1.6x the VRAM. Past 64 the
-#: memory buys almost nothing.
+#: Pictures per encoder pass. Throughput is flat from 64 to 256 while peak
+#: VRAM rises from 774.7 MB to 1246.3 (benchmarks/results/openclip_batch.json).
 BATCH = 64
 
 #: Threads for the CLIP transform inside one batch, and the job already
@@ -356,19 +348,9 @@ class ClipBackend:
         media.phase("inference", batch=1)
         with torch.no_grad():
             features = self.model.encode_image(tensor, normalize=True)
-        # `from-device` is where this program actually waits for the GPU:
-        # `.cpu()` blocks until the result exists. The phase boundaries
-        # above are host time, which is what a phase boundary can honestly
-        # be without changing the program.
-        #
-        # An earlier version put `torch.cuda.synchronize()` at each
-        # boundary so every phase would read as its own GPU cost. It gave
-        # a tidier table and a slower encoder: synchronize waits for ALL
-        # kernels in ALL streams on the device, so it fences exactly the
-        # overlap that batching exists to create. Measuring by preventing
-        # the thing being measured. Per-kernel GPU time, if it is ever
-        # wanted, is torch.cuda.Event with enable_timing -- it timestamps
-        # on the stream and is resolved when something waits anyway.
+        # `from-device` is where this program waits for the GPU: `.cpu()` blocks
+        # until the result exists. The boundaries above are host time, because
+        # torch.cuda.synchronize would fence the overlap batching creates.
         media.phase("from-device")
         return features[0].cpu().float().numpy()
 

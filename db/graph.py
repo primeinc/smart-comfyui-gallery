@@ -192,8 +192,7 @@ class _Graph:
         Followed one link at a time rather than read directly: a workflow
         that routes its prompt through a primitive, a concat or a wildcard
         node has the words a node or two upstream, and reading only the
-        literal reports an empty prompt for the workflows most likely to
-        have an interesting one.
+        literal reports an empty prompt for it.
 
         A conditioning PASS-THROUGH is followed too. Reading only the text
         inputs stopped at the first ControlNetApply, unCLIPConditioning,

@@ -120,23 +120,13 @@ def region(
     keep. The conversion below is the one place it is made.
     """
     x, y, w, h = float(x), float(y), float(w), float(h)
-    # A detector's box can run off the edge: a face at the side of the frame
-    # is reported with the whole head's extent, and part of that is not in
-    # the picture. Measured on 423 real YuNet detections, one overhung, by
-    # 1% of the frame -- and the CHECK refused it, losing a real face over a
-    # rounding of reality.
-    #
-    # So an overhang is trimmed to the frame, because the region says where
-    # in the picture something is and the rest is not in the picture. Only an
-    # overhang: a box more than half outside is not a face at the edge, it is
-    # pixel coordinates being passed as fractions, and silently turning that
-    # into a full-frame box would attach every face in the library to the
-    # same rectangle.
-    # Only a box that actually overhangs is rewritten. Clamping every box
-    # unconditionally put floating-point error into ones that were already
-    # inside -- 0.6 + 0.3 - 0.6 is 0.29999999999999993 -- so a coordinate
-    # made a round trip it never asked for and came back different.
+    # A detector's box can run off the edge, so an overhang is trimmed to the
+    # frame; a box more than half outside is pixel coordinates passed as
+    # fractions, not a face at the edge, and is refused rather than trimmed.
     if x < 0 or y < 0 or x + w > 1 or y + h > 1:
+        # Guarded, not unconditional: clamping every box puts floating-point
+        # error into ones already inside, where 0.6 + 0.3 - 0.6 is
+        # 0.29999999999999993.
         left, top = min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)
         right = min(max(x + w, 0.0), 1.0)
         bottom = min(max(y + h, 0.0), 1.0)
@@ -322,9 +312,8 @@ def _insert_face(
 
     `pose` is a mapping keyed yaw/pitch/roll, never a triple. InsightFace's
     array is [pitch, yaw, roll] and these columns are yaw-first, so a
-    positional unpack -- which is what this signature used to take -- writes
-    pitch into pose_yaw and no CHECK can see it: three REAL columns holding
-    plausible degrees either way.
+    positional unpack would write pitch into pose_yaw with no CHECK able to
+    see it: three REAL columns holding plausible degrees either way.
 
     `attributes` is the detector's whole output, stored as JSON. `age`,
     `sex` and `pose` above are promotions out of it for the values a facet
@@ -528,9 +517,8 @@ def record_faces(
     the whole set and not a row: a version that finds two faces where the
     last one found three has to be able to say so. There is no natural key to
     upsert on either -- a face is located by a `region`, and a re-run mints a
-    new region row, so keying on it would append forever. That is what this
-    used to do: running the detector twice over one photograph left two
-    copies of every face, and the only test in the suite ran it once.
+    new region row, so keying on it would append forever: running the detector
+    twice over one photograph would leave two copies of every face.
 
     `faces` is a sequence of mappings, one per detection: `region` (an id
     from `region()`) is required; `det_score`, `landmarks`, `dim`, `age`,
@@ -645,14 +633,10 @@ def recluster(
 DEFAULT_METHOD = "chinese-whispers"
 
 #: Cosine similarity at which two vectors are taken to be the same face, per
-#: embedding space. The spaces are not comparable and a single number for all
-#: of them is wrong for all but one: docs/FACE_CLUSTERING.md, Thresholds, gives the
-#: shipped per-pipeline defaults, measured on labelled data.
-#:
-#: Getting this wrong is not a small error. At 0.363 -- SFace's
-#: same-identity point, applied to ArcFace by mistake -- that document
-#: measures a top-cluster share of 0.963: essentially the whole library in
-#: one person. At 0.45 it is 0.462, at 0.6 it is 0.036 (:128-133).
+#: embedding space; the spaces are not comparable, so one number for all of them
+#: is wrong for all but one. docs/FACE_CLUSTERING.md:42-45 states these values
+#: and :71-74 what a mismatched threshold does to top-cluster share (0.963 at
+#: 0.363, 0.462 at 0.45, 0.036 at 0.6).
 SAME_PERSON = {
     "opencv/yunet+arcface": 0.48,
     "opencv/yunet+sface": 0.55,
@@ -1098,9 +1082,9 @@ def agreement(conn, run_id: int) -> dict:
 def _adopt_if_better(conn, run_id: int, model_id: str, threshold) -> None:
     """Choose the run the People page shows, on evidence rather than order.
 
-    It used to be "whichever ran first", which meant a loop that happened to
-    try 0.55 before 0.48 showed three people where there are two. The order
-    runs happen in is an accident; what they produced is not.
+    The order runs happen in is an accident; what they produced is not. Adopting
+    by order alone lets a loop that tries 0.55 before 0.48 show three people
+    where there are two.
 
     Never adopts a run that chained or grouped nothing -- a page showing one
     person called Everybody is worse than a page showing none -- and never
@@ -1279,18 +1263,9 @@ def seed_clusters_from_assertions(conn, run_id: int) -> int:
         " WHERE c.person_id IS NULL AND c.run_id = ?",
         (run_id,),
     ):
-        # A denial naming a REGION refuses that person for the cluster
-        # holding the face it overlaps: "not her, THAT one" is a claim
-        # about a FACE, and the cluster is what collects faces.
-        #
-        # A denial naming no region is not. "She is not in this picture"
-        # is about the FILE, and vetoing the cluster for it would punish
-        # every OTHER picture in the same cluster -- deny one photograph
-        # and a correctly-named person loses their name everywhere. The
-        # attribution filter is what a file-level denial acts through,
-        # and it acts on exactly the file it was about. Learned by
-        # writing the veto the broad way first and watching one denial
-        # unname the picture it was not about.
+        # A denial naming a REGION refuses that person for the cluster holding
+        # the face it overlaps. A denial naming no region is about the FILE and
+        # acts through the attribution filter, never by vetoing the cluster.
         for person, box in denied.get(file_id, ()):
             if box is not None and _overlap(boxes[region_id], boxes[box]) >= _SAME_FACE:
                 vetoes.setdefault(cluster_id, set()).add(person)

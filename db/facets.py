@@ -23,13 +23,9 @@ import re
 from . import context, when
 from .context import HUMAN_MOMENT, ORIGINS
 
-#: `CASE mc.time_precision WHEN ... END`, BUILT from `db/when.py SPAN`
-#: rather than restated. It was restated: a hand-written CASE listed five
-#: precisions and sent everything else to 2147483647, so the day a file
-#: could be dated to its month, every folder-dated scan compared as
-#: infinitely coarse and was `lte`-excluded from every bin link it
-#: belonged in. The vocabulary is `db/schema.sql`'s and the widths are
-#: `when.SPAN`'s; neither is this module's to copy.
+#: `CASE mc.time_precision WHEN ... END`, BUILT from `db/when.py SPAN` rather
+#: than restated: the vocabulary is `db/schema.sql`'s and the widths are
+#: `when.SPAN`'s, and neither is this module's to copy.
 #:
 #: Interpolated, never bound: these are float literals derived from a
 #: frozen dict at import, not input, and a CASE cannot take parameters
@@ -180,17 +176,10 @@ REGISTRY: dict[str, _Spec] = {
         " AND r.context_generation = (SELECT generation FROM derived_context_state)"
         " AND r.context_policy_version = {policy})",
     ),
-    #: WAS THIS MADE BY A MODEL. Deliberately not `context.origin` --
-    #: origin is the interpretation's verdict and has a fourth value,
-    #: `mixed`, for a file carrying BOTH capture and generation
-    #: evidence. Asking "AI generated" and getting `origin=generated`
-    #: silently drops every mixed file, and because repeated facets are
-    #: ANDed there is no way to spell "generated OR mixed" either. This
-    #: asks the fact instead: is there a generation row. Origin stays
-    #: for the forensic question of what the evidence adds up to.
-    #:
-    #: It also answers before the context job has run, which origin
-    #: cannot: the generation row is written by ingest.
+    #: WAS THIS MADE BY A MODEL, asked as the fact rather than as
+    #: `context.origin`: origin has a fourth value, `mixed`, so `origin=generated`
+    #: drops mixed files and repeated facets are ANDed. It also answers before
+    #: the context job has run, because the generation row is written by ingest.
     "has.generation": _Spec(
         "int",
         ("eq",),
@@ -335,19 +324,10 @@ REGISTRY: dict[str, _Spec] = {
         " JOIN derived_face_run fr ON fr.id = fp.run_id AND fr.is_primary = 1"
         " WHERE fp.file_id = f.id AND fp.person_id {op} ?)",
     ),
-    #: THE LONG TAIL, asked by name.
-    #:
-    #: The schema records every key any tool emitted into `file_param`
-    #: and registers it in `param_key` -- whose own comment says the
-    #: registry "is what the facet UI is generated from". Nothing
-    #: generated one, so a library full of ComfyUI's own parameters had
-    #: no way to ask about any of them.
-    #:
-    #: These stay OUT of the curated sections on purpose. A dimension is
-    #: a fact this application understands well enough to name in a
-    #: person's words; a `param_key` row is a string some tool wrote. The
-    #: two do not belong in one list, and dumping four hundred discovered
-    #: keys into the drawer would bury the twenty that mean something.
+    #: THE LONG TAIL, asked by name: `param_key` registers every key any tool
+    #: emitted into `file_param`. These stay OUT of the curated sections, because
+    #: a dimension is a fact this application names in a person's words and a
+    #: `param_key` row is a string some tool wrote.
     "param.has": _Spec(
         "text",
         ("eq", "any"),
@@ -361,27 +341,10 @@ REGISTRY: dict[str, _Spec] = {
         ("eq", "any"),
         "EXISTS (SELECT 1 FROM file_param fp WHERE fp.file_id = f.id AND fp.key = ? AND fp.value_text {op} ?)",
     ),
-    #: The same long tail, asked as a NUMBER: `steps=30` with `gte`.
-    #:
-    #: A second spec beside `param.is` rather than widening it, because
-    #: they compare different columns. `param.is` reads `fp.value_text`
-    #: and can only ever mean equals -- "steps at least 30" over text is
-    #: string comparison, where 9 is more than 30. This reads
-    #: `fp.value_num`, which the schema fills whenever a value parses as
-    #: a number and indexes for exactly this
-    #: (`file_param_key_num ON file_param(key, value_num)
-    #: WHERE value_num IS NOT NULL`).
-    #:
-    #: ONE key with three operators rather than the `param.atleast` /
-    #: `param.atmost` pair this was first sketched as: the operator is
-    #: already the middle of the URL spelling, so a key named "atleast"
-    #: carrying `gte` says it twice, and asking "at most" through it
-    #: would be unspellable.
-    #:
-    #: A key whose value never parsed as a number matches nothing here,
-    #: which is honest: `value_num` is NULL for those rows and NULL is
-    #: not greater than anything. The catalog is what stops it being
-    #: OFFERED -- `param_key.value_kind` says which keys are numbers.
+    #: The same long tail asked as a NUMBER (`steps=30` with `gte`): separate
+    #: from `param.is` because it reads `fp.value_num`, where `fp.value_text`
+    #: would compare as strings and 9 would beat 30. A key whose value never
+    #: parsed matches nothing, and `param_key.value_kind` stops it being OFFERED.
     "param.num": _Spec(
         "numpair",
         ("eq", "gte", "lte"),

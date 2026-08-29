@@ -96,7 +96,7 @@ def spherical_kmeans(
 
     Nothing new is installed for this: FAISS is already here, ships k-means,
     and runs it on every GPU in the machine with `gpu=True`
-    (facebookresearch/faiss.wiki@1354fdb, "Faiss building blocks", Clustering).
+    (facebookresearch/faiss.wiki@1354fdb Faiss-building-blocks:-clustering,-PCA,-quantization.md:20).
 
     `spherical=True` L2-normalises the centroids after each iteration, which
     is the version that means anything for face embeddings -- the vectors
