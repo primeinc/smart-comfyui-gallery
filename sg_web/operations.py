@@ -288,24 +288,32 @@ SETTING_WORDS: dict[str, tuple[str, str]] = {
 }
 
 
+#: The groups, NAMED as a heading is named rather than as a variable is.
+#: These read straight onto the page, and they used to be `models`,
+#: `runtime`, `thresholds`, `reading` -- lowercase identifiers with a
+#: `text-transform: capitalize` in the stylesheet standing in front of
+#: them. That is a stylesheet covering for its data: the words were
+#: still wrong, `Models` is not a sentence a person writes, and any
+#: surface that showed the same value without that one rule showed the
+#: identifier raw.
 SETTING_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
-        "models",
+        "Models",
         "which checkpoints the jobs load, and from where",
         ("models_dir", "caption_model", "semantic_model", "face_backend", "ort_providers"),
     ),
     (
-        "runtime",
-        "what runs, and on what",
+        "What runs, and on what",
+        "the sweeps and the hardware they use",
         ("worker", "faiss_gpu", "thumbnail_precache"),
     ),
     (
-        "thresholds",
-        "the numbers that decide what counts as the same thing",
+        "How alike counts as the same",
+        "the numbers behind duplicates and faces",
         ("dupe_threshold", "dupe_dhash_verify", "face_cluster_threshold"),
     ),
     (
-        "reading",
+        "Looking at a picture",
         "how the viewer behaves under your hand",
         ("viewer_wheel_modifier",),
     ),

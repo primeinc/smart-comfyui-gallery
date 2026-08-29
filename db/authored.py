@@ -1,16 +1,14 @@
 """What a person wrote down, and the rules that keep it.
 
 Ratings, comments, favourites, albums, named people and verdicts on what a
-model said are the one class of row nothing in this system may regenerate. Everything in
-`derived_*` can be dropped and rebuilt by definition; none of this can, so
-the operations here are deliberately narrow and every deletion is something
-a person asked for by name.
+model said cannot be reproduced from the files. `derived_*` rows can be
+recomputed; these cannot, at any cost. The operations here are narrow and
+every deletion is one a person asked for by name.
 
-`person` sits here rather than with the face pipeline. A cluster is evidence
-and is disposable; the human's naming of it is not, which is why the name
-lives on the person and `person_assertion` records the claim directly
-against the file. Dropping the entire derived namespace and re-indexing must
-leave both standing.
+`person` sits here rather than with the face pipeline. A cluster can be
+recomputed; the name a person gave it cannot, so the name lives on the
+person and `person_assertion` records the claim against the file.
+Recomputing the derived tables leaves both standing.
 """
 
 from __future__ import annotations
@@ -729,9 +727,9 @@ def feedback(
 ) -> int:
     """A person's verdict on a derived claim.
 
-    The one authored table whose subject is disposable, so its pointers are
-    ON DELETE SET NULL rather than CASCADE: dropping the derived namespace
-    must leave the judgement standing with a nulled target, not delete it.
+    The one authored table whose subject is derived. Its pointers are
+    ON DELETE SET NULL rather than CASCADE, so recomputing the derived
+    tables leaves the verdict with a nulled target instead of deleting it.
 
     `model_id`/`model_version` are the producer that was judged, COPIED
     rather than referenced -- for the same reason `annotation_kind` is a

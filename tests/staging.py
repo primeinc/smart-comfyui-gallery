@@ -189,7 +189,20 @@ def _built_master() -> pathlib.Path:
         # the next one to copy as a database.
         building = where / f"{master.stem}.{os.getpid()}.building"
         build.build(building)
-        os.replace(building, master)
+        try:
+            os.replace(building, master)
+        except PermissionError:
+            # Four xdist workers are four processes, and this cache is
+            # per-process, so all four find no master and all four build
+            # one. Windows refuses a rename onto a file another process
+            # holds open, which is what the winner's readers are doing;
+            # POSIX allows it, so this only ever fails here. The name is
+            # a digest of the DDL and the connection, so whoever won
+            # built THIS artifact -- take theirs and drop ours. A
+            # missing master means the refusal was about something else.
+            building.unlink(missing_ok=True)
+            if not master.exists():
+                raise
     return master
 
 

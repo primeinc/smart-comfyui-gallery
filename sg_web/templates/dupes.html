@@ -9,78 +9,138 @@
   {{ index("Duplicates", groups | length, "group", "groups") }}
   <main class="stage">
     {% if groups %}
-    {# Read-only, on purpose. The operation worth building is not "delete
-       duplicates" but "consolidate redundant storage while preserving
-       every logical placement", and a preview that is wrong is worse
-       than no preview -- so the preview ships first and alone. #}
-    <p class="operations-hint">Nothing here deletes anything. What a copy is FILED under is shown beside it, because three copies of one photograph in <em>Iowa 2019</em>, <em>Family</em> and <em>Old Backup</em> are one picture and three placements &mdash; and removing two of them quietly leaves two collections incomplete.</p>
-    <ul class="dupe-groups" data-dupe-groups>
+    <aside class="note" data-dupes-note>
+      <span class="note-mark" aria-hidden="true">i</span>
+      <div>
+        <b>Nothing here deletes anything.</b>
+        Each copy shows which album it is in, because the same photo in three albums is one photo in three
+        places. Delete two and two albums lose a picture.
+      </div>
+    </aside>
+
+    <ol class="dupe-groups" data-dupe-groups>
       {% for group in groups %}
+      {% set best = (group.members | selectattr("is_best") | list | first) or group.members[0] %}
       <li class="dupe-group" data-dupe-group="{{ group.slug }}" data-dupe-kind="{{ group.kind }}">
-        <h2>
-          <a href="/i/{{ group.slug }}">{{ middle(group.name) }}</a>
-          <span class="dupe-count" data-dupe-copies="{{ group.copies }}">{{ group.copies }} copies</span>
-        </h2>
-        {# The evidence, above the claim that rests on it. The verdict
-           below ends "every collection still complete", and that is a
-           sentence somebody is being asked to believe about their own
-           albums -- so the albums are named here, each with how whole it
-           is right now. A count short of its own total is a fact about
-           the library, not about consolidating, and seeing it here is
-           the point: it is the number that would move if the operation
-           were the naive one. #}
-        {% if group.placements %}
-        <p class="dupe-placements" data-dupe-placements>
-          Filed in:
-          {% for one in group.placements %}<span class="dupe-placement" data-dupe-placement="{{ one.name }}">{{ one.name }}
-            <code class="raw" data-placement-whole="{{ one.present }}/{{ one.members }}">{{ one.present }}/{{ one.members }} present</code></span>{% if not loop.last %}<span class="muted"> · </span>{% endif %}{% endfor %}
-        </p>
-        {% endif %}
-        {# The distinction that decides whether consolidating is even
-           safe. These groups are PERCEPTUAL: a re-encode, a resize and a
-           different crop all land in one, and only identical bytes can
-           become one stored payload without losing something. #}
-        {% if group.consolidates_to %}
-        <p class="dupe-verdict" data-dupe-identical>
-          Byte-identical &mdash; one stored payload.
-          <b>After consolidating: {{ group.consolidates_to }} placements, 1 payload, every collection still complete.</b>
-        </p>
-        {% else %}
-        <p class="dupe-verdict" data-dupe-alike>
-          Alike, but <b>not the same bytes</b> &mdash; {{ group.payloads }} distinct payloads. A re-encode, a resize or a
-          different crop lands here too. These cannot be collapsed into one file without losing whichever one is not kept.
-        </p>
-        {% endif %}
-        <ul class="dupe-members">
-          {% for one in group.members %}
-          <li class="dupe-member" data-dupe-member="{{ one.slug }}"{% if one.is_best %} data-dupe-best{% endif %} data-kind="{{ one.kind }}">
-            <a class="cell" href="/i/{{ one.slug }}" data-slug="{{ one.slug }}" data-kind="{{ one.kind }}">
-              {{ pictures.face(one) }}
-            </a>
-            <div class="dupe-member-said">
-              <span class="dupe-member-name">{{ middle(one.name) }}</span>
-              <span class="muted">in <a href="/f/{{ one.folder }}">{{ one.folder }}</a></span>
-              {# A placement, not a decoration: this is the thing that is
-                 lost if the wrong copy goes. #}
-              {% if one.collections %}<span class="dupe-member-filed" data-dupe-filed>filed under {{ one.collections }}</span>{% else %}<span class="muted" data-dupe-unfiled>in no collection</span>{% endif %}
-              {% if one.is_best %}<span class="dupe-best">best of the group</span>
-              {% else %}<span class="muted" title="hamming bits from this copy's perceptual hash to the best one's">{{ one.distance }} bits from the best{% if one.verified %} &middot; a second fingerprint agreed{% endif %}</span>
-              {# A group is a GUESS: pHash sees composition, so two
-                 photographs of one scene a second apart are close in
-                 it. This is the page disagreeing with one -- and it
-                 survives the next sweep, which reads the verdicts back
-                 before it writes a group. #}
-              <button type="button" class="btn-quiet" data-not-a-duplicate="{{ one.slug }}" data-against="{{ group.slug }}"
-                      title="not the same picture as {{ group.name }} &mdash; and remember that">not a duplicate</button>{% endif %}
+        <div class="dupe-body">
+          {# One photo, big. The copies are a deck beside it rather than
+             six full tiles, so a group is a block instead of a page. #}
+          <div class="dupe-stage">
+            <div class="dupe-canvas" data-dupe-canvas data-best="{{ best.thumb }}" data-mode="photo">
+              <img src="{{ best.thumb }}" alt="{{ best.name }}" data-dupe-shown loading="lazy">
+              {# The heat map, drawn over the picture it describes. In
+                 `difference` mode the picture dims underneath so the heat
+                 is the only thing with colour in the frame. #}
+              <canvas class="dupe-heat" data-dupe-heat aria-hidden="true"></canvas>
+              <div class="dupe-modes" role="group" aria-label="what to show">
+                <button type="button" data-dupe-mode="photo" aria-pressed="true">Photo</button>
+                <button type="button" data-dupe-mode="difference" aria-pressed="false">Difference</button>
+              </div>
+              <a class="dupe-open" href="/i/{{ best.slug }}" data-dupe-open>Open</a>
             </div>
-          </li>
-          {% endfor %}
-        </ul>
+          </div>
+
+          <div class="dupe-side">
+            <header class="dupe-head">
+              <h2 data-dupe-title>{{ middle(best.name) }}</h2>
+              <span class="pill pill-quiet" data-dupe-copies="{{ group.copies }}">{{ group.copies }} copies</span>
+              {% if group.consolidates_to %}
+              <span class="pill pill-ok" data-dupe-identical>same file</span>
+              {% else %}
+              <span class="pill pill-warn" data-dupe-alike>{{ group.payloads }} different files</span>
+              {% endif %}
+            </header>
+
+            {# Click one to see it. The first is the one the sweep picked. #}
+            <ul class="dupe-deck" data-dupe-members>
+              {% for one in group.members %}
+              <li class="dupe-card" data-dupe-member="{{ one.slug }}"{% if one.is_best %} data-dupe-best{% endif %}>
+                <button type="button" class="dupe-pick" data-dupe-pick
+                        data-thumb="{{ one.thumb }}" data-name="{{ one.name }}" data-href="/i/{{ one.slug }}"
+                        aria-pressed="{{ 'true' if one.is_best else 'false' }}"
+                        title="{{ one.name }}">
+                  <img src="{{ one.thumb }}" alt="" loading="lazy">
+                  {% if one.is_best %}<span class="dupe-flag" aria-hidden="true">★</span>{% endif %}
+                </button>
+              </li>
+              {% endfor %}
+            </ul>
+
+            {# What the pixels say, not what the hash says. Big, because it
+               is the number the decision turns on. #}
+            <div class="dupe-readout" data-dupe-readout hidden>
+              <strong data-dupe-figure>&mdash;</strong>
+              <span data-dupe-measure>of the frame changed</span>
+            </div>
+
+            <p class="dupe-verdict">
+              {% if group.consolidates_to %}
+              <b>The same file, saved {{ group.copies }} times.</b>
+              Keeping one would free space and every album would still have its picture.
+              {% else %}
+              <b>The same photo, saved as {{ group.payloads }} different files.</b>
+              Someone resized, re-saved or cropped it. They are not interchangeable &mdash; whichever you drop
+              is gone.
+              {% endif %}
+            </p>
+
+            {% if group.placements %}
+            <ul class="dupe-placements" data-dupe-placements>
+              {% for one in group.placements %}
+              <li class="dupe-placement" data-dupe-placement="{{ one.name }}">
+                <span>{{ one.name }}</span>
+                <span class="pill {{ 'pill-ok' if one.present == one.members else 'pill-warn' }}"
+                      data-placement-whole="{{ one.present }}/{{ one.members }}">{{ one.present }} of {{ one.members }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+
+            <div class="dupe-detail">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th scope="col">File</th>
+                      <th scope="col">Folder</th>
+                      <th scope="col">Album</th>
+                      <th scope="col">How different</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for one in group.members %}
+                    <tr{% if one.is_best %} data-dupe-best-row{% endif %}>
+                      <th scope="row"><a href="/i/{{ one.slug }}">{{ middle(one.name) }}</a></th>
+                      <td><a href="/f/{{ one.folder }}">{{ one.folder }}</a></td>
+                      <td>{% if one.collections %}{{ one.collections }}{% else %}<span class="muted">none</span>{% endif %}</td>
+                      <td>
+                        {% if one.is_best %}<span class="pill pill-chosen">the one picked</span>
+                        {% elif one.distance == 0 %}<span class="pill pill-ok">looks identical</span>
+                        {% else %}<span class="pill pill-warn">slightly different</span>{% endif %}
+                      </td>
+                      <td>
+                        {% if not one.is_best %}
+                        {# Grouping is a guess: two photos of one scene a
+                           second apart look alike to it. This is how you
+                           say no, and it sticks. #}
+                        <button type="button" class="btn-quiet" data-not-a-duplicate="{{ one.slug }}" data-against="{{ group.slug }}"
+                                title="not the same photo">not a duplicate</button>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </li>
       {% endfor %}
-    </ul>
+    </ol>
     {% else %}
-    <p class="empty" data-dupes-none>No duplicate groups. Either this library has none, or the sweep has not run &mdash; the operations console queues it as <em>group perceptual copies</em>.</p>
+    <p class="empty" data-dupes-none>No duplicates found. Either there are none, or the check has not run &mdash; start it from Operations.</p>
     {% endif %}
   </main>
 {% endblock %}

@@ -11,8 +11,6 @@ import { mountViewer } from "./viewer";
 type DesiredPlace = components["schemas"]["DesiredPlace"];
 type PlaceKind = DesiredPlace["kind"];
 
-const pad = (n: number) => String(n).padStart(2, "0");
-
 /**
  * The place kinds the contract admits, proven rather than asserted.
  *
@@ -29,15 +27,6 @@ const asPlaceKind = (held: string): PlaceKind => {
 };
 
 (() => {
-  // the "when" block speaks its clock domain
-  for (const node of everyElement(document, "time[data-epoch]", HTMLTimeElement)) {
-    const d = new Date(Number(requireData(node, "epoch")) * 1000);
-    const z = node.dataset.domain === "instant" ? "Z" : " wall";
-    node.textContent =
-      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
-      `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}${z}`;
-  }
-
   // a moment's caption is a link into the clip: play from that second
   const video = findElement(document, "video", HTMLVideoElement);
   for (const at of everyElement(document, "[data-said-seek]", HTMLElement)) {

@@ -156,10 +156,10 @@ _BY_PRODUCER = (
 def by_producer(conn) -> list[Judged]:
     """Every producer that has been judged, most-judged first.
 
-    Read from `feedback` alone and never joined to `derived_annotation`:
-    the judgement is the durable half and the annotation is the
-    disposable one, so joining would make a rebuild look like people
-    changed their minds.
+    Read from `feedback` alone, never joined to `derived_annotation`. The
+    verdict is authored and the annotation is derived, so a join would drop
+    verdicts whose annotation row was replaced by a re-run and report that
+    as people changing their minds.
     """
     held: dict[tuple[str, str, str], dict[str, int]] = {}
     for model_id, model_version, kind, verdict, n in conn.execute(_BY_PRODUCER):

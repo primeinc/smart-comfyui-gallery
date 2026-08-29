@@ -245,10 +245,10 @@ def collection_choices(state: State, slug: FromPath[str]) -> Response[list[Colle
 class Judged(Wire):
     """The body of POST /i/{slug}/said/verdict: a thumb on one caption.
 
-    The claim is named by what it IS -- the kind of annotation and the
-    producer that made it -- never by the annotation's row id. The
-    derived layer is disposable and this judgement has to outlive being
-    rebuilt; an id would be a pointer to something a re-run deletes.
+    The claim names the kind of annotation and the producer that made it,
+    not the annotation's row id. A re-run replaces that row, and the
+    verdict has to survive it; a row id would point at what the re-run
+    deleted.
     """
 
     #: which kind of thing the model said (db/schema.sql derived_annotation)
