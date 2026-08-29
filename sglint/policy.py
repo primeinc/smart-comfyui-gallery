@@ -3,7 +3,7 @@
 Every entry here is a promise about the tree that the rules in
 sglint/rules.py hold it to. Adding a name is a decision; the exactness
 rule (SG102) prunes a name the moment nothing writes it, so these lists
-are the tree's current truth, never a record of what used to be.
+are the tree's current truth.
 """
 
 from __future__ import annotations
@@ -262,10 +262,9 @@ ADAPTER_MUST_CALL: dict[str, frozenset[str]] = {
             "replace_rule",
             "convert_to_smart",
             "convert_to_listed",
-            # The after-state a write hands back. It used to be `view` --
-            # the whole management document, assembled and thrown away --
-            # and it is now the address and the revision, still built by
-            # the module that owns the collection's representations.
+            # The after-state a write hands back: the address and the
+            # revision, built by the module that owns the collection's
+            # representations.
             "write_answer",
         }
     ),
@@ -288,16 +287,9 @@ MUST_IMPORT: dict[str, tuple[str, str]] = {
 }
 #: Words a source file must not contain at all.
 MUST_NOT_CONTAIN: dict[str, tuple[str, ...]] = {
-    # No entry for `sg_web/media_view.py: "neighbour"`. What it meant to
-    # hold is that the viewer takes its walk from `resultset.neighborhood`
-    # and never from `pages.neighbour` -- a second opinion about what
-    # "next" means -- and MUST_NOT_CALL_QUALIFIED above states exactly
-    # that, over the AST, where a call is a call. The substring form
-    # added nothing and could not work: `pages.neighbour` is a live
-    # function (db/pages.py), the word appears 51 times across this tree
-    # including the route `/prompts/{id}/neighbours`, and SG406 announced
-    # it as "deleted on purpose" -- which was never true. It fired on a
-    # comment.
+    # `sg_web/media_view.py: "neighbour"` has no entry here: the viewer takes
+    # its walk from `resultset.neighborhood`, and MUST_NOT_CALL_QUALIFIED
+    # states that over the AST, where a call is a call.
     "db/pages.py": ("ARTIFACT_FILES", "WORKFLOW_FILES", "def artifact_files", "def workflow_files"),
     "sg_web/app.py": ("add_to_collection", "remove_from_collection"),
     # uvicorn workers > 1 splits the in-memory feed across processes
@@ -445,7 +437,7 @@ ENDINGS_MINIMUM: int = 100
 LF_MINIMUM: int = 50
 #: How long one git subprocess may run before the sweep is called hung.
 #: Fifteen minutes is far past any healthy `ls-files` or checkout-index
-#: on this tree; the value exists to fail eventually, not to pace.
+#: on this tree; the value exists to fail rather than hang, not to pace.
 GIT_TIMEOUT_SECONDS: int = 900
 #: How much of a failed checkout's stderr a finding carries -- enough
 #: to name the cause, bounded so one finding cannot become a dump.
@@ -455,23 +447,9 @@ STDERR_SHOWN: int = 200
 SHELL_TEMPLATE = "base.html"
 EXTENDS_SHELL = '{% extends "base.html" %}'
 
-#: Pages that own their whole document on purpose, and why.
-#:
-#: Recorded rather than exempted quietly. The shell is the right default
-#: -- a page that skipped it by accident would be missing the navigation,
-#: the notice and the activity surface, and nothing would say so -- but
-#: "every page extends the shell" is a rule about pages that SCROLL, and
-#: it cannot describe a surface whose whole job is one canvas the size of
-#: the window.
 #: A capability nothing in the interface reaches, and why that is the
-#: right answer today. Anything absent from here must be reachable;
-#: anything here must still exist. Both halves are checked, so a stale
-#: exemption is a finding and a new unsurfaced capability is a finding.
-#:
-#: Recording it is the point. A gap nobody wrote down is indistinguishable
-#: from a gap nobody noticed, which is how a compare tray came to ship
-#: fully built, styled, tested, and openable only by pressing a letter
-#: nothing on screen mentioned.
+#: right answer. Anything absent from here must be reachable and anything
+#: here must still exist, and SG010 checks both halves.
 UNSURFACED = {
     # Infrastructure. Nothing should link to these.
     "/health": "a liveness probe for whatever runs the process",
@@ -496,16 +474,9 @@ UNSURFACED = {
     # Reached by an address the SERVER hands the client, so the string
     # check below cannot see it.
     "/search": "linked from the evolution surface as view.links.search (frontend/src/evolution.ts)",
-    # The sweeps, in their machine spelling. Nothing in the interface posts
-    # to these: a person starts the same work from the operations console,
-    # which posts to /operations/jobs/{kind} and is answered by LAUNCHERS
-    # (sg_web/operations.py). Every one of these twelve has an entry there,
-    # so the CAPABILITY is reachable and only this address is not.
-    #
-    # Kept rather than deleted because they are the API a script uses, and
-    # the console's own route takes a kind rather than a path. If one is
-    # ever dropped from LAUNCHERS, its work stops being reachable by
-    # pointing and this record becomes the wrong answer.
+    # The sweeps in their machine spelling, kept as the API a script uses: a
+    # person starts the same work from the operations console, which posts to
+    # /operations/jobs/{kind} and is answered by LAUNCHERS (sg_web/operations.py).
     "/jobs/verify": "console sweep `verify`",
     "/jobs/faces": "console sweep `faces`",
     "/jobs/annotate": "console sweep `annotate`",

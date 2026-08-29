@@ -413,12 +413,12 @@ def read(path, image: Image.Image | None = None) -> Capture:
     during `open`, and ingest was paying that twice on a file that turns
     out to have no EXIF at all. The pixels are never touched either way.
 
-    A file that cannot be opened is reported, not raised. One truncated JPEG
-    in a library used to end the whole ingest pass: `Image.open` raises
+    A file that cannot be opened is reported, not raised, so one truncated
+    JPEG does not end an ingest pass: `Image.open` raises
     `UnidentifiedImageError(OSError)` (refs/python-pillow/Pillow/src/PIL/
     __init__.py:78), `ValueError`, or `DecompressionBombError`, which is a
     bare Exception (Image.py:79) and so escapes an `except OSError`. Nothing
-    between here and the caller caught any of them.
+    between here and the caller catches any of them.
     """
     # PIL.Image is imported where a picture is read, the way `av` is in
     # read_video: 23ms of import (-X importtime) every app boot was paying.
@@ -734,11 +734,9 @@ def store(conn, file_id: int, found: Capture, now: float, mint) -> None:
             "INSERT OR IGNORE INTO blob(hash, payload_bin, byte_len) VALUES(?, ?, ?)",
             (digest, payload, len(payload)),
         )
-        # parsed_by stays NULL: the bytes are kept, and nothing here claims to
-        # have understood them. That is what makes unparsed metadata a
-        # queryable backlog rather than a silent loss.
-        # Not INSERT OR REPLACE: REPLACE fires no DELETE trigger, so the
-        # payload the row used to point at is never reclaimed.
+        # parsed_by stays NULL: the bytes are kept unparsed, as a queryable
+        # backlog. Not INSERT OR REPLACE: REPLACE fires no DELETE trigger, so
+        # the blob payload it displaces is never reclaimed.
         conn.execute(
             "INSERT INTO file_blob(file_id, carrier, slot, blob_hash, seen_at)"
             " VALUES(?, 'exif', ?, ?, ?)"

@@ -10,8 +10,8 @@ and never any executable text.
 Three conversions happen exactly once, in `from_gallery_query`:
 
 - entity references are stored by `entity.uuid`, never by slug -- a
-  slug is an address spelling that can be renamed and eventually
-  reused, and a saved rule must mean the entity that was selected;
+  slug is an address spelling that can be renamed and reused, and a
+  saved rule must mean the entity that was selected;
 - authored facets (favorite, rating_min) PIN the creating actor into
   the rule -- "Will's favorites" means Will's whoever is looking;
 - a semantic phrase REQUIRES `take`: ranking the library by similarity

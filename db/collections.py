@@ -31,7 +31,7 @@ identity.
 
 Archive is the user-facing end of life, not deletion: hard-deleting a
 collection would take its entity and its slug history with it, and a
-retired address that can someday resolve to a DIFFERENT entity breaks
+retired address that can resolve to a DIFFERENT entity breaks
 the addressability doctrine every page is built on. An archived
 collection keeps its members, children, rule and address; it leaves the
 shelves and the pickers, and restore reverses exactly.
