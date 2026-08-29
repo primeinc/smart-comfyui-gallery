@@ -147,7 +147,7 @@ NEWEST_STRIP = 12
 
 
 @get("/what", sync_to_thread=False)
-def what_this_can_do() -> Template:
+def what_this_can_do(request: Request) -> Template:
     """The door register, as a page.
 
     A capability that ships with tests, styling and no visible entry
@@ -162,7 +162,12 @@ def what_this_can_do() -> Template:
     is dropped, or a setting that is added cannot leave this page
     describing an older application.
     """
-    return Template(template_name="inventory.html", context={"held": inventory.held()}, headers=VARIES)
+    # The application's OWN route table, handed over rather than
+    # imported: this module is what `sg_web/inventory.py` would have to
+    # import to ask, and it already imports that. A surface added
+    # tomorrow appears here without anybody adding it twice.
+    served = {route.path for route in request.app.routes}
+    return Template(template_name="inventory.html", context={"held": inventory.held(served)}, headers=VARIES)
 
 
 def _covers(newest: list) -> list[str]:

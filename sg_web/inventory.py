@@ -12,13 +12,16 @@ offers, the sweeps it can run and who starts them, the settings it
 answers to, and -- the part that matters -- the things it can do that
 NOTHING on screen reaches, each with the reason it is not surfaced.
 
-READ FROM THE APPLICATION, never written out here. The ways in come from
-the route table, the sweeps from `sg_web/operations.py LAUNCHERS`, the
-settings from `db/settings.py REGISTRY`, and the recorded gaps from the
-same registers `sglint` holds the tree to. One register, two readers: the
-linter refuses an unrecorded gap at commit time, and this draws the same
-list for a person. They cannot disagree, because there is only one of
-them.
+READ FROM THE APPLICATION wherever the application can answer. The sweeps
+come from `sg_web/operations.py LAUNCHERS`, so the list IS the console's
+buttons; the settings from `db/settings.py REGISTRY`; the gaps from the
+same registers `sglint` holds the tree to -- one register, two readers,
+which cannot disagree because there is only one of them.
+
+The surfaces are the exception, and `SAID` below says why at length: a
+route is not a surface, and no rule the application can state tells the
+two apart. That one list is authored, and every entry in it is checked
+against what is actually served.
 
 Importing `sglint.policy` from the application looks backwards and is
 deliberate. The alternative is a second copy of the decisions, which
@@ -53,28 +56,71 @@ class Gap:
     why: str
 
 
-#: The surfaces, in the order a person meets them. The addresses are
-#: real; a name here whose address stopped being served would 404 on
-#: click, which is the loudest possible way for this list to be wrong.
-SURFACES: tuple[tuple[str, str, str], ...] = (
-    ("The library", "every picture, newest first, and the question box over it", "/g"),
-    ("The field", "the whole answer on one canvas, placed in time, with a board of kept questions", "/field"),
-    ("Timeline", "every sitting in order, with the quiet stretches drawn as quiet stretches", "/timeline"),
-    ("People", "everyone this library has found, named or waiting to be", "/people"),
-    ("Places", "where the pictures with a place were taken", "/places"),
-    ("Collections", "albums, and questions saved as albums", "/albums"),
-    ("Keywords", "the words put on pictures by hand", "/keywords"),
-    ("Folders", "the library as it really sits on disk", "/folders"),
-    ("Duplicates", "near-identical copies, with the difference measured rather than guessed", "/dupes"),
-    ("Stories", "what the library has been told to say about a sitting", "/stories"),
-    ("Operations", "what is running, what it did, and every setting", "/operations"),
-    ("Models and LoRAs", "the checkpoints and adapters these pictures were made with", "/models"),
-    ("Workflows", "the graphs behind the generated files", "/workflows"),
-)
+#: The surfaces: what each is called, what it answers, and where.
+#:
+#: AUTHORED, and checked against what is served rather than trusted. That
+#: split is the honest one, and it took two wrong answers to find.
+#:
+#: Written out and nothing else, first: accurate the day it was typed,
+#: held there by nothing, and already missing /loras, /clusterings and
+#: /views -- exactly the decay this page exists to stop.
+#:
+#: Then derived from the route table, which is worse. A route is not a
+#: surface. Sixty rows came back: /g/grid and /g/peek (htmx fragments),
+#: /g/field/shape (JSON the canvas asks for), /ws/jobs (a socket),
+#: /schema/openapi.json, /sw.js, /manifest.webmanifest. Listing those as
+#: places to go would make the page wrong in a louder way than leaving
+#: one out.
+#:
+#: So: a person decides what counts as a surface, because that is a
+#: judgement about what a place IS -- and the application decides whether
+#: each one is still served. An entry whose address stops being served
+#: disappears rather than 404ing, which is the failure that matters.
+#:
+#: What this does NOT hold: a page added tomorrow with no entry here will
+#: not appear. That is a real gap and it is named rather than papered
+#: over -- sglint's SG010 is what catches an unreachable surface, and it
+#: reads the templates and the browser source, not this list.
+SAID: dict[str, tuple[str, str]] = {
+    "/g": ("The library", "every picture, newest first, and the question box over it"),
+    "/field": ("The field", "the whole answer on one canvas, placed in time, with a board of kept questions"),
+    "/timeline": ("Timeline", "every sitting in order, with the quiet stretches drawn as quiet stretches"),
+    "/people": ("People", "everyone this library has found, named or waiting to be"),
+    "/places": ("Places", "where the pictures with a place were taken"),
+    "/albums": ("Collections", "albums, and questions saved as albums"),
+    "/keywords": ("Keywords", "the words put on pictures by hand"),
+    "/folders": ("Folders", "the library as it really sits on disk"),
+    "/dupes": ("Duplicates", "near-identical copies, with the difference measured rather than guessed"),
+    "/stories": ("Stories", "what the library has been told to say about a sitting"),
+    "/operations": ("Operations", "what is running, what it did, and every setting"),
+    "/models": ("Models", "the checkpoints these pictures were made with"),
+    "/loras": ("LoRAs", "the adapters, and what each one was used on"),
+    "/workflows": ("Workflows", "the graphs behind the generated files"),
+    "/clusterings": ("Face groupings", "each run of the face clusterer, and what it disagreed with"),
+    "/views": ("Saved views", "the questions kept from the filter bar"),
+    "/what": ("What this can do", "this page"),
+}
+
+#: Addresses that are served to a browser but are not places to go: the
+#: front door, and anything the shell already carries.
+NOT_A_SURFACE = frozenset({"/"})
 
 
-def surfaces() -> list[Way]:
-    return [Way(name, about, at) for name, about, at in SURFACES]
+def surfaces(served: typing.Iterable[str]) -> list[Way]:
+    """The surfaces, each one CHECKED against what is being served.
+
+    `served` is the application's own route paths -- handed over rather
+    than imported, because `sg_web/app.py` imports this module and asking
+    it for its routes from in here would be a cycle.
+
+    An entry whose address stops being served drops out of the page. That
+    is the failure worth designing against: a register that keeps
+    offering a door onto a room that was demolished is worse than one
+    that is merely incomplete, because it is confidently wrong and a
+    person finds out by clicking.
+    """
+    held = set(served)
+    return [Way(name, about, at) for at, (name, about) in SAID.items() if at in held and at not in NOT_A_SURFACE]
 
 
 def sweeps() -> list[Way]:
@@ -121,10 +167,10 @@ def gaps() -> list[Gap]:
     return found
 
 
-def held() -> dict[str, typing.Any]:
+def held(served: typing.Iterable[str]) -> dict[str, typing.Any]:
     """The whole inventory, for the page and for a machine asking."""
     return {
-        "surfaces": surfaces(),
+        "surfaces": surfaces(served),
         "sweeps": sweeps(),
         "settings": knobs(),
         "gaps": gaps(),
