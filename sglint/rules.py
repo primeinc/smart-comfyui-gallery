@@ -28,6 +28,7 @@ import functools
 import os
 import pathlib
 import re
+import tokenize
 import typing
 
 from . import policy
@@ -1683,6 +1684,51 @@ def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding
     return found
 
 
+def rule_comment_blocks(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG013: a comment block outside a docstring runs past three lines.
+
+    CONTRIBUTING.md holds a non-docstring comment block to two sentences or
+    three physical lines. Vale enforces the sentence half and cannot enforce
+    this one: it joins a block into one string with the newlines stripped, and
+    `occurrence` puts word boundaries around its token, so a whitespace or
+    newline token matches nothing there while a word token matches. Counting
+    physical lines needs the file, which is why this lives here.
+
+    Only standalone `#` comments count. A trailing comment is one line by
+    construction, and a docstring is exempt by the standard.
+    """
+    found: list[Finding] = []
+    for source in every_source():
+        if not source.is_relative_to(root):
+            continue
+        try:
+            with tokenize.open(source) as handle:
+                comments = [
+                    tok
+                    for tok in tokenize.generate_tokens(handle.readline)
+                    if tok.type == tokenize.COMMENT and not tok.line[: tok.start[1]].strip()
+                ]
+        except (OSError, SyntaxError, tokenize.TokenError, UnicodeDecodeError):
+            continue
+        run: list[tokenize.TokenInfo] = []
+        for tok in [*comments, None]:
+            if run and (tok is None or tok.start[0] != run[-1].start[0] + 1):
+                if len(run) > 3:
+                    found.append(
+                        Finding(
+                            source,
+                            run[0].start[0],
+                            run[0].start[1],
+                            "SG013",
+                            f"comment block runs to {len(run)} lines; the limit is three",
+                        )
+                    )
+                run = []
+            if tok is not None:
+                run.append(tok)
+    return found
+
+
 # --- all of it ----------------------------------------------------------------------------------
 
 RULES = (
@@ -1700,6 +1746,9 @@ RULES = (
     rule_producers,
     rule_request_contracts,
     rule_response_contracts,
+    # rule_comment_blocks is NOT here yet. It reports 825 findings on this
+    # tree, and a rule wired in while it cannot pass blocks every commit.
+    # It joins RULES in the commit that clears the last one.
 )
 
 
