@@ -19,10 +19,10 @@ from tests.staging import fresh_schema
 def db():
     """The schema, from the per-process master rather than the DDL.
 
-    `executescript` of the whole schema is ~11 ms and a backup from a
-    master built once is ~0.5 ms (tests/staging.py `fresh_schema`, whose
-    measurements these are). Thirty tests here start from exactly this,
-    in front of calls that answer in a hundredth of a second.
+    A backup from a master built once per process is far cheaper than
+    `executescript` of the whole schema (tests/staging.py `fresh_schema`).
+    Thirty tests here start from exactly this, in front of calls that
+    answer in a hundredth of a second.
     """
     return fresh_schema()
 

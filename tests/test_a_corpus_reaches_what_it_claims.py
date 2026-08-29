@@ -48,8 +48,8 @@ def _media():
 
     NOT a skipif. Pointing these at `../refs` made seven of eight skip on
     every machine but one, and a suite that skips its own subject is
-    green about nothing. The corpus is 1.1 MB from a pinned tag; if it
-    cannot be had, that is a failure, not an excuse.
+    green about nothing. The corpus comes from a pinned tag; if it cannot
+    be had, that is a failure, not an excuse.
     """
     return sourced.fetch()
 
@@ -152,9 +152,9 @@ def test_the_corpus_covers_a_kind_the_synthetic_one_never_wrote():
 @pytest.fixture(scope="module")
 def measured():
     """One traced pass over the specimens, read by both tests below --
-    and cached across runs: tracing 35 real files costs ~1.3s, and with
-    neither the corpus nor a reader changed it recomputes a constant.
-    `corpus_measurement` keys on both, so any edit re-measures."""
+    and cached across runs: tracing 35 real files is the expensive part,
+    and with neither the corpus nor a reader changed it recomputes a
+    constant. `corpus_measurement` keys on both, so any edit re-measures."""
     files = [path for _one, path in sourced.specimens()]
     told = json.loads(
         staging.corpus_measurement(

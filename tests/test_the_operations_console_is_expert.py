@@ -388,8 +388,8 @@ def served(tmp_path_factory):
 @pytest.fixture(scope="module")
 def _bare_stage(tmp_path_factory):
     """One application over an EMPTY home, for the tests that bring their
-    own library. Each was building its own -- 0.31s of interpreter and
-    migrations, measured -- to register a root and read it back."""
+    own library. Each was building its own -- an interpreter's worth of
+    imports and a migration -- to register a root and read it back."""
     with hosting(tmp_path_factory, "console_bare") as stage:
         yield stage
 

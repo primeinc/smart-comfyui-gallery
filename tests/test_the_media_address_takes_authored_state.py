@@ -33,7 +33,7 @@ AS_OVERLAY = {"hx-request": "true"}
 def _bare_stage(tmp_path_factory):
     """One application over an EMPTY home, for the tests that bring their
     own library. Each was building its own -- an interpreter's worth of
-    imports and a migration, measured at 0.31s -- to register a root."""
+    imports and a migration -- to register a root."""
     with hosting(tmp_path_factory, "authored_bare") as stage:
         yield stage
 
@@ -52,8 +52,7 @@ def _library(tmp) -> tuple:
     The home arrives with the built database already in it: what the
     three tests that call this prove is what the application does with a
     library, never that it can create its own database, and `build_app`
-    finding one costs 0.16s against 0.22s for building one (measured
-    over four runs each).
+    finding a database costs less than building one.
     """
     root = tmp / "lib"
     root.mkdir()

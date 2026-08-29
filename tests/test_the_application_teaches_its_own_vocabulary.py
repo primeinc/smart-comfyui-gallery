@@ -50,8 +50,8 @@ def _stocked():
     shares one value of, a key whose every file has its own value, a
     positional family, and a camera's plumbing.
 
-    Ninety inserts, in front of twenty-one tests whose calls answer in
-    0.00 s -- so the inserts WERE the tests. `Connection.backup` of this
+    Ninety inserts, in front of twenty-one tests whose own calls answer
+    immediately -- so the inserts WERE the tests. `Connection.backup` of this
     database is a fraction of a millisecond against the ~7 ms to write
     it again, which is the bargain `fresh_schema` already makes for the
     schema itself (tests/staging.py).

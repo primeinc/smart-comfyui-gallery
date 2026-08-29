@@ -26,10 +26,10 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 def library(tmp_path):
     """An empty database and an empty directory, wired to each other.
 
-    The schema comes from the per-process master: reading the DDL and
-    running `executescript` is ~11 ms and a backup is ~0.5 ms
-    (tests/staging.py `fresh_schema`, whose measurements these are), and
-    twenty tests here started by re-reading the same file.
+    The schema comes from the per-process master: a backup is far cheaper
+    than reading the DDL and running `executescript` (tests/staging.py
+    `fresh_schema`), and twenty tests here started by re-reading the same
+    file.
     """
     conn = fresh_schema()
     root = tmp_path / "library"

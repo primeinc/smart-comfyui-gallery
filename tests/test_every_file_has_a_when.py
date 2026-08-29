@@ -262,7 +262,7 @@ def test_the_swarm_sidecar_family_gets_its_when_from_the_name(tmp_path):
     no metadata of their own; their names carry the clip's stamp to the
     millisecond, so they are second-fine file occurrences, not silent.
 
-    Scanning and ingesting the real library costs ~3.4 s and answers the
+    Scanning and ingesting the real library is slow and answers the
     same constant every time, so the answer is cached on the corpus and
     the readers' code -- either moving re-measures it."""
     import json

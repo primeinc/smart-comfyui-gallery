@@ -2,14 +2,12 @@
 
 A library on disk, the application over it, and the database after the
 module's setup are built ONCE (`staged`, module scope) and snapshotted.
-Each test gets the snapshot back -- a file copy, about a millisecond --
-instead of a rebuilt application, about 170 ms (measured: build_app 66 ms
-on an existing database, app+client+one GET 172 ms, Connection.backup
-8 ms, shutil.copy 1.5 ms). The application holds no connection between
-requests (sg_web/app.py state: home, db_path, actor_id), so swapping the
-file under it is sound; the snapshot is taken through Connection.backup,
-which copies the committed state WAL included (cpython
-Doc/library/sqlite3.rst:1187-1193).
+Each test gets the snapshot back -- a file copy -- instead of a rebuilt
+application, which costs a build, a client and a first request. The
+application holds no connection between requests (sg_web/app.py state:
+home, db_path, actor_id), so swapping the file under it is sound; the
+snapshot is taken through Connection.backup, which copies the committed
+state WAL included (cpython Doc/library/sqlite3.rst:1187-1193).
 
 The library directory is part of the world. The scanner's identity for a
 file is (size, mtime, fs_id) (db/scan.py observe_tree), and a filesystem id
@@ -110,8 +108,8 @@ def is_kept(conn: sqlite3.Connection) -> bool:
 def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
     """An in-memory database holding the schema, foreign keys on.
 
-    executescript of the DDL is 11 ms; a backup from a master built once
-    per process is 0.5 ms (measured), and ~250 tests start from exactly
+    A backup from a master built once per process is far cheaper than
+    executescript of the whole DDL, and ~250 tests start from exactly
     this. A custom `ddl` (the contract's mutation sweep) gets its own
     master, keyed on the text."""
     text = SCHEMA.read_text(encoding="utf-8") if ddl is None else ddl
@@ -186,8 +184,7 @@ def seeded(home: pathlib.Path) -> pathlib.Path:
 
     Worth it from the SECOND world in a process: the master costs one
     `build` to make, so a module that stages one world pays exactly what
-    it saves (measured: 0.41s -> 0.42s on a single-world module) and one
-    that stages three stops paying twice.
+    it saves and one that stages three stops paying twice.
 
     `build_app` then takes its other branch and calls `migrate.migrate`,
     which reads a current `user_version` and has nothing to do; the
@@ -644,10 +641,10 @@ def _rebuilt_none(name: str, stage: Stage, allowed: int) -> None:
     `restore` compares the library by (size, mtime) and, when it differs,
     throws the whole world away: a fresh application, library, scan and
     setup. That is the right answer -- a file that is gone cannot be put
-    back as the same file -- but the 0.3s lands on the SETUP of whichever
-    test happens to run next, not on the test that moved the file. It
-    reads as an innocent test being slow, which is why three modules
-    carried one unnoticed.
+    back as the same file -- but the rebuild lands on the SETUP of
+    whichever test happens to run next, not on the test that moved the
+    file. It reads as an innocent test being slow, which is why three
+    modules carried one unnoticed.
 
     So the count is asserted rather than merely kept. A test that changes
     the library on disk has three honest endings, and the message names

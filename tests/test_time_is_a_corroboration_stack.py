@@ -29,8 +29,8 @@ from tests.staging import DAY, HOUR, NOW, hosting
 @pytest.fixture(scope="module")
 def _bare_stage(tmp_path_factory):
     """One application over an EMPTY home, for the tests that bring their
-    own library. Building one costs 0.31s of imports and a migration,
-    measured -- and three tests here were each paying it to register a
+    own library. Building one costs an interpreter's worth of imports and
+    a migration -- and three tests here were each paying it to register a
     root and read the occurrences back."""
     with hosting(tmp_path_factory, "corroboration_bare") as stage:
         yield stage

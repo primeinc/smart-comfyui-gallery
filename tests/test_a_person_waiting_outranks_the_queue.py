@@ -2,17 +2,13 @@
 
 The precache renders several pictures at a time now, which fills every
 core -- while GUESSING at what will be wanted later. A person looking at
-a page is not guessing. Measured on a grid of 30 misses served while a
-precache ran, 4000x3000 throughout:
+a page is not guessing, so the queue stands aside for them.
 
-    precache 1 in flight              1.25s   42 ms/cell
-    precache 8, not standing aside    1.81s   60 ms/cell
-    precache 8, standing aside        1.53s   51 ms/cell
-
-Half the regression, and the shortfall is honest rather than a bug: a
-render already running cannot be interrupted, because there is nothing
-to interrupt it with. So a person arriving mid-batch pays the tail of
-whatever is in flight and no more.
+Standing aside recovers part of what the wider precache costs a waiting
+browser, and the shortfall is honest rather than a bug: a render already
+running cannot be interrupted, because there is nothing to interrupt it
+with. So a person arriving mid-batch pays the tail of whatever is in
+flight and no more.
 
 Two rules the mechanism must never break, which is what is tested here:
 the person NEVER waits -- they are the work being prioritised -- and the

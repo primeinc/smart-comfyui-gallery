@@ -4,8 +4,8 @@ The synthetic corpus reaches 27% of the readers. It cannot reach more,
 and not because it is small: it is written by ONE writer, so it can only
 produce what that writer produces. A Canon body, a 2001 Nikon, a Pixel 8
 and a truncated CR2 are four writers, and each one reaches lines the
-others never touch. Measured: adding 1.1 MB of real files takes the
-readers from 27.0% to 36.3%.
+others never touch. Measured: adding these real files takes the readers
+from 27.0% to 36.3%.
 
 THREE THINGS THIS IS NOT.
 

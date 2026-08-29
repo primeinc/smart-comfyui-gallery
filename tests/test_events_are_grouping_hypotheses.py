@@ -207,7 +207,7 @@ def no_arrivals(_grouped):
     `Stage.restore` compares the library listing and REBUILDS the whole
     world when it differs (tests/staging.py), so a test that leaves a
     new picture behind charges the NEXT test a fresh application rather
-    than a millisecond restore -- measured at 0.29 s.
+    than a file copy.
 
     ARRIVALS only. A departed file cannot be put back: the listing is
     (size, mtime), but the database records the scanner's identity,
