@@ -135,6 +135,18 @@ interface Node {
   state: "cold" | "loading" | "warm" | "failed";
 }
 
+/** What each kind of card is CALLED on it. The store's own names are
+ *  for the store: nobody keeps a "query" on a board, they keep a
+ *  question they came back to. */
+const KINDS: Record<string, string> = {
+  query: "QUESTION",
+  person: "PERSON",
+  album: "ALBUM",
+  folder: "FOLDER",
+  picture: "PICTURE",
+  compare: "HELD AGAINST",
+};
+
 /** How big a card on the board is, in board units. */
 const CARD_W = 300;
 const CARD_H = 186;
@@ -948,6 +960,15 @@ export function mountField(root: ParentNode): void {
       show(`/preview/${card.pin.at}`);
       return;
     }
+    // A person's face is the face this library already knows them by --
+    // `/avatar/{slug}`, the same picture their row and their page use --
+    // not the first photograph they happen to appear in. A card that
+    // showed a crowd scene cropped to a circle would be a picture OF
+    // them rather than a picture that says who they are.
+    if (card.pin.kind === "person") {
+      const who = new URLSearchParams(card.pin.at).get("person");
+      if (who) show(`/avatar/${encodeURIComponent(who)}`);
+    }
     try {
       const asked = new URLSearchParams(card.pin.at);
       asked.set("after", "0");
@@ -960,7 +981,12 @@ export function mountField(root: ParentNode): void {
       const told = (await answer.json()) as { held?: number; items?: Array<{ thumb?: string | null }> };
       card.held = told.held ?? 0;
       card.state = "warm";
-      for (const one of told.items ?? []) if (one.thumb) show(one.thumb);
+      // The person card already has the one picture it draws. Loading
+      // four more would leave whichever decoded first at the front of
+      // the list, so the face on the card would change between reloads.
+      if (card.pin.kind !== "person") {
+        for (const one of told.items ?? []) if (one.thumb) show(one.thumb);
+      }
       draw();
     } catch {
       card.state = "failed";
@@ -1418,18 +1444,14 @@ export function mountField(root: ParentNode): void {
       hand.stroke();
       hand.clip();
 
-      // The covers: a strip across the top, so the card is a window into
-      // the question rather than a label about it.
+      // The face: what this card IS, drawn as the kind of thing it is.
+      // They all used to be the same strip of four with a different word
+      // in the corner, so a person, an album and a folder were one
+      // rectangle you had to read to tell apart.
       const coverH = sh * 0.7;
-      if (card.covers.length) {
-        const each = sw / card.covers.length;
-        card.covers.forEach((img, i) => {
-          hand.drawImage(img, sx + i * each, sy, each, coverH);
-        });
-      } else {
-        hand.fillStyle = token(stage, "--sunken");
-        hand.fillRect(sx, sy, sw, coverH);
-      }
+      hand.fillStyle = token(stage, "--sunken");
+      hand.fillRect(sx, sy, sw, coverH);
+      face(card, sx, sy, sw, coverH, line);
 
       // The words. Below a certain size they are unreadable and drawing
       // them is just noise on the card.
@@ -1469,11 +1491,11 @@ export function mountField(root: ParentNode): void {
         // are" -- a pin is a place, never an action.
         hand.fillStyle = brand;
         hand.font = `600 ${Math.min(10.5, Math.max(8, 10.5 * k))}px system-ui, sans-serif`;
-        hand.fillText(
-          card.pin.kind.toUpperCase(),
-          sx + sw - 11 - hand.measureText(card.pin.kind.toUpperCase()).width,
-          sy + coverH + 10 * k,
-        );
+        // What kind of thing this is, in words rather than the name the
+        // store happens to use for it. "QUERY" is what the code calls a
+        // saved question; nobody keeps a query on a board.
+        const called = KINDS[card.pin.kind] ?? card.pin.kind.toUpperCase();
+        hand.fillText(called, sx + sw - 11 - hand.measureText(called).width, sy + coverH + 10 * k);
       }
       hand.restore();
 
@@ -1484,6 +1506,115 @@ export function mountField(root: ParentNode): void {
         hand.roundRect(sx - 1, sy - 1, sw + 2, sh + 2, Math.max(1, r));
         hand.stroke();
       }
+    }
+  }
+
+  /**
+   * Draw a picture to FILL a box, cropping rather than stretching.
+   *
+   * `drawImage(img, x, y, w, h)` squashes the source into the
+   * destination, so four covers in a strip were four portraits
+   * flattened into four letterboxes. This takes the middle of the
+   * source at the destination's proportion, which is what every
+   * thumbnail in this application already does in CSS.
+   */
+  function fill(img: HTMLImageElement, dx: number, dy: number, dw: number, dh: number): void {
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    if (!iw || !ih || dw <= 0 || dh <= 0) return;
+    const want = dw / dh;
+    const has = iw / ih;
+    const sw = has > want ? ih * want : iw;
+    const sh = has > want ? ih : iw / want;
+    hand.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, dx, dy, dw, dh);
+  }
+
+  /**
+   * A card's face, per kind.
+   *
+   * A QUESTION is a strip of what it currently answers -- it has no
+   * single picture, and four of its members say more than any one.
+   * A PERSON is a face, round, the way a person is drawn everywhere
+   * else in this application; a strip of four of their photographs
+   * would say "here are some pictures" where the card means "this is
+   * who". An ALBUM is a stack, offset, because somebody chose and piled
+   * them. A FOLDER is a strip with a tab, because it is a place on disk
+   * and that is what a place on disk looks like. A PICTURE is itself,
+   * whole, because it IS the one thing.
+   */
+  function face(card: Card, sx: number, sy: number, sw: number, sh: number, line: string): void {
+    const held = card.covers;
+    if (!held.length) return;
+    const kind = card.pin.kind;
+
+    if (kind === "picture") {
+      const one = held[0];
+      if (one) fill(one, sx, sy, sw, sh);
+      return;
+    }
+
+    if (kind === "person") {
+      const one = held[0];
+      if (!one) return;
+      const r = Math.min(sw, sh) * 0.34;
+      hand.save();
+      hand.beginPath();
+      hand.arc(sx + sw / 2, sy + sh / 2, r, 0, Math.PI * 2);
+      hand.clip();
+      fill(one, sx + sw / 2 - r, sy + sh / 2 - r, r * 2, r * 2);
+      hand.restore();
+      hand.strokeStyle = line;
+      hand.lineWidth = 1;
+      hand.beginPath();
+      hand.arc(sx + sw / 2, sy + sh / 2, r, 0, Math.PI * 2);
+      hand.stroke();
+      return;
+    }
+
+    if (kind === "album") {
+      // Back to front, so the top of the pile is the newest one and the
+      // ones under it show only their edges.
+      const w = sw * 0.44;
+      const h = sh * 0.78;
+      const step = sw * 0.055;
+      const many = Math.min(held.length, 3);
+      for (let i = many - 1; i >= 0; i--) {
+        const one = held[i];
+        if (!one) continue;
+        const x = sx + sw / 2 - w / 2 + (i - (many - 1) / 2) * step;
+        const y = sy + sh / 2 - h / 2 + (i - (many - 1) / 2) * (step * 0.6);
+        hand.save();
+        hand.beginPath();
+        hand.roundRect(x, y, w, h, 3);
+        hand.clip();
+        fill(one, x, y, w, h);
+        hand.restore();
+        hand.strokeStyle = line;
+        hand.lineWidth = 1;
+        hand.beginPath();
+        hand.roundRect(x, y, w, h, 3);
+        hand.stroke();
+      }
+      return;
+    }
+
+    // A question, and a folder -- the same strip, and the folder gets a
+    // tab over it so the two are told apart at a glance.
+    const each = sw / held.length;
+    held.forEach((img, i) => {
+      fill(img, sx + i * each, sy, each, sh);
+    });
+    if (kind === "folder") {
+      const tw = Math.max(34, sw * 0.26);
+      const th = Math.max(9, sh * 0.13);
+      hand.fillStyle = token(stage, "--panel");
+      hand.beginPath();
+      hand.moveTo(sx, sy + th);
+      hand.lineTo(sx, sy);
+      hand.lineTo(sx + tw, sy);
+      hand.lineTo(sx + tw + th * 0.7, sy + th);
+      hand.closePath();
+      hand.fill();
     }
   }
 

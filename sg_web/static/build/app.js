@@ -5569,6 +5569,14 @@
   var ROW_H = 260;
   var GAP = 8;
   var VOID_W = 190;
+  var KINDS = {
+    query: "QUESTION",
+    person: "PERSON",
+    album: "ALBUM",
+    folder: "FOLDER",
+    picture: "PICTURE",
+    compare: "HELD AGAINST"
+  };
   var CARD_W = 300;
   var CARD_H = 186;
   var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -6018,6 +6026,10 @@
         show(`/preview/${card.pin.at}`);
         return;
       }
+      if (card.pin.kind === "person") {
+        const who = new URLSearchParams(card.pin.at).get("person");
+        if (who) show(`/avatar/${encodeURIComponent(who)}`);
+      }
       try {
         const asked5 = new URLSearchParams(card.pin.at);
         asked5.set("after", "0");
@@ -6028,7 +6040,9 @@
         const told = await answer.json();
         card.held = told.held ?? 0;
         card.state = "warm";
-        for (const one of told.items ?? []) if (one.thumb) show(one.thumb);
+        if (card.pin.kind !== "person") {
+          for (const one of told.items ?? []) if (one.thumb) show(one.thumb);
+        }
         draw4();
       } catch {
         card.state = "failed";
@@ -6343,15 +6357,9 @@
         hand.stroke();
         hand.clip();
         const coverH = sh * 0.7;
-        if (card.covers.length) {
-          const each = sw / card.covers.length;
-          card.covers.forEach((img, i) => {
-            hand.drawImage(img, sx + i * each, sy, each, coverH);
-          });
-        } else {
-          hand.fillStyle = token(stage, "--sunken");
-          hand.fillRect(sx, sy, sw, coverH);
-        }
+        hand.fillStyle = token(stage, "--sunken");
+        hand.fillRect(sx, sy, sw, coverH);
+        face(card, sx, sy, sw, coverH, line);
         if (sw > 120) {
           hand.fillStyle = ink;
           hand.font = `600 ${Math.min(15, Math.max(10, 15 * k))}px system-ui, sans-serif`;
@@ -6366,11 +6374,8 @@
           hand.fillText(said3, sx + 11, sy + coverH + 28 * k);
           hand.fillStyle = brand;
           hand.font = `600 ${Math.min(10.5, Math.max(8, 10.5 * k))}px system-ui, sans-serif`;
-          hand.fillText(
-            card.pin.kind.toUpperCase(),
-            sx + sw - 11 - hand.measureText(card.pin.kind.toUpperCase()).width,
-            sy + coverH + 10 * k
-          );
+          const called = KINDS[card.pin.kind] ?? card.pin.kind.toUpperCase();
+          hand.fillText(called, sx + sw - 11 - hand.measureText(called).width, sy + coverH + 10 * k);
         }
         hand.restore();
         if (card === hoverCard && card !== holding?.card) {
@@ -6380,6 +6385,83 @@
           hand.roundRect(sx - 1, sy - 1, sw + 2, sh + 2, Math.max(1, r));
           hand.stroke();
         }
+      }
+    }
+    function fill2(img, dx, dy, dw, dh) {
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      if (!iw || !ih || dw <= 0 || dh <= 0) return;
+      const want2 = dw / dh;
+      const has = iw / ih;
+      const sw = has > want2 ? ih * want2 : iw;
+      const sh = has > want2 ? ih : iw / want2;
+      hand.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, dx, dy, dw, dh);
+    }
+    function face(card, sx, sy, sw, sh, line) {
+      const held3 = card.covers;
+      if (!held3.length) return;
+      const kind = card.pin.kind;
+      if (kind === "picture") {
+        const one = held3[0];
+        if (one) fill2(one, sx, sy, sw, sh);
+        return;
+      }
+      if (kind === "person") {
+        const one = held3[0];
+        if (!one) return;
+        const r = Math.min(sw, sh) * 0.34;
+        hand.save();
+        hand.beginPath();
+        hand.arc(sx + sw / 2, sy + sh / 2, r, 0, Math.PI * 2);
+        hand.clip();
+        fill2(one, sx + sw / 2 - r, sy + sh / 2 - r, r * 2, r * 2);
+        hand.restore();
+        hand.strokeStyle = line;
+        hand.lineWidth = 1;
+        hand.beginPath();
+        hand.arc(sx + sw / 2, sy + sh / 2, r, 0, Math.PI * 2);
+        hand.stroke();
+        return;
+      }
+      if (kind === "album") {
+        const w = sw * 0.44;
+        const h = sh * 0.78;
+        const step = sw * 0.055;
+        const many = Math.min(held3.length, 3);
+        for (let i = many - 1; i >= 0; i--) {
+          const one = held3[i];
+          if (!one) continue;
+          const x = sx + sw / 2 - w / 2 + (i - (many - 1) / 2) * step;
+          const y = sy + sh / 2 - h / 2 + (i - (many - 1) / 2) * (step * 0.6);
+          hand.save();
+          hand.beginPath();
+          hand.roundRect(x, y, w, h, 3);
+          hand.clip();
+          fill2(one, x, y, w, h);
+          hand.restore();
+          hand.strokeStyle = line;
+          hand.lineWidth = 1;
+          hand.beginPath();
+          hand.roundRect(x, y, w, h, 3);
+          hand.stroke();
+        }
+        return;
+      }
+      const each = sw / held3.length;
+      held3.forEach((img, i) => {
+        fill2(img, sx + i * each, sy, each, sh);
+      });
+      if (kind === "folder") {
+        const tw = Math.max(34, sw * 0.26);
+        const th = Math.max(9, sh * 0.13);
+        hand.fillStyle = token(stage, "--panel");
+        hand.beginPath();
+        hand.moveTo(sx, sy + th);
+        hand.lineTo(sx, sy);
+        hand.lineTo(sx + tw, sy);
+        hand.lineTo(sx + tw + th * 0.7, sy + th);
+        hand.closePath();
+        hand.fill();
       }
     }
     function paintMinimap(accent, line, panel2, faint) {
