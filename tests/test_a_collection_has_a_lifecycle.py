@@ -8,7 +8,7 @@ db/collection_rules.py owns what a rule means, the ResultSet owns the
 media answer. Every definition write is desired state under an
 optimistic revision claim; membership never bumps the revision; archive
 retires discoverability and nothing else; and no user-facing hard
-delete exists, because an address that can someday resolve to a
+delete exists, because an address that can later resolve to a
 different entity is the lie the whole addressing doctrine forbids.
 
 A smart collection is a typed rule the ResultSet evaluates.
@@ -804,10 +804,9 @@ def test_a_write_sends_the_browser_to_where_the_facts_landed(curated, keepers):
     that address -- the browser renders what the server read back, never
     what it hoped its click did.
 
-    The write used to echo every definition fact, and this test compared
-    the echo with a fresh GET. There is no echo now, so the thing worth
-    proving is the handover: the slug it names resolves, at the revision
-    it names, carrying what was asked for.
+    The write echoes no definition facts, so the thing worth proving is the
+    handover: the slug it names resolves, at the revision it names, carrying
+    what was asked for.
     """
     written = curated.patch(
         f"/t/{keepers}", json={"name": "Kept", "color": "#001122", "description": "d", "expected_rev": 1}
@@ -1167,25 +1166,19 @@ def test_deleting_the_rule_first_is_the_deliberate_transition(curated):
         connect.close(conn)
 
 
-# The key sets that used to live here are gone. They pinned the shape of a
-# conditional dict while it was being replaced; the shape is now
-# sg_web/collection_view.py's CollectionDocument, which OpenAPI renders as
-# a five-arm oneOf and openapi-typescript turns into the browser's union.
-# Restating those keys in Python would be a fourth copy of one contract,
-# and the first one to go stale.
-#
-# What is left below is what no model can state: which state a rule ends up
-# in when the world changes underneath it.
+# The document's shape is sg_web/collection_view.py's CollectionDocument, which
+# OpenAPI renders and openapi-typescript turns into the browser's union. Below
+# is what no model states: which state a rule ends up in as the world changes.
 
 
 def test_a_write_answers_where_to_go_and_nothing_else(curated):
     """A write owes the address and the definition's next revision.
 
-    It used to answer with the whole management view -- the ResultSet page
+    It does not answer with the management view -- the ResultSet page
     evaluated, the spans, the places and every legal parent move -- which
-    made every rename re-run the collection's rule to build a body the
-    browser reads one field out of. That was also a THIRD representation,
-    differing from `GET /t/{slug}` by two keys nobody had written down.
+    would make every rename re-run the collection's rule to build a body the
+    browser reads one field out of, and a third representation to keep in
+    step with `GET /t/{slug}`.
     """
     made = curated.post("/albums", json={"name": "Fresh"})
     assert made.status_code == 201, made.text

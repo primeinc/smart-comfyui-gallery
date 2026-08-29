@@ -1,7 +1,7 @@
 """Write a corpus, scan it, and say what the application made of it.
 
 A corpus is a directory until something reads it. This is the step that
-tells the difference: it writes a small one into a temporary tree,
+tells the difference: it writes a small one into a scratch tree,
 serves the application over it, runs the jobs a person would run, and
 prints what came back -- kinds, recipes, cameras, duplicate groups, and
 how much of the timeline was empty enough to collapse.

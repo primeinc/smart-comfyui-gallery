@@ -434,14 +434,11 @@ class GenerationHistoryPlanner:
         def cosine(a: int, b: int) -> float:
             return sparse[slot[a]][slot[b]]
 
-        # Written vs run: a member whose frozen evidence carries BOTH the
-        # prompt as written (role original) and the prompt the generator
-        # ran (role effective) is compared with ITSELF. Wildcard expansion
-        # keeps the two close; a substantial rewrite is a claim about that
-        # member -- never a boundary, never chronology. A missing original
-        # is absence: no pair, no vector, no claim. Its own embed call, so
-        # the batch-scoped lexical oracle's vocabulary for the effective
-        # prompts is untouched.
+        # Written vs run: a member carrying both the prompt as written (role
+        # original) and the prompt the generator ran (role effective) is compared
+        # with ITSELF, and a substantial rewrite is a claim about that member
+        # rather than a boundary. Its own embed call, so the batch-scoped lexical
+        # oracle's vocabulary for the effective prompts is untouched.
         pairs: list[tuple[int, str, str]] = []
         for i, one in enumerate(members):
             by_role = {p["role"]: p for p in ((one.get("generation") or {}).get("prompts") or [])}

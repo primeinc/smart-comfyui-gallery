@@ -900,20 +900,14 @@ DUPE_COPIES = (
 )
 
 
-#: Every present member of one group, with where it LIVES.
+#: Every present member of one group, with where it LIVES: three copies of one
+#: photograph filed under `Iowa 2019`, `Family` and `Old Backup` are one content
+#: and three placements, and "3 copies" alone invites deleting two of them.
 #:
-#: The placements are the whole point of showing a group at all. Three
-#: copies of one photograph filed under `Iowa 2019`, `Family` and
-#: `Old Backup` are one content and three placements, and a review that
-#: shows only "3 copies" invites somebody to delete two of them and
-#: silently turn two complete collections into incomplete ones.
-#:
-#: `content_sha256` rides along because it decides whether the word
-#: "copy" is even honest. These groups are PERCEPTUAL: a re-encode, a
-#: resize and a different crop can all land in one. Identical bytes can
-#: be consolidated to one stored payload without losing anything; merely
-#: similar pictures cannot, and telling the two apart is the difference
-#: between a safe operation and a destructive one.
+#: `content_sha256` rides along because these groups are PERCEPTUAL: identical
+#: bytes can be consolidated to one stored payload without losing anything,
+#: merely similar pictures cannot, and that is the difference between a safe
+#: operation and a destructive one.
 DUPE_MEMBERS = (
     "SELECT e.slug, f.name, f.content_sha256, f.size, fo.name AS folder,"
     "       twin.distance, twin.is_best, twin.verified, f.kind,"
@@ -1265,18 +1259,15 @@ _SESSION_MEMBER_IN_SCOPE = (
 )
 
 
-#: The surface: pictures per bin of the human moment, ONE statement
-#: for any zoom. Only rows FINE enough for the bin are counted in it
-#: (a day-fine claim does not fall into an hour); the coarse rest are
-#: returned as spans by TIMELINE_SPANS so the page draws them across
-#: the bins they cover -- shown at the width the signal has. Each bin also says
-#: how many of its pictures spoke on the wall clock and how many only
-#: as instants -- the two domains the axis coalesces for the link.
-#: Bins are anchored: `CAST((m - anchor) / w) * w + anchor`, so a week
-#: starts on a Monday (the epoch's day 0 is a Thursday; 345,600s later
-#: is Monday 1970-01-05) and every other bin starts where the epoch
-#: does. Each bin also says how many of its pictures were captured,
-#: generated, both, or merely imported.
+#: The surface: pictures per bin of the human moment, ONE statement for any
+#: zoom. Only rows FINE enough for the bin are counted in it (a day-fine claim
+#: does not fall into an hour); the coarse rest are returned as spans by
+#: TIMELINE_SPANS, shown at the width the signal has.
+#:
+#: Bins are anchored: `CAST((m - anchor) / w) * w + anchor`, so a week starts on
+#: a Monday (the epoch's day 0 is a Thursday; 345,600s later is Monday
+#: 1970-01-05). Each bin also counts wall-clock moments against instants, and
+#: captured against generated, both, or merely imported.
 _TIMELINE_DENSITY_HEAD = (
     "SELECT CAST((" + HUMAN_MOMENT + " - ?) / ? AS INTEGER) * ? + ? AS bin, count(*) AS pictures,"
     " sum(mc.local_at IS NOT NULL) AS wall, sum(mc.local_at IS NULL) AS instant,"

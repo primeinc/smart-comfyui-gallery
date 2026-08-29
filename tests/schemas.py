@@ -53,13 +53,9 @@ _MASTERS: dict[int, pathlib.Path] = {}
 def _master_dir() -> pathlib.Path:
     """The masters' home, kept ACROSS processes under `.pytest_cache`.
 
-    A per-process temporary directory made this cache miss every time:
-    the eight tests that seed here ask for eight DIFFERENT versions, one
-    each, so within a run the dict is written and never read. Measured
-    cold, one per version: 0.104s for v1 and 0.033-0.043s for v3, v4,
-    v7, v25, v26, v29 -- 0.33s of a 2.69s module spent executing
-    historical schemas that are byte-for-byte the same on every run.
-    From the file, the same seven cost 0.007s.
+    A per-process directory misses every time: the eight tests that seed
+    here ask for eight DIFFERENT versions, one each, so within a run the
+    dict is written and never read.
 
     Safe to keep because the key is the vendored file's own bytes and
     those files are a historical record that is never edited: a schema

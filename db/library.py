@@ -71,9 +71,9 @@ def add_root(conn, path, kind: str, now: float) -> int:
     """Register a place bytes live.
 
     Idempotent on the root's identity, not on the string it was registered
-    under. Registering a moved library used to mint a second root and leave
-    the whole library behind the first one, which then read as offline; the
-    marker inside the directory is what makes that a relocation instead.
+    under. Keying on the string alone would mint a second root for a moved
+    library and leave the whole library behind the first one, reading as
+    offline; the marker inside the directory is what makes that a relocation.
 
     Normalising first makes the CHEAP half of that idempotence work as
     well: `lib`, `./lib` and the absolute spelling now match on the path

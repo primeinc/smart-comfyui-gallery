@@ -36,10 +36,9 @@ from db import connect
 from tests import staging
 from tests.staging import POLL
 
-# Imported by `live`, the one fixture that opens a client, and not here:
-# this file is imported once per module in the suite and httpx is 0.19s
-# of that. The only other mention is the annotation on `Live.api`, which
-# `from __future__ import annotations` leaves as a string.
+# Imported by `live`, the one fixture that opens a client, and not here: this
+# file is imported once per module in the suite and httpx costs that import
+# each time. The other mention is `Live.api`'s annotation, which stays a string.
 if typing.TYPE_CHECKING:
     import httpx
 
@@ -176,12 +175,9 @@ class _Servers:
     def __init__(self, repo: pathlib.Path, homes, wanted: int = 0) -> None:
         self._repo = repo
         self._homes = homes
-        #: How many modules are still going to ask. A spare is only worth
-        #: booting while one of them is coming: a run naming ONE browser
-        #: module used to boot a second server the moment it handed the
-        #: first over, and that boot -- an interpreter and forty-five
-        #: modules -- then competed for CPU with the very tests it would
-        #: never serve. Counted at collection (`sg_browser_modules`).
+        #: How many modules are still going to ask, counted at collection
+        #: (`sg_browser_modules`). A spare is booted only while one of them is
+        #: still coming, so no boot competes with tests it will never serve.
         self._wanted = wanted
         # `run_app` takes no `env=` (subprocess_client.py:45-50), so the
         # child reads SG_TEST_HOME from the parent's environment at spawn.
@@ -191,14 +187,9 @@ class _Servers:
         self._booting: threading.Thread | None = None
         self._broke: BaseException | None = None
 
-    #: ONE server for the whole session was tried, and it is slower.
-    #: A module's library is registered at runtime, so the application
-    #: need not belong to the module that asked for it -- but then every
-    #: module has to hand its roots back (`DELETE /roots/{id}`), and that
-    #: cascade across files, folders and derived rows, plus every later
-    #: module querying a database six modules have already churned, costs
-    #: more than the boots it saves. Measured over the suite: 62.2s a
-    #: server per module, 80.1s one server per worker. Both green.
+    # A server per module rather than one for the session: sharing one would
+    # make every module hand its roots back (`DELETE /roots/{id}`), a cascade
+    # across files, folders and derived rows.
 
     def take(self) -> _Served:
         """The warm server, and a fresh one started for whoever is next.
@@ -266,9 +257,8 @@ class _Servers:
             os.environ["PATH"] = str(self._repo / ".venv" / "Scripts") + os.pathsep + (before["PATH"] or "")
             try:
                 # 50ms poll, not litestar's 1s default: the readiness loop
-                # sleeps retry_timeout between probes (litestar
-                # subprocess_client.py:54-60), so a ~1.5s boot was rounded
-                # up to whole seconds.
+                # sleeps retry_timeout between probes and rounds a boot up to
+                # whole seconds (litestar subprocess_client.py:54-60).
                 held = run_app(
                     workdir=self._repo,
                     app="tests.live_app:create_app",
@@ -300,15 +290,11 @@ def _servers(request, tmp_path_factory):
     """The pool, and the spare it leaves warm, for the whole session.
 
     Autouse so it is built at the START of the session rather than when
-    `live` first asks. That is what puts the first boot in front of
-    pytest-playwright's `browser`: the two used to run one after the
-    other -- launch chromium, THEN wait ~1.45s for a server -- because
-    nothing reached this fixture until `browser_context_args` did, by
-    which time chromium was already up. Booting here overlaps them.
+    `live` first asks. That is what overlaps the first boot with
+    pytest-playwright's `browser` launching chromium.
 
-    Only when the run drives a browser. Ninety of these modules never
-    serve anything, and a spare booted for them is a subprocess and
-    1.45s of CPU spent on nobody.
+    Only when the run drives a browser. Most of these modules never serve
+    anything, and a spare booted for them is a subprocess spent on nobody.
 
     Here, and not earlier. `pytest_configure` runs before collection, so
     starting the boot there would have ~0.6s of conftest and module
@@ -349,11 +335,8 @@ def _prepared(module, api, root: pathlib.Path, home: pathlib.Path):
 
     Nearly every module sets itself up through the routes and wants
     `(api, root)`. The one that reaches past them -- writing faces a real
-    detector would have found -- needs the database the run is serving,
-    and used to read it from `SG_TEST_HOME`. That worked only because the
-    old fixture left the variable set for the whole module; a warm spare
-    boots DURING the tests and re-points it while it does, so a process
-    global is no longer a way to ask where the run lives.
+    detector would have found -- is handed the home directly, because a warm
+    spare boots DURING the tests and re-points `SG_TEST_HOME` while it does.
     """
     prepare = getattr(module, "prepare", None)
     if prepare is None:
@@ -460,10 +443,8 @@ def pytest_runtest_logreport(report) -> None:
 def _unbroken_unless_excused(request):
     """`unbroken` for every browser test, without each one asking.
 
-    It used to be opt-in, and nine of a hundred browser tests had simply
-    not opted -- including four over the timeline, which is the surface
-    the backlog says still points at a raster route that 404s. A check
-    an author has to remember is a check that measures who remembered.
+    Applied here rather than opted into per test: a check an author has to
+    remember is a check that measures who remembered.
 
     Only for tests that drive a browser (`page` among their fixtures);
     everything else must not pay for a served application. A test that

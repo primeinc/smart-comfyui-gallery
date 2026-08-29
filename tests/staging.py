@@ -44,25 +44,9 @@ from dataclasses import dataclass, field
 
 from db import connect, when
 
-#: The application and the client that drives it are imported by the two
-#: functions that build a world, not here.
-#:
-#: `tests/conftest.py` imports this module, so every module in the suite
-#: pays whatever this line does -- and importing `sg_web.app` and
-#: `litestar.testing` is 0.6s of the 0.95s that conftest import costs.
-#: Ninety of these modules never stage anything and were paying it to
-#: reach a function they do not call. The world builders pay the same
-#: total; it simply lands inside the fixture that wanted an application.
-#: Every other mention here is an annotation, and
-#: `from __future__ import annotations` leaves those as strings.
-#:
-#: Measured on the wall clock, which is where this lives -- pytest's own
-#: "passed in Xs" does not count a conftest import at all, so it showed
-#: none of it: test_a_table_column_orders_the_answer 2366ms -> 1537ms,
-#: test_metaparse 2428ms -> 1744ms, test_schema_contract 3378ms ->
-#: 2573ms. Modules that DO stage are unchanged (3004 -> 3036, 6631 ->
-#: 6720); they pay the same import, only inside the fixture that wanted
-#: it, where it is at least visible.
+#: `sg_web.app` and `litestar.testing` are imported by the two functions that
+#: build a world, not here, so a module that stages nothing does not pay for
+#: them. Every other mention in this file is an annotation, left as a string.
 if typing.TYPE_CHECKING:
     from litestar.testing import TestClient
 
@@ -70,18 +54,9 @@ SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 #: How often a wait-for-work loop asks again, in seconds.
 #:
-#: GRANULARITY, not a margin. Every loop that uses it ends the moment the
-#: row it is watching is terminal, so the interval is only ever overshoot
-#: past work that has ALREADY finished -- and a test that drains several
-#: jobs pays it once per job. It was 0.05 in fourteen hand-written copies
-#: of the same loop and 0.02 here; at 0.01, measured twice each,
-#: `test_a_per_item_failure_shows_its_exact_recorded_error` went 1.15s ->
-#: 0.67s/0.72s and `test_the_end_of_the_answer_is_the_end` 1.15s ->
-#: 0.77s/0.77s.
-#:
-#: Not smaller: each turn is a real request against the run being waited
-#: on, so the poll competes with the server it is watching. A hundredth
-#: is a few percent of one thread; a thousandth would be spinning on it.
+#: GRANULARITY, not a margin: every loop that uses it ends the moment the row
+#: it is watching is terminal, so the interval is only overshoot past work that
+#: has already finished. Each turn is a real request against the run.
 POLL = 0.01
 
 #: The suite's fixed clock. It was declared, identically, in 38 test
@@ -155,11 +130,9 @@ def fresh_schema(ddl: str | None = None) -> sqlite3.Connection:
 def _built_master() -> pathlib.Path:
     """One built database, on disk, closed -- kept ACROSS processes.
 
-    `build.build` writes the schema, stamps the version and runs
-    whatever else a fresh database needs; doing that is 67.7 ms
-    (measured) and copying the closed file it produced is 1.6 ms. It was
-    a per-process temporary, so every module that stages a world paid
-    the 67.7 ms again -- and the suite is read one module at a time.
+    `build.build` writes the schema, stamps the version and runs whatever
+    else a fresh database needs. Kept across processes, so a module that
+    stages a world copies the closed file instead of building it again.
 
     Named for what determines it, and nothing else. `build.build` is
     `connect(path)`, `executescript(schema_sql())`, and a check that the
@@ -192,14 +165,9 @@ def _built_master() -> pathlib.Path:
         try:
             os.replace(building, master)
         except PermissionError:
-            # Four xdist workers are four processes, and this cache is
-            # per-process, so all four find no master and all four build
-            # one. Windows refuses a rename onto a file another process
-            # holds open, which is what the winner's readers are doing;
-            # POSIX allows it, so this only ever fails here. The name is
-            # a digest of the DDL and the connection, so whoever won
-            # built THIS artifact -- take theirs and drop ours. A
-            # missing master means the refusal was about something else.
+            # Windows refuses a rename onto a file another process holds open,
+            # and this cache is per-process, so several xdist workers each build
+            # a master. The name is a digest, so the winner built THIS artifact.
             building.unlink(missing_ok=True)
             if not master.exists():
                 raise
@@ -566,11 +534,9 @@ class Stage:
     wipes_thumbs: bool = True
     rebuilds: int = 0
     _rebuild: Callable[[], Stage] | None = None
-    #: An idle reader whose only job is `PRAGMA data_version`: the value
-    #: moves when any OTHER connection commits (sqlite/sqlite@HEAD
-    #: src/sqlite.h.in:1181-1196), and every write a test makes goes
-    #: through the app's connections, never this one. It must never
-    #: write -- its own changes are the one thing the pragma omits.
+    #: An idle reader whose only job is `PRAGMA data_version`: the value moves
+    #: when any OTHER connection commits and omits changes made on this one
+    #: (sqlite/sqlite@b09c88c1 src/sqlite.h.in:1193-1196). It must never write.
     _monitor: sqlite3.Connection | None = None
     #: The snapshot, held open READ-ONLY as the backup's source. It is
     #: the same bytes for every restore in the module, and opening it

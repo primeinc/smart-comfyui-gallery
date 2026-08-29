@@ -228,15 +228,9 @@ def _served_db() -> pathlib.Path | None:
     return found[0] if found else None
 
 
-#: Values NO FILE can carry, because a PERSON produces them.
-#:
-#: Six of the seven axes are read out of a file: its suffix, its kind, the
-#: generator that wrote it, the date it claims and how precisely. Those
-#: are closed by acquiring a file. `location_basis` is not one axis but
-#: two halves -- `gps` is in the bytes a camera wrote, and `authored` is
-#: one person's word on where a picture happened, recorded through
-#: `POST /i/{slug}/place`. No corpus reaches it. A corpus a thousand times
-#: this size does not reach it.
+#: Values NO FILE can carry, because a PERSON produces them: six of the seven
+#: axes are read out of a file, while `location_basis` has an `authored` half
+#: -- one person's word, recorded through `POST /i/{slug}/place`.
 #:
 #: So it is measured by DOING it, not by excusing it: mint a place, assert
 #: it on a real file in the real library, re-interpret that file, and read

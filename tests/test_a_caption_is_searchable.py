@@ -143,8 +143,8 @@ def test_the_configured_models_caption_is_the_one_a_cell_says(tmp_path, asks):
 
 
 def test_a_caption_of_older_bytes_ranks_nothing(tmp_path, asks):
-    """The staleness contract the sweep keeps, retrieval keeps too: a
-    file replaced on disk does not answer for the picture it used to be."""
+    """The staleness contract the sweep keeps, retrieval keeps too: a file
+    replaced on disk does not answer for the bytes it no longer holds."""
     conn, ids, clip = _shelf(tmp_path, {"a": 0.9, "b": 0.8})
     sha = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (ids["b"],)).fetchone()[0]
     derived.annotate(conn, ids["b"], "caption", "a red bicycle", "m", "1", sha, NOW)

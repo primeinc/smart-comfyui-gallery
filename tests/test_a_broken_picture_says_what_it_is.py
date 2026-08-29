@@ -170,16 +170,9 @@ def test_it_catches_a_picture_that_arrives_later(page: Page, live: Live):
     exist yet: an endless grid, a swapped fragment, a remounted strip."""
     page.route("**/thumbs/**", lambda route: route.fulfill(status=404, body=""))
     page.goto("/g")
-    # Settled first, and settled means EVERY cell has degraded -- the same
-    # sequence the two tests above use, and the reason they pass where
-    # this one did not. `goto` returns on the document, not on the page:
-    # /g renders and then navigates again, so a bare wait for the first
-    # broken label could be satisfied against a document about to be
-    # replaced. The appended image then went with it and the count never
-    # moved, reported as "Execution context was destroyed, most likely
-    # because of a navigation" about one run in three. Waiting for all
-    # FILES means every thumbnail request has already been answered, so
-    # nothing is left in flight to navigate behind this.
+    # Settled first, and settled means EVERY cell has degraded: /g renders and
+    # then navigates again, so a wait for the first broken label can be
+    # satisfied against a document that is about to be replaced.
     page.wait_for_selector("[data-grid] a.cell", timeout=10_000)
     _await_broken(page, FILES)
     was = len(_broken_labels(page))

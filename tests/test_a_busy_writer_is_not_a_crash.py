@@ -1,23 +1,13 @@
 """One writer means waiting, and waiting is not a defect.
 
-SQLite has a single write lane per database file. A scan used to hold it
-for its whole duration -- `sha256_of` reads every changed file off the
-disk -- so everything else that wanted to write was stuck behind it. That
-half is fixed in db/scan.py, where the walk now writes nothing.
+SQLite has a single write lane per database file, and the walk in db/scan.py
+writes nothing so it does not hold that lane for the length of a scan.
 
 The lane can still be held longer than `busy_timeout` on a big enough
-library, so what happens WHEN it is remains a contract. It used to be
-this, every few seconds, for the length of a scan:
-
-    ERROR - a worker turn died; the job's lease will be reclaimed
-    Traceback ...
-      db/runner.py in run_next
-        claimed = jobs.claim(conn, owner, now, kinds=kinds, gate=gate)
-      sqlite3.OperationalError: database is locked
-
-Both halves of that sentence are false. The CLAIM is what failed, so no
-job was claimed and no lease exists to reclaim. A log that reports
-healthy backpressure as a crash is one people learn to scroll past.
+library, so what happens WHEN it is remains a contract. Reporting that as
+`a worker turn died; the job's lease will be reclaimed` says two false
+things: the CLAIM is what failed, so no job was claimed and no lease exists
+to reclaim.
 
 The contract asserted here: a busy database is `None` -- the same answer
 `run_next` already gives when there is no job -- and the worker's own
@@ -92,7 +82,7 @@ def test_the_lane_really_is_held(library):
 
 
 def test_a_busy_database_is_no_turn_rather_than_an_exception(library):
-    """The defect, stated: this used to raise out of `run_next`."""
+    """The contract, stated: this does not raise out of `run_next`."""
     path, conn = library
     conn.execute("PRAGMA busy_timeout=5")
     with _Holding(path):

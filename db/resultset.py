@@ -59,31 +59,17 @@ import typing
 
 from . import naming
 
-#: The orders a query may ask for. "similarity" requires a phrase; the
-#: time sorts follow the file table's own indexes; the moment sorts
-#: follow the human timeline (db/context.py HUMAN_MOMENT) -- the axis a
-#: timeline link opened -- with uninterpreted files last, never dropped.
-#: The COLUMN a table heading orders by, and the expression it orders
-#: on. One row per column rather than one branch per column: a sort is a
-#: closed vocabulary with one implementation each, and ten branches in
-#: `_timed_ids` is how two of them come to disagree about their
-#: tiebreak.
+#: The COLUMN a table heading orders by, and the expression it orders on.
+#: One row per column rather than one branch per column: a sort is a closed
+#: vocabulary with one implementation each.
 #:
-#: Every expression may be NULL, and that is the point. A sound has no
-#: pixels and a photograph has no length; those files sort LAST and say
-#: so by position, exactly as the moment sorts already do for a file
-#: nothing has interpreted. Dropping them would misreport what the
-#: answer holds, and calling them zero would invent a fact.
-#: A sort NEVER narrows the answer. Every join below is a LEFT join, so
+#: Every expression may be NULL, and that is the point: a sound has no pixels
+#: and a photograph has no length, so those files sort LAST and say so by
+#: position rather than being dropped or called zero.
+#:
+#: A sort NEVER narrows the answer -- every join below is a LEFT join, so
 #: asking for "by sampler" over a library of photographs orders them and
-#: keeps them: a photograph has no sampler and sorts last, saying so by
-#: position.
-#:
-#: Narrowing would have been the other defensible answer and it is the
-#: wrong one here, because this application says what a question is with
-#: visible chips. A sort that also dropped rows would change what the
-#: answer HOLDS with nothing on screen admitting it -- the count would
-#: move, and the only explanation would be a heading somebody clicked.
+#: keeps them.
 COLUMN_ORDERS: dict[str, str] = {
     "name": "f.name COLLATE NOCASE",
     "kind": "f.kind",
@@ -153,8 +139,7 @@ SORTS = ("newest", "oldest", "moment", "moment-newest", "similarity", *COLUMN_SO
 
 #: How much of a ranking is the ANSWER. `head` keeps the files that
 #: stand above their space's own middle (db/retrieval.py `head`); `all`
-#: keeps the whole ranked library, which is what a phrase used to
-#: return and is still the honest thing to offer whoever wants it.
+#: keeps the whole ranked library, offered to whoever wants it.
 #: Only a phrase ranks anything, so only a phrase carries a depth.
 DEPTHS = ("head", "all")
 
@@ -380,21 +365,12 @@ _MONITOR_LOCK = threading.Lock()
 #: how many times that number has gone BACKWARDS.
 #:
 #: `answer_generation` lives in the file, so restoring a snapshot over a
-#: running process rewinds it -- `sqlite3.Connection.backup` into the
-#: live database, a migration rolling back to its own snapshot, a test
-#: harness putting a template back. `PRAGMA data_version` could not do
-#: this: it counts a connection's OWN observations, so other-connection
-#: writes only ever push it up, and replacing the file pushes it up too.
+#: running process rewinds it, and `PRAGMA data_version` cannot see that:
+#: it counts a connection's OWN observations, which only ever go up.
 #:
-#: A rewound counter is worse than a stale one. The projection cache is
-#: process-lifetime and keyed on this string, so after a rewind an old
-#: key matches again and an answer computed from data that no longer
-#: exists is served as current -- silently, and with no read of the
-#: database that could notice.
-#:
-#: So the epoch goes in the key. Counting rewinds is enough: it never
-#: goes backwards itself, so every key minted after a restore is new,
-#: and nothing has to walk the cache and decide what to discard.
+#: The rewind count goes in the projection cache key, which is otherwise
+#: process-lifetime, so every key minted after a restore is new and no old
+#: key can match an answer computed from data that no longer exists.
 _SEEN: dict[str, tuple[int, int]] = {}
 
 
@@ -516,57 +492,28 @@ class Projection:
 _PROJECTIONS: dict[tuple[str, str, str], Projection] = {}
 _PROJECTION_LOCK = threading.Lock()
 
-#: The names one page of cells needs, id-keyed; order is restored from
-#: the projection slice, so this query carries none.
-#: One row per member, and it carries `content_sha256` because THE
-#: THUMBNAIL'S IDENTITY IS RESOLVED HERE, ONCE, for the whole page.
+#: The names one page of cells needs, id-keyed; order is restored from the
+#: projection slice, so this query carries none.
 #:
-#: The derivative cache is content-addressed (vision/thumbs.py
-#: `path_for`), so the hash IS the asset's address. Carrying it means a
-#: cell's `src` can point straight at an immutable file instead of at a
-#: route that opens a connection, resolves the slug, reads the kind and
-#: the hash back out of the database, and only then knows which file to
-#: send. Sixty cells were sixty of those. This is the same shape
-#: PhotoPrism and Immich settled on: resolve once, serve statically.
-#: width/height ride along because the grid is justified: rows of a
-#: fixed height whose cells are as wide as the PICTURE is, which needs
-#: the proportion before the image loads or every row reflows under the
-#: reader. Two integers already on the row -- the sort vocabulary above
-#: computes `pixels` from them -- so this costs nothing to carry.
-#: `copies` is how many files the dupe job put in this one's group,
-#: itself included -- NULL for a file no group holds. A library of
-#: generation sweeps draws the same picture forty times, and a grid that
-#: shows forty peers is telling the reader they are forty pictures. It
-#: does not collapse them: the answer's total, its ordinals and the
-#: rail's map are all statements about MEMBERS, and a grid that quietly
-#: showed fewer would make every one of those a lie. It marks them.
-#: `moment` is where a picture sits in time, and it is NEVER NULL.
+#: `content_sha256` is here because THE THUMBNAIL'S IDENTITY IS RESOLVED ONCE
+#: for the whole page: the derivative cache is content-addressed
+#: (vision/thumbs.py `path_for`), so a cell's `src` points straight at an
+#: immutable file rather than at a route that resolves the slug again.
+#: width/height ride along because the grid is justified and needs the
+#: proportion before the image loads.
 #:
-#: Two different facts, carried as two columns because collapsing them
-#: loses the one that matters. `moment` is the interpretation -- the
-#: wall clock when one was claimed, the knowable instant otherwise, the
-#: same fragment the moment sorts and the timeline shelves order by --
-#: falling back to the file's own mtime when nothing has interpreted it
-#: yet. `dated` says WHICH of those two it is.
+#: `copies` is how many files the dupe job put in this one's group, itself
+#: included, and NULL for a file no group holds; it marks rather than
+#: collapses, because the answer's total, its ordinals and the rail's map are
+#: all statements about MEMBERS.
 #:
-#: There is no such thing as a picture with no time. A file that has not
-#: been through the context job still arrived on a day, and drawing it
-#: as undated says the library knows less than it does; drawing it at
-#: the epoch says something false. It goes at its mtime -- `file.mtime`
-#: is NOT NULL, so this column never is -- and `dated` is how a surface
-#: admits that mtime is when the FILE was written and not when the
-#: photograph happened.
-#:
-#: NOT `first_seen_at`, which this schema also keeps and which is the
-#: more CERTAIN fact: it is when this library first saw the file, and it
-#: is useless as a position. A bulk import stamps forty thousand
-#: pictures with one afternoon, so an axis built on it would draw one
-#: enormous tower on the day somebody ran the scan and call it a
-#: library. mtime is a worse fact about the file and a better guess at
-#: the picture, which is what an axis of WHEN THINGS HAPPENED wants; the
-#: schema says out loud that a copy or a sync client rewrites it
-#: (db/schema.sql, `file.btime`), and `dated` is what carries that
-#: doubt to the reader instead of swallowing it.
+#: `moment` is the interpretation -- the wall clock when one was claimed, the
+#: knowable instant otherwise -- falling back to `file.mtime`, which is NOT
+#: NULL, so this column never is; `dated` says WHICH of the two it is, because
+#: mtime is when the FILE was written and not when the photograph happened.
+#: NOT `first_seen_at`: a bulk import stamps forty thousand pictures with one
+#: afternoon, which is useless as a position on an axis of WHEN THINGS
+#: HAPPENED.
 NAMED = (
     "SELECT f.id, e.slug, f.name, f.kind, e.uuid, f.content_sha256, f.width, f.height,"
     " (SELECT count(*) FROM derived_dupe_group m WHERE m.group_id = dg.group_id) AS copies,"

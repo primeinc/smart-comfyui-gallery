@@ -1,7 +1,7 @@
 """Where a file came from, recorded when it is known rather than guessed later.
 
 A generator hands back a job reference at submit time and the output file
-appears seconds or minutes later, somewhere a scan will eventually find. The
+appears seconds or minutes later, somewhere a later scan finds. The
 edge between them is knowable exactly once -- at submit -- and is
 unrecoverable afterwards, because the child arrives looking like any other
 new file.

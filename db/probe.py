@@ -11,7 +11,7 @@ so probing needs no external binary and "ffprobe is not installed" stopped
 being a state this application can be in. Opening carries a timeout for the
 same reason the old subprocess did -- a truncated file or network storage
 that stops answering costs the one file, never the scan around it
-(`av.open(timeout=...)`, PyAV-Org/PyAV@040da79, av.open docstring).
+(`av.open(timeout=...)`, PyAV-Org/PyAV@040da79 av/container/core.py:497-498).
 
 **A file that will not open is a fact, not an error.** `av.FFmpegError` --
 InvalidDataError for bytes that are not media -- is recorded as
@@ -104,14 +104,9 @@ def read(path: str | os.PathLike[str]) -> Probed:
         with av.open(os.fspath(path), "r", timeout=TIMEOUT, metadata_errors="replace") as container:
             video = container.streams.video[0] if container.streams.video else None
             audio = container.streams.audio[0] if container.streams.audio else None
-            # A stream can exist and carry NO codec context. PyAV opens
-            # the container, finds a video stream, and hands back a
-            # stream whose `codec_context` is None -- which every read
-            # below then dereferenced. Two real files do it, both on
-            # suffixes this application claims: a Canon CR3 (ISOBMFF
-            # RAW, opened as a container and described by nothing) and a
-            # JPEG XL. An AttributeError out of a reader is not a
-            # refusal any caller can handle.
+            # A stream can exist and carry NO codec context: PyAV hands back a
+            # video stream whose `codec_context` is None for a Canon CR3 and for
+            # a JPEG XL, both suffixes this application claims.
             vcodec = video.codec_context if video is not None else None
             acodec = audio.codec_context if audio is not None else None
 

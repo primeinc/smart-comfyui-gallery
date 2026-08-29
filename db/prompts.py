@@ -239,13 +239,11 @@ def cached(conn, engine, loaded, now: float):
 
 # --- the current corpus ---------------------------------------------------------------
 
-#: A prompt text is IN THE CORPUS while it plays a role in some
-#: generation or is the text of a CURRENT section (read from the
-#: prompt's current text by the current parser). A text a parser once
-#: produced and no longer does keeps its stored vector as cache and
-#: history -- and leaves the corpus: nothing searches it, nothing
-#: indexes it, nothing queues work for it. One predicate, used by the
-#: job, the index and the neighbours alike. Binds: parser version.
+#: A prompt text is IN THE CORPUS while it plays a role in some generation or is
+#: the text of a CURRENT section (the prompt's current text, read by the current
+#: parser); a text outside that keeps its stored vector as cache but is searched,
+#: indexed and queued by nothing. One predicate, used by the job, the index and
+#: the neighbours alike. Binds: parser version.
 CORPUS = (
     "(EXISTS (SELECT 1 FROM generation_prompt gp WHERE gp.prompt_id = p.id)"
     " OR EXISTS (SELECT 1 FROM derived_prompt_section s JOIN prompt owner ON owner.id = s.prompt_id"
