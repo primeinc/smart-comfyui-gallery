@@ -73,16 +73,24 @@
               <span data-dupe-measure>of the frame changed</span>
             </div>
 
-            <p class="dupe-verdict">
-              {% if group.consolidates_to %}
+            {# The claim, and the number it rests on, on the same element.
+               `consolidates_to` is the member count and only when the group
+               holds one payload (sg_web/app.py:942), so the attribute is the
+               arithmetic: that many placements, one payload. It is absent on
+               an alike group because collapsing one would lose whichever copy
+               is not kept. #}
+            {% if group.consolidates_to %}
+            <p class="dupe-verdict" data-dupe-consolidates="{{ group.consolidates_to }}">
               <b>The same file, saved {{ group.copies }} times.</b>
               Keeping one would free space and every album would still have its picture.
-              {% else %}
+            </p>
+            {% else %}
+            <p class="dupe-verdict" data-dupe-payloads="{{ group.payloads }}">
               <b>The same photo, saved as {{ group.payloads }} different files.</b>
               Someone resized, re-saved or cropped it. They are not interchangeable &mdash; whichever you drop
               is gone.
-              {% endif %}
             </p>
+            {% endif %}
 
             {% if group.placements %}
             <ul class="dupe-placements" data-dupe-placements>
@@ -113,7 +121,9 @@
                     <tr{% if one.is_best %} data-dupe-best-row{% endif %}>
                       <th scope="row"><a href="/i/{{ one.slug }}">{{ middle(one.name) }}</a></th>
                       <td><a href="/f/{{ one.folder }}">{{ one.folder }}</a></td>
-                      <td>{% if one.collections %}{{ one.collections }}{% else %}<span class="muted">none</span>{% endif %}</td>
+                      {# A placement is the thing lost if this copy goes, so
+                         being in no album is stated rather than left blank. #}
+                      <td>{% if one.collections %}<span data-dupe-filed>{{ one.collections }}</span>{% else %}<span class="muted" data-dupe-unfiled>none</span>{% endif %}</td>
                       <td>
                         {% if one.is_best %}<span class="pill pill-chosen">the one picked</span>
                         {% elif one.distance == 0 %}<span class="pill pill-ok">looks identical</span>

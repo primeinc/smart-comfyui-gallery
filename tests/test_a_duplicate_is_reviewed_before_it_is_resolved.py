@@ -149,7 +149,10 @@ def test_identical_bytes_say_what_consolidating_would_leave(reviewed):
     page = client.get("/dupes", headers={"accept": "text/html"}).text
     assert 'data-dupe-kind="identical"' in page
     assert "data-dupe-identical" in page
-    assert "3 placements, 1 payload" in page
+    # three placements, one payload -- the count the page is allowed to
+    # offer only because the bytes match.
+    assert 'data-dupe-consolidates="3"' in page
+    assert "The same file, saved 3 times" in page, "the arithmetic is on the element and not in the page"
 
 
 def test_copies_that_are_only_alike_are_never_called_the_same(tmp_path):
@@ -182,8 +185,9 @@ def test_copies_that_are_only_alike_are_never_called_the_same(tmp_path):
         page = client.get("/dupes", headers={"accept": "text/html"}).text
         assert 'data-dupe-kind="alike"' in page
         assert "data-dupe-alike" in page
-        assert "not the same bytes" in page
-        assert "placements, 1 payload" not in page, "it offered to collapse pictures that are not the same file"
+        assert 'data-dupe-payloads="2"' in page, "two payloads are not counted where the page says they differ"
+        assert "not interchangeable" in page
+        assert "data-dupe-consolidates" not in page, "it offered to collapse pictures that are not the same file"
 
 
 def test_the_page_says_how_whole_each_album_would_be_left(reviewed):
