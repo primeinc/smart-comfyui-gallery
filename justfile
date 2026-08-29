@@ -155,6 +155,15 @@ prove-push: web::build
     # always was. `SG_CORPUS` is the seam that exists for this, so the
     # gate measures the same corpus a developer does.
     if [ -d "$root/../sg-corpus" ]; then export SG_CORPUS="$root/../sg-corpus"; fi
+    # And the RUN that scanned it. Three of those six tests do not ask the
+    # corpus what it holds, they ask a library that read it -- which kinds
+    # were served, which dating rung each file landed on, what precision
+    # came out. `tests/needs.py _served_db` finds that library at `sg-run`
+    # beside the repository, resolved the same way and wrong in a worktree
+    # for the same reason. Without it every rung reports
+    # UNKNOWN_NOT_MEASURED, which these tests correctly refuse to read as
+    # "reached" -- so the gate said the corpus covers no media kind at all.
+    if [ -d "$root/../sg-run" ]; then export SG_HOME="$root/../sg-run"; fi
     PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
       "$root/{{ python }}" -m pytest tests/ -m slow -n 4 --dist loadfile \
       --deselect "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it" \
